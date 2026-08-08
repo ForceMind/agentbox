@@ -173,8 +173,10 @@ Issue list: <https://github.com/ForceMind/agentbox/issues>
 
 ### Draft PR
 
-Draft PR: pending creation after the Phase 2 branch is pushed. This line will be
-updated with the final URL before Phase 2 handoff.
+Draft PR: <https://github.com/ForceMind/agentbox/pull/19>
+
+The PR targets `main` from `phase/2-engineering-skeleton` and explicitly states
+that no AgentBox Runtime management functionality is implemented.
 
 ## Security Checks
 
