@@ -142,10 +142,14 @@ stable JSON envelope.
 |---|---|
 | `.github/workflows/backend.yml` | Python 3.11/3.12/3.13 install, Ruff, Black, mypy, pytest |
 | `.github/workflows/frontend.yml` | Frozen pnpm install, ESLint, Prettier, TypeScript, Vitest, Vite build |
-| `.github/workflows/security.yml` | Repository boundary checks, pip-audit, pnpm audit, and PR-only dependency review |
+| `.github/workflows/security.yml` | Repository boundary checks, pip-audit, pnpm audit, and gated PR-only dependency review |
 
-The workflows require no project secrets or commercial services. Immutable SHA
-pinning for third-party actions remains a future hardening task.
+The workflows require no project secrets or commercial services. GitHub's
+Dependency Review Action is present but gated until a repository administrator
+enables Dependency Graph and sets the repository variable
+`AGENTBOX_DEPENDENCY_REVIEW_ENABLED=true`; the first PR run proved that the
+current repository does not support the action. Immutable SHA pinning for
+third-party actions remains a future hardening task.
 
 ## GitHub Resources
 
@@ -212,6 +216,10 @@ security audit.
    implementation exists.
 6. The worker is an idle lifecycle skeleton only. It does not open SQLite,
    consume Jobs, invoke the helper, or call any Runtime.
+7. GitHub Dependency Review is transparently skipped until Dependency Graph is
+   enabled and the explicit repository variable is set. pip-audit and pnpm audit
+   remain mandatory; unsupported dependency review is not masked with
+   `continue-on-error`.
 
 No Phase 1 architecture decision was overturned.
 
@@ -239,6 +247,8 @@ or Runtime work, the Phase 0/1 gates remain in force:
 
 - accept or amend the Proposed ADRs, especially the license choice;
 - configure and approve `main` branch protection in GitHub;
+- enable Dependency Graph and set
+  `AGENTBOX_DEPENDENCY_REVIEW_ENABLED=true` to activate PR dependency review;
 - decide the long-term developer checkout owner and location;
 - approve UID/GID selection and the migration plan for existing root-owned
   Codex/Claude/tmux/authentication state;

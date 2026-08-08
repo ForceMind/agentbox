@@ -19,7 +19,10 @@ jobs:
       - run: bash scripts/check-skeleton-boundaries.sh
 
   dependency-review:
-    if: github.event_name == 'pull_request'
+    # The action requires GitHub's repository-level Dependency Graph. Keep the
+    # job explicit but gated until an administrator enables the graph and sets
+    # this repository variable to true; do not hide unsupported runs as success.
+    if: github.event_name == 'pull_request' && vars.AGENTBOX_DEPENDENCY_REVIEW_ENABLED == 'true'
     permissions:
       contents: read
       pull-requests: read

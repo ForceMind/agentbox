@@ -27,12 +27,12 @@ fi
 
 secret_pattern='(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{24,}|-----BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY-----|Bearer[[:space:]]+[A-Za-z0-9._~+/-]{24,})'
 
-if rg --hidden --line-number --pcre2 \
-  --glob '!.git/**' \
-  --glob '!.venv/**' \
-  --glob '!node_modules/**' \
-  --glob '!apps/web/node_modules/**' \
-  --glob '!scripts/check-secrets.sh' \
+if grep --recursive --line-number --extended-regexp \
+  --exclude-dir=.git \
+  --exclude-dir=.venv \
+  --exclude-dir=node_modules \
+  --exclude-dir=dist \
+  --exclude=check-secrets.sh \
   "$secret_pattern" .; then
   printf 'Potential credential literal found. Review without printing any real secret.\n' >&2
   exit 1
