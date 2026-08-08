@@ -1,0 +1,118 @@
+# AgentBox Threat Model
+
+Status: Phase 1 design baseline
+Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
+
+## Scope and Assets
+
+In scope: Web/API, browser sessions, CLI/API socket, Worker, SQLite, Runtime Executor/socket, Privileged Helper/socket, Project Workspaces, Jobs, Audit Events, installer/update/backup paths, Codex/Claude/tmux/Git/gh invocation, and external access integrations.
+
+Primary assets:
+
+- root authority and host integrity;
+- administrator account/session;
+- Runtime authentication held by third-party CLIs;
+- one-time Pair Codes;
+- private source repositories and uncommitted work;
+- SQLite state, Job integrity, settings, Audit Events, and backups;
+- update artifacts and release provenance;
+- availability of existing host services.
+
+Out of scope for the MVP: protection against a malicious root administrator, a fully compromised kernel/hypervisor, or security guarantees inside third-party SaaS. AgentBox must still avoid worsening those conditions.
+
+## Actors
+
+- legitimate single administrator;
+- unauthenticated remote attacker;
+- attacker with a stolen browser session;
+- malicious or compromised Git repository/dependency;
+- compromised Web/API, Worker, Runtime, or third-party CLI process;
+- local unprivileged user;
+- malicious/compromised package or update origin;
+- accidental operator error.
+
+## Trust Boundaries
+
+TB1: remote client to loopback/private/proxied Web endpoint.
+TB2: browser session to `/api/v1`.
+TB3: API/CLI input to Application Services and Job records.
+TB4: Worker to Runtime Executor.
+TB5: Worker to root Privileged Helper.
+TB6: Runtime Executor to Project Workspaces and third-party CLIs.
+TB7: installer/updater to external repositories/artifacts.
+TB8: live state to backup/export media.
+
+## Threat Register
+
+| ID | STRIDE | Threat | Boundary/assets | Required controls | Verification |
+|---|---|---|---|---|---|
+| T-01 | S/E | Unauthorized Web access | TB1/TB2, admin/session | loopback default, HTTPS integration, Argon2id, rate limits, session expiry | remote-bind and auth integration tests |
+| T-02 | T/E | CSRF issues a privileged/runtime action | TB2 | SameSite, CSRF token, Origin/Host checks, no GET mutations | cross-origin negative tests |
+| T-03 | S | Session hijacking/replay | session cookie | random token, hash at rest, HttpOnly, Secure on HTTPS, rotate/revoke, short idle lifetime | token-storage and replay tests |
+| T-04 | D | Brute-force login/lockout abuse | auth | account+client throttles, exponential delay, bounded recovery | rate-limit/time tests |
+| T-05 | E | Arbitrary command execution | TB3/TB4/TB5 | action enums, fixed argv, no shell, strict schemas | command-injection corpus |
+| T-06 | T/E | Option/argument injection | Runtime/helper commands | `--` delimiters where supported, enums, length/control-char rejection | leading-dash/metacharacter tests |
+| T-07 | E | Environment/PATH hijack | process execution | minimal env, fixed/configured+verified executable, realpath recheck | malicious PATH/env tests |
+| T-08 | E/T | Helper socket abuse | TB5/root | `0660`, isolated group, `SO_PEERCRED`, schema/version, action allowlist | wrong-UID/socket-replacement tests |
+| T-09 | E | Runtime socket used to reach root | TB4/TB5 | separate sockets/protocols/groups; Runtime has no Helper credentials | cross-protocol and group tests |
+| T-10 | T | Path traversal | Projects/backups/releases | opaque IDs, canonical root, descriptor-relative traversal, reject `..`/absolute paths | traversal property tests |
+| T-11 | T/E | Symlink/hard-link race escape | filesystem | no-follow operations, owner/mode checks, same-FS staging, revalidation | race/symlink/hard-link tests |
+| T-12 | T/E | Malicious Git repository content | TB6/projects | non-root Runtime, no build, hooks disabled, bounded output, treat contents untrusted | malicious repo fixtures |
+| T-13 | T/E | Git hook execution | Git operations | no AgentBox-controlled hook-triggering write/build flows in MVP; fixed hooks policy | hook fixture remains unexecuted |
+| T-14 | T | Git submodule path/URL escape | Project Workspace | recursive submodules disabled; future per-entry validation | `.gitmodules` attack fixtures |
+| T-15 | I | Credential embedded in Git URL | API/DB/log | reject userinfo; sanitize remote; no credential prompt | URL and log scans |
+| T-16 | S/E | tmux session hijacking/collision | Runtime sessions | Runtime-owned socket, opaque names, managed registry, refuse unmanaged collision | fake socket/name tests |
+| T-17 | I | Pair Code leakage | TB2/TB4, logs/DB | recent auth, ephemeral memory, no-store, never Job/SSE/audit body | end-to-end secret canary scan |
+| T-18 | I | Log/recent-output leakage | journal/UI | structured allowlist, bounds, redaction, no raw bodies/env; ephemeral pane output | log canary and ANSI tests |
+| T-19 | E | Web/API reads Runtime auth/project data | process/filesystem | separate UID/HOME; no project mount/read permission; typed Runtime read models | Linux permission tests |
+| T-20 | E | Root Helper invokes Runtime as root | helper | explicit prohibition; Runtime Executor identity; unit tests on action registry | allowlist inspection/integration test |
+| T-21 | T | Job payload/database tampering changes target | Jobs/SQLite | typed persisted payload, state fingerprint, revalidation at execution, DB permissions | DB mutation/fingerprint tests |
+| T-22 | R | Audit repudiation | Audit Events | actor/request/action/target/time/result; append policy; clock/rotation monitoring | audit completeness tests |
+| T-23 | I | Audit stores secret | Audit/DB | field allowlist, Pair/login body suppression, secret canaries | schema and persistence scans |
+| T-24 | D | Unbounded command/output/job exhausts host | availability | timeout, bytes/lines, concurrency=1 default, quotas, cancellation, disk thresholds | stress/timeout/output-bomb tests |
+| T-25 | T/D | Blind Job replay after crash | Job recovery | leases, attempts, idempotency class, uncertain mutation → `needs_attention` | crash-at-step fault injection |
+| T-26 | T/E | Malicious update/package | TB7/root | pinned version, approved origins, digest/signature/provenance, staged extraction, rollback | tampered artifact tests |
+| T-27 | T | Archive extraction escape/bomb | releases/backups | entry/path/link/type/count/size validation, staging | archive attack corpus |
+| T-28 | I/T | Backup leaks secrets or restores wrong owner | TB8 | manifest allowlist, encryption left to operator-approved mechanism, no auth homes, UID mapping plan | backup inspection/restore tests |
+| T-29 | E | Old root services are adopted silently | existing host | unmanaged classification, explicit adoption challenge, no automatic stop/change | Phase 0 fixture/adoption tests |
+| T-30 | I/S | Proxy header spoofing | TB1 | trusted-proxy allowlist, ignore other forwarded headers, exact origins | spoofed header tests |
+| T-31 | T | Database corruption/migration failure | SQLite | backups, integrity check, transaction/migration discipline, rollback gate | migration fault injection |
+| T-32 | E | Dependency executes install/build code | build/runtime | lock/review dependencies, minimal production artifact, no project build in MVP | dependency review/SBOM |
+| T-33 | T/I | Existing cloudflared route exposes AgentBox | external integration | never auto-edit/reuse; explicit proxy/access review; loopback bind | deployment checklist |
+| T-34 | T/E | UID/GID 1001 reuse gives write access to Codex artifact | current host | collision check and ownership remediation before identity creation | pre-install owner/UID gate |
+
+## Highest-Risk Abuse Cases
+
+### Web-to-Root Command Injection
+
+Attack chain: authenticated or compromised Web submits crafted command/path → Worker passes it to Helper → root shell executes. Prevention is architectural: no raw command model exists, action handlers build fixed argv, paths derive from server records, Helper independently validates, and the root process has no generic execution action.
+
+### Malicious Repository-to-Host Escalation
+
+Attack chain: clone a hostile repository → Git hooks/submodules/symlinks/build steps escape project → overwrite executable or collect credentials. MVP clones as non-root into staging, disables recursive submodules and credential prompting, runs no project builds, refuses unsafe filesystem objects, and keeps root/AgentBox credentials inaccessible.
+
+### Pair Code Disclosure
+
+Attack chain: pair command output enters Job result/logger/exception/SSE/browser cache → another actor pairs. Pairing bypasses persistent Job results, uses a one-time no-store response, suppresses bodies/output, and is covered by canary scanning across DB/journal/API traces.
+
+### Update Supply-Chain Compromise
+
+Attack chain: attacker replaces release/installer → root Helper installs it. Controls require approved origin, version pin, digest/signature/provenance where available, staged validation, immutable release, health check, and rollback. Lack of publisher verification is explicitly surfaced, not silently accepted.
+
+## Residual Risks and Assumptions
+
+- Codex and Claude public CLI behavior can change; capability detection limits but cannot remove this risk.
+- Third-party authentication remains in Runtime HOME under that tool's security model; AgentBox observes status but does not manage tokens.
+- An administrator can intentionally weaken bind/proxy/security settings; AgentBox must warn and audit but cannot defeat root.
+- Recent Claude pane output can contain private source/model text even after pattern redaction; access remains highly restricted and ephemeral.
+- SQLite and a single Worker fit one host but are not a multi-host consistency design.
+- SELinux is disabled and AppArmor absent on the Phase 0 host; process separation and systemd hardening carry more weight.
+- External cloud firewall and Cloudflare Access policy were not inspected in Phase 0.
+
+## Security Test Traceability
+
+Every threat ID above must map to at least one test case or an explicit manual verification in `TEST_STRATEGY.md` before release. T-05, T-08, T-10, T-11, T-17, T-21, T-25, T-26, T-27, T-31, and T-34 are release blockers.
+
+## Revisit Conditions
+
+Revisit the threat model before adding Git write/push, browser PTY/WebSocket, project deletion, multi-user/multi-server, plugins, container control, third-party webhooks, enterprise auth, or any non-loopback direct listener.

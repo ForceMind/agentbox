@@ -1,0 +1,302 @@
+# AgentBox MVP Data Model
+
+Status: Phase 1 logical design; no database or migration is created in this phase.
+
+## Database Decision
+
+Use SQLite with SQLAlchemy and Alembic for the single-host MVP. Enable WAL mode, foreign keys, busy timeout, bounded transactions, and explicit write coordination. SQLite is not used as a distributed queue and no process shares the database over a network filesystem.
+
+Database path: `/var/lib/agentbox/agentbox.db`, owned by `agentbox`, restrictive mode. Runtime Executor does not open it directly; Worker/API provide typed requests/results.
+
+## General Conventions
+
+- opaque application IDs; never reuse filesystem names or tmux names as primary keys;
+- UTC timestamps and explicit revision numbers;
+- enum values persisted as stable lower-case strings;
+- soft state observations carry `observed_at` and freshness/confidence;
+- user-supplied labels are separate from server-generated storage keys;
+- summaries are bounded and sanitized before persistence;
+- optimistic revision/state fingerprint for confirmation and stale-write protection;
+- no generic JSON blob for privileged action arguments; Job payload is validated by versioned type schema.
+
+## AdminUser
+
+| Field | Purpose |
+|---|---|
+| `id` | opaque admin ID |
+| `username_normalized` | unique single-admin login name |
+| `display_name` | optional safe label |
+| `password_hash` | Argon2id encoded hash only |
+| `is_active` | account enabled state |
+| `created_at` | creation time |
+| `password_changed_at` | session-revocation boundary |
+| `revision` | optimistic concurrency |
+
+MVP enforces at most one active AdminUser. No plaintext/recoverable password is stored.
+
+## Session
+
+| Field | Purpose |
+|---|---|
+| `id` | opaque Session ID, not the cookie |
+| `admin_user_id` | owner |
+| `token_digest` | keyed digest of opaque browser session token |
+| `created_at`, `last_seen_at` | lifecycle |
+| `idle_expires_at`, `absolute_expires_at` | expiration |
+| `recent_auth_until` | sensitive-action gate |
+| `revoked_at`, `revoke_reason` | revocation |
+| `csrf_digest` | verifier for CSRF token/secret |
+| `client_class` | bounded Web/local label, no raw fingerprint |
+
+This is an AgentBox application session verifier, not a third-party Token store. Raw session/cookie values are never persisted or audited. Migration restores revoke Sessions by default.
+
+## Project
+
+| Field | Purpose |
+|---|---|
+| `id` | opaque Project ID |
+| `name`, `slug` | display/search labels |
+| `storage_key` | server-generated relative directory name |
+| `project_root_id` | configured root reference |
+| `runtime_owner` | logical identity, not blindly copied numeric UID |
+| `source_kind` | `empty`, `git_clone`, `adopted` |
+| `remote_url_sanitized` | credential-free display URL |
+| `state` | `creating`, `ready`, `needs_attention`, `archived` |
+| `git_head`, `git_branch`, `dirty_count` | last bounded observation |
+| `observed_at` | freshness |
+| `created_at`, `updated_at` | lifecycle |
+| `revision` | confirmation/path state fingerprint input |
+
+Canonical path is derived from a configured root plus storage key and revalidated. The database never authorizes an arbitrary absolute path by itself.
+
+## RuntimeInstallation
+
+| Field | Purpose |
+|---|---|
+| `id` | installation ID |
+| `runtime_type` | `codex` or `claude` in MVP |
+| `entrypoint` | configured/PATH-visible stable command path |
+| `realpath_observed` | drift evidence only, not stable contract |
+| `source_hint` | standalone/npm/package/unknown |
+| `version_text_normalized` | bounded normalized version |
+| `fingerprint` | non-secret executable metadata/digest policy |
+| `owner_policy_state` | expected/mismatch/unknown |
+| `health_state` | supported/unavailable/broken/unknown-style observation |
+| `selected` | administrator-selected active candidate |
+| `observed_at` | detection time |
+| `revision` | plan invalidation |
+
+No Runtime token/auth-file path/content is stored.
+
+## RuntimeCapability
+
+| Field | Purpose |
+|---|---|
+| `id` | capability observation ID |
+| `runtime_installation_id` | parent |
+| `name` | stable AgentBox capability enum |
+| `state` | `supported`, `unsupported`, `unavailable`, `unauthenticated`, `broken`, `unknown` |
+| `evidence_class` | public_help/status/managed_state/best_effort |
+| `evidence_summary` | bounded and sanitized |
+| `adapter_schema_version` | parser/fixture version |
+| `observed_at`, `expires_at` | freshness |
+
+Unique by installation/name/current observation policy.
+
+## RuntimeSession
+
+| Field | Purpose |
+|---|---|
+| `id` | opaque session ID |
+| `runtime_type` | Claude first; Codex managed daemon may use a distinct subtype |
+| `project_id` | required for Claude |
+| `installation_id` | selected Runtime |
+| `session_key` | server-generated tmux/managed identifier |
+| `display_name` | safe UI label |
+| `linux_identity` | logical `agentbox-runtime` |
+| `state` | `starting`, `running`, `stopping`, `stopped`, `failed`, `unknown`, `unmanaged_conflict` |
+| `managed` | AgentBox ownership flag |
+| `started_at`, `stopped_at`, `observed_at` | lifecycle |
+| `last_error_code`, `last_error_summary` | sanitized failure |
+| `revision` | stale action protection |
+
+No pane output, Pair Code, auth state content, full command, or environment is stored.
+
+## Job
+
+Required core fields:
+
+| Field | Purpose |
+|---|---|
+| `id` | opaque Job ID |
+| `type` | versioned allowlisted Job type |
+| `status` | state enum |
+| `created_at` | accepted time |
+| `started_at` | first execution time |
+| `finished_at` | terminal time |
+| `requested_by` | AdminUser/local principal ID |
+| `target_type` | project/runtime/session/system/release/diagnostic |
+| `target_id` | opaque resource ID |
+| `progress` | 0–100 or null with phase label |
+| `result_summary` | bounded sanitized human summary |
+| `error_code` | stable normalized code |
+| `error_summary` | bounded sanitized summary |
+
+Additional execution fields:
+
+| Field | Purpose |
+|---|---|
+| `payload_schema_version` | validates typed payload |
+| `payload` | bounded type-specific non-secret JSON |
+| `idempotency_key_digest` | deduplicate accepted request |
+| `resource_lock_key` | serialize conflicting work |
+| `attempt` / `max_attempts` | retry policy |
+| `lease_owner`, `lease_expires_at` | crash recovery |
+| `heartbeat_at` | worker liveness |
+| `cancel_requested_at` | cooperative cancellation |
+| `execution_class` | read-only/idempotent/reversible/uncertain |
+| `request_id` | correlation |
+| `revision` | state transition concurrency |
+
+Statuses:
+
+- `queued`
+- `running`
+- `succeeded`
+- `failed`
+- `cancelled`
+- `needs_attention`
+
+Allowed transitions are explicit. Terminal states do not return to running. A new retry becomes a new Job linked by correlation, unless the same lease attempt is safely requeued by recovery rules.
+
+Prohibited payload/result data: tokens, passwords, cookies, OAuth codes, Pair Codes, SSH keys, auth files, full environment, arbitrary command/argv/path, or raw stdout/stderr.
+
+## JobEvent
+
+Small bounded events support SSE replay:
+
+| Field | Purpose |
+|---|---|
+| `sequence` | monotonic cursor |
+| `job_id` | Job |
+| `event_type` | queued/started/progress/final/heartbeat category |
+| `status`, `progress`, `phase` | safe state |
+| `summary` | bounded sanitized text |
+| `created_at` | ordering |
+
+Events have short retention and never contain secret results or command output.
+
+## AuditEvent
+
+| Field | Purpose |
+|---|---|
+| `id` | event ID |
+| `occurred_at` | UTC time |
+| `actor_type`, `actor_id` | admin/local/system |
+| `action` | stable action enum |
+| `target_type`, `target_id` | opaque target |
+| `request_id`, `job_id` | correlation |
+| `outcome`, `error_code` | result |
+| `confirmation_required`, `confirmed` | confirmation metadata |
+| `metadata` | strictly allowlisted non-secret small fields |
+
+There is no raw request/response body, command output, token, Pair Code, password, cookie, public IP, or auth configuration.
+
+## Setting
+
+| Field | Purpose |
+|---|---|
+| `key` | allowlisted typed key |
+| `value` | non-secret typed JSON only |
+| `schema_version` | validation |
+| `source` | default/admin/config |
+| `updated_at`, `updated_by` | auditability |
+| `revision` | concurrency |
+
+There is no generic secret setting and no Token table. Runtime credentials remain managed by third-party CLIs in Runtime HOME and are never surfaced to this model.
+
+## DiagnosticRun
+
+| Field | Purpose |
+|---|---|
+| `id` | run ID |
+| `job_id` | execution Job |
+| `scope` | safe enum |
+| `started_at`, `finished_at` | lifecycle |
+| `overall_state` | healthy/warnings/broken/unknown |
+| `finding_counts` | severity counts |
+| `environment_snapshot_id` | non-secret fact set reference |
+
+Findings use a child logical structure with stable code, severity, component, sanitized evidence, remediation plan, and `requires_human_approval`. No raw log bundle is stored.
+
+## ConfirmationChallenge
+
+| Field | Purpose |
+|---|---|
+| `id` | challenge ID |
+| `admin_user_id`, `session_id` | bound actor/session |
+| `action` | exact action enum |
+| `target_type`, `target_id` | exact target |
+| `target_revision` | state fingerprint |
+| `preview_digest` | binds reviewed plan |
+| `verifier_digest` | hash of one-time challenge proof |
+| `required_phrase_kind` | exact-name/action phrase policy |
+| `created_at`, `expires_at`, `used_at` | one-time lifecycle |
+| `request_id` | correlation |
+
+The proof is treated as transient authorization material; only a digest is stored. A changed target/plan/session invalidates it.
+
+## Relationships
+
+```mermaid
+erDiagram
+    AdminUser ||--o{ Session : owns
+    AdminUser ||--o{ Job : requests
+    AdminUser ||--o{ ConfirmationChallenge : receives
+    Project ||--o{ RuntimeSession : hosts
+    RuntimeInstallation ||--o{ RuntimeCapability : advertises
+    RuntimeInstallation ||--o{ RuntimeSession : runs
+    Job ||--o{ JobEvent : emits
+    Job ||--o| DiagnosticRun : executes
+    Job ||--o{ AuditEvent : correlates
+    Project ||--o{ Job : targeted_by
+```
+
+## Worker and SQLite Execution Model
+
+### Evaluation
+
+- In-process API asyncio worker: rejected as primary; API restart/deployment would interrupt work and couple request availability to subprocess lifecycle.
+- Redis/Celery/distributed queue: deferred; excessive for one host and adds operational/security dependencies.
+- Separate systemd Worker with SQLite Job table: selected.
+
+The Worker may use asyncio internally for subprocess timeouts and event handling, but it is a distinct process/service. Default concurrency is one; carefully classified independent read-only work may later increase it.
+
+### Claiming
+
+Worker atomically changes one eligible queued Job to running with lease owner/expiry, respecting global/resource locks and attempts. A short transaction protects the claim; the long action happens outside the transaction. Heartbeats renew leases.
+
+### Recovery After Restart
+
+- queued: remains eligible;
+- running read-only/idempotent with expired lease: requeue if preconditions still match and attempts remain;
+- running reversible: adapter reconciles observed state, then either completes, safely resumes/requeues, or marks `needs_attention`;
+- running uncertain/non-idempotent: `needs_attention`, never blind replay;
+- cancellation requested: reconcile actual external process/state before final cancelled/needs_attention;
+- Pair operation: no persistent secret result; interrupted delivery is discarded and regenerated by a new request.
+
+### Progress and SSE
+
+Worker writes coarse non-secret phases and percentages. SSE reads JobEvent rows and does not hold a Worker connection. Progress is monotonic where meaningful; an indeterminate phase uses null percentage plus an enum label.
+
+## Retention
+
+- Jobs/Audit/Diagnostics have bounded configurable retention with safe defaults.
+- Pair Codes never participate in retention.
+- JobEvent retention is shorter than Job retention.
+- Purge is an internal policy Job with limits; deleting backups/audit outside policy requires confirmation.
+- Database maintenance checks free disk and never blocks the API indefinitely.
+
+## Future PostgreSQL Boundary
+
+Repositories depend on SQLAlchemy models/repositories and transaction abstractions, not SQLite-specific SQL in routes/services. Job claim and migration behavior is isolated. Moving to PostgreSQL is a future multi-server decision; MVP does not pretend SQLite provides multi-host leases.
