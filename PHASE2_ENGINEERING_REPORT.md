@@ -2,7 +2,7 @@
 
 > Date: 2026-08-09
 > Phase: Repository and Engineering Skeleton
-> Status: Complete pending human review
+> Status: Finalized after human review; PR ready pending manual merge
 > Product functionality: none beyond the engineering skeleton
 
 ## Repository
@@ -19,6 +19,8 @@
 | GitHub Issues | Enabled |
 | Private vulnerability reporting | Enabled |
 | Branch protection | Requires Human GitHub Settings Action |
+| License | Apache-2.0 |
+| ADR status | 0001–0008 Accepted |
 
 `main` contains the Phase 0/1 documents and basic repository metadata. Phase 2
 work is isolated on `phase/2-engineering-skeleton`; no ongoing skeleton work was
@@ -98,6 +100,36 @@ The following commands were actually executed on 2026-08-09:
 The tests cover the health endpoint, metadata endpoint, package imports, CLI
 version, and CLI placeholder JSON output. They do not claim host or Runtime
 integration coverage.
+
+### Finalization regression run
+
+After architecture and Apache-2.0 approval, the complete applicable Phase 2
+suite was run again on 2026-08-09:
+
+| Check | Result |
+|---|---|
+| Apache official text comparison | PASS — normalized SHA-256 matched `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
+| ADR status check | PASS — 0001–0008 are Accepted |
+| Ruff | PASS |
+| Black, one process per Python file | PASS — 16 files unchanged |
+| mypy strict | PASS — no issues in 16 source files |
+| pytest | PASS — 5 tests |
+| CLI/Worker smoke checks | PASS |
+| Frozen offline pnpm install | PASS |
+| ESLint and Prettier | PASS |
+| TypeScript strict check | PASS |
+| Vitest | PASS — 2 tests |
+| Vite production build | PASS |
+| pip-audit | PASS — no known vulnerabilities; editable local project skipped |
+| pnpm audit, production/high | PASS — no known vulnerabilities |
+| Secret-pattern and source-boundary checks | PASS |
+| `git diff --check` | PASS |
+
+Black's directory-batch invocation hangs in the current bwrap execution
+environment, so the equivalent local check was executed deterministically one
+file at a time. GitHub Actions runs the normal batch command and previously
+passed it; this is an execution-environment limitation, not a formatting
+failure.
 
 ## Frontend
 
@@ -212,8 +244,9 @@ security audit.
    observed host Python 3.11 is Python 3.12.
 2. No shadcn/ui component was added because the engineering screen needs none;
    the Phase 1 decision was selective adoption, not mandatory dependency growth.
-3. ADR 0008 remains Proposed. Consequently, no final `LICENSE` file was added;
-   `docs/LICENSING.md` records the MIT, Apache-2.0, and AGPL-3.0 decision status.
+3. The authorized maintainer approved ADRs 0001–0008 during Phase 2
+   finalization. Apache-2.0 is the accepted license, the canonical `LICENSE`
+   text is present, and package metadata uses the SPDX identifier.
 4. API tests use HTTPX's in-process ASGI transport. This avoids depending on a
    real listener and keeps Phase 2 from starting a persistent service.
 5. The helper and installer are documentation-only boundaries. No root helper,
@@ -247,10 +280,10 @@ state, tmux session, system user, or system directory was changed.
 
 ## Remaining Gates and Human Actions
 
-There is no blocker to reviewing the Phase 2 skeleton. Before later deployment
-or Runtime work, the Phase 0/1 gates remain in force:
+There is no blocker to merging the reviewed Phase 2 skeleton after required CI
+passes. Before later deployment or Runtime work, the Phase 0/1 implementation
+gates remain in force:
 
-- accept or amend the Proposed ADRs, especially the license choice;
 - configure and approve `main` branch protection in GitHub;
 - enable Dependency Graph and set
   `AGENTBOX_DEPENDENCY_REVIEW_ENABLED=true` to activate PR dependency review;
@@ -261,6 +294,69 @@ or Runtime work, the Phase 0/1 gates remain in force:
 - preflight port 8787, cloudflared, firewall/cloud security group, and other
   listeners before starting or exposing Web/API;
 - verify supported distribution versions through later VM tests.
+
+## Human GitHub UI Checklist
+
+Perform these repository settings manually; no unverified settings API was
+used.
+
+### 1. Enable Dependency Graph
+
+1. Open **Settings → Security → Code security and analysis**.
+2. Set **Dependency graph** to **Enabled**.
+3. Leave private vulnerability reporting, secret scanning, and push protection
+   enabled.
+
+### 2. Enable the Dependency Review CI gate
+
+1. Open **Settings → Secrets and variables → Actions → Variables**.
+2. Create a repository variable named
+   `AGENTBOX_DEPENDENCY_REVIEW_ENABLED` with value `true`.
+3. Re-run all jobs in the latest **Security** workflow for PR #19.
+4. Confirm `dependency-review` reports **Pass**, not **Skipped**, before adding
+   it as a required check or merging.
+
+The value is a non-secret feature gate and belongs in **Variables**, not
+**Secrets**.
+
+### 3. Protect `main` with a branch ruleset
+
+Open **Settings → Rules → Rulesets → New branch ruleset** and configure:
+
+- ruleset name: `Protect main`;
+- enforcement status: **Active**;
+- target: **Default branch** (currently `main`);
+- bypass list: **Empty** for normal operation;
+- restrict deletions: **On**;
+- block force pushes: **On**;
+- require a pull request before merging: **On**;
+- required approving reviews: **1**; add an independent trusted reviewer before
+  enforcing this on a single-owner repository;
+- dismiss stale approvals after new commits: **On**;
+- require approval of the most recent reviewable push: **On**;
+- require conversation resolution before merging: **On**;
+- require status checks before merging: **On**;
+- require branches to be up to date before merging: **On**;
+- require linear history: **On** (use squash merge for focused PRs);
+- required deployments, signed commits, branch locking, and update restriction:
+  **Off** until separate policies justify them.
+
+Select these required status checks after each has run successfully at least
+once:
+
+- `quality` (frontend);
+- `quality (3.11)`;
+- `quality (3.12)`;
+- `quality (3.13)`;
+- `repository-boundaries`;
+- `python-audit`;
+- `frontend-audit`;
+- `dependency-review` (only after completing steps 1 and 2).
+
+If an independent reviewer is not yet available, merge the already reviewed
+bootstrap PR manually before activating the one-approval rule, or add the
+reviewer first. Do not create a broad permanent administrator bypass merely to
+work around the single-maintainer bootstrap.
 
 ## Phase 3 Recommendation
 

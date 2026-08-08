@@ -1,7 +1,7 @@
 # AgentBox Architecture
 
-Status: Phase 1 design baseline
-Decision authority: the ADRs in `docs/adr/` capture proposed decisions; this document is the consistent integrated view.
+Status: Approved architecture baseline
+Decision authority: Accepted ADRs 0001–0008 in `docs/adr/` govern the decisions summarized here.
 
 ## Architectural Conclusions
 
@@ -293,10 +293,8 @@ Upgrade is a privileged Job with a global lifecycle lock. It downloads to stagin
 - Existing standalone Codex ownership at UID/GID 1001 must be resolved before creating users or executing it through a privileged path.
 - Python 3.11.6 is present; therefore Python 3.11 is the MVP minimum unless Phase 2 explicitly changes the compatibility decision.
 
-## Open Questions Requiring Human Approval
+## Remaining Implementation Questions Requiring Human Approval
 
-- final repository owner, visibility, and Git author identity;
-- final Apache-2.0 license approval;
 - whether `/srv/agentbox/projects` or `/home/agentbox-runtime/projects` should be a configurable installation choice (default remains `/srv`);
 - policy for adopting existing root-owned projects and sessions;
 - final Runtime command for each supported Claude version, verified by Capability Detection rather than this document;

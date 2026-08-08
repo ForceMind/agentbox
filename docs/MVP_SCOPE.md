@@ -141,7 +141,7 @@ Optional work cannot delay security, rollback, Runtime, pairing, or project-sess
 - threat-model controls have evidence, not only documentation;
 - operator documentation identifies external access and backup responsibilities;
 - third-party compatibility is stated as detected capability, not guaranteed private behavior;
-- a license has been explicitly approved and added in a later phase.
+- the accepted Apache-2.0 license remains present in release source artifacts.
 
 ## Failure Conditions
 

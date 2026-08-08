@@ -111,7 +111,7 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 
 ## Roadmap
 
-1. Phase 2: repository and engineering skeleton — current Draft PR.
+1. Phase 2: repository and engineering skeleton — finalized in PR #19, pending manual merge.
 2. Phase 3: minimal backend and single-admin authentication.
 3. Phase 4: minimal authenticated frontend.
 4. Phase 5: Codex management.
@@ -140,8 +140,11 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Security-sensitive reports must follow [SECURITY.md](SECURITY.md), not a public Issue.
 
-## License status
+## License
 
-No final open-source license has been approved or added. Apache-2.0 is the Proposed recommendation in ADR 0008. See [docs/LICENSING.md](docs/LICENSING.md). Until a license is approved, no permission is granted beyond rights provided by applicable law.
+AgentBox is licensed under the [Apache License, Version 2.0](LICENSE)
+(`Apache-2.0`). The decision and its tradeoffs are recorded in
+[ADR 0008](docs/adr/0008-license-choice.md) and
+[the licensing guide](docs/LICENSING.md).
 
 AgentBox is independent. Codex, Claude, GitHub, and other third-party names are used only for factual compatibility descriptions; no affiliation or endorsement is implied.

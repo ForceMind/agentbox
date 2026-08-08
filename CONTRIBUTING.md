@@ -56,3 +56,10 @@ The Phase 2 skeleton deliberately contains no authentication, database schema, R
 ## Reporting vulnerabilities
 
 Do not open a public Issue for a suspected vulnerability. Follow the private process in the repository-root `SECURITY.md`.
+
+## Contribution license
+
+Unless a separate written agreement explicitly states otherwise, intentionally
+submitted contributions are provided under the repository's
+[Apache License 2.0](LICENSE), as recorded in
+[ADR 0008](docs/adr/0008-license-choice.md).

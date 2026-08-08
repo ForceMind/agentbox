@@ -1,8 +1,10 @@
-# ADR 0008: Recommend Apache License 2.0
+# ADR 0008: Adopt Apache License 2.0
 
 ## Status
 
-Proposed
+Accepted
+
+Decision date: 2026-08-09
 
 ## Context
 
@@ -10,7 +12,9 @@ AgentBox is intended as open AI developer infrastructure and should be easy for 
 
 ## Decision
 
-Recommend Apache License 2.0 for the initial release, subject to explicit human approval and dependency/license review. Do not add a `LICENSE` file during Phase 1. Preserve copyright and notice obligations and document third-party licenses.
+License AgentBox under the Apache License, Version 2.0 (`Apache-2.0`). The repository root contains the canonical license text. Apache-2.0 is selected because it combines permissive reuse with an explicit patent grant and patent-termination terms, and is familiar to enterprise and open-source adopters.
+
+Contributions intentionally submitted for inclusion are accepted under Apache-2.0 unless a separate written agreement states otherwise. Distribution must preserve the license and applicable attribution notices. AgentBox does not currently need a project `NOTICE` file; one must be added if future bundled material or required attributions make it necessary. Blanket source-file headers are not required, but SPDX identifiers may be adopted consistently in a later policy.
 
 Use Codex, Claude, GitHub, Linux, and distribution names only for factual compatibility statements. Do not imply endorsement; do not use third-party logos by default; include an independent-project/trademark disclaimer. Third-party CLI integrations remain subject to their own terms.
 
@@ -30,8 +34,8 @@ No license alone guarantees secure forks or disclosure. Apache-2.0's patent term
 
 ## Operational Impact
 
-Phase 2 must add the approved license text, copyright policy, `NOTICE` if needed, dependency inventory, source headers policy, and trademark disclaimer. Distribution must retain required notices.
+Repository and package metadata identify `Apache-2.0`. Dependency-license review remains part of release preparation. No `NOTICE` file is created without an actual attribution requirement. Distribution must retain required notices, and compatibility claims must remain factual and non-endorsing.
 
 ## Revisit Conditions
 
-Revisit before the first public release if maintainers prioritize hosted-source reciprocity, introduce dual licensing, receive legal advice, discover incompatible dependencies, or establish a business model that changes the tradeoff.
+Revisit only if maintainers prioritize hosted-source reciprocity, introduce dual licensing, receive legal advice that changes the assessment, discover incompatible dependencies, or establish a business model that materially changes the tradeoff. A later change cannot revoke Apache-2.0 rights already granted for published versions; it applies prospectively and requires a new ADR plus contributor-rights review.
