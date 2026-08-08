@@ -151,6 +151,11 @@ enables Dependency Graph and sets the repository variable
 current repository does not support the action. Immutable SHA pinning for
 third-party actions remains a future hardening task.
 
+The post-fix GitHub Actions run for commit `1b78632` passed all currently
+enforceable checks: frontend quality and audit, Python audit, repository
+boundaries, and backend quality on Python 3.11, 3.12, and 3.13. Dependency
+Review was transparently reported as skipped under the gate above.
+
 ## GitHub Resources
 
 ### Milestones
