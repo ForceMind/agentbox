@@ -1,0 +1,53 @@
+name: Feature proposal
+description: Propose one bounded AgentBox outcome
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Which documented user problem does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Describe one coherent outcome and its bounded sub-tasks.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: State what this proposal deliberately does not implement.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: "- [ ] Behavior matches the approved contract\n- [ ] Failure and degraded states are explicit\n- [ ] Documentation is updated"
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests
+      description: List required unit, integration, security, fixture, browser, or VM tests.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security considerations
+      description: Cover privilege, secrets, paths, commands, network exposure, data retention, and rollback as applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List prerequisite Issues and Proposed/Accepted ADRs.
