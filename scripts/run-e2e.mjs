@@ -1,13 +1,15 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const pythonBin = join(repositoryRoot, ".venv", "bin");
+const localPython = join(repositoryRoot, ".venv", "bin", "python");
+const pythonCommand = existsSync(localPython) ? localPython : "python";
 const children = [];
 
 function run(command, args, options = {}) {
@@ -101,7 +103,7 @@ try {
     PLAYWRIGHT_BASE_URL: webOrigin,
   };
 
-  await run(join(pythonBin, "alembic"), ["upgrade", "head"], {
+  await run(pythonCommand, ["-m", "alembic", "upgrade", "head"], {
     env: testEnvironment,
   });
   await run("pnpm", ["--filter", "@agentbox/web", "build"], {
@@ -109,8 +111,10 @@ try {
   });
 
   const api = start(
-    join(pythonBin, "uvicorn"),
+    pythonCommand,
     [
+      "-m",
+      "uvicorn",
       "e2e_app:app",
       "--app-dir",
       "tests",
