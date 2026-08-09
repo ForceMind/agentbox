@@ -149,6 +149,41 @@ Phase 5 direct actions are intentionally bounded while the durable Job worker
 is not implemented. Install/update/log endpoints in this table remain designs,
 not implemented routes.
 
+## Future Provider API (Phase 11 planning only)
+
+No Provider endpoint exists today. The future resource boundary is
+Runtime-neutral and separate from `/codex/remote/*`; Provider activation must
+not implicitly start, stop, pair, restart, or replace a Remote session.
+
+Planned contract families, subject to Phase 11 public-contract revalidation:
+
+| Method/path | Purpose | Security/result boundary |
+|---|---|---|
+| `GET /api/v1/providers` | list non-secret Provider metadata | never Secret values |
+| `POST /api/v1/providers` | create typed Provider metadata | no raw API key in ordinary body |
+| `GET/PATCH/DELETE /api/v1/providers/{provider_id}` | inspect/edit/remove metadata | revision checks; active-reference policy |
+| `GET /api/v1/providers/current` | active Provider selection and evidence | Provider and Remote compatibility separated |
+| `POST /api/v1/providers/{provider_id}/test-jobs` | layered compatibility test | bounded, cost-aware, sanitized Job |
+| `POST /api/v1/providers/{provider_id}/activation-plans` | preview config/restart/session impact | dry-run only; current config revision bound |
+| `POST /api/v1/providers/{provider_id}/activation-jobs` | apply an approved plan | recent auth, confirmation, rollback reference |
+
+The Secret Manager write/replacement contract is deliberately not fixed here.
+It requires its own approved design and dedicated secret-input channel; an API
+must never accept a raw API key in Provider metadata or return it from any GET.
+Provider resources carry only an opaque Secret reference/configured-state.
+
+Test results expose Provider Reachability, Authentication, Model, Wire Protocol,
+Codex Runtime Compatibility, and Remote Control Compatibility independently.
+Endpoint/Provider request success cannot set full Remote compatibility to
+Supported. Unknown thread/history/tools/streaming/Responses/session/Remote
+behavior remains Unknown or Experimental.
+
+Config activation accepts neither raw TOML, arbitrary config keys, a config
+path, environment map, executable, nor restart flag. The server creates a typed,
+revision-bound impact plan using the then-current public Runtime config schema;
+restart, new session, or re-authentication is a separate explicitly confirmed
+effect when required.
+
 ## Claude API
 
 | Method/path | Purpose |
@@ -292,4 +327,4 @@ Breaking resource/semantic changes require `/api/v2`. V1 may add optional fields
 
 ## Explicitly Absent API
 
-There is no `/shell`, `/exec`, `/terminal`, `/command`, arbitrary filesystem, arbitrary Git, arbitrary systemd, arbitrary package, credential read/write, Pair Code history, raw environment, or root impersonation endpoint.
+There is no `/shell`, `/exec`, `/terminal`, `/command`, arbitrary filesystem, arbitrary Git, arbitrary systemd, arbitrary package, credential read/write, Pair Code history, raw environment, root impersonation, Provider, or Secret Manager endpoint. The Provider routes above are future planning only.

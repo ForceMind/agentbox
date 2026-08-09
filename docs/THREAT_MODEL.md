@@ -6,7 +6,7 @@ Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
 
 ## Scope and Assets
 
-In scope: Web/API, browser sessions, CLI/API socket, Worker, SQLite, Runtime Executor/socket, Privileged Helper/socket, Project Workspaces, Jobs, Audit Events, installer/update/backup paths, Codex/Claude/tmux/Git/gh invocation, and external access integrations.
+In scope: Web/API, browser sessions, CLI/API socket, Worker, SQLite, Runtime Executor/socket, Privileged Helper/socket, Project Workspaces, Jobs, Audit Events, installer/update/backup paths, Codex/Claude/tmux/Git/gh invocation, future Provider metadata/Secret references/config adapters, and external access integrations.
 
 Primary assets:
 
@@ -18,6 +18,7 @@ Primary assets:
 - SQLite state, Job integrity, settings, Audit Events, and backups;
 - update artifacts and release provenance;
 - availability of existing host services.
+- future Provider metadata/config integrity and API-key confidentiality.
 
 Out of scope for the MVP: protection against a malicious root administrator, a fully compromised kernel/hypervisor, or security guarantees inside third-party SaaS. AgentBox must still avoid worsening those conditions.
 
@@ -42,6 +43,8 @@ TB5: Worker to root Privileged Helper.
 TB6: Runtime Executor to Project Workspaces and third-party CLIs.
 TB7: installer/updater to external repositories/artifacts.
 TB8: live state to backup/export media.
+TB9 (future): Provider metadata/config adapter to Secret Manager, Runtime
+configuration, and external model/API Provider. No implementation exists yet.
 
 ## Threat Register
 
@@ -103,6 +106,12 @@ TB8: live state to backup/export media.
 | T-54 | T | npm metadata poisons installation classification | TB6 | fixed npm argv, bounded JSON, known names as hints only, conflict/unknown without mutation | malformed/npm conflict fixtures |
 | T-55 | S/T | Legacy `codex.service` confused with managed daemon | existing host/TB6 | presence is warning only; never adopted, started, stopped, or called authoritative | host read-only check and UI diagnostic review |
 | T-56 | T/D | Third-party CLI changes command/help/output semantics | TB6 | capability detection from current public help, tri-state degradation, exact fixtures, fail-closed mutations | old/malformed/future-help fixtures |
+| T-57 | I | Raw Provider API key enters metadata/output/persistence | TB3/TB9 | opaque Secret reference only; dedicated input/injection channel; field allowlists; no value/suffix/hash in output/audit | schema inspection and cross-store Secret canary scan |
+| T-58 | T/E | Provider config update overwrites unrelated or concurrent Codex settings | TB6/TB9 | parse/preserve, typed managed keys, expected revision/digest, complete validation, stale-plan refusal | golden config and concurrent-edit tests |
+| T-59 | T/E | Symlink/replacement race redirects Provider config or backup write | TB6/TB9 | no-follow/lstat, owner/mode checks, same-directory temp, fingerprint recheck, restrictive atomic replace | symlink/swap/permission race tests |
+| T-60 | S/I | Provider endpoint or diagnostic output exfiltrates Secret | TB9/external Provider | validated scheme/endpoint policy, no URL userinfo, bounded requests, no auth header/body logging, Secret isolation | malicious endpoint, redirect, error, and log canaries |
+| T-61 | R/T | Provider API PASS is misrepresented as Remote compatibility | operator/Remote state | independent evidence dimensions and Supported/Compatible/Experimental/Degraded/Incompatible/Unknown states | partial-success compatibility fixtures and UI/CLI assertions |
+| T-62 | T/D | Provider activation breaks active Remote session/thread state | TB6/TB9 | preflight impact plan; explicit restart/re-auth/session action; rollback; Unknown/Experimental on uncertain public behavior | session/history/tools/streaming/Responses/Remote regression matrix |
 
 ## Phase 3 Control-Plane Attack Surface
 
@@ -154,6 +163,17 @@ TB8: live state to backup/export media.
 
 ## Highest-Risk Abuse Cases
 
+### Future Provider Secret or Config Compromise
+
+Attack chain: an administrator submits a Provider → raw API key is stored or
+logged → a config string editor overwrites unrelated Codex settings or follows a
+symlink → Runtime credentials/session state are exposed or Remote Control fails.
+The planned prevention boundary requires Secret references, typed provider
+options, public-contract validation, config preservation, concurrent-write and
+symlink defenses, atomic backup/rollback, and compatibility dimensions that do
+not equate endpoint success with Remote support. Phase 11 must revisit this
+model before any implementation or real Provider test.
+
 ### Web-to-Root Command Injection
 
 Attack chain: authenticated or compromised Web submits crafted command/path → Worker passes it to Helper → root shell executes. Prevention is architectural: no raw command model exists, action handlers build fixed argv, paths derive from server records, Helper independently validates, and the root process has no generic execution action.
@@ -186,4 +206,4 @@ Every threat ID above must map to at least one test case or an explicit manual v
 
 ## Revisit Conditions
 
-Revisit the threat model before adding Git write/push, browser PTY/WebSocket, project deletion, multi-user/multi-server, plugins, container control, third-party webhooks, enterprise auth, or any non-loopback direct listener.
+Revisit the threat model before adding Provider/Secret/config mutation, Git write/push, browser PTY/WebSocket, project deletion, multi-user/multi-server, plugins, container control, third-party webhooks, enterprise auth, or any non-loopback direct listener.
