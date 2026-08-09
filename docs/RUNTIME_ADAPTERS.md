@@ -40,6 +40,24 @@ ClaudeAdapter
 └── workspace_state(project)
 ```
 
+Future Provider management does not become another Remote lifecycle method on
+these interfaces. It uses a runtime-neutral Provider domain plus typed
+Runtime-specific adapters:
+
+```text
+ProviderManager
+├── list/add/edit/remove/use/current/test metadata use cases
+├── SecretReference (never the secret value)
+└── compatibility dimensions
+
+ProviderConfigAdapter
+├── inspect_public_contract(runtime)
+├── validate(existing_config, desired_provider)
+├── plan_activation(expected_revision)
+├── apply_atomically(plan)
+└── rollback(plan)
+```
+
 Interfaces return typed observations with source, timestamp, confidence, raw-exit classification, and bounded sanitized evidence. They do not return raw stdout/stderr to callers.
 
 ## Capability Model
@@ -145,6 +163,42 @@ Use a documented public login-status command when detected. If absent, return Un
 
 The adapter produces a plan from supported publisher methods. The root Helper handles verified system/install steps. Internal standalone release directories may appear as diagnostic evidence but cannot be hardcoded. Post-install verification includes owner/mode checks due the UID/GID 1001 anomaly observed in Phase 0.
 
+### Future Codex Provider Config Adapter
+
+Phase 11 may add `CodexProviderConfigAdapter`; it is not implemented in Phase
+5. It must derive its accepted keys and validation behavior from the public
+Codex CLI help, public config schema/documentation, and supported config keys
+observed at implementation time. Current observed shapes are fixtures, not a
+permanent protocol, and private Codex internal files are forbidden contracts.
+
+The adapter accepts typed Provider metadata and a Secret reference, never raw
+TOML, arbitrary keys, an environment map, or an API key. It parses the existing
+TOML, preserves unrelated values, validates a complete candidate, detects
+concurrent modification, protects against symlinks/unsafe ownership, and uses a
+restrictive temporary file, appropriate fsync, backup/rollback, and atomic
+replace. It must prefer official environment-variable reference mechanisms such
+as a publicly supported `env_key` over plaintext credentials in config.
+
+Provider types are adapter capabilities, not one shared parameter bag:
+Official OpenAI, OpenAI-compatible HTTP, local, and Runtime-native/built-in are
+initial design directions. Claude or another Runtime receives an adapter only
+when its official public contract supports the operation.
+
+### Future Provider Test and Compatibility
+
+Provider testing is layered: endpoint resolution, network reachability,
+authentication, protocol, model availability, required Codex wire API, a
+minimal Provider request, an optional safe minimal Codex Runtime request, and a
+separate Remote Control compatibility assessment. Results independently expose
+reachability, authentication, model, wire protocol, Runtime compatibility, and
+Remote compatibility.
+
+Planned classifications are `supported`, `compatible`, `experimental`,
+`degraded`, `incompatible`, and `unknown` (or typed project equivalents).
+Thread synchronization, conversation history, tools, streaming, Responses
+behavior, and Remote state are explicit evidence dimensions. Provider request
+success never promotes Remote compatibility automatically.
+
 ## Claude Adapter
 
 ### Public CLI Evidence
@@ -183,6 +237,8 @@ The adapter calls tmux capture for a registered pane only, caps lines/bytes, str
 | process names/limited argument markers | best-effort supporting evidence, never sole ownership proof |
 | package/npm database | best-effort installation-source evidence |
 | private Runtime config/auth layout | forbidden as required contract; content not read for auth |
+| public Runtime provider/config schema and documented supported keys | required future Provider config contract; revalidated per supported release |
+| raw API key or Secret Manager value | forbidden adapter observation/output; only an opaque Secret reference crosses the application boundary |
 | internal standalone managed path | diagnostic hint only; never invocation/business contract |
 | parsing human output | best effort with exact fixtures; unknown output fails closed |
 
@@ -265,3 +321,8 @@ names. Unknown evidence stays `unknown`; no package is removed automatically.
 - verify official install/update artifact checks available from each publisher;
 - validate Runtime-user auth and tmux behavior on each supported distribution;
 - resolve current host Codex ownership and legacy service before adoption tests.
+- before Phase 11, revalidate current public Codex Provider/config/Remote
+  behavior and determine restart, authentication, existing-session, thread, and
+  conversation-state effects of Provider activation;
+- define the Secret Manager injection boundary and Provider compatibility test
+  matrix without exposing real API keys or treating an HTTP ping as support.

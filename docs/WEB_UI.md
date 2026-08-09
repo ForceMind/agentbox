@@ -1,7 +1,7 @@
 # AgentBox Web UI
 
-Status: Phase 4 authenticated Web foundation merged; Phase 5 Codex page
-implemented on its feature branch.
+Status: Phase 4 authenticated Web foundation and Phase 5 Codex page merged;
+future Provider UI is planning only.
 
 ## Product boundary
 
@@ -14,7 +14,7 @@ Phase 4 implements the product frame and browser authentication lifecycle.
 Phase 5 replaces only the Codex placeholder with a typed API-backed surface.
 The browser never calls Codex or the Runtime socket directly. Claude, tmux,
 Projects, Git/GitHub business operations, the Privileged Helper, installer,
-systemd, and host log tools remain absent.
+systemd, host log tools, Provider Manager, and Secret Manager remain absent.
 
 ## Route map
 
@@ -168,6 +168,29 @@ start/stop, Pair confirmation/display/copy/clearing/no-store/storage,
 unsupported/error behavior, and a generated-canary artifact scan.
 
 ## Future boundaries
+
+### Providers (Phase 11 planning only)
+
+A future authenticated `/providers` page may list Provider cards such as
+Official OpenAI, OpenAI-compatible, local, and Runtime-native/built-in. Each
+card shows display name, Provider type, model, enabled/current state, last-test
+freshness, and independent Provider API, Codex Runtime, and Remote Control
+compatibility. Example copy may report a Provider request as `PASS` while
+Remote compatibility remains `Experimental`; the UI never collapses these into
+one green status.
+
+Planned actions are Add Provider, Edit, Test, Set Active, and Delete. Add/Edit
+use typed Provider-specific fields. Secret entry, once separately designed,
+uses a dedicated transient no-echo flow and returns only configured/reference
+state; lists, detail views, ordinary pages, errors, browser storage, analytics,
+logs, and Audit metadata never receive the API key. Delete does not implicitly
+delete a Secret or active binding.
+
+Set Active first presents a revision-bound impact plan: new requests only,
+Runtime restart, existing Remote session/thread/history impact, new session, or
+re-authentication. Unknown behavior is shown as Unknown/Experimental and cannot
+be presented as safe. Restart/session/auth changes require separate explicit
+confirmation. No Provider route or action is implemented today.
 
 Later phases may replace the remaining planned cards only after real versioned
 APIs exist. Runtime pages must consume Capability states and must never directly

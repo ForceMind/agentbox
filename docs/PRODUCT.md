@@ -80,7 +80,9 @@ AgentBox is not:
 - a Kubernetes or container-management platform;
 - a cloud-server purchasing platform;
 - a replacement for GitHub, Codex, Claude, Tailscale, Cloudflare, SSH, or a reverse proxy;
-- a secret manager for third-party Runtime tokens.
+- a general-purpose third-party credential vault. A narrowly scoped future
+  Secret Manager may support Provider references, but raw API keys remain
+  outside ordinary Provider metadata and product output.
 
 The MVP does not expose arbitrary shell input, full filesystem browsing, unrestricted Git commands, or a public listener by default.
 
@@ -143,6 +145,14 @@ MVP succeeds when, on every release-gated supported distribution, a single admin
 ## Long-Term Directions
 
 Possible post-MVP directions include multiple servers, multiple workspace users, optional Docker development/deployment modes, richer GitHub and PR workflows, bidirectional terminal experiences, hardware/resource scheduling, pluggable Runtime Adapters, enterprise identity, and native mobile clients. These are not commitments and must not distort the MVP architecture.
+
+One explicitly planned post-MVP direction is a runtime-neutral Provider Manager
+that lets administrators select a model/API Provider independently of Remote
+Control. It must support Official OpenAI, OpenAI-compatible, local, and
+Runtime-native Providers through typed adapters; store only Secret references;
+and report Provider, Codex Runtime, and Remote Control compatibility separately.
+It is tracked as Phase 11 and Issue #23; it is not part of the current MVP or an
+authorization to modify Runtime configuration.
 
 ## Branding and Third Parties
 

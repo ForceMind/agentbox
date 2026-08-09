@@ -6,9 +6,8 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. Phases 2–4 are merged. Phase 5
-adds the first real Runtime integration; its human review is complete in PR
-#22, which is awaiting the final merge decision.
+AgentBox is in **early pre-alpha development**. Phases 2–5 are merged. Phase 5
+adds the first real Runtime integration through PR #22.
 
 The current codebase provides:
 
@@ -29,6 +28,11 @@ It does **not** install/update/migrate Codex, run Claude Remote, manage tmux or
 projects, operate a root Helper, install system services, expose a public
 listener, or modify this host. Codex operations work only against an existing
 installation available to the configured non-root Runtime context.
+
+A future Provider Manager is architecture/backlog only. It will keep Runtime
+Remote Control separate from model/API Provider selection and will depend on a
+separate Secret Manager boundary; no Provider API/UI/CLI or config mutation is
+implemented today.
 
 ## MVP goal
 
@@ -159,13 +163,14 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 1. Phase 2: repository and engineering skeleton — merged in PR #19.
 2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
 3. Phase 4: authenticated Web foundation — merged in PR #21.
-4. Phase 5: capability-aware Codex management — human review complete in PR
-   #22; awaiting merge.
+4. Phase 5: capability-aware Codex management — merged in PR #22.
 5. Phase 6: Claude/tmux session management.
 6. Phase 7: Project Workspaces and minimal Git.
 7. Phase 8: installation, deployment, upgrade, and rollback.
 8. Phase 9: security and compatibility hardening.
 9. Phase 10: first release.
+10. Phase 11: Provider & Secret Management — future post-MVP planning tracked
+    in Issue #23; does not change Phases 6–10.
 
 The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 
@@ -180,6 +185,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [CLI design](docs/CLI_DESIGN.md)
 - [Runtime Adapters](docs/RUNTIME_ADAPTERS.md)
 - [Codex integration](docs/CODEX_INTEGRATION.md)
+- [Provider Manager](docs/PROVIDER_MANAGER.md)
 - [Web UI design](docs/WEB_UI.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [ADRs](docs/adr/README.md)

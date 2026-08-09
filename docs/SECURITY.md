@@ -10,6 +10,8 @@ Status: Phase 1 design baseline
 4. Secrets and temporary pairing material must not enter AgentBox persistence, logs, traces, fixtures, URLs, or analytics.
 5. Every privileged or dangerous action must be attributable, bounded, confirmable, and recoverable where possible.
 6. Unknown versions, paths, owners, or capabilities must fail closed.
+7. Future Provider metadata, Provider config mutation, Secret custody, and
+   Remote Control compatibility must remain separate trust decisions.
 
 Availability and recoverability are also security goals: one malformed Job must not exhaust the verified 2-vCPU/3.5-GiB host or corrupt state.
 
@@ -173,6 +175,12 @@ Each action definition fixes:
 
 No action uses `shell=True`, `/bin/sh -c`, `eval`, string concatenation, untrusted unit/package names, or caller-selected executable paths.
 
+Future Provider actions also reject raw config text, arbitrary config keys,
+caller environment maps, and API keys. They accept a Provider ID, typed options,
+an expected revision, and an opaque Secret reference only. Provider activation,
+Runtime restart, session replacement, and re-authentication are distinct actions
+with separate impact plans and confirmations.
+
 ## Input and Parameter Validation
 
 - Pydantic request models reject unknown fields for security-sensitive actions.
@@ -250,6 +258,36 @@ Capability `unknown` is not authentication success. If a public Codex login
 status is unavailable, AgentBox displays `Unknown`; it never opens Codex auth
 files. An explicit public unauthenticated result blocks Pair.
 
+## Future Provider and Secret Security Boundary
+
+Provider Manager is planned for Phase 11 and is not implemented. Its ordinary
+metadata may contain provider ID/name/type, base URL, model, wire protocol,
+typed options, enabled/test/compatibility state, and an opaque Secret reference.
+It must never contain a raw API key. Secret values belong to a separately
+approved Secret Manager with explicit storage, injection, rotation, deletion,
+backup, and recovery policy.
+
+For Codex, the config adapter should prefer an officially supported environment
+variable reference such as `env_key`. The API key must not be rendered in CLI
+ordinary output, Web pages, logs, Audit metadata, Git, reports, Job payloads or
+results, config backups, diagnostics, exceptions, or fixtures. Testing uses
+Secret canaries and ensures redaction is not the primary protection.
+
+The future `CodexProviderConfigAdapter` must validate against the current public
+Codex config contract before each supported write. It parses and preserves
+unmanaged settings; rejects stale revisions, symlinks, unsafe owner/mode, and
+unexpected file replacement; writes a restrictive same-directory temporary
+file; fsyncs where appropriate; atomically replaces; and retains a bounded,
+protected rollback artifact. It never overwrites the whole file from a template
+or relies on a private internal schema.
+
+Provider tests are typed, bounded, cost-aware, and non-persistent. Endpoint,
+network, authentication, protocol, model, Codex wire request, Runtime request,
+and Remote Control compatibility are separate results. A successful Provider
+request cannot authorize a `SUPPORTED` Remote claim. Unknown thread/history,
+tool, streaming, Responses, session, or Remote-state behavior remains
+`UNKNOWN`/`EXPERIMENTAL` and blocks implicit restart or session migration.
+
 ## Logs, Recent Output, and Audit
 
 ### Audit Events
@@ -264,6 +302,11 @@ Allowed fields:
 - confirmation-required/confirmed booleans.
 
 Forbidden fields include request/response bodies for secret actions, Pair Codes (even masked or hashed), tokens, cookies, passwords, OAuth codes, SSH keys, auth-file contents, complete process environment, and raw command output.
+
+Future Provider audit metadata may record Provider ID, action, compatibility
+classification, config revision, and sanitized outcome. It must not record a
+Secret value, API-key suffix/hash, authorization header, provider response body,
+or complete base URL when it can contain userinfo/query credentials.
 
 ### Operational Logs
 

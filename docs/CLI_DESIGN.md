@@ -105,6 +105,38 @@ when stdout is a TTY and refuses redirected/non-TTY output. JSON mode is
 explicitly forbidden for Pair; it does not emit metadata or `pair_code` JSON.
 The code is never recoverable after display.
 
+### Providers (future Phase 11; not implemented)
+
+```text
+agentbox provider list
+agentbox provider add
+agentbox provider edit <provider>
+agentbox provider remove <provider>
+agentbox provider use <provider>
+agentbox provider current
+agentbox provider test <provider>
+```
+
+- `<provider>` is an opaque ID or safely resolved display name, never a config
+  path, URL fragment, model flag, environment assignment, or Secret value.
+- `list`/`current` show non-secret metadata, active state, last-test freshness,
+  and Provider/Runtime/Remote compatibility as separate fields.
+- `add`/`edit` accept only typed Provider-specific options. A future API-key
+  prompt uses a dedicated no-echo Secret Manager flow; API keys are forbidden
+  on argv, ordinary stdin pipelines, JSON input, and ordinary output.
+- `use` first emits an impact plan describing whether new requests only,
+  Runtime restart, new session, thread/history impact, or re-authentication may
+  apply. Unknown effects remain Unknown/Experimental and cannot be bypassed by
+  `--yes`.
+- `test` runs layered endpoint/network/authentication/protocol/model/Codex-wire/
+  minimal-request/Remote assessment. Provider request PASS never means Remote
+  Control fully compatible.
+- `remove` refuses active/in-use references and follows approved Secret
+  lifecycle and rollback policy; it never deletes Secret material implicitly.
+
+These names reserve a future product contract only. No Provider command,
+Secret Store, Codex config edit, Provider test, or Runtime restart exists now.
+
 ### Claude
 
 ```text
@@ -160,7 +192,9 @@ Version numbers above are illustrative, not claimed current facts.
 
 ## JSON Output
 
-Every command except interactive Pair secret display supports `--json`:
+Every implemented command except interactive Pair secret display supports
+`--json`. Future Provider metadata/test commands may support JSON, but Secret
+input and value display never do:
 
 ```json
 {

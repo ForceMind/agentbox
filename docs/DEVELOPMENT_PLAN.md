@@ -76,9 +76,9 @@ The project stays focused on a single-server, single-administrator MVP. Security
 - **Stop condition:** UI consumes only versioned contracts and does not duplicate server-side policy.
 - **Human approval:** product copy and minimal visual direction.
 
-## Phase 5 — Codex management
+## Phase 5 — Codex management (completed and merged)
 
-Status: implemented on `phase/5-codex-management`, pending human review.
+Status: merged in PR #22.
 
 - **Goal:** implement the Codex Runtime Adapter and safe Remote Control/Pair workflows.
 - **Input:** captured CLI fixtures, Phase 0 Codex evidence, and approved Pair Code contract.
@@ -160,6 +160,42 @@ Status: implemented on `phase/5-codex-management`, pending human review.
 - **Commit/PR:** release commit/tag comes from protected `main`; no force push or tag replacement.
 - **Stop condition:** artifacts are published and the next roadmap is separately approved.
 - **Human approval:** version number, license, public release, support promise, and publication credentials.
+
+## Phase 11 — Provider & Secret Management (future post-MVP)
+
+Status: architecture and backlog only; tracked by Issue #23. This Phase follows
+Phase 10 and does not insert into, reorder, or authorize Phases 6–10.
+
+- **Goal:** add a runtime-neutral Provider domain and narrowly scoped Secret
+  Manager so model/API Provider selection remains independent of Runtime Remote
+  Control.
+- **Input:** completed Phase 10, approved Secret boundary, Provider Manager
+  architecture, and a fresh validation of the then-current public Codex CLI,
+  config schema, supported keys, Provider behavior, and Remote Control behavior.
+- **Output:** typed Provider metadata/adapters, Secret references, safe Codex
+  config adapter, layered Provider tests, independent compatibility reporting,
+  migration/rollback, and approved CLI/Web surfaces.
+- **Not in scope before approval:** reading or changing API keys, creating a
+  Secret Store, editing Codex config, adding/activating Providers, restarting
+  Codex, changing Remote sessions, or implementing any Provider API/UI/CLI.
+- **Acceptance:** unrelated Runtime configuration is preserved; raw API keys
+  never enter ordinary Provider tables, output, logs, audit, Git, reports, or
+  generic Job data; config writes are validated, atomic, concurrency-aware,
+  rollback-capable, permission-restrictive, and symlink-safe; Provider request
+  success is never presented as full Remote Control compatibility.
+- **Tests:** public-contract fixtures, Provider protocol/model matrix, config
+  preservation and rollback, concurrent edit and symlink races, Secret canary
+  scans, minimal request safety, and Remote session/state regression coverage.
+- **Documentation:** `PROVIDER_MANAGER.md`, support matrix, Secret operations,
+  activation/restart impact, recovery, and known compatibility limitations.
+- **Commit/PR:** split implementation by trust boundary; Secret storage/injection
+  and config mutation require dedicated security review.
+- **Stop condition:** no Provider may be activated until current public Runtime
+  contracts and rollback behavior are verified; Unknown/Experimental remains
+  explicit when thread/history/tools/streaming/Responses/Remote state is unclear.
+- **Human approval:** Secret Manager backend, config ownership boundary, real
+  Provider credentials/tests, activation, Runtime restart, session impact, and
+  any compatibility support claim.
 
 ## Cross-phase change control
 

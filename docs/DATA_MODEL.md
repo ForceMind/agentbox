@@ -4,7 +4,7 @@ Status: Phase 1 logical design; the bounded Phase 3 control-plane subset is impl
 
 Phase 3 migration `0001_control_plane_foundation` creates only `admin_users`,
 `sessions`, and `audit_events`. Project, Runtime, Job, Setting, Diagnostic, and
-Confirmation tables remain future designs. Development uses a configured path
+Confirmation and Phase 11 Provider tables remain future designs. Development uses a configured path
 beneath `.agentbox-dev/` or a temporary test directory; production retains the
 accepted `/var/lib/agentbox/agentbox.db` policy and is not created by Phase 3.
 
@@ -118,6 +118,43 @@ No Runtime token/auth-file path/content is stored.
 | `observed_at`, `expires_at` | freshness |
 
 Unique by installation/name/current observation policy.
+
+## Provider (future Phase 11 logical model)
+
+This model is planning only; no migration or table exists. Provider is
+Runtime-neutral metadata and must not be merged into `RuntimeInstallation`,
+`RuntimeSession`, or Codex Remote state.
+
+| Field | Purpose |
+|---|---|
+| `id` | opaque Provider ID |
+| `display_name` | safe administrator label |
+| `provider_type` | Official OpenAI/OpenAI-compatible/local/Runtime-native typed enum |
+| `runtime_compatibility` | supported Runtime/adapter binding, not a free-form command |
+| `base_url_normalized` | validated non-credential endpoint metadata |
+| `model` | bounded model identifier |
+| `wire_protocol` | typed API/wire protocol |
+| `secret_reference` | opaque Secret Manager reference or official environment-key reference; never the value |
+| `options_schema_version` | selects Provider-type-specific typed options schema |
+| `options` | bounded validated non-secret options only; no arbitrary config keys |
+| `enabled` | available for selection, not proof of compatibility |
+| `active_for_runtime` | explicit selection/binding; activation remains a separate revision-bound operation |
+| `last_test_state`, `last_tested_at` | sanitized layered test summary/freshness |
+| `compatibility_classification` | supported/compatible/experimental/degraded/incompatible/unknown |
+| `created_at`, `updated_at`, `revision` | lifecycle and stale-write/config-plan protection |
+
+Raw API keys, Authorization headers, Secret hashes/suffixes, provider response
+bodies, prompts, model output, complete Runtime config, and arbitrary TOML are
+prohibited fields. `secret_reference` is not a foreign key to an ordinary
+SQLite Token table: Secret Manager architecture and value storage remain a
+separate Phase 11 decision.
+
+Layered test details, if persisted, use bounded non-secret observations for
+endpoint resolution, reachability, authentication state, protocol, model,
+Codex Runtime, and Remote Control compatibility. Provider request PASS cannot
+derive a Remote Supported state. Evidence has timestamps/schema versions and
+explicit Unknown/Experimental results for unverified thread/history/tools/
+streaming/Responses/session behavior.
 
 ## RuntimeSession
 
@@ -277,6 +314,7 @@ erDiagram
     Project ||--o{ RuntimeSession : hosts
     RuntimeInstallation ||--o{ RuntimeCapability : advertises
     RuntimeInstallation ||--o{ RuntimeSession : runs
+    RuntimeInstallation }o--o{ Provider : may_use
     Job ||--o{ JobEvent : emits
     Job ||--o| DiagnosticRun : executes
     Job ||--o{ AuditEvent : correlates
