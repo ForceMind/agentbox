@@ -64,10 +64,12 @@ def minimal_runtime_environment(source: Mapping[str, str]) -> dict[str, str]:
     return environment
 
 
-def inspect_executable(path: Path) -> ExecutableIdentity:
+def inspect_executable(path: Path, *, error_prefix: str = "CODEX") -> ExecutableIdentity:
     if not path.is_absolute():
         raise RuntimeOperationError(
-            "CODEX_EXECUTABLE_INVALID", "Codex executable is invalid", category="unavailable"
+            f"{error_prefix}_EXECUTABLE_INVALID",
+            "Runtime executable is invalid",
+            category="unavailable",
         )
     try:
         resolved = path.resolve(strict=True)
@@ -75,22 +77,26 @@ def inspect_executable(path: Path) -> ExecutableIdentity:
         parent_details = resolved.parent.stat()
     except (OSError, RuntimeError) as exc:
         raise RuntimeOperationError(
-            "CODEX_EXECUTABLE_INVALID", "Codex executable is unavailable", category="unavailable"
+            f"{error_prefix}_EXECUTABLE_INVALID",
+            "Runtime executable is unavailable",
+            category="unavailable",
         ) from exc
     if not stat.S_ISREG(details.st_mode) or not os.access(resolved, os.X_OK):
         raise RuntimeOperationError(
-            "CODEX_EXECUTABLE_INVALID", "Codex executable is invalid", category="unavailable"
+            f"{error_prefix}_EXECUTABLE_INVALID",
+            "Runtime executable is invalid",
+            category="unavailable",
         )
     if details.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
         raise RuntimeOperationError(
-            "CODEX_EXECUTABLE_INVALID",
-            "Codex executable permissions are unsafe",
+            f"{error_prefix}_EXECUTABLE_INVALID",
+            "Runtime executable permissions are unsafe",
             category="broken",
         )
     if parent_details.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
         raise RuntimeOperationError(
-            "CODEX_EXECUTABLE_INVALID",
-            "Codex executable directory permissions are unsafe",
+            f"{error_prefix}_EXECUTABLE_INVALID",
+            "Runtime executable directory permissions are unsafe",
             category="broken",
         )
     return ExecutableIdentity(
@@ -120,21 +126,22 @@ class ControlledProcessRunner:
         stdout_limit: int,
         stderr_limit: int,
         sensitive_output: bool = False,
+        error_prefix: str = "CODEX",
     ) -> ProcessResult:
         del sensitive_output  # Classification is consumed by callers/log policy, never logged here.
         if timeout_seconds <= 0 or stdout_limit < 1 or stderr_limit < 1:
             raise ValueError("process limits must be positive")
-        current = inspect_executable(executable.path)
+        current = inspect_executable(executable.path, error_prefix=error_prefix)
         if current != executable:
             raise RuntimeOperationError(
-                "CODEX_EXECUTABLE_CHANGED",
-                "Codex executable changed after detection",
+                f"{error_prefix}_EXECUTABLE_CHANGED",
+                "Runtime executable changed after detection",
                 category="conflict",
             )
         if not cwd.is_absolute() or not cwd.is_dir():
             raise RuntimeOperationError(
-                "CODEX_WORKING_DIRECTORY_INVALID",
-                "Codex working directory is unavailable",
+                f"{error_prefix}_WORKING_DIRECTORY_INVALID",
+                "Runtime working directory is unavailable",
                 category="unavailable",
             )
         argv = (str(current.path), *arguments)
@@ -150,13 +157,19 @@ class ControlledProcessRunner:
             )
         except OSError as exc:
             raise RuntimeOperationError(
-                "CODEX_EXECUTABLE_INVALID", "Codex command could not start", category="unavailable"
+                f"{error_prefix}_EXECUTABLE_INVALID",
+                "Runtime command could not start",
+                category="unavailable",
             ) from exc
 
         assert process.stdout is not None
         assert process.stderr is not None
-        stdout_task = asyncio.create_task(self._read_bounded(process.stdout, stdout_limit))
-        stderr_task = asyncio.create_task(self._read_bounded(process.stderr, stderr_limit))
+        stdout_task = asyncio.create_task(
+            self._read_bounded(process.stdout, stdout_limit, error_prefix=error_prefix)
+        )
+        stderr_task = asyncio.create_task(
+            self._read_bounded(process.stderr, stderr_limit, error_prefix=error_prefix)
+        )
         wait_task = asyncio.create_task(process.wait())
         try:
             stdout, stderr, exit_code = await asyncio.wait_for(
@@ -167,8 +180,8 @@ class ControlledProcessRunner:
             await self._terminate(process)
             await self._finish_tasks(stdout_task, stderr_task, wait_task)
             raise RuntimeOperationError(
-                "CODEX_COMMAND_TIMEOUT",
-                "Codex command timed out",
+                f"{error_prefix}_COMMAND_TIMEOUT",
+                "Runtime command timed out",
                 category="timeout",
                 retryable=True,
             ) from exc
@@ -178,7 +191,9 @@ class ControlledProcessRunner:
             raise
         return ProcessResult(argv=argv, exit_code=exit_code, stdout=stdout, stderr=stderr)
 
-    async def _read_bounded(self, stream: asyncio.StreamReader, limit: int) -> bytes:
+    async def _read_bounded(
+        self, stream: asyncio.StreamReader, limit: int, *, error_prefix: str
+    ) -> bytes:
         result = bytearray()
         while True:
             chunk = await stream.read(min(4096, limit + 1))
@@ -187,8 +202,8 @@ class ControlledProcessRunner:
             result.extend(chunk)
             if len(result) > limit:
                 raise RuntimeOperationError(
-                    "CODEX_OUTPUT_LIMIT_EXCEEDED",
-                    "Codex command exceeded its output limit",
+                    f"{error_prefix}_OUTPUT_LIMIT_EXCEEDED",
+                    "Runtime command exceeded its output limit",
                     category="broken",
                 )
 

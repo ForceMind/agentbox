@@ -1,0 +1,2 @@
+personal-session
+claude-legacy

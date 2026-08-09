@@ -1,0 +1,5 @@
+Usage: claude [options] [command]
+
+Commands:
+  auth                 Manage authentication
+  remote-control       Start Claude Code Remote Control
