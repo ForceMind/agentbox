@@ -7,7 +7,8 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 ## Project status
 
 AgentBox is in **early pre-alpha development**. Phases 2–4 are merged. Phase 5
-adds the first real Runtime integration on a dedicated review branch.
+adds the first real Runtime integration; its human review is complete in PR
+#22, which is awaiting the final merge decision.
 
 The current codebase provides:
 
@@ -158,8 +159,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 1. Phase 2: repository and engineering skeleton — merged in PR #19.
 2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
 3. Phase 4: authenticated Web foundation — merged in PR #21.
-4. Phase 5: capability-aware Codex management — implemented on its feature
-   branch and awaiting human review.
+4. Phase 5: capability-aware Codex management — human review complete in PR
+   #22; awaiting merge.
 5. Phase 6: Claude/tmux session management.
 6. Phase 7: Project Workspaces and minimal Git.
 7. Phase 8: installation, deployment, upgrade, and rollback.
@@ -169,6 +170,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 
 ## Documentation
+
+项目文档默认使用简体中文。代码标识、API 路径、CLI 命令、配置键、错误码和第三方产品名称保留英文。既有英文文档将按后续相关变更逐步翻译，不在纯收尾阶段批量改写。
 
 - [Product definition](docs/PRODUCT.md)
 - [MVP scope](docs/MVP_SCOPE.md)

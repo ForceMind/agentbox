@@ -1,7 +1,11 @@
 # Phase 5 Codex Management Report
 
 Date: 2026-08-09
-Status: implemented and locally verified in Draft PR #22; required GitHub CI pending
+Status: human review completed; locally verified; all nine required GitHub checks pass; PR #22 is ready for review
+
+## 文档语言
+
+AgentBox 项目文档默认使用简体中文。代码标识、API 路径、CLI 命令、配置键、错误码和第三方产品名称保留英文，以避免接口含义发生歧义。既有英文文档允许在不扩大当前阶段范围的前提下逐步翻译。
 
 ## Executive Summary
 
@@ -27,9 +31,9 @@ host network changes remain unimplemented.
 - Repository: `ForceMind/agentbox`
 - Branch: `phase/5-codex-management`
 - Base: `f61f3f4c24f0ab48994b05e9c574385a5c9b795c`
-- Commits: 8 Phase 5 commits, including final E2E and CI portability hardening
-- Draft PR: <https://github.com/ForceMind/agentbox/pull/22>
-- Merge: not performed; human review is required
+- Commits: 9 Phase 5 commits, including this documentation-only finalization
+- PR: <https://github.com/ForceMind/agentbox/pull/22>
+- Merge: not performed; ready for the human merge decision
 
 ## Observed Codex Environment
 
@@ -256,8 +260,21 @@ Runtime Executor lifecycle.
 
 ## CI
 
-Local equivalents of the nine protected checks pass. Remote GitHub required CI:
-PENDING until the branch and Draft PR are published.
+Local equivalents of the nine protected checks pass. GitHub revalidated the
+final Phase 5 state with all required checks successful:
+
+- `quality`
+- `quality (3.11)`
+- `quality (3.12)`
+- `quality (3.13)`
+- `repository-boundaries`
+- `python-audit`
+- `frontend-audit`
+- `dependency-review`
+- `e2e`
+
+This documentation-only finalization commit must receive the same protected
+checks before PR #22 is marked Ready for Review.
 
 ## Deviations
 
