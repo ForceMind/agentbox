@@ -1,4 +1,4 @@
-"""Response contracts for the only Phase 2 API endpoints."""
+"""Safe control-plane liveness and metadata response contracts."""
 
 from typing import Literal
 
@@ -21,3 +21,4 @@ class MetaResponse(BaseModel):
     name: Literal["AgentBox"] = "AgentBox"
     version: str
     api_version: Literal["v1"] = "v1"
+    environment: Literal["development", "test", "production"]
