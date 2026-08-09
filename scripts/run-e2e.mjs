@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -35,6 +35,35 @@ function start(command, args, env) {
   });
   children.push(child);
   return child;
+}
+
+async function assertCanaryAbsent(path, canary) {
+  if (!existsSync(path)) return;
+  const entries = await readdir(path, { withFileTypes: true });
+  for (const entry of entries) {
+    const candidate = join(path, entry.name);
+    if (entry.isDirectory()) await assertCanaryAbsent(candidate, canary);
+    else if ((await readFile(candidate)).includes(Buffer.from(canary))) {
+      throw new Error("Pair Code canary persisted in an E2E artifact");
+    }
+  }
+}
+
+function capture(command, args) {
+  return new Promise((resolveCapture, rejectCapture) => {
+    const chunks = [];
+    const child = spawn(command, args, {
+      cwd: repositoryRoot,
+      env: process.env,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.once("error", rejectCapture);
+    child.once("exit", (code) => {
+      if (code === 0) resolveCapture(Buffer.concat(chunks));
+      else rejectCapture(new Error(`${command} canary scan failed`));
+    });
+  });
 }
 
 async function availablePort() {
@@ -97,6 +126,7 @@ try {
     AGENTBOX_DATA_DIR: temporaryRoot,
     AGENTBOX_E2E_API_URL: apiOrigin,
     AGENTBOX_E2E_PASSWORD: `e2e-${randomBytes(24).toString("base64url")}`,
+    AGENTBOX_E2E_PAIR_CODE: `PAIR-${randomBytes(18).toString("base64url").toUpperCase()}`,
     AGENTBOX_E2E_USERNAME: "e2e-maintainer",
     AGENTBOX_ENV: "test",
     AGENTBOX_SECRET_KEY: randomBytes(48).toString("base64url"),
@@ -153,6 +183,23 @@ try {
       env: testEnvironment,
     },
   );
+  const pairCanary = testEnvironment.AGENTBOX_E2E_PAIR_CODE;
+  await assertCanaryAbsent(temporaryRoot, pairCanary);
+  await assertCanaryAbsent(
+    join(repositoryRoot, "apps", "web", "test-results"),
+    pairCanary,
+  );
+  await assertCanaryAbsent(
+    join(repositoryRoot, "apps", "web", "playwright-report"),
+    pairCanary,
+  );
+  if (
+    (await capture("git", ["diff", "--no-ext-diff"])).includes(
+      Buffer.from(pairCanary),
+    )
+  ) {
+    throw new Error("Pair Code canary persisted in the Git diff");
+  }
 } finally {
   await Promise.all(children.map((child) => stop(child)));
   await rm(temporaryRoot, { force: true, recursive: true });

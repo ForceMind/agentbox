@@ -8,6 +8,7 @@ function requiredEnvironment(name: string): string {
 
 const username = requiredEnvironment('AGENTBOX_E2E_USERNAME')
 const password = requiredEnvironment('AGENTBOX_E2E_PASSWORD')
+const pairCode = requiredEnvironment('AGENTBOX_E2E_PAIR_CODE')
 
 async function login(page: Page) {
   await page.goto('/login')
@@ -111,6 +112,140 @@ test('navigates every Phase 4 product surface without fake runtime data', async 
     ).toBeVisible()
   }
   await expect(page.getByText('Online')).toHaveCount(0)
+})
+
+test('shows truthful Codex fixture status and refreshes it explicitly', async ({
+  page,
+}) => {
+  await login(page)
+  let statusRequests = 0
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/v1/codex/status')) statusRequests += 1
+  })
+  await navigate(page, 'Codex', '/codex')
+  await expect(page.getByText('0.e2e.fixture')).toBeVisible()
+  await expect(page.getByText('/fixture/bin/codex')).toBeVisible()
+  await expect(page.getByText('Unknown').first()).toBeVisible()
+  const beforeRefresh = statusRequests
+  await page.getByRole('button', { name: 'Refresh Codex status' }).click()
+  await expect.poll(() => statusRequests).toBeGreaterThan(beforeRefresh)
+})
+
+test('starts and stops Codex Remote through CSRF-protected actions', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Codex', '/codex')
+  const startRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/v1/codex/remote/start') &&
+      request.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Start Remote' }).click()
+  expect((await startRequest).headers()['x-csrf-token']).toBeTruthy()
+  const lifecycle = page.getByRole('region', { name: 'Lifecycle' })
+  await expect(lifecycle.getByText('Running', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Stop Remote' }).click()
+  await expect(lifecycle.getByText('Stopped', { exact: true })).toBeVisible()
+})
+
+test('keeps Pair Code display explicit, ephemeral, and outside Web Storage', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Codex', '/codex')
+  await page.getByRole('button', { name: 'Pair New Device' }).click()
+  await expect(page.getByText(pairCode)).toHaveCount(0)
+  const pairResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/v1/codex/pair-codes'),
+  )
+  await page.getByRole('button', { name: 'Generate Code' }).click()
+  const response = await pairResponse
+  expect(response.headers()['cache-control']).toBe('no-store')
+  await expect(page.getByText(pairCode)).toBeVisible()
+  expect(
+    await page.evaluate(() => ({
+      local: Object.entries(localStorage),
+      session: Object.entries(sessionStorage),
+    })),
+  ).toEqual({ local: [], session: [] })
+  await navigate(page, 'Claude', '/claude')
+  await expect(page.getByText(pairCode)).toHaveCount(0)
+})
+
+test('copies Pair Code only after a separate user action', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (value: string) =>
+          ((window as Window & { __copied?: string }).__copied = value),
+      },
+    })
+  })
+  await login(page)
+  await navigate(page, 'Codex', '/codex')
+  await page.getByRole('button', { name: 'Pair New Device' }).click()
+  await page.getByRole('button', { name: 'Generate Code' }).click()
+  await expect(page.getByText(pairCode)).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __copied?: string }).__copied ?? null,
+    ),
+  ).toBeNull()
+  await page.getByRole('button', { name: 'Copy' }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as Window & { __copied?: string }).__copied),
+    )
+    .toBe(pairCode)
+})
+
+test('disables Pair when the capability contract is unsupported', async ({
+  page,
+}) => {
+  await login(page)
+  await page.route('**/api/v1/codex/status', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.data.capabilities.pair = 'unsupported'
+    await route.fulfill({ response, json: body })
+  })
+  await navigate(page, 'Codex', '/codex')
+  await expect(
+    page.getByRole('button', { name: 'Pair New Device' }),
+  ).toBeDisabled()
+})
+
+test('fails closed on Pair errors without rendering raw Runtime output', async ({
+  page,
+}) => {
+  await login(page)
+  await page.route('**/api/v1/codex/pair-codes', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        api_version: 'v1',
+        request_id: 'req_pair_failure',
+        error: {
+          code: 'CODEX_PAIR_OUTPUT_UNRECOGNIZED',
+          category: 'broken',
+          message: 'Codex did not return a recognizable pairing code',
+          retryable: false,
+          details: {},
+        },
+      }),
+      contentType: 'application/json',
+      headers: { 'Cache-Control': 'no-store' },
+      status: 503,
+    })
+  })
+  await navigate(page, 'Codex', '/codex')
+  await page.getByRole('button', { name: 'Pair New Device' }).click()
+  await page.getByRole('button', { name: 'Generate Code' }).click()
+  await expect(page.getByRole('alert')).toContainText(
+    'Codex did not return a recognizable pairing code',
+  )
+  await expect(page.getByText(pairCode)).toHaveCount(0)
 })
 
 test('recovers from invalid and browser-expired session cookies', async ({

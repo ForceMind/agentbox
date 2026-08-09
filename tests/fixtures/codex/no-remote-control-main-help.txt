@@ -1,0 +1,7 @@
+Codex CLI
+
+Usage: codex [OPTIONS] [COMMAND]
+
+Commands:
+  login  Manage authentication
+  help   Print help

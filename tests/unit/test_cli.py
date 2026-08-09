@@ -7,6 +7,16 @@ from pathlib import Path
 import pytest
 from agentbox_cli.main import main
 from agentbox_core import __version__
+from agentbox_runtime import (
+    AuthenticationState,
+    CapabilityState,
+    CodexCapabilities,
+    CodexStatus,
+    InstallationType,
+    PairCodeResult,
+    RemoteActionResult,
+    RemoteState,
+)
 from conftest import migrate_database
 
 
@@ -94,3 +104,89 @@ def test_secret_generate_outputs_random_value_without_file_write(
     generated = capsys.readouterr().out.strip()
     assert len(generated) >= 64
     assert list(tmp_path.iterdir()) == []
+
+
+class FakeRuntimeClient:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        self.calls: list[str] = []
+
+    async def status(self, request_id: str) -> CodexStatus:
+        assert request_id.startswith("req_cli-")
+        return CodexStatus(
+            installed=True,
+            version="0.cli.fixture",
+            selected_executable="/fixture/codex",
+            installation_type=InstallationType.STANDALONE,
+            authentication=AuthenticationState.UNKNOWN,
+            capabilities=CodexCapabilities(
+                remote_control=CapabilityState.SUPPORTED,
+                start=CapabilityState.SUPPORTED,
+                stop=CapabilityState.SUPPORTED,
+                pair=CapabilityState.SUPPORTED,
+            ),
+            remote_state=RemoteState.UNKNOWN,
+        )
+
+    async def start_remote(self, request_id: str) -> RemoteActionResult:
+        del request_id
+        return RemoteActionResult("started", RemoteState.RUNNING)
+
+    async def stop_remote(self, request_id: str) -> RemoteActionResult:
+        del request_id
+        return RemoteActionResult("stopped", RemoteState.STOPPED)
+
+    async def generate_pair_code(self, request_id: str) -> PairCodeResult:
+        del request_id
+        return PairCodeResult("PAIR-SECRET-CANARY-CLI-6R2M")
+
+
+def test_codex_status_json_uses_typed_runtime_client(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixCodexRuntimeClient", FakeRuntimeClient)
+
+    assert main(["codex", "status", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["command"] == "codex.status"
+    assert payload["execution_mode"] == "runtime_socket"
+    assert payload["data"]["version"] == "0.cli.fixture"
+    assert "argv" not in payload["data"]
+
+
+def test_codex_mutations_use_only_fixed_commands_and_pair_requires_tty(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixCodexRuntimeClient", FakeRuntimeClient)
+    assert main(["codex", "start"]) == 0
+    assert "started" in capsys.readouterr().out
+    assert main(["codex", "stop"]) == 0
+    assert "stopped" in capsys.readouterr().out
+
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    assert main(["codex", "pair"]) == 13
+    assert "CODEX_PAIR_TTY_REQUIRED" in capsys.readouterr().err
+
+
+def test_codex_pair_is_single_display_and_json_is_forbidden(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixCodexRuntimeClient", FakeRuntimeClient)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    assert main(["codex", "pair"]) == 0
+    output = capsys.readouterr().out
+    assert output.count("PAIR-SECRET-CANARY-CLI-6R2M") == 1
+    assert "Sensitive temporary code" in output
+
+    assert main(["--json", "codex", "pair"]) == 13
+    assert "CODEX_PAIR_JSON_FORBIDDEN" in capsys.readouterr().err
