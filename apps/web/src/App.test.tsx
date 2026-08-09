@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
@@ -228,6 +228,36 @@ describe('AgentBox authenticated Web foundation', () => {
       await screen.findByRole('heading', { name: 'Dashboard' }),
     ).toBeInTheDocument()
     expect(window.location.pathname).toBe('/dashboard')
+  })
+
+  it('preserves individual readiness checks from a valid 503 response', async () => {
+    window.history.replaceState({}, '', '/dashboard')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (input.toString().endsWith('/readyz')) {
+          return Promise.resolve(
+            jsonResponse(503, {
+              status: 'not_ready',
+              checks: { database: true, migrations: false },
+            }),
+          )
+        }
+        return authenticatedFetch(input, init)
+      }),
+    )
+
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Dashboard' })
+    await waitFor(() => {
+      expect(screen.getByText('Database').parentElement).toHaveTextContent(
+        'DatabaseReady',
+      )
+      expect(screen.getByText('Migrations').parentElement).toHaveTextContent(
+        'MigrationsNot Ready',
+      )
+    })
   })
 
   it('navigates through the product shell without inventing runtime state', async () => {

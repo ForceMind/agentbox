@@ -7,6 +7,7 @@ type ApiErrorEnvelope = {
 }
 
 type RequestOptions<T> = {
+  acceptStatuses?: readonly number[]
   body?: unknown
   csrfToken?: string
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -94,7 +95,12 @@ export class ApiClient {
         signal: controller.signal,
       })
 
-      if (!response.ok) {
+      const acceptedResponse =
+        response.ok ||
+        (response.status !== 401 &&
+          options.validate !== undefined &&
+          options.acceptStatuses?.includes(response.status))
+      if (!acceptedResponse) {
         let envelope: ApiErrorEnvelope = {}
         try {
           envelope = (await response.json()) as ApiErrorEnvelope

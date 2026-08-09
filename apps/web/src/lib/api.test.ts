@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiClient } from './api'
-import { parseAuthEnvelope } from './contracts'
+import { parseAuthEnvelope, parseReadinessResponse } from './contracts'
 
 describe('ApiClient', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -89,5 +89,32 @@ describe('ApiClient', () => {
     ).rejects.toEqual(
       expect.objectContaining({ code: 'CONTROL_PLANE_UNAVAILABLE', status: 0 }),
     )
+  })
+
+  it('validates an explicitly accepted non-success response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              status: 'not_ready',
+              checks: { database: true, migrations: false },
+            }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      ),
+    )
+
+    await expect(
+      new ApiClient().get('/readyz', {
+        acceptStatuses: [503],
+        validate: parseReadinessResponse,
+      }),
+    ).resolves.toEqual({
+      status: 'not_ready',
+      checks: { database: true, migrations: false },
+    })
   })
 })

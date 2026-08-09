@@ -19,7 +19,7 @@ deployment.
 - Repository: `ForceMind/agentbox`
 - Base: `main` at Phase 3 squash merge `87bcf1ee60c4efb4194e9320e11613f8296f95e8`
 - Branch: `phase/4-authenticated-web-foundation`
-- Commits: 6 focused commits, including the final report-state update
+- Commits: 7 focused commits, including the pre-merge readiness correction
 - Draft PR: [#21](https://github.com/ForceMind/agentbox/pull/21)
 - Related existing Issue: #5, `feat: deliver minimal authenticated Web control plane`
 
@@ -136,14 +136,16 @@ cleanup, Runtime probe, or long collection occurs in the request.
 
 ## Frontend Tests
 
-Result: **PASS — 15 tests in 2 Vitest files.**
+Result: **PASS — 17 tests in 2 Vitest files.**
 
 Coverage includes auth boot, protected routes, Login labels/validation,
 successful Login and password clearing, generic error and safe request ID,
 rate-limit UX, refresh recovery, shell navigation, no fake Runtime data,
 CSRF logout, one-time CSRF refresh, centralized `401`, browser storage, fetch
 credentials/error parsing, unauthorized callback, and success-contract
-validation.
+validation. The final review correction also proves that a validated `/readyz`
+503 retains its independent database and migration results instead of
+collapsing both to a generic unavailable state.
 
 ## Backend Tests
 

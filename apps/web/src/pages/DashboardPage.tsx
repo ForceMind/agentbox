@@ -38,6 +38,7 @@ export function DashboardPage() {
         validate: parseHealthResponse,
       }),
       api.get<ReadinessResponse>('/readyz', {
+        acceptStatuses: [503],
         signal: controller.signal,
         validate: parseReadinessResponse,
       }),
