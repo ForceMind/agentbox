@@ -51,7 +51,64 @@ export type DoctorResponse = {
       login_rate_window_seconds: number
       login_lock_duration_seconds: number
     }
+    codex: {
+      installed: boolean | null
+      version: string | null
+      installation_type: 'standalone' | 'npm' | 'conflict' | 'unknown'
+      remote_control: CapabilityState
+      remote_state: RemoteState
+      findings: string[]
+    }
   }
+}
+
+export type CapabilityState = 'supported' | 'unsupported' | 'unknown'
+export type RemoteState = 'running' | 'stopped' | 'broken' | 'unknown'
+
+export type CodexStatusData = {
+  installed: boolean
+  version: string | null
+  selected_executable: string | null
+  alternatives: string[]
+  installation_type: 'standalone' | 'npm' | 'conflict' | 'unknown'
+  conflict_detected: boolean
+  authentication: 'authenticated' | 'unauthenticated' | 'unknown'
+  capabilities: {
+    remote_control: CapabilityState
+    start: CapabilityState
+    stop: CapabilityState
+    pair: CapabilityState
+    status: CapabilityState
+  }
+  remote_state: RemoteState
+  remote_confidence: 'reported' | 'inferred' | 'agentbox_observed' | 'unknown'
+  diagnostics: Array<{
+    code: string
+    severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info'
+    summary: string
+    remediation: string | null
+  }>
+}
+
+export type CodexStatusResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: CodexStatusData
+}
+
+export type CodexRemoteActionResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: {
+    outcome: 'started' | 'stopped' | 'already_running' | 'already_stopped'
+    remote_state: RemoteState
+  }
+}
+
+export type CodexPairResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { pair_code: string; expires_at: string | null; display_once: true }
 }
 
 type JsonObject = Record<string, unknown>
@@ -77,6 +134,21 @@ function number(value: unknown, context: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`Invalid ${context} response`)
   }
+  return value
+}
+
+function nullableString(value: unknown, context: string): string | null {
+  if (value === null) return null
+  return string(value, context)
+}
+
+function nullableBoolean(value: unknown, context: string): boolean | null {
+  if (value === null) return null
+  return boolean(value, context)
+}
+
+function array(value: unknown, context: string): unknown[] {
+  if (!Array.isArray(value)) throw new Error(`Invalid ${context} response`)
   return value
 }
 
@@ -153,6 +225,7 @@ export function parseDoctorResponse(value: unknown): DoctorResponse {
   const data = object(response.data, 'Doctor data')
   const checks = object(data.checks, 'Doctor checks')
   const policy = object(data.policy, 'Doctor policy')
+  const codex = object(data.codex, 'Doctor Codex summary')
   return {
     api_version: literal(response.api_version, ['v1'], 'API version'),
     request_id: string(response.request_id, 'request ID'),
@@ -206,6 +279,156 @@ export function parseDoctorResponse(value: unknown): DoctorResponse {
           'login lock duration',
         ),
       },
+      codex: {
+        installed: nullableBoolean(codex.installed, 'Codex installation'),
+        version: nullableString(codex.version, 'Codex version'),
+        installation_type: literal(
+          codex.installation_type,
+          ['standalone', 'npm', 'conflict', 'unknown'],
+          'Codex installation type',
+        ),
+        remote_control: literal(
+          codex.remote_control,
+          ['supported', 'unsupported', 'unknown'],
+          'Codex Remote capability',
+        ),
+        remote_state: literal(
+          codex.remote_state,
+          ['running', 'stopped', 'broken', 'unknown'],
+          'Codex Remote state',
+        ),
+        findings: array(codex.findings, 'Codex findings').map((finding) =>
+          string(finding, 'Codex finding'),
+        ),
+      },
+    },
+  }
+}
+
+export function parseCodexStatusResponse(value: unknown): CodexStatusResponse {
+  const envelope = object(value, 'Codex status')
+  const data = object(envelope.data, 'Codex status data')
+  const capabilities = object(data.capabilities, 'Codex capabilities')
+  const diagnostics = array(data.diagnostics, 'Codex diagnostics').map(
+    (raw): CodexStatusData['diagnostics'][number] => {
+      const item = object(raw, 'Codex diagnostic')
+      return {
+        code: string(item.code, 'Codex diagnostic code'),
+        severity: literal(
+          item.severity,
+          ['critical', 'high', 'medium', 'low', 'warning', 'info'],
+          'Codex diagnostic severity',
+        ),
+        summary: string(item.summary, 'Codex diagnostic summary'),
+        remediation: nullableString(
+          item.remediation,
+          'Codex diagnostic remediation',
+        ),
+      }
+    },
+  )
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      installed: boolean(data.installed, 'Codex installation'),
+      version: nullableString(data.version, 'Codex version'),
+      selected_executable: nullableString(
+        data.selected_executable,
+        'Codex executable',
+      ),
+      alternatives: array(data.alternatives, 'Codex alternatives').map(
+        (entry) => string(entry, 'Codex alternative'),
+      ),
+      installation_type: literal(
+        data.installation_type,
+        ['standalone', 'npm', 'conflict', 'unknown'],
+        'Codex installation type',
+      ),
+      conflict_detected: boolean(data.conflict_detected, 'Codex conflict'),
+      authentication: literal(
+        data.authentication,
+        ['authenticated', 'unauthenticated', 'unknown'],
+        'Codex authentication',
+      ),
+      capabilities: {
+        remote_control: literal(
+          capabilities.remote_control,
+          ['supported', 'unsupported', 'unknown'],
+          'Remote Control capability',
+        ),
+        start: literal(
+          capabilities.start,
+          ['supported', 'unsupported', 'unknown'],
+          'start capability',
+        ),
+        stop: literal(
+          capabilities.stop,
+          ['supported', 'unsupported', 'unknown'],
+          'stop capability',
+        ),
+        pair: literal(
+          capabilities.pair,
+          ['supported', 'unsupported', 'unknown'],
+          'pair capability',
+        ),
+        status: literal(
+          capabilities.status,
+          ['supported', 'unsupported', 'unknown'],
+          'status capability',
+        ),
+      },
+      remote_state: literal(
+        data.remote_state,
+        ['running', 'stopped', 'broken', 'unknown'],
+        'Remote state',
+      ),
+      remote_confidence: literal(
+        data.remote_confidence,
+        ['reported', 'inferred', 'agentbox_observed', 'unknown'],
+        'Remote confidence',
+      ),
+      diagnostics,
+    },
+  }
+}
+
+export function parseCodexRemoteActionResponse(
+  value: unknown,
+): CodexRemoteActionResponse {
+  const envelope = object(value, 'Codex Remote action')
+  const data = object(envelope.data, 'Codex Remote action data')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      outcome: literal(
+        data.outcome,
+        ['started', 'stopped', 'already_running', 'already_stopped'],
+        'Codex Remote outcome',
+      ),
+      remote_state: literal(
+        data.remote_state,
+        ['running', 'stopped', 'broken', 'unknown'],
+        'Codex Remote state',
+      ),
+    },
+  }
+}
+
+export function parseCodexPairResponse(value: unknown): CodexPairResponse {
+  const envelope = object(value, 'Codex pair')
+  const data = object(envelope.data, 'Codex pair data')
+  if (data.display_once !== true) {
+    throw new Error('Invalid display-once response')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      pair_code: string(data.pair_code, 'Pair Code'),
+      expires_at: nullableString(data.expires_at, 'Pair expiry'),
+      display_once: true,
     },
   }
 }
