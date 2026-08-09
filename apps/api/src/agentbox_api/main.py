@@ -18,13 +18,19 @@ from agentbox_protocol import (
     MetaResponse,
     ReadinessResponse,
 )
-from agentbox_runtime import CodexRuntimeClient, UnixCodexRuntimeClient
+from agentbox_runtime import (
+    ClaudeRuntimeClient,
+    CodexRuntimeClient,
+    UnixClaudeRuntimeClient,
+    UnixCodexRuntimeClient,
+)
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from agentbox_api.auth import BoundedLoginExecutor
 from agentbox_api.auth import router as auth_router
+from agentbox_api.claude import router as claude_router
 from agentbox_api.codex import router as codex_router
 from agentbox_api.doctor import router as doctor_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
@@ -71,11 +77,15 @@ def create_app(
     settings: Settings | None = None,
     services: ControlPlaneServices | None = None,
     codex_runtime: CodexRuntimeClient | None = None,
+    claude_runtime: ClaudeRuntimeClient | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
     actual_services = services or build_services(actual_settings)
     actual_codex_runtime = codex_runtime or UnixCodexRuntimeClient(actual_settings.runtime_socket)
+    actual_claude_runtime = claude_runtime or UnixClaudeRuntimeClient(
+        actual_settings.runtime_socket
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -97,6 +107,7 @@ def create_app(
     application.state.settings = actual_settings
     application.state.services = actual_services
     application.state.codex_runtime = actual_codex_runtime
+    application.state.claude_runtime = actual_claude_runtime
     application.state.login_executor = BoundedLoginExecutor(
         actual_services.auth,
         max_concurrency=actual_settings.argon2_max_concurrency,
@@ -175,6 +186,7 @@ def create_app(
 
     application.include_router(auth_router)
     application.include_router(codex_router)
+    application.include_router(claude_router)
     application.include_router(doctor_router)
     return application
 

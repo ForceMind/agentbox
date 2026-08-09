@@ -6,7 +6,10 @@ import argparse
 import asyncio
 import getpass
 import json
+import os
+import re
 import secrets
+import shutil
 import sys
 from collections.abc import Sequence
 from typing import Any
@@ -15,7 +18,12 @@ from agentbox_core import __version__
 from agentbox_core.configuration import Settings
 from agentbox_core.errors import AdminAlreadyInitialized, AgentBoxError
 from agentbox_core.services import build_services
-from agentbox_runtime import CodexAdapter, RuntimeOperationError, UnixCodexRuntimeClient
+from agentbox_runtime import (
+    CodexAdapter,
+    RuntimeOperationError,
+    UnixClaudeRuntimeClient,
+    UnixCodexRuntimeClient,
+)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -58,6 +66,20 @@ def create_parser() -> argparse.ArgumentParser:
     codex_commands.add_parser("start")
     codex_commands.add_parser("stop")
     codex_commands.add_parser("pair")
+
+    claude = subcommands.add_parser("claude")
+    claude_commands = claude.add_subparsers(dest="claude_command", required=True)
+    for command in ("status", "list"):
+        subcommand = claude_commands.add_parser(command)
+        subcommand.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            default=argparse.SUPPRESS,
+        )
+    for command in ("start", "stop", "attach", "output"):
+        subcommand = claude_commands.add_parser(command)
+        subcommand.add_argument("project")
     return parser
 
 
@@ -218,6 +240,89 @@ async def _codex_command(settings: Settings, args: argparse.Namespace) -> int:
         return _runtime_exit_code(exc)
 
 
+async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
+    request_id = f"req_cli-{secrets.token_hex(12)}"
+    client = UnixClaudeRuntimeClient(settings.runtime_socket)
+    command = str(args.claude_command)
+    json_output = bool(getattr(args, "json_output", False))
+    try:
+        if command == "status":
+            status = await client.status(request_id)
+            result = _envelope("claude.status", ok=True, data=status.to_dict())
+            result["execution_mode"] = "runtime_socket"
+            _print_result(result, json_output)
+            return 0 if status.installed and status.tmux_installed else 10
+        if command == "list":
+            sessions = await client.list_sessions(request_id)
+            if json_output:
+                result = _envelope(
+                    "claude.list",
+                    ok=True,
+                    data={"sessions": [session.to_dict() for session in sessions]},
+                )
+                result["execution_mode"] = "runtime_socket"
+                _print_result(result, True)
+            else:
+                print(f"{'PROJECT':<24} {'STATE':<20} SESSION")
+                for session in sessions:
+                    state = session.state.value.replace("_", " ").title()
+                    print(f"{session.project_id:<24.24} {state:<20.20} managed")
+            return 0
+
+        project_id = str(args.project)
+        if command == "start":
+            action = await client.start_session(request_id, project_id)
+            print(f"Claude session: {action.outcome} ({action.session.state.value})")
+            return 0
+        if command == "stop":
+            action = await client.stop_session(request_id, project_id)
+            print(f"Claude session: {action.outcome}")
+            return 0
+        if json_output:
+            print(
+                f"ERROR [CLAUDE_{command.upper()}_JSON_FORBIDDEN]: "
+                f"Claude {command} JSON output is disabled",
+                file=sys.stderr,
+            )
+            return 13
+        if command == "output":
+            output = await client.recent_output(request_id, project_id)
+            print(
+                "Sensitive Claude session output; it may contain project or model data.",
+                file=sys.stderr,
+            )
+            print(output.output)
+            return 0
+
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            print(
+                "ERROR [CLAUDE_ATTACH_TTY_REQUIRED]: attach requires a local interactive TTY",
+                file=sys.stderr,
+            )
+            return 13
+        session = await client.session(request_id, project_id)
+        if not session.tmux_running:
+            print(
+                "ERROR [CLAUDE_SESSION_NOT_RUNNING]: Claude session is not running",
+                file=sys.stderr,
+            )
+            return 10
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", session.session_name):
+            print(
+                "ERROR [TMUX_SESSION_NAME_INVALID]: Runtime returned an invalid session name",
+                file=sys.stderr,
+            )
+            return 17
+        tmux = shutil.which("tmux")
+        if tmux is None or not os.path.isabs(tmux):
+            print("ERROR [TMUX_NOT_INSTALLED]: tmux is unavailable", file=sys.stderr)
+            return 10
+        os.execv(tmux, [tmux, "attach-session", "-t", f"={session.session_name}"])
+    except RuntimeOperationError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return _runtime_exit_code(exc)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
 
@@ -244,6 +349,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "codex":
         return asyncio.run(_codex_command(settings, args))
+
+    if args.command == "claude":
+        return asyncio.run(_claude_command(settings, args))
 
     status = _control_plane_status(settings)
     result = _envelope(args.command, ok=True, data=status)

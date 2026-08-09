@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from agentbox_protocol import (
+    ClaudeDoctorSummary,
     CodexDoctorSummary,
     DoctorChecks,
     DoctorData,
@@ -23,7 +24,7 @@ async def doctor(
     response: Response,
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> DoctorResponse:
-    """Return safe control-plane readiness, policy, and Codex summary data."""
+    """Return safe control-plane readiness and bounded Runtime summaries."""
     authenticate_request(request, agentbox_session)
     services = request.app.state.services
     settings = request.app.state.settings
@@ -51,6 +52,33 @@ async def doctor(
             remote_state="unknown",
             findings=[exc.code],
         )
+    try:
+        claude_status = await request.app.state.claude_runtime.status(str(request.state.request_id))
+        claude_summary = ClaudeDoctorSummary(
+            installed=claude_status.installed,
+            version=claude_status.version,
+            authentication=claude_status.authentication.value,
+            remote_control=claude_status.capabilities.remote_control.value,
+            tmux_installed=claude_status.tmux_installed,
+            tmux_version=claude_status.tmux_version,
+            managed_sessions=claude_status.managed_sessions,
+            unmanaged_sessions=claude_status.unmanaged_sessions,
+            workspace_interaction_warnings=claude_status.workspace_interaction_warnings,
+            findings=[finding.code for finding in claude_status.diagnostics[:16]],
+        )
+    except RuntimeOperationError as exc:
+        claude_summary = ClaudeDoctorSummary(
+            installed=None,
+            version=None,
+            authentication="unknown",
+            remote_control="unknown",
+            tmux_installed=None,
+            tmux_version=None,
+            managed_sessions=0,
+            unmanaged_sessions=0,
+            workspace_interaction_warnings=0,
+            findings=[exc.code],
+        )
     response.headers["Cache-Control"] = "no-store"
     return DoctorResponse(
         request_id=str(request.state.request_id),
@@ -74,5 +102,6 @@ async def doctor(
                 login_lock_duration_seconds=settings.login_lock_duration,
             ),
             codex=codex_summary,
+            claude=claude_summary,
         ),
     )
