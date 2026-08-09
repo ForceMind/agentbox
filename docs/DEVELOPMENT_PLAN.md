@@ -98,12 +98,15 @@ Status: merged in PR #22.
 
 ## Phase 6 — Claude session management
 
+Status: implemented on `phase/6-claude-session-management`; awaiting Draft PR
+review. This does not authorize Phase 7.
+
 - **Goal:** manage project-scoped Claude Remote sessions through tmux without embedding a terminal.
-- **Input:** Claude fixtures, Runtime Executor, registered Project Workspaces, and Workspace Trust rules.
-- **Output:** detect/version, create/list/health/recent-output/stop, attach instructions, duplicate prevention, and manual Workspace Trust guidance.
+- **Input:** synthetic/redacted Claude fixtures, Runtime Executor, a minimal configured-root immediate-child registry, and Workspace Trust rules. Formal Project Workspaces remain Phase 7.
+- **Output:** public-help detect/version/capabilities, create/list/status/recent-output/stop, exact attach instructions, marker-backed duplicate/collision prevention, Runtime restart rediscovery, and manual Workspace Trust guidance.
 - **Not in scope:** automatic trust, reading private auth files, `/root` trust, browser terminal, or root-owned new sessions.
-- **Acceptance:** sessions are owned by `agentbox-runtime`, are tied to canonical Project IDs, survive SSH loss, and expose bounded/redacted output.
-- **Tests:** tmux fixture/integration tests, collision and stale-session cases, path escape, output redaction, and unavailable authentication state.
+- **Acceptance:** production sessions are designed for `agentbox-runtime`, are tied to canonical configured Project IDs, survive SSH loss through tmux, and expose bounded/sanitized sensitive output. Phase 6 development validation under root is not production identity evidence.
+- **Tests:** Claude/tmux fixtures, collision and stale-session cases, path/symlink escape, exact-stop safety, output sanitation/no-persistence, unknown authentication, API/CLI/Web, and desktop/mobile Fake Runtime E2E.
 - **Documentation:** session lifecycle, attach workflow, trust limitations, and recovery runbook.
 - **Commit/PR:** lifecycle and output handling remain separate review units when possible.
 - **Stop condition:** no unmanaged shell input can reach tmux or Claude invocation.

@@ -161,6 +161,22 @@ configuration, and external model/API Provider. No implementation exists yet.
 | Resource exhaustion | action lock, per-command timeout/output caps, spawned-process-group cleanup | status requests are uncached in Phase 5; reverse-proxy/request concurrency hardening remains later work |
 | Legacy service confusion | exact legacy-unit presence is warning-only and never managed/adopted | operator must manually assess the existing unit before deployment |
 
+## Phase 6 Claude/tmux Attack Surface
+
+| Threat | Current mitigation | Residual/verification |
+|---|---|---|
+| Malicious project ID/path traversal | API/UDS carry only bounded ID; Runtime immediate-child canonical resolution rejects separators, traversal, root/file/missing targets and project/root symlinks | bind mounts and post-check mount changes remain a Phase 8 namespace/ownership concern |
+| Session-name/argv injection | bounded ASCII slug/hash name; fixed tmux argv and absolute fingerprinted Claude command; no shell string or caller flags | reviewed against current public tmux multi-argument command behavior |
+| tmux collision/unmanaged takeover | exact deterministic name plus versioned project marker; collision fails closed; unmanaged names are count-only | same-UID processes can inspect/forge tmux state, requiring a dedicated Runtime identity |
+| Wrong-session kill | stop revalidates project, exact name and exact marker; only `kill-session -t =name` exists | an external same-UID race between marker check and kill is residual |
+| Pane secret/control leakage | explicit authenticated fetch, runner/output caps, ANSI CSI/OSC/control sanitation, no-store, text-only DOM, no Audit/log/DB/storage | output can still contain secrets/source; sanitation is not redaction |
+| Workspace Trust auto-accept | no key input, `yes`, private file parsing, or undocumented trust flag; prompt becomes Needs Interaction | localized/changed prompts may degrade to Unknown and need fixture review |
+| Claude auth file disclosure | only public CLI evidence; private config/credential directories are never read/copied | official CLI itself reads its Runtime HOME under its security model |
+| Cross-user tmux confusion | tmux operations run only as Runtime Executor current user; no root-server socket selection | current root-host validation is development evidence only |
+| Runtime restart/stale state | registry/name/marker/pane rediscovery; Unknown when readiness is not evidenced | no official machine-readable Remote health; tmux running is not connected proof |
+| Long-running child ownership | tmux directly owns interactive Claude; request/Executor does not hold foreground child | tmux server loss ends sessions; recovery is operator-visible, not auto-restart |
+| Terminal attach misuse | Web only copies fixed command; CLI requires local TTY and exact validated returned name | attach exposes live terminal content to the local Runtime identity by design |
+
 ## Highest-Risk Abuse Cases
 
 ### Future Provider Secret or Config Compromise

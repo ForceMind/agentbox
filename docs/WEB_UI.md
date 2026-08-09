@@ -1,7 +1,8 @@
 # AgentBox Web UI
 
 Status: Phase 4 authenticated Web foundation and Phase 5 Codex page merged;
-future Provider UI is planning only.
+Phase 6 Claude page is implemented on its Draft review branch. Future Provider
+UI is planning only.
 
 ## Product boundary
 
@@ -11,10 +12,11 @@ source of authorization truth. Server-side services enforce every permission;
 client route guards exist only to provide a coherent user experience.
 
 Phase 4 implements the product frame and browser authentication lifecycle.
-Phase 5 replaces only the Codex placeholder with a typed API-backed surface.
-The browser never calls Codex or the Runtime socket directly. Claude, tmux,
-Projects, Git/GitHub business operations, the Privileged Helper, installer,
-systemd, host log tools, Provider Manager, and Secret Manager remain absent.
+Phase 5 replaces the Codex placeholder and Phase 6 replaces the Claude
+placeholder with typed API-backed surfaces. The browser never calls a Runtime
+binary or socket directly. Project CRUD, Git/GitHub business operations, the
+Privileged Helper, installer, systemd, host log tools, Provider Manager, and
+Secret Manager remain absent.
 
 ## Route map
 
@@ -24,7 +26,7 @@ systemd, host log tools, Provider Manager, and Secret Manager remain absent.
 | `/login` | public-only | local administrator Login; authenticated users go to Dashboard |
 | `/dashboard` | required | real liveness, readiness, metadata, administrator and Session expiry |
 | `/codex` | required | real installation/capability/Remote state, bounded start/stop, explicit ephemeral Pair flow, diagnostics |
-| `/claude` | required | planned-capability shell only |
+| `/claude` | required | real public capability/tmux summary and configured project session cards with start/stop/attach/output |
 | `/projects` | required | planned-capability shell only |
 | `/doctor` | required | real control-plane-only checks from `GET /api/v1/doctor` |
 | `/logs` | required | not-implemented shell; no journal or file access |
@@ -113,6 +115,24 @@ Neither Web Storage nor the URL, title, data attributes, console, analytics, or
 page metadata receives the code. The UI distinguishes its display timeout from
 an optional Runtime-reported expiry and never invents an expiry.
 
+## Claude interaction lifecycle
+
+The page fetches status and configured project sessions on entry/explicit
+Refresh. Start/stop sends only the URL-encoded project ID plus session-bound
+CSRF; there is no body, path field, tmux name, or flag input. Each mobile-first
+card separately shows tmux state and Remote readiness. Unknown output or a
+running pane is never labeled Connected. `needs_interaction` explains manual
+terminal interaction and states that AgentBox never accepts Workspace Trust.
+After manual confirmation, the user exits interactive Claude and explicitly
+stops/starts the session again; the page does not retry in a loop.
+
+Attach copy is explicit and contains only the Runtime-generated safe name; no
+SSH topology or Web terminal is provided. Stop copy clarifies that the project
+is not deleted. Recent output is collapsed by default, labelled Sensitive,
+fetched only on Reveal, rendered as text in `pre`, and cleared on Hide/unmount.
+It is never written to Web Storage. Browser traces/screenshots are disabled in
+canary-bearing E2E runs.
+
 ## Responsive model
 
 The UI is dark-first and uses neutral surfaces, subtle borders, strong heading
@@ -122,7 +142,8 @@ opens a full-height navigation drawer. Content grids collapse to one column on
 small phones, then two/four columns as space permits. User-controlled IDs and
 metadata wrap instead of causing horizontal scroll.
 
-The browser suite exercises 1280×800 desktop and 390×844 mobile layouts.
+Claude runtime/session grids collapse to one column on mobile and two on wider
+screens. The browser suite exercises 1280×800 desktop and 390×844 mobile layouts.
 Additional layout review targets 360, 768, and 1024 pixel widths before release.
 
 ## Accessibility baseline
@@ -162,10 +183,12 @@ generates a test-only application secret and password in memory, explicitly
 runs Alembic, initializes one test admin, starts an independent API and Vite
 production preview, runs Chromium, and cleans up all processes and files. It
 never uses `.agentbox-dev`, real auth state, a public listener, or GitHub
-Secrets. Desktop and mobile each execute the same sixteen logical security and
-UX scenarios (32 executions). Phase 5 adds Codex status/refresh, CSRF
-start/stop, Pair confirmation/display/copy/clearing/no-store/storage,
-unsupported/error behavior, and a generated-canary artifact scan.
+Secrets. Desktop and mobile each execute the same 21 logical security and UX
+scenarios (42 executions). Phase 5 covers Codex and Pair; Phase 6 adds Claude
+auth protection, capability/state, start/duplicate/stop, Needs Interaction,
+attach copy, explicit output/no-store/no-storage, unmanaged count-only behavior,
+Unknown semantics, and mobile layout. Pair/output canaries are scanned from
+temporary DB and retained artifacts; traces/screenshots are disabled.
 
 ## Future boundaries
 

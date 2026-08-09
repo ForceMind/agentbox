@@ -319,7 +319,20 @@ or complete base URL when it can contain userinfo/query credentials.
 
 ### Claude Recent Output
 
-Recent output is fetched on demand from a managed tmux pane, strips control sequences, caps lines/bytes, passes redaction, is access-controlled/audited, and is not persisted. The UI warns that model/user output may still contain project-sensitive text. Raw continuous terminal streaming is not an MVP feature.
+Recent output is fetched on demand only from an exact marked managed tmux pane,
+strips ANSI/control sequences, caps at 200 lines/24 KiB, is authenticated and
+no-store, and is not persisted. Audit records only access metadata, never pane
+text. Sanitation is not complete secret redaction. Raw continuous terminal
+streaming is not an MVP feature.
+
+## Phase 6 Claude/tmux Controls
+
+- API/Web submit only `project_id`; Runtime resolves a configured-root immediate child and rejects traversal, absolute IDs, root/file/missing targets, root/project symlinks, inaccessible directories, and canonical escapes.
+- bounded generated names and exact versioned markers separate managed from legacy/similar/colliding sessions; only exact marked targets may be captured or killed.
+- tmux receives fixed operation argv and fixed absolute Claude argv; there is no shell string, raw tmux flag, PID/signal, `pkill`, or `kill-server` action.
+- Workspace Trust/authentication use public evidence only, never private Claude files or automatic acceptance.
+- per-project locks and a bounded tmux semaphore serialize lifecycle operations; tmux owns the long-running child.
+- same-UID processes can tamper with a per-user tmux server; Phase 8 dedicated identity and systemd sandboxing remain required.
 
 ## UDS Security
 
@@ -334,9 +347,11 @@ Recent output is fetched on demand from a managed tmux pane, strips control sequ
 - sockets are below `/run/agentbox`; symlink/socket replacement and stale inode checks fail closed.
 - no UDS proxying over HTTP and no Helper TCP listener.
 
-The Phase 5 Runtime protocol is JSON-line V1 with a 64 KiB frame limit, exact
-keys, one of four parameter-free Codex actions, a bounded request ID, and no
-executable/argv/environment/cwd fields. Development may create only the local
+The Phase 5/6 Runtime protocol is JSON-line V1 with a 64 KiB frame limit, exact
+keys, four parameter-free Codex actions, two parameter-free Claude summary
+actions, and four Claude actions carrying only validated `project_id`. It has a
+bounded request ID and no path/executable/argv/environment/cwd/shell/tmux/PID/
+signal fields. Development may create only the local
 `.agentbox-dev` socket parent. Production refuses a socket outside
 `/run/agentbox` and never creates that system directory itself.
 
