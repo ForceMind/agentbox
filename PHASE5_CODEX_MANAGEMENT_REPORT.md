@@ -27,7 +27,7 @@ host network changes remain unimplemented.
 - Repository: `ForceMind/agentbox`
 - Branch: `phase/5-codex-management`
 - Base: `f61f3f4c24f0ab48994b05e9c574385a5c9b795c`
-- Commits: 6 Phase 5 commits, including this publication metadata update
+- Commits: 7 Phase 5 commits, including the final E2E artifact hardening
 - Draft PR: <https://github.com/ForceMind/agentbox/pull/22>
 - Merge: not performed; human review is required
 
@@ -204,9 +204,12 @@ The harness uses a temporary migrated SQLite database, random credentials,
 random loopback ports, and an explicitly injected fake Codex Runtime. It covers
 status/refresh, start/stop CSRF, Pair confirmation/display/copy/navigation
 clear, no-store, no Web Storage, unsupported/error behavior, and all Phase 4
-auth/navigation scenarios in desktop and mobile Chromium. It scans temporary
-database/WAL/SHM, Playwright artifacts/report, and Git diff for the random Pair
-canary before cleanup.
+auth/navigation scenarios in desktop and mobile Chromium. Browser screenshots
+and traces are disabled because a failed Pair test must not create a
+secret-bearing DOM artifact. The harness scans temporary database/WAL/SHM,
+Playwright artifacts/report, and Git diff for the random Pair canary on both
+success and failure paths; any canary-bearing artifact is removed before the
+sanitized error is returned.
 
 ## Real Host Validation
 

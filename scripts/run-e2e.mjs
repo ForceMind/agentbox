@@ -107,6 +107,8 @@ async function stop(child) {
 }
 
 const temporaryRoot = await mkdtemp(join(tmpdir(), "agentbox-e2e-"));
+const pairCanary = `PAIR-${randomBytes(18).toString("base64url").toUpperCase()}`;
+let runError;
 
 try {
   const [apiPort, webPort] = await Promise.all([
@@ -126,7 +128,7 @@ try {
     AGENTBOX_DATA_DIR: temporaryRoot,
     AGENTBOX_E2E_API_URL: apiOrigin,
     AGENTBOX_E2E_PASSWORD: `e2e-${randomBytes(24).toString("base64url")}`,
-    AGENTBOX_E2E_PAIR_CODE: `PAIR-${randomBytes(18).toString("base64url").toUpperCase()}`,
+    AGENTBOX_E2E_PAIR_CODE: pairCanary,
     AGENTBOX_E2E_USERNAME: "e2e-maintainer",
     AGENTBOX_ENV: "test",
     AGENTBOX_SECRET_KEY: randomBytes(48).toString("base64url"),
@@ -183,24 +185,45 @@ try {
       env: testEnvironment,
     },
   );
-  const pairCanary = testEnvironment.AGENTBOX_E2E_PAIR_CODE;
-  await assertCanaryAbsent(temporaryRoot, pairCanary);
-  await assertCanaryAbsent(
-    join(repositoryRoot, "apps", "web", "test-results"),
-    pairCanary,
-  );
-  await assertCanaryAbsent(
-    join(repositoryRoot, "apps", "web", "playwright-report"),
-    pairCanary,
-  );
-  if (
-    (await capture("git", ["diff", "--no-ext-diff"])).includes(
-      Buffer.from(pairCanary),
-    )
-  ) {
-    throw new Error("Pair Code canary persisted in the Git diff");
-  }
+} catch (error) {
+  runError = error;
 } finally {
   await Promise.all(children.map((child) => stop(child)));
+  let canaryError;
+  try {
+    await assertCanaryAbsent(temporaryRoot, pairCanary);
+    await assertCanaryAbsent(
+      join(repositoryRoot, "apps", "web", "test-results"),
+      pairCanary,
+    );
+    await assertCanaryAbsent(
+      join(repositoryRoot, "apps", "web", "playwright-report"),
+      pairCanary,
+    );
+    if (
+      (await capture("git", ["diff", "--no-ext-diff"])).includes(
+        Buffer.from(pairCanary),
+      )
+    ) {
+      throw new Error("Pair Code canary persisted in the Git diff");
+    }
+  } catch (error) {
+    canaryError = error;
+  }
   await rm(temporaryRoot, { force: true, recursive: true });
+  if (canaryError) {
+    await Promise.all([
+      rm(join(repositoryRoot, "apps", "web", "test-results"), {
+        force: true,
+        recursive: true,
+      }),
+      rm(join(repositoryRoot, "apps", "web", "playwright-report"), {
+        force: true,
+        recursive: true,
+      }),
+    ]);
+    throw canaryError;
+  }
 }
+
+if (runError) throw runError;

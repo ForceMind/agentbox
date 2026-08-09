@@ -79,9 +79,12 @@ The browser harness injects one explicit `E2ECodexRuntime`; production always
 uses the UDS client. Sixteen logical scenarios run for desktop and mobile (32
 executions), including real status rendering/refresh, CSRF start/stop, explicit
 Pair confirmation/copy, storage and navigation clearing, unsupported and error
-states, plus all Phase 4 authentication/navigation checks. The harness scans
-its temporary SQLite/WAL/SHM tree, Playwright artifacts/report, and Git diff for
-the randomly generated Pair canary before cleanup.
+states, plus all Phase 4 authentication/navigation checks. Browser screenshots
+and traces are disabled because a failed Pair test must not persist a secret
+rendered in the DOM. The harness scans its temporary SQLite/WAL/SHM tree,
+Playwright artifacts/report, and Git diff for the randomly generated Pair
+canary on both success and failure paths; any canary-bearing browser artifact
+is removed before a sanitized failure is returned.
 
 The boundary check now permits subprocess references in exactly one Python
 file, `agentbox_runtime/process.py`; `shell=True`, `os.system`, synchronous
