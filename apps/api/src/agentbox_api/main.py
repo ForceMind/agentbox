@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 
 from agentbox_api.auth import BoundedLoginExecutor
 from agentbox_api.auth import router as auth_router
+from agentbox_api.doctor import router as doctor_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 
 logger = logging.getLogger("agentbox.api")
@@ -168,6 +169,7 @@ def create_app(
         return MetaResponse(version=__version__, environment=actual_settings.env.value)
 
     application.include_router(auth_router)
+    application.include_router(doctor_router)
     return application
 
 

@@ -118,10 +118,11 @@ def _source_identifier(request: Request) -> str:
         return peer_ip.compressed
 
 
-def _authenticate(
+def authenticate_request(
     request: Request,
     raw_session: str | None,
 ) -> AuthenticatedSession:
+    """Authenticate a cookie for another versioned control-plane route."""
     return _services(request).sessions.authenticate(raw_session)
 
 
@@ -177,7 +178,7 @@ async def logout(
     x_csrf_token: str | None = Header(default=None),
 ) -> None:
     _validate_origin(request)
-    authenticated = _authenticate(request, agentbox_session)
+    authenticated = authenticate_request(request, agentbox_session)
     _services(request).sessions.validate_csrf(authenticated, x_csrf_token)
     _services(request).sessions.revoke(authenticated, request_id=_request_id(request))
     response.delete_cookie(
@@ -196,6 +197,6 @@ async def me(
     response: Response,
     agentbox_session: str | None = Cookie(default=None),
 ) -> AuthResponse:
-    authenticated = _authenticate(request, agentbox_session)
+    authenticated = authenticate_request(request, agentbox_session)
     response.headers["Cache-Control"] = "no-store"
     return _auth_response(request, authenticated)

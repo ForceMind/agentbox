@@ -71,6 +71,68 @@ async def test_meta_endpoint(settings: Settings, services: ControlPlaneServices)
 
 
 @pytest.mark.anyio
+async def test_doctor_requires_authentication(
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    application = create_app(settings, services)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/doctor")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_SESSION_INVALID"
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.anyio
+async def test_doctor_returns_only_safe_control_plane_data(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+) -> None:
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "maintainer",
+            "password": "a sufficiently long passphrase",
+        },
+        headers=origin_headers,
+    )
+    assert login.status_code == 200
+
+    response = await client.get("/api/v1/doctor")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    body = response.json()
+    assert body["data"]["status"] == "ready"
+    assert body["data"]["checks"] == {
+        "configuration_valid": True,
+        "database_reachable": True,
+        "migrations_current": True,
+        "admin_initialized": True,
+        "control_plane_ready": True,
+    }
+    assert body["data"]["policy"] == {
+        "environment": "test",
+        "bind_host": "127.0.0.1",
+        "bind_port": 8787,
+        "session_ttl_seconds": 3600,
+        "session_idle_ttl_seconds": 600,
+        "login_rate_limit": 5,
+        "login_rate_window_seconds": 300,
+        "login_lock_duration_seconds": 300,
+    }
+    serialized = response.text.lower()
+    assert "secret" not in serialized
+    assert "database_url" not in serialized
+    assert "data_dir" not in serialized
+    assert "sqlite+pysqlite" not in serialized
+
+
+@pytest.mark.anyio
 async def test_security_and_request_id_headers(
     client: httpx.AsyncClient,
 ) -> None:

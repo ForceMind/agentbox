@@ -10,7 +10,14 @@ from agentbox_protocol.auth import (
     LoginRequest,
     ReadinessResponse,
 )
-from agentbox_protocol.metadata import HealthResponse, MetaResponse
+from agentbox_protocol.metadata import (
+    DoctorChecks,
+    DoctorData,
+    DoctorPolicy,
+    DoctorResponse,
+    HealthResponse,
+    MetaResponse,
+)
 
 __all__ = [
     "AdminView",
@@ -19,6 +26,10 @@ __all__ = [
     "AuthSessionView",
     "ErrorBody",
     "ErrorResponse",
+    "DoctorChecks",
+    "DoctorData",
+    "DoctorPolicy",
+    "DoctorResponse",
     "HealthResponse",
     "LoginRequest",
     "MetaResponse",
