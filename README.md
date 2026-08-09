@@ -6,17 +6,18 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. The Phase 2 skeleton is merged;
-Phase 3 is adding a reviewable control-plane security foundation on a dedicated
-branch.
+AgentBox is in **early pre-alpha development**. Phases 2 and 3 are merged. Phase
+4 is adding the authenticated Web product foundation on a dedicated branch.
 
-The current Phase 3 branch provides:
+The current codebase provides:
 
 - a FastAPI service with health/readiness/meta plus login/logout/`auth/me` only;
 - explicit SQLite/Alembic persistence for AdminUser, hashed Sessions, and redacted Audit Events;
 - local-TTY administrator initialization, Argon2id, CSRF, secure Cookie policy, and bounded login throttling;
 - a Worker lifecycle limited to database readiness and expired Session cleanup;
-- a control-plane-only CLI and minimal React login/authenticated shell;
+- a control-plane-only CLI and a responsive React application shell with
+  login, authenticated Session recovery, Dashboard, Doctor, Settings, and
+  clearly marked placeholder product sections;
 - package boundaries, tests, CI, governance templates, and architecture documents.
 
 It does **not** manage Codex, generate Pair Codes, run Claude Remote, manage
@@ -119,6 +120,18 @@ pnpm test
 pnpm build
 ```
 
+The browser suite uses an isolated temporary database, random test-only secret,
+random loopback ports, and Chromium:
+
+```bash
+pnpm --filter @agentbox/web exec playwright install chromium
+pnpm e2e
+```
+
+Do not run `playwright install-deps` on a shared host. Use a supported CI image
+or obtain explicit approval for system packages. The E2E harness never uses the
+normal `.agentbox-dev` database or a real administrator.
+
 The Vite development proxy points only to `http://127.0.0.1:8787`. These commands do not install a system service or create AgentBox system users/directories.
 
 ## Environment support status
@@ -128,8 +141,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 ## Roadmap
 
 1. Phase 2: repository and engineering skeleton — merged in PR #19.
-2. Phase 3: control-plane foundation and single-admin authentication — in progress.
-3. Phase 4: minimal authenticated frontend.
+2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
+3. Phase 4: authenticated Web foundation — in progress.
 4. Phase 5: Codex management.
 5. Phase 6: Claude/tmux session management.
 6. Phase 7: Project Workspaces and minimal Git.
@@ -147,11 +160,13 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [API design](docs/API_DESIGN.md)
 - [CLI design](docs/CLI_DESIGN.md)
 - [Runtime Adapters](docs/RUNTIME_ADAPTERS.md)
+- [Web UI design](docs/WEB_UI.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [ADRs](docs/adr/README.md)
 - [Phase 0 report](PHASE0_ENVIRONMENT_REPORT.md)
 - [Phase 1 summary](PHASE1_ARCHITECTURE_SUMMARY.md)
 - [Phase 2 report](PHASE2_ENGINEERING_REPORT.md)
+- [Phase 3 report](PHASE3_CONTROL_PLANE_REPORT.md)
 
 ## Contributing
 

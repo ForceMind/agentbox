@@ -47,7 +47,7 @@ The project stays focused on a single-server, single-administrator MVP. Security
 - **Stop condition:** skeleton CI is green and contains no production control implementation.
 - **Human approval:** completed for `git init`, GitHub repository creation, Apache-2.0, initial default branch, and remote push; final PR merge remains manual.
 
-## Phase 3 — Minimal backend and authentication (in progress on dedicated branch)
+## Phase 3 — Minimal backend and authentication (completed and merged)
 
 - **Goal:** deliver the versioned API foundation, single-admin authentication, persistence, audit structure, and safe local daemon lifecycle.
 - **Input:** Phase 2 skeleton, API/Data Model/Security contracts.
@@ -60,11 +60,14 @@ The project stays focused on a single-server, single-administrator MVP. Security
 - **Stop condition:** backend foundation is reviewable without Runtime or root privileges.
 - **Human approval:** password initialization UX, session lifetime defaults, and any change to network binding.
 
-## Phase 4 — Minimal frontend
+## Phase 4 — Authenticated Web foundation (in progress on dedicated branch)
 
 - **Goal:** provide the seven MVP page shells and authenticated read-only dashboard experience.
 - **Input:** stable Phase 3 API contracts and frontend ADR.
-- **Output:** React application with Login, Dashboard, Codex, Claude, Projects, Doctor, Logs, and Settings routes; SSE client foundation.
+- **Output:** React application with Login, Dashboard, Codex, Claude, Projects,
+  Doctor, Logs, and Settings routes; centralized API/Auth state; authenticated
+  read-only Doctor endpoint; isolated Playwright harness and CI workflow. SSE
+  client behavior is deferred until a real Job stream exists.
 - **Not in scope:** browser terminal, visual shell, mobile-native client, elaborate design system, or WebSocket PTY.
 - **Acceptance:** authentication lifecycle works, protected routes do not leak cached data, accessibility basics and responsive layouts are covered.
 - **Tests:** component tests, API mock tests, Playwright login/navigation/session-expiry flows, production build.

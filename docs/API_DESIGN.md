@@ -1,11 +1,13 @@
 # AgentBox API Design
 
-Status: Phase 1 contract design with the Phase 3 control-plane subset implemented.
+Status: Phase 1 contract design with the Phase 3 control plane and Phase 4
+read-only Doctor subset implemented.
 
 Implemented in Phase 3: `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`,
 `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and
-`GET /api/v1/auth/me`. All other contracts in this document remain designs,
-not implemented routes.
+`GET /api/v1/auth/me`. Phase 4 also implements authenticated
+`GET /api/v1/doctor`. All other contracts remain designs, not implemented
+routes.
 
 ## Principles
 
@@ -211,11 +213,21 @@ Callers cannot supply a journal unit name, file path, grep expression, or shell.
 
 | Method/path | Purpose |
 |---|---|
+| `GET /api/v1/doctor` | current control-plane readiness and safe policy summary |
 | `POST /api/v1/doctor/runs` | start Diagnostic Run Job |
 | `GET /api/v1/doctor/runs` | list runs |
 | `GET /api/v1/doctor/runs/{run_id}` | findings, classifications, safe remediation plans |
 
-Doctor plans but does not automatically repair. A remediation becomes a separately validated action/Job.
+The Phase 4 `GET` is implemented and requires a valid Session. It returns
+configuration validity, database reachability, migration currency,
+administrator initialization, combined readiness, environment, loopback bind,
+Session lifetime policy, and login rate-limit policy. It is `Cache-Control:
+no-store` and excludes the secret, secret source/value, database URL, data path,
+credentials, Runtime state, host service state, and network state.
+
+The three Diagnostic Run routes remain future designs. Doctor plans but does
+not automatically repair. A remediation becomes a separately validated
+action/Job.
 
 ## Settings API
 

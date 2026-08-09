@@ -39,11 +39,41 @@ Phase 3 implements only the local control-plane security foundation:
   routes under `/api/v1/auth`;
 - a separate Worker lifecycle that may connect to the database and clean old
   expired/revoked Sessions, but does not claim or execute Jobs;
-- a minimal React login/authenticated shell. It is not the Phase 4 Dashboard.
+- the original minimal React login/authenticated shell that Phase 4 has now
+  replaced with the routed Web foundation described below.
 
 Development state defaults beneath `.agentbox-dev/`, which is ignored by Git.
 The production FHS locations remain the accepted deployment design, but Phase 3
 does not create them, users, units, listeners, or host services.
+
+## Phase 4 Authenticated Web Foundation
+
+Phase 4 keeps the Phase 3 authentication protocol unchanged and adds a
+browser-facing product shell:
+
+- React Router owns `/`, `/login`, `/dashboard`, `/codex`, `/claude`,
+  `/projects`, `/doctor`, `/logs`, `/settings`, and a branded fallback;
+- `AuthProvider` restores authentication from `GET /api/v1/auth/me`, holds only
+  safe user/session metadata and the Session-bound CSRF token in memory, and
+  never persists authentication material in Web Storage;
+- a single native-fetch API client supplies `credentials: include`, bounded
+  request timeouts, V1 error-envelope parsing, request-ID validation, CSRF
+  headers, and centralized `401` recovery;
+- logout may refresh `auth/me` and retry exactly once after a `403` caused by a
+  stale CSRF token; there is no unbounded retry;
+- the Dashboard consumes only real `healthz`, `readyz`, `meta`, and current-user
+  data. Runtime and Project cards are explicitly `Planned`;
+- `GET /api/v1/doctor` is the sole Phase 4 API addition. It is authenticated,
+  no-store, read-only, and limited to control-plane readiness and safe policy
+  fields. It does not inspect host services or Runtimes;
+- desktop uses a persistent sidebar, while viewports below 900 px use a compact
+  header and keyboard-accessible navigation drawer.
+
+The production Vite build emits external hashed JavaScript and CSS assets and
+requires no inline script, `unsafe-inline`, or `unsafe-eval`; it is compatible
+with the existing production CSP. Vite development/preview is a local tool,
+not the deployment server. Static serving and proxy cache policy remain a
+Phase 8 deployment responsibility.
 
 ## System Context
 
