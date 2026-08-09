@@ -45,6 +45,7 @@ class IssuedSession:
     user_id: str
     username: str
     expires_at: datetime
+    authenticated_at: datetime
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class AuthenticatedSession:
     user_id: str
     username: str
     expires_at: datetime
+    authenticated_at: datetime
     csrf_token: str
 
 
@@ -217,6 +219,7 @@ class SessionService:
             user_id=user.id,
             username=user.username,
             expires_at=expires_at,
+            authenticated_at=now,
         )
 
     def authenticate(self, raw_token: str | None) -> AuthenticatedSession:
@@ -249,6 +252,7 @@ class SessionService:
                 user_id=stored.user.id,
                 username=stored.user.username,
                 expires_at=stored.expires_at,
+                authenticated_at=stored.created_at,
                 csrf_token=csrf_token,
             )
 
@@ -264,6 +268,13 @@ class SessionService:
             )
         if stored_hash is None or not hmac.compare_digest(stored_hash, supplied_hash):
             raise InvalidCsrfToken()
+
+    def is_recently_authenticated(
+        self, authenticated: AuthenticatedSession, *, max_age_seconds: int
+    ) -> bool:
+        return self._clock.now() - authenticated.authenticated_at <= timedelta(
+            seconds=max_age_seconds
+        )
 
     def revoke(
         self,

@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     login_rate_window: int = Field(default=5 * 60, ge=10, le=24 * 60 * 60)
     login_lock_duration: int = Field(default=5 * 60, ge=10, le=24 * 60 * 60)
     argon2_max_concurrency: int = Field(default=2, ge=1, le=4)
+    codex_pair_cooldown: int = Field(default=10, ge=5, le=300)
+    recent_auth_ttl: int = Field(default=10 * 60, ge=60, le=60 * 60)
+    runtime_socket: Path = Path(".agentbox-dev/runtime.sock")
     data_dir: Path = Path(".agentbox-dev")
     database_busy_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
     request_body_limit: int = Field(default=16 * 1024, ge=1024, le=1024 * 1024)
@@ -165,6 +168,10 @@ class Settings(BaseSettings):
         database_path = Path(url.database).expanduser()
         if not database_path.is_absolute() or not database_path.is_relative_to(data_dir):
             raise ValueError("production SQLite database must be beneath AGENTBOX_DATA_DIR")
+        if not self.runtime_socket.is_absolute() or self.runtime_socket.parent != Path(
+            "/run/agentbox"
+        ):
+            raise ValueError("production Runtime socket must be beneath /run/agentbox")
 
     @property
     def cookie_secure(self) -> bool:

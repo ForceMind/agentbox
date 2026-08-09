@@ -78,3 +78,40 @@ class DatabaseNotReady(AgentBoxError):
     message = "Control plane is not ready"
     status_code = 503
     retryable = True
+
+
+class RecentAuthenticationRequired(AgentBoxError):
+    code = "AUTH_RECENT_REQUIRED"
+    category = "forbidden"
+    message = "Recent authentication is required"
+    status_code = 403
+
+
+class RuntimeGatewayError(AgentBoxError):
+    """Safe projection of a normalized Runtime Executor error."""
+
+    def __init__(
+        self,
+        *,
+        code: str,
+        category: str,
+        message: str,
+        retryable: bool = False,
+        retry_after: int | None = None,
+    ) -> None:
+        self.code = code[:80]
+        self.category = category[:32]
+        self.message = message[:256]
+        self.retryable = retryable
+        self.status_code = {
+            "validation": 422,
+            "unauthenticated": 503,
+            "forbidden": 403,
+            "conflict": 409,
+            "rate_limited": 429,
+            "unsupported": 501,
+            "unavailable": 503,
+            "timeout": 504,
+            "broken": 503,
+        }.get(category, 503)
+        super().__init__(retry_after=retry_after)
