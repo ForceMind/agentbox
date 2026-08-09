@@ -16,8 +16,16 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 6 ]]; then
-  printf 'Unexpected Phase 3 API route count: %s\n' "$route_count" >&2
+if [[ "$route_count" -ne 7 ]]; then
+  printf 'Unexpected Phase 4 API route count: %s\n' "$route_count" >&2
+  exit 1
+fi
+
+dangerous_browser='(dangerouslySetInnerHTML|new[[:space:]]+Function[[:space:]]*\(|(^|[^[:alnum:]_])eval[[:space:]]*\(|localStorage\.setItem|sessionStorage\.setItem)'
+if grep --recursive --line-number --extended-regexp --include='*.ts' --include='*.tsx' \
+  --exclude='*.test.ts' --exclude='*.test.tsx' \
+  "$dangerous_browser" apps/web/src; then
+  printf 'Forbidden browser execution or credential-persistence primitive found.\n' >&2
   exit 1
 fi
 
@@ -37,4 +45,4 @@ if grep --recursive --line-number --extended-regexp --include='*.py' \
   exit 1
 fi
 
-printf 'Phase 3 source-boundary check passed.\n'
+printf 'Phase 4 source-boundary check passed.\n'

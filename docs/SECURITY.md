@@ -114,6 +114,31 @@ Pair Code generation, update/rollback, authentication reset, permission changes,
 - A strict Content Security Policy, `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, restrictive Referrer Policy, and no inline third-party scripts are required.
 - Login and Pair pages must not load third-party analytics, fonts, or widgets.
 
+### Phase 4 browser implementation
+
+- The raw Session token remains only in the `HttpOnly` Cookie. `AuthProvider`
+  stores safe user/Session metadata and CSRF only in process memory; neither
+  `localStorage`, `sessionStorage`, nor IndexedDB is used for authentication.
+- Initial routing waits for `auth/me`, preventing a transient Login render from
+  becoming authenticated-content flicker. A centralized `401` handler clears
+  in-memory state and returns the browser to Login without a retry loop.
+- Logout sends the in-memory Session-bound CSRF header. A `403` permits one
+  `auth/me` refresh and one retry; any further error is surfaced without
+  recursion. Origin and Host remain server-enforced.
+- Error messages are plain React text. Server request IDs are displayed only
+  after matching the bounded request-ID syntax; no API object is rendered as
+  HTML. `dangerouslySetInnerHTML`, `eval`, and remote scripts are absent.
+- The router has no `next` or external redirect support. Navigation targets are
+  compile-time same-application paths.
+- Authenticated API responses use `Cache-Control: no-store`. The static shell
+  carries no user state; Phase 8 must configure its reverse proxy so HTML is
+  revalidated while immutable hashed assets may be cached.
+- Runtime cards never infer state: unavailable data is `Unavailable`, and
+  unimplemented capabilities are `Planned` or `Not Implemented`.
+- The production build uses external hashed assets compatible with
+  `script-src 'self'` and `style-src 'self'`; Phase 4 does not add
+  `unsafe-inline`, `unsafe-eval`, wildcard CORS, analytics, or telemetry.
+
 ## Action Whitelists
 
 No interface accepts a shell command. Requests carry an action enum and strong parameters, for example:

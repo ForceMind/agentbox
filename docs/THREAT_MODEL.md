@@ -1,6 +1,7 @@
 # AgentBox Threat Model
 
-Status: Phase 1 baseline updated for the implemented Phase 3 control-plane surface
+Status: Phase 1 baseline updated for the implemented Phase 3 control plane and
+Phase 4 authenticated Web surface
 Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
 
 ## Scope and Assets
@@ -80,6 +81,16 @@ TB8: live state to backup/export media.
 | T-32 | E | Dependency executes install/build code | build/runtime | lock/review dependencies, minimal production artifact, no project build in MVP | dependency review/SBOM |
 | T-33 | T/I | Existing cloudflared route exposes AgentBox | external integration | never auto-edit/reuse; explicit proxy/access review; loopback bind | deployment checklist |
 | T-34 | T/E | UID/GID 1001 reuse gives write access to Codex artifact | current host | collision check and ownership remediation before identity creation | pre-install owner/UID gate |
+| T-35 | T/I | DOM XSS through API text or request ID | TB2/browser | React text rendering, bounded error text, request-ID syntax, no raw HTML | unit hostile-ID and browser rendering tests |
+| T-36 | I | Session/CSRF leaks into browser storage | browser/session | HttpOnly Session, CSRF in memory, no auth Web Storage writes | unit and Playwright storage inspection |
+| T-37 | S/I | Stale frontend auth state shows protected data | TB2/browser | boot gate, centralized 401 clearing, protected route guard | refresh/invalid-cookie/401 tests |
+| T-38 | T/D | CSRF refresh creates an unbounded retry loop | TB2 | exactly one `me` refresh and one logout retry | deterministic component test |
+| T-39 | S | Login redirect becomes an open redirect | browser routing | no `next` parameter; compile-time local routes only | route inspection and external-URL search |
+| T-40 | S/I | Clickjacking overlays authenticated controls | browser | CSP `frame-ancestors 'none'` plus `X-Frame-Options: DENY` | response-header tests |
+| T-41 | I/T | Malicious request ID injects or corrupts UI | API/browser | server syntax plus client syntax revalidation and text rendering | malformed-header and client-parser tests |
+| T-42 | E | Client-side route guard is treated as authorization | TB2 | every protected API authenticates server-side; guard is UX only | unauthenticated Doctor/auth tests |
+| T-43 | R/I | Fake UI status misleads the operator | browser | only real health/readiness/meta data; explicit Planned semantics | component and E2E assertions |
+| T-44 | I | Browser/proxy cache retains authenticated data | TB1/TB2 | no-store auth/Doctor responses; static shell contains no user state | response-header tests and deployment gate |
 
 ## Phase 3 Control-Plane Attack Surface
 
@@ -97,6 +108,22 @@ TB8: live state to backup/export media.
 | Header/proxy spoofing | bounded request IDs, exact Origin/Host, socket peer source by default, forwarded address only from configured trusted proxy networks | trusted-proxy chain semantics need deployment-specific tests |
 | Audit/log injection | flat bounded metadata allowlist, secret-key rejection, newline neutralization, structured logging and assignment redaction | arbitrary secret text cannot always be pattern-detected, so sensitive values are prohibited at the call site |
 | Oversized request DoS | global 16 KiB mutation-body cap plus username/password/request-ID length limits | CPU/memory concurrency limits and reverse-proxy limits remain deployment hardening |
+
+## Phase 4 Browser Attack Surface
+
+| Threat | Current mitigation | Residual/verification |
+|---|---|---|
+| DOM XSS | no raw HTML insertion, remote script, analytics, dynamic evaluation, or unvalidated request-ID display | dependency compromise remains governed by lockfile review and CSP |
+| Frontend token leakage | Session is HttpOnly; CSRF and safe metadata are memory-only; no auth data is stored in browser storage or logged | browser extensions and a compromised same-origin script remain residual browser risks |
+| Stale authentication | auth boot blocks routing until `me`; any protected `401` clears state; guards redirect to Login | multiple tabs do not proactively synchronize logout until the next request/refresh |
+| CSRF retry bug | logout retries only after one authenticated `me` refresh and never more than once | future mutation endpoints must use the same bounded policy deliberately |
+| Open redirect | no post-login `next` support and all navigation targets are local constants | any future deep-link feature requires strict relative-path validation |
+| Clickjacking | CSP frame ancestor denial and legacy frame header | deployment proxy must preserve rather than overwrite headers |
+| Malicious request ID | server and browser each enforce a small safe character/length grammar; React renders text | diagnostic copy/paste remains operator-controlled |
+| Route authorization bypass | browser guards provide UX only; Doctor and auth state are server authenticated | every future route requires an API authorization test independent of UI |
+| UI confusion/fake status | actual APIs drive control-plane cards; missing data is Unavailable; future functions are Planned | product copy needs review as capabilities become real |
+| Browser cache | auth and Doctor API responses are no-store; static Vite shell has no user-specific content | Phase 8 reverse-proxy/static cache headers remain a deployment gate |
+| Oversized/browser DoS | bounded server body, client timeout, modest bundle, no charts/editor/terminal or unbounded retries | API response-size policy remains the authoritative control |
 
 ## Highest-Risk Abuse Cases
 

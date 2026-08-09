@@ -4,7 +4,8 @@
 
 Tests must prove that AgentBox remains a constrained control plane, not merely that happy-path commands run. The priority order is: privilege containment and secret non-persistence; path and command safety; recoverability; Runtime compatibility; API/UI correctness; performance within a small single-server envelope.
 
-No statement in this document means these tests have already been implemented or passed.
+Sections explicitly labelled implemented record executed coverage; all other
+sections remain release-gate designs and are not claims of passing tests.
 
 ## Phase 3 implemented coverage
 
@@ -27,6 +28,31 @@ timeouts are failure guards rather than timing assertions.
 These are control-plane foundation tests, not a penetration test or proof of
 production hardening. Runtime, Helper, Job execution, systemd, Project, and
 installer test sections below remain future gates.
+
+## Phase 4 implemented coverage
+
+Phase 4 adds component tests for auth boot, protected-route redirect, Login
+validation, successful and failed login, Retry-After presentation, Session
+recovery, navigation, centralized `401` handling, CSRF logout, one-time CSRF
+refresh/retry, safe request-ID parsing, cookie credentials, and zero auth data
+in Web Storage. Backend tests cover unauthenticated and authenticated Doctor
+responses and scan the serialized contract for secret/database/path fields.
+
+The Playwright harness explicitly migrates a temporary SQLite database,
+initializes a random test-only administrator, starts independent API and Vite
+production-preview processes on random loopback ports, and cleans them up. Ten
+logical scenarios run in desktop Chromium at 1280×800 and mobile Chromium at
+390×844 (20 executions): route protection, accessible Login, generic invalid
+credentials, login/refresh/Login redirect, CSRF logout, invalid-CSRF rejection,
+all seven product sections, invalid/browser-expired cookies, Web Storage,
+horizontal overflow/touch target checks, and the branded 404. It never uses
+`.agentbox-dev`, a real administrator, GitHub Secrets, or a public listener.
+
+The source-boundary check continues to reject process/shell primitives in
+application Python, limits API mutation routes to Login/Logout, fixes the
+expected route count including safe Doctor GET, and rejects browser
+`dangerouslySetInnerHTML`, dynamic code execution, and Web Storage writes in
+production frontend source.
 
 ## Test layers
 
@@ -125,7 +151,12 @@ Restore tests begin on a fresh VM with a deliberately different numeric UID/GID.
 
 ## Playwright coverage
 
-The MVP browser suite covers bootstrap/login, failed-login throttling, logout/session expiry, Dashboard, Codex capability/degraded states, Pair recent-auth and one-time display, Claude session list/start/stop confirmation, Projects create/clone/status, Job SSE reconnect, Doctor, bounded logs, Settings validation, keyboard navigation, and narrow mobile viewport behavior. The suite does not implement or test a browser terminal.
+The implemented Phase 4 slice is described above. Future MVP browser coverage
+will extend it with failed-login lock UX, Codex capability/degraded states, Pair
+recent-auth and one-time display, Claude session lifecycle, Project operations,
+Job SSE reconnect, bounded logs, and Settings validation as those APIs become
+real. Tests must never fake those capabilities merely to exercise a page. The
+suite does not implement or test a browser terminal.
 
 ## Linux matrix
 

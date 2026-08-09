@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "pnpm --filter @agentbox/web build",
+    "e2e": "node scripts/run-e2e.mjs",
     "format:check": "pnpm --filter @agentbox/web format:check",
     "lint": "pnpm --filter @agentbox/web lint",
     "test": "pnpm --filter @agentbox/web test",
