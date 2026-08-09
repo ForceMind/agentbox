@@ -2,7 +2,7 @@
 
 > Date: 2026-08-09
 > Phase: Control Plane Foundation
-> Status: Local implementation and verification complete; Draft PR/remote CI pending
+> Status: Local implementation and verification complete; Draft PR open; remote CI pending
 > Product scope: authentication and control-plane foundations only
 
 ## Executive Summary
@@ -25,8 +25,8 @@ persistent service or change the host.
 | Repository | `ForceMind/agentbox` |
 | Base | `main` at `de758b2375b3e167ede6e75f8764e88aebf0156d` |
 | Branch | `phase/3-control-plane-foundation` |
-| Commits | Pending final Phase 3 commit sequence |
-| Draft PR | Pending push and creation |
+| Commits | 5 Phase 3 commits, including this report finalization |
+| Draft PR | [#20 — Phase 3: establish secure control-plane foundation](https://github.com/ForceMind/agentbox/pull/20) |
 | Related Issues | #2, #3, #4; partial Phase 3 scope of #5 and #6 |
 
 ## Configuration
