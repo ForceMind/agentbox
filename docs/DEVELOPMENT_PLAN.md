@@ -60,7 +60,7 @@ The project stays focused on a single-server, single-administrator MVP. Security
 - **Stop condition:** backend foundation is reviewable without Runtime or root privileges.
 - **Human approval:** password initialization UX, session lifetime defaults, and any change to network binding.
 
-## Phase 4 — Authenticated Web foundation (in progress on dedicated branch)
+## Phase 4 — Authenticated Web foundation (completed and merged)
 
 - **Goal:** provide the seven MVP page shells and authenticated read-only dashboard experience.
 - **Input:** stable Phase 3 API contracts and frontend ADR.
@@ -78,15 +78,22 @@ The project stays focused on a single-server, single-administrator MVP. Security
 
 ## Phase 5 — Codex management
 
+Status: implemented on `phase/5-codex-management`, pending human review.
+
 - **Goal:** implement the Codex Runtime Adapter and safe Remote Control/Pair workflows.
 - **Input:** captured CLI fixtures, Phase 0 Codex evidence, and approved Pair Code contract.
-- **Output:** detection, version and capability reporting, conflict diagnostics, start/stop, Pair Code secret channel, bounded logs, and remediation plans.
+- **Output:** detection, version and capability reporting, conflict diagnostics,
+  typed UDS Runtime execution, start/stop, ephemeral Pair Code channel, Web/CLI,
+  safe Doctor summary, and remediation findings. General log viewing remains
+  deferred.
 - **Not in scope:** dependency on Codex private directories, automatic authentication, Pair Code storage, or unsupported `status` assumptions.
 - **Acceptance:** changing or missing subcommands produce `unsupported`/`unavailable`, not unsafe fallback; Pair Code never reaches database, audit, logs, SSE, or generic Job results.
 - **Tests:** adapter fixtures across versions, hostile output, timeout/output caps, no-persistence canary scans, process ownership, and error classification.
 - **Documentation:** supported evidence matrix, known limitations, authentication guidance, and current-host migration plan.
 - **Commit/PR:** adapter detection, lifecycle, and Pair handling should be separately reviewable; Pair handling receives security review.
-- **Stop condition:** all operations run as the Runtime user and no root Runtime execution path exists.
+- **Stop condition:** product code contains no root Runtime path; production is
+  designed for `agentbox-runtime`, while Phase 5 development/host validation
+  deliberately uses the current existing-user context without migrating auth.
 - **Human approval:** remediation of the existing legacy Codex unit and UID/GID 1001 ownership anomaly on the assessed host.
 
 ## Phase 6 — Claude session management

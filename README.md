@@ -6,23 +6,28 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. Phases 2 and 3 are merged. Phase
-4 is adding the authenticated Web product foundation on a dedicated branch.
+AgentBox is in **early pre-alpha development**. Phases 2–4 are merged. Phase 5
+adds the first real Runtime integration on a dedicated review branch.
 
 The current codebase provides:
 
-- a FastAPI service with health/readiness/meta plus login/logout/`auth/me` only;
+- a FastAPI service with health/readiness/meta, authentication, Doctor, and
+  capability-aware Codex endpoints;
 - explicit SQLite/Alembic persistence for AdminUser, hashed Sessions, and redacted Audit Events;
 - local-TTY administrator initialization, Argon2id, CSRF, secure Cookie policy, and bounded login throttling;
 - a Worker lifecycle limited to database readiness and expired Session cleanup;
-- a control-plane-only CLI and a responsive React application shell with
+- a typed non-root Runtime Executor over a versioned Unix socket, a no-shell
+  process runner, public-help-based Codex detection, Remote start/stop, and an
+  ephemeral Pair Code channel;
+- a control-plane CLI and a responsive React application shell with
   login, authenticated Session recovery, Dashboard, Doctor, Settings, and
-  clearly marked placeholder product sections;
+  a real Codex management page alongside clearly marked future sections;
 - package boundaries, tests, CI, governance templates, and architecture documents.
 
-It does **not** manage Codex, generate Pair Codes, run Claude Remote, manage
-tmux or projects, operate a root Helper, install system services, expose a
-public listener, or modify this host.
+It does **not** install/update/migrate Codex, run Claude Remote, manage tmux or
+projects, operate a root Helper, install system services, expose a public
+listener, or modify this host. Codex operations work only against an existing
+installation available to the configured non-root Runtime context.
 
 ## MVP goal
 
@@ -99,6 +104,16 @@ Run the explicitly limited API during development:
 agentbox-api
 ```
 
+Codex mutations require the separate non-root Runtime Executor. In development
+it uses `.agentbox-dev/runtime.sock`; start it in another foreground terminal:
+
+```bash
+agentbox-runtime
+```
+
+The API never spawns Codex. `agentbox codex status` may fall back to safe local
+detection when the Runtime socket is absent; `start`, `stop`, and `pair` do not.
+
 Initialize a development database and local administrator explicitly:
 
 ```bash
@@ -142,8 +157,9 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 
 1. Phase 2: repository and engineering skeleton — merged in PR #19.
 2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
-3. Phase 4: authenticated Web foundation — in progress.
-4. Phase 5: Codex management.
+3. Phase 4: authenticated Web foundation — merged in PR #21.
+4. Phase 5: capability-aware Codex management — implemented on its feature
+   branch and awaiting human review.
 5. Phase 6: Claude/tmux session management.
 6. Phase 7: Project Workspaces and minimal Git.
 7. Phase 8: installation, deployment, upgrade, and rollback.
@@ -160,6 +176,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [API design](docs/API_DESIGN.md)
 - [CLI design](docs/CLI_DESIGN.md)
 - [Runtime Adapters](docs/RUNTIME_ADAPTERS.md)
+- [Codex integration](docs/CODEX_INTEGRATION.md)
 - [Web UI design](docs/WEB_UI.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [ADRs](docs/adr/README.md)
@@ -167,6 +184,8 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Phase 1 summary](PHASE1_ARCHITECTURE_SUMMARY.md)
 - [Phase 2 report](PHASE2_ENGINEERING_REPORT.md)
 - [Phase 3 report](PHASE3_CONTROL_PLANE_REPORT.md)
+- [Phase 4 report](PHASE4_WEB_FOUNDATION_REPORT.md)
+- [Phase 5 report](PHASE5_CODEX_MANAGEMENT_REPORT.md)
 
 ## Contributing
 

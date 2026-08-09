@@ -1,6 +1,6 @@
 # AgentBox Runtime Adapter Design
 
-Status: Phase 1 design baseline
+Status: Phase 1 design baseline with the Phase 5 Codex subset implemented
 
 ## Purpose
 
@@ -84,6 +84,14 @@ An adapter reports multiple installations/conflicts rather than selecting the ne
 
 ## Codex Adapter
 
+Phase 5 implements `CodexAdapter`, `CodexManager`, `ControlledProcessRunner`,
+and the V1 Unix-socket client/server. The server accepts exactly
+`codex.status`, `codex.remote.start`, `codex.remote.stop`, and `codex.pair` with
+no caller parameters. It is the non-root Runtime Executor, not the root
+Privileged Helper. Production identity, group ownership, and systemd activation
+remain Phase 8 deployment work; development uses the current unprivileged
+context and `.agentbox-dev/runtime.sock`.
+
 ### Public CLI Evidence
 
 The Phase 0 host has standalone Codex 0.146.1 at `/root/.local/bin/codex`. Its public help confirmed:
@@ -119,7 +127,15 @@ If npm and standalone candidates differ, status is Conflict until an administrat
 
 ### Pairing
 
-`generate_pair_code` is available only when pair capability and authentication are confirmed. The adapter marks output as secret at the first byte, validates only the expected bounded shape, returns it through the ephemeral secret channel, and ensures all diagnostic/log paths receive metadata only. It never persists a hash or suffix.
+`generate_pair_code` is available only when Pair capability is supported and
+authentication is not explicitly reported unauthenticated. If public auth
+evidence is absent, authentication remains `unknown`; the UI does not claim a
+login. The runner classifies Pair stdout/stderr as sensitive, caps each stream
+at 4 KiB, validates exactly one labelled code with a conservative parser, and
+maps unknown output to `CODEX_PAIR_OUTPUT_UNRECOGNIZED` without embedding raw
+bytes. `CodexManager` serializes actions and applies a 10-second default,
+5–300-second bounded in-process cooldown. No hash, suffix, raw output, or expiry
+guess is persisted.
 
 ### Login Status
 
@@ -206,6 +222,39 @@ Runtime observation caching has a short TTL; start/stop/pair/session mutations f
 - no real token, account, Pair Code, home path, repository name, or public IP in fixtures.
 
 Fixture updates are reviewed as compatibility changes and can change Capability support without changing Application Services.
+
+The implemented sanitized Codex fixtures cover the help shape observed for
+standalone 0.146.1, absence of `remote-control`, absence of native `status`, and
+malformed help. Missing executable, timeout, non-zero exit, npm-only/conflict,
+unsafe executable, output overflow, and future-command cases are expressed as
+typed fake-runner results rather than fabricated CLI text. CI never calls a
+real Codex binary.
+
+## Phase 5 Controlled Runner and Status Semantics
+
+- resolution uses `shutil.which` under the Runtime environment and enumerates
+  only PATH candidates; it does not scan the filesystem or accept a Web path;
+- symlinks resolve to a regular executable, group/world-writable targets are
+  rejected, and device/inode/mode/size/mtime are rechecked immediately before
+  spawn to narrow replacement races;
+- execution uses `asyncio.create_subprocess_exec`, an argv tuple, no stdin,
+  `start_new_session`, fixed absolute cwd, and an explicit HOME/PATH/locale/XDG
+  allowlist. AgentBox, cloud, GitHub, OpenAI, and Anthropic token variables are
+  not inherited;
+- version/help/status probes use 8-second limits, npm metadata uses 10 seconds,
+  start/stop/Pair use 30 seconds, and stdout/stderr have independent caps;
+- timeout/output failure terminates only the process group spawned by AgentBox,
+  waits, then kills that group only if required;
+- when public Remote `status` is absent, strict same-UID resolved-executable and
+  known-argv evidence may report `running` with `inferred` confidence. The
+  process-local result of a successful action is `agentbox_observed`; otherwise
+  state remains `unknown`. AgentBox never uses `pkill`, `kill -9` on a discovered
+  process, or private Codex lock/state files.
+
+MVP residual TOCTOU remains between final `stat` and kernel exec, and
+installation classification is best-effort: `$HOME/.local/bin/codex` is a
+standalone hint and bounded global npm metadata recognizes known public package
+names. Unknown evidence stays `unknown`; no package is removed automatically.
 
 ## Open Validation Tasks
 

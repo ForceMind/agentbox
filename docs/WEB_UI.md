@@ -1,6 +1,7 @@
 # AgentBox Web UI
 
-Status: Phase 4 authenticated Web foundation implemented on its feature branch.
+Status: Phase 4 authenticated Web foundation merged; Phase 5 Codex page
+implemented on its feature branch.
 
 ## Product boundary
 
@@ -9,18 +10,20 @@ workstation. It is not a browser IDE, Web terminal, generic Linux panel, or
 source of authorization truth. Server-side services enforce every permission;
 client route guards exist only to provide a coherent user experience.
 
-Phase 4 implements the product frame and browser authentication lifecycle. It
-does not call Codex, Claude, tmux, Git, GitHub, the Runtime Executor, the
-Privileged Helper, an installer, systemd, or host log tools.
+Phase 4 implements the product frame and browser authentication lifecycle.
+Phase 5 replaces only the Codex placeholder with a typed API-backed surface.
+The browser never calls Codex or the Runtime socket directly. Claude, tmux,
+Projects, Git/GitHub business operations, the Privileged Helper, installer,
+systemd, and host log tools remain absent.
 
 ## Route map
 
-| Route | Authentication | Phase 4 behavior |
+| Route | Authentication | Current behavior |
 |---|---|---|
 | `/` | resolved during auth boot | redirects to Dashboard or Login |
 | `/login` | public-only | local administrator Login; authenticated users go to Dashboard |
 | `/dashboard` | required | real liveness, readiness, metadata, administrator and Session expiry |
-| `/codex` | required | planned-capability shell only |
+| `/codex` | required | real installation/capability/Remote state, bounded start/stop, explicit ephemeral Pair flow, diagnostics |
 | `/claude` | required | planned-capability shell only |
 | `/projects` | required | planned-capability shell only |
 | `/doctor` | required | real control-plane-only checks from `GET /api/v1/doctor` |
@@ -90,8 +93,25 @@ The UI uses these terms consistently:
 - `Not Implemented`: the surface exists but its product capability does not.
 
 `Online`, `Connected`, `Running`, and numeric Runtime/Project counts are not
-shown without real corresponding API evidence. Phase 4 has no fake Runtime
-fixtures in production code.
+shown without real corresponding API evidence. `Running` on the Codex page is
+shown only with `reported`, strict-process `inferred`, or
+`agentbox_observed` evidence. Test Runtime fixtures enter only through explicit
+application dependency injection; production code always uses the UDS client.
+
+## Codex interaction lifecycle
+
+The page fetches `GET /api/v1/codex/status` on entry and only on explicit
+Refresh or after a completed lifecycle action; it does not poll every second.
+Buttons are enabled by individual tri-state capabilities and current state.
+Start/stop send no caller parameters and use the shared API client's Cookie,
+CSRF, timeout, error-envelope, and `401` recovery behavior.
+
+Pair requires an explicit button and then an explicit confirmation. The value
+lives in one React state object, is not copied automatically, and is cleared on
+Hide, route unmount, or after 90 seconds. Copy is a separate user action.
+Neither Web Storage nor the URL, title, data attributes, console, analytics, or
+page metadata receives the code. The UI distinguishes its display timeout from
+an optional Runtime-reported expiry and never invents an expiry.
 
 ## Responsive model
 
@@ -142,14 +162,16 @@ generates a test-only application secret and password in memory, explicitly
 runs Alembic, initializes one test admin, starts an independent API and Vite
 production preview, runs Chromium, and cleans up all processes and files. It
 never uses `.agentbox-dev`, real auth state, a public listener, or GitHub
-Secrets. Desktop and mobile each execute the same ten logical security and UX
-scenarios.
+Secrets. Desktop and mobile each execute the same sixteen logical security and
+UX scenarios (32 executions). Phase 5 adds Codex status/refresh, CSRF
+start/stop, Pair confirmation/display/copy/clearing/no-store/storage,
+unsupported/error behavior, and a generated-canary artifact scan.
 
 ## Future boundaries
 
-Phase 5+ may replace planned cards only after real versioned APIs exist. Runtime
-pages must consume Capability states and must never directly construct CLI
-commands. Job progress should use SSE when the durable Job service exists.
+Later phases may replace the remaining planned cards only after real versioned
+APIs exist. Runtime pages must consume Capability states and must never directly
+construct CLI commands. Job progress should use SSE when the durable Job service exists.
 WebSocket is reserved for a future genuinely bidirectional use case and is not
 justified by this application shell. Browser terminal functionality remains out
 of MVP scope.

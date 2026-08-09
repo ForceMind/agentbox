@@ -63,9 +63,11 @@ browser-facing product shell:
   stale CSRF token; there is no unbounded retry;
 - the Dashboard consumes only real `healthz`, `readyz`, `meta`, and current-user
   data. Runtime and Project cards are explicitly `Planned`;
-- `GET /api/v1/doctor` is the sole Phase 4 API addition. It is authenticated,
-  no-store, read-only, and limited to control-plane readiness and safe policy
-  fields. It does not inspect host services or Runtimes;
+- `GET /api/v1/doctor` was the sole Phase 4 API addition. It is authenticated,
+  no-store, and read-only. Phase 4 limited it to control-plane readiness and
+  safe policy fields; Phase 5 extends the same endpoint with bounded Codex
+  diagnostics obtained through the Runtime Executor. It still does not inspect
+  arbitrary host services;
 - desktop uses a persistent sidebar, while viewports below 900 px use a compact
   header and keyboard-accessible navigation drawer.
 
@@ -74,6 +76,32 @@ requires no inline script, `unsafe-inline`, or `unsafe-eval`; it is compatible
 with the existing production CSP. Vite development/preview is a local tool,
 not the deployment server. Static serving and proxy cache policy remain a
 Phase 8 deployment responsibility.
+
+## Phase 5 Codex Management
+
+Phase 5 implements the first Runtime slice without changing the accepted
+privilege model. `agentbox-api` sends one of four parameter-free, versioned
+actions over a bounded Unix Domain Socket to a non-root `agentbox-runtime`
+process. Only that Runtime Executor resolves and invokes Codex. The API has no
+subprocess import, executable selector, argv field, environment map, or shell
+escape hatch.
+
+The implemented actions are `codex.status`, `codex.remote.start`,
+`codex.remote.stop`, and `codex.pair`. The Runtime process serializes mutations,
+applies a ten-second in-memory Pair cooldown, validates peer UID with
+`SO_PEERCRED`, and accepts an exact JSON-line schema capped at 64 KiB. Its
+controlled runner uses an argv array, a resolved absolute executable, stat
+fingerprint revalidation, fixed Runtime HOME/cwd, an environment allowlist,
+separate bounded stdout/stderr, a hard timeout, and process-group cleanup. It
+does not run as root or connect to the Privileged Helper.
+
+Codex installation and capabilities are observations, not database models.
+Detection uses PATH resolution, public `--version`/`--help`, optional public
+login status, bounded npm metadata, and strict current-UID process evidence.
+Missing or changed evidence degrades to `unknown`/`unsupported`; no private
+Codex file or managed-package path is an interface. Start/stop use the public
+commands only. Pair output is parsed fail-closed and crosses the API once in a
+no-store response; its raw buffer is never logged, audited, or persisted.
 
 ## System Context
 
@@ -84,8 +112,9 @@ flowchart LR
     Browser -->|HTTP + SSE| API[AgentBox Web/API]
     CLI -->|HTTP over api.sock| API
     API --> DB[(SQLite)]
+    API -->|typed runtime.sock RPC| Runtime[Runtime Executor]
     Worker[AgentBox Worker] --> DB
-    Worker -->|runtime.sock| Runtime[Runtime Executor]
+    Worker -->|future Job runtime.sock RPC| Runtime
     Worker -->|helper.sock| Helper[Privileged Helper]
     Runtime --> Git[Git / gh]
     Runtime --> Codex[Codex CLI]
@@ -119,6 +148,14 @@ rehash. Logout, `me`, and readiness retain short bounded synchronous SQLite
 operations; no HTTP route runs migrations or Session cleanup. This is acceptable
 for the single-server foundation and must be revisited if profiling shows
 contention or these request paths acquire longer work.
+
+Phase 5 Codex routes await bounded UDS I/O; the API still executes no
+third-party process. Status/help/version work and Remote actions execute in the
+separate Runtime process. API-side SQLite work is limited to short Session and
+Audit transactions. Durable Job execution remains deferred, so the current
+start/stop/pair calls are bounded synchronous actions rather than recoverable
+Jobs; this boundary must be replaced by the Job model if real-world latency or
+restart behavior exceeds the MVP limits.
 
 ### Application Services
 
@@ -215,16 +252,15 @@ sequenceDiagram
     participant D as SQLite
     participant R as Runtime Executor
     B->>A: GET /api/v1/codex/status
-    A->>D: read last observation
-    opt observation stale
-        A->>R: typed detect/status request
-        R-->>A: sanitized capability evidence
-        A->>D: update non-secret observation
-    end
+    A->>R: codex.status typed request
+    R-->>A: sanitized capability evidence
     A-->>B: typed status + freshness + evidence class
 ```
 
-Read paths have bounded refresh work. Expensive Doctor and log collection operations are Jobs.
+Phase 5 does not persist Runtime observations. Read paths run bounded public
+probes on demand; a later observation cache/Job design may be added without
+making third-party private files authoritative. Expensive general Doctor and
+log collection operations remain future Jobs.
 
 ### Job Execution Flow
 
@@ -257,7 +293,7 @@ sequenceDiagram
     participant A as Web/API
     participant R as Runtime Executor
     participant C as Codex CLI
-    B->>A: POST pair-code + CSRF + recent auth
+    B->>A: POST /api/v1/codex/pair-codes + CSRF + recent auth
     A->>R: codex_pair (bounded RPC)
     R->>C: adapter-selected public pair command
     C-->>R: temporary code

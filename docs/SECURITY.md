@@ -230,6 +230,26 @@ Pair Code generation is a secret-returning action with these mandatory controls:
 - exceptions and debug mode cannot render captured output;
 - retry generates a new code rather than retrieving the old one.
 
+### Phase 5 implemented controls
+
+The Web/API route is `POST /api/v1/codex/pair-codes`. It has no request body,
+requires the existing Session/Origin/Host/CSRF controls plus authentication no
+older than ten minutes, and returns `Cache-Control: no-store` and `Pragma:
+no-cache`. The Runtime process serializes Pair with start/stop and applies a
+ten-second default cooldown. The CLI refuses Pair JSON and redirected output.
+
+The controlled runner never logs. Pair stdout/stderr are limited to 4 KiB each,
+are passed only to a conservative parser, and cannot enter normalized
+exceptions. Audit records contain only actor, action, Runtime target, request
+ID, result, and optional normalized error code. The React page keeps the value
+in component memory, requires a separate explicit clipboard click, clears it on
+Hide/navigation, and removes it after 90 seconds. That UI visibility timeout is
+not represented as the third-party code's validity period.
+
+Capability `unknown` is not authentication success. If a public Codex login
+status is unavailable, AgentBox displays `Unknown`; it never opens Codex auth
+files. An explicit public unauthenticated result blocks Pair.
+
 ## Logs, Recent Output, and Audit
 
 ### Audit Events
@@ -261,11 +281,21 @@ Recent output is fetched on demand from a managed tmux pane, strips control sequ
 ## UDS Security
 
 - `helper.sock`: root-owned, group-readable/writable only by the AgentBox control identity, mode `0660`, created by systemd.
-- `runtime.sock`: owned by `agentbox-runtime` and a narrow control group containing the Worker identity, mode `0660`.
-- servers verify `SO_PEERCRED` UID/GID/PID and reject unexpected peers even if filesystem permissions were misconfigured.
+- `runtime.sock`: owned by `agentbox-runtime` and a narrow control group
+  containing only authorized API/Worker identities, mode `0660`.
+- servers verify `SO_PEERCRED` against the expected peer identity and reject
+  unexpected peers even if filesystem permissions were misconfigured. The
+  Phase 5 implementation compares the peer UID to an explicit set; production
+  requires that set to be configured and Phase 8 owns the exact group/UID setup.
 - messages are framed, versioned, size-limited, typed, request-ID-bound, and time-limited.
 - sockets are below `/run/agentbox`; symlink/socket replacement and stale inode checks fail closed.
 - no UDS proxying over HTTP and no Helper TCP listener.
+
+The Phase 5 Runtime protocol is JSON-line V1 with a 64 KiB frame limit, exact
+keys, one of four parameter-free Codex actions, a bounded request ID, and no
+executable/argv/environment/cwd fields. Development may create only the local
+`.agentbox-dev` socket parent. Production refuses a socket outside
+`/run/agentbox` and never creates that system directory itself.
 
 ## Dependency and Supply-Chain Security
 
