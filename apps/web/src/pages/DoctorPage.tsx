@@ -113,10 +113,66 @@ export function DoctorPage() {
               </ul>
             )}
           </section>
+          <section
+            className="runtime-card doctor-runtime"
+            aria-labelledby="doctor-claude"
+          >
+            <div className="runtime-card-heading">
+              <div>
+                <p className="eyebrow">Runtime diagnostic</p>
+                <h2 id="doctor-claude">Claude + tmux</h2>
+              </div>
+              <StatusBadge
+                tone={
+                  doctor.response.data.claude.installed &&
+                  doctor.response.data.claude.tmux_installed
+                    ? 'good'
+                    : 'warning'
+                }
+              >
+                {doctor.response.data.claude.installed === true &&
+                doctor.response.data.claude.tmux_installed === true
+                  ? 'Available'
+                  : 'Unknown'}
+              </StatusBadge>
+            </div>
+            <dl className="runtime-details">
+              <div>
+                <dt>Claude version</dt>
+                <dd>{doctor.response.data.claude.version ?? 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt>Authentication</dt>
+                <dd>{doctor.response.data.claude.authentication}</dd>
+              </div>
+              <div>
+                <dt>Remote capability</dt>
+                <dd>{doctor.response.data.claude.remote_control}</dd>
+              </div>
+              <div>
+                <dt>tmux version</dt>
+                <dd>{doctor.response.data.claude.tmux_version ?? 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt>Managed sessions</dt>
+                <dd>{doctor.response.data.claude.managed_sessions}</dd>
+              </div>
+              <div>
+                <dt>Unmanaged sessions</dt>
+                <dd>{doctor.response.data.claude.unmanaged_sessions}</dd>
+              </div>
+              <div>
+                <dt>Workspace interaction warnings</dt>
+                <dd>
+                  {doctor.response.data.claude.workspace_interaction_warnings}
+                </dd>
+              </div>
+            </dl>
+          </section>
           <p className="scope-note">
-            Codex checks use the Runtime Adapter's safe summary. Claude, tmux,
-            GitHub, general systemd state, and host networking remain outside
-            this phase.
+            Runtime checks use safe adapter summaries. Unmanaged tmux names,
+            pane output, credentials, private Runtime configuration, GitHub,
+            general systemd state, and host networking are not exposed here.
           </p>
         </>
       )}

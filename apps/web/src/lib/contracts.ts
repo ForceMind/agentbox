@@ -59,11 +59,32 @@ export type DoctorResponse = {
       remote_state: RemoteState
       findings: string[]
     }
+    claude: {
+      installed: boolean | null
+      version: string | null
+      authentication: AuthenticationState
+      remote_control: CapabilityState
+      tmux_installed: boolean | null
+      tmux_version: string | null
+      managed_sessions: number
+      unmanaged_sessions: number
+      workspace_interaction_warnings: number
+      findings: string[]
+    }
   }
 }
 
 export type CapabilityState = 'supported' | 'unsupported' | 'unknown'
 export type RemoteState = 'running' | 'stopped' | 'broken' | 'unknown'
+export type AuthenticationState =
+  'authenticated' | 'unauthenticated' | 'unknown'
+export type ClaudeSessionState =
+  | 'running'
+  | 'stopped'
+  | 'starting'
+  | 'needs_interaction'
+  | 'broken'
+  | 'unknown'
 
 export type CodexStatusData = {
   installed: boolean
@@ -109,6 +130,74 @@ export type CodexPairResponse = {
   api_version: 'v1'
   request_id: string
   data: { pair_code: string; expires_at: string | null; display_once: true }
+}
+
+export type ClaudeStatusData = {
+  installed: boolean
+  version: string | null
+  authentication: AuthenticationState
+  capabilities: {
+    remote_control: CapabilityState
+    remote_start: CapabilityState
+    version: CapabilityState
+  }
+  tmux_installed: boolean
+  tmux_version: string | null
+  managed_sessions: number
+  unmanaged_sessions: number
+  workspace_interaction_warnings: number
+  diagnostics: Array<{
+    code: string
+    severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info'
+    summary: string
+    remediation: string | null
+  }>
+}
+
+export type ClaudeStatusResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: ClaudeStatusData
+}
+
+export type ClaudeSessionData = {
+  project_id: string
+  display_name: string
+  state: ClaudeSessionState
+  managed: boolean
+  session_name: string
+  attach_command: string
+  workspace_state:
+    'unknown' | 'requires_user_confirmation' | 'initialized_by_agentbox'
+  tmux_running: boolean
+  remote_readiness: 'ready' | 'unknown'
+}
+
+export type ClaudeSessionListResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { sessions: ClaudeSessionData[] }
+}
+
+export type ClaudeSessionActionResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: {
+    outcome: 'started' | 'stopped' | 'already_running' | 'already_stopped'
+    session: ClaudeSessionData
+  }
+}
+
+export type ClaudeSessionOutputResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: {
+    project_id: string
+    session_name: string
+    output: string
+    truncated: boolean
+    sensitive: true
+  }
 }
 
 type JsonObject = Record<string, unknown>
@@ -226,6 +315,7 @@ export function parseDoctorResponse(value: unknown): DoctorResponse {
   const checks = object(data.checks, 'Doctor checks')
   const policy = object(data.policy, 'Doctor policy')
   const codex = object(data.codex, 'Doctor Codex summary')
+  const claude = object(data.claude, 'Doctor Claude summary')
   return {
     api_version: literal(response.api_version, ['v1'], 'API version'),
     request_id: string(response.request_id, 'request ID'),
@@ -299,6 +389,40 @@ export function parseDoctorResponse(value: unknown): DoctorResponse {
         ),
         findings: array(codex.findings, 'Codex findings').map((finding) =>
           string(finding, 'Codex finding'),
+        ),
+      },
+      claude: {
+        installed: nullableBoolean(claude.installed, 'Claude installation'),
+        version: nullableString(claude.version, 'Claude version'),
+        authentication: literal(
+          claude.authentication,
+          ['authenticated', 'unauthenticated', 'unknown'],
+          'Claude authentication',
+        ),
+        remote_control: literal(
+          claude.remote_control,
+          ['supported', 'unsupported', 'unknown'],
+          'Claude Remote capability',
+        ),
+        tmux_installed: nullableBoolean(
+          claude.tmux_installed,
+          'tmux installation',
+        ),
+        tmux_version: nullableString(claude.tmux_version, 'tmux version'),
+        managed_sessions: number(
+          claude.managed_sessions,
+          'managed Claude sessions',
+        ),
+        unmanaged_sessions: number(
+          claude.unmanaged_sessions,
+          'unmanaged tmux sessions',
+        ),
+        workspace_interaction_warnings: number(
+          claude.workspace_interaction_warnings,
+          'Workspace interaction warnings',
+        ),
+        findings: array(claude.findings, 'Claude findings').map((finding) =>
+          string(finding, 'Claude finding'),
         ),
       },
     },
@@ -429,6 +553,159 @@ export function parseCodexPairResponse(value: unknown): CodexPairResponse {
       pair_code: string(data.pair_code, 'Pair Code'),
       expires_at: nullableString(data.expires_at, 'Pair expiry'),
       display_once: true,
+    },
+  }
+}
+
+function parseClaudeSession(value: unknown): ClaudeSessionData {
+  const session = object(value, 'Claude session')
+  return {
+    project_id: string(session.project_id, 'Claude project ID'),
+    display_name: string(session.display_name, 'Claude project display name'),
+    state: literal(
+      session.state,
+      [
+        'running',
+        'stopped',
+        'starting',
+        'needs_interaction',
+        'broken',
+        'unknown',
+      ],
+      'Claude session state',
+    ),
+    managed: boolean(session.managed, 'Claude managed state'),
+    session_name: string(session.session_name, 'Claude session name'),
+    attach_command: string(session.attach_command, 'Claude attach command'),
+    workspace_state: literal(
+      session.workspace_state,
+      ['unknown', 'requires_user_confirmation', 'initialized_by_agentbox'],
+      'Claude Workspace state',
+    ),
+    tmux_running: boolean(session.tmux_running, 'Claude tmux state'),
+    remote_readiness: literal(
+      session.remote_readiness,
+      ['ready', 'unknown'],
+      'Claude Remote readiness',
+    ),
+  }
+}
+
+export function parseClaudeStatusResponse(
+  value: unknown,
+): ClaudeStatusResponse {
+  const envelope = object(value, 'Claude status')
+  const data = object(envelope.data, 'Claude status data')
+  const capabilities = object(data.capabilities, 'Claude capabilities')
+  const diagnostics = array(data.diagnostics, 'Claude diagnostics').map(
+    (raw): ClaudeStatusData['diagnostics'][number] => {
+      const finding = object(raw, 'Claude diagnostic')
+      return {
+        code: string(finding.code, 'Claude diagnostic code'),
+        severity: literal(
+          finding.severity,
+          ['critical', 'high', 'medium', 'low', 'warning', 'info'],
+          'Claude diagnostic severity',
+        ),
+        summary: string(finding.summary, 'Claude diagnostic summary'),
+        remediation: nullableString(
+          finding.remediation,
+          'Claude diagnostic remediation',
+        ),
+      }
+    },
+  )
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      installed: boolean(data.installed, 'Claude installation'),
+      version: nullableString(data.version, 'Claude version'),
+      authentication: literal(
+        data.authentication,
+        ['authenticated', 'unauthenticated', 'unknown'],
+        'Claude authentication',
+      ),
+      capabilities: {
+        remote_control: literal(
+          capabilities.remote_control,
+          ['supported', 'unsupported', 'unknown'],
+          'Claude Remote capability',
+        ),
+        remote_start: literal(
+          capabilities.remote_start,
+          ['supported', 'unsupported', 'unknown'],
+          'Claude Remote start capability',
+        ),
+        version: literal(
+          capabilities.version,
+          ['supported', 'unsupported', 'unknown'],
+          'Claude version capability',
+        ),
+      },
+      tmux_installed: boolean(data.tmux_installed, 'tmux installation'),
+      tmux_version: nullableString(data.tmux_version, 'tmux version'),
+      managed_sessions: number(data.managed_sessions, 'managed sessions'),
+      unmanaged_sessions: number(data.unmanaged_sessions, 'unmanaged sessions'),
+      workspace_interaction_warnings: number(
+        data.workspace_interaction_warnings,
+        'Workspace interaction warnings',
+      ),
+      diagnostics,
+    },
+  }
+}
+
+export function parseClaudeSessionListResponse(
+  value: unknown,
+): ClaudeSessionListResponse {
+  const envelope = object(value, 'Claude session list')
+  const data = object(envelope.data, 'Claude session list data')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      sessions: array(data.sessions, 'Claude sessions').map(parseClaudeSession),
+    },
+  }
+}
+
+export function parseClaudeSessionActionResponse(
+  value: unknown,
+): ClaudeSessionActionResponse {
+  const envelope = object(value, 'Claude session action')
+  const data = object(envelope.data, 'Claude session action data')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      outcome: literal(
+        data.outcome,
+        ['started', 'stopped', 'already_running', 'already_stopped'],
+        'Claude session action outcome',
+      ),
+      session: parseClaudeSession(data.session),
+    },
+  }
+}
+
+export function parseClaudeSessionOutputResponse(
+  value: unknown,
+): ClaudeSessionOutputResponse {
+  const envelope = object(value, 'Claude session output')
+  const data = object(envelope.data, 'Claude session output data')
+  if (data.sensitive !== true) {
+    throw new Error('Invalid Claude output sensitivity marker')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      project_id: string(data.project_id, 'Claude output project ID'),
+      session_name: string(data.session_name, 'Claude output session name'),
+      output: string(data.output, 'Claude output'),
+      truncated: boolean(data.truncated, 'Claude output truncation'),
+      sensitive: true,
     },
   }
 }
