@@ -30,10 +30,14 @@ was modified.
 - Base: `main` at `3c33ad6df1c36c0f04949cdc947a665affd36543`
 - Branch: `phase/6-claude-session-management`
 - Related existing Issues: #11 (Claude adapter) and #12 (tmux lifecycle)
-- Commits: focused Runtime, API/CLI, Web, tests, and documentation commits are
-  created during final publication; no unrelated work is included.
-- Draft PR: pending final publication; this line is replaced with the created URL
-  before handoff.
+- Commits:
+  - `96efbb4` — `feat(runtime): add safe Claude tmux session management`
+  - `abc291f` — `feat(runtime): extend typed Claude UDS actions`
+  - `9d23b9d` — `feat(claude): add project-scoped session API and CLI`
+  - `f90123b` — `feat(web): add Claude session management interface`
+  - `d844589` — `test(claude): add Remote session E2E coverage`
+  - `0261632` — `docs: document Claude Remote integration`
+- Draft PR: <https://github.com/ForceMind/agentbox/pull/25>
 
 ## Observed Claude Environment
 
