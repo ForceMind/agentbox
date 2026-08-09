@@ -68,9 +68,55 @@ export function DoctorPage() {
               </article>
             ))}
           </section>
+          <section
+            className="runtime-card doctor-runtime"
+            aria-labelledby="doctor-codex"
+          >
+            <div className="runtime-card-heading">
+              <div>
+                <p className="eyebrow">Runtime diagnostic</p>
+                <h2 id="doctor-codex">Codex</h2>
+              </div>
+              <StatusBadge
+                tone={doctor.response.data.codex.installed ? 'good' : 'warning'}
+              >
+                {doctor.response.data.codex.installed === true
+                  ? 'Installed'
+                  : doctor.response.data.codex.installed === false
+                    ? 'Not Installed'
+                    : 'Unknown'}
+              </StatusBadge>
+            </div>
+            <dl className="runtime-details">
+              <div>
+                <dt>Version</dt>
+                <dd>{doctor.response.data.codex.version ?? 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt>Installation</dt>
+                <dd>{doctor.response.data.codex.installation_type}</dd>
+              </div>
+              <div>
+                <dt>Remote capability</dt>
+                <dd>{doctor.response.data.codex.remote_control}</dd>
+              </div>
+              <div>
+                <dt>Remote state</dt>
+                <dd>{doctor.response.data.codex.remote_state}</dd>
+              </div>
+            </dl>
+            {doctor.response.data.codex.findings.length > 0 && (
+              <ul className="diagnostic-list">
+                {doctor.response.data.codex.findings.map((finding) => (
+                  <li key={finding}>{finding}</li>
+                ))}
+              </ul>
+            )}
+          </section>
           <p className="scope-note">
-            These checks do not inspect Codex, Claude, tmux, GitHub, systemd, or
-            host networking. Those capabilities are outside Phase 4.
+            Codex checks use the Runtime Adapter's safe summary. Claude, tmux,
+            GitHub, general systemd state, and host networking remain outside
+            this phase.
           </p>
         </>
       )}

@@ -40,19 +40,57 @@ responses and scan the serialized contract for secret/database/path fields.
 
 The Playwright harness explicitly migrates a temporary SQLite database,
 initializes a random test-only administrator, starts independent API and Vite
-production-preview processes on random loopback ports, and cleans them up. Ten
-logical scenarios run in desktop Chromium at 1280×800 and mobile Chromium at
-390×844 (20 executions): route protection, accessible Login, generic invalid
+production-preview processes on random loopback ports, and cleans them up. The
+Phase 4 baseline introduced ten logical scenarios in desktop Chromium at
+1280×800 and mobile Chromium at 390×844 (20 executions): route protection,
+accessible Login, generic invalid
 credentials, login/refresh/Login redirect, CSRF logout, invalid-CSRF rejection,
 all seven product sections, invalid/browser-expired cookies, Web Storage,
 horizontal overflow/touch target checks, and the branded 404. It never uses
 `.agentbox-dev`, a real administrator, GitHub Secrets, or a public listener.
 
 The source-boundary check continues to reject process/shell primitives in
-application Python, limits API mutation routes to Login/Logout, fixes the
-expected route count including safe Doctor GET, and rejects browser
+application Python, fixes the expected route count including safe Doctor GET,
+and rejects browser
 `dangerouslySetInnerHTML`, dynamic code execution, and Web Storage writes in
 production frontend source.
+
+## Phase 5 implemented coverage
+
+Phase 5 adds hermetic Codex adapter fixtures and typed fake-runner results for
+supported start/stop/Pair without status, no Remote Control, unknown future
+commands, malformed/non-zero/timed-out help, missing/unsafe executable,
+npm-only/conflict evidence, authentication states, native/inferred/unknown
+Remote state, 仅基于实时证据的幂等 lifecycle、daemon 退出后的重新启动、
+完整 status/mutation RPC timeout budget、command failure、timeout 和 Pair parser
+failure。Controlled-runner tests assert absolute fingerprinted execution,
+literal argv (including shell metacharacters), fixed cwd, environment
+allowlisting, independent output caps, timeout cleanup, symlink/mode rejection,
+no sensitive logging, and event-loop schedulability.
+
+Unix-socket integration tests exercise all four allowlisted actions, exact
+schema rejection, unknown action rejection, bounded framing, and `SO_PEERCRED`
+UID rejection. API tests cover authentication, Origin, missing/wrong CSRF,
+recent auth, Pair cooldown projection, no-store headers, normalized errors,
+Audit metadata, and direct SQLite/WAL/SHM plus captured-log canary scans. CLI
+tests cover typed status, fixed start/stop, Pair TTY-only output, and forbidden
+Pair JSON.
+
+The browser harness injects one explicit `E2ECodexRuntime`; production always
+uses the UDS client. Sixteen logical scenarios run for desktop and mobile (32
+executions), including real status rendering/refresh, CSRF start/stop, explicit
+Pair confirmation/copy, storage and navigation clearing, unsupported and error
+states, plus all Phase 4 authentication/navigation checks. Browser screenshots
+and traces are disabled because a failed Pair test must not persist a secret
+rendered in the DOM. The harness scans its temporary SQLite/WAL/SHM tree,
+Playwright artifacts/report, and Git diff for the randomly generated Pair
+canary on both success and failure paths; any canary-bearing browser artifact
+is removed before a sanitized failure is returned.
+
+The boundary check now permits subprocess references in exactly one Python
+file, `agentbox_runtime/process.py`; `shell=True`, `os.system`, synchronous
+subprocess helpers, API-route subprocess use, raw mutation expansion, dynamic
+browser execution, and Web secret storage remain rejected.
 
 ## Test layers
 

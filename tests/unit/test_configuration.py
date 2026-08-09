@@ -88,6 +88,7 @@ def test_production_cookie_policy_is_secure() -> None:
         secret_key=SecretStr("x" * 48),
         data_dir=Path("/var/lib/agentbox"),
         database_url="sqlite+pysqlite:////var/lib/agentbox/agentbox.db",
+        runtime_socket=Path("/run/agentbox/runtime.sock"),
         allowed_origins=("https://agentbox.example",),
     )
 

@@ -12,6 +12,16 @@ from agentbox_core.clock import Clock
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.security import PasswordManager
 from agentbox_core.services import ControlPlaneServices, build_services
+from agentbox_runtime import (
+    AuthenticationState,
+    CapabilityState,
+    CodexCapabilities,
+    CodexStatus,
+    InstallationType,
+    PairCodeResult,
+    RemoteActionResult,
+    RemoteState,
+)
 from alembic import command
 from alembic.config import Config
 from pydantic import SecretStr
@@ -31,6 +41,52 @@ class FakeClock(Clock):
 
     def advance(self, *, seconds: int) -> None:
         self.current += timedelta(seconds=seconds)
+
+
+class FakeCodexRuntime:
+    def __init__(self, pair_code: str = "PAIR-SECRET-CANARY-API-9Q2X") -> None:
+        self.pair_code = pair_code
+        self.remote_state = RemoteState.STOPPED
+        self.calls: list[str] = []
+
+    async def status(self, request_id: str) -> CodexStatus:
+        del request_id
+        self.calls.append("status")
+        return CodexStatus(
+            installed=True,
+            version="0.test.fixture",
+            selected_executable="/fixture/bin/codex",
+            installation_type=InstallationType.STANDALONE,
+            authentication=AuthenticationState.AUTHENTICATED,
+            capabilities=CodexCapabilities(
+                remote_control=CapabilityState.SUPPORTED,
+                start=CapabilityState.SUPPORTED,
+                stop=CapabilityState.SUPPORTED,
+                pair=CapabilityState.SUPPORTED,
+                status=CapabilityState.UNSUPPORTED,
+            ),
+            remote_state=self.remote_state,
+            remote_confidence=(
+                "inferred" if self.remote_state is RemoteState.RUNNING else "unknown"
+            ),
+        )
+
+    async def start_remote(self, request_id: str) -> RemoteActionResult:
+        del request_id
+        self.calls.append("start")
+        self.remote_state = RemoteState.RUNNING
+        return RemoteActionResult("started", self.remote_state)
+
+    async def stop_remote(self, request_id: str) -> RemoteActionResult:
+        del request_id
+        self.calls.append("stop")
+        self.remote_state = RemoteState.STOPPED
+        return RemoteActionResult("stopped", self.remote_state)
+
+    async def generate_pair_code(self, request_id: str) -> PairCodeResult:
+        del request_id
+        self.calls.append("pair")
+        return PairCodeResult(self.pair_code)
 
 
 def migrate_database(database_url: str, revision: str = "head") -> None:
@@ -65,6 +121,7 @@ def settings(tmp_path: Path) -> Settings:
         login_rate_window=300,
         login_lock_duration=300,
         argon2_max_concurrency=2,
+        recent_auth_ttl=60,
         allowed_origins=("http://testserver",),
     )
 
@@ -93,11 +150,17 @@ def initialized_services(services: ControlPlaneServices) -> ControlPlaneServices
 
 
 @pytest.fixture
+def codex_runtime() -> FakeCodexRuntime:
+    return FakeCodexRuntime()
+
+
+@pytest.fixture
 async def client(
     settings: Settings,
     initialized_services: ControlPlaneServices,
+    codex_runtime: FakeCodexRuntime,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    application = create_app(settings, initialized_services)
+    application = create_app(settings, initialized_services, codex_runtime)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=application),
         base_url="http://testserver",

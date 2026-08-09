@@ -125,6 +125,14 @@ async def test_doctor_returns_only_safe_control_plane_data(
         "login_rate_window_seconds": 300,
         "login_lock_duration_seconds": 300,
     }
+    assert body["data"]["codex"] == {
+        "installed": True,
+        "version": "0.test.fixture",
+        "installation_type": "standalone",
+        "remote_control": "supported",
+        "remote_state": "stopped",
+        "findings": [],
+    }
     serialized = response.text.lower()
     assert "secret" not in serialized
     assert "database_url" not in serialized

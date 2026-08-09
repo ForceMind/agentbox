@@ -11,13 +11,25 @@ if grep --recursive --line-number --extended-regexp --include='*.py' \
   exit 1
 fi
 
+process_calls="$({
+  grep --recursive --line-number --include='*.py' \
+    'subprocess' apps packages || true
+})"
+unexpected_process_calls="$(printf '%s\n' "$process_calls" | grep --invert-match \
+  '^packages/agentbox-runtime/src/agentbox_runtime/process\.py:' || true)"
+if [[ -n "$unexpected_process_calls" ]]; then
+  printf 'Subprocess use escaped the approved controlled-runner boundary:\n%s\n' \
+    "$unexpected_process_calls" >&2
+  exit 1
+fi
+
 route_lines="$({
   grep --recursive --line-number --extended-regexp --include='*.py' \
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 7 ]]; then
-  printf 'Unexpected Phase 4 API route count: %s\n' "$route_count" >&2
+if [[ "$route_count" -ne 11 ]]; then
+  printf 'Unexpected Phase 5 API route count: %s\n' "$route_count" >&2
   exit 1
 fi
 
@@ -32,9 +44,9 @@ fi
 mutation_routes="$(printf '%s\n' "$route_lines" | grep --extended-regexp \
   '@(application|router)\.(post|put|patch|delete)\(' || true)"
 unexpected_mutations="$(printf '%s\n' "$mutation_routes" | grep --invert-match --extended-regexp \
-  '@router\.post\("/(login|logout)"' || true)"
+  '^(apps/api/src/agentbox_api/auth\.py:.*@router\.post\("/(login|logout)"|apps/api/src/agentbox_api/codex\.py:.*@router\.post\("/(remote/start|remote/stop|pair-codes)")' || true)"
 if [[ -n "$unexpected_mutations" ]]; then
-  printf 'Unexpected Phase 3 mutation route found:\n%s\n' "$unexpected_mutations" >&2
+  printf 'Unexpected Phase 5 mutation route found:\n%s\n' "$unexpected_mutations" >&2
   exit 1
 fi
 
@@ -45,4 +57,4 @@ if grep --recursive --line-number --extended-regexp --include='*.py' \
   exit 1
 fi
 
-printf 'Phase 4 source-boundary check passed.\n'
+printf 'Phase 5 source-boundary check passed.\n'

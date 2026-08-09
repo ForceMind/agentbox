@@ -1,13 +1,13 @@
 # AgentBox API Design
 
-Status: Phase 1 contract design with the Phase 3 control plane and Phase 4
-read-only Doctor subset implemented.
+Status: Phase 1 contract design with the Phase 3 control plane, Phase 4 Web,
+and Phase 5 Codex subset implemented.
 
 Implemented in Phase 3: `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`,
 `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and
-`GET /api/v1/auth/me`. Phase 4 also implements authenticated
-`GET /api/v1/doctor`. All other contracts remain designs, not implemented
-routes.
+`GET /api/v1/auth/me`. Phase 4 implements authenticated
+`GET /api/v1/doctor`. Phase 5 implements the four Codex routes identified
+below. All other contracts remain designs, not implemented routes.
 
 ## Principles
 
@@ -115,12 +115,12 @@ Applying a plan uses a plan-specific Job endpoint and confirmation; clients cann
 
 | Method/path | Purpose | Result |
 |---|---|---|
-| `GET /api/v1/codex/status` | synthesized installation/auth/remote health | read model with confidence |
+| `GET /api/v1/codex/status` | implemented installation/auth/capability/Remote status | no-store read model with confidence |
+| `POST /api/v1/codex/remote/start` | implemented bounded typed start | direct action result |
+| `POST /api/v1/codex/remote/stop` | implemented bounded typed stop | direct action result |
+| `POST /api/v1/codex/pair-codes` | implemented ephemeral code generation | one-time no-store secret response |
 | `POST /api/v1/codex/install-jobs` | apply approved install plan | Job |
 | `POST /api/v1/codex/update-jobs` | apply approved update plan | Job |
-| `POST /api/v1/codex/remote/start-jobs` | start managed Remote daemon | Job |
-| `POST /api/v1/codex/remote/stop-jobs` | stop managed Remote daemon | Job |
-| `POST /api/v1/codex/pair-codes` | generate/display one-time code | bounded one-time secret response |
 | `GET /api/v1/codex/logs` | curated bounded managed-service logs | redacted page |
 
 `POST /pair-codes` requires CSRF and recent authentication, is never idempotently replayed, has no GET counterpart, bypasses persistent Job result storage, and returns:
@@ -137,7 +137,17 @@ Applying a plan uses a plan-specific Job endpoint and confirmation; clients cann
 }
 ```
 
-The placeholder is contract documentation, not a real code. Response/log middleware must mark the body secret and set no-store headers. No Pair Code appears in SSE or a later resource.
+The placeholder is contract documentation, not a real code. The implemented
+response is `Cache-Control: no-store` plus `Pragma: no-cache`; it is not a Job,
+SSE event, database resource, log field, or retrievable history. Start, stop,
+and Pair accept no request body, executable, argv, environment, cwd, or process
+identifier. All three require an authenticated Session, exact Origin/Host, and
+Session-bound CSRF; Pair additionally requires recent authentication and is
+subject to the Runtime Executor's cooldown.
+
+Phase 5 direct actions are intentionally bounded while the durable Job worker
+is not implemented. Install/update/log endpoints in this table remain designs,
+not implemented routes.
 
 ## Claude API
 
@@ -218,12 +228,14 @@ Callers cannot supply a journal unit name, file path, grep expression, or shell.
 | `GET /api/v1/doctor/runs` | list runs |
 | `GET /api/v1/doctor/runs/{run_id}` | findings, classifications, safe remediation plans |
 
-The Phase 4 `GET` is implemented and requires a valid Session. It returns
+The authenticated `GET` is implemented and returns
 configuration validity, database reachability, migration currency,
 administrator initialization, combined readiness, environment, loopback bind,
-Session lifetime policy, and login rate-limit policy. It is `Cache-Control:
-no-store` and excludes the secret, secret source/value, database URL, data path,
-credentials, Runtime state, host service state, and network state.
+Session lifetime policy, login rate-limit policy, and a Phase 5 safe Codex
+summary (installed/version/classification/Remote capability/state/finding
+codes). It is `Cache-Control: no-store` and excludes the secret, database URL,
+data path, credentials, raw CLI output, unrelated processes, general host
+service state, and network state.
 
 The three Diagnostic Run routes remain future designs. Doctor plans but does
 not automatically repair. A remediation becomes a separately validated

@@ -2,6 +2,10 @@
 
 AgentBox is pre-alpha infrastructure with a planned root privilege boundary. Small changes can have large security consequences, so contributions must preserve the documented architecture.
 
+## 文档语言
+
+新增或更新项目文档时，默认使用简体中文。代码标识、API 路径、CLI 命令、配置键、错误码和第三方产品名称保留英文。若面向国际协作者提供英文版本，应保证其安全约束和架构结论与中文主文档一致。
+
 ## Before starting
 
 1. Read `docs/PRODUCT.md`, `docs/MVP_SCOPE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/PERMISSIONS.md`, and relevant ADRs.

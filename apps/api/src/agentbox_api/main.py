@@ -1,4 +1,4 @@
-"""AgentBox Phase 3 control-plane FastAPI application."""
+"""AgentBox authenticated control plane with capability-aware Runtime access."""
 
 from __future__ import annotations
 
@@ -18,12 +18,14 @@ from agentbox_protocol import (
     MetaResponse,
     ReadinessResponse,
 )
+from agentbox_runtime import CodexRuntimeClient, UnixCodexRuntimeClient
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from agentbox_api.auth import BoundedLoginExecutor
 from agentbox_api.auth import router as auth_router
+from agentbox_api.codex import router as codex_router
 from agentbox_api.doctor import router as doctor_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 
@@ -68,10 +70,12 @@ def _error_response(
 def create_app(
     settings: Settings | None = None,
     services: ControlPlaneServices | None = None,
+    codex_runtime: CodexRuntimeClient | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
     actual_services = services or build_services(actual_settings)
+    actual_codex_runtime = codex_runtime or UnixCodexRuntimeClient(actual_settings.runtime_socket)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -86,12 +90,13 @@ def create_app(
     application = FastAPI(
         title="AgentBox",
         version=__version__,
-        description="AgentBox control-plane security foundation",
+        description="AgentBox capability-aware control plane",
         lifespan=lifespan,
         debug=False,
     )
     application.state.settings = actual_settings
     application.state.services = actual_services
+    application.state.codex_runtime = actual_codex_runtime
     application.state.login_executor = BoundedLoginExecutor(
         actual_services.auth,
         max_concurrency=actual_settings.argon2_max_concurrency,
@@ -169,6 +174,7 @@ def create_app(
         return MetaResponse(version=__version__, environment=actual_settings.env.value)
 
     application.include_router(auth_router)
+    application.include_router(codex_router)
     application.include_router(doctor_router)
     return application
 

@@ -165,6 +165,7 @@ async def login(request: Request, response: Response, payload: LoginRequest) -> 
         user_id=issued.user_id,
         username=issued.username,
         expires_at=issued.expires_at,
+        authenticated_at=issued.authenticated_at,
         csrf_token=issued.csrf_token,
     )
     return _auth_response(request, authenticated)

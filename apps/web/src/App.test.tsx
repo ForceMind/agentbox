@@ -13,6 +13,37 @@ const authenticated = {
   },
 }
 
+const codexStatus = {
+  api_version: 'v1',
+  request_id: 'req_codex',
+  data: {
+    installed: true,
+    version: '0.fixture',
+    selected_executable: '/fixture/bin/codex',
+    alternatives: [],
+    installation_type: 'standalone',
+    conflict_detected: false,
+    authentication: 'unknown',
+    capabilities: {
+      remote_control: 'supported',
+      start: 'supported',
+      stop: 'supported',
+      pair: 'supported',
+      status: 'unsupported',
+    },
+    remote_state: 'stopped',
+    remote_confidence: 'unknown',
+    diagnostics: [
+      {
+        code: 'CODEX_REMOTE_STATUS_UNSUPPORTED',
+        severity: 'info',
+        summary: 'Native status is unavailable.',
+        remediation: null,
+      },
+    ],
+  },
+}
+
 function jsonResponse(status: number, body?: object, headers?: HeadersInit) {
   return new Response(status === 204 ? null : JSON.stringify(body ?? {}), {
     status,
@@ -59,6 +90,8 @@ function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
       }),
     )
   }
+  if (path.endsWith('/api/v1/codex/status'))
+    return Promise.resolve(jsonResponse(200, codexStatus))
   if (path.endsWith('/auth/logout')) {
     expect(init?.credentials).toBe('include')
     return Promise.resolve(jsonResponse(204))
@@ -269,8 +302,113 @@ describe('AgentBox authenticated Web foundation', () => {
     expect(
       await screen.findByRole('heading', { name: 'Codex' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Not implemented yet')).toBeInTheDocument()
+    expect(await screen.findByText('0.fixture')).toBeInTheDocument()
+    expect(screen.getByText('/fixture/bin/codex')).toBeInTheDocument()
     expect(screen.queryByText('Online')).not.toBeInTheDocument()
+  })
+
+  it('requires explicit Pair confirmation and clears the code on navigation', async () => {
+    window.history.replaceState({}, '', '/codex')
+    const canary = 'PAIR-SECRET-CANARY-WEB-5T8N'
+    const clipboard = { writeText: vi.fn(() => Promise.resolve()) }
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: clipboard,
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (input.toString().endsWith('/api/v1/codex/pair-codes')) {
+          expect(
+            (init?.headers as Record<string, string>)['X-CSRF-Token'],
+          ).toBe('csrf-test-value')
+          return Promise.resolve(
+            jsonResponse(200, {
+              api_version: 'v1',
+              request_id: 'req_pair',
+              data: {
+                pair_code: canary,
+                expires_at: null,
+                display_once: true,
+              },
+            }),
+          )
+        }
+        return authenticatedFetch(input, init)
+      }),
+    )
+    render(<App />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Pair New Device' }),
+    )
+    expect(screen.queryByText(canary)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Code' }))
+    expect(await screen.findByText(canary)).toBeInTheDocument()
+    expect(clipboard.writeText).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    await waitFor(() =>
+      expect(clipboard.writeText).toHaveBeenCalledWith(canary),
+    )
+
+    expect(Object.entries(localStorage)).toEqual([])
+    expect(Object.entries(sessionStorage)).toEqual([])
+    fireEvent.click(screen.getByRole('link', { name: 'Claude' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Claude' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(canary)).not.toBeInTheDocument()
+  })
+
+  it('uses CSRF for start and stop without accepting browser command input', async () => {
+    window.history.replaceState({}, '', '/codex')
+    let state: 'running' | 'stopped' = 'stopped'
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = input.toString()
+      if (path.endsWith('/api/v1/codex/status')) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            ...codexStatus,
+            data: { ...codexStatus.data, remote_state: state },
+          }),
+        )
+      }
+      if (path.endsWith('/api/v1/codex/remote/start')) {
+        expect((init?.headers as Record<string, string>)['X-CSRF-Token']).toBe(
+          'csrf-test-value',
+        )
+        state = 'running'
+        return Promise.resolve(
+          jsonResponse(200, {
+            api_version: 'v1',
+            request_id: 'req_start',
+            data: { outcome: 'started', remote_state: 'running' },
+          }),
+        )
+      }
+      if (path.endsWith('/api/v1/codex/remote/stop')) {
+        state = 'stopped'
+        return Promise.resolve(
+          jsonResponse(200, {
+            api_version: 'v1',
+            request_id: 'req_stop',
+            data: { outcome: 'stopped', remote_state: 'stopped' },
+          }),
+        )
+      }
+      return authenticatedFetch(input, init)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start Remote' }))
+    await waitFor(() =>
+      expect(screen.getAllByText('Running').length).toBeGreaterThan(0),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Stop Remote' }))
+    await waitFor(() =>
+      expect(screen.getAllByText('Stopped').length).toBeGreaterThan(0),
+    )
   })
 
   it('uses the current session CSRF token when logging out', async () => {

@@ -1,0 +1,9 @@
+Manage Codex Remote Control
+
+Usage: codex remote-control <COMMAND>
+
+Commands:
+  start  Start Remote Control
+  stop   Stop Remote Control
+  pair   Generate a temporary pairing code
+  help   Print help

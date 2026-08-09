@@ -1,8 +1,9 @@
-"""Local bootstrap and read-only control-plane CLI for Phase 3."""
+"""AgentBox local bootstrap, diagnostics, and typed Runtime CLI."""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import getpass
 import json
 import secrets
@@ -14,6 +15,7 @@ from agentbox_core import __version__
 from agentbox_core.configuration import Settings
 from agentbox_core.errors import AdminAlreadyInitialized, AgentBoxError
 from agentbox_core.services import build_services
+from agentbox_runtime import CodexAdapter, RuntimeOperationError, UnixCodexRuntimeClient
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -46,6 +48,16 @@ def create_parser() -> argparse.ArgumentParser:
     secret = subcommands.add_parser("secret")
     secret_commands = secret.add_subparsers(dest="secret_command", required=True)
     secret_commands.add_parser("generate")
+
+    codex = subcommands.add_parser("codex")
+    codex_commands = codex.add_subparsers(dest="codex_command", required=True)
+    codex_status = codex_commands.add_parser("status")
+    codex_status.add_argument(
+        "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+    )
+    codex_commands.add_parser("start")
+    codex_commands.add_parser("stop")
+    codex_commands.add_parser("pair")
     return parser
 
 
@@ -143,6 +155,69 @@ def _admin_status(settings: Settings, json_output: bool) -> int:
         services.database.close()
 
 
+def _runtime_exit_code(error: RuntimeOperationError) -> int:
+    return {
+        "unavailable": 10,
+        "unsupported": 11,
+        "unauthenticated": 12,
+        "forbidden": 13,
+        "conflict": 14,
+        "validation": 15,
+        "timeout": 16,
+        "broken": 17,
+        "rate_limited": 17,
+    }.get(error.category, 17)
+
+
+async def _codex_command(settings: Settings, args: argparse.Namespace) -> int:
+    request_id = f"req_cli-{secrets.token_hex(12)}"
+    client = UnixCodexRuntimeClient(settings.runtime_socket)
+    try:
+        if args.codex_command == "status":
+            try:
+                status = await client.status(request_id)
+                execution_mode = "runtime_socket"
+            except RuntimeOperationError as exc:
+                if exc.code != "CODEX_RUNTIME_UNAVAILABLE":
+                    raise
+                status = await CodexAdapter().status()
+                execution_mode = "local_read_only"
+            data = status.to_dict()
+            data["execution_mode"] = execution_mode
+            result = _envelope("codex.status", ok=True, data=data)
+            result["execution_mode"] = execution_mode
+            _print_result(result, getattr(args, "json_output", False))
+            return 0 if status.installed else 10
+
+        if args.codex_command == "pair" and getattr(args, "json_output", False):
+            print(
+                "ERROR [CODEX_PAIR_JSON_FORBIDDEN]: Pair Code JSON output is disabled",
+                file=sys.stderr,
+            )
+            return 13
+        if args.codex_command == "pair" and not sys.stdout.isatty():
+            print(
+                "ERROR [CODEX_PAIR_TTY_REQUIRED]: pairing requires an interactive TTY",
+                file=sys.stderr,
+            )
+            return 13
+        if args.codex_command == "start":
+            action = await client.start_remote(request_id)
+            print(f"Codex Remote: {action.outcome}")
+            return 0
+        if args.codex_command == "stop":
+            action = await client.stop_remote(request_id)
+            print(f"Codex Remote: {action.outcome}")
+            return 0
+        pair = await client.generate_pair_code(request_id)
+        print("Sensitive temporary code. Do not share or log it.")
+        print(pair.code)
+        return 0
+    except RuntimeOperationError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return _runtime_exit_code(exc)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
 
@@ -166,6 +241,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.admin_command == "init":
             return _admin_init(settings, args.username)
         return _admin_status(settings, getattr(args, "json_output", False))
+
+    if args.command == "codex":
+        return asyncio.run(_codex_command(settings, args))
 
     status = _control_plane_status(settings)
     result = _envelope(args.command, ok=True, data=status)

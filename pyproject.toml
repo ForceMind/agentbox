@@ -45,6 +45,7 @@ dev = [
 agentbox = "agentbox_cli.main:main"
 agentbox-api = "agentbox_api.main:run"
 agentbox-worker = "agentbox_worker.main:main"
+agentbox-runtime = "agentbox_runtime.server:main"
 
 [tool.setuptools]
 packages = [

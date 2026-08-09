@@ -1,7 +1,7 @@
 # AgentBox Threat Model
 
-Status: Phase 1 baseline updated for the implemented Phase 3 control plane and
-Phase 4 authenticated Web surface
+Status: Phase 1 baseline updated for the implemented Phase 3 control plane,
+Phase 4 Web surface, and Phase 5 Codex Runtime integration
 Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
 
 ## Scope and Assets
@@ -37,7 +37,7 @@ Out of scope for the MVP: protection against a malicious root administrator, a f
 TB1: remote client to loopback/private/proxied Web endpoint.
 TB2: browser session to `/api/v1`.
 TB3: API/CLI input to Application Services and Job records.
-TB4: Worker to Runtime Executor.
+TB4: authorized API/Worker client to Runtime Executor.
 TB5: Worker to root Privileged Helper.
 TB6: Runtime Executor to Project Workspaces and third-party CLIs.
 TB7: installer/updater to external repositories/artifacts.
@@ -91,6 +91,18 @@ TB8: live state to backup/export media.
 | T-42 | E | Client-side route guard is treated as authorization | TB2 | every protected API authenticates server-side; guard is UX only | unauthenticated Doctor/auth tests |
 | T-43 | R/I | Fake UI status misleads the operator | browser | only real health/readiness/meta data; explicit Planned semantics | component and E2E assertions |
 | T-44 | I | Browser/proxy cache retains authenticated data | TB1/TB2 | no-store auth/Doctor responses; static shell contains no user state | response-header tests and deployment gate |
+| T-45 | S/E | Fake Codex executable wins PATH resolution | TB4/TB6 | fixed Runtime PATH, resolve/stat/mode validation, no caller path, revalidate fingerprint | fake PATH and unsafe-mode fixtures |
+| T-46 | T/E | Codex executable replaced after validation | TB6 | absolute realpath plus device/inode/mode/size/mtime recheck immediately before spawn | replacement test; residual kernel-exec TOCTOU documented |
+| T-47 | I/T | Malicious CLI output injects UI/log/error content | TB6/TB2 | bounded decoding, typed parsers, React text nodes, no raw output response | malformed/ANSI/oversize fixtures |
+| T-48 | I | Pair Code leaks, replays, or remains stale in UI | TB6/TB2 | sensitive buffer, conservative parser, no-store, cooldown, memory-only display, explicit copy, timed/navigation clear | DB/log/audit/artifact/browser canary scans |
+| T-49 | D/T | Concurrent Remote actions duplicate or reorder daemon state | TB4/TB6 | one Runtime action lock, idempotent known-state results, public command only | concurrency/state-transition tests |
+| T-50 | E/D | Stop targets an unrelated process | TB6 | official stop command only; strict same-UID process evidence is read-only; no pid/pkill/kill action | unrelated-process fixture and boundary scan |
+| T-51 | D | Codex hangs or emits unbounded output | TB6 | per-action timeout, separate byte caps, spawned-process-group cleanup | timeout/output-bomb tests |
+| T-52 | I/E | API environment secrets reach Codex | TB4/TB6 | separate process plus HOME/PATH/locale/XDG allowlist; no caller env | environment canary test |
+| T-53 | E | Caller controls Codex cwd | TB4/TB6 | no cwd field; Runtime HOME is fixed server-side and must exist | protocol exact-schema and runner cwd tests |
+| T-54 | T | npm metadata poisons installation classification | TB6 | fixed npm argv, bounded JSON, known names as hints only, conflict/unknown without mutation | malformed/npm conflict fixtures |
+| T-55 | S/T | Legacy `codex.service` confused with managed daemon | existing host/TB6 | presence is warning only; never adopted, started, stopped, or called authoritative | host read-only check and UI diagnostic review |
+| T-56 | T/D | Third-party CLI changes command/help/output semantics | TB6 | capability detection from current public help, tri-state degradation, exact fixtures, fail-closed mutations | old/malformed/future-help fixtures |
 
 ## Phase 3 Control-Plane Attack Surface
 
@@ -124,6 +136,21 @@ TB8: live state to backup/export media.
 | UI confusion/fake status | actual APIs drive control-plane cards; missing data is Unavailable; future functions are Planned | product copy needs review as capabilities become real |
 | Browser cache | auth and Doctor API responses are no-store; static Vite shell has no user-specific content | Phase 8 reverse-proxy/static cache headers remain a deployment gate |
 | Oversized/browser DoS | bounded server body, client timeout, modest bundle, no charts/editor/terminal or unbounded retries | API response-size policy remains the authoritative control |
+
+## Phase 5 Codex Attack Surface
+
+| Threat | Current mitigation | Residual/verification |
+|---|---|---|
+| PATH hijack/fake executable | Runtime-owned fixed PATH, no API path input, realpath/mode validation and fingerprint recheck | small validation-to-exec TOCTOU remains; production allowed-root policy is a Phase 8 gate |
+| CLI behavior/output change | public help detection, tri-state capabilities, bounded conservative parsing, no version-only enablement | localized or newly formatted output may degrade to Unknown/Unsupported until a fixture is reviewed |
+| Secret environment inheritance | new environment built from HOME/PATH/locale/necessary XDG keys only | Runtime HOME intentionally lets the official CLI use its own auth; AgentBox cannot harden third-party file parsing |
+| Duplicate/reordered actions | one `asyncio.Lock` serializes start/stop/Pair; known states are idempotent | process-local state is lost on restart and native status may be absent |
+| Wrong-process stop | only public `remote-control stop`; process inspection never supplies a kill target | the third-party command's own scope is outside AgentBox control |
+| Pair disclosure | recent auth, CSRF/Origin/Host, 4 KiB sensitive streams, safe parser/error, metadata-only audit, no-store, memory-only UI, explicit copy and canary scans | authenticated browser compromise or extensions can read displayed code |
+| Pair replay/stale display | ten-second generation cooldown, Hide/navigation/90-second UI clear, no retrieval endpoint | UI clear is not official expiry; unknown expiry is shown as unknown |
+| Runtime socket abuse | `0660`, UID allowlist via `SO_PEERCRED`, exact V1 keys/action enum, 64 KiB frame | Phase 8 must install exact owner/group/unit sandboxing |
+| Resource exhaustion | action lock, per-command timeout/output caps, spawned-process-group cleanup | status requests are uncached in Phase 5; reverse-proxy/request concurrency hardening remains later work |
+| Legacy service confusion | exact legacy-unit presence is warning-only and never managed/adopted | operator must manually assess the existing unit before deployment |
 
 ## Highest-Risk Abuse Cases
 

@@ -1,10 +1,12 @@
 # AgentBox CLI Design
 
-Status: Phase 1 contract design with the Phase 3 local control-plane subset implemented.
+Status: Phase 1 contract design with Phase 3 local administration and the
+Phase 5 Codex command subset implemented.
 
 Phase 3 implements `agentbox status`, `agentbox doctor`, `agentbox admin init`,
-`agentbox admin status`, and `agentbox secret generate`. Runtime, Project,
-service-mode UDS, Job, update, and third-party commands remain unimplemented.
+`agentbox admin status`, and `agentbox secret generate`. Phase 5 adds
+`agentbox codex status/start/stop/pair` over the typed Runtime socket. Project,
+Job, update, API-service UDS, and other third-party commands remain unimplemented.
 
 ## Role
 
@@ -86,12 +88,22 @@ agentbox codex pair
 agentbox codex update
 ```
 
-- `status`: synthesized adapter state; never assumes native `remote-control status` exists.
-- `install`/`update`: default dry-run plan; apply uses a Job and root Helper.
-- `start`/`stop`: AgentBox-managed Remote daemon only; durable Job.
-- `pair`: recent-auth, interactive secret action; Runtime capability/auth required.
+- `status`: implemented synthesized adapter state; it uses `runtime.sock` when
+  available and may fall back to the same adapter in local read-only mode. It
+  never assumes native `remote-control status` exists.
+- `install`/`update`: planned only; no Phase 5 code installs or changes Codex.
+- `start`/`stop`: implemented as parameter-free bounded Runtime socket actions;
+  they fail when the Runtime Executor is unavailable and never fall back to a
+  local mutation.
+- `pair`: implemented interactive secret action over the Runtime socket;
+  capability is required and an explicitly unauthenticated Runtime is rejected.
+  Unknown authentication is reported honestly and is not converted into a
+  false authenticated claim.
 
-`agentbox codex pair` writes the one-time code directly to an interactive TTY, not normal stdout, and refuses non-TTY output by default. `--json` returns only metadata and does **not** include `pair_code`; interactive Web or TTY display is required. The code is never recoverable after display.
+`agentbox codex pair` writes the one-time code once to terminal stdout only
+when stdout is a TTY and refuses redirected/non-TTY output. JSON mode is
+explicitly forbidden for Pair; it does not emit metadata or `pair_code` JSON.
+The code is never recoverable after display.
 
 ### Claude
 

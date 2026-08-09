@@ -1,0 +1,8 @@
+Codex CLI
+
+Usage: codex [OPTIONS] [COMMAND]
+
+Commands:
+  login           Manage authentication
+  remote-control  Manage Codex Remote Control
+  help            Print help
