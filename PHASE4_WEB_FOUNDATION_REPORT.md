@@ -19,8 +19,8 @@ deployment.
 - Repository: `ForceMind/agentbox`
 - Base: `main` at Phase 3 squash merge `87bcf1ee60c4efb4194e9320e11613f8296f95e8`
 - Branch: `phase/4-authenticated-web-foundation`
-- Commits: pending final commit sequence
-- Draft PR: pending publication
+- Commits: 6 focused commits, including the final report-state update
+- Draft PR: [#21](https://github.com/ForceMind/agentbox/pull/21)
 - Related existing Issue: #5, `feat: deliver minimal authenticated Web control plane`
 
 ## Route Map
@@ -170,8 +170,8 @@ random test secret/password, independent processes, random loopback ports, and
 automatic cleanup. The assessed OpenCloudOS host lacked three Chromium shared
 libraries; local verification temporarily extracted official RPM contents into
 `/tmp` and removed them after testing. No RPM was installed and no system path
-was modified. GitHub's Ubuntu runner is expected to provide the browser runtime
-libraries; remote E2E remains pending until the Draft PR runs.
+was modified. GitHub Actions independently completed the same 20 browser
+executions on Ubuntu in 1m6s with a passing `e2e` result.
 
 ## Accessibility
 
@@ -199,11 +199,20 @@ Existing Backend, Frontend, Security, dependency-audit, and dependency-review
 workflows remain intact. New `.github/workflows/e2e.yml` runs Python 3.12,
 explicit migration, isolated API/Web processes, Playwright Chromium, and the
 same 20 tests without GitHub Secrets. It does not call `playwright
-install-deps`. Remote workflow status is pending publication.
+install-deps`.
 
-The new `e2e` context should be proposed for the `Protect main` required checks
-only after it has successfully appeared on the Phase 4 PR.
-This Phase does not modify the Repository Ruleset.
+The first remote E2E run exposed a CI-only harness assumption: Python tools were
+looked up only beneath the repository `.venv`, while `setup-python` installs
+them on runner `PATH`. The harness now prefers local `.venv/bin/python` and
+otherwise uses the configured `python`, invoking Alembic and Uvicorn as Python
+modules. The next remote run passed. At handoff all existing required contexts
+(`quality`, Python 3.11/3.12/3.13 quality, repository boundaries, both
+dependency audits, and dependency review) plus the new `e2e` context are
+passing on the final Phase 4 head.
+
+The new `e2e` context has now appeared successfully and is eligible for a
+future human-approved addition to the `Protect main` required checks. This
+Phase does not modify the Repository Ruleset.
 
 ## Deviations
 
@@ -229,7 +238,6 @@ No Accepted ADR was changed or contradicted.
 - There is no formal axe/screen-reader audit or screenshot golden suite.
 - Final static-file serving, proxy cache policy, HTTPS headers, and deployment
   smoke belong to Phase 8.
-- Remote E2E/required CI status and the final PR URL must be filled after push.
 
 ## Phase 5 Recommendation
 
