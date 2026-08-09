@@ -26,6 +26,7 @@ coverage/
 *.tsbuildinfo
 
 # AgentBox runtime data must never live in the source tree
+.agentbox-dev/
 *.db
 *.db-shm
 *.db-wal
