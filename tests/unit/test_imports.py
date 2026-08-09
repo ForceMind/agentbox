@@ -4,5 +4,10 @@ def test_engineering_packages_import() -> None:
     import agentbox_runtime
 
     assert agentbox_core.__version__
-    assert agentbox_protocol.MetaResponse(version=agentbox_core.__version__).api_version == "v1"
+    assert (
+        agentbox_protocol.MetaResponse(
+            version=agentbox_core.__version__, environment="test"
+        ).api_version
+        == "v1"
+    )
     assert agentbox_runtime.RuntimeAdapter is not None
