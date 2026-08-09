@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentbox"
+version = "0.1.0.dev0"
+description = "Turn any Linux server into a remotely managed AI development workstation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "AgentBox contributors" }]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Framework :: FastAPI",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "alembic>=1.14,<2",
+  "fastapi>=0.115,<1",
+  "pydantic>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn>=0.32,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.10,<27",
+  "httpx>=0.28,<1",
+  "mypy>=1.14,<2",
+  "pip-audit>=2.7,<3",
+  "pre-commit>=4,<5",
+  "pytest>=8.3,<10",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+agentbox = "agentbox_cli.main:main"
+agentbox-api = "agentbox_api.main:run"
+agentbox-worker = "agentbox_worker.main:main"
+
+[tool.setuptools]
+packages = [
+  "agentbox_api",
+  "agentbox_cli",
+  "agentbox_core",
+  "agentbox_protocol",
+  "agentbox_runtime",
+  "agentbox_worker",
+]
+
+[tool.setuptools.package-dir]
+agentbox_api = "apps/api/src/agentbox_api"
+agentbox_cli = "apps/cli/src/agentbox_cli"
+agentbox_core = "packages/agentbox-core/src/agentbox_core"
+agentbox_protocol = "packages/agentbox-protocol/src/agentbox_protocol"
+agentbox_runtime = "packages/agentbox-runtime/src/agentbox_runtime"
+agentbox_worker = "apps/worker/src/agentbox_worker"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = "/(apps/web/node_modules|apps/web/dist)/"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", "apps/web/node_modules", "apps/web/dist"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+pretty = true
+exclude = ["apps/web", ".venv"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]

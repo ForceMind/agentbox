@@ -1,0 +1,18 @@
+{
+  "name": "agentbox-monorepo",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "description": "AgentBox engineering skeleton",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @agentbox/web build",
+    "format:check": "pnpm --filter @agentbox/web format:check",
+    "lint": "pnpm --filter @agentbox/web lint",
+    "test": "pnpm --filter @agentbox/web test",
+    "typecheck": "pnpm --filter @agentbox/web typecheck"
+  }
+}

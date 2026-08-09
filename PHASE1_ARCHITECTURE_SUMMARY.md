@@ -2,7 +2,12 @@
 
 > Phase: Product definition, architecture, and development plan
 > Date: 2026-08-08
-> Status: **DOCUMENTATION COMPLETE — REQUIRES HUMAN APPROVAL BEFORE PHASE 2**
+> Status: **DOCUMENTATION COMPLETE — APPROVED DURING PHASE 2 FINALIZATION**
+
+> Post-Phase 1 decision update (2026-08-09): the authorized maintainer approved
+> the documented architecture baseline and selected Apache-2.0. ADRs 0001–0008
+> are now Accepted. This note records later approval; the Phase 1 execution and
+> environment statements below remain historical.
 
 ## Executive Summary
 
@@ -122,7 +127,7 @@ These are current-host observations, not permanent AgentBox contracts. Third-par
 | # | Conclusion |
 |---:|---|
 | 56 | Yes. AgentBox is well suited to open source because operators need to audit root boundaries, adapters benefit from community compatibility evidence, and Linux distributions vary. |
-| 57 | Apache License 2.0 is the recommended initial license, but remains a Proposed ADR requiring human/legal approval. No LICENSE file was added. |
+| 57 | Apache License 2.0 was recommended in Phase 1 and accepted during Phase 2 finalization; the canonical `LICENSE` file is now present. |
 | 58 | MIT is simple/permissive without an express patent grant; Apache-2.0 is permissive with explicit patent and notice terms; AGPL-3.0 adds network copyleft for modified hosted services but increases enterprise and compatibility friction. MIT and Apache both permit closed commercial derivatives. |
 | 59 | Recommend Apache-2.0 for adoption plus patent clarity. Choose AGPL only if preventing closed hosted forks outweighs adoption friction after legal/business review. |
 | 60 | Use factual nominative references, attribute owners, avoid third-party logos by default, do not imply sponsorship/endorsement, include an independent-project trademark disclaimer, and review third-party terms/fixtures/notices. |
@@ -198,20 +203,22 @@ Legacy `/root/projects` is kept unmanaged. A future explicit, confirmed adoption
 - `docs/adr/0008-license-choice.md`
 - `PHASE1_ARCHITECTURE_SUMMARY.md`
 
-## Unresolved Decisions — Requires Human Approval
+## Post-Phase 2 Remaining Human Decisions
 
-1. Accept, amend, or reject each Proposed ADR; especially Apache-2.0 versus an alternative license. No `LICENSE` file exists yet.
-2. Choose GitHub owner/namespace and public/private visibility; provide the intended Git author name/email; approve `git init`, repository creation, and first push separately.
-3. Choose the long-term human development account/source checkout location. `/home/<developer>/src/AgentBox` is recommended; Phase 1 has not moved `/root/AgentBox`.
-4. Approve the migration/remediation plan for the old root `codex.service`, unmapped UID/GID 1001 Codex files, root-owned Runtime authentication, and existing root tmux/Claude sessions. No changes were made.
-5. Approve the desired remote-access integration after reviewing current cloudflared routes, access policy, TLS, firewall/cloud security group, and port conflicts. Loopback remains the only default.
-6. Approve exact supported distro versions/architectures after Phase 8 VM evidence; current recommendation names families, not an unverified universal support promise.
+The architecture, repository namespace/visibility, Git author identity, and
+Apache-2.0 license are resolved. The following implementation-specific choices
+remain:
+
+1. Choose the long-term human development account/source checkout location. `/home/<developer>/src/AgentBox` is recommended; Phase 2 has not moved `/root/AgentBox`.
+2. Approve the migration/remediation plan for the old root `codex.service`, unmapped UID/GID 1001 Codex files, root-owned Runtime authentication, and existing root tmux/Claude sessions. No changes were made.
+3. Approve the desired remote-access integration after reviewing current cloudflared routes, access policy, TLS, firewall/cloud security group, and port conflicts. Loopback remains the only default.
+4. Approve exact supported distro versions/architectures after Phase 8 VM evidence; current recommendation names families, not an unverified universal support promise.
 
 ## Remaining Phase 0 Gates
 
 Phase 0 reported no blocker to Phase 1 documentation. The following gates remain before their corresponding implementation actions:
 
-- before first commit: Git author identity, repository owner/visibility/license, and final source owner/path;
+- before moving the development checkout: approve its long-term owner and path;
 - before user creation: select non-conflicting UID/GID and resolve the unmapped Codex UID/GID 1001 ownership plan;
 - before Codex integration: review the old enabled/inactive root `codex.service`, select a stable verified entrypoint, and do not use its private managed path as a contract;
 - before non-root Runtime use: establish the `agentbox-runtime` HOME/auth/Workspace Trust/Git/tmux ownership model without copying root credentials;
@@ -238,14 +245,15 @@ The checks below review documentation content only; they are not product tests a
 | 10 | No arbitrary Shell API | PASS — API/IPC/CLI use action registries and typed server-built argv only |
 | 11 | Docker not default | PASS — ADR 0001 and all deployment documents select native systemd |
 | 12 | `/root/projects` not default | PASS — it is explicitly legacy and requires approved copy/adoption |
-| 13 | Major choices explained | PASS — eight Proposed ADRs cover deployment, privilege, projects, Runtime user, Jobs, frontend, DB, and license |
+| 13 | Major choices explained | PASS — eight ADRs cover deployment, privilege, projects, Runtime user, Jobs, frontend, DB, and license; all were Accepted during Phase 2 finalization |
 | 14 | GitHub planning bounded | PASS — five proposed Milestones and about 18 initial Issues; none were created |
 | 15 | No false implementation claims | PASS — documents identify designs, proposals, and future test gates; no feature/test is reported as implemented/passed |
 
 Additional inventory checks confirm all required Phase 1 filenames are present. Sensitive-value review looks for prohibited *handling* and examples only; no real Token, OAuth code, Pair Code, cookie, password, SSH key, or authentication configuration was intentionally read or written. No contradiction remains unresolved inside the chosen architecture. Items still needing ownership/business/host approval are listed above rather than hidden.
 
-## Recommended Next Phase
+## Historical Next-Phase Recommendation
 
-After human review and explicit approval only: **Phase 2 — Repository and engineering skeleton**. Phase 2 should resolve the Proposed ADR statuses, license/repository identity, create the minimal monorepo and CI skeleton, and still avoid implementing Runtime or privileged product workflows until their later gates.
-
-Phase 1 stops here and does not automatically enter Phase 2.
+Phase 1 recommended **Phase 2 — Repository and engineering skeleton** after
+explicit human approval. That approval and Phase 2 have since occurred: the
+ADRs and Apache-2.0 license are resolved, and the engineering skeleton is in PR
+#19. This historical summary does not authorize Phase 3.

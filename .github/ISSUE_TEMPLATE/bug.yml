@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible AgentBox defect without sensitive data
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not submit credentials, Pair Codes, private source, authentication files, or security exploits here. Use private vulnerability reporting for security issues.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What outcome were you trying to achieve, and in which AgentBox version/environment?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Observed and expected behavior
+      description: Provide a minimal, redacted reproduction and the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What adjacent behavior is explicitly not part of this report?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use a checklist describing when the defect is resolved.
+      value: "- [ ] Reproduction no longer fails\n- [ ] Regression coverage is added\n- [ ] Documentation is updated if needed"
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests
+      description: Which safe tests or fixtures should verify the correction?
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security considerations
+      description: Describe privilege, path, secret, network, update, or compatibility impact without exploit details.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List related Issues, ADRs, or external blockers.

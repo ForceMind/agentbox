@@ -25,14 +25,14 @@ The project stays focused on a single-server, single-administrator MVP. Security
 
 - **Goal:** make the MVP, trust boundaries, contracts, and delivery plan explicit.
 - **Input:** Phase 0 report, product constraints, and verified public CLI behavior.
-- **Output:** the documents in `docs/`, eight Proposed ADRs, and `PHASE1_ARCHITECTURE_SUMMARY.md`.
+- **Output:** the documents in `docs/`, eight ADRs initially marked Proposed, and `PHASE1_ARCHITECTURE_SUMMARY.md`; ADRs 0001–0008 were Accepted during Phase 2 finalization.
 - **Not in scope:** repository initialization, code, units, schemas, dependencies, or external GitHub changes.
 - **Acceptance:** all 60 product and architecture questions have a clear recommendation; terminology and security rules are consistent.
 - **Tests:** document inventory, contradiction scan, prohibited-pattern scan, and decision coverage review.
 - **Documentation:** this complete Phase 1 set.
 - **Commit/PR:** none in this phase; Phase 2 will decide how the initial history is formed.
 - **Stop condition:** documents and self-check summary exist and no Phase 2 action has begun.
-- **Human approval:** license, initial repository ownership/visibility, and all Proposed ADRs.
+- **Human approval:** completed on 2026-08-09 for Apache-2.0, initial repository ownership/visibility, and ADRs 0001–0008.
 
 ## Phase 2 — Repository and engineering skeleton
 
@@ -45,7 +45,7 @@ The project stays focused on a single-server, single-administrator MVP. Security
 - **Documentation:** contributor setup, supported tool versions, repository map, and local development safety notes.
 - **Commit/PR:** initialize only after approval; use a small bootstrap sequence or one reviewed initial PR, never push directly to protected `main` after protection is active.
 - **Stop condition:** skeleton CI is green and contains no production control implementation.
-- **Human approval:** `git init`, GitHub repository creation, license file, initial default branch, and remote push.
+- **Human approval:** completed for `git init`, GitHub repository creation, Apache-2.0, initial default branch, and remote push; final PR merge remains manual.
 
 ## Phase 3 — Minimal backend and authentication
 

@@ -1,0 +1,150 @@
+# AgentBox
+
+**Turn any Linux server into a remotely managed AI development workstation.**
+
+AgentBox is open AI developer infrastructure for standardizing a user-controlled Linux server as a remotely manageable development workstation. It is designed around capability-aware AI Runtime integration, persistent project sessions, safe lifecycle operations, and minimal routine SSH.
+
+## Project status
+
+AgentBox is in **early pre-alpha development**. This repository currently contains the Phase 2 engineering skeleton only.
+
+The skeleton provides:
+
+- a FastAPI service with `GET /healthz` and `GET /api/v1/meta` only;
+- an idle Worker process shell with version, health, and clean-shutdown behavior;
+- an `agentbox` CLI entry point whose `status` and `doctor` commands explicitly report “Not implemented in Phase 2”;
+- a React/TypeScript/Vite/Tailwind connectivity page;
+- package boundaries, tests, CI, governance templates, and architecture documents.
+
+It does **not** manage Codex, generate Pair Codes, run Claude Remote, manage tmux or projects, authenticate Web users, operate a root Helper, install system services, or modify this host.
+
+## MVP goal
+
+The planned MVP targets one Linux server and one administrator. It aims to provide:
+
+- idempotent installation, diagnostics, update, and rollback;
+- capability-aware Codex standalone and Remote Control management;
+- one-time Codex Pair Code delivery without persistence or logging;
+- project-scoped Claude Remote sessions persisted by tmux;
+- minimal Project Workspace and read-only Git visibility;
+- a loopback-only authenticated Web panel and recovery-oriented CLI;
+- durable SQLite-backed Jobs and SSE progress.
+
+These are roadmap goals, not implemented features.
+
+## What AgentBox is not
+
+AgentBox is not a general Linux administration panel, browser IDE, arbitrary Web terminal, multi-tenant SaaS, Kubernetes manager, container manager, cloud-server marketplace, or third-party credential vault.
+
+## Architecture baseline
+
+- native systemd deployment is planned; Docker is not the default;
+- Web/API and Worker run as non-root `agentbox`;
+- projects, Git, gh, Codex, Claude, and tmux belong to non-root `agentbox-runtime`;
+- a future minimal root Privileged Helper accepts only typed allowlisted actions over a protected Unix Domain Socket;
+- Project Workspaces default to `/srv/agentbox/projects`;
+- configuration, state, runtime files, and installed releases use `/etc/agentbox`, `/var/lib/agentbox`, `/run/agentbox`, and `/opt/agentbox`;
+- Web/API defaults to `127.0.0.1:8787`;
+- backend: Python 3.11+, FastAPI, Pydantic, SQLAlchemy, Alembic, and later SQLite WAL;
+- frontend: React, TypeScript, Vite, Tailwind CSS, and selective shadcn/ui;
+- API contracts begin at `/api/v1`; progress will use SSE before WebSocket.
+
+## Security principles
+
+AgentBox will not expose an arbitrary Shell API. Root operations must be named, typed, bounded, independently validated, and executed only by the narrow Helper. Runtime credentials remain owned by third-party CLIs under the Runtime user. Tokens, passwords, OAuth codes, Pair Codes, cookies, SSH private keys, and complete authentication configuration must not enter AgentBox logs or persistence.
+
+The default network listener is loopback. Remote access is an explicit operator-managed Tailscale, Cloudflare Tunnel, VPN, or HTTPS reverse-proxy integration.
+
+See [the security design](docs/SECURITY.md), [permissions model](docs/PERMISSIONS.md), and [threat model](docs/THREAT_MODEL.md).
+
+## Repository map
+
+```text
+apps/                 API, Worker, CLI, and Web application shells
+packages/             shared core, protocol, and Runtime boundaries
+helper/               root Helper design placeholder only
+installer/            installer design placeholder only
+tests/                 unit tests and reserved fixture/integration areas
+scripts/               repository-only safety checks
+docs/                  product, architecture, security, and ADR documents
+.github/               CI and contribution templates
+```
+
+## Local development
+
+Prerequisites: Linux or a compatible development environment, Python 3.11+, Node.js 22+, and pnpm 11.20.0.
+
+Python setup:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip "setuptools>=83"
+python -m pip install -e ".[dev]"
+ruff check apps packages tests
+black --check apps/api apps/worker apps/cli packages tests
+mypy apps/api apps/worker apps/cli packages tests
+pytest
+```
+
+Run the explicitly limited API during development:
+
+```bash
+agentbox-api
+```
+
+Frontend setup and checks:
+
+```bash
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+The Vite development proxy points only to `http://127.0.0.1:8787`. These commands do not install a system service or create AgentBox system users/directories.
+
+## Environment support status
+
+OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP distribution families. Only the Phase 0 OpenCloudOS host has been inventoried; no distribution is yet claimed as deployment-tested or production-supported. x86_64 is the first planned release architecture, and other architectures remain unqualified.
+
+## Roadmap
+
+1. Phase 2: repository and engineering skeleton — finalized in PR #19, pending manual merge.
+2. Phase 3: minimal backend and single-admin authentication.
+3. Phase 4: minimal authenticated frontend.
+4. Phase 5: Codex management.
+5. Phase 6: Claude/tmux session management.
+6. Phase 7: Project Workspaces and minimal Git.
+7. Phase 8: installation, deployment, upgrade, and rollback.
+8. Phase 9: security and compatibility hardening.
+9. Phase 10: first release.
+
+The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
+
+## Documentation
+
+- [Product definition](docs/PRODUCT.md)
+- [MVP scope](docs/MVP_SCOPE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API design](docs/API_DESIGN.md)
+- [CLI design](docs/CLI_DESIGN.md)
+- [Runtime Adapters](docs/RUNTIME_ADAPTERS.md)
+- [Test strategy](docs/TEST_STRATEGY.md)
+- [ADRs](docs/adr/README.md)
+- [Phase 0 report](PHASE0_ENVIRONMENT_REPORT.md)
+- [Phase 1 summary](PHASE1_ARCHITECTURE_SUMMARY.md)
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Security-sensitive reports must follow [SECURITY.md](SECURITY.md), not a public Issue.
+
+## License
+
+AgentBox is licensed under the [Apache License, Version 2.0](LICENSE)
+(`Apache-2.0`). The decision and its tradeoffs are recorded in
+[ADR 0008](docs/adr/0008-license-choice.md) and
+[the licensing guide](docs/LICENSING.md).
+
+AgentBox is independent. Codex, Claude, GitHub, and other third-party names are used only for factual compatibility descriptions; no affiliation or endorsement is implied.

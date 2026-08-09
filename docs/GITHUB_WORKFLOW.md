@@ -2,7 +2,11 @@
 
 ## Status and prerequisites
 
-This document is a plan only. Phase 1 does not initialize Git, create a GitHub repository, create milestones or issues, commit, push, or open a pull request. Phase 0 found that Git is installed and GitHub CLI authentication is usable, but Git identity is not configured and repository ownership/visibility have not been approved.
+The public repository is `ForceMind/agentbox`, `main` is the default branch,
+and Phase 2 uses PR #19 from `phase/2-engineering-skeleton`. Five milestones,
+18 bounded initial Issues, contribution templates, and CI now exist. Branch
+protection, Dependency Graph, and the Dependency Review repository variable
+still require the manual settings recorded in `PHASE2_ENGINEERING_REPORT.md`.
 
 ## Repository policy
 
@@ -40,17 +44,22 @@ Use five initial milestones and approximately 18 issues—well below a 100-issue
 
 | Milestone | Purpose | Planned initial issues |
 |---|---|---:|
-| M1 Foundation and authentication | Phase 2–3 skeleton, persistence, auth, IPC protocol | 4 |
-| M2 Operator interface | Phase 4 frontend and CLI contract | 3 |
-| M3 Runtime management | Phase 5–6 Codex and Claude adapters | 4 |
-| M4 Projects and deployment | Phase 7–8 project/Git and native installation | 4 |
-| M5 Release hardening | Phase 9–10 security, compatibility, release | 3 |
+| Foundation | Phase 2 skeleton and protocol/persistence foundations | 3 |
+| Core Control Plane | Authentication, Web, CLI, and Job foundations | 4 |
+| Runtime Management | Codex, Pair Code, Claude, and tmux | 5 |
+| Installation & Hardening | Project Workspaces, installer, deployment, and rollback | 4 |
+| MVP Release | Threat-model/compatibility evidence and release | 2 |
 
-The proposed 18 initial issue themes are: monorepo/CI skeleton; typed contracts; database foundation; authentication/session security; frontend shell; CLI foundation; SSE/job views; Codex detection/lifecycle; Pair Code channel; Claude adapter; tmux session lifecycle; project path guard; project/Git read model; installer and package abstraction; systemd/IPC hardening; upgrade/rollback; threat-model validation; release/compatibility matrix. These are planning suggestions and have not been created.
+The 18 initial Issues cover: monorepo/CI skeleton; typed contracts; database
+foundation; authentication/session security; frontend shell; CLI foundation;
+durable Jobs/SSE; Helper protocol; Codex detection/lifecycle; Pair Code channel;
+Claude adapter; tmux session lifecycle; Project Workspace/Git read model;
+installer and package abstraction; systemd/IPC hardening; upgrade/rollback;
+threat-model/compatibility validation; and release preparation.
 
 ## Issue templates
 
-Phase 2 may add:
+The repository provides:
 
 - **Feature:** outcome, user value, scope/non-goals, acceptance checklist, tests, docs, security/privilege impact, dependencies.
 - **Bug:** observed/expected behavior, redacted reproduction, version/environment, severity, regression status, logs with secrets removed.
