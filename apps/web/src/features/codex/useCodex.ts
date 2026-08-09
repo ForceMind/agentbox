@@ -16,6 +16,12 @@ export type CodexViewState =
   | { status: 'error'; error: ApiError }
   | { status: 'loaded'; response: CodexStatusResponse }
 
+// The Runtime RPC budgets the complete sequential Codex probe/action chain at
+// 70/100 seconds. Browser deadlines include connection/API overhead so a local
+// timeout cannot report failure while the Runtime can still apply the action.
+const CODEX_STATUS_TIMEOUT_MS = 85_000
+const CODEX_MUTATION_TIMEOUT_MS = 130_000
+
 export function useCodex() {
   const { api, auth } = useAuth()
   const [view, setView] = useState<CodexViewState>({ status: 'loading' })
@@ -28,7 +34,10 @@ export function useCodex() {
     try {
       const response = await api.get<CodexStatusResponse>(
         '/api/v1/codex/status',
-        { validate: parseCodexStatusResponse },
+        {
+          timeoutMs: CODEX_STATUS_TIMEOUT_MS,
+          validate: parseCodexStatusResponse,
+        },
       )
       setView({ status: 'loaded', response })
     } catch (error) {
@@ -65,7 +74,7 @@ export function useCodex() {
         `/api/v1/codex/remote/${operation}`,
         {
           csrfToken: auth.csrf_token,
-          timeoutMs: 35_000,
+          timeoutMs: CODEX_MUTATION_TIMEOUT_MS,
           validate: parseCodexRemoteActionResponse,
         },
       )
@@ -95,7 +104,7 @@ export function useCodex() {
         '/api/v1/codex/pair-codes',
         {
           csrfToken: auth.csrf_token,
-          timeoutMs: 35_000,
+          timeoutMs: CODEX_MUTATION_TIMEOUT_MS,
           validate: parseCodexPairResponse,
         },
       )

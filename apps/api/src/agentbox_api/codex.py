@@ -58,7 +58,7 @@ def _status_data(status: CodexStatus) -> CodexStatusData:
         ),
         remote_state=status.remote_state.value,
         remote_confidence=cast(
-            Literal["reported", "inferred", "agentbox_observed", "unknown"],
+            Literal["reported", "inferred", "unknown"],
             status.remote_confidence,
         ),
         diagnostics=[

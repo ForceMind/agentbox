@@ -1,7 +1,7 @@
 # Phase 5 Codex Management Report
 
 Date: 2026-08-09
-Status: human review completed; locally verified; all nine required GitHub checks pass; PR #22 is ready for review
+Status: final review corrections completed; locally verified; merge requires all nine GitHub checks on the correction head
 
 ## 文档语言
 
@@ -31,9 +31,13 @@ host network changes remain unimplemented.
 - Repository: `ForceMind/agentbox`
 - Branch: `phase/5-codex-management`
 - Base: `f61f3f4c24f0ab48994b05e9c574385a5c9b795c`
-- Commits: 10 Phase 5 commits, including the final report consistency update
+- Commits: 11 Phase 5 commits, including the final review correction
 - PR: <https://github.com/ForceMind/agentbox/pull/22>
 - Merge: not performed; ready for the human merge decision
+
+最终 review 修正了两个阻塞项：完整 Codex probe/action 链路现在使用分层
+RPC 与浏览器 timeout budget；Remote action 的历史结果不再作为实时状态，
+daemon 退出后不会被陈旧的 `running` 缓存阻止重新启动。
 
 ## Observed Codex Environment
 
@@ -81,6 +85,9 @@ start/stop/Pair never fall back.
   cloud/AgentBox/GitHub/OpenAI/Anthropic/loader variables excluded;
 - stdin disabled, stdout/stderr separate, byte caps, exit status captured;
 - 8-second help/version/status, 10-second npm, and 30-second action limits;
+- 70-second complete-status and 100-second complete-mutation RPC budgets, with
+  85/130-second browser deadlines so API authentication/audit overhead remains
+  outside the bounded inner operation and the inner result resolves first;
 - process-group terminate/wait/kill cleanup targets only AgentBox-spawned work;
 - sensitive output classification prevents Pair output logging.
 
@@ -117,8 +124,9 @@ Explicit unauthenticated state blocks Pair; unknown remains visible as unknown.
 Start and stop require fresh supported capabilities and share a Runtime action
 lock with Pair. Known state returns `already_running`/`already_stopped`.
 Native public status is preferred. Without it, strict current-UID resolved-exe
-and known-argv evidence may infer running; successful actions are retained only
-as process-local observed state. Otherwise status is unknown.
+and known-argv evidence may infer running. Successful action responses are not
+cached as live state; without current evidence, status is unknown so an exited
+daemon cannot be masked by a stale `running` observation.
 
 Stop invokes only the public stop command. There is no `pkill`, discovered-PID
 signal, `kill -9`, service adoption, or private lock/state-file dependency.
@@ -186,7 +194,7 @@ Actual local results after the final code changes:
   the established one-file-per-process check covered every Python source file
   successfully.
 - mypy strict: PASS
-- pytest: PASS — 99 tests
+- pytest: PASS — 101 tests
 - migration upgrade → downgrade → upgrade: PASS
 - frontend ESLint: PASS
 - frontend Prettier: PASS
@@ -292,7 +300,10 @@ before PR #22 was marked Ready for Review.
 
 - Remote state is unknown on the assessed CLI because it has no native status
   and no strict matching process was found.
-- Process-local observed state and Pair cooldown reset when Runtime restarts.
+- Pair cooldown is process-local and resets when Runtime restarts.
+- Remote idempotency depends only on native status or strict live process
+  evidence; when neither is available, state remains unknown and the advertised
+  official action may be invoked again.
 - Status probes are on demand and not persisted/cached in Phase 5.
 - UDS production group ownership/systemd sandboxing and Runtime-user login are
   Phase 8 responsibilities.

@@ -93,9 +93,9 @@ The UI uses these terms consistently:
 - `Not Implemented`: the surface exists but its product capability does not.
 
 `Online`, `Connected`, `Running`, and numeric Runtime/Project counts are not
-shown without real corresponding API evidence. `Running` on the Codex page is
-shown only with `reported`, strict-process `inferred`, or
-`agentbox_observed` evidence. Test Runtime fixtures enter only through explicit
+shown without real corresponding API evidence. Codex 页面只有在 `reported` 或
+strict-process `inferred` 实时证据存在时才显示 `Running`；成功 action 的历史
+结果不会当作当前状态。Test Runtime fixtures enter only through explicit
 application dependency injection; production code always uses the UDS client.
 
 ## Codex interaction lifecycle

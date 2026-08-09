@@ -241,15 +241,17 @@ real Codex binary.
   `start_new_session`, fixed absolute cwd, and an explicit HOME/PATH/locale/XDG
   allowlist. AgentBox, cloud, GitHub, OpenAI, and Anthropic token variables are
   not inherited;
-- version/help/status probes use 8-second limits, npm metadata uses 10 seconds,
-  start/stop/Pair use 30 seconds, and stdout/stderr have independent caps;
+- version/help/status 单次探测使用 8 秒上限，npm metadata 使用 10 秒，
+  start/stop/Pair 使用 30 秒；完整 status/mutation RPC 分别使用 70/100 秒
+  预算，浏览器使用 85/130 秒预算，使外层 deadline 晚于受控内层 deadline；
+  stdout/stderr 仍分别受限；
 - timeout/output failure terminates only the process group spawned by AgentBox,
   waits, then kills that group only if required;
-- when public Remote `status` is absent, strict same-UID resolved-executable and
-  known-argv evidence may report `running` with `inferred` confidence. The
-  process-local result of a successful action is `agentbox_observed`; otherwise
-  state remains `unknown`. AgentBox never uses `pkill`, `kill -9` on a discovered
-  process, or private Codex lock/state files.
+- 当公开 Remote `status` 不存在时，只有 strict same-UID、resolved-executable
+  和 known-argv 证据可以用 `inferred` confidence 报告 `running`。action 返回值
+  不作为后续实时状态缓存；缺少实时证据时保持 `unknown`，因此 daemon 退出后
+  不会被陈旧的 `running` 结果阻止重启。AgentBox 不使用 `pkill`、针对发现
+  进程的 `kill -9` 或 Codex 私有 lock/state 文件。
 
 MVP residual TOCTOU remains between final `stat` and kernel exec, and
 installation classification is best-effort: `$HOME/.local/bin/codex` is a

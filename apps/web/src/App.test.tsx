@@ -32,7 +32,7 @@ const codexStatus = {
       status: 'unsupported',
     },
     remote_state: 'stopped',
-    remote_confidence: 'agentbox_observed',
+    remote_confidence: 'unknown',
     diagnostics: [
       {
         code: 'CODEX_REMOTE_STATUS_UNSUPPORTED',

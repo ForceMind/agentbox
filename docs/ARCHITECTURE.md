@@ -95,6 +95,12 @@ fingerprint revalidation, fixed Runtime HOME/cwd, an environment allowlist,
 separate bounded stdout/stderr, a hard timeout, and process-group cleanup. It
 does not run as root or connect to the Privileged Helper.
 
+Codex 的 timeout 采用分层预算：单条 CLI 命令保持 8/10/30 秒硬上限，完整
+status 与 mutation RPC 分别为 70/100 秒，浏览器调用为 85/130 秒。外层预算
+必须大于内层最坏路径，使 Runtime 在调用方报告超时后继续执行 mutation 的
+风险受控。Remote action 的历史结果不作为实时状态；幂等判断仅使用公开
+status 或严格 same-UID 进程证据。
+
 Codex installation and capabilities are observations, not database models.
 Detection uses PATH resolution, public `--version`/`--help`, optional public
 login status, bounded npm metadata, and strict current-UID process evidence.

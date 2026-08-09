@@ -66,22 +66,22 @@ The allowlist is HOME, PATH, locale, TERM when present, and necessary XDG paths.
 AgentBox, GitHub, OpenAI, Anthropic, AWS, loader, proxy, and other token-bearing
 variables are not copied.
 
-The working directory is the Runtime HOME. Version/help/status probes have an
-eight-second timeout; npm detection has ten seconds; lifecycle/Pair have thirty
-seconds. Normal stdout is capped at 64 KiB and stderr at 16 KiB; Pair uses 4 KiB
-per stream. Overflow and timeout fail closed. Timeout termination targets only
-the new process group created by AgentBox, waits for a bounded grace period,
-then kills only that spawned group if necessary.
+工作目录固定为 Runtime HOME。version/help/status 单次探测上限为 8 秒，npm
+检测为 10 秒，lifecycle/Pair 命令为 30 秒。完整 status 探测的 RPC 预算为
+70 秒，完整 mutation 的 RPC 预算为 100 秒；浏览器对应使用 85 秒和 130 秒，
+确保内层先返回明确结果，避免浏览器或 API 已报告超时、Runtime 仍可能执行
+副作用。普通 stdout 上限为 64 KiB、stderr 为 16 KiB，Pair 每个流为 4 KiB。
+溢出和超时均 fail closed；超时清理只作用于 AgentBox 本次创建的进程组。
 
 ## Remote lifecycle and state
 
 All mutations share one `asyncio.Lock`, so start, stop, and Pair cannot overlap.
-When native `remote-control status` is advertised, bounded parsed output may
-report `running`, `stopped`, or `broken` with `reported` confidence. Without
-native status, a strict same-UID `/proc` check may report `running` only when
-the resolved executable and known `remote-control start` argv markers match.
-A successful action supplies process-local `agentbox_observed` state. Otherwise
-state is `unknown`.
+当公开的 `remote-control status` 存在时，受控解析结果可返回 `running`、
+`stopped` 或 `broken`，confidence 为 `reported`。没有公开 status 时，仅当
+same-UID `/proc` 检查同时匹配 resolved executable 与已知
+`remote-control start` argv 标记，才以 `inferred` 返回 `running`。成功的
+start/stop 响应不会缓存成后续实时状态；缺少实时证据时必须返回 `unknown`，
+避免 daemon 已退出却持续阻止重新启动。
 
 Known `running`/`stopped` states return `already_running`/`already_stopped`.
 Unknown stop state may invoke only the advertised official stop command. There

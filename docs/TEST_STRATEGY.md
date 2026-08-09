@@ -60,9 +60,10 @@ production frontend source.
 Phase 5 adds hermetic Codex adapter fixtures and typed fake-runner results for
 supported start/stop/Pair without status, no Remote Control, unknown future
 commands, malformed/non-zero/timed-out help, missing/unsafe executable,
-npm-only/conflict evidence, authentication states, native/inferred/observed
-Remote state, idempotent lifecycle, command failure, timeout, and Pair parser
-failure. Controlled-runner tests assert absolute fingerprinted execution,
+npm-only/conflict evidence, authentication states, native/inferred/unknown
+Remote state, 仅基于实时证据的幂等 lifecycle、daemon 退出后的重新启动、
+完整 status/mutation RPC timeout budget、command failure、timeout 和 Pair parser
+failure。Controlled-runner tests assert absolute fingerprinted execution,
 literal argv (including shell metacharacters), fixed cwd, environment
 allowlisting, independent output caps, timeout cleanup, symlink/mode rejection,
 no sensitive logging, and event-loop schedulability.

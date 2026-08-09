@@ -123,7 +123,6 @@ class CodexAdapter:
         self._environment = minimal_runtime_environment(environment or os.environ)
         self._runner = runner or ControlledProcessRunner()
         self._process_inspector = process_inspector or CurrentUserProcessInspector()
-        self._last_managed_state = RemoteState.UNKNOWN
 
     async def status(self) -> CodexStatus:
         selected, alternatives, diagnostics = self._resolve_installations()
@@ -230,7 +229,6 @@ class CodexAdapter:
             raise RuntimeOperationError(
                 "CODEX_REMOTE_START_FAILED", "Codex Remote could not be started"
             )
-        self._last_managed_state = RemoteState.RUNNING
         return RemoteActionResult("started", RemoteState.RUNNING)
 
     async def stop_remote(self) -> RemoteActionResult:
@@ -245,7 +243,6 @@ class CodexAdapter:
             raise RuntimeOperationError(
                 "CODEX_REMOTE_STOP_FAILED", "Codex Remote could not be stopped"
             )
-        self._last_managed_state = RemoteState.STOPPED
         return RemoteActionResult("stopped", RemoteState.STOPPED)
 
     async def generate_pair_code(self) -> PairCodeResult:
@@ -493,8 +490,6 @@ class CodexAdapter:
                 return RemoteState.BROKEN, "reported"
         if self._process_inspector.is_remote_running(identity.path):
             return RemoteState.RUNNING, "inferred"
-        if self._last_managed_state is not RemoteState.UNKNOWN:
-            return self._last_managed_state, "agentbox_observed"
         return RemoteState.UNKNOWN, "unknown"
 
     def _require_action(self, status: CodexStatus, action: str) -> ExecutableIdentity:

@@ -251,7 +251,7 @@ async def test_npm_only_and_broken_path_candidate_are_classified_safely(
 
 
 @pytest.mark.anyio
-async def test_remote_start_stop_and_inferred_state(tmp_path: Path) -> None:
+async def test_remote_action_result_is_not_reused_as_live_state(tmp_path: Path) -> None:
     codex = tmp_path / "bin/codex"
     make_executable(codex)
     responses = base_responses()
@@ -264,11 +264,28 @@ async def test_remote_start_stop_and_inferred_state(tmp_path: Path) -> None:
         process_inspector=FakeInspector(),  # type: ignore[arg-type]
     )
     assert (await adapter.start_remote()).outcome == "started"
-    assert (await adapter.start_remote()).outcome == "already_running"
-    assert (await adapter.status()).remote_state is RemoteState.RUNNING
+    assert (await adapter.status()).remote_state is RemoteState.UNKNOWN
+    assert (await adapter.start_remote()).outcome == "started"
     assert (await adapter.stop_remote()).outcome == "stopped"
-    assert (await adapter.stop_remote()).outcome == "already_stopped"
-    assert (await adapter.status()).remote_state is RemoteState.STOPPED
+    assert (await adapter.status()).remote_state is RemoteState.UNKNOWN
+    assert (await adapter.stop_remote()).outcome == "stopped"
+    assert sum(call["arguments"] == ("remote-control", "start") for call in runner.calls) == 2
+    assert sum(call["arguments"] == ("remote-control", "stop") for call in runner.calls) == 2
+
+
+@pytest.mark.anyio
+async def test_live_process_evidence_keeps_start_idempotent(tmp_path: Path) -> None:
+    codex = tmp_path / "bin/codex"
+    make_executable(codex)
+    runner = FakeRunner(base_responses())
+    adapter = CodexAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(codex.parent)},
+        runner=runner,  # type: ignore[arg-type]
+        process_inspector=FakeInspector(running=True),  # type: ignore[arg-type]
+    )
+
+    assert (await adapter.start_remote()).outcome == "already_running"
+    assert not any(call["arguments"] == ("remote-control", "start") for call in runner.calls)
 
 
 @pytest.mark.anyio

@@ -41,7 +41,9 @@ class E2ECodexRuntime:
                 status=CapabilityState.UNSUPPORTED,
             ),
             remote_state=self._remote_state,
-            remote_confidence="agentbox_observed",
+            remote_confidence=(
+                "inferred" if self._remote_state is RemoteState.RUNNING else "unknown"
+            ),
         )
 
     async def start_remote(self, request_id: str) -> RemoteActionResult:

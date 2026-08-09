@@ -24,6 +24,14 @@ from agentbox_runtime.models import (
 RUNTIME_PROTOCOL_VERSION = 1
 MAX_RUNTIME_FRAME = 64 * 1024
 
+# A complete status probe can sequentially consume up to 58 seconds across the
+# public Codex version/help/login/npm/status commands. A mutation can then use a
+# further 30 seconds for the fixed start/stop/Pair command. Keep the RPC budgets
+# above those adapter bounds so the caller does not time out while a mutation is
+# still able to take effect in the Runtime Executor.
+DEFAULT_CODEX_STATUS_RPC_TIMEOUT_SECONDS = 70.0
+DEFAULT_CODEX_MUTATION_RPC_TIMEOUT_SECONDS = 100.0
+
 
 @runtime_checkable
 class CodexRuntimeClient(Protocol):
@@ -37,21 +45,48 @@ class CodexRuntimeClient(Protocol):
 
 
 class UnixCodexRuntimeClient:
-    def __init__(self, socket_path: Path, *, timeout_seconds: float = 40) -> None:
+    def __init__(
+        self,
+        socket_path: Path,
+        *,
+        status_timeout_seconds: float = DEFAULT_CODEX_STATUS_RPC_TIMEOUT_SECONDS,
+        mutation_timeout_seconds: float = DEFAULT_CODEX_MUTATION_RPC_TIMEOUT_SECONDS,
+    ) -> None:
+        if status_timeout_seconds <= 0 or mutation_timeout_seconds <= 0:
+            raise ValueError("Runtime RPC timeouts must be positive")
         self._socket_path = socket_path
-        self._timeout_seconds = timeout_seconds
+        self._status_timeout_seconds = status_timeout_seconds
+        self._mutation_timeout_seconds = mutation_timeout_seconds
 
     async def status(self, request_id: str) -> CodexStatus:
-        return _decode_status(await self._request("codex.status", request_id))
+        return _decode_status(
+            await self._request(
+                "codex.status", request_id, timeout_seconds=self._status_timeout_seconds
+            )
+        )
 
     async def start_remote(self, request_id: str) -> RemoteActionResult:
-        return _decode_action(await self._request("codex.remote.start", request_id))
+        return _decode_action(
+            await self._request(
+                "codex.remote.start",
+                request_id,
+                timeout_seconds=self._mutation_timeout_seconds,
+            )
+        )
 
     async def stop_remote(self, request_id: str) -> RemoteActionResult:
-        return _decode_action(await self._request("codex.remote.stop", request_id))
+        return _decode_action(
+            await self._request(
+                "codex.remote.stop",
+                request_id,
+                timeout_seconds=self._mutation_timeout_seconds,
+            )
+        )
 
     async def generate_pair_code(self, request_id: str) -> PairCodeResult:
-        data = await self._request("codex.pair", request_id)
+        data = await self._request(
+            "codex.pair", request_id, timeout_seconds=self._mutation_timeout_seconds
+        )
         code = data.get("code")
         expires_at = data.get("expires_at")
         if not isinstance(code, str) or not (4 <= len(code) <= 64):
@@ -60,7 +95,9 @@ class UnixCodexRuntimeClient:
             raise _protocol_error()
         return PairCodeResult(code=code, expires_at=expires_at)
 
-    async def _request(self, action: str, request_id: str) -> dict[str, Any]:
+    async def _request(
+        self, action: str, request_id: str, *, timeout_seconds: float
+    ) -> dict[str, Any]:
         encoded = (
             json.dumps(
                 {
@@ -86,7 +123,7 @@ class UnixCodexRuntimeClient:
         try:
             writer.write(encoded)
             await writer.drain()
-            raw = await asyncio.wait_for(reader.readline(), timeout=self._timeout_seconds)
+            raw = await asyncio.wait_for(reader.readline(), timeout=timeout_seconds)
             if not raw or len(raw) > MAX_RUNTIME_FRAME or not raw.endswith(b"\n"):
                 raise _protocol_error()
             payload = json.loads(raw)
