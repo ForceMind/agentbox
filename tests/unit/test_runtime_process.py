@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -10,15 +11,25 @@ import pytest
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import (
     ControlledProcessRunner,
+    ExecutableIdentity,
     inspect_executable,
     minimal_runtime_environment,
 )
 
 
+def _trusted_test_python(tmp_path: Path) -> ExecutableIdentity:
+    """Give runner tests an executable with production-safe ownership modes."""
+    tmp_path.chmod(0o700)
+    executable = tmp_path / "python"
+    shutil.copy2(Path(sys.executable).resolve(strict=True), executable)
+    executable.chmod(0o755)
+    return inspect_executable(executable)
+
+
 @pytest.mark.anyio
 async def test_runner_uses_argv_fixed_cwd_and_environment_allowlist(tmp_path: Path) -> None:
     runner = ControlledProcessRunner()
-    identity = inspect_executable(Path(sys.executable))
+    identity = _trusted_test_python(tmp_path)
     environment = {
         "HOME": str(tmp_path),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -55,7 +66,7 @@ async def test_runner_uses_argv_fixed_cwd_and_environment_allowlist(tmp_path: Pa
 @pytest.mark.anyio
 async def test_runner_enforces_output_caps(tmp_path: Path) -> None:
     runner = ControlledProcessRunner()
-    identity = inspect_executable(Path(sys.executable))
+    identity = _trusted_test_python(tmp_path)
     with pytest.raises(RuntimeOperationError, match="output limit") as raised:
         await runner.run(
             identity,
@@ -72,7 +83,7 @@ async def test_runner_enforces_output_caps(tmp_path: Path) -> None:
 @pytest.mark.anyio
 async def test_runner_times_out_and_cleans_up_spawned_process(tmp_path: Path) -> None:
     runner = ControlledProcessRunner(terminate_grace_seconds=0.1)
-    identity = inspect_executable(Path(sys.executable))
+    identity = _trusted_test_python(tmp_path)
     pid_file = tmp_path / "spawned.pid"
     with pytest.raises(RuntimeOperationError) as raised:
         await runner.run(
@@ -168,7 +179,7 @@ async def test_sensitive_runner_does_not_log_output(
 ) -> None:
     canary = "PAIR-SECRET-CANARY-RUNNER"
     runner = ControlledProcessRunner()
-    identity = inspect_executable(Path(sys.executable))
+    identity = _trusted_test_python(tmp_path)
     with caplog.at_level(logging.DEBUG):
         result = await runner.run(
             identity,
@@ -187,7 +198,7 @@ async def test_sensitive_runner_does_not_log_output(
 @pytest.mark.anyio
 async def test_event_loop_remains_schedulable_during_runtime_process(tmp_path: Path) -> None:
     runner = ControlledProcessRunner()
-    identity = inspect_executable(Path(sys.executable))
+    identity = _trusted_test_python(tmp_path)
     task = asyncio.create_task(
         runner.run(
             identity,

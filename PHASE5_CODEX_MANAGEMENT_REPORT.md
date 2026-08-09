@@ -27,7 +27,7 @@ host network changes remain unimplemented.
 - Repository: `ForceMind/agentbox`
 - Branch: `phase/5-codex-management`
 - Base: `f61f3f4c24f0ab48994b05e9c574385a5c9b795c`
-- Commits: 7 Phase 5 commits, including the final E2E artifact hardening
+- Commits: 8 Phase 5 commits, including final E2E and CI portability hardening
 - Draft PR: <https://github.com/ForceMind/agentbox/pull/22>
 - Merge: not performed; human review is required
 
@@ -193,6 +193,11 @@ Actual local results after the final code changes:
 - repository secret scan: PASS
 - Phase 5 source/runtime boundary scan: PASS
 - `git diff --check`: PASS
+
+Runner tests copy the active Python executable into pytest's private `0700`
+temporary directory and set it to `0755`. This preserves the production
+unsafe-mode rejection while avoiding reliance on GitHub toolcache executable
+modes across Python 3.11–3.13.
 
 The host lacked Chromium `libgbm`, `libasound`, and `libwayland-server`; their
 RPMs were downloaded without installation, extracted beneath `/tmp`, and used
