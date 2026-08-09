@@ -31,7 +31,7 @@ host network changes remain unimplemented.
 - Repository: `ForceMind/agentbox`
 - Branch: `phase/5-codex-management`
 - Base: `f61f3f4c24f0ab48994b05e9c574385a5c9b795c`
-- Commits: 9 Phase 5 commits, including this documentation-only finalization
+- Commits: 10 Phase 5 commits, including the final report consistency update
 - PR: <https://github.com/ForceMind/agentbox/pull/22>
 - Merge: not performed; ready for the human merge decision
 
@@ -273,8 +273,8 @@ final Phase 5 state with all required checks successful:
 - `dependency-review`
 - `e2e`
 
-This documentation-only finalization commit must receive the same protected
-checks before PR #22 is marked Ready for Review.
+The documentation-only finalization commit received the same protected checks
+before PR #22 was marked Ready for Review.
 
 ## Deviations
 
@@ -306,7 +306,7 @@ checks before PR #22 is marked Ready for Review.
 
 ## Phase 6 Recommendation
 
-After human review and merge of this Draft PR, Phase 6 should implement
+After merge of PR #22, Phase 6 should implement
 project-scoped Claude Remote sessions through the same non-root Runtime
 boundary and tmux, with public-capability detection and manual Workspace Trust
 guidance. Phase 6 is not started by this report.
