@@ -18,6 +18,33 @@ Decision authority: Accepted ADRs 0001–0008 in `docs/adr/` govern the decision
 - Long work: durable SQLite Jobs executed by a separately supervised Worker.
 - Network: `127.0.0.1:8787` by default; no direct public bind.
 
+## Phase 3 Implemented Control-Plane Foundation
+
+Phase 3 implements only the local control-plane security foundation:
+
+- typed configuration from `AGENTBOX_*` environment variables, an optional
+  `.agentbox-dev/config.toml`, and secure defaults;
+- a SQLAlchemy 2.x SQLite engine with WAL, foreign keys, a five-second busy
+  timeout, and explicit short transaction scopes;
+- an explicit Alembic migration for `AdminUser`, server-side `Session`, and
+  `AuditEvent`; application startup never calls `create_all` or auto-migrates;
+- local-TTY single-admin bootstrap with Argon2id, opaque cookie Sessions whose
+  raw token is never stored, session-bound CSRF, exact Origin/Host validation,
+  bounded in-process login throttling, request IDs, safe errors, and structured
+  redacted logs;
+- an asynchronous API login boundary that admits at most two Argon2/login work
+  units by default, then runs the synchronous service through
+  `asyncio.to_thread`; rate-limit rejection occurs before real/dummy verify;
+- `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`, and the three Phase 3 auth
+  routes under `/api/v1/auth`;
+- a separate Worker lifecycle that may connect to the database and clean old
+  expired/revoked Sessions, but does not claim or execute Jobs;
+- a minimal React login/authenticated shell. It is not the Phase 4 Dashboard.
+
+Development state defaults beneath `.agentbox-dev/`, which is ignored by Git.
+The production FHS locations remain the accepted deployment design, but Phase 3
+does not create them, users, units, listeners, or host services.
+
 ## System Context
 
 ```mermaid
@@ -54,6 +81,14 @@ Runs as `agentbox` and provides:
 - no subprocess execution and no direct project or Runtime HOME access.
 
 The process binds `127.0.0.1:8787` and a local CLI UDS. It never runs as root.
+
+Phase 3 keeps SQLAlchemy synchronous rather than introducing an async ORM.
+Login's lookup, Argon2 work, and final Session write execute off the main event
+loop, and no database transaction remains open during password verification or
+rehash. Logout, `me`, and readiness retain short bounded synchronous SQLite
+operations; no HTTP route runs migrations or Session cleanup. This is acceptable
+for the single-server foundation and must be revisited if profiling shows
+contention or these request paths acquire longer work.
 
 ### Application Services
 

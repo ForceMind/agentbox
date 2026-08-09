@@ -16,8 +16,8 @@ repos:
         entry: bash scripts/check-secrets.sh
         language: system
         pass_filenames: false
-      - id: skeleton-boundaries
-        name: Phase 2 source boundaries
+      - id: source-boundaries
+        name: AgentBox source boundaries
         entry: bash scripts/check-skeleton-boundaries.sh
         language: system
         pass_filenames: false

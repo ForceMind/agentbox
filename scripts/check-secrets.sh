@@ -7,6 +7,7 @@ suspicious_paths="$({
   find . \
     -path './.git' -prune -o \
     -path './.venv' -prune -o \
+    -path './.agentbox-dev' -prune -o \
     -path './node_modules' -prune -o \
     -path './apps/web/node_modules' -prune -o \
     -type f \( \
@@ -30,6 +31,7 @@ secret_pattern='(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Z
 if grep --recursive --line-number --extended-regexp \
   --exclude-dir=.git \
   --exclude-dir=.venv \
+  --exclude-dir=.agentbox-dev \
   --exclude-dir=node_modules \
   --exclude-dir=dist \
   --exclude=check-secrets.sh \

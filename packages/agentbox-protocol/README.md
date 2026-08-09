@@ -1,3 +1,5 @@
 # agentbox-protocol
 
-Versioned API and internal protocol data-transfer types will live here. Phase 2 defines only the two public skeleton response types; it does not define Job, Helper, Runtime, or persistence protocols.
+Phase 3 defines strict V1 metadata, readiness, authentication, and error DTOs.
+Job, Helper, Runtime, Project, and secret-returning Runtime protocols remain
+unimplemented.

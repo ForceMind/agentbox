@@ -7,23 +7,34 @@ dangerous_python='(shell[[:space:]]*=[[:space:]]*True|os\.system[[:space:]]*\(|s
 
 if grep --recursive --line-number --extended-regexp --include='*.py' \
   "$dangerous_python" apps packages; then
-  printf 'Forbidden execution primitive found in Phase 2 Python source.\n' >&2
+  printf 'Forbidden execution primitive found in AgentBox Python source.\n' >&2
   exit 1
 fi
 
-route_count="$({
-  grep --recursive --only-matching --extended-regexp --include='*.py' \
-    '@application\.(get|post|put|patch|delete)\(' apps/api/src || true
-} | wc -l)"
-if [[ "$route_count" -ne 2 ]]; then
-  printf 'Unexpected Phase 2 API route count: %s\n' "$route_count" >&2
+route_lines="$({
+  grep --recursive --line-number --extended-regexp --include='*.py' \
+    '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
+})"
+route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
+if [[ "$route_count" -ne 6 ]]; then
+  printf 'Unexpected Phase 3 API route count: %s\n' "$route_count" >&2
+  exit 1
+fi
+
+mutation_routes="$(printf '%s\n' "$route_lines" | grep --extended-regexp \
+  '@(application|router)\.(post|put|patch|delete)\(' || true)"
+unexpected_mutations="$(printf '%s\n' "$mutation_routes" | grep --invert-match --extended-regexp \
+  '@router\.post\("/(login|logout)"' || true)"
+if [[ -n "$unexpected_mutations" ]]; then
+  printf 'Unexpected Phase 3 mutation route found:\n%s\n' "$unexpected_mutations" >&2
   exit 1
 fi
 
 if grep --recursive --line-number --extended-regexp --include='*.py' \
-  '@application\.(post|put|patch|delete)\(' apps/api/src; then
-  printf 'Mutating API route found in Phase 2 skeleton.\n' >&2
+  "(Base\\.metadata\\.create_all|allow_origins[[:space:]]*=[[:space:]]*\\[[[:space:]]*\"\\*\"|/(shell|exec|command|register)[\"'])" \
+  apps packages; then
+  printf 'Forbidden schema, CORS, shell, or anonymous registration boundary found.\n' >&2
   exit 1
 fi
 
-printf 'Phase 2 source-boundary check passed.\n'
+printf 'Phase 3 source-boundary check passed.\n'

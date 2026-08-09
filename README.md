@@ -6,17 +6,22 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. This repository currently contains the Phase 2 engineering skeleton only.
+AgentBox is in **early pre-alpha development**. The Phase 2 skeleton is merged;
+Phase 3 is adding a reviewable control-plane security foundation on a dedicated
+branch.
 
-The skeleton provides:
+The current Phase 3 branch provides:
 
-- a FastAPI service with `GET /healthz` and `GET /api/v1/meta` only;
-- an idle Worker process shell with version, health, and clean-shutdown behavior;
-- an `agentbox` CLI entry point whose `status` and `doctor` commands explicitly report “Not implemented in Phase 2”;
-- a React/TypeScript/Vite/Tailwind connectivity page;
+- a FastAPI service with health/readiness/meta plus login/logout/`auth/me` only;
+- explicit SQLite/Alembic persistence for AdminUser, hashed Sessions, and redacted Audit Events;
+- local-TTY administrator initialization, Argon2id, CSRF, secure Cookie policy, and bounded login throttling;
+- a Worker lifecycle limited to database readiness and expired Session cleanup;
+- a control-plane-only CLI and minimal React login/authenticated shell;
 - package boundaries, tests, CI, governance templates, and architecture documents.
 
-It does **not** manage Codex, generate Pair Codes, run Claude Remote, manage tmux or projects, authenticate Web users, operate a root Helper, install system services, or modify this host.
+It does **not** manage Codex, generate Pair Codes, run Claude Remote, manage
+tmux or projects, operate a root Helper, install system services, expose a
+public listener, or modify this host.
 
 ## MVP goal
 
@@ -45,7 +50,7 @@ AgentBox is not a general Linux administration panel, browser IDE, arbitrary Web
 - Project Workspaces default to `/srv/agentbox/projects`;
 - configuration, state, runtime files, and installed releases use `/etc/agentbox`, `/var/lib/agentbox`, `/run/agentbox`, and `/opt/agentbox`;
 - Web/API defaults to `127.0.0.1:8787`;
-- backend: Python 3.11+, FastAPI, Pydantic, SQLAlchemy, Alembic, and later SQLite WAL;
+- backend: Python 3.11+, FastAPI, Pydantic Settings, SQLAlchemy, Alembic, and SQLite WAL;
 - frontend: React, TypeScript, Vite, Tailwind CSS, and selective shadcn/ui;
 - API contracts begin at `/api/v1`; progress will use SSE before WebSocket.
 
@@ -93,6 +98,17 @@ Run the explicitly limited API during development:
 agentbox-api
 ```
 
+Initialize a development database and local administrator explicitly:
+
+```bash
+alembic upgrade head
+agentbox admin init
+```
+
+Development state is placed beneath `.agentbox-dev/` by default and is ignored
+by Git. No production secret is bundled; production requires an explicit
+`AGENTBOX_SECRET_KEY` and safe paths/listener configuration.
+
 Frontend setup and checks:
 
 ```bash
@@ -111,8 +127,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 
 ## Roadmap
 
-1. Phase 2: repository and engineering skeleton — finalized in PR #19, pending manual merge.
-2. Phase 3: minimal backend and single-admin authentication.
+1. Phase 2: repository and engineering skeleton — merged in PR #19.
+2. Phase 3: control-plane foundation and single-admin authentication — in progress.
 3. Phase 4: minimal authenticated frontend.
 4. Phase 5: Codex management.
 5. Phase 6: Claude/tmux session management.
@@ -135,6 +151,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [ADRs](docs/adr/README.md)
 - [Phase 0 report](PHASE0_ENVIRONMENT_REPORT.md)
 - [Phase 1 summary](PHASE1_ARCHITECTURE_SUMMARY.md)
+- [Phase 2 report](PHASE2_ENGINEERING_REPORT.md)
 
 ## Contributing
 

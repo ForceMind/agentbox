@@ -1,6 +1,11 @@
 # AgentBox API Design
 
-Status: Phase 1 contract design; no routes are implemented in this phase.
+Status: Phase 1 contract design with the Phase 3 control-plane subset implemented.
+
+Implemented in Phase 3: `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`,
+`POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and
+`GET /api/v1/auth/me`. All other contracts in this document remain designs,
+not implemented routes.
 
 ## Principles
 
@@ -58,9 +63,16 @@ Errors use:
 |---|---|---|
 | `POST /api/v1/auth/login` | create Session | rate-limited; body never logged; cookie response no-store |
 | `POST /api/v1/auth/logout` | revoke current Session | CSRF required |
-| `GET /api/v1/auth/session` | current admin/session/expiry | no token value |
+| `GET /api/v1/auth/me` | current admin/session/expiry and session-bound CSRF token | no Session token value; response no-store |
 | `POST /api/v1/auth/re-authenticate` | mark recent authentication | password body suppressed; short TTL |
-| `GET /api/v1/auth/csrf` | rotate/return CSRF token | no-store; same origin |
+
+The first three routes above are implemented in Phase 3. Re-authentication is a
+future high-risk-action prerequisite and is not implemented yet. The CSRF token
+is derived server-side from the Session and application secret, verified by a
+stored keyed digest, and returned by login/`me`; there is no separate CSRF route.
+Auth success uses the V1 envelope and contains only admin ID/name, Session ID and
+absolute expiry, and the CSRF token. The raw Session token exists only in the
+`agentbox_session` cookie and process memory.
 
 First-admin creation is local CLI only and has no remote bootstrap endpoint.
 
@@ -242,6 +254,9 @@ Audit is read-only through API. There is no endpoint to delete or rewrite events
 - `501`: Runtime capability unsupported;
 - `503`: dependency unavailable/broken/degraded;
 - `504`: bounded operation timeout.
+
+Phase 3 also uses `413` for an over-limit request body. Validation error details
+contain bounded field locations/types and never echo password or other input.
 
 ## Output and Execution Limits
 

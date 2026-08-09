@@ -1,3 +1,6 @@
 # AgentBox API
 
-The Phase 2 API is a liveness and versioning shell. It exposes only `GET /healthz` and `GET /api/v1/meta`; authentication and all product APIs are deferred.
+The Phase 3 API exposes liveness, readiness, safe metadata, and the minimal
+single-admin login/logout/`me` Session boundary. It applies no migration
+automatically and contains no Runtime, Project, Job, Helper, installer, or
+system-operation routes.

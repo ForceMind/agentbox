@@ -1,6 +1,6 @@
 # AgentBox Threat Model
 
-Status: Phase 1 design baseline
+Status: Phase 1 baseline updated for the implemented Phase 3 control-plane surface
 Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
 
 ## Scope and Assets
@@ -80,6 +80,23 @@ TB8: live state to backup/export media.
 | T-32 | E | Dependency executes install/build code | build/runtime | lock/review dependencies, minimal production artifact, no project build in MVP | dependency review/SBOM |
 | T-33 | T/I | Existing cloudflared route exposes AgentBox | external integration | never auto-edit/reuse; explicit proxy/access review; loopback bind | deployment checklist |
 | T-34 | T/E | UID/GID 1001 reuse gives write access to Codex artifact | current host | collision check and ownership remediation before identity creation | pre-install owner/UID gate |
+
+## Phase 3 Control-Plane Attack Surface
+
+| Threat | Current mitigation | Residual/verification |
+|---|---|---|
+| Admin bootstrap race | `BEGIN IMMEDIATE`, database uniqueness for one active admin, no Web registration | concurrent bootstrap test; local OS/TTY authority is assumed |
+| Brute-force login | account, source, and combined pseudonymous buckets; five failures/five minutes; bounded five-minute lock | deterministic fake-clock tests; buckets reset on API restart |
+| Username enumeration | identical invalid-credential code/message for missing, wrong-password, and inactive users | missing users run one precomputed Argon2 dummy verification; timing remains a review target |
+| Session fixation | every login generates a new 256-bit opaque Session and ignores caller-selected cookie identity | fixation test compares attacker cookie with issued cookie |
+| Session theft/replay | keyed token hash at rest, `HttpOnly`, `SameSite=Strict`, idle/absolute expiry, revocation, active-session cap | production requires `Secure`; host/browser compromise remains residual risk |
+| CSRF | Session-bound derived token, stored keyed verifier, `X-CSRF-Token`, exact Origin and Host on mutations | missing/wrong/cross-Session/hostile-Origin tests |
+| Cookie leakage | no Session value in API body/DB/audit/log; no-store auth responses; CSP/referrer/frame headers | loopback development HTTP is explicitly less transport-secure than HTTPS |
+| Database theft | only Argon2id passwords and keyed Session/CSRF digests; no raw tokens; restricted production path policy | DB theft still exposes metadata/password hashes; installer permissions and encrypted backups are later gates |
+| Authentication timing leak | maintained Argon2id verifier and a process-precomputed dummy hash | exact timing equivalence is best effort and must be profiled before release |
+| Header/proxy spoofing | bounded request IDs, exact Origin/Host, socket peer source by default, forwarded address only from configured trusted proxy networks | trusted-proxy chain semantics need deployment-specific tests |
+| Audit/log injection | flat bounded metadata allowlist, secret-key rejection, newline neutralization, structured logging and assignment redaction | arbitrary secret text cannot always be pattern-detected, so sensitive values are prohibited at the call site |
+| Oversized request DoS | global 16 KiB mutation-body cap plus username/password/request-ID length limits | CPU/memory concurrency limits and reverse-proxy limits remain deployment hardening |
 
 ## Highest-Risk Abuse Cases
 
