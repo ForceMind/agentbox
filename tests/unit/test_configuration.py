@@ -19,6 +19,13 @@ def test_secure_development_defaults_are_loopback_and_ephemeral(
     assert settings.env == Environment.DEVELOPMENT
     assert settings.ephemeral_secret is True
     assert settings.cookie_secure is False
+    assert settings.argon2_max_concurrency == 2
+
+
+@pytest.mark.parametrize("value", [0, 5])
+def test_argon2_concurrency_is_strictly_bounded(value: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(argon2_max_concurrency=value)
 
 
 def test_environment_overrides_optional_local_toml(

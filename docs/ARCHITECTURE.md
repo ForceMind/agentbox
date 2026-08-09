@@ -32,6 +32,9 @@ Phase 3 implements only the local control-plane security foundation:
   raw token is never stored, session-bound CSRF, exact Origin/Host validation,
   bounded in-process login throttling, request IDs, safe errors, and structured
   redacted logs;
+- an asynchronous API login boundary that admits at most two Argon2/login work
+  units by default, then runs the synchronous service through
+  `asyncio.to_thread`; rate-limit rejection occurs before real/dummy verify;
 - `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`, and the three Phase 3 auth
   routes under `/api/v1/auth`;
 - a separate Worker lifecycle that may connect to the database and clean old
@@ -78,6 +81,14 @@ Runs as `agentbox` and provides:
 - no subprocess execution and no direct project or Runtime HOME access.
 
 The process binds `127.0.0.1:8787` and a local CLI UDS. It never runs as root.
+
+Phase 3 keeps SQLAlchemy synchronous rather than introducing an async ORM.
+Login's lookup, Argon2 work, and final Session write execute off the main event
+loop, and no database transaction remains open during password verification or
+rehash. Logout, `me`, and readiness retain short bounded synchronous SQLite
+operations; no HTTP route runs migrations or Session cleanup. This is acceptable
+for the single-server foundation and must be revisited if profiling shows
+contention or these request paths acquire longer work.
 
 ### Application Services
 

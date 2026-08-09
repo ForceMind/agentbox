@@ -2,7 +2,7 @@
 
 > Date: 2026-08-09
 > Phase: Control Plane Foundation
-> Status: Local implementation and verification complete; Draft PR open; remote CI pending
+> Status: Phase 3 final review fix implemented; required CI is tracked on Draft PR #20
 > Product scope: authentication and control-plane foundations only
 
 ## Executive Summary
@@ -25,7 +25,7 @@ persistent service or change the host.
 | Repository | `ForceMind/agentbox` |
 | Base | `main` at `de758b2375b3e167ede6e75f8764e88aebf0156d` |
 | Branch | `phase/3-control-plane-foundation` |
-| Commits | 5 Phase 3 commits, including this report finalization |
+| Commits | 6 Phase 3 commits, including the final review fix |
 | Draft PR | [#20 — Phase 3: establish secure control-plane foundation](https://github.com/ForceMind/agentbox/pull/20) |
 | Related Issues | #2, #3, #4; partial Phase 3 scope of #5 and #6 |
 
@@ -48,6 +48,7 @@ is deliberately not a configured source.
 | `AGENTBOX_LOGIN_RATE_LIMIT` | 5 failed attempts |
 | `AGENTBOX_LOGIN_RATE_WINDOW` | 300 seconds |
 | `AGENTBOX_LOGIN_LOCK_DURATION` | 300 seconds |
+| `AGENTBOX_ARGON2_MAX_CONCURRENCY` | 2; validation permits only 1–4 |
 | `AGENTBOX_DATA_DIR` | `.agentbox-dev` |
 | body limit | 16 KiB for state-changing HTTP requests |
 
@@ -68,6 +69,9 @@ database URL, and data path.
   to head again;
 - application/Worker startup never calls `Base.metadata.create_all()` and never
   applies migrations implicitly.
+- request-path review found no migration or cleanup route. Login database work
+  runs in the bounded login thread, and no transaction spans Argon2; logout,
+  `me`, and readiness retain only short point reads/writes.
 
 The physical Phase 3 schema contains only:
 
@@ -110,6 +114,12 @@ There is no Web registration route and no password argv option.
 
 Default Argon2id settings are 64 MiB memory, three iterations, parallelism two,
 32-byte hash, and a unique 16-byte salt supplied by the maintained library.
+The async login route acquires a process-local semaphore before submitting the
+complete synchronous login work unit through `asyncio.to_thread`. The default
+limit of two bounds simultaneous real/dummy verify and rehash/hash operations;
+waiting requests do not enter the thread-pool queue. Password work is outside
+SQLite transactions, and all Web-path Argon2 operations are outside the FastAPI
+event loop.
 
 ## Session Security
 
@@ -145,6 +155,12 @@ deterministic in tests.
 API restart currently clears limiter state. This is an explicit limitation and
 the main deviation from the longer-term restart-persistent design; it is not
 hidden with a success claim.
+
+Request schema validation and exact Origin/Host validation precede the login
+worker. Inside the worker, the limiter precheck precedes user lookup and Argon2.
+A locked bucket records a bounded failure audit and returns without real or
+dummy verification. An unlocked missing-user request still performs the
+process-precomputed dummy verify, preserving the generic error boundary.
 
 Forwarded client addresses are ignored unless the immediate peer is inside an
 explicit `AGENTBOX_TRUSTED_PROXIES` network. Audit stores only a keyed source
@@ -221,7 +237,7 @@ Actual local results before publication:
 | Ruff | PASS |
 | Black (one file/process bwrap workaround) | PASS |
 | mypy strict | PASS — 34 checked source files |
-| pytest | PASS — 50 tests |
+| pytest | PASS — 58 tests |
 | migration upgrade/downgrade/upgrade | PASS |
 | ESLint | PASS |
 | Prettier | PASS |
@@ -238,6 +254,12 @@ The Black directory-batch behavior remains unreliable in the current bwrap
 environment, so the Phase 2 one-file-per-process workaround was used locally.
 GitHub Actions continues to run the normal batch command.
 
+The same bwrap harness does not deliver completion for even a minimal
+`asyncio.to_thread(lambda: 42)` probe. Tests that exercise the new off-loop path
+were therefore run through the approved non-mutating host execution context;
+temporary SQLite data remained under pytest temporary directories. GitHub CI is
+the independent normal-runner verification for the final commit.
+
 ## Security Review
 
 | Area | Result |
@@ -249,6 +271,7 @@ GitHub Actions continues to run the normal batch command.
 | Session | new random token per login, keyed hash storage, idle/absolute expiry, revocation, cleanup, active cap |
 | Cookie | HttpOnly/Strict/Path/Max-Age tested; production policy forces Secure/HTTPS origin |
 | Rate limit | deterministic account/source/combined throttling; restart reset documented |
+| Argon2 scheduling | real/dummy verify and rehash/hash off-loop behind a semaphore of 2; concurrency and liveness tests pass |
 | Logging/audit | no request bodies; bounded fields, key rejection, newline and assignment redaction |
 | CORS/proxy | no wildcard CORS; forwarded source ignored absent explicit trusted peer network |
 | Error handling | stable envelope; no client traceback or echoed validation values |
@@ -276,10 +299,11 @@ container, cloud, or Runtime dependency was added.
    The explicitly approved Phase 3 scope excludes Job execution/business models,
    so no Job table or consumer was created. ADR 0005 remains accepted for the
    later Job phase.
-3. API route functions are asynchronous but call short synchronous SQLAlchemy/
-   Argon2 service boundaries. This avoids an observed AnyIO threadpool stall in
-   the current bwrap environment; under bursts of allowed password checks it can
-   temporarily reduce API responsiveness and should be profiled/revisited.
+3. SQLAlchemy remains synchronous. The login work unit runs off-loop and holds
+   no SQLite transaction during Argon2 verification/rehash. Logout, `me`, and
+   readiness retain only short synchronous SQLite operations; no request route
+   performs migrations or cleanup. Revisit if profiling shows contention or
+   these paths grow beyond bounded queries/writes.
 4. `SameSite=Strict` follows the approved Phase 1 security design and is stronger
    than the Phase 3 minimum of Lax.
 

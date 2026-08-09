@@ -42,6 +42,16 @@ not erase the source spray-defense bucket. Restarting the API clears limiter
 state; persistent throttling remains a documented hardening item rather than a
 claim of restart-resistant enforcement.
 
+Login request validation and exact Origin/Host checks run before the login
+service is scheduled. The service checks the rate-limit buckets before the user
+lookup and before any real or dummy Argon2 verification; a locked bucket never
+performs the expensive verify. Accepted login work runs through
+`asyncio.to_thread` only after acquiring a process-local semaphore. The default
+`AGENTBOX_ARGON2_MAX_CONCURRENCY=2` is constrained to 1–4, bounding simultaneous
+Argon2 work and keeping password verify, dummy verify, hash, and rehash off the
+FastAPI event loop. Limiter state uses a lock because admitted login workers can
+execute concurrently.
+
 Request bodies are capped before JSON validation, authentication request models
 reject unknown fields, and request IDs use a bounded syntax. API errors never
 return Python exceptions or validation input. Audit metadata is a bounded flat
@@ -67,6 +77,9 @@ The Phase 0 host already runs cloudflared and wildcard services, and port 8000 i
 - The instance allows exactly one active AdminUser in the MVP.
 - Password policy checks length and breached/common-pattern defenses without logging the candidate password.
 - Passwords are hashed with Argon2id using a maintained library, per-password salt, and release-calibrated parameters. Only the encoded hash is stored.
+- Web login password work is admitted through the bounded Argon2 semaphore and
+  executed in a thread; excess login requests wait as coroutines before work is
+  submitted to the thread pool.
 
 ### Login and Sessions
 
@@ -76,6 +89,8 @@ The Phase 0 host already runs cloudflared and wildcard services, and port 8000 i
 - Loopback HTTP is permitted only for a local connection/forwarding workflow. The UI warns when transport is not HTTPS; non-loopback HTTP is refused.
 - Absolute and idle expiry, rotation after login/re-auth, logout revocation, password-change revocation, and a small maximum active-session count are required.
 - Authentication responses are `Cache-Control: no-store` and must not expose whether an arbitrary username exists.
+- Missing users execute the same dummy Argon2 verification as an ordinary
+  invalid login unless the applicable rate-limit bucket is already locked.
 
 ### Login Rate Limiting
 

@@ -22,6 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from agentbox_api.auth import BoundedLoginExecutor
 from agentbox_api.auth import router as auth_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 
@@ -90,6 +91,10 @@ def create_app(
     )
     application.state.settings = actual_settings
     application.state.services = actual_services
+    application.state.login_executor = BoundedLoginExecutor(
+        actual_services.auth,
+        max_concurrency=actual_settings.argon2_max_concurrency,
+    )
     application.add_middleware(
         ControlPlaneHttpMiddleware,
         max_body_bytes=actual_settings.request_body_limit,

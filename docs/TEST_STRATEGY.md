@@ -17,6 +17,12 @@ rate limiting without real sleeps, cookie flags, idle/absolute expiry,
 revocation, fixation, cross-Session CSRF, Origin/Host rejection, malformed and
 oversized inputs, request IDs/security headers, audit redaction, Worker
 readiness/cleanup, CLI bootstrap, and the minimal React login/logout flow.
+Dedicated concurrency tests prove that verify runs outside the request event-loop
+thread, at most the configured two Argon2 operations run concurrently, locked
+buckets skip verify, missing users use the dummy hash, and `/healthz` remains
+schedulable while a password verification is deliberately held by a test gate.
+Threading events and the existing fake clock make these tests deterministic;
+timeouts are failure guards rather than timing assertions.
 
 These are control-plane foundation tests, not a penetration test or proof of
 production hardening. Runtime, Helper, Job execution, systemd, Project, and
@@ -67,6 +73,8 @@ The database suite verifies Alembic upgrade paths, transaction behavior under se
 - missing/invalid/expired sessions, fixation and rotation;
 - CSRF across all state-changing requests, including Pair generation;
 - login throttling without account-discovery leaks;
+- bounded off-loop Argon2 execution, dummy verification, and no verify after a
+  rate-limit precheck rejects the request;
 - cookie flags, origin checks, cache headers, and no-store secret responses;
 - authorization on every object and Job/event stream;
 - SSE connection limits and reconnect behavior.

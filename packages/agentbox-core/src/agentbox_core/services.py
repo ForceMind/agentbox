@@ -353,29 +353,40 @@ class AuthService:
             user = session.scalar(
                 select(AdminUser).where(AdminUser.username_normalized == normalized)
             )
+            user_id = user.id if user is not None else None
             encoded_hash = (
                 user.password_hash if user is not None else self._password_manager.dummy_hash
             )
-            password_ok = self._password_manager.verify(encoded_hash, password)
             active = bool(user is not None and user.is_active)
 
-        if not password_ok or not active or user is None:
+        # Password work deliberately runs outside a database transaction. The
+        # API schedules this complete login method on its bounded thread gate,
+        # so verification (including the dummy path) never blocks its event loop.
+        password_ok = self._password_manager.verify(encoded_hash, password)
+
+        if not password_ok or not active or user_id is None:
             self._rate_limiter.register_failure(normalized, source_identifier)
             self._record_failed_login(
                 normalized, source_identifier, request_id, reason="invalid_credentials"
             )
             raise InvalidCredentials()
 
+        replacement_hash = None
+        if self._password_manager.needs_rehash(encoded_hash):
+            replacement_hash = self._password_manager.hash(password)
+
         self._rate_limiter.register_success(normalized, source_identifier)
         now = self._clock.now()
         with self._database.transaction() as session:
-            current_user = session.get(AdminUser, user.id)
+            current_user = session.get(AdminUser, user_id)
             if current_user is None or not current_user.is_active:
                 raise InvalidCredentials()
             current_user.last_login_at = now
             current_user.updated_at = now
-            if self._password_manager.needs_rehash(current_user.password_hash):
-                current_user.password_hash = self._password_manager.hash(password)
+            if replacement_hash is not None and hmac.compare_digest(
+                current_user.password_hash, encoded_hash
+            ):
+                current_user.password_hash = replacement_hash
             issued = self._sessions.issue(session, current_user, client_label)
             self._audit.record(
                 session,

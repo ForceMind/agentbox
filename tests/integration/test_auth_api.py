@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import AsyncIterator
 
 import httpx
 import pytest
 from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession
+from agentbox_core.security import PasswordManager
 from agentbox_core.services import ControlPlaneServices
 from conftest import FakeClock
 from sqlalchemy import select
@@ -67,6 +70,207 @@ async def test_invalid_login_errors_do_not_enumerate_users(
     assert wrong.json()["error"]["code"] == missing.json()["error"]["code"]
     assert wrong.json()["error"]["message"] == missing.json()["error"]["message"]
     assert wrong.json()["error"]["message"] == "Invalid credentials"
+
+
+@pytest.mark.anyio
+async def test_argon2_verify_runs_outside_request_event_loop(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event_loop_thread = threading.get_ident()
+    verify_threads: list[int] = []
+    original_verify = password_manager.verify
+
+    def tracked_verify(encoded_hash: str, password: str) -> bool:
+        verify_threads.append(threading.get_ident())
+        return original_verify(encoded_hash, password)
+
+    monkeypatch.setattr(password_manager, "verify", tracked_verify)
+
+    response = await login(client, origin_headers)
+
+    assert response.status_code == 200
+    assert verify_threads
+    assert all(thread_id != event_loop_thread for thread_id in verify_threads)
+
+
+@pytest.mark.anyio
+async def test_argon2_login_work_has_bounded_concurrency(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_verify = password_manager.verify
+    state_lock = threading.Lock()
+    two_entered = threading.Event()
+    release = threading.Event()
+    active = 0
+    calls = 0
+    maximum_active = 0
+
+    def tracked_verify(encoded_hash: str, password: str) -> bool:
+        nonlocal active, calls, maximum_active
+        with state_lock:
+            active += 1
+            calls += 1
+            maximum_active = max(maximum_active, active)
+            if active == 2:
+                two_entered.set()
+        try:
+            if not release.wait(timeout=2):
+                raise AssertionError("test did not release bounded Argon2 work")
+            return original_verify(encoded_hash, password)
+        finally:
+            with state_lock:
+                active -= 1
+
+    monkeypatch.setattr(password_manager, "verify", tracked_verify)
+    requests = [
+        asyncio.create_task(
+            login(
+                client,
+                origin_headers,
+                username=f"missing-{index}",
+                password="wrong password value",
+            )
+        )
+        for index in range(3)
+    ]
+
+    reached_capacity = await asyncio.to_thread(two_entered.wait, 2)
+    with state_lock:
+        calls_before_release = calls
+        maximum_before_release = maximum_active
+    release.set()
+    responses = await asyncio.gather(*requests)
+
+    assert reached_capacity is True
+    assert calls_before_release == 2
+    assert maximum_before_release == 2
+    assert calls == 3
+    assert maximum_active == 2
+    assert all(response.status_code == 401 for response in responses)
+
+
+@pytest.mark.anyio
+async def test_rate_limited_login_skips_argon2_verify(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_verify = password_manager.verify
+    verify_calls = 0
+
+    def tracked_verify(encoded_hash: str, password: str) -> bool:
+        nonlocal verify_calls
+        verify_calls += 1
+        return original_verify(encoded_hash, password)
+
+    monkeypatch.setattr(password_manager, "verify", tracked_verify)
+    for _attempt in range(5):
+        assert (
+            await login(client, origin_headers, password="wrong password value")
+        ).status_code == 401
+
+    calls_before_lock_rejection = verify_calls
+    limited = await login(client, origin_headers)
+
+    assert limited.status_code == 429
+    assert calls_before_lock_rejection == 5
+    assert verify_calls == calls_before_lock_rejection
+
+
+@pytest.mark.anyio
+async def test_missing_user_uses_dummy_verify_when_not_rate_limited(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_verify = password_manager.verify
+    event_loop_thread = threading.get_ident()
+    verified_calls: list[tuple[str, int]] = []
+
+    def tracked_verify(encoded_hash: str, password: str) -> bool:
+        verified_calls.append((encoded_hash, threading.get_ident()))
+        return original_verify(encoded_hash, password)
+
+    monkeypatch.setattr(password_manager, "verify", tracked_verify)
+
+    response = await login(
+        client,
+        origin_headers,
+        username="missing-admin",
+        password="wrong password value",
+    )
+
+    assert response.status_code == 401
+    assert len(verified_calls) == 1
+    assert verified_calls[0][0] == password_manager.dummy_hash
+    assert verified_calls[0][1] != event_loop_thread
+
+
+@pytest.mark.anyio
+async def test_password_rehash_runs_outside_request_event_loop(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event_loop_thread = threading.get_ident()
+    hash_threads: list[int] = []
+    original_hash = password_manager.hash
+
+    def tracked_hash(password: str) -> str:
+        hash_threads.append(threading.get_ident())
+        return original_hash(password)
+
+    monkeypatch.setattr(password_manager, "needs_rehash", lambda encoded_hash: True)
+    monkeypatch.setattr(password_manager, "hash", tracked_hash)
+
+    response = await login(client, origin_headers)
+
+    assert response.status_code == 200
+    assert hash_threads
+    assert all(thread_id != event_loop_thread for thread_id in hash_threads)
+
+
+@pytest.mark.anyio
+async def test_event_loop_remains_schedulable_while_argon2_verify_runs(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_verify = password_manager.verify
+    verify_started = threading.Event()
+    release_verify = threading.Event()
+
+    def blocking_verify(encoded_hash: str, password: str) -> bool:
+        verify_started.set()
+        if not release_verify.wait(timeout=2):
+            raise AssertionError("event loop did not release test Argon2 work")
+        return original_verify(encoded_hash, password)
+
+    monkeypatch.setattr(password_manager, "verify", blocking_verify)
+    login_request = asyncio.create_task(
+        login(client, origin_headers, password="wrong password value")
+    )
+    started = await asyncio.to_thread(verify_started.wait, 2)
+
+    try:
+        health = await asyncio.wait_for(client.get("/healthz"), timeout=1)
+    finally:
+        release_verify.set()
+    response = await login_request
+
+    assert started is True
+    assert health.status_code == 200
+    assert response.status_code == 401
 
 
 @pytest.mark.anyio

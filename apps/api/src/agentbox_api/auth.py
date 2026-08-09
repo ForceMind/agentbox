@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 from typing import cast
 from urllib.parse import urlsplit
 
 from agentbox_core.configuration import Settings
 from agentbox_core.errors import InvalidOrigin
-from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
+from agentbox_core.services import (
+    AuthenticatedSession,
+    AuthService,
+    ControlPlaneServices,
+    IssuedSession,
+)
 from agentbox_protocol import (
     AdminView,
     AuthData,
@@ -22,12 +28,45 @@ SESSION_COOKIE = "agentbox_session"
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
 
+class BoundedLoginExecutor:
+    """Keep synchronous login/Argon2 work off-loop with bounded admission."""
+
+    def __init__(self, auth_service: AuthService, *, max_concurrency: int) -> None:
+        self._auth_service = auth_service
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def login(
+        self,
+        *,
+        username: str,
+        password: str,
+        source_identifier: str,
+        request_id: str | None,
+        client_label: str | None,
+    ) -> IssuedSession:
+        # Acquire capacity before submitting work to the default thread pool;
+        # excess requests wait as coroutines rather than unbounded thread jobs.
+        async with self._semaphore:
+            return await asyncio.to_thread(
+                self._auth_service.login,
+                username=username,
+                password=password,
+                source_identifier=source_identifier,
+                request_id=request_id,
+                client_label=client_label,
+            )
+
+
 def _services(request: Request) -> ControlPlaneServices:
     return cast(ControlPlaneServices, request.app.state.services)
 
 
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
+
+
+def _login_executor(request: Request) -> BoundedLoginExecutor:
+    return cast(BoundedLoginExecutor, request.app.state.login_executor)
 
 
 def _request_id(request: Request) -> str:
@@ -103,7 +142,7 @@ def _auth_response(request: Request, authenticated: AuthenticatedSession) -> Aut
 @router.post("/login", response_model=AuthResponse)
 async def login(request: Request, response: Response, payload: LoginRequest) -> AuthResponse:
     _validate_origin(request)
-    issued = _services(request).auth.login(
+    issued = await _login_executor(request).login(
         username=payload.username,
         password=payload.password,
         source_identifier=_source_identifier(request),

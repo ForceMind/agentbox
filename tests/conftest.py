@@ -64,6 +64,7 @@ def settings(tmp_path: Path) -> Settings:
         login_rate_limit=5,
         login_rate_window=300,
         login_lock_duration=300,
+        argon2_max_concurrency=2,
         allowed_origins=("http://testserver",),
     )
 

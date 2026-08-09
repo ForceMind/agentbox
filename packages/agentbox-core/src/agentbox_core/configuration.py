@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     login_rate_limit: int = Field(default=5, ge=1, le=100)
     login_rate_window: int = Field(default=5 * 60, ge=10, le=24 * 60 * 60)
     login_lock_duration: int = Field(default=5 * 60, ge=10, le=24 * 60 * 60)
+    argon2_max_concurrency: int = Field(default=2, ge=1, le=4)
     data_dir: Path = Path(".agentbox-dev")
     database_busy_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
     request_body_limit: int = Field(default=16 * 1024, ge=1024, le=1024 * 1024)
@@ -184,4 +185,5 @@ class Settings(BaseSettings):
             "database_backend": make_url(self.database_url).get_backend_name(),
             "secret_source": "ephemeral" if self.ephemeral_secret else "configured",
             "cookie_secure": self.cookie_secure,
+            "argon2_max_concurrency": self.argon2_max_concurrency,
         }
