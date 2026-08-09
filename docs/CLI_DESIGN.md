@@ -1,6 +1,10 @@
 # AgentBox CLI Design
 
-Status: Phase 1 contract design; no CLI is implemented in this phase.
+Status: Phase 1 contract design with the Phase 3 local control-plane subset implemented.
+
+Phase 3 implements `agentbox status`, `agentbox doctor`, `agentbox admin init`,
+`agentbox admin status`, and `agentbox secret generate`. Runtime, Project,
+service-mode UDS, Job, update, and third-party commands remain unimplemented.
 
 ## Role
 
@@ -52,6 +56,24 @@ agentbox update
 - `status`: compact component/Runtime/Job summary; read-only.
 - `doctor`: creates Diagnostic Run Job in service mode; `--local` runs safe subset.
 - `update`: shows plan by default; `--apply` (future flag within command contract) requires service, dry-run review, recent auth/confirmation where applicable.
+
+### Phase 3 local administration
+
+```text
+agentbox admin init [--username <name>]
+agentbox admin status
+agentbox secret generate
+```
+
+- `admin init` requires a local TTY, prompts twice with echo disabled, refuses a
+  second active administrator, and requires an explicit `alembic upgrade head`
+  first. Password input is never accepted on argv.
+- `admin status` is read-only and returns only initialized state and username.
+- `secret generate` writes one CSPRNG value to stdout and never writes a file,
+  environment variable, database row, or log. JSON mode is deliberately absent
+  for this secret-returning command.
+- Phase 3 `status` and `doctor` inspect only configuration validity, database
+  reachability, migration currency, and administrator initialization.
 
 ### Codex
 

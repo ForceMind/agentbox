@@ -47,11 +47,11 @@ The project stays focused on a single-server, single-administrator MVP. Security
 - **Stop condition:** skeleton CI is green and contains no production control implementation.
 - **Human approval:** completed for `git init`, GitHub repository creation, Apache-2.0, initial default branch, and remote push; final PR merge remains manual.
 
-## Phase 3 — Minimal backend and authentication
+## Phase 3 — Minimal backend and authentication (in progress on dedicated branch)
 
 - **Goal:** deliver the versioned API foundation, single-admin authentication, persistence, audit structure, and safe local daemon lifecycle.
 - **Input:** Phase 2 skeleton, API/Data Model/Security contracts.
-- **Output:** FastAPI application, SQLite/Alembic schema, password bootstrap, secure sessions, CSRF and rate limiting, health endpoint, Job records, and audit redaction.
+- **Output:** FastAPI application, SQLite/Alembic schema, password bootstrap, secure sessions, CSRF and rate limiting, health/readiness endpoints, Worker session maintenance, and audit redaction. Durable Job records/execution remain in the later Job workstream.
 - **Not in scope:** Codex or Claude control, project mutation, root Helper operations, or public binding.
 - **Acceptance:** binds to `127.0.0.1` by default; has no default credential; authentication and CSRF rules hold; no secret-bearing fields exist.
 - **Tests:** unit/integration tests for login, lockout, cookies, CSRF, session expiry, authorization, migrations, and audit redaction.

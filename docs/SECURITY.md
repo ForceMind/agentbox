@@ -13,6 +13,40 @@ Status: Phase 1 design baseline
 
 Availability and recoverability are also security goals: one malformed Job must not exhaust the verified 2-vCPU/3.5-GiB host or corrupt state.
 
+## Phase 3 Security Foundation
+
+The implemented Phase 3 boundary uses one locally initialized administrator,
+Argon2id password hashes, opaque 256-bit Session tokens, keyed token digests in
+SQLite, absolute and idle expiry, revocation, a ten-active-session limit, and a
+session-derived CSRF token returned only by no-store authenticated responses.
+The cookie is `HttpOnly`, `SameSite=Strict`, `Path=/`, and becomes `Secure` in
+production. No anonymous registration endpoint exists.
+
+All state-changing Phase 3 HTTP requests require an exact allowlisted Origin
+and Host; logout additionally requires `X-CSRF-Token`. Forwarded client
+addresses are ignored unless the direct peer belongs to an explicitly
+configured trusted-proxy network. Production rejects non-loopback binds,
+missing/short application secrets, unsafe SQLite paths, and non-HTTPS remote
+origins. Loopback HTTP remains a development-mode-only workflow; production
+authentication origins require HTTPS and use `Secure` cookies.
+
+Production also requires the pre-created SQLite parent directory to be a real,
+non-group/world-accessible directory. Database/WAL/SHM files are restricted to
+mode `0600`; Phase 3 does not create the production directory or change system
+ownership.
+
+The Phase 3 login limiter keeps pseudonymous account, source, and combined
+buckets in API process memory: five failures in five minutes cause a five-minute
+bounded lock. A successful login clears its account/combined buckets but does
+not erase the source spray-defense bucket. Restarting the API clears limiter
+state; persistent throttling remains a documented hardening item rather than a
+claim of restart-resistant enforcement.
+
+Request bodies are capped before JSON validation, authentication request models
+reject unknown fields, and request IDs use a bounded syntax. API errors never
+return Python exceptions or validation input. Audit metadata is a bounded flat
+allowlist and rejects password/token/session/CSRF/cookie/authorization keys.
+
 ## Default Network Policy
 
 - Default bind: `127.0.0.1:8787`.
@@ -47,7 +81,9 @@ The Phase 0 host already runs cloudflared and wildcard services, and port 8000 i
 
 - Rate limits combine account and effective-client buckets with exponential delay.
 - Proxy client addresses are accepted only from configured trusted proxies.
-- Counters persist across API restart without storing raw passwords or tokens; raw public IP retention should be minimized or pseudonymized.
+- The Phase 3 implementation pseudonymizes bucket keys and keeps them in process
+  memory. Persistence across API restart remains a pre-release hardening target;
+  no raw password, token, or public address is stored in a rate-limit record.
 - Lockout is bounded to avoid permanent administrator denial of service; local recovery is documented and audited.
 
 ### Recent Authentication

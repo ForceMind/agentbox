@@ -18,6 +18,30 @@ Decision authority: Accepted ADRs 0001–0008 in `docs/adr/` govern the decision
 - Long work: durable SQLite Jobs executed by a separately supervised Worker.
 - Network: `127.0.0.1:8787` by default; no direct public bind.
 
+## Phase 3 Implemented Control-Plane Foundation
+
+Phase 3 implements only the local control-plane security foundation:
+
+- typed configuration from `AGENTBOX_*` environment variables, an optional
+  `.agentbox-dev/config.toml`, and secure defaults;
+- a SQLAlchemy 2.x SQLite engine with WAL, foreign keys, a five-second busy
+  timeout, and explicit short transaction scopes;
+- an explicit Alembic migration for `AdminUser`, server-side `Session`, and
+  `AuditEvent`; application startup never calls `create_all` or auto-migrates;
+- local-TTY single-admin bootstrap with Argon2id, opaque cookie Sessions whose
+  raw token is never stored, session-bound CSRF, exact Origin/Host validation,
+  bounded in-process login throttling, request IDs, safe errors, and structured
+  redacted logs;
+- `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`, and the three Phase 3 auth
+  routes under `/api/v1/auth`;
+- a separate Worker lifecycle that may connect to the database and clean old
+  expired/revoked Sessions, but does not claim or execute Jobs;
+- a minimal React login/authenticated shell. It is not the Phase 4 Dashboard.
+
+Development state defaults beneath `.agentbox-dev/`, which is ignored by Git.
+The production FHS locations remain the accepted deployment design, but Phase 3
+does not create them, users, units, listeners, or host services.
+
 ## System Context
 
 ```mermaid

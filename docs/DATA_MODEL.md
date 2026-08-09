@@ -1,6 +1,12 @@
 # AgentBox MVP Data Model
 
-Status: Phase 1 logical design; no database or migration is created in this phase.
+Status: Phase 1 logical design; the bounded Phase 3 control-plane subset is implemented.
+
+Phase 3 migration `0001_control_plane_foundation` creates only `admin_users`,
+`sessions`, and `audit_events`. Project, Runtime, Job, Setting, Diagnostic, and
+Confirmation tables remain future designs. Development uses a configured path
+beneath `.agentbox-dev/` or a temporary test directory; production retains the
+accepted `/var/lib/agentbox/agentbox.db` policy and is not created by Phase 3.
 
 ## Database Decision
 
@@ -34,6 +40,11 @@ Database path: `/var/lib/agentbox/agentbox.db`, owned by `agentbox`, restrictive
 
 MVP enforces at most one active AdminUser. No plaintext/recoverable password is stored.
 
+The Phase 3 physical model uses `id`, display `username`, unique normalized
+username, Argon2id `password_hash`, `is_active`, `created_at`, `updated_at`, and
+`last_login_at`. A SQLite partial unique index enforces at most one active row.
+Display name, password-change boundary, and revision fields remain future work.
+
 ## Session
 
 | Field | Purpose |
@@ -49,6 +60,11 @@ MVP enforces at most one active AdminUser. No plaintext/recoverable password is 
 | `client_class` | bounded Web/local label, no raw fingerprint |
 
 This is an AgentBox application session verifier, not a third-party Token store. Raw session/cookie values are never persisted or audited. Migration restores revoke Sessions by default.
+
+The Phase 3 physical model calls the keyed digest `token_hash`, stores a keyed
+`csrf_hash`, has both idle and absolute expiry, revocation timestamp, and an
+optional bounded client label. The raw cookie and raw CSRF value are not stored.
+Restores revoking all Sessions remains a backup/restore policy for a later phase.
 
 ## Project
 
@@ -201,6 +217,11 @@ Events have short retention and never contain secret results or command output.
 | `metadata` | strictly allowlisted non-secret small fields |
 
 There is no raw request/response body, command output, token, Pair Code, password, cookie, public IP, or auth configuration.
+
+Phase 3 implements the core actor/action/target/result/request-ID/timestamp
+fields and `metadata_json`. Metadata is a maximum-16-field flat scalar map with
+length limits, newline neutralization, and secret-key rejection. Job and
+confirmation correlation fields are deferred with those models.
 
 ## Setting
 

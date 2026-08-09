@@ -6,6 +6,22 @@ Tests must prove that AgentBox remains a constrained control plane, not merely t
 
 No statement in this document means these tests have already been implemented or passed.
 
+## Phase 3 implemented coverage
+
+The Phase 3 suite now uses temporary SQLite files, Alembic upgrade/downgrade,
+cheap test-only Argon2id costs, an injectable clock, and in-process ASGI calls.
+It covers configuration precedence/production refusal, WAL/FK/busy timeout,
+schema upgrade → base downgrade → upgrade, single-admin/race constraints,
+Argon2id, raw-token non-persistence scans, generic login errors, inactive users,
+rate limiting without real sleeps, cookie flags, idle/absolute expiry,
+revocation, fixation, cross-Session CSRF, Origin/Host rejection, malformed and
+oversized inputs, request IDs/security headers, audit redaction, Worker
+readiness/cleanup, CLI bootstrap, and the minimal React login/logout flow.
+
+These are control-plane foundation tests, not a penetration test or proof of
+production hardening. Runtime, Helper, Job execution, systemd, Project, and
+installer test sections below remain future gates.
+
 ## Test layers
 
 | Layer | Primary coverage | Default environment |
