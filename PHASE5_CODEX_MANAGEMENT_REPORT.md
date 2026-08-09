@@ -1,7 +1,7 @@
 # Phase 5 Codex Management Report
 
 Date: 2026-08-09
-Status: implemented and locally verified; GitHub review state to be updated after publication
+Status: implemented and locally verified in Draft PR #22; required GitHub CI pending
 
 ## Executive Summary
 
@@ -27,8 +27,8 @@ host network changes remain unimplemented.
 - Repository: `ForceMind/agentbox`
 - Branch: `phase/5-codex-management`
 - Base: `f61f3f4c24f0ab48994b05e9c574385a5c9b795c`
-- Commits: pending final publication
-- Draft PR: pending final publication
+- Commits: 6 Phase 5 commits, including this publication metadata update
+- Draft PR: <https://github.com/ForceMind/agentbox/pull/22>
 - Merge: not performed; human review is required
 
 ## Observed Codex Environment
