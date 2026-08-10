@@ -44,15 +44,33 @@ _SAFE_CONFIG = (
 )
 _DANGEROUS_CONFIG = (
     "alias.",
-    "credential.helper",
+    "credential.",
+    "filter.",
+    "protocol.",
+    "url.",
+    "core.askpass",
+    "core.fsmonitor",
+    "core.gitproxy",
     "core.hookspath",
     "core.sshcommand",
+    "core.worktree",
     "core.pager",
     "core.editor",
     "diff.external",
     "include.path",
     "includeif.",
 )
+
+
+def _unsafe_config_key(key: str) -> bool:
+    lowered = key.casefold()
+    if any(lowered == item or lowered.startswith(item) for item in _DANGEROUS_CONFIG):
+        return True
+    if lowered.startswith("remote.") and lowered.endswith(
+        (".uploadpack", ".receivepack", ".proxy", ".vcs")
+    ):
+        return True
+    return lowered.startswith("http.") and lowered.endswith(".extraheader")
 
 
 def validate_git_repository_url(value: str) -> str:
@@ -71,13 +89,22 @@ def validate_git_repository_url(value: str) -> str:
                 "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid", category="validation"
             )
         return value
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+        username = parsed.username
+        password = parsed.password
+    except ValueError as exc:
+        raise RuntimeOperationError(
+            "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid", category="validation"
+        ) from exc
     if (
         parsed.scheme != "https"
-        or parsed.hostname != "github.com"
-        or parsed.port is not None
-        or parsed.username is not None
-        or parsed.password is not None
+        or hostname != "github.com"
+        or port is not None
+        or username is not None
+        or password is not None
         or parsed.query
         or parsed.fragment
     ):
@@ -121,13 +148,15 @@ def redact_remote_url(value: str) -> str | None:
         return f"git@github.com:{ssh.group('owner')}/{repository}.git"
     try:
         parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
     except ValueError:
         return None
-    if parsed.scheme not in {"https", "ssh"} or not parsed.hostname:
+    if parsed.scheme not in {"https", "ssh"} or not hostname:
         return None
-    host = parsed.hostname
-    if parsed.port:
-        host = f"{host}:{parsed.port}"
+    host = hostname
+    if port:
+        host = f"{host}:{port}"
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
 
@@ -204,8 +233,15 @@ class GitAdapter:
 
     async def status(self, project: Path) -> GitStatus:
         identity = self._require_executable()
-        if not self._repository_owned(project):
+        repository_state = self._repository_state(project)
+        if repository_state == "missing":
             return GitStatus(is_repository=False)
+        if repository_state == "unsafe":
+            raise RuntimeOperationError(
+                "GIT_OWNERSHIP_UNSAFE",
+                "Repository ownership or structure is unsafe",
+                category="forbidden",
+            )
         await self._assert_safe_repository_config(identity, project)
         result = await self._run(
             identity,
@@ -400,7 +436,14 @@ class GitAdapter:
     ) -> None:
         result = await self._run(
             identity,
-            ("--no-optional-locks", "config", "--local", "--null", "--list"),
+            (
+                "--no-optional-locks",
+                "config",
+                "--local",
+                "--no-includes",
+                "--null",
+                "--list",
+            ),
             cwd=project,
             stdout_limit=128 * 1024,
             stderr_limit=4096,
@@ -409,7 +452,7 @@ class GitAdapter:
             raise RuntimeOperationError("GIT_CONFIG_UNSAFE", "Repository configuration is unsafe")
         for record in result.stdout.decode("utf-8", errors="replace").split("\x00"):
             key = record.partition("\n")[0].casefold()
-            if any(key == item or key.startswith(item) for item in _DANGEROUS_CONFIG):
+            if _unsafe_config_key(key):
                 raise RuntimeOperationError(
                     "GIT_CONFIG_UNSAFE",
                     "Repository configuration contains an unsafe executable setting",
@@ -418,26 +461,42 @@ class GitAdapter:
 
     def _require_repository(self, project: Path) -> ExecutableIdentity:
         identity = self._require_executable()
-        if not self._repository_owned(project):
+        repository_state = self._repository_state(project)
+        if repository_state == "unsafe":
+            raise RuntimeOperationError(
+                "GIT_OWNERSHIP_UNSAFE",
+                "Repository ownership or structure is unsafe",
+                category="forbidden",
+            )
+        if repository_state == "missing":
             raise RuntimeOperationError(
                 "GIT_NOT_REPOSITORY", "Project is not a Git repository", category="conflict"
             )
         return identity
 
     @staticmethod
-    def _repository_owned(project: Path) -> bool:
+    def _repository_state(project: Path) -> str:
         dot_git = project / ".git"
         try:
-            return (
-                project.is_dir()
-                and not project.is_symlink()
-                and project.stat().st_uid == os.geteuid()
-                and dot_git.is_dir()
-                and not dot_git.is_symlink()
-                and dot_git.stat().st_uid == os.geteuid()
-            )
+            if not project.exists():
+                return "missing"
+            if (
+                not project.is_dir()
+                or project.is_symlink()
+                or project.stat().st_uid != os.geteuid()
+            ):
+                return "unsafe"
+            if not dot_git.exists() and not dot_git.is_symlink():
+                return "missing"
+            if (
+                not dot_git.is_dir()
+                or dot_git.is_symlink()
+                or dot_git.stat().st_uid != os.geteuid()
+            ):
+                return "unsafe"
+            return "valid"
         except OSError:
-            return False
+            return "unsafe"
 
     def _require_executable(self) -> ExecutableIdentity:
         identity = self.executable()

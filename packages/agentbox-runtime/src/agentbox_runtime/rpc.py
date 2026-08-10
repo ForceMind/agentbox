@@ -419,12 +419,20 @@ class UnixProjectRuntimeClient:
     async def list_workspaces(self, request_id: str) -> tuple[ProjectWorkspace, ...]:
         data = await self._request("project.list", request_id)
         raw = data.get("projects")
-        if not isinstance(raw, list) or len(raw) > 1000:
+        if (
+            not isinstance(raw, list)
+            or len(raw) > 1000
+            or any(
+                not isinstance(item, dict)
+                or not isinstance(item.get("project_key"), str)
+                or not isinstance(item.get("display_name"), str)
+                for item in raw
+            )
+        ):
             raise _protocol_error()
         return tuple(
             ProjectWorkspace(str(item["project_key"])[:80], str(item["display_name"])[:128])
             for item in raw
-            if isinstance(item, dict)
         )
 
     async def create_workspace(
@@ -504,13 +512,18 @@ class UnixProjectRuntimeClient:
     async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
         data = await self._request("git.branches.list", request_id, project_key=project_key)
         raw = data.get("branches")
-        if not isinstance(raw, list) or len(raw) > 500:
+        if (
+            not isinstance(raw, list)
+            or len(raw) > 500
+            or any(
+                not isinstance(item, dict)
+                or not isinstance(item.get("name"), str)
+                or not isinstance(item.get("current"), bool)
+                for item in raw
+            )
+        ):
             raise _protocol_error()
-        return tuple(
-            GitBranch(str(item["name"])[:128], bool(item["current"]))
-            for item in raw
-            if isinstance(item, dict)
-        )
+        return tuple(GitBranch(str(item["name"])[:128], bool(item["current"])) for item in raw)
 
     async def create_branch(
         self, request_id: str, project_key: str, branch: str
@@ -578,6 +591,13 @@ class UnixProjectRuntimeClient:
                 pull_request_url=(
                     str(data["pull_request_url"])[:512] if data.get("pull_request_url") else None
                 ),
+                pull_request_base=(
+                    str(data["pull_request_base"])[:128] if data.get("pull_request_base") else None
+                ),
+                pull_request_head=(
+                    str(data["pull_request_head"])[:128] if data.get("pull_request_head") else None
+                ),
+                mergeability=(str(data["mergeability"])[:32] if data.get("mergeability") else None),
                 checks=str(data.get("checks", "unknown"))[:16],
             )
         except (KeyError, TypeError, ValueError) as exc:
@@ -633,6 +653,8 @@ async def _typed_transport_request(
         ):
             raise _protocol_error()
         error = payload.get("error")
+        if error is not None and not isinstance(error, dict):
+            raise _protocol_error()
         if isinstance(error, dict):
             raise RuntimeOperationError(
                 str(error.get("code", "PROJECT_RUNTIME_BROKEN"))[:80],

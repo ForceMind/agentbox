@@ -28,6 +28,11 @@ _GITHUB_SSH = re.compile(
     r"git@github\.com:(?P<owner>[A-Za-z0-9_.-]{1,100})/"
     r"(?P<repo>[A-Za-z0-9_.-]{1,100})(?P<dotgit>\.git)?"
 )
+_RESERVED_SLUGS = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{index}" for index in range(1, 10)}
+    | {f"lpt{index}" for index in range(1, 10)}
+)
 
 
 @dataclass(frozen=True)
@@ -51,14 +56,18 @@ def normalize_project_name(value: str) -> str:
 def project_slug(name: str, supplied: str | None = None) -> str:
     if supplied is not None:
         normalized = unicodedata.normalize("NFC", supplied).strip().casefold()
-        if normalized != supplied.strip().casefold() or not _SLUG.fullmatch(normalized):
+        if (
+            normalized != supplied.strip().casefold()
+            or not _SLUG.fullmatch(normalized)
+            or normalized in _RESERVED_SLUGS
+        ):
             raise ProjectValidationError()
         return normalized
     ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.casefold()).strip("-")[:56].rstrip("-")
     if not slug:
         slug = f"project-{hashlib.sha256(name.encode()).hexdigest()[:10]}"
-    if not _SLUG.fullmatch(slug):
+    if not _SLUG.fullmatch(slug) or slug in _RESERVED_SLUGS:
         raise ProjectValidationError()
     return slug
 
@@ -73,13 +82,20 @@ def validate_repository_url(value: str) -> str:
         if ssh.group("owner").startswith("-") or ssh.group("repo").startswith("-"):
             raise ProjectValidationError()
         return value
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+        username = parsed.username
+        password = parsed.password
+    except ValueError as exc:
+        raise ProjectValidationError() from exc
     if (
         parsed.scheme != "https"
-        or parsed.hostname != "github.com"
-        or parsed.port is not None
-        or parsed.username is not None
-        or parsed.password is not None
+        or hostname != "github.com"
+        or port is not None
+        or username is not None
+        or password is not None
         or parsed.query
         or parsed.fragment
     ):

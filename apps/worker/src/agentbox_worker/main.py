@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import signal
-from collections.abc import Sequence
+from collections.abc import Coroutine, Sequence
+from typing import Any, TypeVar
 
 from agentbox_core import __version__
 from agentbox_core.configuration import Settings
@@ -23,6 +25,37 @@ _SUCCESS_AUDIT = {
     "git.branch.switch": "git_branch_switched",
     "github.pr.create": "github_pr_create_succeeded",
 }
+_FAILURE_AUDIT = {
+    "project.create": "project_create_failed",
+    "project.clone": "project_clone_failed",
+    "git.pull": "git_pull_failed",
+    "git.push": "git_push_failed",
+    "git.branch.create": "git_branch_create_failed",
+    "git.branch.switch": "git_branch_switch_failed",
+    "github.pr.create": "github_pr_create_failed",
+}
+_T = TypeVar("_T")
+
+
+async def _runtime_call(
+    services: ControlPlaneServices, job_id: str, operation: Coroutine[Any, Any, _T]
+) -> _T:
+    """Keep the durable lease alive while one bounded Runtime RPC is in flight."""
+    task = asyncio.create_task(operation)
+    try:
+        while True:
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(task),
+                    timeout=services.jobs.heartbeat_interval_seconds,
+                )
+            except TimeoutError:
+                services.jobs.heartbeat(job_id)
+    finally:
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -65,6 +98,61 @@ def _audit_job(
         )
 
 
+def _mark_rollback_attention(
+    services: ControlPlaneServices,
+    job: Job,
+    *,
+    job_type: str,
+    project_id: str,
+) -> None:
+    """Persist an uncertain cleanup state and best-effort failure audit."""
+    services.jobs.needs_attention(
+        job.id,
+        code="PROJECT_ROLLBACK_REQUIRES_ATTENTION",
+        summary="Workspace cleanup requires review",
+    )
+    services.projects.mark_error(project_id)
+    try:
+        _audit_job(
+            services,
+            job,
+            action=_FAILURE_AUDIT[job_type],
+            result="failed",
+            error_code="PROJECT_ROLLBACK_REQUIRES_ATTENTION",
+        )
+    except Exception:
+        # The Job already advertises an operator-review state. Never obscure the
+        # original Runtime failure or attempt another terminal transition here.
+        return
+
+
+def _finish_failure(
+    services: ControlPlaneServices,
+    job: Job,
+    *,
+    job_type: str,
+    error_code: str,
+    summary: str,
+) -> None:
+    """Audit an operation failure before making its Job terminal."""
+    try:
+        _audit_job(
+            services,
+            job,
+            action=_FAILURE_AUDIT[job_type],
+            result="failed",
+            error_code=error_code,
+        )
+    except Exception:
+        services.jobs.needs_attention(
+            job.id,
+            code="JOB_AUDIT_FAILED",
+            summary="Operation failed and audit persistence requires review",
+        )
+        return
+    services.jobs.fail(job.id, code=error_code, summary=summary)
+
+
 async def execute_job(
     services: ControlPlaneServices, runtime: ProjectRuntimeClient, job: Job
 ) -> None:
@@ -79,86 +167,117 @@ async def execute_job(
             job_id, progress=25, phase="executing", summary="Operation executing"
         )
         if job_type == "project.create":
-            await runtime.create_workspace(request_id, project_key, job_id)
+            await _runtime_call(
+                services, job_id, runtime.create_workspace(request_id, project_key, job_id)
+            )
             services.projects.mark_ready(project_id)
-            await runtime.finalize_workspace(request_id, project_key, job_id)
+            await _runtime_call(
+                services, job_id, runtime.finalize_workspace(request_id, project_key, job_id)
+            )
         elif job_type == "project.clone":
             repository_url = str(payload.get("repository_url", ""))
-            cloned = await runtime.clone_workspace(request_id, project_key, job_id, repository_url)
+            cloned = await _runtime_call(
+                services,
+                job_id,
+                runtime.clone_workspace(request_id, project_key, job_id, repository_url),
+            )
             services.projects.mark_ready(project_id, default_branch=cloned.branch)
-            await runtime.finalize_workspace(request_id, project_key, job_id)
+            await _runtime_call(
+                services, job_id, runtime.finalize_workspace(request_id, project_key, job_id)
+            )
         elif job_type == "git.pull":
-            await runtime.pull(request_id, project_key)
+            await _runtime_call(services, job_id, runtime.pull(request_id, project_key))
         elif job_type == "git.push":
-            await runtime.push(request_id, project_key)
+            await _runtime_call(services, job_id, runtime.push(request_id, project_key))
         elif job_type == "git.branch.create":
-            await runtime.create_branch(request_id, project_key, str(payload.get("branch", "")))
+            await _runtime_call(
+                services,
+                job_id,
+                runtime.create_branch(request_id, project_key, str(payload.get("branch", ""))),
+            )
         elif job_type == "git.branch.switch":
-            await runtime.switch_branch(request_id, project_key, str(payload.get("branch", "")))
+            await _runtime_call(
+                services,
+                job_id,
+                runtime.switch_branch(request_id, project_key, str(payload.get("branch", ""))),
+            )
         elif job_type == "github.pr.create":
             base_value = payload.get("base")
-            await runtime.create_draft_pr(
-                request_id,
-                project_key,
-                str(payload.get("title", "")),
-                str(payload.get("body", "")),
-                str(base_value) if base_value is not None else None,
+            await _runtime_call(
+                services,
+                job_id,
+                runtime.create_draft_pr(
+                    request_id,
+                    project_key,
+                    str(payload.get("title", "")),
+                    str(payload.get("body", "")),
+                    str(base_value) if base_value is not None else None,
+                ),
             )
         else:
             raise RuntimeError("Unsupported queued Job type")
+        try:
+            _audit_job(
+                services,
+                job,
+                action=_SUCCESS_AUDIT[job_type],
+                result="succeeded",
+            )
+        except Exception:
+            services.jobs.needs_attention(
+                job_id,
+                code="JOB_AUDIT_FAILED",
+                summary="Operation completed but audit persistence requires review",
+            )
+            return
         services.jobs.succeed(job_id, "Operation completed")
-        _audit_job(
-            services,
-            job,
-            action=_SUCCESS_AUDIT[job_type],
-            result="succeeded",
-        )
     except RuntimeOperationError as exc:
         if job_type in {"project.create", "project.clone"}:
             try:
-                await runtime.rollback_workspace(request_id, project_key, job_id)
-            except RuntimeOperationError:
-                services.jobs.needs_attention(
+                await _runtime_call(
+                    services,
                     job_id,
-                    code="PROJECT_ROLLBACK_REQUIRES_ATTENTION",
-                    summary="Workspace cleanup requires review",
+                    runtime.rollback_workspace(request_id, project_key, job_id),
                 )
-                services.projects.mark_error(project_id)
+            except Exception:
+                _mark_rollback_attention(
+                    services,
+                    job,
+                    job_type=job_type,
+                    project_id=project_id,
+                )
                 return
             services.projects.mark_error(project_id)
-        services.jobs.fail(job_id, code=exc.code, summary=exc.message)
-        failure_action = _SUCCESS_AUDIT[job_type].replace("succeeded", "failed")
-        _audit_job(
+        _finish_failure(
             services,
             job,
-            action=failure_action,
-            result="failed",
+            job_type=job_type,
             error_code=exc.code,
+            summary=exc.message,
         )
     except Exception:
         if job_type in {"project.create", "project.clone"}:
             try:
-                await runtime.rollback_workspace(request_id, project_key, job_id)
-            except RuntimeOperationError:
-                services.jobs.needs_attention(
+                await _runtime_call(
+                    services,
                     job_id,
-                    code="PROJECT_ROLLBACK_REQUIRES_ATTENTION",
-                    summary="Workspace cleanup requires review",
+                    runtime.rollback_workspace(request_id, project_key, job_id),
                 )
-                services.projects.mark_error(project_id)
+            except Exception:
+                _mark_rollback_attention(
+                    services,
+                    job,
+                    job_type=job_type,
+                    project_id=project_id,
+                )
                 return
             services.projects.mark_error(project_id)
-        services.jobs.fail(
-            job_id,
-            code="JOB_EXECUTION_FAILED",
-            summary="Operation failed without exposing command output",
-        )
-        _audit_job(
+        _finish_failure(
             services,
             job,
-            action=_SUCCESS_AUDIT[job_type].replace("succeeded", "failed"),
-            result="failed",
+            job_type=job_type,
             error_code="JOB_EXECUTION_FAILED",
+            summary="Operation failed without exposing command output",
         )
 
 

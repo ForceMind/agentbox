@@ -180,6 +180,17 @@ class JobService:
             job.lease_expires_at = job.heartbeat_at + timedelta(seconds=self._lease_seconds)
             self._event(session, job, "job.progress", summary)
 
+    @property
+    def heartbeat_interval_seconds(self) -> float:
+        return max(5.0, min(30.0, self._lease_seconds / 3))
+
+    def heartbeat(self, job_id: str) -> None:
+        """Renew a running Job lease without persisting noisy progress events."""
+        with self._database.transaction() as session:
+            job = self._running(session, job_id)
+            job.heartbeat_at = self._clock.now()
+            job.lease_expires_at = job.heartbeat_at + timedelta(seconds=self._lease_seconds)
+
     def succeed(self, job_id: str, summary: str) -> None:
         self._finish(job_id, "succeeded", summary=summary)
 

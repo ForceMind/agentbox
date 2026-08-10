@@ -51,6 +51,7 @@ class ProjectWorkspaceManager:
         self._github = github
 
     def list_workspaces(self) -> tuple[ProjectWorkspace, ...]:
+        self._projects.resolved_root(required=True)
         return tuple(
             ProjectWorkspace(project.project_id, project.display_name)
             for project in self._projects.list_projects()
@@ -61,8 +62,8 @@ class ProjectWorkspaceManager:
         operation_id = validate_operation_id(operation_id)
         root, operation_dir, workspace = self._staging(operation_id)
         final = root / key
-        self._assert_final_absent(final)
         try:
+            self._assert_final_absent(final)
             workspace.mkdir(mode=0o750)
             self._write_marker(workspace / _PROJECT_MARKER, operation_id)
             os.replace(workspace, final)
@@ -78,8 +79,8 @@ class ProjectWorkspaceManager:
         operation_id = validate_operation_id(operation_id)
         root, operation_dir, workspace = self._staging(operation_id)
         final = root / key
-        self._assert_final_absent(final)
         try:
+            self._assert_final_absent(final)
             await self._git.clone(repository_url, cwd=operation_dir, destination=workspace)
             if not (workspace / ".git").is_dir() or (workspace / ".git").is_symlink():
                 raise RuntimeOperationError("GIT_CLONE_FAILED", "Cloned repository is invalid")
@@ -172,6 +173,7 @@ class ProjectWorkspaceManager:
                 not stat.S_ISDIR(details.st_mode)
                 or stat.S_ISLNK(details.st_mode)
                 or details.st_uid != os.geteuid()
+                or details.st_mode & 0o022
             ):
                 raise RuntimeOperationError(
                     "PROJECT_TEMP_ROOT_INVALID",

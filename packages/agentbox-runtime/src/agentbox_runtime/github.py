@@ -88,7 +88,21 @@ class GitHubAdapter:
     ) -> None:
         self._git = git
         self._environment = minimal_runtime_environment(environment or os.environ)
-        self._environment.update({"GH_PROMPT_DISABLED": "1", "GH_PAGER": "cat", "PAGER": "cat"})
+        self._environment.update(
+            {
+                "GH_PROMPT_DISABLED": "1",
+                "GH_PAGER": "cat",
+                "PAGER": "cat",
+                "GIT_TERMINAL_PROMPT": "0",
+                "GCM_INTERACTIVE": "Never",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_ASKPASS": "/bin/false",
+                "SSH_ASKPASS": "/bin/false",
+                "GIT_LFS_SKIP_SMUDGE": "1",
+                "GIT_ALLOW_PROTOCOL": "https:ssh",
+            }
+        )
         self._runner = runner or ControlledProcessRunner()
 
     def executable(self) -> ExecutableIdentity | None:
@@ -159,6 +173,9 @@ class GitHubAdapter:
                 pull_request_state=str(payload["state"])[:32].casefold(),
                 pull_request_draft=bool(payload["isDraft"]),
                 pull_request_url=self._validated_pr_url(str(payload["url"])),
+                pull_request_base=self._bounded_ref(payload.get("baseRefName")),
+                pull_request_head=self._bounded_ref(payload.get("headRefName")),
+                mergeability=self._bounded_mergeability(payload.get("mergeStateStatus")),
                 checks=self._checks(payload.get("statusCheckRollup")),
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -292,3 +309,18 @@ class GitHubAdapter:
             }:
                 pending = True
         return "pending" if pending else "pass"
+
+    @staticmethod
+    def _bounded_ref(value: object) -> str | None:
+        if not isinstance(value, str) or not value or len(value) > 128:
+            return None
+        try:
+            return validate_branch_name(value)
+        except RuntimeOperationError:
+            return None
+
+    @staticmethod
+    def _bounded_mergeability(value: object) -> str | None:
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_]{1,32}", value):
+            return None
+        return value.casefold()

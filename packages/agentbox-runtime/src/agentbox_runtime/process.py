@@ -26,6 +26,8 @@ ALLOWED_ENVIRONMENT = frozenset(
         "XDG_DATA_HOME",
         "XDG_STATE_HOME",
         "GIT_ALLOW_PROTOCOL",
+        "GIT_ASKPASS",
+        "GIT_CONFIG_GLOBAL",
         "GIT_CONFIG_NOSYSTEM",
         "GIT_LFS_SKIP_SMUDGE",
         "GIT_TERMINAL_PROMPT",
@@ -33,6 +35,7 @@ ALLOWED_ENVIRONMENT = frozenset(
         "GH_PAGER",
         "GH_PROMPT_DISABLED",
         "PAGER",
+        "SSH_ASKPASS",
     }
 )
 

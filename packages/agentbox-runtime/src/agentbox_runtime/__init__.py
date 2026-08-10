@@ -11,7 +11,7 @@ from agentbox_runtime.claude import (
 )
 from agentbox_runtime.codex import CodexAdapter, CodexManager
 from agentbox_runtime.git import GitAdapter, redact_remote_url, validate_branch_name
-from agentbox_runtime.github import GitHubAdapter
+from agentbox_runtime.github import GitHubAdapter, validate_pr_body, validate_pr_title
 from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
@@ -98,4 +98,6 @@ __all__ = [
     "sanitize_pane_output",
     "validate_project_id",
     "validate_branch_name",
+    "validate_pr_body",
+    "validate_pr_title",
 ]
