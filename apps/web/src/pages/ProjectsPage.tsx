@@ -1,27 +1,133 @@
-import { Boxes } from 'lucide-react'
+import { FormEvent, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Boxes, RefreshCw } from 'lucide-react'
 
-import { PlannedPage } from '../components/PlannedPage'
+import { PageHeader } from '../components/PageHeader'
+import { StatusBadge } from '../components/StatusBadge'
+import { useProjects } from '../features/projects/useProjects'
 import { usePageTitle } from '../hooks/usePageTitle'
 
 export function ProjectsPage() {
+  const model = useProjects()
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [cloneName, setCloneName] = useState('')
   usePageTitle('Projects')
+
+  function create(event: FormEvent) {
+    event.preventDefault()
+    if (name.trim()) void model.create(name.trim()).then(() => setName(''))
+  }
+  function clone(event: FormEvent) {
+    event.preventDefault()
+    if (url.trim())
+      void model.clone(url.trim(), cloneName.trim()).then(() => setUrl(''))
+  }
+
   return (
-    <PlannedPage
-      capabilities={[
-        { title: 'Create', description: 'Create a bounded project workspace.' },
-        {
-          title: 'Clone',
-          description: 'Clone with validated URLs and ownership.',
-        },
-        {
-          title: 'Git status',
-          description: 'Read-only branch and change summaries.',
-        },
-      ]}
-      description="Project management is not available in Phase 4."
-      eyebrow="Workspaces"
-      icon={Boxes}
-      title="Projects"
-    />
+    <>
+      <PageHeader
+        eyebrow="Workspaces"
+        title="Projects"
+        description="Managed workspaces under the configured Project Root—never arbitrary filesystem paths."
+        action={
+          <button
+            className="secondary-button"
+            onClick={() => void model.refresh()}
+            type="button"
+          >
+            <RefreshCw size={16} /> Refresh
+          </button>
+        }
+      />
+      {model.error && (
+        <p className="error-panel" role="alert">
+          {model.error.message}
+        </p>
+      )}
+      <section className="project-forms">
+        <form className="runtime-card" onSubmit={create}>
+          <p className="eyebrow">Empty workspace</p>
+          <h2>New Project</h2>
+          <label>
+            Project name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={128}
+              required
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={model.pending}
+            type="submit"
+          >
+            Create Project
+          </button>
+        </form>
+        <form className="runtime-card" onSubmit={clone}>
+          <p className="eyebrow">GitHub repository</p>
+          <h2>Clone Repository</h2>
+          <label>
+            Repository URL
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              required
+            />
+          </label>
+          <label>
+            Project name (optional)
+            <input
+              value={cloneName}
+              onChange={(e) => setCloneName(e.target.value)}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={model.pending}
+            type="submit"
+          >
+            Clone
+          </button>
+        </form>
+      </section>
+      {model.loading ? (
+        <p className="loading-panel">Loading Projects…</p>
+      ) : model.projects.length === 0 ? (
+        <section className="empty-state">
+          <Boxes />
+          <h2>No Projects yet</h2>
+          <p>Create a bounded workspace or clone an approved GitHub URL.</p>
+        </section>
+      ) : (
+        <section className="project-grid" aria-label="Projects">
+          {model.projects.map((project) => (
+            <Link
+              className="runtime-card project-link"
+              key={project.id}
+              to={`/projects/${project.id}`}
+            >
+              <div className="runtime-card-heading">
+                <h2>{project.display_name}</h2>
+                <StatusBadge
+                  tone={project.state === 'ready' ? 'good' : 'warning'}
+                >
+                  {project.state}
+                </StatusBadge>
+              </div>
+              <p>
+                {project.source_type === 'git_clone'
+                  ? 'Cloned repository'
+                  : 'Workspace'}
+              </p>
+              <code>{project.slug}</code>
+            </Link>
+          ))}
+        </section>
+      )}
+    </>
   )
 }

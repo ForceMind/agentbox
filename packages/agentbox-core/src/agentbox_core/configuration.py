@@ -58,7 +58,10 @@ class Settings(BaseSettings):
     codex_pair_cooldown: int = Field(default=10, ge=5, le=300)
     recent_auth_ttl: int = Field(default=10 * 60, ge=60, le=60 * 60)
     runtime_socket: Path = Path(".agentbox-dev/runtime.sock")
+    project_root: Path = Path(".agentbox-dev/projects")
     data_dir: Path = Path(".agentbox-dev")
+    job_lease_seconds: int = Field(default=120, ge=30, le=3600)
+    job_poll_interval: float = Field(default=1.0, ge=0.1, le=60.0)
     database_busy_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
     request_body_limit: int = Field(default=16 * 1024, ge=1024, le=1024 * 1024)
     trusted_proxies: tuple[str, ...] = ()
@@ -70,6 +73,17 @@ class Settings(BaseSettings):
     )
 
     _ephemeral_secret: bool = PrivateAttr(default=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def production_project_root_default(cls, values: Any) -> Any:
+        """Select the documented production root unless an explicit value was supplied."""
+        if isinstance(values, dict) and values.get("env") in {
+            Environment.PRODUCTION,
+            Environment.PRODUCTION.value,
+        }:
+            values.setdefault("project_root", Path("/srv/agentbox/projects"))
+        return values
 
     @classmethod
     def settings_customise_sources(
@@ -172,6 +186,8 @@ class Settings(BaseSettings):
             "/run/agentbox"
         ):
             raise ValueError("production Runtime socket must be beneath /run/agentbox")
+        if self.project_root != Path("/srv/agentbox/projects"):
+            raise ValueError("production project root must be /srv/agentbox/projects")
 
     @property
     def cookie_secure(self) -> bool:

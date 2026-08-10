@@ -203,3 +203,6 @@ Phase 10 and does not insert into, reorder, or authorize Phases 6–10.
 ## Cross-phase change control
 
 A changed trust boundary, default bind address, Runtime ownership model, project root, database choice, license, or deployment model requires an ADR update before implementation. A discovered external CLI behavior is recorded as a fixture and capability rule rather than silently becoming a new invariant.
+# Phase 7 status
+
+Project Workspace plus Git/GitHub foundation is implemented on `phase/7-project-git-management`: formal Projects, durable Jobs, create/clone, structured status, branch operations, ff-only Pull, no-force Push, Draft PR, Web/CLI/Doctor, and Phase 6 Claude migration. Provider/Secret Management remains Phase 11. Installer, production user/systemd migration, Helper and Phase 8 work are not included.

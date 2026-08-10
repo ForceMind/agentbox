@@ -337,3 +337,6 @@ Breaking resource/semantic changes require `/api/v2`. V1 may add optional fields
 ## Explicitly Absent API
 
 There is no `/shell`, `/exec`, `/terminal`, `/command`, arbitrary filesystem, arbitrary Git, arbitrary systemd, arbitrary package, credential read/write, Pair Code history, raw environment, root impersonation, Provider, or Secret Manager endpoint. The Provider routes above are future planning only.
+# Phase 7 APIs
+
+`/api/v1/projects`, `/projects/clone`, Project detail/Git/branch/Pull/Push/Draft-PR routes, `/api/v1/github`, and `/api/v1/jobs` use opaque Project IDs. All responses are `no-store`; mutations require admin session, exact Origin, CSRF, and Idempotency-Key and return `202` Jobs. Bodies never accept paths, argv, Git config, remote selectors, force/reset/clean controls, or credentials. Job SSE is authenticated, bounded replay rather than raw command streaming.

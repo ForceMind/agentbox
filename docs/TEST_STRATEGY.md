@@ -247,3 +247,6 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 ## Release quality gates
 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
+# Phase 7 coverage
+
+Tests cover Project normalization/idempotency/rollback, traversal and symlink escape, clone protocol and option injection, marker-bound cleanup, porcelain v2 variants, branch ref injection, ff-only Pull, no-force Push, active-Claude guards, dangerous Git config, credential redaction, public `gh` auth states, bounded Draft PR stdin, Jobs/recovery, authenticated API/CSRF/no-store, responsive Web and Fake Runtime E2E. Core tests never require GitHub network access.

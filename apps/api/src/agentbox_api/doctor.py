@@ -9,6 +9,7 @@ from agentbox_protocol import (
     DoctorData,
     DoctorPolicy,
     DoctorResponse,
+    ProjectDoctorSummary,
 )
 from agentbox_runtime import RuntimeOperationError
 from fastapi import APIRouter, Cookie, Request, Response
@@ -50,6 +51,32 @@ async def doctor(
             installation_type="unknown",
             remote_control="unknown",
             remote_state="unknown",
+            findings=[exc.code],
+        )
+    try:
+        git_status = await request.app.state.project_runtime.git_global_status(
+            str(request.state.request_id)
+        )
+        github_status = await request.app.state.project_runtime.github_status(
+            str(request.state.request_id)
+        )
+        project_status = ProjectDoctorSummary(
+            project_root=str(settings.project_root),
+            project_count=len(services.projects.list()),
+            git_installed=git_status.installed,
+            git_version=git_status.version,
+            github_cli_installed=github_status.installed,
+            github_authentication=github_status.authentication.value,
+            findings=[],
+        )
+    except RuntimeOperationError as exc:
+        project_status = ProjectDoctorSummary(
+            project_root=str(settings.project_root),
+            project_count=len(services.projects.list()),
+            git_installed=None,
+            git_version=None,
+            github_cli_installed=None,
+            github_authentication="unknown",
             findings=[exc.code],
         )
     try:
@@ -103,5 +130,6 @@ async def doctor(
             ),
             codex=codex_summary,
             claude=claude_summary,
+            projects=project_status,
         ),
     )

@@ -221,3 +221,6 @@ construct CLI commands. Job progress should use SSE when the durable Job service
 WebSocket is reserved for a future genuinely bidirectional use case and is not
 justified by this application shell. Browser terminal functionality remains out
 of MVP scope.
+# Phase 7 Projects UX
+
+`/projects` is a responsive real-data Project list with New Project and approved GitHub Clone forms; no path field exists. `/projects/:projectId` shows state, structured Git branch/change/ahead-behind/redacted remote, safe Pull/Push/branch actions, GitHub PR/check state, and Draft PR creation. Dirty state is explicit, operations queue Jobs, and the UI contains no force/reset/clean/delete/file-browser action or raw output rendering.

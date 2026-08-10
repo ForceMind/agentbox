@@ -387,3 +387,6 @@ AgentBox releases should publish checksums and a cryptographic signature or buil
 - traversal, symlink, Git URL, hook, UDS peer, CSRF, rate-limit, and confirmation tests pass;
 - install/update rollback tested;
 - no unresolved Critical/High finding.
+# Phase 7 Git security boundary
+
+Project operations accept opaque IDs and Runtime resolves one canonical non-symlink child. Clone allowlists GitHub HTTPS/SSH and disables local/file/ext protocols, prompts, LFS smudge and recursive submodules. Fixed Git config disables hooks, pagers, editors and external diff; unsafe repository-local executable configuration fails closed. Pull is fast-forward only, Push is never forced, and Pull/switch are blocked during an active managed Claude session. Credentials and raw tool output never enter API, logs, Audit or Jobs.

@@ -10,6 +10,7 @@ type RequestOptions<T> = {
   acceptStatuses?: readonly number[]
   body?: unknown
   csrfToken?: string
+  idempotencyKey?: string
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   signal?: AbortSignal
   suppressUnauthorizedRecovery?: boolean
@@ -84,6 +85,9 @@ export class ApiClient {
     const headers: Record<string, string> = { Accept: 'application/json' }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     if (options.csrfToken) headers['X-CSRF-Token'] = options.csrfToken
+    if (options.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey
+    }
 
     try {
       const response = await fetch(path, {

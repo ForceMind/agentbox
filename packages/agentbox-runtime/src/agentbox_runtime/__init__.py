@@ -10,6 +10,8 @@ from agentbox_runtime.claude import (
     sanitize_pane_output,
 )
 from agentbox_runtime.codex import CodexAdapter, CodexManager
+from agentbox_runtime.git import GitAdapter, redact_remote_url, validate_branch_name
+from agentbox_runtime.github import GitHubAdapter
 from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
@@ -21,8 +23,16 @@ from agentbox_runtime.models import (
     ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
+    GitActionResult,
+    GitBranch,
+    GitHubProjectStatus,
+    GitHubPullRequestResult,
+    GitHubStatus,
+    GitInstallationStatus,
+    GitStatus,
     InstallationType,
     PairCodeResult,
+    ProjectWorkspace,
     RemoteActionResult,
     RemoteState,
     RuntimeOperationError,
@@ -32,8 +42,10 @@ from agentbox_runtime.project import ConfiguredProject, ProjectRegistry, validat
 from agentbox_runtime.rpc import (
     ClaudeRuntimeClient,
     CodexRuntimeClient,
+    ProjectRuntimeClient,
     UnixClaudeRuntimeClient,
     UnixCodexRuntimeClient,
+    UnixProjectRuntimeClient,
 )
 from agentbox_runtime.tmux import TmuxAdapter
 
@@ -56,6 +68,15 @@ __all__ = [
     "ClaudeSessionState",
     "ClaudeStatus",
     "ConfiguredProject",
+    "GitActionResult",
+    "GitAdapter",
+    "GitBranch",
+    "GitInstallationStatus",
+    "GitHubAdapter",
+    "GitHubProjectStatus",
+    "GitHubPullRequestResult",
+    "GitHubStatus",
+    "GitStatus",
     "InstallationType",
     "PairCodeResult",
     "RemoteActionResult",
@@ -63,13 +84,18 @@ __all__ = [
     "RuntimeAdapter",
     "RuntimeOperationError",
     "ProjectRegistry",
+    "ProjectRuntimeClient",
+    "ProjectWorkspace",
     "TmuxAdapter",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
+    "UnixProjectRuntimeClient",
     "WorkspaceState",
     "attach_command",
     "managed_session_marker",
     "managed_session_name",
+    "redact_remote_url",
     "sanitize_pane_output",
     "validate_project_id",
+    "validate_branch_name",
 ]

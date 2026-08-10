@@ -28,8 +28,8 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 17 ]]; then
-  printf 'Unexpected Phase 6 API route count: %s\n' "$route_count" >&2
+if [[ "$route_count" -ne 31 ]]; then
+  printf 'Unexpected Phase 7 API route count: %s\n' "$route_count" >&2
   exit 1
 fi
 
@@ -44,9 +44,16 @@ fi
 mutation_routes="$(printf '%s\n' "$route_lines" | grep --extended-regexp \
   '@(application|router)\.(post|put|patch|delete)\(' || true)"
 unexpected_mutations="$(printf '%s\n' "$mutation_routes" | grep --invert-match --extended-regexp \
-  '^(apps/api/src/agentbox_api/auth\.py:.*@router\.post\("/(login|logout)"|apps/api/src/agentbox_api/codex\.py:.*@router\.post\("/(remote/start|remote/stop|pair-codes)"|apps/api/src/agentbox_api/claude\.py:.*@router\.post\("/sessions/\{project_id\}/(start|stop)")' || true)"
+  '^(apps/api/src/agentbox_api/auth\.py:.*@router\.post\("/(login|logout)"|apps/api/src/agentbox_api/codex\.py:.*@router\.post\("/(remote/start|remote/stop|pair-codes)"|apps/api/src/agentbox_api/claude\.py:.*@router\.post\("/sessions/\{project_id\}/(start|stop)"|apps/api/src/agentbox_api/projects\.py:.*@router\.post\()' || true)"
 if [[ -n "$unexpected_mutations" ]]; then
-  printf 'Unexpected Phase 5 mutation route found:\n%s\n' "$unexpected_mutations" >&2
+  printf 'Unexpected Phase 7 mutation route found:\n%s\n' "$unexpected_mutations" >&2
+  exit 1
+fi
+
+if grep --recursive --line-number --extended-regexp --include='*.py' \
+  '(push[^\n]*(--force|-f)([^[:alnum:]]|$)|reset[[:space:]]+--hard|git[[:space:]]+clean|branch[[:space:]]+-D|push[[:space:]]+--delete)' \
+  apps packages; then
+  printf 'Forbidden destructive Git operation found.\n' >&2
   exit 1
 fi
 
@@ -64,4 +71,4 @@ if grep --recursive --line-number --extended-regexp --include='*.py' \
   exit 1
 fi
 
-printf 'Phase 6 source-boundary check passed.\n'
+printf 'Phase 7 source-boundary check passed.\n'

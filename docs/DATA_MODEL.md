@@ -359,3 +359,6 @@ Worker writes coarse non-secret phases and percentages. SSE reads JobEvent rows 
 ## Future PostgreSQL Boundary
 
 Repositories depend on SQLAlchemy models/repositories and transaction abstractions, not SQLite-specific SQL in routes/services. Job claim and migration behavior is isolated. Moving to PostgreSQL is a future multi-server decision; MVP does not pretend SQLite provides multi-host leases.
+# Phase 7 persistence
+
+`Project` stores opaque ID, normalized slug, immutable relative path, source/state, repository metadata and timestamps. `Job` stores typed state, Project target, idempotency digest, resource lock, lease, bounded payload and sanitized summaries. `JobEvent` stores bounded state transitions for polling/SSE. No stdout/stderr, pane output, source content, credentials or tokens are persisted. Running Jobs with expired leases become `needs_attention`, never automatic replay.

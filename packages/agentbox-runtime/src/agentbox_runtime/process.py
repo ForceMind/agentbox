@@ -25,6 +25,14 @@ ALLOWED_ENVIRONMENT = frozenset(
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME",
         "XDG_STATE_HOME",
+        "GIT_ALLOW_PROTOCOL",
+        "GIT_CONFIG_NOSYSTEM",
+        "GIT_LFS_SKIP_SMUDGE",
+        "GIT_TERMINAL_PROMPT",
+        "GCM_INTERACTIVE",
+        "GH_PAGER",
+        "GH_PROMPT_DISABLED",
+        "PAGER",
     }
 )
 
@@ -126,11 +134,14 @@ class ControlledProcessRunner:
         stdout_limit: int,
         stderr_limit: int,
         sensitive_output: bool = False,
+        stdin_data: bytes | None = None,
         error_prefix: str = "CODEX",
     ) -> ProcessResult:
         del sensitive_output  # Classification is consumed by callers/log policy, never logged here.
         if timeout_seconds <= 0 or stdout_limit < 1 or stderr_limit < 1:
             raise ValueError("process limits must be positive")
+        if stdin_data is not None and len(stdin_data) > 16 * 1024:
+            raise ValueError("process stdin exceeds its fixed limit")
         current = inspect_executable(executable.path, error_prefix=error_prefix)
         if current != executable:
             raise RuntimeOperationError(
@@ -150,7 +161,11 @@ class ControlledProcessRunner:
                 *argv,
                 cwd=str(cwd),
                 env=minimal_runtime_environment(environment),
-                stdin=asyncio.subprocess.DEVNULL,
+                stdin=(
+                    asyncio.subprocess.PIPE
+                    if stdin_data is not None
+                    else asyncio.subprocess.DEVNULL
+                ),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
@@ -164,6 +179,20 @@ class ControlledProcessRunner:
 
         assert process.stdout is not None
         assert process.stderr is not None
+        if stdin_data is not None:
+            assert process.stdin is not None
+            try:
+                process.stdin.write(stdin_data)
+                await asyncio.wait_for(process.stdin.drain(), timeout=1)
+            except (BrokenPipeError, ConnectionResetError, TimeoutError) as exc:
+                await self._terminate(process)
+                raise RuntimeOperationError(
+                    f"{error_prefix}_STDIN_FAILED",
+                    "Runtime command input could not be delivered",
+                    category="broken",
+                ) from exc
+            finally:
+                process.stdin.close()
         stdout_task = asyncio.create_task(
             self._read_bounded(process.stdout, stdout_limit, error_prefix=error_prefix)
         )

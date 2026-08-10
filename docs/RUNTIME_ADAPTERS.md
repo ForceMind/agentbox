@@ -349,3 +349,6 @@ names. Unknown evidence stays `unknown`; no package is removed automatically.
   conversation-state effects of Provider activation;
 - define the Secret Manager injection boundary and Provider compatibility test
   matrix without exposing real API keys or treating an HTTP ping as support.
+# Phase 7 adapters
+
+`GitAdapter`, `GitHubAdapter`, and `ProjectWorkspaceManager` expose typed operations only. UDS arguments are controlled relative project key plus bounded operation-specific values; path, argv, shell, environment, PID and Git config are forbidden. Clone staging uses exact Job markers and atomic rename. Git/GitHub output is bounded and normalized before crossing the socket.

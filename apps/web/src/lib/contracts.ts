@@ -71,6 +71,15 @@ export type DoctorResponse = {
       workspace_interaction_warnings: number
       findings: string[]
     }
+    projects: {
+      project_root: string
+      project_count: number
+      git_installed: boolean | null
+      git_version: string | null
+      github_cli_installed: boolean | null
+      github_authentication: AuthenticationState
+      findings: string[]
+    }
   }
 }
 
@@ -200,6 +209,63 @@ export type ClaudeSessionOutputResponse = {
   }
 }
 
+export type GitStatusData = {
+  is_repository: boolean
+  branch: string | null
+  detached_head: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  staged_count: number
+  unstaged_count: number
+  untracked_count: number
+  conflicted_count: number
+  clean: boolean
+  remote_url: string | null
+  submodules_detected: boolean
+}
+
+export type ProjectData = {
+  id: string
+  slug: string
+  display_name: string
+  source_type: 'empty' | 'git_clone' | 'existing'
+  state: 'creating' | 'ready' | 'error' | 'archived'
+  repository_url: string | null
+  default_branch: string | null
+  created_at: string
+  updated_at: string
+  git: GitStatusData | null
+  github: {
+    available: boolean
+    repository: string | null
+    pull_request_number: number | null
+    pull_request_title: string | null
+    pull_request_state: string | null
+    pull_request_draft: boolean | null
+    pull_request_url: string | null
+    checks: 'pass' | 'fail' | 'pending' | 'unknown'
+  } | null
+}
+
+export type ProjectListResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { projects: ProjectData[] }
+}
+
+export type ProjectResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: ProjectData
+}
+
+export type ProjectJobResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { project: ProjectData; job: { id: string; status: string } }
+}
+
 type JsonObject = Record<string, unknown>
 
 function object(value: unknown, context: string): JsonObject {
@@ -316,6 +382,7 @@ export function parseDoctorResponse(value: unknown): DoctorResponse {
   const policy = object(data.policy, 'Doctor policy')
   const codex = object(data.codex, 'Doctor Codex summary')
   const claude = object(data.claude, 'Doctor Claude summary')
+  const projects = object(data.projects, 'Doctor Project summary')
   return {
     api_version: literal(response.api_version, ['v1'], 'API version'),
     request_id: string(response.request_id, 'request ID'),
@@ -423,6 +490,27 @@ export function parseDoctorResponse(value: unknown): DoctorResponse {
         ),
         findings: array(claude.findings, 'Claude findings').map((finding) =>
           string(finding, 'Claude finding'),
+        ),
+      },
+      projects: {
+        project_root: string(projects.project_root, 'Project Root'),
+        project_count: number(projects.project_count, 'Project count'),
+        git_installed: nullableBoolean(
+          projects.git_installed,
+          'Git installation',
+        ),
+        git_version: nullableString(projects.git_version, 'Git version'),
+        github_cli_installed: nullableBoolean(
+          projects.github_cli_installed,
+          'GitHub CLI installation',
+        ),
+        github_authentication: literal(
+          projects.github_authentication,
+          ['authenticated', 'unauthenticated', 'unknown'],
+          'GitHub authentication',
+        ),
+        findings: array(projects.findings, 'Project findings').map((finding) =>
+          string(finding, 'Project finding'),
         ),
       },
     },
@@ -706,6 +794,89 @@ export function parseClaudeSessionOutputResponse(
       output: string(data.output, 'Claude output'),
       truncated: boolean(data.truncated, 'Claude output truncation'),
       sensitive: true,
+    },
+  }
+}
+
+function parseGitStatus(value: unknown): GitStatusData {
+  const data = object(value, 'Git status')
+  return {
+    is_repository: boolean(data.is_repository, 'repository state'),
+    branch: nullableString(data.branch, 'branch'),
+    detached_head: boolean(data.detached_head, 'detached HEAD'),
+    upstream: nullableString(data.upstream, 'upstream'),
+    ahead: number(data.ahead, 'ahead count'),
+    behind: number(data.behind, 'behind count'),
+    staged_count: number(data.staged_count, 'staged count'),
+    unstaged_count: number(data.unstaged_count, 'unstaged count'),
+    untracked_count: number(data.untracked_count, 'untracked count'),
+    conflicted_count: number(data.conflicted_count, 'conflict count'),
+    clean: boolean(data.clean, 'clean state'),
+    remote_url: nullableString(data.remote_url, 'remote URL'),
+    submodules_detected: boolean(data.submodules_detected, 'submodule state'),
+  }
+}
+
+function parseProject(value: unknown): ProjectData {
+  const data = object(value, 'Project')
+  return {
+    id: string(data.id, 'Project ID'),
+    slug: string(data.slug, 'Project slug'),
+    display_name: string(data.display_name, 'Project name'),
+    source_type: literal(
+      data.source_type,
+      ['empty', 'git_clone', 'existing'],
+      'source type',
+    ),
+    state: literal(
+      data.state,
+      ['creating', 'ready', 'error', 'archived'],
+      'Project state',
+    ),
+    repository_url: nullableString(data.repository_url, 'repository URL'),
+    default_branch: nullableString(data.default_branch, 'default branch'),
+    created_at: string(data.created_at, 'created time'),
+    updated_at: string(data.updated_at, 'updated time'),
+    git: data.git === null ? null : parseGitStatus(data.git),
+    github:
+      data.github === null
+        ? null
+        : (object(data.github, 'GitHub status') as ProjectData['github']),
+  }
+}
+
+export function parseProjectListResponse(value: unknown): ProjectListResponse {
+  const envelope = object(value, 'Projects')
+  const data = object(envelope.data, 'Project list')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: { projects: array(data.projects, 'Projects').map(parseProject) },
+  }
+}
+
+export function parseProjectResponse(value: unknown): ProjectResponse {
+  const envelope = object(value, 'Project')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: parseProject(envelope.data),
+  }
+}
+
+export function parseProjectJobResponse(value: unknown): ProjectJobResponse {
+  const envelope = object(value, 'Project Job')
+  const data = object(envelope.data, 'Project Job data')
+  const job = object(data.job, 'Job')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      project: parseProject(data.project),
+      job: {
+        id: string(job.id, 'Job ID'),
+        status: string(job.status, 'Job status'),
+      },
     },
   }
 }

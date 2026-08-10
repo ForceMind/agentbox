@@ -131,6 +131,7 @@ try {
     AGENTBOX_E2E_PAIR_CODE: pairCanary,
     AGENTBOX_E2E_USERNAME: "e2e-maintainer",
     AGENTBOX_ENV: "test",
+    AGENTBOX_PROJECT_ROOT: join(temporaryRoot, "projects"),
     AGENTBOX_SECRET_KEY: randomBytes(48).toString("base64url"),
     PLAYWRIGHT_BASE_URL: webOrigin,
   };

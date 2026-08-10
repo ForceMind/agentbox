@@ -1,5 +1,6 @@
 """Safe control-plane liveness, metadata, and diagnostic contracts."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -54,6 +55,16 @@ class ClaudeDoctorSummary(StrictMetadataModel):
     findings: list[str]
 
 
+class ProjectDoctorSummary(StrictMetadataModel):
+    project_root: str
+    project_count: int
+    git_installed: bool | None
+    git_version: str | None
+    github_cli_installed: bool | None
+    github_authentication: Literal["authenticated", "unauthenticated", "unknown"]
+    findings: list[str]
+
+
 class DoctorPolicy(StrictMetadataModel):
     environment: Literal["development", "test", "production"]
     bind_host: str
@@ -71,6 +82,7 @@ class DoctorData(StrictMetadataModel):
     policy: DoctorPolicy
     codex: CodexDoctorSummary
     claude: ClaudeDoctorSummary
+    projects: ProjectDoctorSummary
 
 
 class DoctorResponse(StrictMetadataModel):
@@ -220,3 +232,153 @@ class ClaudeSessionOutputResponse(StrictMetadataModel):
     api_version: Literal["v1"] = "v1"
     request_id: str
     data: ClaudeSessionOutputData
+
+
+class ProjectCreateRequest(StrictMetadataModel):
+    name: str
+    slug: str | None = None
+
+
+class ProjectCloneRequest(StrictMetadataModel):
+    repository_url: str
+    name: str | None = None
+    slug: str | None = None
+
+
+class BranchRequest(StrictMetadataModel):
+    branch: str
+
+
+class DraftPullRequestRequest(StrictMetadataModel):
+    title: str
+    body: str = ""
+    base: str | None = None
+
+
+class JobData(StrictMetadataModel):
+    id: str
+    type: str
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled", "needs_attention"]
+    target_type: str
+    target_id: str | None
+    project_id: str | None
+    progress: int | None
+    phase: str | None
+    result_summary: str | None
+    error_code: str | None
+    error_summary: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class JobResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: JobData
+
+
+class JobListData(StrictMetadataModel):
+    jobs: list[JobData]
+
+
+class JobListResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: JobListData
+
+
+class GitStatusData(StrictMetadataModel):
+    is_repository: bool
+    branch: str | None
+    detached_head: bool
+    unborn_branch: bool
+    upstream: str | None
+    ahead: int
+    behind: int
+    staged_count: int
+    unstaged_count: int
+    untracked_count: int
+    conflicted_count: int
+    clean: bool
+    remote_url: str | None
+    submodules_detected: bool
+
+
+class GitBranchData(StrictMetadataModel):
+    name: str
+    current: bool
+
+
+class GitBranchListData(StrictMetadataModel):
+    branches: list[GitBranchData]
+
+
+class GitBranchListResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: GitBranchListData
+
+
+class GitHubGlobalData(StrictMetadataModel):
+    installed: bool
+    version: str | None
+    authentication: Literal["authenticated", "unauthenticated", "unknown"]
+
+
+class GitHubGlobalResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: GitHubGlobalData
+
+
+class GitHubProjectData(StrictMetadataModel):
+    available: bool
+    repository: str | None
+    pull_request_number: int | None
+    pull_request_title: str | None
+    pull_request_state: str | None
+    pull_request_draft: bool | None
+    pull_request_url: str | None
+    checks: Literal["pass", "fail", "pending", "unknown"]
+
+
+class ProjectData(StrictMetadataModel):
+    id: str
+    slug: str
+    display_name: str
+    source_type: Literal["empty", "git_clone", "existing"]
+    state: Literal["creating", "ready", "error", "archived"]
+    repository_url: str | None
+    default_branch: str | None
+    created_at: datetime
+    updated_at: datetime
+    git: GitStatusData | None = None
+    github: GitHubProjectData | None = None
+
+
+class ProjectResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: ProjectData
+
+
+class ProjectListData(StrictMetadataModel):
+    projects: list[ProjectData]
+
+
+class ProjectListResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: ProjectListData
+
+
+class ProjectJobData(StrictMetadataModel):
+    project: ProjectData
+    job: JobData
+
+
+class ProjectJobResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: ProjectJobData

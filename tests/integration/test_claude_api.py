@@ -41,7 +41,8 @@ async def test_claude_status_and_sessions_require_auth_and_are_no_store(
     assert status.json()["data"]["authentication"] == "unknown"
     assert status.json()["data"]["capabilities"]["remote_control"] == "supported"
     listed = sessions.json()["data"]["sessions"]
-    assert [session["project_id"] for session in listed] == ["project-a", "trust-project"]
+    assert [session["display_name"] for session in listed] == ["project-a", "trust-project"]
+    assert all(session["project_id"].startswith("prj_") for session in listed)
     assert listed[1]["state"] == "needs_interaction"
     assert all("path" not in session for session in listed)
 
@@ -55,16 +56,20 @@ async def test_claude_start_stop_require_origin_and_csrf_and_audit_metadata_only
 ) -> None:
     assert (await client.post("/api/v1/claude/sessions/project-a/start")).status_code == 403
     csrf = await login(client, origin_headers)
-    missing = await client.post("/api/v1/claude/sessions/project-a/start", headers=origin_headers)
+    listed = (await client.get("/api/v1/claude/sessions")).json()["data"]["sessions"]
+    project_id = next(item["project_id"] for item in listed if item["display_name"] == "project-a")
+    missing = await client.post(
+        f"/api/v1/claude/sessions/{project_id}/start", headers=origin_headers
+    )
     assert missing.status_code == 403
     assert "start:project-a" not in claude_runtime.calls
 
     started = await client.post(
-        "/api/v1/claude/sessions/project-a/start",
+        f"/api/v1/claude/sessions/{project_id}/start",
         headers={**origin_headers, "X-CSRF-Token": csrf},
     )
     stopped = await client.post(
-        "/api/v1/claude/sessions/project-a/stop",
+        f"/api/v1/claude/sessions/{project_id}/stop",
         headers={**origin_headers, "X-CSRF-Token": csrf},
     )
     assert started.status_code == stopped.status_code == 200
@@ -82,7 +87,7 @@ async def test_claude_start_stop_require_origin_and_csrf_and_audit_metadata_only
         "claude_session_stop_requested",
         "claude_session_stop_succeeded",
     ]
-    assert all(event.metadata_json.get("project_id") == "project-a" for event in events)
+    assert all(event.metadata_json.get("project_id") == project_id for event in events)
 
 
 @pytest.mark.anyio
@@ -94,8 +99,10 @@ async def test_claude_output_is_sensitive_ephemeral_no_store_and_never_audited_o
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     await login(client, origin_headers)
+    listed = (await client.get("/api/v1/claude/sessions")).json()["data"]["sessions"]
+    project_id = next(item["project_id"] for item in listed if item["display_name"] == "project-a")
     with caplog.at_level(logging.DEBUG):
-        response = await client.get("/api/v1/claude/sessions/project-a/output")
+        response = await client.get(f"/api/v1/claude/sessions/{project_id}/output")
 
     canary = claude_runtime.output_canary
     assert response.status_code == 200

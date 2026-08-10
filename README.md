@@ -216,3 +216,6 @@ AgentBox is licensed under the [Apache License, Version 2.0](LICENSE)
 [the licensing guide](docs/LICENSING.md).
 
 AgentBox is independent. Codex, Claude, GitHub, and other third-party names are used only for factual compatibility descriptions; no affiliation or endorsement is implied.
+Phase 7 adds formal Project Workspaces plus safe Git/GitHub foundations. Projects are opaque database entities rooted beneath a configured directory; Web and CLI can create or clone, inspect structured status, manage ordinary branches, perform fast-forward-only Pull and no-force Push, and create Draft PRs. Long mutations run as durable typed Jobs through the Runtime Executor. See [Project Workspaces](docs/PROJECT_WORKSPACES.md), [Git Integration](docs/GIT_INTEGRATION.md), and [GitHub Integration](docs/GITHUB_INTEGRATION.md).
+
+AgentBox does not expose arbitrary paths, shell/Git argv, force push, reset, clean, staging/commit, filesystem Project deletion, or browser IDE functionality.

@@ -63,7 +63,7 @@ class ProjectRegistry:
         return self._root
 
     def list_projects(self) -> tuple[ConfiguredProject, ...]:
-        root = self._resolved_root(required=False)
+        root = self.resolved_root(required=False)
         if root is None:
             return ()
         projects: list[ConfiguredProject] = []
@@ -86,7 +86,7 @@ class ProjectRegistry:
 
     def resolve(self, project_id: str) -> ConfiguredProject:
         validated = validate_project_id(project_id)
-        root = self._resolved_root(required=True)
+        root = self.resolved_root(required=True)
         assert root is not None
         candidate = root / validated
         try:
@@ -115,7 +115,7 @@ class ProjectRegistry:
             )
         return ConfiguredProject(validated, validated, resolved)
 
-    def _resolved_root(self, *, required: bool) -> Path | None:
+    def resolved_root(self, *, required: bool) -> Path | None:
         try:
             if self._root.is_symlink():
                 raise RuntimeOperationError(

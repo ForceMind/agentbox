@@ -45,6 +45,45 @@ test('keeps the Claude page behind authentication', async ({ page }) => {
   ).toBeVisible()
 })
 
+test('keeps the Projects page behind authentication', async ({ page }) => {
+  await page.goto('/projects')
+  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('shows formal Projects and queues safe create operations', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await expect(page.getByText('Project A')).toBeVisible()
+  await page.getByLabel('Project name').fill('E2E Workspace')
+  const request = page.waitForRequest(
+    (value) =>
+      value.url().endsWith('/api/v1/projects') && value.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Create Project' }).click()
+  const mutation = await request
+  expect(mutation.headers()['x-csrf-token']).toBeTruthy()
+  expect(mutation.headers()['idempotency-key']).toBeTruthy()
+  await expect(page.getByText('E2E Workspace')).toBeVisible()
+})
+
+test('shows structured Git state without dangerous actions', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByText('Project A').click()
+  await expect(page.getByRole('heading', { name: 'Git' })).toBeVisible()
+  await expect(page.getByText('Clean')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pull' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Push' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /force/i })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: /reset|clean|delete/i }),
+  ).toHaveCount(0)
+})
+
 test('returns the same public login error for incorrect credentials', async ({
   page,
 }) => {

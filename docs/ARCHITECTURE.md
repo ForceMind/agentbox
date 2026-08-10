@@ -480,3 +480,6 @@ Upgrade is a privileged Job with a global lifecycle lock. It downloads to stagin
   Phase 11 begins;
 - evidence required to classify Provider and Remote Control compatibility, and
   safe restart/session behavior during Provider activation.
+# Phase 7 Project and Job flow
+
+`Web/CLI → API → durable Job → Worker → typed UDS action → ProjectWorkspaceManager → GitAdapter/GitHubAdapter` is the mutation path. API persists only controlled Project identity and bounded Job payloads; Runtime resolves the immutable relative key beneath Project Root. Worker leases serialize mutations per Project and interrupted work becomes `needs_attention`. Claude continues using the same relative key internally so managed tmux identity survives migration.

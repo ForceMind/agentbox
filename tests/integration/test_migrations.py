@@ -33,7 +33,7 @@ def test_upgrade_downgrade_and_upgrade_again(tmp_path: Path) -> None:
     finally:
         database.close()
 
-    downgrade_database(database_url, "-1")
+    downgrade_database(database_url, "base")
     database = Database(settings)
     try:
         assert set(inspect(database.engine).get_table_names()) == {"alembic_version"}

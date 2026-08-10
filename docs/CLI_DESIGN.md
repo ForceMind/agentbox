@@ -265,3 +265,6 @@ Most destructive Git/project operations are outside MVP. When introduced, CLI fi
 ## Shell Completion and Privacy
 
 Completion lists static commands/options and non-sensitive project display names only when locally authorized. It never queries Pair Codes, tokens, remote URLs with userinfo, logs, or project files, and does not execute Runtime commands.
+# Phase 7 CLI
+
+The local CLI adds `agentbox project list|create|clone|status|pull|push`, `project branch list|create|switch`, and `agentbox github status|pr status|pr create`. References resolve only formal ID or slug. Mutations enqueue the same typed durable Jobs as Web. There is no `git run`, force push, reset, clean, discard, branch delete, Project filesystem delete, token input, or JSON attach-like secret output.

@@ -17,12 +17,15 @@ from typing import Any
 from agentbox_core import __version__
 from agentbox_core.configuration import Settings
 from agentbox_core.errors import AdminAlreadyInitialized, AgentBoxError
+from agentbox_core.projects import repository_name_from_url, validate_repository_url
 from agentbox_core.services import build_services
 from agentbox_runtime import (
     CodexAdapter,
     RuntimeOperationError,
     UnixClaudeRuntimeClient,
     UnixCodexRuntimeClient,
+    UnixProjectRuntimeClient,
+    validate_branch_name,
 )
 
 
@@ -80,6 +83,45 @@ def create_parser() -> argparse.ArgumentParser:
     for command in ("start", "stop", "attach", "output"):
         subcommand = claude_commands.add_parser(command)
         subcommand.add_argument("project")
+
+    project = subcommands.add_parser("project")
+    project_commands = project.add_subparsers(dest="project_command", required=True)
+    for command in ("list",):
+        subcommand = project_commands.add_parser(command)
+        subcommand.add_argument(
+            "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+        )
+    create = project_commands.add_parser("create")
+    create.add_argument("name")
+    create.add_argument("--slug")
+    clone = project_commands.add_parser("clone")
+    clone.add_argument("url")
+    clone.add_argument("--name")
+    clone.add_argument("--slug")
+    for command in ("status", "pull", "push"):
+        subcommand = project_commands.add_parser(command)
+        subcommand.add_argument("project")
+    branch = project_commands.add_parser("branch")
+    branch_commands = branch.add_subparsers(dest="branch_command", required=True)
+    branch_list = branch_commands.add_parser("list")
+    branch_list.add_argument("project")
+    for command in ("create", "switch"):
+        subcommand = branch_commands.add_parser(command)
+        subcommand.add_argument("project")
+        subcommand.add_argument("branch")
+
+    github = subcommands.add_parser("github")
+    github_commands = github.add_subparsers(dest="github_command", required=True)
+    github_commands.add_parser("status")
+    pr = github_commands.add_parser("pr")
+    pr_commands = pr.add_subparsers(dest="pr_command", required=True)
+    pr_status = pr_commands.add_parser("status")
+    pr_status.add_argument("project")
+    pr_create = pr_commands.add_parser("create")
+    pr_create.add_argument("project")
+    pr_create.add_argument("--title", required=True)
+    pr_create.add_argument("--body", default="")
+    pr_create.add_argument("--base")
     return parser
 
 
@@ -323,6 +365,159 @@ async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
         return _runtime_exit_code(exc)
 
 
+def _queue_project_job(
+    services: Any,
+    *,
+    job_type: str,
+    project: Any,
+    payload: dict[str, object],
+) -> str:
+    job, _created = services.jobs.enqueue(
+        job_type=job_type,
+        requested_by="local-cli",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        payload={"project_key": project.relative_path, **payload},
+        resource_lock_key=f"project:{project.id}",
+        idempotency_key=f"cli-{secrets.token_hex(16)}",
+        request_id=f"req_cli-{secrets.token_hex(12)}",
+    )
+    return str(job.id)
+
+
+async def _project_command(settings: Settings, args: argparse.Namespace) -> int:
+    services = build_services(settings)
+    runtime = UnixProjectRuntimeClient(settings.runtime_socket)
+    request_id = f"req_cli-{secrets.token_hex(12)}"
+    try:
+        command = str(args.project_command)
+        if command == "list":
+            projects = services.projects.list()
+            data = {
+                "projects": [
+                    {
+                        "id": item.id,
+                        "slug": item.slug,
+                        "name": item.display_name,
+                        "state": item.state,
+                    }
+                    for item in projects
+                ]
+            }
+            _print_result(_envelope("project.list", ok=True, data=data), args.json_output)
+            return 0
+        if command in {"create", "clone"}:
+            repository_url = None
+            name = str(args.name) if args.name else ""
+            source_type = "empty"
+            if command == "clone":
+                repository_url = validate_repository_url(str(args.url))
+                name = name or repository_name_from_url(repository_url)
+                source_type = "git_clone"
+            project = services.projects.reserve(
+                name=name,
+                slug=args.slug,
+                source_type=source_type,
+                repository_url=repository_url,
+            )
+            try:
+                job_id = _queue_project_job(
+                    services,
+                    job_type=f"project.{command}",
+                    project=project,
+                    payload={"repository_url": repository_url} if repository_url else {},
+                )
+            except Exception:
+                services.projects.discard_reservation(project.id)
+                raise
+            print(f"Project queued: {project.id} (Job {job_id})")
+            return 0
+
+        project = services.projects.resolve(str(args.project), ready=True)
+        if command == "status":
+            status = await runtime.git_status(request_id, project.relative_path)
+            _print_result(
+                _envelope("project.status", ok=True, data=status.to_dict()),
+                bool(getattr(args, "json_output", False)),
+            )
+            return 0
+        if command in {"pull", "push"}:
+            job_id = _queue_project_job(
+                services, job_type=f"git.{command}", project=project, payload={}
+            )
+            print(f"Git {command} queued: {job_id}")
+            return 0
+        branch_command = str(args.branch_command)
+        if branch_command == "list":
+            branches = await runtime.branches(request_id, project.relative_path)
+            for branch in branches:
+                print(f"{'*' if branch.current else ' '} {branch.name}")
+            return 0
+        branch_name = validate_branch_name(str(args.branch))
+        job_id = _queue_project_job(
+            services,
+            job_type=f"git.branch.{branch_command}",
+            project=project,
+            payload={"branch": branch_name},
+        )
+        print(f"Branch operation queued: {job_id}")
+        return 0
+    except (AgentBoxError, RuntimeOperationError, ValueError) as exc:
+        code = (
+            exc.code
+            if isinstance(exc, (AgentBoxError, RuntimeOperationError))
+            else "PROJECT_INPUT_INVALID"
+        )
+        message = (
+            exc.message if isinstance(exc, (AgentBoxError, RuntimeOperationError)) else str(exc)
+        )
+        print(f"ERROR [{code}]: {message}", file=sys.stderr)
+        return 15
+    finally:
+        services.database.close()
+
+
+async def _github_command(settings: Settings, args: argparse.Namespace) -> int:
+    services = build_services(settings)
+    runtime = UnixProjectRuntimeClient(settings.runtime_socket)
+    request_id = f"req_cli-{secrets.token_hex(12)}"
+    try:
+        if args.github_command == "status":
+            global_status = await runtime.github_status(request_id)
+            _print_result(_envelope("github.status", ok=True, data=global_status.to_dict()), False)
+            return 0
+        project = services.projects.resolve(str(args.project), ready=True)
+        if args.pr_command == "status":
+            project_status = await runtime.github_project_status(request_id, project.relative_path)
+            _print_result(
+                _envelope("github.pr.status", ok=True, data=project_status.to_dict()),
+                False,
+            )
+            return 0
+        job_id = _queue_project_job(
+            services,
+            job_type="github.pr.create",
+            project=project,
+            payload={"title": args.title, "body": args.body, "base": args.base},
+        )
+        print(f"Draft pull request queued: {job_id}")
+        return 0
+    except (AgentBoxError, RuntimeOperationError, ValueError) as exc:
+        code = (
+            exc.code
+            if isinstance(exc, (AgentBoxError, RuntimeOperationError))
+            else "GITHUB_INPUT_INVALID"
+        )
+        message = (
+            exc.message if isinstance(exc, (AgentBoxError, RuntimeOperationError)) else str(exc)
+        )
+        print(f"ERROR [{code}]: {message}", file=sys.stderr)
+        return 15
+    finally:
+        services.database.close()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
 
@@ -352,6 +547,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "claude":
         return asyncio.run(_claude_command(settings, args))
+
+    if args.command == "project":
+        return asyncio.run(_project_command(settings, args))
+
+    if args.command == "github":
+        return asyncio.run(_github_command(settings, args))
 
     status = _control_plane_status(settings)
     result = _envelope(args.command, ok=True, data=status)
