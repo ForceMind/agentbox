@@ -163,6 +163,6 @@ keys, modify Runtime configuration, restart Runtime, or affect Remote Control.
 ## Branding and Third Parties
 
 AgentBox is an independent project. Codex, Claude, GitHub, Linux distribution names, and other third-party names are used only for factual compatibility descriptions. AgentBox must not imply affiliation or endorsement, copy third-party logos without permission, bundle credentials, or redistribute third-party software contrary to its license. All third-party marks remain with their respective owners.
-# Phase 7 delivered capability
+## Phase 7 delivered capability
 
 AgentBox now treats Projects as formal managed workspaces and offers bounded create/clone, structured Git state, ordinary branch management, fast-forward-only Pull, no-force Push, Draft PR creation, and Project-bound Claude sessions. It remains a control plane rather than a browser IDE and intentionally omits staging, commit, destructive Git, filesystem deletion, and arbitrary commands.

@@ -4,7 +4,20 @@
 
 Only `GitAdapter` in the Runtime Executor invokes Git through `ControlledProcessRunner`. Every operation has fixed argv, a bounded timeout/output cap, a controlled cwd resolved from a Project, and a sanitized environment. There is no shell, arbitrary argv, configuration passthrough, force push, reset, clean, branch deletion, staging, commit, or filesystem delete API.
 
-The environment disables terminal prompts, system configuration, interactive credential managers, LFS smudge, and unapproved protocols. Fixed command-level configuration disables hooks, pagers, editors, and external diff. Repository-local executable configuration such as `core.sshCommand`, `credential.helper`, `core.hooksPath`, aliases, includes, pagers, editors, and external diff fails closed.
+The environment disables terminal prompts, system configuration, interactive
+credential managers, LFS smudge, and unapproved protocols. Only controlled
+values for `GIT_CONFIG_GLOBAL`, `GIT_ASKPASS`, and `SSH_ASKPASS` may reach the
+final Git process. Fixed command-level configuration disables hooks, pagers,
+editors, external diff, and optional locks for read-only inspection.
+
+Repository-local executable or transport-changing configuration is enumerated
+with includes disabled and fails closed.
+The deny set covers credentials and HTTP extra headers; `core.sshCommand`,
+`core.hooksPath`, `core.askPass`, `core.fsmonitor`, `core.worktree`,
+`core.gitProxy`, pagers and editors; aliases and includes; diff drivers and
+external diff; clean/smudge/process filters; `url.*.insteadOf` rewrites;
+remote upload/receive programs; and related helper injection. This is a typed
+adapter policy, not a user-extensible Git config allowlist.
 
 ## Supported operations
 

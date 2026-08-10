@@ -364,11 +364,11 @@ streaming is not an MVP feature.
 - sockets are below `/run/agentbox`; symlink/socket replacement and stale inode checks fail closed.
 - no UDS proxying over HTTP and no Helper TCP listener.
 
-The Phase 5/6 Runtime protocol is JSON-line V1 with a 64 KiB frame limit, exact
-keys, four parameter-free Codex actions, two parameter-free Claude summary
-actions, and four Claude actions carrying only validated `project_id`. It has a
-bounded request ID and no path/executable/argv/environment/cwd/shell/tmux/PID/
-signal fields. Development may create only the local
+The Runtime protocol is JSON-line V1 with a 64 KiB frame limit and exact keys.
+Codex actions remain parameter-free; Claude and Phase 7 Project/Git/GitHub
+actions accept only their typed bounded fields and a validated relative Project
+identifier. It has a bounded request ID and no path/executable/arbitrary argv/
+environment/cwd/shell/tmux/PID/signal fields. Development may create only the local
 `.agentbox-dev` socket parent. Production refuses a socket outside
 `/run/agentbox` and never creates that system directory itself.
 
@@ -404,6 +404,14 @@ AgentBox releases should publish checksums and a cryptographic signature or buil
 - traversal, symlink, Git URL, hook, UDS peer, CSRF, rate-limit, and confirmation tests pass;
 - install/update rollback tested;
 - no unresolved Critical/High finding.
-# Phase 7 Git security boundary
+## Phase 7 Git security boundary
 
-Project operations accept opaque IDs and Runtime resolves one canonical non-symlink child. Clone allowlists GitHub HTTPS/SSH and disables local/file/ext protocols, prompts, LFS smudge and recursive submodules. Fixed Git config disables hooks, pagers, editors and external diff; unsafe repository-local executable configuration fails closed. Pull is fast-forward only, Push is never forced, and Pull/switch are blocked during an active managed Claude session. Credentials and raw tool output never enter API, logs, Audit or Jobs.
+Project operations accept opaque IDs and Runtime resolves one canonical
+non-symlink, Runtime-owned child beneath a non-symlink, non-group/world-writable
+root. Clone allowlists GitHub HTTPS/SSH and disables local/file/ext protocols,
+prompts, LFS smudge and recursive submodules. Fixed Git config disables hooks,
+pagers, editors and external diff; repository credentials, HTTP headers,
+URL/protocol rewrites, SSH commands, filters, fsmonitor/worktree/proxy settings,
+remote helper programs, includes and aliases fail closed. Pull is fast-forward
+only, Push is never forced, and Pull/switch are blocked during an active managed
+Claude session. Credentials and raw tool output never enter API, logs, Audit or Jobs.

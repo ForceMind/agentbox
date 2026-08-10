@@ -210,12 +210,15 @@ Restore tests begin on a fresh VM with a deliberately different numeric UID/GID.
 
 ## Playwright coverage
 
-The implemented Phase 4 slice is described above. Future MVP browser coverage
-will extend it with failed-login lock UX, Codex capability/degraded states, Pair
-recent-auth and one-time display, Claude session lifecycle, Project operations,
-Job SSE reconnect, bounded logs, and Settings validation as those APIs become
-real. Tests must never fake those capabilities merely to exercise a page. The
-suite does not implement or test a browser terminal.
+The suite uses a dedicated test application with fake typed Runtime services;
+production UI still consumes only backend data. Phase 7 defines 27 scenarios
+at desktop and mobile sizes (54 cases): Project empty/list/create/clone success
+and failure; clean/dirty detail; branch create/switch; active-Claude blocking;
+Pull success/reconciliation; Push success/upstream missing; GitHub auth,
+Draft PR and checks; dangerous-action absence; responsive layout; and
+authentication expiry/recovery. It also retains the earlier auth, Codex,
+Claude, Doctor and Settings flows. Tests never use a real account, token,
+repository mutation, Pair Code, or browser terminal.
 
 ## Linux matrix
 
@@ -247,6 +250,6 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 ## Release quality gates
 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
-# Phase 7 coverage
+## Phase 7 coverage
 
 Tests cover Project normalization/idempotency/rollback, traversal and symlink escape, clone protocol and option injection, marker-bound cleanup, porcelain v2 variants, branch ref injection, ff-only Pull, no-force Push, active-Claude guards, dangerous Git config, credential redaction, public `gh` auth states, bounded Draft PR stdin, Jobs/recovery, authenticated API/CSRF/no-store, responsive Web and Fake Runtime E2E. Core tests never require GitHub network access.

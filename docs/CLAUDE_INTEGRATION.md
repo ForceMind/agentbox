@@ -183,6 +183,6 @@ exact cleanup 且不需要自动 Trust acceptance 时运行。
 通常为 Unknown；bind mounts 与同 UID tmux tampering 不能由 path/marker 完全
 消除；Phase 6 没有 Project CRUD、durable Jobs、Provider/Secret 管理、system-user
 migration、installer、systemd 或 production deployment。
-# Formal Project migration
+## Formal Project migration
 
 Phase 7 changes Claude's public API identity to the formal opaque Project ID. API resolves it to the Project's immutable `relative_path` before sending a validated identifier over UDS. Runtime naming and markers still derive from that historical relative key, so Phase 6 managed sessions remain managed after reconciliation. Pull and branch switch fail with `PROJECT_RUNTIME_ACTIVE` while the managed Claude session is running or needs interaction; AgentBox still never auto-accepts Workspace Trust.

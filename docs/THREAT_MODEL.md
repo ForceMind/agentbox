@@ -208,7 +208,12 @@ Attack chain: authenticated or compromised Web submits crafted command/path → 
 
 ### Malicious Repository-to-Host Escalation
 
-Attack chain: clone a hostile repository → Git hooks/submodules/symlinks/build steps escape project → overwrite executable or collect credentials. MVP clones as non-root into staging, disables recursive submodules and credential prompting, runs no project builds, refuses unsafe filesystem objects, and keeps root/AgentBox credentials inaccessible.
+Attack chain: clone a hostile repository → Git hooks/submodules/symlinks/build
+steps escape project → overwrite executable or collect credentials. MVP clones
+as non-root into staging, disables recursive submodules and credential
+prompting, runs no project builds or repository hooks, exposes no file-browser
+operation, and keeps root/AgentBox credentials inaccessible. Repository file
+content remains untrusted data.
 
 ### Pair Code Disclosure
 
@@ -234,7 +239,10 @@ Every threat ID above must map to at least one test case or an explicit manual v
 
 ## Revisit Conditions
 
-Revisit the threat model before adding Provider/Secret/config mutation, Git write/push, browser PTY/WebSocket, project deletion, multi-user/multi-server, plugins, container control, third-party webhooks, enterprise auth, or any non-loopback direct listener.
-# Phase 7 threats and mitigations
+Revisit the threat model before adding Provider/Secret/config mutation,
+staging/commit or dangerous Git, browser PTY/WebSocket, project deletion,
+multi-user/multi-server, plugins, container control, third-party webhooks,
+enterprise auth, or any non-loopback direct listener.
+## Phase 7 threats and mitigations
 
 New threats include malicious repository URLs/protocol helpers, credential helpers and `core.sshCommand`, hooks/pagers/editors/external diff, submodules/LFS, clone residue/races, branch injection, remote credential leakage, ownership mismatch, workspace mutation under an active Agent, Draft PR input injection, `gh` prompt blocking and long network DoS. Mitigations are protocol/input allowlists, fixed config/environment/argv, ownership/canonical-path checks, atomic marker-bound staging, mutation leases, bounded time/output, normalized errors, credential redaction and Claude activity guards.

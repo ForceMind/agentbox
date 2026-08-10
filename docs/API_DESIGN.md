@@ -1,13 +1,14 @@
 # AgentBox API Design
 
 Status: Phase 1 contract design with the Phase 3 control plane, Phase 4 Web,
-and Phase 5 Codex subset implemented.
+Phase 5 Codex, Phase 6 Claude, and Phase 7 Project/Job/Git/GitHub subsets
+implemented on their respective release branches.
 
 Implemented in Phase 3: `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`,
 `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, and
 `GET /api/v1/auth/me`. Phase 4 implements authenticated
 `GET /api/v1/doctor`. Phase 5 implements the four Codex routes identified
-below. All other contracts remain designs, not implemented routes.
+below. Later-phase contracts are explicitly marked as designs.
 
 ## Principles
 
@@ -207,7 +208,8 @@ generated profile, and Secret reference are verified.
 | `POST /api/v1/claude/sessions/{project_id}/stop` | stop exact marked managed session |
 | `GET /api/v1/claude/sessions/{project_id}/output` | explicit ephemeral bounded pane output |
 
-`project_id` is a bounded server-side identifier, never a submitted path.
+`project_id` is a formal opaque Project ID. The API resolves it to the immutable
+relative Runtime key before UDS dispatch; it is never a submitted path.
 Mutation bodies are rejected. Runtime UDS frames cannot contain path, argv,
 shell, tmux flags, PID, signal, or environment. Responses distinguish
 `running`, `stopped`, `starting`, `needs_interaction`, `broken`, and `unknown`;
@@ -223,20 +225,29 @@ public reliable signal.
 
 | Method/path | Purpose |
 |---|---|
-| `GET /api/v1/projects` | list registered projects |
-| `POST /api/v1/projects` | create empty Project Workspace Job |
-| `POST /api/v1/projects/clone-jobs` | clone credential-free allowed Git URL |
-| `GET /api/v1/projects/{project_id}` | metadata and Runtime/session links |
-| `GET /api/v1/projects/{project_id}/git-status` | branch/HEAD/dirty count/sanitized remote |
-| `GET /api/v1/projects/{project_id}/path` | display/copy canonical managed path |
+| `GET /api/v1/projects` | list formal Projects with bounded Git/Claude summaries |
+| `POST /api/v1/projects` | queue empty Project Workspace creation |
+| `POST /api/v1/projects/clone` | queue clone of an approved credential-free Git URL |
+| `GET /api/v1/projects/{project_id}` | Project plus structured Git/GitHub observations |
+| `GET /api/v1/projects/{project_id}/git` | structured Git status alias |
+| `GET /api/v1/projects/{project_id}/git/branches` | bounded local branch list |
+| `POST /api/v1/projects/{project_id}/git/branches` | queue ordinary branch creation |
+| `POST /api/v1/projects/{project_id}/git/switch` | queue safe existing-branch switch |
+| `POST /api/v1/projects/{project_id}/git/pull` | queue fast-forward-only Pull |
+| `POST /api/v1/projects/{project_id}/git/push` | queue ordinary upstream Push, never force |
+| `POST /api/v1/projects/{project_id}/github/pull-requests` | queue current-branch Draft PR creation |
+| `GET /api/v1/github` | installed/version/public `gh auth status` summary |
 
-There is no MVP delete, arbitrary file-read, arbitrary Git-command, commit, push, reset, hook, or submodule-init endpoint.
+There is no Project filesystem delete/archive endpoint, arbitrary file read,
+arbitrary Git command/config/remote, staging, commit, force push, reset, clean,
+branch delete, hook execution, submodule initialization, or workflow mutation.
 
-Create request concept:
+Create request:
 
 ```json
 {
-  "name": "display-name"
+  "name": "Display Name",
+  "slug": "optional-normalized-slug"
 }
 ```
 
@@ -244,12 +255,15 @@ Clone request concept:
 
 ```json
 {
-  "name": "display-name",
-  "remote_url": "https://example.invalid/owner/repository.git"
+  "repository_url": "https://github.com/owner/repository.git",
+  "name": "Optional Display Name",
+  "slug": "optional-normalized-slug"
 }
 ```
 
-The server generates the storage key. URLs with userinfo/credentials or unsupported schemes are rejected.
+The server generates the opaque ID and relative path. URLs with userinfo,
+credentials, query/fragment data, local/file/ext protocols, option-like forms,
+or unsupported hosts/schemes are rejected.
 
 ## Job API
 
@@ -257,11 +271,14 @@ The server generates the storage key. URLs with userinfo/credentials or unsuppor
 |---|---|
 | `GET /api/v1/jobs` | filtered paginated Jobs |
 | `GET /api/v1/jobs/{job_id}` | current Job state and sanitized result |
-| `POST /api/v1/jobs/{job_id}/cancel` | request cancellation if action allows |
-| `GET /api/v1/jobs/events` | authenticated SSE stream for authorized Job summaries |
-| `GET /api/v1/jobs/{job_id}/events` | one Job's SSE stream |
+| `GET /api/v1/jobs/{job_id}/events` | authenticated bounded SSE replay for one Job |
 
-SSE event types: `job.queued`, `job.started`, `job.progress`, `job.needs_attention`, `job.succeeded`, `job.failed`, `job.cancelled`, and heartbeat. Events carry sequence, Job ID, status, progress, sanitized summary, and timestamp. They do not carry stdout/stderr, Pair Codes, credentials, or project contents.
+SSE event types currently emitted are `job.queued`, `job.started`,
+`job.progress`, `job.needs_attention`, `job.succeeded`, and `job.failed`, plus
+transport heartbeats. Events carry sequence, Job ID, status, progress,
+sanitized summary, and timestamp. They do not carry stdout/stderr, Pair Codes,
+credentials, or project contents. Cancellation and global Job streams are not
+implemented.
 
 Reconnection uses `Last-Event-ID`/cursor backed by bounded non-secret Job event records.
 
@@ -349,6 +366,3 @@ Breaking resource/semantic changes require `/api/v2`. V1 may add optional fields
 ## Explicitly Absent API
 
 There is no `/shell`, `/exec`, `/terminal`, `/command`, arbitrary filesystem, arbitrary Git, arbitrary systemd, arbitrary package, credential read/write, Pair Code history, raw environment, root impersonation, Provider, or Secret Manager endpoint. The Provider routes above are future planning only.
-# Phase 7 APIs
-
-`/api/v1/projects`, `/projects/clone`, Project detail/Git/branch/Pull/Push/Draft-PR routes, `/api/v1/github`, and `/api/v1/jobs` use opaque Project IDs. All responses are `no-store`; mutations require admin session, exact Origin, CSRF, and Idempotency-Key and return `202` Jobs. Bodies never accept paths, argv, Git config, remote selectors, force/reset/clean controls, or credentials. Job SSE is authenticated, bounded replay rather than raw command streaming.

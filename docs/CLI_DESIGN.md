@@ -1,12 +1,14 @@
 # AgentBox CLI Design
 
-Status: Phase 1 contract design with Phase 3 local administration and the
-Phase 5 Codex command subset implemented.
+Status: Phase 1 contract design with Phase 3 local administration, Phase 5
+Codex, Phase 6 Claude, and Phase 7 Project/Git/GitHub command subsets
+implemented on their respective release branches.
 
 Phase 3 implements `agentbox status`, `agentbox doctor`, `agentbox admin init`,
 `agentbox admin status`, and `agentbox secret generate`. Phase 5 adds
-`agentbox codex status/start/stop/pair` over the typed Runtime socket. Project,
-Job, update, API-service UDS, and other third-party commands remain unimplemented.
+`agentbox codex status/start/stop/pair` over the typed Runtime socket. Phase 6
+adds Claude commands; Phase 7 adds the Project/Git/GitHub commands documented
+below. Update, API-service UDS, and later-phase commands remain unimplemented.
 
 ## Role
 
@@ -165,7 +167,9 @@ agentbox claude attach <project>
 agentbox claude output <project>
 ```
 
-- `<project>` is a configured ID resolved inside Runtime, not a path.
+- `<project>` resolves a formal opaque Project ID or slug in Application
+  Services, then sends only its immutable relative key to Runtime; it is not a
+  path.
 - Phase 6 `start`/`stop` are bounded typed UDS actions against marked managed sessions; durable Jobs remain future work.
 - `attach` requires a local TTY and execs only the validated exact generated tmux target under the tmux-owning identity; no Web terminal exists.
 - `list` shows managed project state and never unmanaged names, private paths, or pane output.
@@ -178,21 +182,40 @@ agentbox claude output <project>
 agentbox project create <name>
 agentbox project clone <url>
 agentbox project list
-agentbox project status <name>
+agentbox project status <project>
+agentbox project pull <project>
+agentbox project push <project>
+agentbox project branch list <project>
+agentbox project branch create <project> <branch>
+agentbox project branch switch <project> <branch>
 ```
 
-- `create` and `clone` are Jobs; storage path is server-generated.
-- `clone` rejects credential-bearing/unsupported URLs; no interactive credential prompt.
-- `status` shows project metadata and bounded Git branch/HEAD/dirty/remote summary.
-- no MVP delete, move, commit, push, reset, hook, submodule, or arbitrary Git command.
+- `<project>` resolves only formal ID or normalized slug; the CLI never accepts
+  a workspace path.
+- `create [--slug]` and `clone [--name] [--slug]` queue typed Jobs; relative
+  path and destination are server-generated.
+- `clone` rejects credential-bearing/unsupported URLs and disables interactive
+  credential prompts.
+- `list`, `status`, and `branch list` support safe structured `--json` output.
+- Pull is fast-forward-only, Push requires the existing upstream, and branch
+  mutations never stash/reset/discard. Pull/switch fail while managed Claude is active.
+- There is no delete, move, staging/commit, force push, reset, clean, hook,
+  submodule/LFS, branch deletion, remote selector, or arbitrary Git command.
 
 ### GitHub
 
 ```text
 agentbox github status
+agentbox github pr status <project>
+agentbox github pr create <project> --title <title> [--body <text>] [--base <branch>]
 ```
 
-Reports gh availability, version, protocol, and authenticated/unauthenticated/unknown status without account/token/config content. Login/setup are manual Runtime-user instructions in MVP; AgentBox does not accept a token.
+`status` reports gh availability, version, and
+authenticated/unauthenticated/unknown state from public `gh auth status`
+without account/token/config content. `pr status` returns a bounded current-
+branch PR/check summary; `pr create` queues a Draft PR with validated text and
+fixed adapter arguments. Login/setup are manual Runtime-user instructions;
+AgentBox does not accept a token.
 
 ## Human-Readable Output
 
@@ -282,6 +305,3 @@ Most destructive Git/project operations are outside MVP. When introduced, CLI fi
 ## Shell Completion and Privacy
 
 Completion lists static commands/options and non-sensitive project display names only when locally authorized. It never queries Pair Codes, tokens, remote URLs with userinfo, logs, or project files, and does not execute Runtime commands.
-# Phase 7 CLI
-
-The local CLI adds `agentbox project list|create|clone|status|pull|push`, `project branch list|create|switch`, and `agentbox github status|pr status|pr create`. References resolve only formal ID or slug. Mutations enqueue the same typed durable Jobs as Web. There is no `git run`, force push, reset, clean, discard, branch delete, Project filesystem delete, token input, or JSON attach-like secret output.
