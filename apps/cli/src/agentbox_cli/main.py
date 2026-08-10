@@ -26,6 +26,8 @@ from agentbox_runtime import (
     UnixCodexRuntimeClient,
     UnixProjectRuntimeClient,
     validate_branch_name,
+    validate_pr_body,
+    validate_pr_title,
 )
 
 
@@ -98,13 +100,21 @@ def create_parser() -> argparse.ArgumentParser:
     clone.add_argument("url")
     clone.add_argument("--name")
     clone.add_argument("--slug")
-    for command in ("status", "pull", "push"):
+    project_status = project_commands.add_parser("status")
+    project_status.add_argument("project")
+    project_status.add_argument(
+        "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+    )
+    for command in ("pull", "push"):
         subcommand = project_commands.add_parser(command)
         subcommand.add_argument("project")
     branch = project_commands.add_parser("branch")
     branch_commands = branch.add_subparsers(dest="branch_command", required=True)
     branch_list = branch_commands.add_parser("list")
     branch_list.add_argument("project")
+    branch_list.add_argument(
+        "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+    )
     for command in ("create", "switch"):
         subcommand = branch_commands.add_parser(command)
         subcommand.add_argument("project")
@@ -112,11 +122,17 @@ def create_parser() -> argparse.ArgumentParser:
 
     github = subcommands.add_parser("github")
     github_commands = github.add_subparsers(dest="github_command", required=True)
-    github_commands.add_parser("status")
+    github_status = github_commands.add_parser("status")
+    github_status.add_argument(
+        "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+    )
     pr = github_commands.add_parser("pr")
     pr_commands = pr.add_subparsers(dest="pr_command", required=True)
     pr_status = pr_commands.add_parser("status")
     pr_status.add_argument("project")
+    pr_status.add_argument(
+        "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+    )
     pr_create = pr_commands.add_parser("create")
     pr_create.add_argument("project")
     pr_create.add_argument("--title", required=True)
@@ -285,6 +301,7 @@ async def _codex_command(settings: Settings, args: argparse.Namespace) -> int:
 async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
     request_id = f"req_cli-{secrets.token_hex(12)}"
     client = UnixClaudeRuntimeClient(settings.runtime_socket)
+    services = build_services(settings)
     command = str(args.claude_command)
     json_output = bool(getattr(args, "json_output", False))
     try:
@@ -296,29 +313,46 @@ async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
             return 0 if status.installed and status.tmux_installed else 10
         if command == "list":
             sessions = await client.list_sessions(request_id)
+            projects = services.projects.reconcile_existing(
+                tuple(session.project_id for session in sessions)
+            )
+            formal_sessions = [
+                {
+                    **session.to_dict(),
+                    "project_id": project.id,
+                    "display_name": project.display_name,
+                }
+                for project in projects
+                for session in sessions
+                if session.project_id == project.relative_path
+            ]
             if json_output:
                 result = _envelope(
                     "claude.list",
                     ok=True,
-                    data={"sessions": [session.to_dict() for session in sessions]},
+                    data={"sessions": formal_sessions},
                 )
                 result["execution_mode"] = "runtime_socket"
                 _print_result(result, True)
             else:
                 print(f"{'PROJECT':<24} {'STATE':<20} SESSION")
-                for session in sessions:
-                    state = session.state.value.replace("_", " ").title()
-                    print(f"{session.project_id:<24.24} {state:<20.20} managed")
+                for session_view in formal_sessions:
+                    state = str(session_view["state"]).replace("_", " ").title()
+                    print(f"{str(session_view['project_id']):<24.24} " f"{state:<20.20} managed")
             return 0
 
-        project_id = str(args.project)
+        project = services.projects.resolve(str(args.project), ready=True)
+        runtime_project_key = project.relative_path
         if command == "start":
-            action = await client.start_session(request_id, project_id)
-            print(f"Claude session: {action.outcome} ({action.session.state.value})")
+            action = await client.start_session(request_id, runtime_project_key)
+            print(
+                f"Claude session for {project.display_name}: "
+                f"{action.outcome} ({action.session.state.value})"
+            )
             return 0
         if command == "stop":
-            action = await client.stop_session(request_id, project_id)
-            print(f"Claude session: {action.outcome}")
+            action = await client.stop_session(request_id, runtime_project_key)
+            print(f"Claude session for {project.display_name}: {action.outcome}")
             return 0
         if json_output:
             print(
@@ -328,7 +362,7 @@ async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
             )
             return 13
         if command == "output":
-            output = await client.recent_output(request_id, project_id)
+            output = await client.recent_output(request_id, runtime_project_key)
             print(
                 "Sensitive Claude session output; it may contain project or model data.",
                 file=sys.stderr,
@@ -342,14 +376,14 @@ async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 13
-        session = await client.session(request_id, project_id)
-        if not session.tmux_running:
+        runtime_session = await client.session(request_id, runtime_project_key)
+        if not runtime_session.tmux_running:
             print(
                 "ERROR [CLAUDE_SESSION_NOT_RUNNING]: Claude session is not running",
                 file=sys.stderr,
             )
             return 10
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", session.session_name):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", runtime_session.session_name):
             print(
                 "ERROR [TMUX_SESSION_NAME_INVALID]: Runtime returned an invalid session name",
                 file=sys.stderr,
@@ -359,10 +393,15 @@ async def _claude_command(settings: Settings, args: argparse.Namespace) -> int:
         if tmux is None or not os.path.isabs(tmux):
             print("ERROR [TMUX_NOT_INSTALLED]: tmux is unavailable", file=sys.stderr)
             return 10
-        os.execv(tmux, [tmux, "attach-session", "-t", f"={session.session_name}"])
+        os.execv(tmux, [tmux, "attach-session", "-t", f"={runtime_session.session_name}"])
     except RuntimeOperationError as exc:
         print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
         return _runtime_exit_code(exc)
+    except AgentBoxError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return 15
+    finally:
+        services.database.close()
 
 
 def _queue_project_job(
@@ -393,7 +432,14 @@ async def _project_command(settings: Settings, args: argparse.Namespace) -> int:
     try:
         command = str(args.project_command)
         if command == "list":
-            projects = services.projects.list()
+            try:
+                workspaces = await runtime.list_workspaces(request_id)
+            except RuntimeOperationError:
+                projects = services.projects.list()
+            else:
+                projects = services.projects.reconcile_existing(
+                    tuple(workspace.project_key for workspace in workspaces)
+                )
             data = {
                 "projects": [
                     {
@@ -451,8 +497,18 @@ async def _project_command(settings: Settings, args: argparse.Namespace) -> int:
         branch_command = str(args.branch_command)
         if branch_command == "list":
             branches = await runtime.branches(request_id, project.relative_path)
-            for branch in branches:
-                print(f"{'*' if branch.current else ' '} {branch.name}")
+            if bool(getattr(args, "json_output", False)):
+                _print_result(
+                    _envelope(
+                        "project.branch.list",
+                        ok=True,
+                        data={"branches": [branch.to_dict() for branch in branches]},
+                    ),
+                    True,
+                )
+            else:
+                for branch in branches:
+                    print(f"{'*' if branch.current else ' '} {branch.name}")
             return 0
         branch_name = validate_branch_name(str(args.branch))
         job_id = _queue_project_job(
@@ -485,21 +541,27 @@ async def _github_command(settings: Settings, args: argparse.Namespace) -> int:
     try:
         if args.github_command == "status":
             global_status = await runtime.github_status(request_id)
-            _print_result(_envelope("github.status", ok=True, data=global_status.to_dict()), False)
+            _print_result(
+                _envelope("github.status", ok=True, data=global_status.to_dict()),
+                bool(getattr(args, "json_output", False)),
+            )
             return 0
         project = services.projects.resolve(str(args.project), ready=True)
         if args.pr_command == "status":
             project_status = await runtime.github_project_status(request_id, project.relative_path)
             _print_result(
                 _envelope("github.pr.status", ok=True, data=project_status.to_dict()),
-                False,
+                bool(getattr(args, "json_output", False)),
             )
             return 0
+        title = validate_pr_title(str(args.title))
+        body = validate_pr_body(str(args.body))
+        base = validate_branch_name(str(args.base)) if args.base is not None else None
         job_id = _queue_project_job(
             services,
             job_type="github.pr.create",
             project=project,
-            payload={"title": args.title, "body": args.body, "base": args.base},
+            payload={"title": title, "body": body, "base": base},
         )
         print(f"Draft pull request queued: {job_id}")
         return 0

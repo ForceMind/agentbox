@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal, cast
 
 from agentbox_core.errors import ProjectValidationError, RuntimeGatewayError
@@ -34,11 +35,14 @@ from agentbox_protocol import (
     ProjectResponse,
 )
 from agentbox_runtime import (
+    ClaudeRuntimeClient,
     GitHubProjectStatus,
     GitStatus,
     ProjectRuntimeClient,
     RuntimeOperationError,
     validate_branch_name,
+    validate_pr_body,
+    validate_pr_title,
 )
 from fastapi import APIRouter, Cookie, Header, Request, Response, status
 
@@ -55,6 +59,10 @@ def _services(request: Request) -> ControlPlaneServices:
 
 def _runtime(request: Request) -> ProjectRuntimeClient:
     return cast(ProjectRuntimeClient, request.app.state.project_runtime)
+
+
+def _claude_runtime(request: Request) -> ClaudeRuntimeClient:
+    return cast(ClaudeRuntimeClient, request.app.state.claude_runtime)
 
 
 def _translate(exc: RuntimeOperationError) -> RuntimeGatewayError:
@@ -85,6 +93,9 @@ def _github_data(value: GitHubProjectStatus | None) -> GitHubProjectData | None:
         pull_request_state=value.pull_request_state,
         pull_request_draft=value.pull_request_draft,
         pull_request_url=value.pull_request_url,
+        pull_request_base=value.pull_request_base,
+        pull_request_head=value.pull_request_head,
+        mergeability=value.mergeability,
         checks=cast(Literal["pass", "fail", "pending", "unknown"], checks),
     )
 
@@ -94,6 +105,7 @@ def project_data(
     *,
     git: GitStatus | None = None,
     github: GitHubProjectStatus | None = None,
+    claude_state: str | None = None,
 ) -> ProjectData:
     return ProjectData(
         id=project.id,
@@ -107,6 +119,18 @@ def project_data(
         updated_at=project.updated_at,
         git=_git_data(git),
         github=_github_data(github),
+        claude_state=cast(
+            Literal[
+                "running",
+                "stopped",
+                "starting",
+                "needs_interaction",
+                "broken",
+                "unknown",
+            ]
+            | None,
+            claude_state,
+        ),
     )
 
 
@@ -195,10 +219,38 @@ async def list_projects(
 ) -> ProjectListResponse:
     authenticate_request(request, agentbox_session)
     projects = await _reconcile(request)
+    try:
+        sessions = await _claude_runtime(request).list_sessions(str(request.state.request_id))
+    except RuntimeOperationError:
+        sessions = ()
+    session_states = {session.project_id: session.state.value for session in sessions}
+    semaphore = asyncio.Semaphore(4)
+
+    async def safe_git(project: Project) -> GitStatus | None:
+        if project.state != "ready":
+            return None
+        try:
+            async with semaphore:
+                return await _runtime(request).git_status(
+                    str(request.state.request_id), project.relative_path
+                )
+        except RuntimeOperationError:
+            return None
+
+    git_states = await asyncio.gather(*(safe_git(project) for project in projects))
     response.headers["Cache-Control"] = "no-store"
     return ProjectListResponse(
         request_id=str(request.state.request_id),
-        data=ProjectListData(projects=[project_data(project) for project in projects]),
+        data=ProjectListData(
+            projects=[
+                project_data(
+                    project,
+                    git=git,
+                    claude_state=session_states.get(project.relative_path),
+                )
+                for project, git in zip(projects, git_states, strict=True)
+            ]
+        ),
     )
 
 
@@ -252,7 +304,7 @@ async def _create_project_job(
     except Exception:
         _services(request).projects.discard_reservation(project.id)
         raise
-    action = "project_clone_requested" if source_type == "git_clone" else "project_created"
+    action = "project_clone_requested" if source_type == "git_clone" else "project_create_requested"
     _audit(
         request,
         authenticated,
@@ -474,7 +526,7 @@ async def create_branch(
         idempotency_key,
         job_type="git.branch.create",
         payload={"branch": branch},
-        audit_action="git_branch_created",
+        audit_action="git_branch_create_requested",
     )
 
 
@@ -499,7 +551,7 @@ async def switch_branch(
         idempotency_key,
         job_type="git.branch.switch",
         payload={"branch": branch},
-        audit_action="git_branch_switched",
+        audit_action="git_branch_switch_requested",
     )
 
 
@@ -512,6 +564,12 @@ async def create_pull_request(
     x_csrf_token: str | None = Header(default=None),
     idempotency_key: str | None = Header(default=None),
 ) -> JobResponse:
+    try:
+        title = validate_pr_title(payload.title)
+        body = validate_pr_body(payload.body)
+        base = validate_branch_name(payload.base) if payload.base is not None else None
+    except RuntimeOperationError as exc:
+        raise _translate(exc) from exc
     return await _enqueue_mutation(
         project_id,
         request,
@@ -519,7 +577,7 @@ async def create_pull_request(
         x_csrf_token,
         idempotency_key,
         job_type="github.pr.create",
-        payload={"title": payload.title, "body": payload.body, "base": payload.base},
+        payload={"title": title, "body": body, "base": base},
         audit_action="github_pr_create_requested",
     )
 

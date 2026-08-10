@@ -340,6 +340,9 @@ class GitHubProjectData(StrictMetadataModel):
     pull_request_state: str | None
     pull_request_draft: bool | None
     pull_request_url: str | None
+    pull_request_base: str | None
+    pull_request_head: str | None
+    mergeability: str | None
     checks: Literal["pass", "fail", "pending", "unknown"]
 
 
@@ -355,6 +358,9 @@ class ProjectData(StrictMetadataModel):
     updated_at: datetime
     git: GitStatusData | None = None
     github: GitHubProjectData | None = None
+    claude_state: (
+        Literal["running", "stopped", "starting", "needs_interaction", "broken", "unknown"] | None
+    ) = None
 
 
 class ProjectResponse(StrictMetadataModel):

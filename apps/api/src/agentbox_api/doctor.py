@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Literal
+
 from agentbox_protocol import (
     ClaudeDoctorSummary,
     CodexDoctorSummary,
@@ -34,78 +37,98 @@ async def doctor(
     migrations_current = services.database.migrations_current()
     admin_initialized, _username = services.admin.status()
     control_plane_ready = database_reachable and migrations_current and admin_initialized
-    try:
-        codex_status = await request.app.state.codex_runtime.status(str(request.state.request_id))
-        codex_summary = CodexDoctorSummary(
-            installed=codex_status.installed,
-            version=codex_status.version,
-            installation_type=codex_status.installation_type.value,
-            remote_control=codex_status.capabilities.remote_control.value,
-            remote_state=codex_status.remote_state.value,
-            findings=[finding.code for finding in codex_status.diagnostics[:16]],
-        )
-    except RuntimeOperationError as exc:
-        codex_summary = CodexDoctorSummary(
-            installed=None,
-            version=None,
-            installation_type="unknown",
-            remote_control="unknown",
-            remote_state="unknown",
-            findings=[exc.code],
-        )
-    try:
-        git_status = await request.app.state.project_runtime.git_global_status(
-            str(request.state.request_id)
-        )
-        github_status = await request.app.state.project_runtime.github_status(
-            str(request.state.request_id)
-        )
-        project_status = ProjectDoctorSummary(
-            project_root=str(settings.project_root),
-            project_count=len(services.projects.list()),
-            git_installed=git_status.installed,
-            git_version=git_status.version,
-            github_cli_installed=github_status.installed,
-            github_authentication=github_status.authentication.value,
-            findings=[],
-        )
-    except RuntimeOperationError as exc:
-        project_status = ProjectDoctorSummary(
-            project_root=str(settings.project_root),
-            project_count=len(services.projects.list()),
-            git_installed=None,
-            git_version=None,
-            github_cli_installed=None,
-            github_authentication="unknown",
-            findings=[exc.code],
-        )
-    try:
-        claude_status = await request.app.state.claude_runtime.status(str(request.state.request_id))
-        claude_summary = ClaudeDoctorSummary(
-            installed=claude_status.installed,
-            version=claude_status.version,
-            authentication=claude_status.authentication.value,
-            remote_control=claude_status.capabilities.remote_control.value,
-            tmux_installed=claude_status.tmux_installed,
-            tmux_version=claude_status.tmux_version,
-            managed_sessions=claude_status.managed_sessions,
-            unmanaged_sessions=claude_status.unmanaged_sessions,
-            workspace_interaction_warnings=claude_status.workspace_interaction_warnings,
-            findings=[finding.code for finding in claude_status.diagnostics[:16]],
-        )
-    except RuntimeOperationError as exc:
-        claude_summary = ClaudeDoctorSummary(
-            installed=None,
-            version=None,
-            authentication="unknown",
-            remote_control="unknown",
-            tmux_installed=None,
-            tmux_version=None,
-            managed_sessions=0,
-            unmanaged_sessions=0,
-            workspace_interaction_warnings=0,
-            findings=[exc.code],
-        )
+    request_id = str(request.state.request_id)
+
+    async def probe_codex() -> CodexDoctorSummary:
+        try:
+            value = await request.app.state.codex_runtime.status(request_id)
+            return CodexDoctorSummary(
+                installed=value.installed,
+                version=value.version,
+                installation_type=value.installation_type.value,
+                remote_control=value.capabilities.remote_control.value,
+                remote_state=value.remote_state.value,
+                findings=[finding.code for finding in value.diagnostics[:16]],
+            )
+        except RuntimeOperationError as exc:
+            return CodexDoctorSummary(
+                installed=None,
+                version=None,
+                installation_type="unknown",
+                remote_control="unknown",
+                remote_state="unknown",
+                findings=[exc.code],
+            )
+
+    async def probe_claude() -> ClaudeDoctorSummary:
+        try:
+            value = await request.app.state.claude_runtime.status(request_id)
+            return ClaudeDoctorSummary(
+                installed=value.installed,
+                version=value.version,
+                authentication=value.authentication.value,
+                remote_control=value.capabilities.remote_control.value,
+                tmux_installed=value.tmux_installed,
+                tmux_version=value.tmux_version,
+                managed_sessions=value.managed_sessions,
+                unmanaged_sessions=value.unmanaged_sessions,
+                workspace_interaction_warnings=value.workspace_interaction_warnings,
+                findings=[finding.code for finding in value.diagnostics[:16]],
+            )
+        except RuntimeOperationError as exc:
+            return ClaudeDoctorSummary(
+                installed=None,
+                version=None,
+                authentication="unknown",
+                remote_control="unknown",
+                tmux_installed=None,
+                tmux_version=None,
+                managed_sessions=0,
+                unmanaged_sessions=0,
+                workspace_interaction_warnings=0,
+                findings=[exc.code],
+            )
+
+    async def probe_git() -> tuple[bool | None, str | None, list[str]]:
+        try:
+            value = await request.app.state.project_runtime.git_global_status(request_id)
+            return value.installed, value.version, []
+        except RuntimeOperationError as exc:
+            return None, None, [exc.code]
+
+    async def probe_github() -> (
+        tuple[bool | None, Literal["authenticated", "unauthenticated", "unknown"], list[str]]
+    ):
+        try:
+            value = await request.app.state.project_runtime.github_status(request_id)
+            return value.installed, value.authentication.value, []
+        except RuntimeOperationError as exc:
+            return None, "unknown", [exc.code]
+
+    async def probe_workspaces() -> tuple[set[str] | None, list[str]]:
+        try:
+            values = await request.app.state.project_runtime.list_workspaces(request_id)
+            return {value.project_key for value in values}, []
+        except RuntimeOperationError as exc:
+            return None, [exc.code]
+
+    codex_summary, claude_summary, git_probe, github_probe, workspace_probe = await asyncio.gather(
+        probe_codex(), probe_claude(), probe_git(), probe_github(), probe_workspaces()
+    )
+    projects = services.projects.list()
+    workspace_findings = list(workspace_probe[1])
+    ready_keys = {project.relative_path for project in projects if project.state == "ready"}
+    if workspace_probe[0] is not None and not ready_keys.issubset(workspace_probe[0]):
+        workspace_findings.append("PROJECT_WORKSPACE_UNAVAILABLE")
+    project_status = ProjectDoctorSummary(
+        project_root=str(settings.project_root),
+        project_count=len(projects),
+        git_installed=git_probe[0],
+        git_version=git_probe[1],
+        github_cli_installed=github_probe[0],
+        github_authentication=github_probe[1],
+        findings=[*workspace_findings, *git_probe[2], *github_probe[2]][:16],
+    )
     response.headers["Cache-Control"] = "no-store"
     return DoctorResponse(
         request_id=str(request.state.request_id),
