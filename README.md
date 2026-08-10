@@ -7,8 +7,8 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 ## Project status
 
 AgentBox is in **early pre-alpha development**. Phases 2–5 are merged. Phase 6
-Claude/tmux session management is implemented on its review branch and is not
-yet merged or a production support claim.
+Claude/tmux session management is implemented in PR #25, has completed human
+review, and is not yet merged or a production support claim.
 
 The current codebase provides:
 
@@ -170,7 +170,7 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
 3. Phase 4: authenticated Web foundation — merged in PR #21.
 4. Phase 5: capability-aware Codex management — merged in PR #22.
-5. Phase 6: Claude/tmux session management — Draft PR implementation, awaiting review.
+5. Phase 6: Claude/tmux session management — PR #25 implementation passed human review and awaits merge.
 6. Phase 7: Project Workspaces and minimal Git.
 7. Phase 8: installation, deployment, upgrade, and rollback.
 8. Phase 9: security and compatibility hardening.

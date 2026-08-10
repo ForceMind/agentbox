@@ -38,8 +38,8 @@ was modified.
   - `d844589` — `test(claude): add Remote session E2E coverage`
   - `0261632` — `docs: document Claude Remote integration`
   - `24515bd` — `docs: record Phase 6 draft PR`
-  - final status-only documentation commit recording required CI PASS
-- Draft PR: <https://github.com/ForceMind/agentbox/pull/25>
+  - finalization documentation recording human review and required CI PASS
+- PR: <https://github.com/ForceMind/agentbox/pull/25>
 
 ## Observed Claude Environment
 
@@ -382,7 +382,7 @@ library cleanup checks, and `git diff --check` passed.
 ## CI
 
 Local equivalents of Backend, Frontend, Security, dependency audit, and E2E
-workflows pass. Draft PR #25 required checks pass: Frontend quality, Backend
+workflows pass. PR #25 required checks pass: Frontend quality, Backend
 quality on Python 3.11/3.12/3.13, E2E, repository boundaries, dependency review,
 Python audit, and frontend audit. No required failure is waived by this report.
 
@@ -424,7 +424,7 @@ changed architecture contract.
 
 ## Phase 7 Recommendation
 
-After human review and merge of the Phase 6 Draft PR, Phase 7 may define formal
+After merge of the human-reviewed Phase 6 PR, Phase 7 may define formal
 Project Workspaces and minimal Git operations. It should reuse the strict
 Project ID/canonical-root boundary, replace the temporary immediate-child
 registry deliberately, preserve no-raw-path UDS actions, and add an ADR only if
