@@ -146,13 +146,19 @@ MVP succeeds when, on every release-gated supported distribution, a single admin
 
 Possible post-MVP directions include multiple servers, multiple workspace users, optional Docker development/deployment modes, richer GitHub and PR workflows, bidirectional terminal experiences, hardware/resource scheduling, pluggable Runtime Adapters, enterprise identity, and native mobile clients. These are not commitments and must not distort the MVP architecture.
 
-One explicitly planned post-MVP direction is a runtime-neutral Provider Manager
-that lets administrators select a model/API Provider independently of Remote
-Control. It must support Official OpenAI, OpenAI-compatible, local, and
-Runtime-native Providers through typed adapters; store only Secret references;
-and report Provider, Codex Runtime, and Remote Control compatibility separately.
-It is tracked as Phase 11 and Issue #23; it is not part of the current MVP or an
-authorization to modify Runtime configuration.
+One explicitly planned post-MVP direction is Phase 11 — Provider, Secret &
+Runtime Continuity Management. It lets administrators select a model/API
+Provider independently of Remote Control while separating a concrete
+`ProviderDefinitionID` from stable AgentBox `RuntimeBindingID` intent. It must
+support Official OpenAI, OpenAI-compatible, local, and Runtime-native Providers
+through typed adapters; use platform Secret backends and verified atomic config
+transactions; protect active writers; and report Provider, Runtime, Remote,
+Thread Resume, Context Continuity, and Thread Discovery independently.
+
+Phase 11 does not promise seamless cross-provider history, mutate private
+session DB/JSONL/rollout data, or automatically fail over Providers. It is
+tracked by Issue #23; it is not part of the current MVP or authorization to read
+keys, modify Runtime configuration, restart Runtime, or affect Remote Control.
 
 ## Branding and Third Parties
 

@@ -51,16 +51,31 @@ Runtime-specific adapters:
 
 ```text
 ProviderManager
-├── list/add/edit/remove/use/current/test metadata use cases
+├── ProviderDefinition registry and Active Provider use cases
+├── RuntimeBindingID intent (not a permanent Runtime provider ID)
 ├── SecretReference (never the secret value)
-└── compatibility dimensions
+└── layered compatibility observations
+
+RuntimeContinuityManager
+├── preflight_public_writer_state()
+├── assess_remote_recovery()
+├── assess_thread_resume()
+├── assess_context_continuity()
+├── assess_thread_discovery()
+└── recovery_guidance()
 
 ProviderConfigAdapter
 ├── inspect_public_contract(runtime)
-├── validate(existing_config, desired_provider)
-├── plan_activation(expected_revision)
-├── apply_atomically(plan)
-└── rollback(plan)
+├── map_runtime_binding(binding_id, provider_definition)
+├── generate_and_validate_candidate(expected_revision)
+└── apply_via_config_transaction(plan)
+
+ConfigTransactionManager
+├── snapshot_content_existence_mode_lifecycle()
+├── detect_concurrent_modification()
+├── write_validate_fsync_replace()
+├── rollback_full_scope()
+└── verify_rollback()
 ```
 
 Interfaces return typed observations with source, timestamp, confidence, raw-exit classification, and bounded sanitized evidence. They do not return raw stdout/stderr to callers.
@@ -168,7 +183,7 @@ Use a documented public login-status command when detected. If absent, return Un
 
 The adapter produces a plan from supported publisher methods. The root Helper handles verified system/install steps. Internal standalone release directories may appear as diagnostic evidence but cannot be hardcoded. Post-install verification includes owner/mode checks due the UID/GID 1001 anomaly observed in Phase 0.
 
-### Future Codex Provider Config Adapter
+### Future Codex Provider Config and Continuity Adapters
 
 Phase 11 may add `CodexProviderConfigAdapter`; it is not implemented in Phase
 5. It must derive its accepted keys and validation behavior from the public
@@ -176,13 +191,21 @@ Codex CLI help, public config schema/documentation, and supported config keys
 observed at implementation time. Current observed shapes are fixtures, not a
 permanent protocol, and private Codex internal files are forbidden contracts.
 
-The adapter accepts typed Provider metadata and a Secret reference, never raw
-TOML, arbitrary keys, an environment map, or an API key. It parses the existing
-TOML, preserves unrelated values, validates a complete candidate, detects
-concurrent modification, protects against symlinks/unsafe ownership, and uses a
-restrictive temporary file, appropriate fsync, backup/rollback, and atomic
-replace. It must prefer official environment-variable reference mechanisms such
-as a publicly supported `env_key` over plaintext credentials in config.
+The adapter accepts a ProviderDefinition, AgentBox RuntimeBinding intent, and a
+Secret reference, never raw TOML, arbitrary keys, paths, environment maps,
+current Codex IDs, or API keys. It parses the existing TOML, preserves unrelated
+values, edits only AgentBox-controlled blocks, prevents duplicates, validates a
+complete candidate, detects concurrent modification, protects against
+symlinks/unsafe ownership, and delegates restrictive write/fsync/atomic replace
+and full-scope verified rollback to `ConfigTransactionManager`. It prefers an
+official Secret-reference mechanism over plaintext credentials where the
+current public contract supports one.
+
+Historical separation of Provider and session-provider identities is a
+continuity strategy, not a Codex contract. Implementation must revalidate the
+latest public config/session identity, reload/restart, active-writer, resume,
+thread discovery, and Remote behavior. Direct mutation of Codex SQLite/session
+DB, JSONL, rollout, or thread metadata is prohibited.
 
 Provider types are adapter capabilities, not one shared parameter bag:
 Official OpenAI, OpenAI-compatible HTTP, local, and Runtime-native/built-in are
@@ -191,18 +214,25 @@ when its official public contract supports the operation.
 
 ### Future Provider Test and Compatibility
 
-Provider testing is layered: endpoint resolution, network reachability,
-authentication, protocol, model availability, required Codex wire API, a
-minimal Provider request, an optional safe minimal Codex Runtime request, and a
-separate Remote Control compatibility assessment. Results independently expose
-reachability, authentication, model, wire protocol, Runtime compatibility, and
-Remote compatibility.
+Provider testing is layered: typed config; DNS/TCP/TLS/endpoint; authentication;
+model and Provider protocol; the then-current Runtime wire API; minimal Runtime
+request; Remote recovery; and thread resume/context/discovery continuity.
+Results independently expose Network, Authentication, Model Availability, Wire
+Protocol, Provider API, Runtime, Remote, Thread Resume, Context Continuity, and
+Thread Discovery as PASS/FAIL/UNSUPPORTED/EXPERIMENTAL/UNKNOWN/NOT_TESTED.
 
-Planned classifications are `supported`, `compatible`, `experimental`,
-`degraded`, `incompatible`, and `unknown` (or typed project equivalents).
-Thread synchronization, conversation history, tools, streaming, Responses
-behavior, and Remote state are explicit evidence dimensions. Provider request
-success never promotes Remote compatibility automatically.
+Planned aggregate classifications are `supported`, `compatible`,
+`experimental`, `degraded`, `incompatible`, and `unknown`, backed by the full
+matrix. Continuity levels 0–5 are monotonic evidence labels, not inferred
+promises. Provider request success never promotes Remote, thread, context, or
+discovery compatibility. Official Provider full inference is not run by default;
+paid Runtime/continuity tests require explicit opt-in.
+
+The dedicated harness uses two local fake compatible providers A/B, starts a
+known-context test thread on A, waits for writer quiescence, switches through the
+real transaction boundary, resumes through a public interface when supported,
+and independently verifies context delivery, identity, discovery, and expected
+artifacts. It never edits private session storage.
 
 ## Claude Adapter
 
@@ -262,6 +292,8 @@ storage.
 | private Runtime config/auth layout | forbidden as required contract; content not read for auth |
 | public Runtime provider/config schema and documented supported keys | required future Provider config contract; revalidated per supported release |
 | raw API key or Secret Manager value | forbidden adapter observation/output; only an opaque Secret reference crosses the application boundary |
+| public Runtime provider/session identity and resume behavior | future RuntimeBinding mapping and continuity evidence; always version-revalidated |
+| private SQLite/session DB, JSONL, rollout, thread metadata | permanently forbidden Provider migration/config interface |
 | internal standalone managed path | diagnostic hint only; never invocation/business contract |
 | parsing human output | best effort with exact fixtures; unknown output fails closed |
 
@@ -344,11 +376,22 @@ names. Unknown evidence stays `unknown`; no package is removed automatically.
 - verify official install/update artifact checks available from each publisher;
 - validate Runtime-user auth and tmux behavior on each supported distribution;
 - resolve current host Codex ownership and legacy service before adoption tests.
-- before Phase 11, revalidate current public Codex Provider/config/Remote
-  behavior and determine restart, authentication, existing-session, thread, and
-  conversation-state effects of Provider activation;
-- define the Secret Manager injection boundary and Provider compatibility test
-  matrix without exposing real API keys or treating an HTTP ping as support.
-# Phase 7 adapters
+- before Phase 11, revalidate current public Codex version, Provider/config
+  schema, wire APIs, auth, reload/restart, Remote lifecycle, Provider/thread
+  relationship, discovery filtering, session storage, active-writer, resume,
+  macOS, and Windows behavior;
+- define Linux restrictive-file, macOS Keychain, Windows current-user DPAPI,
+  and WSL/native isolation boundaries without exposing real API keys;
+- validate a single Runtime/Remote lifecycle with switchable Provider binding;
+  any proposal for parallel official/third-party daemons requires an ADR and
+  human approval;
+- execute the two-fake-provider continuity harness and preserve partial failures
+  rather than treating an HTTP/Runtime request as full support.
 
-`GitAdapter`, `GitHubAdapter`, and `ProjectWorkspaceManager` expose typed operations only. UDS arguments are controlled relative project key plus bounded operation-specific values; path, argv, shell, environment, PID and Git config are forbidden. Clone staging uses exact Job markers and atomic rename. Git/GitHub output is bounded and normalized before crossing the socket.
+## Phase 7 Adapters
+
+`GitAdapter`, `GitHubAdapter`, and `ProjectWorkspaceManager` expose typed
+operations only. UDS arguments are a controlled relative Project key plus
+bounded operation-specific values; path, argv, shell, environment, PID, and Git
+config are forbidden. Clone staging uses exact Job markers and atomic rename.
+Git/GitHub output is bounded and normalized before crossing the socket.

@@ -196,24 +196,33 @@ temporary DB and retained artifacts; traces/screenshots are disabled.
 
 A future authenticated `/providers` page may list Provider cards such as
 Official OpenAI, OpenAI-compatible, local, and Runtime-native/built-in. Each
-card shows display name, Provider type, model, enabled/current state, last-test
-freshness, and independent Provider API, Codex Runtime, and Remote Control
-compatibility. Example copy may report a Provider request as `PASS` while
-Remote compatibility remains `Experimental`; the UI never collapses these into
-one green status.
+card shows Provider, Model, Type, Provider Status, Runtime Status, Remote Status,
+Continuity Level, and Last Tested. Its detail matrix independently renders
+Network, Authentication, Model Availability, Wire Protocol, Provider API,
+Runtime, Remote, Thread Resume, Context Continuity, and Thread Discovery using
+PASS/FAIL/UNSUPPORTED/EXPERIMENTAL/UNKNOWN/NOT_TESTED. A Runtime request can be
+PASS while Discovery is FAIL; the UI never collapses partial evidence into one
+green status.
 
-Planned actions are Add Provider, Edit, Test, Set Active, and Delete. Add/Edit
-use typed Provider-specific fields. Secret entry, once separately designed,
-uses a dedicated transient no-echo flow and returns only configured/reference
-state; lists, detail views, ordinary pages, errors, browser storage, analytics,
-logs, and Audit metadata never receive the API key. Delete does not implicitly
-delete a Secret or active binding.
+Planned actions are Add, Edit, Test, Activate, Rotate Secret, and Delete.
+Add/Edit use typed Provider-specific fields. Secret entry, once separately
+designed, uses a dedicated transient no-echo flow and returns only masked
+configured/reference state; lists, detail views, ordinary pages, errors,
+browser storage, analytics, logs, and Audit metadata never receive the API key.
+Delete checks active/binding/rollback references and does not implicitly delete
+a Secret. Rotate Secret preserves ProviderDefinitionID, RuntimeBindingID, model,
+and base URL, then shows authentication/protocol retest state.
 
-Set Active first presents a revision-bound impact plan: new requests only,
-Runtime restart, existing Remote session/thread/history impact, new session, or
-re-authentication. Unknown behavior is shown as Unknown/Experimental and cannot
-be presented as safe. Restart/session/auth changes require separate explicit
-confirmation. No Provider route or action is implemented today.
+Activate first presents a revision-bound preflight with Current Provider,
+Target Provider, active-writer state, Runtime impact, Remote impact, Continuity
+confidence, and Restart required. Unknown writer evidence requires explicit
+turn-complete confirmation. The transaction view shows Preflight, Snapshot,
+Validate, Apply, Runtime/Remote/Continuity verification, Commit, or Rollback;
+recovery copy says only `Rollback attempted` or `Rollback verified` according
+to evidence. `Thread not listed` is never rendered as `Thread deleted`.
+Connectivity, Runtime, and Continuity tests are separate, and paid inference
+requires an explicit `Run paid model test` confirmation. No Provider route or
+action is implemented today.
 
 Later phases may replace the remaining planned cards only after real versioned
 APIs exist. Runtime pages must consume Capability states and must never directly

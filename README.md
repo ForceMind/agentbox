@@ -31,9 +31,12 @@ change Provider/Secret configuration. Runtime operations work only against
 existing tools and configured existing project directories under the non-root
 Runtime context.
 
-A future Provider Manager is architecture/backlog only. It will keep Runtime
-Remote Control separate from model/API Provider selection and will depend on a
-separate Secret Manager boundary; no Provider API/UI/CLI or config mutation is
+A future Phase 11 — Provider, Secret & Runtime Continuity Management is
+architecture/backlog only. It separates concrete `ProviderDefinitionID` values
+from stable AgentBox `RuntimeBindingID` intent, uses a separate Secret Manager
+and transactional Runtime-specific config adapters, and reports Provider,
+Runtime, Remote, thread, context, and discovery evidence independently. No
+Provider API/UI/CLI, Secret backend, config mutation, or continuity claim is
 implemented today.
 
 ## MVP goal
@@ -175,8 +178,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 7. Phase 8: installation, deployment, upgrade, and rollback.
 8. Phase 9: security and compatibility hardening.
 9. Phase 10: first release.
-10. Phase 11: Provider & Secret Management — future post-MVP planning tracked
-    in Issue #23; does not change Phases 6–10.
+10. Phase 11: Provider, Secret & Runtime Continuity Management — future
+    post-MVP planning tracked in Issue #23; does not change Phases 6–10.
 
 The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 

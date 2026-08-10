@@ -10,8 +10,9 @@ Status: Phase 1 design baseline
 4. Secrets and temporary pairing material must not enter AgentBox persistence, logs, traces, fixtures, URLs, or analytics.
 5. Every privileged or dangerous action must be attributable, bounded, confirmable, and recoverable where possible.
 6. Unknown versions, paths, owners, or capabilities must fail closed.
-7. Future Provider metadata, Provider config mutation, Secret custody, and
-   Remote Control compatibility must remain separate trust decisions.
+7. Future ProviderDefinition metadata, Runtime Binding intent, config
+   transaction, Secret custody, Runtime lifecycle, and continuity evidence must
+   remain separate trust decisions.
 
 Availability and recoverability are also security goals: one malformed Job must not exhaust the verified 2-vCPU/3.5-GiB host or corrupt state.
 
@@ -176,10 +177,11 @@ Each action definition fixes:
 No action uses `shell=True`, `/bin/sh -c`, `eval`, string concatenation, untrusted unit/package names, or caller-selected executable paths.
 
 Future Provider actions also reject raw config text, arbitrary config keys,
-caller environment maps, and API keys. They accept a Provider ID, typed options,
-an expected revision, and an opaque Secret reference only. Provider activation,
-Runtime restart, session replacement, and re-authentication are distinct actions
-with separate impact plans and confirmations.
+caller environment maps, filesystem paths, process arguments, and API keys.
+They accept a `ProviderDefinitionID`, typed options, expected revision, approved
+`RuntimeBindingID` intent, and opaque Secret reference only. Provider activation,
+Runtime lifecycle, Secret rotation/removal, and rollback are revision-bound
+transactions with separate impact plans and confirmations.
 
 ## Input and Parameter Validation
 
@@ -258,35 +260,48 @@ Capability `unknown` is not authentication success. If a public Codex login
 status is unavailable, AgentBox displays `Unknown`; it never opens Codex auth
 files. An explicit public unauthenticated result blocks Pair.
 
-## Future Provider and Secret Security Boundary
+## Future Provider, Secret, Config, and Continuity Security Boundary
 
-Provider Manager is planned for Phase 11 and is not implemented. Its ordinary
-metadata may contain provider ID/name/type, base URL, model, wire protocol,
-typed options, enabled/test/compatibility state, and an opaque Secret reference.
-It must never contain a raw API key. Secret values belong to a separately
-approved Secret Manager with explicit storage, injection, rotation, deletion,
-backup, and recovery policy.
+Phase 11 — Provider, Secret & Runtime Continuity Management is planning only.
+`ProviderDefinitionID` identifies concrete normalized Provider configuration;
+`RuntimeBindingID` expresses stable AgentBox binding intent and is never
+permanently equated with a current Codex provider ID. Ordinary metadata may
+contain name/type, credential-free base URL, model, wire protocol, typed options,
+compatibility evidence, and an opaque Secret reference, but never a raw API key.
 
-For Codex, the config adapter should prefer an officially supported environment
-variable reference such as `env_key`. The API key must not be rendered in CLI
-ordinary output, Web pages, logs, Audit metadata, Git, reports, Job payloads or
-results, config backups, diagnostics, exceptions, or fixtures. Testing uses
-Secret canaries and ensures redaction is not the primary protection.
+Secret values belong to separately approved platform backends: restrictive
+structured files with `0700` directory/`0600` file on Linux, Keychain for the
+ordinary macOS user, and current-user DPAPI on Windows. WSL is a separate Linux
+Runtime and must not share a writable Runtime config directory with Windows
+native. No backend sources a shell environment file. Secret material must not
+enter argv, URL, process listings, avoidable ordinary TOML, CLI/Web output,
+automatic clipboard, Web Storage, logs, Audit, Git, reports, Jobs, backups,
+diagnostics, exceptions, or fixtures. Provider tests inject Authorization via a
+trusted in-memory HTTP path or equally restrictive mechanism, never argv.
 
-The future `CodexProviderConfigAdapter` must validate against the current public
-Codex config contract before each supported write. It parses and preserves
-unmanaged settings; rejects stale revisions, symlinks, unsafe owner/mode, and
-unexpected file replacement; writes a restrictive same-directory temporary
-file; fsyncs where appropriate; atomically replaces; and retains a bounded,
-protected rollback artifact. It never overwrites the whole file from a template
-or relies on a private internal schema.
+`ConfigTransactionManager` and the Runtime-specific adapter must snapshot the
+complete transaction scope, parse and validate a candidate, preserve unmanaged
+settings and original file nonexistence/permissions, detect concurrent edits,
+reject symlinks/unsafe ownership, use restrictive temporary files and atomic
+replacement, and restore Provider/Binding/Secret references plus Runtime
+lifecycle on failure. Recovery is `Rollback verified` only after explicit
+verification; otherwise it is `Rollback attempted`.
 
-Provider tests are typed, bounded, cost-aware, and non-persistent. Endpoint,
-network, authentication, protocol, model, Codex wire request, Runtime request,
-and Remote Control compatibility are separate results. A successful Provider
-request cannot authorize a `SUPPORTED` Remote claim. Unknown thread/history,
-tool, streaming, Responses, session, or Remote-state behavior remains
-`UNKNOWN`/`EXPERIMENTAL` and blocks implicit restart or session migration.
+The future `CodexProviderConfigAdapter` edits only AgentBox-controlled typed
+keys/blocks, prevents duplicate Provider blocks, and validates against the
+then-current public Codex schema. Current TOML layouts, reasoning enums, wire
+events, thread filtering, and storage formats are fixtures rather than stable
+interfaces. Provider Manager is permanently forbidden from rewriting Codex
+SQLite/session DB, JSONL, rollout, or thread metadata to manufacture migration
+or continuity.
+
+Provider tests are typed, bounded, cost-aware, and non-persistent. Network,
+Authentication, Model Availability, Wire Protocol, Provider API, Runtime,
+Remote, Thread Resume, Context Continuity, and Thread Discovery are independent
+results. Official Provider tests do not run paid full inference by default.
+Active-writer protection uses only public reliable signals; uncertainty requires
+turn-complete confirmation rather than private-state mutation. Automatic
+Provider failover is not planned.
 
 ## Logs, Recent Output, and Audit
 
@@ -303,10 +318,12 @@ Allowed fields:
 
 Forbidden fields include request/response bodies for secret actions, Pair Codes (even masked or hashed), tokens, cookies, passwords, OAuth codes, SSH keys, auth-file contents, complete process environment, and raw command output.
 
-Future Provider audit metadata may record Provider ID, action, compatibility
-classification, config revision, and sanitized outcome. It must not record a
-Secret value, API-key suffix/hash, authorization header, provider response body,
-or complete base URL when it can contain userinfo/query credentials.
+Future Provider audit metadata may record ProviderDefinitionID,
+RuntimeBindingID, action, compatibility classification, continuity level,
+config revision, rollback-verification state, and sanitized outcome. It must not
+record a Secret value, API-key suffix/hash, Authorization header, provider
+response body, raw Runtime config, or complete base URL when it can contain
+userinfo/query credentials.
 
 ### Operational Logs
 
