@@ -115,27 +115,44 @@ agentbox provider remove <provider>
 agentbox provider use <provider>
 agentbox provider current
 agentbox provider test <provider>
+agentbox provider continuity <provider>
+agentbox provider rotate-secret <provider>
+agentbox provider rollback
 ```
 
-- `<provider>` is an opaque ID or safely resolved display name, never a config
+- `<provider>` resolves to a `ProviderDefinitionID`; `RuntimeBindingID` is a
+  separate AgentBox-managed identity and never a user-supplied Codex ID. It is
+  never a config
   path, URL fragment, model flag, environment assignment, or Secret value.
 - `list`/`current` show non-secret metadata, active state, last-test freshness,
-  and Provider/Runtime/Remote compatibility as separate fields.
+  Runtime Binding metadata, continuity level, and Provider/Runtime/Remote/
+  thread/context/discovery compatibility as separate fields.
 - `add`/`edit` accept only typed Provider-specific options. A future API-key
   prompt uses a dedicated no-echo Secret Manager flow; API keys are forbidden
   on argv, ordinary stdin pipelines, JSON input, and ordinary output.
-- `use` first emits an impact plan describing whether new requests only,
-  Runtime restart, new session, thread/history impact, or re-authentication may
-  apply. Unknown effects remain Unknown/Experimental and cannot be bypassed by
-  `--yes`.
-- `test` runs layered endpoint/network/authentication/protocol/model/Codex-wire/
-  minimal-request/Remote assessment. Provider request PASS never means Remote
-  Control fully compatible.
+- `use` first emits a revision-bound transaction preflight showing Current and
+  Target Provider, active-writer state, Runtime/Remote impact, continuity
+  confidence, and restart requirement. Unknown writer state requires explicit
+  turn-complete confirmation. Failure reports only `Rollback attempted` or
+  `Rollback verified` according to actual verification.
+- `test` distinguishes Connectivity, Runtime, and Continuity tests. Network,
+  Authentication, Model, Wire, Provider API, Runtime, Remote, Thread Resume,
+  Context Continuity, and Discovery remain separate. Paid full inference is off
+  by default and requires explicit `Run paid model test` confirmation.
+- `continuity` reports levels 0–5 with independent evidence and distinguishes
+  `Thread not listed` from `Thread deleted`; any recovery command is generated
+  only from the then-current validated public Runtime interface.
+- `rotate-secret` changes only Secret material, never ProviderDefinitionID,
+  RuntimeBindingID, model, or base URL, and schedules authentication/protocol
+  revalidation.
+- `rollback` restores a verified previous or pre-management transaction state;
+  it never deletes login, pairing, Runtime history/session, or Projects.
 - `remove` refuses active/in-use references and follows approved Secret
   lifecycle and rollback policy; it never deletes Secret material implicitly.
 
 These names reserve a future product contract only. No Provider command,
 Secret Store, Codex config edit, Provider test, or Runtime restart exists now.
+No generic `agentbox codex config set <key> <value>` command is planned.
 
 ### Claude
 

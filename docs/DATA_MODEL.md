@@ -4,7 +4,7 @@ Status: Phase 1 logical design; the bounded Phase 3 control-plane subset is impl
 
 Phase 3 migration `0001_control_plane_foundation` creates only `admin_users`,
 `sessions`, and `audit_events`. Project, Runtime, Job, Setting, Diagnostic, and
-Confirmation and Phase 11 Provider tables remain future designs. Development uses a configured path
+Confirmation and Phase 11 Provider/Binding/compatibility/transaction tables remain future designs. Development uses a configured path
 beneath `.agentbox-dev/` or a temporary test directory; production retains the
 accepted `/var/lib/agentbox/agentbox.db` policy and is not created by Phase 3.
 
@@ -119,42 +119,73 @@ No Runtime token/auth-file path/content is stored.
 
 Unique by installation/name/current observation policy.
 
-## Provider (future Phase 11 logical model)
+## ProviderDefinition (future Phase 11 logical model)
 
-This model is planning only; no migration or table exists. Provider is
-Runtime-neutral metadata and must not be merged into `RuntimeInstallation`,
-`RuntimeSession`, or Codex Remote state.
+These models are planning only; no migration or table exists. A concrete
+`ProviderDefinitionID` is separate from the stable AgentBox
+`RuntimeBindingID`. Neither model is merged into `RuntimeInstallation`,
+`RuntimeSession`, Codex Remote state, or a private Runtime session database.
 
 | Field | Purpose |
 |---|---|
-| `id` | opaque Provider ID |
+| `id` | opaque `ProviderDefinitionID` |
+| `identity_schema_version` | versioned normalization/identity algorithm; decided during implementation |
 | `display_name` | safe administrator label |
 | `provider_type` | Official OpenAI/OpenAI-compatible/local/Runtime-native typed enum |
-| `runtime_compatibility` | supported Runtime/adapter binding, not a free-form command |
-| `base_url_normalized` | validated non-credential endpoint metadata |
+| `base_url_normalized` | validated non-credential identity input |
+| `wire_protocol` | typed identity input; current request shape is adapter evidence, not a permanent schema |
 | `model` | bounded model identifier |
-| `wire_protocol` | typed API/wire protocol |
-| `secret_reference` | opaque Secret Manager reference or official environment-key reference; never the value |
-| `options_schema_version` | selects Provider-type-specific typed options schema |
-| `options` | bounded validated non-secret options only; no arbitrary config keys |
-| `enabled` | available for selection, not proof of compatibility |
-| `active_for_runtime` | explicit selection/binding; activation remains a separate revision-bound operation |
-| `last_test_state`, `last_tested_at` | sanitized layered test summary/freshness |
-| `compatibility_classification` | supported/compatible/experimental/degraded/incompatible/unknown |
-| `created_at`, `updated_at`, `revision` | lifecycle and stale-write/config-plan protection |
+| `secret_reference` | opaque platform Secret Manager reference; never the value |
+| `options_schema_version` | selects Runtime/provider-specific typed options schema |
+| `options` | bounded validated non-secret options only; includes capability-validated reasoning options, never arbitrary config keys |
+| `status` | lifecycle status; not proof of compatibility |
+| `last_tested_at` | freshness of the detailed compatibility evidence |
+| `compatibility_classification` | supported/compatible/experimental/degraded/incompatible/unknown, derived from a matrix |
+| `created_at`, `updated_at`, `revision` | lifecycle and stale-write protection |
 
-Raw API keys, Authorization headers, Secret hashes/suffixes, provider response
-bodies, prompts, model output, complete Runtime config, and arbitrary TOML are
-prohibited fields. `secret_reference` is not a foreign key to an ordinary
-SQLite Token table: Secret Manager architecture and value storage remain a
-separate Phase 11 decision.
+A normalized base URL change normally creates a new ProviderDefinition. Secret
+rotation does not change ProviderDefinition identity, model, protocol, or
+Runtime Binding.
 
-Layered test details, if persisted, use bounded non-secret observations for
-endpoint resolution, reachability, authentication state, protocol, model,
-Codex Runtime, and Remote Control compatibility. Provider request PASS cannot
-derive a Remote Supported state. Evidence has timestamps/schema versions and
-explicit Unknown/Experimental results for unverified thread/history/tools/
-streaming/Responses/session behavior.
+## RuntimeProviderBinding (future Phase 11 logical model)
+
+| Field | Purpose |
+|---|---|
+| `id` | record ID |
+| `runtime_installation_id` | Runtime whose Provider selection is managed |
+| `provider_definition_id` | currently selected concrete ProviderDefinition |
+| `runtime_binding_id` | opaque stable AgentBox binding intent; not a Codex ID contract |
+| `adapter_type`, `adapter_schema_version` | current Runtime-specific mapping |
+| `active` | explicit persisted administrator selection |
+| `previous_provider_definition_id` | bounded rollback reference, subject to retention policy |
+| `state` | pending/active/failed/rollback-needs-attention-style transaction state |
+| `created_at`, `updated_at`, `revision` | lifecycle and stale-plan protection |
+
+Active Provider, Runtime Binding metadata, Secret material, and generated
+Runtime config remain separate authorities. Restart recovery restores the same
+selection or reports failure; it never chooses a fallback Provider.
+
+## ProviderCompatibilityObservation (future)
+
+One bounded observation set records Network, Authentication, Model Availability,
+Wire Protocol, Provider API, Runtime, Remote Control, Thread Resume, Context
+Continuity, and Thread Discovery independently. Each dimension is `pass`,
+`fail`, `unsupported`, `experimental`, `unknown`, or `not_tested`, with evidence
+time/schema and cost/test-kind metadata. Continuity levels 0–5 are derived only
+from their corresponding evidence; lower-level PASS never fills a higher level.
+
+## ProviderConfigTransaction (future)
+
+Transaction metadata may track target binding, expected revisions, phase,
+sanitized outcome, backup reference, original-existence/mode metadata, lifecycle
+intent, and `rollback_attempted_at`/`rollback_verified_at`. It never stores raw
+config, Secret material, Authorization, Provider response bodies, prompts, model
+output, or private Runtime/session artifacts. Protected config snapshots remain
+inside the approved platform adapter boundary, not an ordinary Job result.
+
+Raw API keys, API-key hashes/suffixes, complete Runtime config, arbitrary TOML,
+Codex SQLite/session DB, JSONL, rollout, and thread metadata are prohibited
+Provider-domain fields and migration targets.
 
 ## RuntimeSession
 
@@ -314,7 +345,10 @@ erDiagram
     Project ||--o{ RuntimeSession : hosts
     RuntimeInstallation ||--o{ RuntimeCapability : advertises
     RuntimeInstallation ||--o{ RuntimeSession : runs
-    RuntimeInstallation }o--o{ Provider : may_use
+    RuntimeInstallation ||--o{ RuntimeProviderBinding : selects
+    ProviderDefinition ||--o{ RuntimeProviderBinding : targets
+    ProviderDefinition ||--o{ ProviderCompatibilityObservation : tested_by
+    RuntimeProviderBinding ||--o{ ProviderConfigTransaction : changes_through
     Job ||--o{ JobEvent : emits
     Job ||--o| DiagnosticRun : executes
     Job ||--o{ AuditEvent : correlates

@@ -149,40 +149,52 @@ Phase 5 direct actions are intentionally bounded while the durable Job worker
 is not implemented. Install/update/log endpoints in this table remain designs,
 not implemented routes.
 
-## Future Provider API (Phase 11 planning only)
+## Future Provider, Secret, and Continuity API (Phase 11 planning only)
 
-No Provider endpoint exists today. The future resource boundary is
-Runtime-neutral and separate from `/codex/remote/*`; Provider activation must
-not implicitly start, stop, pair, restart, or replace a Remote session.
+No endpoint in this section exists today. The future resource boundary is
+Runtime-neutral and separate from `/codex/remote/*`. `ProviderDefinitionID`
+selects concrete Provider metadata while `RuntimeBindingID` identifies stable
+AgentBox binding intent; clients never supply a current Codex provider ID as a
+permanent product identity. Activation may include a validated Runtime lifecycle
+step inside its transaction, but cannot silently start/stop/pair/replace Remote
+state or create a parallel daemon architecture.
 
 Planned contract families, subject to Phase 11 public-contract revalidation:
 
 | Method/path | Purpose | Security/result boundary |
 |---|---|---|
-| `GET /api/v1/providers` | list non-secret Provider metadata | never Secret values |
-| `POST /api/v1/providers` | create typed Provider metadata | no raw API key in ordinary body |
+| `GET /api/v1/providers` | list non-secret ProviderDefinition metadata | never Secret values |
+| `POST /api/v1/providers` | create typed ProviderDefinition metadata | no raw API key in ordinary body; base URL participates in identity |
 | `GET/PATCH/DELETE /api/v1/providers/{provider_id}` | inspect/edit/remove metadata | revision checks; active-reference policy |
-| `GET /api/v1/providers/current` | active Provider selection and evidence | Provider and Remote compatibility separated |
-| `POST /api/v1/providers/{provider_id}/test-jobs` | layered compatibility test | bounded, cost-aware, sanitized Job |
-| `POST /api/v1/providers/{provider_id}/activation-plans` | preview config/restart/session impact | dry-run only; current config revision bound |
-| `POST /api/v1/providers/{provider_id}/activation-jobs` | apply an approved plan | recent auth, confirmation, rollback reference |
+| `GET /api/v1/providers/current` | Active Provider plus Runtime Binding metadata | selection, binding, Runtime/Remote/continuity evidence separated |
+| `POST /api/v1/providers/{provider_id}/test-jobs` | connectivity, Runtime, or continuity test | explicit test kind; bounded/cost-aware; paid inference requires opt-in |
+| `POST /api/v1/providers/{provider_id}/continuity-jobs` | dedicated thread/context/discovery assessment | public interfaces only; no session artifact mutation |
+| `POST /api/v1/providers/{provider_id}/activation-plans` | preview writer/config/lifecycle/Remote/continuity impact | dry-run only; Provider/Binding/config revisions bound |
+| `POST /api/v1/providers/{provider_id}/activation-jobs` | execute approved switching transaction | recent auth, confirmation, full snapshot, rollback verification |
+| `POST /api/v1/providers/{provider_id}/secret-rotation-jobs` | rotate only this Provider's Secret material | dedicated transient Secret channel; retest auth/protocol |
+| `POST /api/v1/provider-rollbacks` | restore an approved previous or pre-management state | never delete login, pairing, history, sessions, or Projects |
 
 The Secret Manager write/replacement contract is deliberately not fixed here.
-It requires its own approved design and dedicated secret-input channel; an API
-must never accept a raw API key in Provider metadata or return it from any GET.
+It requires approved Linux restrictive-file, macOS Keychain, and Windows
+current-user DPAPI designs plus a dedicated transient input channel. An API must
+never accept a raw API key in Provider metadata or return it from any GET.
 Provider resources carry only an opaque Secret reference/configured-state.
 
-Test results expose Provider Reachability, Authentication, Model, Wire Protocol,
-Codex Runtime Compatibility, and Remote Control Compatibility independently.
-Endpoint/Provider request success cannot set full Remote compatibility to
-Supported. Unknown thread/history/tools/streaming/Responses/session/Remote
-behavior remains Unknown or Experimental.
+Test results expose Network, Authentication, Model Availability, Wire Protocol,
+Provider API, Codex Runtime, Remote Control, Thread Resume, Context Continuity,
+and Thread Discovery independently using PASS/FAIL/UNSUPPORTED/EXPERIMENTAL/
+UNKNOWN/NOT_TESTED. The aggregate Supported/Compatible/Experimental/Degraded/
+Incompatible/Unknown classification never hides the matrix. Continuity levels
+0–5 require their own evidence; lower-level success cannot set higher levels.
 
-Config activation accepts neither raw TOML, arbitrary config keys, a config
-path, environment map, executable, nor restart flag. The server creates a typed,
-revision-bound impact plan using the then-current public Runtime config schema;
-restart, new session, or re-authentication is a separate explicitly confirmed
-effect when required.
+Config activation accepts neither raw TOML, arbitrary config keys, config path,
+environment map, executable, Runtime ID mapping, nor restart flag. The server
+creates a typed, revision-bound transaction plan using the then-current public
+Runtime schema and public active-writer evidence. It owns Preflight, Snapshot,
+Candidate, Atomic apply, required lifecycle action, layered verification,
+Commit, and failure rollback. Results say `Rollback verified` only after
+restored config, permissions, lifecycle, Active Provider, Runtime Binding,
+generated profile, and Secret reference are verified.
 
 ## Claude API
 

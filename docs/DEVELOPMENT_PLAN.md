@@ -164,41 +164,52 @@ review. This does not authorize Phase 7.
 - **Stop condition:** artifacts are published and the next roadmap is separately approved.
 - **Human approval:** version number, license, public release, support promise, and publication credentials.
 
-## Phase 11 — Provider & Secret Management (future post-MVP)
+## Phase 11 — Provider, Secret & Runtime Continuity Management (future post-MVP)
 
 Status: architecture and backlog only; tracked by Issue #23. This Phase follows
 Phase 10 and does not insert into, reorder, or authorize Phases 6–10.
 
-- **Goal:** add a runtime-neutral Provider domain and narrowly scoped Secret
-  Manager so model/API Provider selection remains independent of Runtime Remote
-  Control.
-- **Input:** completed Phase 10, approved Secret boundary, Provider Manager
-  architecture, and a fresh validation of the then-current public Codex CLI,
-  config schema, supported keys, Provider behavior, and Remote Control behavior.
-- **Output:** typed Provider metadata/adapters, Secret references, safe Codex
-  config adapter, layered Provider tests, independent compatibility reporting,
-  migration/rollback, and approved CLI/Web surfaces.
+- **Goal:** add a runtime-neutral Provider Registry, Secret Manager, Active
+  Provider Binding, transactional config switching, verified rollback, and a
+  Runtime Continuity Manager without coupling Provider selection to Remote
+  lifecycle or private session state.
+- **Input:** completed Phase 10; approved platform Secret boundaries; and a fresh
+  validation of the then-current public Codex version, config/model-provider
+  schema, wire APIs, auth/reload/restart behavior, Remote lifecycle,
+  thread/provider relationship, discovery, active-writer, resume, macOS, and
+  Windows behavior.
+- **Output:** distinct `ProviderDefinitionID` and `RuntimeBindingID` models;
+  typed Provider metadata/adapters; Linux/macOS/Windows Secret backends; a
+  shared Config Transaction Manager; atomic activation and rollback
+  verification; layered Provider/Runtime/Remote/continuity evidence; recovery
+  guidance; and approved API/CLI/Web surfaces.
 - **Not in scope before approval:** reading or changing API keys, creating a
   Secret Store, editing Codex config, adding/activating Providers, restarting
   Codex, changing Remote sessions, or implementing any Provider API/UI/CLI.
-- **Acceptance:** unrelated Runtime configuration is preserved; raw API keys
-  never enter ordinary Provider tables, output, logs, audit, Git, reports, or
-  generic Job data; config writes are validated, atomic, concurrency-aware,
-  rollback-capable, permission-restrictive, and symlink-safe; Provider request
-  success is never presented as full Remote Control compatibility.
-- **Tests:** public-contract fixtures, Provider protocol/model matrix, config
-  preservation and rollback, concurrent edit and symlink races, Secret canary
-  scans, minimal request safety, and Remote session/state regression coverage.
-- **Documentation:** `PROVIDER_MANAGER.md`, support matrix, Secret operations,
-  activation/restart impact, recovery, and known compatibility limitations.
+- **Acceptance:** unrelated Runtime configuration and original file existence,
+  permissions, lifecycle, Active Provider, Runtime Binding, generated profile,
+  and Secret reference are recoverable and rollback-verified; raw API keys
+  never enter argv, URLs, ordinary Provider tables, output, logs, audit, Git,
+  reports, or generic Job data; Provider request success never implies Remote,
+  thread, context, or discovery success; no session DB/JSONL/rollout mutation or
+  automatic Provider failover exists.
+- **Tests:** public-contract fixtures; Provider protocol/model matrix;
+  Config Transaction fault injection; concurrent edit/symlink/permission
+  races; Secret canaries; paid-test confirmation; active writer protection; and
+  a two-fake-provider harness that independently verifies Runtime request,
+  Remote recovery, thread resume, context continuity, and thread discovery.
+- **Documentation:** `PROVIDER_MANAGER.md`, Linux/macOS/Windows capability
+  matrix, Secret operations, activation/restart impact, rollback verification,
+  continuity levels, recovery, and known compatibility limitations.
 - **Commit/PR:** split implementation by trust boundary; Secret storage/injection
   and config mutation require dedicated security review.
 - **Stop condition:** no Provider may be activated until current public Runtime
-  contracts and rollback behavior are verified; Unknown/Experimental remains
-  explicit when thread/history/tools/streaming/Responses/Remote state is unclear.
-- **Human approval:** Secret Manager backend, config ownership boundary, real
-  Provider credentials/tests, activation, Runtime restart, session impact, and
-  any compatibility support claim.
+  contracts, active-writer safety, config transaction, lifecycle restoration,
+  and rollback verification are proven; Unknown/Experimental remains explicit
+  for every unverified continuity dimension.
+- **Human approval:** Secret Manager backends, config ownership boundary, real
+  Provider credentials or paid tests, activation, Runtime restart, session
+  impact, any independent daemon proposal, and every continuity/support claim.
 
 ## Cross-phase change control
 
