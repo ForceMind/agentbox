@@ -238,6 +238,9 @@ class GitHubProjectStatus:
     pull_request_state: str | None = None
     pull_request_draft: bool | None = None
     pull_request_url: str | None = None
+    pull_request_base: str | None = None
+    pull_request_head: str | None = None
+    mergeability: str | None = None
     checks: str = "unknown"
 
     def to_dict(self) -> dict[str, Any]:

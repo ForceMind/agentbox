@@ -45,6 +45,20 @@ export function ProjectsPage() {
           {model.error.message}
         </p>
       )}
+      {model.job && (
+        <section className="runtime-card" role="status">
+          <h2>Workspace operation</h2>
+          <p>
+            Job {model.job.id} · {model.job.status}
+            {model.job.phase ? ` · ${model.job.phase}` : ''}
+          </p>
+          {model.job.error_summary && (
+            <p className="error-panel">
+              {model.job.error_code}: {model.job.error_summary}
+            </p>
+          )}
+        </section>
+      )}
       <section className="project-forms">
         <form className="runtime-card" onSubmit={create}>
           <p className="eyebrow">Empty workspace</p>
@@ -123,7 +137,33 @@ export function ProjectsPage() {
                   ? 'Cloned repository'
                   : 'Workspace'}
               </p>
-              <code>{project.slug}</code>
+              <dl className="runtime-details compact-details">
+                <div>
+                  <dt>Branch</dt>
+                  <dd>{project.git?.branch ?? 'Not initialized'}</dd>
+                </div>
+                <div>
+                  <dt>Changes</dt>
+                  <dd>
+                    {project.git
+                      ? project.git.staged_count +
+                        project.git.unstaged_count +
+                        project.git.untracked_count +
+                        project.git.conflicted_count
+                      : 0}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Remote</dt>
+                  <dd>{project.git?.remote_url ?? 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Claude</dt>
+                  <dd>
+                    {project.claude_state?.replaceAll('_', ' ') ?? 'Unknown'}
+                  </dd>
+                </div>
+              </dl>
             </Link>
           ))}
         </section>
