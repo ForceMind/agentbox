@@ -188,16 +188,24 @@ effect when required.
 
 | Method/path | Purpose |
 |---|---|
-| `GET /api/v1/claude/status` | installation/auth/capability summary |
-| `GET /api/v1/claude/sessions` | managed sessions plus counts of unmanaged collisions |
-| `POST /api/v1/claude/sessions` | create session for `project_id`; returns Job |
-| `GET /api/v1/claude/sessions/{session_id}` | managed session state |
-| `POST /api/v1/claude/sessions/{session_id}/stop-jobs` | stop exactly one managed session |
-| `GET /api/v1/claude/sessions/{session_id}/recent-output` | ephemeral bounded/redacted pane output |
-| `GET /api/v1/claude/sessions/{session_id}/attach-command` | fixed local attach instruction |
-| `GET /api/v1/projects/{project_id}/workspace-state` | trusted/not-trusted/unknown/manual-required |
+| `GET /api/v1/claude` | installation/auth/public capability and safe tmux counts |
+| `GET /api/v1/claude/sessions` | configured project session summaries |
+| `GET /api/v1/claude/sessions/{project_id}` | exact project session state |
+| `POST /api/v1/claude/sessions/{project_id}/start` | idempotent managed session start |
+| `POST /api/v1/claude/sessions/{project_id}/stop` | stop exact marked managed session |
+| `GET /api/v1/claude/sessions/{project_id}/output` | explicit ephemeral bounded pane output |
 
-Session creation accepts a Project ID and optional display name only. It never accepts a working directory, tmux command/name, shell, Runtime flag, or environment.
+`project_id` is a bounded server-side identifier, never a submitted path.
+Mutation bodies are rejected. Runtime UDS frames cannot contain path, argv,
+shell, tmux flags, PID, signal, or environment. Responses distinguish
+`running`, `stopped`, `starting`, `needs_interaction`, `broken`, and `unknown`;
+tmux running is not automatically presented as Remote connected.
+
+All Claude responses are `no-store`. Recent output is authenticated, capped at
+200 lines/24 KiB after a stricter runner cap, terminal-control sanitized, and
+marked sensitive. It is absent from Audit metadata, logs, DB, reports, and
+automatic page loads. Authentication/Workspace Trust remains Unknown without a
+public reliable signal.
 
 ## Project API
 
@@ -266,10 +274,11 @@ Callers cannot supply a journal unit name, file path, grep expression, or shell.
 The authenticated `GET` is implemented and returns
 configuration validity, database reachability, migration currency,
 administrator initialization, combined readiness, environment, loopback bind,
-Session lifetime policy, login rate-limit policy, and a Phase 5 safe Codex
-summary (installed/version/classification/Remote capability/state/finding
-codes). It is `Cache-Control: no-store` and excludes the secret, database URL,
-data path, credentials, raw CLI output, unrelated processes, general host
+Session lifetime policy, login rate-limit policy, a safe Codex summary, and a
+Phase 6 Claude/tmux summary (installation/version/auth Unknown-safe capability,
+managed/unmanaged counts, Workspace interaction warnings, finding codes). It
+is `Cache-Control: no-store` and excludes unmanaged names, project paths, pane
+output, secrets, database URL, credentials, unrelated processes, general host
 service state, and network state.
 
 The three Diagnostic Run routes remain future designs. Doctor plans but does

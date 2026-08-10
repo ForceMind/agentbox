@@ -1,4 +1,4 @@
-"""Minimal non-root Runtime Executor for allowlisted Codex actions."""
+"""Minimal non-root Runtime Executor for allowlisted Codex and Claude actions."""
 
 from __future__ import annotations
 
@@ -12,11 +12,26 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from agentbox_runtime.claude import ClaudeAdapter, ClaudeSessionManager
 from agentbox_runtime.codex import CodexAdapter, CodexManager
 from agentbox_runtime.models import RuntimeOperationError
+from agentbox_runtime.project import ProjectRegistry, validate_project_id
 from agentbox_runtime.rpc import MAX_RUNTIME_FRAME, RUNTIME_PROTOCOL_VERSION
+from agentbox_runtime.tmux import TmuxAdapter
 
-_ACTIONS = frozenset({"codex.status", "codex.remote.start", "codex.remote.stop", "codex.pair"})
+_CODEX_ACTIONS = frozenset(
+    {"codex.status", "codex.remote.start", "codex.remote.stop", "codex.pair"}
+)
+_CLAUDE_GLOBAL_ACTIONS = frozenset({"claude.status", "claude.sessions.list"})
+_CLAUDE_PROJECT_ACTIONS = frozenset(
+    {
+        "claude.session.status",
+        "claude.session.start",
+        "claude.session.stop",
+        "claude.session.output",
+    }
+)
+_ACTIONS = _CODEX_ACTIONS | _CLAUDE_GLOBAL_ACTIONS | _CLAUDE_PROJECT_ACTIONS
 
 
 class RuntimeExecutorServer:
@@ -26,9 +41,11 @@ class RuntimeExecutorServer:
         manager: CodexManager,
         *,
         allowed_peer_uids: frozenset[int],
+        claude_manager: ClaudeSessionManager | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._manager = manager
+        self._claude_manager = claude_manager
         self._allowed_peer_uids = allowed_peer_uids
         self._server: asyncio.AbstractServer | None = None
 
@@ -84,7 +101,6 @@ class RuntimeExecutorServer:
             request = json.loads(raw)
             if (
                 not isinstance(request, dict)
-                or set(request) != {"protocol_version", "action", "request_id"}
                 or request.get("protocol_version") != RUNTIME_PROTOCOL_VERSION
                 or request.get("action") not in _ACTIONS
                 or not isinstance(request.get("request_id"), str)
@@ -94,8 +110,32 @@ class RuntimeExecutorServer:
                     writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
                 )
                 return
+            action = request["action"]
+            expected_keys = {"protocol_version", "action", "request_id"}
+            if action in _CLAUDE_PROJECT_ACTIONS:
+                expected_keys.add("project_id")
+            if set(request) != expected_keys:
+                await self._write_error(
+                    writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
+                )
+                return
+            if action in _CLAUDE_PROJECT_ACTIONS:
+                try:
+                    raw_project_id = request.get("project_id")
+                    if not isinstance(raw_project_id, str):
+                        raise RuntimeOperationError(
+                            "CLAUDE_PROJECT_INVALID",
+                            "Project identifier is invalid",
+                            category="validation",
+                        )
+                    validate_project_id(raw_project_id)
+                except RuntimeOperationError:
+                    await self._write_error(
+                        writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
+                    )
+                    return
             request_id = request["request_id"]
-            data = await self._dispatch(request["action"])
+            data = await self._dispatch(request)
             await self._write(
                 writer,
                 {
@@ -140,7 +180,8 @@ class RuntimeExecutorServer:
         _pid, uid, _gid = struct.unpack("3i", credentials)
         return uid in self._allowed_peer_uids
 
-    async def _dispatch(self, action: str) -> dict[str, Any]:
+    async def _dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
+        action = str(request["action"])
         if action == "codex.status":
             return (await self._manager.status()).to_dict()
         if action == "codex.remote.start":
@@ -149,6 +190,30 @@ class RuntimeExecutorServer:
             return (await self._manager.stop_remote()).to_dict()
         if action == "codex.pair":
             return (await self._manager.generate_pair_code()).to_dict()
+        if action.startswith("claude.") and self._claude_manager is None:
+            raise RuntimeOperationError(
+                "CLAUDE_RUNTIME_UNAVAILABLE",
+                "Claude Runtime manager is unavailable",
+                category="unavailable",
+            )
+        if self._claude_manager is not None:
+            if action == "claude.status":
+                return (await self._claude_manager.status()).to_dict()
+            if action == "claude.sessions.list":
+                return {
+                    "sessions": [
+                        session.to_dict() for session in await self._claude_manager.list_sessions()
+                    ]
+                }
+            project_id = str(request.get("project_id", ""))
+            if action == "claude.session.status":
+                return (await self._claude_manager.session(project_id)).to_dict()
+            if action == "claude.session.start":
+                return (await self._claude_manager.start(project_id)).to_dict()
+            if action == "claude.session.stop":
+                return (await self._claude_manager.stop(project_id)).to_dict()
+            if action == "claude.session.output":
+                return (await self._claude_manager.recent_output(project_id)).to_dict()
         raise RuntimeOperationError(
             "RUNTIME_ACTION_UNSUPPORTED", "Runtime action is unsupported", category="unsupported"
         )
@@ -172,7 +237,12 @@ class RuntimeExecutorServer:
 
     @staticmethod
     async def _write(writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
-        encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
+        # UTF-8 avoids the six-byte \uXXXX expansion for bounded Unicode pane
+        # output. The payload cap leaves room for worst-case JSON quoting inside
+        # the unchanged 64 KiB Runtime frame.
+        encoded = (
+            json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
+        )
         if len(encoded) > MAX_RUNTIME_FRAME:
             encoded = (
                 b'{"protocol_version":1,"request_id":null,"data":null,'
@@ -209,6 +279,22 @@ async def _main() -> None:
         socket_path,
         CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown),
         allowed_peer_uids=allowed,
+        claude_manager=ClaudeSessionManager(
+            ClaudeAdapter(),
+            TmuxAdapter(),
+            ProjectRegistry(
+                Path(
+                    os.environ.get(
+                        "AGENTBOX_PROJECT_ROOT",
+                        (
+                            "/srv/agentbox/projects"
+                            if environment == "production"
+                            else ".agentbox-dev/projects"
+                        ),
+                    )
+                )
+            ),
+        ),
     )
     await server.start(create_development_parent=environment != "production")
     try:

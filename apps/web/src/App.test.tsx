@@ -44,6 +44,60 @@ const codexStatus = {
   },
 }
 
+const claudeStatus = {
+  api_version: 'v1',
+  request_id: 'req_claude',
+  data: {
+    installed: true,
+    version: '1.fixture',
+    authentication: 'unknown',
+    capabilities: {
+      remote_control: 'supported',
+      remote_start: 'supported',
+      version: 'supported',
+    },
+    tmux_installed: true,
+    tmux_version: '3.fixture',
+    managed_sessions: 1,
+    unmanaged_sessions: 2,
+    workspace_interaction_warnings: 1,
+    diagnostics: [],
+  },
+}
+
+const claudeSessions = {
+  api_version: 'v1',
+  request_id: 'req_claude_sessions',
+  data: {
+    sessions: [
+      {
+        project_id: 'project-a',
+        display_name: 'Project A',
+        state: 'stopped',
+        managed: true,
+        session_name: 'agentbox-claude-project-a-fixture',
+        attach_command:
+          'tmux attach-session -t =agentbox-claude-project-a-fixture',
+        workspace_state: 'unknown',
+        tmux_running: false,
+        remote_readiness: 'unknown',
+      },
+      {
+        project_id: 'trust-project',
+        display_name: 'Trust Project',
+        state: 'needs_interaction',
+        managed: true,
+        session_name: 'agentbox-claude-trust-project-fixture',
+        attach_command:
+          'tmux attach-session -t =agentbox-claude-trust-project-fixture',
+        workspace_state: 'requires_user_confirmation',
+        tmux_running: true,
+        remote_readiness: 'unknown',
+      },
+    ],
+  },
+}
+
 function jsonResponse(status: number, body?: object, headers?: HeadersInit) {
   return new Response(status === 204 ? null : JSON.stringify(body ?? {}), {
     status,
@@ -92,6 +146,10 @@ function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
   if (path.endsWith('/api/v1/codex/status'))
     return Promise.resolve(jsonResponse(200, codexStatus))
+  if (path.endsWith('/api/v1/claude'))
+    return Promise.resolve(jsonResponse(200, claudeStatus))
+  if (path.endsWith('/api/v1/claude/sessions'))
+    return Promise.resolve(jsonResponse(200, claudeSessions))
   if (path.endsWith('/auth/logout')) {
     expect(init?.credentials).toBe('include')
     return Promise.resolve(jsonResponse(204))
@@ -409,6 +467,151 @@ describe('AgentBox authenticated Web foundation', () => {
     await waitFor(() =>
       expect(screen.getAllByText('Stopped').length).toBeGreaterThan(0),
     )
+  })
+
+  it('renders truthful Claude states and never auto-loads sensitive output', async () => {
+    window.history.replaceState({}, '', '/claude')
+    const fetchMock = vi.fn(authenticatedFetch)
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Claude' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Project A' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Trust Project' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Needs Interaction')).toBeInTheDocument()
+    expect(
+      screen.getByText(/never accepts Workspace Trust automatically/i),
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0)
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        input.toString().endsWith('/output'),
+      ),
+    ).toBe(false)
+  })
+
+  it('starts, stops, copies attach, and reveals escaped ephemeral Claude output', async () => {
+    window.history.replaceState({}, '', '/claude')
+    const clipboard = { writeText: vi.fn(() => Promise.resolve()) }
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: clipboard,
+    })
+    const canary = 'CLAUDE-OUTPUT-CANARY <img src=x onerror=alert(1)>'
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = input.toString()
+      if (path.endsWith('/sessions/project-a/start')) {
+        expect((init?.headers as Record<string, string>)['X-CSRF-Token']).toBe(
+          'csrf-test-value',
+        )
+        return Promise.resolve(
+          jsonResponse(200, {
+            api_version: 'v1',
+            request_id: 'req_claude_start',
+            data: {
+              outcome: 'started',
+              session: {
+                ...claudeSessions.data.sessions[0],
+                state: 'starting',
+                tmux_running: true,
+              },
+            },
+          }),
+        )
+      }
+      if (path.endsWith('/sessions/project-a/stop')) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            api_version: 'v1',
+            request_id: 'req_claude_stop',
+            data: {
+              outcome: 'stopped',
+              session: claudeSessions.data.sessions[0],
+            },
+          }),
+        )
+      }
+      if (path.endsWith('/sessions/trust-project/output')) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            api_version: 'v1',
+            request_id: 'req_claude_output',
+            data: {
+              project_id: 'trust-project',
+              session_name: 'agentbox-claude-trust-project-fixture',
+              output: canary,
+              truncated: false,
+              sensitive: true,
+            },
+          }),
+        )
+      }
+      return authenticatedFetch(input, init)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start Session' }),
+    )
+    expect(await screen.findByText('Starting')).toBeInTheDocument()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Copy attach command' })[0],
+    )
+    await waitFor(() =>
+      expect(clipboard.writeText).toHaveBeenCalledWith(
+        'tmux attach-session -t =agentbox-claude-project-a-fixture',
+      ),
+    )
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reveal' })[1])
+    expect(await screen.findByText(canary)).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(window.localStorage).toHaveLength(0)
+    expect(window.sessionStorage).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    expect(screen.queryByText(canary)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Stop Session' })[0])
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Start Session' }),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it('shows normalized Claude API errors without inventing a connected state', async () => {
+    window.history.replaceState({}, '', '/claude')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (input.toString().endsWith('/sessions/project-a/start')) {
+          return Promise.resolve(
+            jsonResponse(503, {
+              request_id: 'req_claude_error',
+              error: {
+                code: 'CLAUDE_RUNTIME_UNAVAILABLE',
+                message: 'Claude Runtime Executor is unavailable',
+              },
+            }),
+          )
+        }
+        return authenticatedFetch(input, init)
+      }),
+    )
+    render(<App />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start Session' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Claude Runtime Executor is unavailable',
+    )
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 
   it('uses the current session CSRF token when logging out', async () => {

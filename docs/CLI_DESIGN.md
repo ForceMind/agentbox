@@ -140,18 +140,20 @@ Secret Store, Codex config edit, Provider test, or Runtime restart exists now.
 ### Claude
 
 ```text
-agentbox claude status
+agentbox claude status [--json]
+agentbox claude list [--json]
 agentbox claude start <project>
 agentbox claude stop <project>
 agentbox claude attach <project>
-agentbox claude list
+agentbox claude output <project>
 ```
 
-- `<project>` is a registered name/ID resolved server-side, not a path.
-- `start` and `stop` are Jobs against managed sessions only.
-- `attach` prints a fixed local `tmux` attach instruction for `agentbox-runtime`; it does not expose a Web terminal or accept a command.
-- `list` distinguishes managed, unmanaged/collision, stale, and unknown state.
-- Workspace Trust unknown returns NeedsAttention and a concrete project-scoped manual instruction.
+- `<project>` is a configured ID resolved inside Runtime, not a path.
+- Phase 6 `start`/`stop` are bounded typed UDS actions against marked managed sessions; durable Jobs remain future work.
+- `attach` requires a local TTY and execs only the validated exact generated tmux target under the tmux-owning identity; no Web terminal exists.
+- `list` shows managed project state and never unmanaged names, private paths, or pane output.
+- `output` is an explicit sensitive plain-text operation; `attach` and `output` reject JSON.
+- Workspace Trust unknown/interaction returns conservative state plus a project-scoped attach instruction.
 
 ### Projects
 

@@ -10,6 +10,12 @@ import pytest
 from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
+    ClaudeCapabilities,
+    ClaudeSession,
+    ClaudeSessionActionResult,
+    ClaudeSessionOutput,
+    ClaudeSessionState,
+    ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
     InstallationType,
@@ -17,10 +23,12 @@ from agentbox_runtime.models import (
     RemoteActionResult,
     RemoteState,
     RuntimeOperationError,
+    WorkspaceState,
 )
 from agentbox_runtime.rpc import (
     DEFAULT_CODEX_MUTATION_RPC_TIMEOUT_SECONDS,
     DEFAULT_CODEX_STATUS_RPC_TIMEOUT_SECONDS,
+    UnixClaudeRuntimeClient,
     UnixCodexRuntimeClient,
 )
 from agentbox_runtime.server import RuntimeExecutorServer
@@ -55,6 +63,63 @@ class FakeManager:
     async def generate_pair_code(self) -> PairCodeResult:
         self.actions.append("pair")
         return PairCodeResult(CANARY)
+
+
+class FakeClaudeManager:
+    def __init__(self) -> None:
+        self.actions: list[str] = []
+
+    @staticmethod
+    def session_value(state: ClaudeSessionState) -> ClaudeSession:
+        return ClaudeSession(
+            project_id="project-a",
+            display_name="Project A",
+            state=state,
+            managed=True,
+            session_name="agentbox-claude-project-a-fixture",
+            attach_command="tmux attach-session -t =agentbox-claude-project-a-fixture",
+            workspace_state=WorkspaceState.UNKNOWN,
+            tmux_running=state is not ClaudeSessionState.STOPPED,
+        )
+
+    async def status(self) -> ClaudeStatus:
+        self.actions.append("status")
+        return ClaudeStatus(
+            installed=True,
+            version="fixture",
+            authentication=AuthenticationState.UNKNOWN,
+            capabilities=ClaudeCapabilities(remote_control=CapabilityState.SUPPORTED),
+            tmux_installed=True,
+            tmux_version="fixture",
+            managed_sessions=0,
+            unmanaged_sessions=0,
+            workspace_interaction_warnings=0,
+        )
+
+    async def list_sessions(self) -> tuple[ClaudeSession, ...]:
+        self.actions.append("list")
+        return (self.session_value(ClaudeSessionState.STOPPED),)
+
+    async def session(self, project_id: str) -> ClaudeSession:
+        self.actions.append(f"session:{project_id}")
+        return self.session_value(ClaudeSessionState.STOPPED)
+
+    async def start(self, project_id: str) -> ClaudeSessionActionResult:
+        self.actions.append(f"start:{project_id}")
+        return ClaudeSessionActionResult("started", self.session_value(ClaudeSessionState.STARTING))
+
+    async def stop(self, project_id: str) -> ClaudeSessionActionResult:
+        self.actions.append(f"stop:{project_id}")
+        return ClaudeSessionActionResult("stopped", self.session_value(ClaudeSessionState.STOPPED))
+
+    async def recent_output(self, project_id: str) -> ClaudeSessionOutput:
+        self.actions.append(f"output:{project_id}")
+        return ClaudeSessionOutput(
+            "project-a",
+            "agentbox-claude-project-a-fixture",
+            "safe fixture",
+            truncated=False,
+        )
 
 
 @pytest.mark.anyio
@@ -113,6 +178,85 @@ async def test_runtime_socket_rejects_extra_fields_and_unknown_action(tmp_path: 
             await writer.wait_closed()
             assert response["error"]["code"] == "RUNTIME_PROTOCOL_INVALID"
         assert manager.actions == []
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_socket_accepts_only_typed_claude_project_actions(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    claude = FakeClaudeManager()
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,  # type: ignore[arg-type]
+    )
+    await server.start()
+    try:
+        client = UnixClaudeRuntimeClient(
+            socket_path, status_timeout_seconds=2, mutation_timeout_seconds=2
+        )
+        assert (await client.status("req_claude_status")).installed is True
+        assert len(await client.list_sessions("req_claude_list")) == 1
+        assert (await client.session("req_claude_session", "project-a")).project_id == "project-a"
+        assert (await client.start_session("req_claude_start", "project-a")).outcome == "started"
+        assert (await client.stop_session("req_claude_stop", "project-a")).outcome == "stopped"
+        assert (
+            await client.recent_output("req_claude_output", "project-a")
+        ).output == "safe fixture"
+        assert claude.actions == [
+            "status",
+            "list",
+            "session:project-a",
+            "start:project-a",
+            "stop:project-a",
+            "output:project-a",
+        ]
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_rejects_claude_paths_argv_and_missing_project_ids(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    claude = FakeClaudeManager()
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,  # type: ignore[arg-type]
+    )
+    await server.start()
+    try:
+        for payload in (
+            {
+                "protocol_version": 1,
+                "action": "claude.session.start",
+                "request_id": "req_missing",
+            },
+            {
+                "protocol_version": 1,
+                "action": "claude.session.start",
+                "request_id": "req_path",
+                "project_id": "../etc",
+            },
+            {
+                "protocol_version": 1,
+                "action": "claude.session.stop",
+                "request_id": "req_argv",
+                "project_id": "project-a",
+                "argv": ["kill-server"],
+            },
+        ):
+            reader, writer = await asyncio.open_unix_connection(socket_path)
+            writer.write(json.dumps(payload).encode() + b"\n")
+            await writer.drain()
+            response = json.loads(await reader.readline())
+            writer.close()
+            await writer.wait_closed()
+            assert response["error"]["code"] == "RUNTIME_PROTOCOL_INVALID"
+        assert claude.actions == []
     finally:
         await server.close()
 

@@ -32,12 +32,17 @@ CodexAdapter
 └── remote_health(installation)
 
 ClaudeAdapter
-├── create_session(project, requested_name)
-├── stop_session(runtime_session_id)
+├── inspect_public_capabilities()
+├── authentication_status()
+└── selected_executable()
+
+ClaudeSessionManager + TmuxAdapter
+├── start_session(project_id)
+├── stop_session(project_id)
 ├── list_sessions()
-├── recent_output(runtime_session_id, limits)
-├── attach_command(runtime_session_id)
-└── workspace_state(project)
+├── recent_output(project_id, fixed_limits)
+├── attach_command(project_id)
+└── workspace_state(project_id)
 ```
 
 Future Provider management does not become another Remote lifecycle method on
@@ -201,31 +206,49 @@ success never promotes Remote compatibility automatically.
 
 ## Claude Adapter
 
+Phase 6 implements `ClaudeAdapter`, `TmuxAdapter`, `ProjectRegistry`, and
+`ClaudeSessionManager` behind the UDS Runtime Executor. No Claude/tmux
+subprocess exists in API routes.
+
 ### Public CLI Evidence
 
-Phase 0 found Claude Code 2.1.223 as a global npm package and confirmed public help/auth status. Its current help exposed `--remote-control [name]`. The background example `claude remote-control` may describe another version. The adapter must parse the current help/fixtures and choose only a confirmed invocation; documentation examples are not executable contracts.
+Phase 0 found Claude Code 2.1.223 as a global npm package, but observed versions
+are not capability contracts. Phase 6 parses public `--help`,
+`remote-control --help`, and `--version`; a public auth status is called only if
+advertised. Missing or changed evidence degrades to Unknown/Unsupported.
 
 ### Session Lifecycle
 
-- all managed sessions run as `agentbox-runtime` in a registered project;
-- tmux names derive from RuntimeSession IDs and fixed prefix;
-- create validates project path, ownership, installation, auth, capability, collision, and workspace state;
-- command/flag form comes from the selected version's capability fixture;
-- stop addresses only a registered managed session and verifies its socket/owner before signaling;
-- list merges managed database state with Runtime-user tmux observations, classifying unknown sessions as unmanaged;
-- attach returns a fixed local command; the MVP Web does not create a PTY.
+- production managed sessions are designed for `agentbox-runtime`; Phase 6 development does not migrate identities;
+- a minimal registry resolves only configured-root immediate-child real directories;
+- tmux names use a bounded ASCII slug/hash and atomically injected exact project-derived session-environment marker;
+- create validates canonical path/symlink/access, installation, public capability, and exact collision;
+- a fixed fingerprinted `sleep` placeholder lets tmux set `remain-on-exit` before a fixed multi-argument `respawn-pane` directly execs the fingerprinted Claude argv; current public tmux help documents no `sh -c` for this form;
+- tmux owns the long-running interactive child; if detached `remote-control` exits on a Trust prompt, one fixed direct `claude --` respawn prepares a live manual-confirmation pane without sending input;
+- stop/capture require exact name plus marker; similar, legacy, unmarked, or colliding sessions remain unmanaged;
+- restart rediscovers through registry/name/marker/pane evidence rather than process memory;
+- attach returns a fixed local command; the Web never creates a PTY.
 
 ### Workspace Trust
 
-Workspace Trust is `trusted`, `not_trusted`, `unknown`, or `manual_required`. Only a stable public CLI/status interface may produce trusted/not_trusted. Private configuration-file inspection is forbidden as a required mechanism. Unknown results produce project-scoped manual instructions and `needs_attention`; AgentBox never auto-trusts `/root` or a broad parent.
+Workspace Trust is `unknown`, `requires_user_confirmation`, or the limited
+`initialized_by_agentbox` launch hint. Private configuration inspection is
+forbidden. Trust prompts produce `needs_interaction` plus attach guidance;
+AgentBox never sends `yes`, key presses, or undocumented trust flags.
 
 ### Authentication
 
-Use `claude auth status` or another detected public status interface with bounded parsing. Missing/changed output is Unknown/Broken. Root Phase 0 login does not transfer to the Runtime user.
+Use `claude auth status` only when public help advertises it, with bounded
+parsing. Missing/changed output is Unknown. `--version` is not login evidence;
+root Phase 0 login does not transfer to the Runtime user.
 
 ### Recent Output
 
-The adapter calls tmux capture for a registered pane only, caps lines/bytes, strips terminal control sequences, applies redaction, and returns an ephemeral response. It never stores pane history in RuntimeSession, Job, or Audit Event.
+The adapter calls capture only for an exact marked session, caps to 200 lines/
+24 KiB under the runner cap, strips ANSI CSI/OSC and controls, and returns an
+explicit no-store response. This is sanitation, not complete secret redaction.
+Pane text never enters RuntimeSession, Job, Audit, log, DB, report, or browser
+storage.
 
 ## Stable, Best-Effort, and Forbidden Evidence
 

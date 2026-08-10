@@ -92,6 +92,27 @@ file, `agentbox_runtime/process.py`; `shell=True`, `os.system`, synchronous
 subprocess helpers, API-route subprocess use, raw mutation expansion, dynamic
 browser execution, and Web secret storage remain rejected.
 
+## Phase 6 implemented coverage
+
+Phase 6 adds synthetic/redacted Claude and tmux fixtures plus tests for public
+capability evidence, Unknown authentication, timeouts, trust/login/ready/
+unexpected classification, deterministic names, exact markers/collisions,
+duplicate start, restart rediscovery, exact stop, output bounds/sanitation, and
+no auto-trust.
+
+Project tests cover immediate children, traversal, absolute/nested IDs, root,
+file/missing targets, inside/outside/root symlinks, Unicode, long and malicious
+names. UDS tests reject missing IDs and extra path/argv-style fields. API tests
+cover auth, Origin/CSRF, no-store, metadata-only Audit, output canary absence
+from logs/Audit/DB, and normalized Runtime failure. CLI/Web cover status/list,
+start/stop, TTY attach, interaction guidance, copy, explicit reveal/hide, text
+escaping, API errors, mobile layout, and browser-storage absence.
+
+The branch has 150 backend tests and 22 frontend unit tests. Playwright defines
+21 logical desktop/mobile cases (42 executions) with Fake Runtime only and
+screenshots/traces disabled for Pair/output canary safety. CI never invokes real
+Claude or tmux.
+
 ## Test layers
 
 | Layer | Primary coverage | Default environment |

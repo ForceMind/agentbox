@@ -10,12 +10,19 @@ from agentbox_core import __version__
 from agentbox_runtime import (
     AuthenticationState,
     CapabilityState,
+    ClaudeCapabilities,
+    ClaudeSession,
+    ClaudeSessionActionResult,
+    ClaudeSessionOutput,
+    ClaudeSessionState,
+    ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
     InstallationType,
     PairCodeResult,
     RemoteActionResult,
     RemoteState,
+    WorkspaceState,
 )
 from conftest import migrate_database
 
@@ -140,6 +147,70 @@ class FakeRuntimeClient:
         return PairCodeResult("PAIR-SECRET-CANARY-CLI-6R2M")
 
 
+class FakeClaudeRuntimeClient:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    @staticmethod
+    def session_value(state: ClaudeSessionState = ClaudeSessionState.RUNNING) -> ClaudeSession:
+        return ClaudeSession(
+            project_id="project-a",
+            display_name="Project A",
+            state=state,
+            managed=True,
+            session_name="agentbox-claude-project-a-123456789abc",
+            attach_command=("tmux attach-session -t =agentbox-claude-project-a-123456789abc"),
+            workspace_state=WorkspaceState.UNKNOWN,
+            tmux_running=state is not ClaudeSessionState.STOPPED,
+            remote_readiness=("ready" if state is ClaudeSessionState.RUNNING else "unknown"),
+        )
+
+    async def status(self, request_id: str) -> ClaudeStatus:
+        assert request_id.startswith("req_cli-")
+        return ClaudeStatus(
+            installed=True,
+            version="1.cli.fixture",
+            authentication=AuthenticationState.UNKNOWN,
+            capabilities=ClaudeCapabilities(
+                remote_control=CapabilityState.SUPPORTED,
+                remote_start=CapabilityState.SUPPORTED,
+                version=CapabilityState.SUPPORTED,
+            ),
+            tmux_installed=True,
+            tmux_version="3.cli.fixture",
+            managed_sessions=1,
+            unmanaged_sessions=1,
+            workspace_interaction_warnings=0,
+        )
+
+    async def list_sessions(self, request_id: str) -> tuple[ClaudeSession, ...]:
+        del request_id
+        return (self.session_value(),)
+
+    async def session(self, request_id: str, project_id: str) -> ClaudeSession:
+        del request_id
+        assert project_id == "project-a"
+        return self.session_value()
+
+    async def start_session(self, request_id: str, project_id: str) -> ClaudeSessionActionResult:
+        del request_id, project_id
+        return ClaudeSessionActionResult("started", self.session_value())
+
+    async def stop_session(self, request_id: str, project_id: str) -> ClaudeSessionActionResult:
+        del request_id, project_id
+        return ClaudeSessionActionResult("stopped", self.session_value(ClaudeSessionState.STOPPED))
+
+    async def recent_output(self, request_id: str, project_id: str) -> ClaudeSessionOutput:
+        del request_id, project_id
+        session = self.session_value()
+        return ClaudeSessionOutput(
+            session.project_id,
+            session.session_name,
+            "CLAUDE-OUTPUT-CANARY",
+            truncated=False,
+        )
+
+
 def test_codex_status_json_uses_typed_runtime_client(
     cli_environment: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -190,3 +261,74 @@ def test_codex_pair_is_single_display_and_json_is_forbidden(
 
     assert main(["--json", "codex", "pair"]) == 13
     assert "CODEX_PAIR_JSON_FORBIDDEN" in capsys.readouterr().err
+
+
+def test_claude_status_and_list_support_json_without_paths(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixClaudeRuntimeClient", FakeClaudeRuntimeClient)
+    assert main(["claude", "status", "--json"]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["data"]["version"] == "1.cli.fixture"
+    assert status["data"]["authentication"] == "unknown"
+
+    assert main(["claude", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["data"]["sessions"][0]["project_id"] == "project-a"
+    assert "path" not in listed["data"]["sessions"][0]
+
+
+def test_claude_start_stop_and_sensitive_output_use_typed_project_id(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixClaudeRuntimeClient", FakeClaudeRuntimeClient)
+    assert main(["claude", "start", "project-a"]) == 0
+    assert "started" in capsys.readouterr().out
+    assert main(["claude", "stop", "project-a"]) == 0
+    assert "stopped" in capsys.readouterr().out
+    assert main(["claude", "output", "project-a"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "CLAUDE-OUTPUT-CANARY"
+    assert "Sensitive Claude session output" in captured.err
+
+
+def test_claude_attach_requires_tty_and_execs_only_exact_generated_name(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixClaudeRuntimeClient", FakeClaudeRuntimeClient)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    assert main(["claude", "attach", "project-a"]) == 13
+    assert "CLAUDE_ATTACH_TTY_REQUIRED" in capsys.readouterr().err
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("agentbox_cli.main.shutil.which", lambda _name: "/usr/bin/tmux")
+    executed: list[tuple[str, list[str]]] = []
+
+    def capture_exec(path: str, argv: list[str]) -> None:
+        executed.append((path, argv))
+        raise RuntimeError("exec intercepted")
+
+    monkeypatch.setattr("agentbox_cli.main.os.execv", capture_exec)
+    with pytest.raises(RuntimeError, match="exec intercepted"):
+        main(["claude", "attach", "project-a"])
+    assert executed == [
+        (
+            "/usr/bin/tmux",
+            [
+                "/usr/bin/tmux",
+                "attach-session",
+                "-t",
+                "=agentbox-claude-project-a-123456789abc",
+            ],
+        )
+    ]

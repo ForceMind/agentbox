@@ -112,6 +112,25 @@ Codex file or managed-package path is an interface. Start/stop use the public
 commands only. Pair output is parsed fail-closed and crosses the API once in a
 no-store response; its raw buffer is never logged, audited, or persisted.
 
+## Phase 6 Claude + tmux Session Management
+
+Phase 6 adds a second Runtime capability without widening the Web execution
+boundary. `ClaudeAdapter` reads only public CLI help/version/status behavior;
+`TmuxAdapter` exposes fixed operations; `ClaudeSessionManager` binds them to a
+minimal read-only `ProjectRegistry`. The API/CLI UDS request contains only a
+validated `project_id`; canonical cwd resolution happens again inside Runtime.
+
+Managed ownership requires a deterministic bounded session name and exact
+versioned tmux marker. Similar, legacy, unmarked, or colliding sessions are
+unmanaged and cannot be attached, captured, adopted, or stopped through
+AgentBox. Runtime restart rediscovers sessions from project IDs, exact names,
+markers, and bounded pane evidence rather than process-local state.
+
+tmux owns the long-running interactive `claude remote-control` process. The
+Runtime Executor owns only short fixed Claude probes and tmux management
+commands. Workspace Trust remains manual; no private Claude state is parsed and
+unknown output remains Unknown/Starting. See `CLAUDE_INTEGRATION.md`.
+
 ## System Context
 
 ```mermaid
@@ -369,21 +388,20 @@ Controls:
 sequenceDiagram
     participant B as Browser/CLI
     participant A as Web/API
-    participant D as SQLite
-    participant W as Worker
     participant R as Runtime Executor
     B->>A: start Claude for Project ID
-    A->>D: validate project + create Job
-    W->>R: claude_session_start(project_id)
-    R->>R: canonical path/owner/collision/trust checks
-    R->>R: create namespaced tmux session
-    R->>R: start detected Claude Remote command in project
-    R-->>W: session metadata, no credentials
-    W->>D: RuntimeSession + sanitized Job result
-    A-->>B: SSE state
+    A->>R: claude.session.start(project_id) over UDS
+    R->>R: canonical path/symlink/access/name/marker checks
+    R->>R: create and mark exact tmux session
+    R->>R: exec detected Claude Remote command in project
+    R-->>A: bounded session metadata, no credentials/output
+    A-->>B: no-store state response
 ```
 
-If Workspace Trust cannot be detected using a stable public interface, the Job becomes `needs_attention` and returns a project-specific manual instruction. It never auto-trusts `/root` or a project-root parent.
+If Workspace Trust cannot be established through public evidence, state is
+`needs_interaction` or `unknown` and the UI returns an exact attach instruction.
+It never auto-trusts `/root` or any project. Durable Job/SSE integration remains
+future work and Phase 6 uses bounded typed UDS calls.
 
 ### Project Create/Clone Flow
 

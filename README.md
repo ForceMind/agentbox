@@ -6,8 +6,9 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. Phases 2–5 are merged. Phase 5
-adds the first real Runtime integration through PR #22.
+AgentBox is in **early pre-alpha development**. Phases 2–5 are merged. Phase 6
+Claude/tmux session management is implemented in PR #25, has completed human
+review, and is not yet merged or a production support claim.
 
 The current codebase provides:
 
@@ -18,16 +19,17 @@ The current codebase provides:
 - a Worker lifecycle limited to database readiness and expired Session cleanup;
 - a typed non-root Runtime Executor over a versioned Unix socket, a no-shell
   process runner, public-help-based Codex detection, Remote start/stop, and an
-  ephemeral Pair Code channel;
+  ephemeral Pair Code channel, plus project-scoped Claude/tmux session actions;
 - a control-plane CLI and a responsive React application shell with
   login, authenticated Session recovery, Dashboard, Doctor, Settings, and
-  a real Codex management page alongside clearly marked future sections;
+  real Codex and Claude management pages alongside clearly marked future sections;
 - package boundaries, tests, CI, governance templates, and architecture documents.
 
-It does **not** install/update/migrate Codex, run Claude Remote, manage tmux or
-projects, operate a root Helper, install system services, expose a public
-listener, or modify this host. Codex operations work only against an existing
-installation available to the configured non-root Runtime context.
+It does **not** install/update/migrate Codex or Claude, implement Project CRUD,
+operate a root Helper, install system services, expose a public listener, or
+change Provider/Secret configuration. Runtime operations work only against
+existing tools and configured existing project directories under the non-root
+Runtime context.
 
 A future Provider Manager is architecture/backlog only. It will keep Runtime
 Remote Control separate from model/API Provider selection and will depend on a
@@ -109,7 +111,7 @@ Run the explicitly limited API during development:
 agentbox-api
 ```
 
-Codex mutations require the separate non-root Runtime Executor. In development
+Codex and Claude mutations require the separate non-root Runtime Executor. In development
 it uses `.agentbox-dev/runtime.sock`; start it in another foreground terminal:
 
 ```bash
@@ -118,6 +120,10 @@ agentbox-runtime
 
 The API never spawns Codex. `agentbox codex status` may fall back to safe local
 detection when the Runtime socket is absent; `start`, `stop`, and `pair` do not.
+The API also never spawns tmux/Claude. For Phase 6 development, create existing
+project directories yourself beneath `.agentbox-dev/projects` or set
+`AGENTBOX_PROJECT_ROOT`; AgentBox does not create them. Claude commands require
+the Runtime socket and use only server-resolved project IDs.
 
 Initialize a development database and local administrator explicitly:
 
@@ -164,7 +170,7 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
 3. Phase 4: authenticated Web foundation — merged in PR #21.
 4. Phase 5: capability-aware Codex management — merged in PR #22.
-5. Phase 6: Claude/tmux session management.
+5. Phase 6: Claude/tmux session management — PR #25 implementation passed human review and awaits merge.
 6. Phase 7: Project Workspaces and minimal Git.
 7. Phase 8: installation, deployment, upgrade, and rollback.
 8. Phase 9: security and compatibility hardening.
@@ -185,6 +191,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [CLI design](docs/CLI_DESIGN.md)
 - [Runtime Adapters](docs/RUNTIME_ADAPTERS.md)
 - [Codex integration](docs/CODEX_INTEGRATION.md)
+- [Claude integration](docs/CLAUDE_INTEGRATION.md)
 - [Provider Manager](docs/PROVIDER_MANAGER.md)
 - [Web UI design](docs/WEB_UI.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
@@ -195,6 +202,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Phase 3 report](PHASE3_CONTROL_PLANE_REPORT.md)
 - [Phase 4 report](PHASE4_WEB_FOUNDATION_REPORT.md)
 - [Phase 5 report](PHASE5_CODEX_MANAGEMENT_REPORT.md)
+- [Phase 6 report](PHASE6_CLAUDE_SESSION_REPORT.md)
 
 ## Contributing
 

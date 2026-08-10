@@ -15,12 +15,19 @@ from agentbox_core.services import ControlPlaneServices, build_services
 from agentbox_runtime import (
     AuthenticationState,
     CapabilityState,
+    ClaudeCapabilities,
+    ClaudeSession,
+    ClaudeSessionActionResult,
+    ClaudeSessionOutput,
+    ClaudeSessionState,
+    ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
     InstallationType,
     PairCodeResult,
     RemoteActionResult,
     RemoteState,
+    WorkspaceState,
 )
 from alembic import command
 from alembic.config import Config
@@ -89,6 +96,90 @@ class FakeCodexRuntime:
         return PairCodeResult(self.pair_code)
 
 
+class FakeClaudeRuntime:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.states: dict[str, ClaudeSessionState] = {
+            "project-a": ClaudeSessionState.STOPPED,
+            "trust-project": ClaudeSessionState.NEEDS_INTERACTION,
+        }
+        self.output_canary = "CLAUDE-OUTPUT-CANARY"
+
+    def _session(self, project_id: str) -> ClaudeSession:
+        state = self.states.get(project_id, ClaudeSessionState.STOPPED)
+        session_name = f"agentbox-claude-{project_id}-fixture"
+        return ClaudeSession(
+            project_id=project_id,
+            display_name=project_id,
+            state=state,
+            managed=True,
+            session_name=session_name,
+            attach_command=f"tmux attach-session -t ={session_name}",
+            workspace_state=(
+                WorkspaceState.REQUIRES_USER_CONFIRMATION
+                if state is ClaudeSessionState.NEEDS_INTERACTION
+                else WorkspaceState.UNKNOWN
+            ),
+            tmux_running=state is not ClaudeSessionState.STOPPED,
+            remote_readiness=("ready" if state is ClaudeSessionState.RUNNING else "unknown"),
+        )
+
+    async def status(self, request_id: str) -> ClaudeStatus:
+        del request_id
+        self.calls.append("status")
+        return ClaudeStatus(
+            installed=True,
+            version="1.test.fixture",
+            authentication=AuthenticationState.UNKNOWN,
+            capabilities=ClaudeCapabilities(
+                remote_control=CapabilityState.SUPPORTED,
+                remote_start=CapabilityState.SUPPORTED,
+                version=CapabilityState.SUPPORTED,
+            ),
+            tmux_installed=True,
+            tmux_version="3.test.fixture",
+            managed_sessions=sum(
+                state is not ClaudeSessionState.STOPPED for state in self.states.values()
+            ),
+            unmanaged_sessions=2,
+            workspace_interaction_warnings=1,
+        )
+
+    async def list_sessions(self, request_id: str) -> tuple[ClaudeSession, ...]:
+        del request_id
+        self.calls.append("list")
+        return tuple(self._session(project_id) for project_id in self.states)
+
+    async def session(self, request_id: str, project_id: str) -> ClaudeSession:
+        del request_id
+        self.calls.append(f"session:{project_id}")
+        return self._session(project_id)
+
+    async def start_session(self, request_id: str, project_id: str) -> ClaudeSessionActionResult:
+        del request_id
+        self.calls.append(f"start:{project_id}")
+        if self.states.get(project_id) is ClaudeSessionState.RUNNING:
+            return ClaudeSessionActionResult("already_running", self._session(project_id))
+        self.states[project_id] = ClaudeSessionState.RUNNING
+        return ClaudeSessionActionResult("started", self._session(project_id))
+
+    async def stop_session(self, request_id: str, project_id: str) -> ClaudeSessionActionResult:
+        del request_id
+        self.calls.append(f"stop:{project_id}")
+        if self.states.get(project_id) is ClaudeSessionState.STOPPED:
+            return ClaudeSessionActionResult("already_stopped", self._session(project_id))
+        self.states[project_id] = ClaudeSessionState.STOPPED
+        return ClaudeSessionActionResult("stopped", self._session(project_id))
+
+    async def recent_output(self, request_id: str, project_id: str) -> ClaudeSessionOutput:
+        del request_id
+        self.calls.append(f"output:{project_id}")
+        session = self._session(project_id)
+        return ClaudeSessionOutput(
+            project_id, session.session_name, self.output_canary, truncated=False
+        )
+
+
 def migrate_database(database_url: str, revision: str = "head") -> None:
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
@@ -155,12 +246,18 @@ def codex_runtime() -> FakeCodexRuntime:
 
 
 @pytest.fixture
+def claude_runtime() -> FakeClaudeRuntime:
+    return FakeClaudeRuntime()
+
+
+@pytest.fixture
 async def client(
     settings: Settings,
     initialized_services: ControlPlaneServices,
     codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    application = create_app(settings, initialized_services, codex_runtime)
+    application = create_app(settings, initialized_services, codex_runtime, claude_runtime)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=application),
         base_url="http://testserver",

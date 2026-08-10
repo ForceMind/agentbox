@@ -37,6 +37,14 @@ test('protects authenticated routes and presents an accessible login', async ({
   await expect(page.getByLabel('Password')).toHaveAttribute('type', 'password')
 })
 
+test('keeps the Claude page behind authentication', async ({ page }) => {
+  await page.goto('/claude')
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(
+    page.getByRole('heading', { name: 'Sign in to manage this workstation' }),
+  ).toBeVisible()
+})
+
 test('returns the same public login error for incorrect credentials', async ({
   page,
 }) => {
@@ -246,6 +254,133 @@ test('fails closed on Pair errors without rendering raw Runtime output', async (
     'Codex did not return a recognizable pairing code',
   )
   await expect(page.getByText(pairCode)).toHaveCount(0)
+})
+
+test('shows installed Claude, conservative Remote state, and unmanaged count only', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Claude', '/claude')
+  await expect(page.getByText('1.e2e.fixture')).toBeVisible()
+  await expect(page.getByText('3.e2e.fixture')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Project A' })).toBeVisible()
+  await expect(page.getByText('Needs Interaction')).toBeVisible()
+  await expect(
+    page.getByText(/never accepts Workspace Trust automatically/i),
+  ).toBeVisible()
+  await expect(page.getByText('Connected')).toHaveCount(0)
+  await expect(page.getByText('claude-legacy')).toHaveCount(0)
+  await expect(page.getByText('personal-session')).toHaveCount(0)
+  await expect(
+    page.getByText('Unmanaged sessions').locator('..'),
+  ).toContainText('2')
+})
+
+test('starts, detects duplicate start, and stops only a managed Claude session', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Claude', '/claude')
+  const startRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/v1/claude/sessions/project-a/start') &&
+      request.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Start Session' }).click()
+  const request = await startRequest
+  const csrf = request.headers()['x-csrf-token']
+  expect(csrf).toBeTruthy()
+  await expect(page.getByText('Running').first()).toBeVisible()
+
+  const duplicate = await page.evaluate(async (token) => {
+    const response = await fetch('/api/v1/claude/sessions/project-a/start', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': token },
+    })
+    return { status: response.status, body: await response.json() }
+  }, csrf)
+  expect(duplicate.status).toBe(200)
+  expect(duplicate.body.data.outcome).toBe('already_running')
+
+  const stopRequest = page.waitForRequest(
+    (stop) =>
+      stop.url().endsWith('/api/v1/claude/sessions/project-a/stop') &&
+      stop.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Stop Session' }).first().click()
+  expect((await stopRequest).headers()['x-csrf-token']).toBeTruthy()
+  await expect(
+    page.getByRole('button', { name: 'Start Session' }),
+  ).toBeVisible()
+  await expect(
+    page.getByText(/does not delete the project/i).first(),
+  ).toBeVisible()
+})
+
+test('copies generated attach command and reveals sensitive output only on demand', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (value: string) =>
+          ((window as Window & { __claudeCopied?: string }).__claudeCopied =
+            value),
+      },
+    })
+  })
+  await login(page)
+  let outputRequests = 0
+  page.on('request', (request) => {
+    if (request.url().endsWith('/sessions/trust-project/output')) {
+      outputRequests += 1
+    }
+  })
+  await navigate(page, 'Claude', '/claude')
+  expect(outputRequests).toBe(0)
+  await page.getByRole('button', { name: 'Copy attach command' }).nth(1).click()
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as Window & { __claudeCopied?: string }).__claudeCopied,
+      ),
+    )
+    .toBe('tmux attach-session -t =agentbox-claude-trust-project-e2efixture')
+
+  const outputResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/sessions/trust-project/output'),
+  )
+  await page.getByRole('button', { name: 'Reveal' }).nth(1).click()
+  const response = await outputResponse
+  expect(response.headers()['cache-control']).toBe('no-store')
+  await expect(page.getByText('CLAUDE-OUTPUT-CANARY')).toBeVisible()
+  expect(outputRequests).toBe(1)
+  expect(
+    await page.evaluate(() => ({
+      local: Object.entries(localStorage),
+      session: Object.entries(sessionStorage),
+    })),
+  ).toEqual({ local: [], session: [] })
+  await page.getByRole('button', { name: 'Hide' }).click()
+  await expect(page.getByText('CLAUDE-OUTPUT-CANARY')).toHaveCount(0)
+})
+
+test('renders unknown Claude readiness without a fake connected claim', async ({
+  page,
+}) => {
+  await login(page)
+  await page.route('**/api/v1/claude/sessions', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.data.sessions[1].state = 'unknown'
+    body.data.sessions[1].remote_readiness = 'unknown'
+    await route.fulfill({ response, json: body })
+  })
+  await navigate(page, 'Claude', '/claude')
+  await expect(page.getByText('Unknown').first()).toBeVisible()
+  await expect(page.getByText('Connected')).toHaveCount(0)
 })
 
 test('recovers from invalid and browser-expired session cookies', async ({

@@ -16,8 +16,8 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL,
-    // Phase 5 Pair Codes are rendered in the DOM. Retained screenshots or
-    // traces could turn a failed test into a secret-bearing artifact.
+    // Pair Codes and Phase 6 pane-output canaries are rendered in the DOM.
+    // Retained screenshots or traces could become secret-bearing artifacts.
     screenshot: 'off',
     trace: 'off',
   },

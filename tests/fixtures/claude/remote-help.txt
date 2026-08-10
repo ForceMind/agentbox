@@ -1,0 +1,3 @@
+Usage: claude remote-control [options]
+
+Start an interactive Claude Code Remote Control session.
