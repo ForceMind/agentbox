@@ -4,15 +4,28 @@ import os
 from pathlib import Path
 
 import pytest
-from agentbox_core.errors import ProjectValidationError
-from agentbox_core.projects import project_slug, validate_repository_url
+from agentbox_core.errors import ProjectConflict, ProjectValidationError
+from agentbox_core.projects import normalize_project_name, project_slug, validate_repository_url
+from agentbox_core.services import ControlPlaneServices
 from agentbox_runtime import RuntimeOperationError, redact_remote_url, validate_branch_name
 from agentbox_runtime.project import ProjectRegistry
 
 
 @pytest.mark.parametrize(
     "value",
-    ["", ".", "..", "../escape", "/absolute", "a/b", "a\\b", "-option", "x\x00y"],
+    [
+        "",
+        ".",
+        "..",
+        "../escape",
+        "/absolute",
+        "a/b",
+        "a\\b",
+        "-option",
+        "x\x00y",
+        "con",
+        "COM1",
+    ],
 )
 def test_project_slugs_reject_path_and_option_injection(value: str) -> None:
     with pytest.raises(ProjectValidationError):
@@ -27,6 +40,8 @@ def test_project_slugs_reject_path_and_option_injection(value: str) -> None:
         "/tmp/repository",
         "https://user:secret@github.com/owner/repo.git",
         "https://example.com/owner/repo.git",
+        "https://[",
+        "https://github.com:99999/owner/repo.git",
         "--upload-pack=evil",
     ],
 )
@@ -50,6 +65,8 @@ def test_remote_url_credentials_are_redacted() -> None:
         == "https://github.com/owner/repo.git"
     )
     assert redact_remote_url("file:///tmp/private") is None
+    assert redact_remote_url("https://github.com:99999/owner/repo.git") is None
+    assert redact_remote_url("https://[") is None
     assert redact_remote_url("git@github.com:owner/repo.git") == "git@github.com:owner/repo.git"
 
 
@@ -77,3 +94,26 @@ def test_registry_does_not_accept_foreign_owned_repository_simulation(tmp_path: 
     project = root / "project"
     project.mkdir()
     assert project.stat().st_uid == os.geteuid()
+
+
+def test_formal_project_identity_uses_relative_path_and_rejects_case_collision(
+    initialized_services: ControlPlaneServices,
+) -> None:
+    project = initialized_services.projects.reserve(
+        name="Trading Platform", slug=None, source_type="empty"
+    )
+    assert project.id.startswith("prj_")
+    assert project.slug == project.relative_path == "trading-platform"
+    assert not Path(project.relative_path).is_absolute()
+
+    with pytest.raises(ProjectConflict):
+        initialized_services.projects.reserve(
+            name="TRADING PLATFORM", slug=None, source_type="empty"
+        )
+
+
+def test_project_names_and_slugs_reject_unicode_normalization_confusion() -> None:
+    with pytest.raises(ProjectValidationError):
+        normalize_project_name("Cafe\u0301")
+    with pytest.raises(ProjectValidationError):
+        project_slug("valid", "cafe\u0301")

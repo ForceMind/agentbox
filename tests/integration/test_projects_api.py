@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 import httpx
 import pytest
+from agentbox_core.models import AuditEvent, Job, Project
 from agentbox_core.services import ControlPlaneServices
+from agentbox_runtime import GitActionResult, RuntimeOperationError
 from agentbox_worker.main import execute_job
 from conftest import FakeProjectRuntime
+from sqlalchemy import select
 
 PASSWORD = "a sufficiently long passphrase"
 
@@ -95,6 +101,33 @@ async def test_project_detail_and_github_status_are_authenticated_no_store(
 
 
 @pytest.mark.anyio
+async def test_draft_pr_api_rejects_invalid_title_body_and_base_before_queue(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    initialized_services: ControlPlaneServices,
+) -> None:
+    csrf = await login(client, origin_headers)
+    project = initialized_services.projects.reconcile_existing(("project-a",))[0]
+    headers = {
+        **origin_headers,
+        "X-CSRF-Token": csrf,
+        "Idempotency-Key": "draft-pr-input-fixture-001",
+    }
+    for payload in (
+        {"title": "bad\ntitle", "body": "", "base": None},
+        {"title": "Safe", "body": "x" * (16 * 1024 + 1), "base": None},
+        {"title": "Safe", "body": "", "base": "-option"},
+    ):
+        response = await client.post(
+            f"/api/v1/projects/{project.id}/github/pull-requests",
+            json=payload,
+            headers=headers,
+        )
+        assert response.status_code in {413, 422}
+    assert initialized_services.jobs.list() == ()
+
+
+@pytest.mark.anyio
 async def test_worker_executes_typed_project_job_and_marks_project_ready(
     initialized_services: ControlPlaneServices,
     project_runtime: FakeProjectRuntime,
@@ -118,3 +151,243 @@ async def test_worker_executes_typed_project_job_and_marks_project_ready(
     await execute_job(initialized_services, project_runtime, claimed)
     assert initialized_services.projects.get(project.id, ready=True).state == "ready"
     assert initialized_services.jobs.get(job.id).status == "succeeded"  # type: ignore[union-attr]
+    with initialized_services.database.transaction() as session:
+        actions = tuple(session.scalars(select(AuditEvent.action)))
+    assert "project_created" in actions
+
+
+@pytest.mark.anyio
+async def test_project_reservation_rolls_back_when_job_persistence_fails(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    initialized_services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csrf = await login(client, origin_headers)
+
+    def fail_enqueue(**_kwargs: Any) -> None:
+        raise RuntimeError("simulated database failure")
+
+    monkeypatch.setattr(initialized_services.jobs, "enqueue", fail_enqueue)
+    with pytest.raises(RuntimeError, match="simulated database failure"):
+        await client.post(
+            "/api/v1/projects",
+            json={"name": "Reservation Must Roll Back"},
+            headers={
+                **origin_headers,
+                "X-CSRF-Token": csrf,
+                "Idempotency-Key": "project-reservation-failure-001",
+            },
+        )
+    assert all(
+        item.display_name != "Reservation Must Roll Back"
+        for item in initialized_services.projects.list()
+    )
+
+
+async def queued_create(services: ControlPlaneServices, name: str) -> tuple[Project, Job]:
+    project = services.projects.reserve(name=name, slug=None, source_type="empty")
+    job, _created = services.jobs.enqueue(
+        job_type="project.create",
+        requested_by="adm_fixture",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        payload={"project_key": project.relative_path},
+        resource_lock_key=f"project:{project.id}",
+        idempotency_key=f"worker-{project.slug}-fixture",
+        request_id="req_worker_failure_fixture",
+    )
+    claimed = services.jobs.claim_next("worker-fixture")
+    assert claimed is not None and claimed.id == job.id
+    return project, claimed
+
+
+@pytest.mark.anyio
+async def test_workspace_failure_rolls_back_and_records_explicit_failure_audit(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, claimed = await queued_create(initialized_services, "Filesystem Failure")
+    rollbacks: list[str] = []
+
+    async def fail_create(_request_id: str, _key: str, _operation: str) -> GitActionResult:
+        raise RuntimeOperationError("PROJECT_PATH_INVALID", "Workspace creation failed")
+
+    async def rollback(_request_id: str, _key: str, operation: str) -> GitActionResult:
+        rollbacks.append(operation)
+        return GitActionResult("rolled_back")
+
+    monkeypatch.setattr(project_runtime, "create_workspace", fail_create)
+    monkeypatch.setattr(project_runtime, "rollback_workspace", rollback)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    stored = initialized_services.jobs.get(claimed.id)
+    assert stored is not None and stored.status == "failed"
+    assert stored.error_code == "PROJECT_PATH_INVALID"
+    assert initialized_services.projects.get(project.id).state == "error"
+    assert rollbacks == [claimed.id]
+    with initialized_services.database.transaction() as session:
+        actions = tuple(session.scalars(select(AuditEvent.action)))
+    assert "project_create_failed" in actions
+
+
+@pytest.mark.anyio
+async def test_database_failure_after_workspace_creation_triggers_runtime_rollback(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, claimed = await queued_create(initialized_services, "Database Failure")
+    rollbacks: list[str] = []
+
+    def fail_mark_ready(_project_id: str, *, default_branch: str | None = None) -> None:
+        del default_branch
+        raise RuntimeError("simulated database failure")
+
+    async def rollback(_request_id: str, _key: str, operation: str) -> GitActionResult:
+        rollbacks.append(operation)
+        return GitActionResult("rolled_back")
+
+    monkeypatch.setattr(initialized_services.projects, "mark_ready", fail_mark_ready)
+    monkeypatch.setattr(project_runtime, "rollback_workspace", rollback)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    stored = initialized_services.jobs.get(claimed.id)
+    assert stored is not None and stored.status == "failed"
+    assert stored.error_code == "JOB_EXECUTION_FAILED"
+    assert initialized_services.projects.get(project.id).state == "error"
+    assert rollbacks == [claimed.id]
+
+
+@pytest.mark.anyio
+async def test_rollback_failure_needs_attention_and_records_failure_audit(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, claimed = await queued_create(initialized_services, "Rollback Failure")
+
+    async def fail_create(_request_id: str, _key: str, _operation: str) -> GitActionResult:
+        raise RuntimeOperationError("PROJECT_PATH_INVALID", "Workspace creation failed")
+
+    async def fail_rollback(_request_id: str, _key: str, _operation: str) -> GitActionResult:
+        raise RuntimeOperationError("PROJECT_PATH_INVALID", "Workspace cleanup failed")
+
+    monkeypatch.setattr(project_runtime, "create_workspace", fail_create)
+    monkeypatch.setattr(project_runtime, "rollback_workspace", fail_rollback)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    stored = initialized_services.jobs.get(claimed.id)
+    assert stored is not None and stored.status == "needs_attention"
+    assert stored.error_code == "PROJECT_ROLLBACK_REQUIRES_ATTENTION"
+    assert initialized_services.projects.get(project.id).state == "error"
+    with initialized_services.database.transaction() as session:
+        event = session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "project_create_failed")
+        )
+    assert event is not None and event.result == "failed"
+    assert event.metadata_json["error_code"] == "PROJECT_ROLLBACK_REQUIRES_ATTENTION"
+
+
+@pytest.mark.anyio
+async def test_successful_operation_with_audit_failure_needs_attention_not_double_transition(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, claimed = await queued_create(initialized_services, "Audit Failure")
+
+    def fail_audit(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("simulated audit failure")
+
+    monkeypatch.setattr(initialized_services.audit, "record", fail_audit)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    stored = initialized_services.jobs.get(claimed.id)
+    assert stored is not None and stored.status == "needs_attention"
+    assert stored.error_code == "JOB_AUDIT_FAILED"
+    assert initialized_services.projects.get(project.id, ready=True).state == "ready"
+
+
+@pytest.mark.anyio
+async def test_failed_operation_with_audit_failure_needs_attention_not_worker_crash(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = initialized_services.projects.reconcile_existing(("audit-failure-project",))[0]
+    job, _created = initialized_services.jobs.enqueue(
+        job_type="git.pull",
+        requested_by="adm_fixture",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        payload={"project_key": project.relative_path},
+        resource_lock_key=f"project:{project.id}",
+        idempotency_key="worker-failure-audit-fixture",
+        request_id="req_worker_failure_audit_fixture",
+    )
+    claimed = initialized_services.jobs.claim_next("worker-failure-audit")
+    assert claimed is not None and claimed.id == job.id
+
+    async def fail_pull(_request_id: str, _project_key: str) -> GitActionResult:
+        raise RuntimeOperationError("GIT_PULL_FAILED", "Pull failed")
+
+    def fail_audit(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("simulated audit failure")
+
+    monkeypatch.setattr(project_runtime, "pull", fail_pull)
+    monkeypatch.setattr(initialized_services.audit, "record", fail_audit)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    stored = initialized_services.jobs.get(job.id)
+    assert stored is not None and stored.status == "needs_attention"
+    assert stored.error_code == "JOB_AUDIT_FAILED"
+
+
+@pytest.mark.anyio
+async def test_long_runtime_job_renews_durable_lease(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = initialized_services.projects.reconcile_existing(("lease-project",))[0]
+    job, _created = initialized_services.jobs.enqueue(
+        job_type="git.pull",
+        requested_by="adm_fixture",
+        target_type="project",
+        target_id=project.id,
+        project_id=project.id,
+        payload={"project_key": project.relative_path},
+        resource_lock_key=f"project:{project.id}",
+        idempotency_key="worker-heartbeat-runtime-fixture",
+        request_id="req_worker_heartbeat_fixture",
+    )
+    claimed = initialized_services.jobs.claim_next("worker-heartbeat")
+    assert claimed is not None and claimed.id == job.id
+    heartbeats: list[str] = []
+    original_heartbeat = initialized_services.jobs.heartbeat
+
+    async def delayed_pull(_request_id: str, _project_key: str) -> GitActionResult:
+        await asyncio.sleep(0.035)
+        return GitActionResult("pulled", "main")
+
+    def capture_heartbeat(job_id: str) -> None:
+        heartbeats.append(job_id)
+        original_heartbeat(job_id)
+
+    monkeypatch.setattr(
+        type(initialized_services.jobs),
+        "heartbeat_interval_seconds",
+        property(lambda _service: 0.01),
+    )
+    monkeypatch.setattr(initialized_services.jobs, "heartbeat", capture_heartbeat)
+    monkeypatch.setattr(project_runtime, "pull", delayed_pull)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    assert len(heartbeats) >= 2
+    assert set(heartbeats) == {job.id}
+    stored = initialized_services.jobs.get(job.id)
+    assert stored is not None and stored.status == "succeeded"

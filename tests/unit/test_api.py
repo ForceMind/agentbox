@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -8,6 +11,7 @@ from agentbox_api.main import create_app
 from agentbox_core import __version__
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.services import ControlPlaneServices
+from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
 from sqlalchemy.engine import make_url
 
 
@@ -138,6 +142,70 @@ async def test_doctor_returns_only_safe_control_plane_data(
     assert "database_url" not in serialized
     assert "data_dir" not in serialized
     assert "sqlite+pysqlite" not in serialized
+
+
+@pytest.mark.anyio
+async def test_doctor_runs_independent_runtime_probes_concurrently(
+    settings: Settings,
+    initialized_services: ControlPlaneServices,
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+    origin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: set[str] = set()
+    all_started = asyncio.Event()
+
+    def concurrent_probe(
+        name: str, original: Callable[[str], Awaitable[Any]]
+    ) -> Callable[[str], Awaitable[Any]]:
+        async def wrapped(request_id: str) -> Any:
+            started.add(name)
+            if len(started) == 5:
+                all_started.set()
+            await asyncio.wait_for(all_started.wait(), timeout=1)
+            return await original(request_id)
+
+        return wrapped
+
+    monkeypatch.setattr(codex_runtime, "status", concurrent_probe("codex", codex_runtime.status))
+    monkeypatch.setattr(claude_runtime, "status", concurrent_probe("claude", claude_runtime.status))
+    monkeypatch.setattr(
+        project_runtime,
+        "git_global_status",
+        concurrent_probe("git", project_runtime.git_global_status),
+    )
+    monkeypatch.setattr(
+        project_runtime,
+        "github_status",
+        concurrent_probe("github", project_runtime.github_status),
+    )
+    monkeypatch.setattr(
+        project_runtime,
+        "list_workspaces",
+        concurrent_probe("workspaces", project_runtime.list_workspaces),
+    )
+    application = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application), base_url="http://testserver"
+    ) as test_client:
+        login = await test_client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": "a sufficiently long passphrase"},
+            headers=origin_headers,
+        )
+        assert login.status_code == 200
+        response = await test_client.get("/api/v1/doctor")
+
+    assert response.status_code == 200
+    assert started == {"codex", "claude", "git", "github", "workspaces"}
 
 
 @pytest.mark.anyio

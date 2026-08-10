@@ -18,6 +18,7 @@ from agentbox_runtime.models import (
     ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
+    GitActionResult,
     InstallationType,
     PairCodeResult,
     RemoteActionResult,
@@ -30,6 +31,7 @@ from agentbox_runtime.rpc import (
     DEFAULT_CODEX_STATUS_RPC_TIMEOUT_SECONDS,
     UnixClaudeRuntimeClient,
     UnixCodexRuntimeClient,
+    UnixProjectRuntimeClient,
 )
 from agentbox_runtime.server import RuntimeExecutorServer
 
@@ -120,6 +122,25 @@ class FakeClaudeManager:
             "safe fixture",
             truncated=False,
         )
+
+
+class ActiveClaudeManager(FakeClaudeManager):
+    async def session(self, project_id: str) -> ClaudeSession:
+        self.actions.append(f"session:{project_id}")
+        return self.session_value(ClaudeSessionState.RUNNING)
+
+
+class FakeProjectManager:
+    def __init__(self) -> None:
+        self.actions: list[str] = []
+
+    async def switch_branch(self, project_key: str, branch: str) -> GitActionResult:
+        self.actions.append(f"switch:{project_key}:{branch}")
+        return GitActionResult("switched", branch)
+
+    async def pull(self, project_key: str) -> GitActionResult:
+        self.actions.append(f"pull:{project_key}")
+        return GitActionResult("pulled", "main")
 
 
 @pytest.mark.anyio
@@ -262,6 +283,76 @@ async def test_runtime_rejects_claude_paths_argv_and_missing_project_ids(tmp_pat
 
 
 @pytest.mark.anyio
+async def test_project_runtime_rejects_paths_argv_environment_and_git_config(
+    tmp_path: Path,
+) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    project = FakeProjectManager()
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        project_manager=project,  # type: ignore[arg-type]
+    )
+    await server.start()
+    try:
+        for field, value in (
+            ("path", "/tmp/escape"),
+            ("argv", ["--force"]),
+            ("environment", {"GIT_ALLOW_PROTOCOL": "file"}),
+            ("config", {"core.sshCommand": "evil"}),
+        ):
+            reader, writer = await asyncio.open_unix_connection(socket_path)
+            writer.write(
+                json.dumps(
+                    {
+                        "protocol_version": 1,
+                        "action": "git.pull",
+                        "request_id": f"req_project_{field}",
+                        "project_key": "project-a",
+                        field: value,
+                    }
+                ).encode()
+                + b"\n"
+            )
+            await writer.drain()
+            response = json.loads(await reader.readline())
+            writer.close()
+            await writer.wait_closed()
+            assert response["error"]["code"] == "RUNTIME_PROTOCOL_INVALID"
+        assert project.actions == []
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_active_claude_session_blocks_pull_and_branch_switch(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    project = FakeProjectManager()
+    claude = ActiveClaudeManager()
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,  # type: ignore[arg-type]
+        project_manager=project,  # type: ignore[arg-type]
+    )
+    await server.start()
+    try:
+        client = UnixProjectRuntimeClient(socket_path)
+        with pytest.raises(RuntimeOperationError) as pull_error:
+            await client.pull("req_active_pull", "project-a")
+        assert pull_error.value.code == "PROJECT_RUNTIME_ACTIVE"
+        with pytest.raises(RuntimeOperationError) as switch_error:
+            await client.switch_branch("req_active_switch", "project-a", "feature/safe")
+        assert switch_error.value.code == "PROJECT_RUNTIME_ACTIVE"
+        assert project.actions == []
+        assert claude.actions == ["session:project-a", "session:project-a"]
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
 async def test_runtime_socket_rejects_unapproved_peer_uid(tmp_path: Path) -> None:
     socket_path = tmp_path / "runtime.sock"
     server = RuntimeExecutorServer(
@@ -325,6 +416,38 @@ async def test_runtime_client_rejects_mismatched_request_id(tmp_path: Path) -> N
         client = UnixCodexRuntimeClient(socket_path, status_timeout_seconds=1)
         with pytest.raises(RuntimeOperationError) as raised:
             await client.status("req_expected")
+        assert raised.value.code == "RUNTIME_PROTOCOL_INVALID"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.anyio
+async def test_project_runtime_client_rejects_non_object_error_envelope(tmp_path: Path) -> None:
+    socket_path = tmp_path / "malformed-error.sock"
+
+    async def malformed_error(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        request = json.loads(await reader.readline())
+        writer.write(
+            json.dumps(
+                {
+                    "protocol_version": 1,
+                    "request_id": request["request_id"],
+                    "data": {"installed": True, "version": "untrusted"},
+                    "error": "ignored unless fail-closed",
+                }
+            ).encode()
+            + b"\n"
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_unix_server(malformed_error, path=socket_path)
+    try:
+        client = UnixProjectRuntimeClient(socket_path)
+        with pytest.raises(RuntimeOperationError) as raised:
+            await client.git_global_status("req_project_malformed")
         assert raised.value.code == "RUNTIME_PROTOCOL_INVALID"
     finally:
         server.close()
