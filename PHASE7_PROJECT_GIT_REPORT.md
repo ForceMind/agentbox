@@ -21,7 +21,7 @@ Helper, installer, systemd deployment, or production host mutation.
 - Web UX: `b38a26e feat(web): complete project workspace management UX`
 - Security coverage: `e946d10 test(projects): expand Git and workspace security coverage`
 - Documentation: this report's semantic documentation commit
-- Draft PR: recorded after publication
+- Draft PR: https://github.com/ForceMind/agentbox/pull/27
 
 ## Project Model
 
@@ -256,8 +256,10 @@ vulnerabilities.
 
 ## CI
 
-Local lint/type/unit/build/migration/audit/security gates pass. GitHub required
-checks and CI E2E will be recorded after Draft PR publication.
+Local lint/type/unit/build/migration/audit/security gates pass. Draft PR #27
+required checks and CI E2E were pending when this report commit was prepared;
+their final public state is recorded in the Phase 7 handoff rather than claimed
+in advance.
 
 ## Deviations
 
