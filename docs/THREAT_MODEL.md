@@ -6,7 +6,7 @@ Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
 
 ## Scope and Assets
 
-In scope: Web/API, browser sessions, CLI/API socket, Worker, SQLite, Runtime Executor/socket, Privileged Helper/socket, Project Workspaces, Jobs, Audit Events, installer/update/backup paths, Codex/Claude/tmux/Git/gh invocation, future Provider metadata/Secret references/config adapters, and external access integrations.
+In scope: Web/API, browser sessions, CLI/API socket, Worker, SQLite, Runtime Executor/socket, Privileged Helper/socket, Project Workspaces, Jobs, Audit Events, installer/update/backup paths, Codex/Claude/tmux/Git/gh invocation, future Provider definitions/Runtime bindings/Secret backends/config transactions/continuity assessment, and external access integrations.
 
 Primary assets:
 
@@ -18,7 +18,8 @@ Primary assets:
 - SQLite state, Job integrity, settings, Audit Events, and backups;
 - update artifacts and release provenance;
 - availability of existing host services.
-- future Provider metadata/config integrity and API-key confidentiality.
+- future Provider metadata/config integrity, Runtime binding and continuity
+  evidence, rollback recoverability, and API-key confidentiality.
 
 Out of scope for the MVP: protection against a malicious root administrator, a fully compromised kernel/hypervisor, or security guarantees inside third-party SaaS. AgentBox must still avoid worsening those conditions.
 
@@ -43,8 +44,9 @@ TB5: Worker to root Privileged Helper.
 TB6: Runtime Executor to Project Workspaces and third-party CLIs.
 TB7: installer/updater to external repositories/artifacts.
 TB8: live state to backup/export media.
-TB9 (future): Provider metadata/config adapter to Secret Manager, Runtime
-configuration, and external model/API Provider. No implementation exists yet.
+TB9 (future): Provider Registry and Runtime Binding to Secret Manager, Config
+Transaction Manager, Runtime Continuity Manager, Runtime configuration/lifecycle,
+and external model/API Provider. No implementation exists yet.
 
 ## Threat Register
 
@@ -112,6 +114,14 @@ configuration, and external model/API Provider. No implementation exists yet.
 | T-60 | S/I | Provider endpoint or diagnostic output exfiltrates Secret | TB9/external Provider | validated scheme/endpoint policy, no URL userinfo, bounded requests, no auth header/body logging, Secret isolation | malicious endpoint, redirect, error, and log canaries |
 | T-61 | R/T | Provider API PASS is misrepresented as Remote compatibility | operator/Remote state | independent evidence dimensions and Supported/Compatible/Experimental/Degraded/Incompatible/Unknown states | partial-success compatibility fixtures and UI/CLI assertions |
 | T-62 | T/D | Provider activation breaks active Remote session/thread state | TB6/TB9 | preflight impact plan; explicit restart/re-auth/session action; rollback; Unknown/Experimental on uncertain public behavior | session/history/tools/streaming/Responses/Remote regression matrix |
+| T-63 | T/R | ProviderDefinition identity is conflated with Runtime binding identity | TB3/TB9, thread discovery | distinct IDs; Runtime-specific mapping; current Codex behavior is revalidated, not permanent | identity migration and changed-base-URL fixtures |
+| T-64 | T/D | Provider switch races an active turn/tool call/writer or duplicate Runtime | TB6/TB9 | public-signal preflight; per-Runtime serialization; uncertain state requires turn-complete confirmation | active/unknown/duplicate writer fault matrix |
+| T-65 | R/T | Partial restoration is falsely reported as successful rollback | TB9/config/lifecycle | snapshot complete scope; restore content/nonexistence/mode/binding/Secret reference/lifecycle; explicit rollback verification | fail at every transaction step and restart verification |
+| T-66 | T/I | Private SQLite/JSONL/rollout/thread metadata is rewritten to fake continuity | Runtime history | permanent direct-mutation prohibition; public migration/resume API only after review | source boundary scan and artifact canary tests |
+| T-67 | I/T | Automatic Provider failover changes model, cost, privacy, or data boundary | Provider selection | no automatic fallback; persisted explicit Active Provider; failure remains visible | restart/failure state-machine tests |
+| T-68 | I/E | Platform Secret backend exposes material across user or OS boundary | TB9/Secret backend | Linux restrictive structured file; macOS Keychain; current-user Windows DPAPI; WSL/native isolation | owner/mode, Keychain identity, DPAPI user, and shared-directory negative tests |
+| T-69 | I/T | Provider test leaks Authorization in argv or incurs undisclosed model cost | TB9/process/provider | in-memory header or restrictive mechanism; never argv; connectivity/runtime/continuity split; paid inference requires explicit opt-in | process-list canary and paid-test confirmation tests |
+| T-70 | R/I | Thread absent from discovery is reported as deleted or fully compatible | UI/CLI/operator | separate Resume/Context/Discovery results; `Thread not listed` wording; only validated public recovery guidance | A/B continuity harness partial-success fixtures |
 
 ## Phase 3 Control-Plane Attack Surface
 
@@ -181,14 +191,16 @@ configuration, and external model/API Provider. No implementation exists yet.
 
 ### Future Provider Secret or Config Compromise
 
-Attack chain: an administrator submits a Provider → raw API key is stored or
-logged → a config string editor overwrites unrelated Codex settings or follows a
-symlink → Runtime credentials/session state are exposed or Remote Control fails.
-The planned prevention boundary requires Secret references, typed provider
-options, public-contract validation, config preservation, concurrent-write and
-symlink defenses, atomic backup/rollback, and compatibility dimensions that do
-not equate endpoint success with Remote support. Phase 11 must revisit this
-model before any implementation or real Provider test.
+Attack chain: an administrator submits a Provider → raw API key reaches argv or
+storage → ProviderDefinition and RuntimeBinding identities are conflated → a
+config editor races an active writer or overwrites unrelated settings → partial
+rollback is called successful → thread discovery loss is misreported as
+deletion. The planned prevention boundary requires platform Secret backends,
+typed identities/options, public-contract validation, active-writer preflight,
+full-scope config/lifecycle transactions, rollback verification, and independent
+Provider/Runtime/Remote/thread/context/discovery evidence. Direct mutation of
+private session DB/JSONL/rollout state and automatic Provider failover are
+prohibited. Phase 11 must revisit this model before implementation or real tests.
 
 ### Web-to-Root Command Injection
 

@@ -11,9 +11,11 @@ Decision authority: Accepted ADRs 0001–0008 in `docs/adr/` govern the decision
 - Runtime/Git/tmux: separate non-root `agentbox-runtime` identity.
 - System changes: root Privileged Helper over a file-permission-protected Unix Domain Socket (UDS).
 - Runtime actions: non-root Runtime Executor over a separate UDS; the Helper does not run Codex/Claude/tmux as root.
-- Provider selection: future runtime-neutral Application domain, separate from
-  Remote Control; Runtime-specific config changes go through typed adapters and
-  Secret references, never arbitrary config text or raw API keys.
+- Phase 11 Provider/continuity: future runtime-neutral Application domains use
+  distinct `ProviderDefinitionID` and `RuntimeBindingID` identities, a
+  Runtime Continuity Manager, a Config Transaction Manager, platform Secret
+  backends, and typed Runtime adapters. They remain separate from Remote
+  lifecycle and never accept arbitrary config text or raw API keys.
 - Backend: Python 3.11+, FastAPI, Pydantic, SQLAlchemy, Alembic.
 - Frontend: React, TypeScript, Vite; Tailwind and selected shadcn/ui components, kept minimal.
 - State: SQLite in WAL mode with explicit single-host write coordination.
@@ -148,7 +150,9 @@ flowchart LR
     Runtime --> Codex[Codex CLI]
     Runtime --> Claude[Claude Code + tmux]
     Runtime -. future typed provider config .-> Provider[Provider Manager]
-    Provider -. secret reference .-> Secrets[Future Secret Manager]
+    Provider -. continuity preflight/evidence .-> Continuity[Runtime Continuity Manager]
+    Provider -. atomic config transaction .-> ConfigTx[Config Transaction Manager]
+    Provider -. opaque secret reference .-> Secrets[Future Secret Manager]
     Codex --> ModelAPI[Model/API Provider]
     Helper --> Systemd[systemd]
     Helper --> Packages[Package Manager]
@@ -193,7 +197,9 @@ restart behavior exceeds the MVP limits.
 Application Services are a shared Python package used by Web routes, CLI local-read-only mode, and Worker handlers. They own use-case behavior and policy:
 
 - Runtime Adapters;
-- future Provider Services and Runtime-specific Provider Config Adapters;
+- future Provider Registry/Binding Services, Runtime Continuity Manager,
+  Config Transaction Manager, Secret Manager, and Runtime-specific Provider
+  Config Adapters;
 - Project Services;
 - Git Services;
 - Job Services;
@@ -231,14 +237,23 @@ It does not manage arbitrary units, run user shell commands, execute Git, read R
 Adapters translate stable AgentBox capabilities into currently observed public CLI operations. Detection evidence includes configured entrypoints, `command -v`, realpath, version/help output, exit status, process/unit evidence, and safe authentication status commands. Internal files are optional diagnostics, never required contracts.
 
 Future Provider management is a sibling Application domain, not an extension
-of Remote lifecycle state. `ProviderManager` owns typed metadata, selection,
-test orchestration, compatibility, and Secret references. A
-`CodexProviderConfigAdapter` may translate that intent only after validating the
-then-current public Codex CLI/config contract. It must parse and preserve
-unrelated settings, detect concurrent edits, reject symlinks/unsafe ownership,
-and use validated backup/rollback plus restrictive atomic replacement. The
-domain remains Runtime-neutral so future official Runtime support can add
-separate adapters without inheriting Codex TOML assumptions.
+of Remote lifecycle state. `ProviderManager` owns ProviderDefinition metadata,
+Active Provider selection, tests, and Secret references. A separate
+`RuntimeBindingID` expresses stable AgentBox binding intent without becoming a
+permanent alias for any current Codex provider ID. `RuntimeContinuityManager`
+owns active-writer preflight and independent Runtime/Remote/thread/context/
+discovery assessment; it does not infer higher continuity from a lower-level
+request success.
+
+`ConfigTransactionManager` supplies snapshot, candidate validation,
+concurrent-modification detection, permission-preserving atomic replacement,
+rollback, and rollback verification to Runtime-specific adapters. A
+`CodexProviderConfigAdapter` may translate typed intent only after validating
+the then-current public Codex CLI/config schema. It parses and preserves
+unrelated settings, edits only AgentBox-controlled keys/blocks, prevents
+duplicates, and rejects symlinks or unsafe ownership. The domain never embeds
+Codex paths, TOML shapes, reasoning enums, wire events, or session storage
+formats as permanent contracts.
 
 ### SQLite
 
@@ -282,9 +297,10 @@ No Helper or Runtime socket listens on TCP. The two sockets use different owners
 6. **Project boundary:** each Project record maps to one canonical directory beneath the configured root.
 7. **Third-party boundary:** Codex, Claude, GitHub, package repositories, and tunnels can change independently and may be unavailable or malicious.
 8. **Update boundary:** downloaded artifacts and database migrations cross a supply-chain and rollback boundary.
-9. **Future Provider/Secret boundary:** Provider metadata and compatibility are
-   separate from Secret value custody and Runtime-specific config mutation;
-   Remote Control state is assessed independently.
+9. **Future Provider/Secret/continuity boundary:** ProviderDefinition metadata,
+   Active Provider selection, Runtime Binding intent, Secret value custody,
+   config transaction, Runtime lifecycle, and continuity evidence are separate
+   authorities. No component mutates private session DB/JSONL/rollout state.
 
 ## Data Flows
 
@@ -337,22 +353,36 @@ sequenceDiagram
     participant B as Browser/CLI
     participant A as Provider Manager
     participant S as Secret Manager
+    participant M as Runtime Continuity Manager
+    participant T as Config Transaction Manager
     participant C as Runtime-specific Config Adapter
     participant R as Runtime
-    B->>A: select Provider ID
-    A->>A: validate metadata + compatibility + impact plan
+    B->>A: select ProviderDefinitionID
+    A->>A: resolve RuntimeBindingID + revision
+    A->>M: preflight active writer + continuity impact
     A->>S: resolve approved Secret reference (value never returned to B)
-    A->>C: typed desired config + expected revision
-    C->>C: parse, preserve, validate, backup, atomic replace
-    C-->>A: sanitized result + rollback reference
-    A->>R: explicit restart/session action only if separately approved
-    A-->>B: Provider and Remote compatibility dimensions
+    A->>C: generate typed candidate from current public schema
+    C->>T: snapshot + validate + atomic apply
+    T-->>A: sanitized result + rollback reference
+    A->>R: reload/restart only when required by validated plan
+    A->>M: Provider/Runtime/Remote/continuity verification
+    alt verification succeeds
+        A->>A: commit Active Provider + Runtime Binding
+    else any step fails
+        A->>T: restore full snapshot
+        A->>M: rollback verification
+    end
+    A-->>B: detailed matrix + Rollback verified/attempted
 ```
 
-Provider activation must first state whether it affects only new requests,
-requires Runtime restart or re-authentication, or may alter existing Remote
-session/thread state. Unknown behavior remains Unknown/Experimental; a Provider
-request PASS is not proof of Remote Control compatibility.
+Provider activation follows Preflight → Snapshot → Target validation → Writer
+safety → Candidate generation/validation → Atomic apply → required lifecycle
+action → Provider/Runtime/Remote/continuity verification → Commit. Failure
+restores original content/nonexistence, permissions, lifecycle, Active Provider,
+Runtime Binding, generated profile/config, and Secret reference, then verifies
+the rollback. Unverified recovery is only `Rollback attempted`, never
+`Rollback successful`. Request PASS is not proof of Remote, thread resume,
+context continuity, or discovery compatibility.
 
 ### Codex Pair Flow
 
@@ -455,8 +485,11 @@ Upgrade is a privileged Job with a global lifecycle lock. It downloads to stagin
 | Upgrade health check fails | quiesce, restore safe snapshot/release, report rollback result |
 | External tunnel/proxy unavailable | local service remains healthy; external integration reported unavailable |
 | Provider contract/config schema changed | future config mutation fails closed; refresh public capability/schema evidence and preserve the current config |
-| Provider test passes but Remote behavior is unclear | report Provider PASS and Remote compatibility Unknown/Experimental independently |
+| Provider test passes but continuity is unclear | report each Provider/Runtime/Remote/thread/context/discovery dimension independently; leave unknown levels Unknown/Not Tested |
 | Provider config changes concurrently | reject stale plan; never overwrite the operator's unrelated settings |
+| Provider switch fails after apply | restore the complete transaction snapshot and lifecycle, then report only `Rollback attempted` or `Rollback verified` |
+| Active writer cannot be determined | require explicit turn-complete confirmation; never mutate private session files |
+| Thread disappears from normal listing | report `Thread not listed`, not `Thread deleted`; offer only currently validated public recovery guidance |
 
 ## Current Host Constraints Carried Forward
 
@@ -474,9 +507,9 @@ Upgrade is a privileged Job with a global lifecycle lock. It downloads to stagin
 - final Runtime command for each supported Claude version, verified by Capability Detection rather than this document;
 - publisher verification mechanism available for each third-party installer/artifact;
 - whether an existing Cloudflare Tunnel will be manually integrated after security review.
-- future Secret Manager backend, unlock/rotation/backup policy, and Runtime
-  injection boundary;
-- public Codex config validation and atomic update contract available when
-  Phase 11 begins;
-- evidence required to classify Provider and Remote Control compatibility, and
-  safe restart/session behavior during Provider activation.
+- future Linux restrictive-file, macOS Keychain, Windows DPAPI, WSL isolation,
+  unlock/rotation/backup policy, and Runtime injection boundaries;
+- public Codex config/provider identity/reload/active-writer/resume/discovery
+  contracts available when Phase 11 begins;
+- evidence required for every continuity level, the A/B harness, safe lifecycle
+  restoration, and rollback verification during Provider activation.
