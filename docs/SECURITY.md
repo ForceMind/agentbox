@@ -410,8 +410,11 @@ Project operations accept opaque IDs and Runtime resolves one canonical
 non-symlink, Runtime-owned child beneath a non-symlink, non-group/world-writable
 root. Clone allowlists GitHub HTTPS/SSH and disables local/file/ext protocols,
 prompts, LFS smudge and recursive submodules. Fixed Git config disables hooks,
-pagers, editors and external diff; repository credentials, HTTP headers,
+pagers, editors and external diff; repository/worktree-scope credentials, HTTP settings,
 URL/protocol rewrites, SSH commands, filters, fsmonitor/worktree/proxy settings,
 remote helper programs, includes and aliases fail closed. Pull is fast-forward
-only, Push is never forced, and Pull/switch are blocked during an active managed
-Claude session. Credentials and raw tool output never enter API, logs, Audit or Jobs.
+only against an explicit validated origin ref, Push uses an explicit non-forcing
+origin refspec, and Pull/switch are blocked during an active managed Claude
+session. Clone activation is atomic no-replace; rollback validates both Project
+and staging markers before any recursive removal. Credentials and raw tool
+output never enter API, logs, Audit or Jobs.

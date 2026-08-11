@@ -126,6 +126,30 @@ def _mark_rollback_attention(
         return
 
 
+def _mark_finalize_attention(
+    services: ControlPlaneServices,
+    job: Job,
+    *,
+    job_type: str,
+) -> None:
+    """Keep an already-READY workspace intact when marker finalization is uncertain."""
+    services.jobs.needs_attention(
+        job.id,
+        code="PROJECT_FINALIZE_REQUIRES_ATTENTION",
+        summary="Workspace is ready but finalization requires review",
+    )
+    try:
+        _audit_job(
+            services,
+            job,
+            action=_FAILURE_AUDIT[job_type],
+            result="failed",
+            error_code="PROJECT_FINALIZE_REQUIRES_ATTENTION",
+        )
+    except Exception:
+        return
+
+
 def _finish_failure(
     services: ControlPlaneServices,
     job: Job,
@@ -162,6 +186,7 @@ async def execute_job(
     payload = dict(job.payload_json)
     project_key = str(payload.get("project_key", ""))
     request_id = str(job.request_id or f"req_worker-{job_id}")
+    project_marked_ready = False
     try:
         services.jobs.progress(
             job_id, progress=25, phase="executing", summary="Operation executing"
@@ -171,6 +196,7 @@ async def execute_job(
                 services, job_id, runtime.create_workspace(request_id, project_key, job_id)
             )
             services.projects.mark_ready(project_id)
+            project_marked_ready = True
             await _runtime_call(
                 services, job_id, runtime.finalize_workspace(request_id, project_key, job_id)
             )
@@ -182,6 +208,7 @@ async def execute_job(
                 runtime.clone_workspace(request_id, project_key, job_id, repository_url),
             )
             services.projects.mark_ready(project_id, default_branch=cloned.branch)
+            project_marked_ready = True
             await _runtime_call(
                 services, job_id, runtime.finalize_workspace(request_id, project_key, job_id)
             )
@@ -233,6 +260,9 @@ async def execute_job(
         services.jobs.succeed(job_id, "Operation completed")
     except RuntimeOperationError as exc:
         if job_type in {"project.create", "project.clone"}:
+            if project_marked_ready:
+                _mark_finalize_attention(services, job, job_type=job_type)
+                return
             try:
                 await _runtime_call(
                     services,
@@ -257,6 +287,9 @@ async def execute_job(
         )
     except Exception:
         if job_type in {"project.create", "project.clone"}:
+            if project_marked_ready:
+                _mark_finalize_attention(services, job, job_type=job_type)
+                return
             try:
                 await _runtime_call(
                     services,

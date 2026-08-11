@@ -79,7 +79,12 @@ def validate_repository_url(value: str) -> str:
         raise ProjectValidationError()
     ssh = _GITHUB_SSH.fullmatch(value)
     if ssh:
-        if ssh.group("owner").startswith("-") or ssh.group("repo").startswith("-"):
+        if (
+            ssh.group("owner").startswith("-")
+            or ssh.group("repo").startswith("-")
+            or ssh.group("owner") in {".", ".."}
+            or ssh.group("repo").removesuffix(".git") in {".", ".."}
+        ):
             raise ProjectValidationError()
         return value
     try:
@@ -109,7 +114,13 @@ def validate_repository_url(value: str) -> str:
         r"[A-Za-z0-9_.-]{1,100}", repository_name
     ):
         raise ProjectValidationError()
-    if owner.startswith("-") or repository_name.startswith("-"):
+    if (
+        owner.startswith("-")
+        or repository_name.startswith("-")
+        or owner in {".", ".."}
+        or repository_name in {".", ".."}
+        or parsed.path != f"/{owner}/{repository}"
+    ):
         raise ProjectValidationError()
     return urlunsplit(("https", "github.com", f"/{owner}/{repository}", "", ""))
 

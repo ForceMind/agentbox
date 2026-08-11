@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
+import ctypes
+import errno
 import hashlib
 import os
 import shutil
 import stat
+import unicodedata
 from pathlib import Path
 
 from agentbox_runtime.git import GitAdapter
@@ -25,6 +29,7 @@ from agentbox_runtime.project import ProjectRegistry, validate_project_id
 
 _OPERATION_MARKER = ".agentbox-operation"
 _PROJECT_MARKER = ".agentbox-project"
+_RENAME_NOREPLACE = 1
 
 
 def validate_operation_id(value: str) -> str:
@@ -65,11 +70,14 @@ class ProjectWorkspaceManager:
         try:
             self._assert_final_absent(final)
             workspace.mkdir(mode=0o750)
-            self._write_marker(workspace / _PROJECT_MARKER, operation_id)
-            os.replace(workspace, final)
+            self._write_marker(
+                workspace / _PROJECT_MARKER, self._project_marker_value("empty", operation_id)
+            )
+            self._activate_noreplace(operation_id, operation_dir, workspace, root, final)
             return GitActionResult("created")
         except Exception:
-            self._cleanup_operation(operation_dir, operation_id)
+            if self._project_marker_kind(final / _PROJECT_MARKER, operation_id) is None:
+                self._cleanup_operation(operation_dir, operation_id)
             raise
 
     async def clone(
@@ -84,19 +92,22 @@ class ProjectWorkspaceManager:
             await self._git.clone(repository_url, cwd=operation_dir, destination=workspace)
             if not (workspace / ".git").is_dir() or (workspace / ".git").is_symlink():
                 raise RuntimeOperationError("GIT_CLONE_FAILED", "Cloned repository is invalid")
-            self._write_marker(workspace / _PROJECT_MARKER, operation_id)
-            os.replace(workspace, final)
+            self._write_marker(
+                workspace / _PROJECT_MARKER, self._project_marker_value("clone", operation_id)
+            )
+            self._activate_noreplace(operation_id, operation_dir, workspace, root, final)
             status = await self._git.status(final)
             return GitActionResult("cloned", status.branch)
         except Exception:
-            self._cleanup_operation(operation_dir, operation_id)
+            if self._project_marker_kind(final / _PROJECT_MARKER, operation_id) is None:
+                self._cleanup_operation(operation_dir, operation_id)
             raise
 
     def finalize(self, project_key: str, operation_id: str) -> GitActionResult:
         project = self._projects.resolve(validate_project_id(project_key))
         operation_id = validate_operation_id(operation_id)
         marker = project.path / _PROJECT_MARKER
-        if not self._marker_matches(marker, operation_id):
+        if self._project_marker_kind(marker, operation_id) is None:
             raise RuntimeOperationError(
                 "PROJECT_FINALIZE_INVALID",
                 "Project finalization marker is invalid",
@@ -107,17 +118,61 @@ class ProjectWorkspaceManager:
         return GitActionResult("finalized")
 
     def rollback(self, project_key: str, operation_id: str) -> GitActionResult:
-        project = self._projects.resolve(validate_project_id(project_key))
+        key = validate_project_id(project_key)
         operation_id = validate_operation_id(operation_id)
+        root = self._projects.resolved_root(required=True)
+        assert root is not None
+        operation_dir = self._operation_dir(root, operation_id)
+        candidate = root / key
+        if not candidate.exists() and not candidate.is_symlink():
+            if not self._cleanup_operation(operation_dir, operation_id):
+                raise RuntimeOperationError(
+                    "PROJECT_ROLLBACK_INVALID",
+                    "Project rollback staging identity is invalid",
+                    category="forbidden",
+                )
+            return GitActionResult("rolled_back")
+        if not self._marker_matches(operation_dir / _OPERATION_MARKER, operation_id):
+            raise RuntimeOperationError(
+                "PROJECT_ROLLBACK_INVALID",
+                "Project rollback staging identity is invalid",
+                category="forbidden",
+            )
+        project = self._projects.resolve(key)
         marker = project.path / _PROJECT_MARKER
-        if not self._marker_matches(marker, operation_id):
+        kind = self._project_marker_kind(marker, operation_id)
+        if kind is None:
             raise RuntimeOperationError(
                 "PROJECT_ROLLBACK_INVALID",
                 "Project rollback marker is invalid",
                 category="forbidden",
             )
-        self._safe_tree(project.path)
-        shutil.rmtree(project.path)
+        if kind == "empty":
+            try:
+                entries = tuple(project.path.iterdir())
+            except OSError as exc:
+                raise RuntimeOperationError(
+                    "PROJECT_CLEANUP_UNSAFE", "Project cleanup requires manual attention"
+                ) from exc
+            if entries != (marker,):
+                raise RuntimeOperationError(
+                    "PROJECT_CLEANUP_UNSAFE",
+                    "Non-empty Project rollback requires manual attention",
+                    category="conflict",
+                )
+            marker_value = self._project_marker_value(kind, operation_id)
+            marker.unlink()
+            try:
+                project.path.rmdir()
+            except OSError as exc:
+                with contextlib.suppress(OSError):
+                    self._write_marker(marker, marker_value)
+                raise RuntimeOperationError(
+                    "PROJECT_CLEANUP_UNSAFE", "Project cleanup requires manual attention"
+                ) from exc
+        else:
+            self._safe_tree(project.path)
+            shutil.rmtree(project.path)
         self._remove_operation_parent(operation_id)
         return GitActionResult("rolled_back")
 
@@ -167,30 +222,166 @@ class ProjectWorkspaceManager:
         root = self._projects.resolved_root(required=True)
         assert root is not None
         temporary_root = root / ".agentbox-tmp"
-        if temporary_root.exists():
-            details = temporary_root.lstat()
-            if (
-                not stat.S_ISDIR(details.st_mode)
-                or stat.S_ISLNK(details.st_mode)
-                or details.st_uid != os.geteuid()
-                or details.st_mode & 0o022
-            ):
-                raise RuntimeOperationError(
-                    "PROJECT_TEMP_ROOT_INVALID",
-                    "Project temporary root is invalid",
-                    category="forbidden",
-                )
-        else:
-            temporary_root.mkdir(mode=0o700)
-        name = f"op-{hashlib.sha256(operation_id.encode()).hexdigest()[:20]}"
-        operation_dir = temporary_root / name
-        operation_dir.mkdir(mode=0o700)
+        if not temporary_root.exists() and not temporary_root.is_symlink():
+            with contextlib.suppress(FileExistsError):
+                temporary_root.mkdir(mode=0o700)
+        self._assert_owned_directory(temporary_root, code="PROJECT_TEMP_ROOT_INVALID")
+        operation_dir = self._operation_dir(root, operation_id)
+        try:
+            operation_dir.mkdir(mode=0o700)
+        except FileExistsError as exc:
+            raise RuntimeOperationError(
+                "PROJECT_OPERATION_CONFLICT",
+                "Project operation staging already exists and requires review",
+                category="conflict",
+            ) from exc
         self._write_marker(operation_dir / _OPERATION_MARKER, operation_id)
         return root, operation_dir, operation_dir / "workspace"
 
+    def _activate_noreplace(
+        self,
+        operation_id: str,
+        operation_dir: Path,
+        workspace: Path,
+        root: Path,
+        final: Path,
+    ) -> None:
+        if not self._marker_matches(operation_dir / _OPERATION_MARKER, operation_id):
+            raise RuntimeOperationError(
+                "PROJECT_OPERATION_INVALID",
+                "Project operation identity changed",
+                category="forbidden",
+            )
+        self._assert_owned_directory(operation_dir, code="PROJECT_OPERATION_INVALID")
+        self._assert_owned_directory(workspace, code="PROJECT_PATH_INVALID", allow_group_read=True)
+        self._rename_noreplace(operation_dir, workspace.name, root, final.name)
+
+    @staticmethod
+    def _rename_noreplace(
+        source_directory: Path,
+        source_name: str,
+        destination_directory: Path,
+        destination_name: str,
+    ) -> None:
+        """Atomically activate one child without ever replacing a destination."""
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+        source_descriptor: int | None = None
+        destination_descriptor: int | None = None
+        workspace_descriptor: int | None = None
+        try:
+            source_descriptor = os.open(source_directory, directory_flags)
+            destination_descriptor = os.open(destination_directory, directory_flags)
+            workspace_descriptor = os.open(source_name, directory_flags, dir_fd=source_descriptor)
+            source_details = os.fstat(source_descriptor)
+            destination_details = os.fstat(destination_descriptor)
+            workspace_details = os.fstat(workspace_descriptor)
+            if (
+                not stat.S_ISDIR(source_details.st_mode)
+                or source_details.st_uid != os.geteuid()
+                or source_details.st_mode & 0o077
+                or not stat.S_ISDIR(destination_details.st_mode)
+                or destination_details.st_uid != os.geteuid()
+                or destination_details.st_mode & 0o022
+                or not stat.S_ISDIR(workspace_details.st_mode)
+                or workspace_details.st_uid != os.geteuid()
+                or workspace_details.st_mode & 0o022
+            ):
+                raise RuntimeOperationError(
+                    "PROJECT_ACTIVATION_FAILED",
+                    "Project activation directories are unsafe",
+                    category="forbidden",
+                )
+            os.fsync(workspace_descriptor)
+            live_workspace_details = os.stat(
+                source_name, dir_fd=source_descriptor, follow_symlinks=False
+            )
+            if (live_workspace_details.st_dev, live_workspace_details.st_ino) != (
+                workspace_details.st_dev,
+                workspace_details.st_ino,
+            ):
+                raise RuntimeOperationError(
+                    "PROJECT_ACTIVATION_FAILED",
+                    "Project workspace identity changed during activation",
+                    category="conflict",
+                )
+            renameat2 = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+            if renameat2 is None:
+                raise RuntimeOperationError(
+                    "PROJECT_ATOMIC_ACTIVATION_UNAVAILABLE",
+                    "Atomic no-replace Project activation is unavailable",
+                    category="unavailable",
+                )
+            renameat2.argtypes = (
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            )
+            renameat2.restype = ctypes.c_int
+            result = renameat2(
+                source_descriptor,
+                os.fsencode(source_name),
+                destination_descriptor,
+                os.fsencode(destination_name),
+                _RENAME_NOREPLACE,
+            )
+            if result != 0:
+                error_number = ctypes.get_errno()
+                if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+                    raise RuntimeOperationError(
+                        "PROJECT_PATH_COLLISION",
+                        "Project workspace already exists",
+                        category="conflict",
+                    )
+                if error_number in {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}:
+                    raise RuntimeOperationError(
+                        "PROJECT_ATOMIC_ACTIVATION_UNAVAILABLE",
+                        "Atomic no-replace Project activation is unavailable",
+                        category="unavailable",
+                    )
+                raise RuntimeOperationError(
+                    "PROJECT_ACTIVATION_FAILED",
+                    "Project workspace activation failed",
+                    category="conflict",
+                )
+            try:
+                os.fsync(destination_descriptor)
+            except OSError as exc:
+                raise RuntimeOperationError(
+                    "PROJECT_ACTIVATION_DURABILITY_UNKNOWN",
+                    "Project activation durability requires review",
+                    category="conflict",
+                ) from exc
+        except OSError as exc:
+            raise RuntimeOperationError(
+                "PROJECT_ACTIVATION_FAILED",
+                "Project workspace activation failed",
+                category="conflict",
+            ) from exc
+        finally:
+            if workspace_descriptor is not None:
+                os.close(workspace_descriptor)
+            if destination_descriptor is not None:
+                os.close(destination_descriptor)
+            if source_descriptor is not None:
+                os.close(source_descriptor)
+
     @staticmethod
     def _assert_final_absent(final: Path) -> None:
-        if final.exists() or final.is_symlink():
+        collision_key = unicodedata.normalize("NFC", final.name).casefold()
+        try:
+            collision = any(
+                unicodedata.normalize("NFC", entry.name).casefold() == collision_key
+                for entry in final.parent.iterdir()
+            )
+        except OSError as exc:
+            raise RuntimeOperationError(
+                "PROJECT_PATH_INVALID",
+                "Project root could not be inspected",
+                category="unavailable",
+            ) from exc
+        if collision:
             raise RuntimeOperationError(
                 "PROJECT_PATH_COLLISION",
                 "Project workspace already exists",
@@ -207,6 +398,19 @@ class ProjectWorkspaceManager:
             os.close(descriptor)
 
     @staticmethod
+    def _project_marker_value(kind: str, operation_id: str) -> str:
+        if kind not in {"empty", "clone"}:
+            raise ValueError("invalid Project marker kind")
+        return f"{kind}:{operation_id}"
+
+    @classmethod
+    def _project_marker_kind(cls, path: Path, operation_id: str) -> str | None:
+        for kind in ("empty", "clone"):
+            if cls._marker_matches(path, cls._project_marker_value(kind, operation_id)):
+                return kind
+        return None
+
+    @staticmethod
     def _marker_matches(path: Path, expected: str) -> bool:
         try:
             details = path.lstat()
@@ -216,22 +420,45 @@ class ProjectWorkspaceManager:
         except (OSError, UnicodeError):
             return False
 
-    def _cleanup_operation(self, operation_dir: Path, operation_id: str) -> None:
-        if not operation_dir.exists() or not self._marker_matches(
-            operation_dir / _OPERATION_MARKER, operation_id
-        ):
-            return
+    def _cleanup_operation(self, operation_dir: Path, operation_id: str) -> bool:
+        if not operation_dir.exists() and not operation_dir.is_symlink():
+            return True
+        if not self._marker_matches(operation_dir / _OPERATION_MARKER, operation_id):
+            return False
         self._safe_tree(operation_dir)
         shutil.rmtree(operation_dir)
+        return True
 
     def _remove_operation_parent(self, operation_id: str) -> None:
         root = self._projects.resolved_root(required=True)
         assert root is not None
+        operation_dir = self._operation_dir(root, operation_id)
+        if not self._cleanup_operation(operation_dir, operation_id):
+            raise RuntimeOperationError(
+                "PROJECT_OPERATION_INVALID",
+                "Project operation cleanup identity is invalid",
+                category="forbidden",
+            )
+
+    @staticmethod
+    def _operation_dir(root: Path, operation_id: str) -> Path:
         name = f"op-{hashlib.sha256(operation_id.encode()).hexdigest()[:20]}"
-        operation_dir = root / ".agentbox-tmp" / name
-        if self._marker_matches(operation_dir / _OPERATION_MARKER, operation_id):
-            self._safe_tree(operation_dir)
-            shutil.rmtree(operation_dir)
+        return root / ".agentbox-tmp" / name
+
+    @staticmethod
+    def _assert_owned_directory(path: Path, *, code: str, allow_group_read: bool = False) -> None:
+        try:
+            details = path.lstat()
+        except OSError as exc:
+            raise RuntimeOperationError(code, "Project directory is invalid") from exc
+        forbidden_mode = 0o022 if allow_group_read else 0o077
+        if (
+            not stat.S_ISDIR(details.st_mode)
+            or stat.S_ISLNK(details.st_mode)
+            or details.st_uid != os.geteuid()
+            or details.st_mode & forbidden_mode
+        ):
+            raise RuntimeOperationError(code, "Project directory is invalid", category="forbidden")
 
     @staticmethod
     def _safe_tree(root: Path) -> None:

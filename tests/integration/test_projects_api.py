@@ -85,6 +85,27 @@ async def test_clone_and_git_mutations_are_queued_without_raw_runtime_output(
 
 
 @pytest.mark.anyio
+async def test_duplicate_git_mutation_idempotency_key_never_replays_job(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    initialized_services: ControlPlaneServices,
+) -> None:
+    csrf = await login(client, origin_headers)
+    project = initialized_services.projects.reconcile_existing(("project-a",))[0]
+    headers = {
+        **origin_headers,
+        "X-CSRF-Token": csrf,
+        "Idempotency-Key": "duplicate-push-fixture-001",
+    }
+    first = await client.post(f"/api/v1/projects/{project.id}/git/push", headers=headers)
+    second = await client.post(f"/api/v1/projects/{project.id}/git/push", headers=headers)
+
+    assert first.status_code == second.status_code == 202
+    assert first.json()["data"]["id"] == second.json()["data"]["id"]
+    assert len([job for job in initialized_services.jobs.list() if job.type == "git.push"]) == 1
+
+
+@pytest.mark.anyio
 async def test_project_detail_and_github_status_are_authenticated_no_store(
     client: httpx.AsyncClient,
     origin_headers: dict[str, str],
@@ -116,7 +137,7 @@ async def test_draft_pr_api_rejects_invalid_title_body_and_base_before_queue(
     for payload in (
         {"title": "bad\ntitle", "body": "", "base": None},
         {"title": "Safe", "body": "x" * (16 * 1024 + 1), "base": None},
-        {"title": "Safe", "body": "", "base": "-option"},
+        {"title": "Safe", "body": "", "base": "--repo"},
     ):
         response = await client.post(
             f"/api/v1/projects/{project.id}/github/pull-requests",
@@ -259,6 +280,33 @@ async def test_database_failure_after_workspace_creation_triggers_runtime_rollba
     assert stored.error_code == "JOB_EXECUTION_FAILED"
     assert initialized_services.projects.get(project.id).state == "error"
     assert rollbacks == [claimed.id]
+
+
+@pytest.mark.anyio
+async def test_finalize_failure_preserves_ready_workspace_without_rollback(
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, claimed = await queued_create(initialized_services, "Finalize Failure")
+    rollbacks: list[str] = []
+
+    async def fail_finalize(_request_id: str, _key: str, _operation: str) -> GitActionResult:
+        raise RuntimeOperationError("PROJECT_FINALIZE_INVALID", "simulated finalize failure")
+
+    async def rollback(_request_id: str, _key: str, operation: str) -> GitActionResult:
+        rollbacks.append(operation)
+        return GitActionResult("rolled_back")
+
+    monkeypatch.setattr(project_runtime, "finalize_workspace", fail_finalize)
+    monkeypatch.setattr(project_runtime, "rollback_workspace", rollback)
+    await execute_job(initialized_services, project_runtime, claimed)
+
+    stored = initialized_services.jobs.get(claimed.id)
+    assert stored is not None and stored.status == "needs_attention"
+    assert stored.error_code == "PROJECT_FINALIZE_REQUIRES_ATTENTION"
+    assert initialized_services.projects.get(project.id, ready=True).state == "ready"
+    assert rollbacks == []
 
 
 @pytest.mark.anyio

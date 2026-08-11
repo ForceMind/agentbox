@@ -41,14 +41,47 @@ _SAFE_CONFIG = (
     "diff.external=",
     "-c",
     "core.editor=false",
+    "-c",
+    "sequence.editor=false",
+    "-c",
+    "merge.autoStash=false",
+    "-c",
+    "rebase.autoStash=false",
+    "-c",
+    "pull.rebase=false",
+    "-c",
+    "pull.ff=only",
+    "-c",
+    "merge.ff=only",
+    "-c",
+    "fetch.recurseSubmodules=false",
+    "-c",
+    "submodule.recurse=false",
+    "-c",
+    "fetch.prune=false",
+    "-c",
+    "fetch.pruneTags=false",
+    "-c",
+    "fetch.parallel=1",
+    "-c",
+    "submodule.fetchJobs=1",
+    "-c",
+    "gc.auto=0",
 )
 _DANGEROUS_CONFIG = (
     "alias.",
     "credential.",
     "filter.",
+    "http.",
     "protocol.",
+    "pager.",
+    "pull.",
+    "push.",
     "url.",
     "core.askpass",
+    "core.alternaterefscommand",
+    "core.attributesfile",
+    "core.excludesfile",
     "core.fsmonitor",
     "core.gitproxy",
     "core.hookspath",
@@ -57,8 +90,10 @@ _DANGEROUS_CONFIG = (
     "core.pager",
     "core.editor",
     "diff.external",
+    "interactive.difffilter",
     "include.path",
     "includeif.",
+    "sequence.editor",
 )
 
 
@@ -67,10 +102,28 @@ def _unsafe_config_key(key: str) -> bool:
     if any(lowered == item or lowered.startswith(item) for item in _DANGEROUS_CONFIG):
         return True
     if lowered.startswith("remote.") and lowered.endswith(
-        (".uploadpack", ".receivepack", ".proxy", ".vcs")
+        (
+            ".mirror",
+            ".proxy",
+            ".prune",
+            ".prunetags",
+            ".push",
+            ".pushurl",
+            ".receivepack",
+            ".skipdefaultupdate",
+            ".tagopt",
+            ".uploadpack",
+            ".vcs",
+        )
     ):
         return True
-    return lowered.startswith("http.") and lowered.endswith(".extraheader")
+    if lowered.startswith("branch.") and lowered.endswith((".mergeoptions", ".pushremote")):
+        return True
+    if lowered.startswith(("difftool.", "mergetool.")):
+        return True
+    return lowered.startswith(("diff.", "merge.")) and lowered.endswith(
+        (".command", ".driver", ".textconv")
+    )
 
 
 def validate_git_repository_url(value: str) -> str:
@@ -84,7 +137,12 @@ def validate_git_repository_url(value: str) -> str:
         )
     ssh = _GITHUB_SSH.fullmatch(value)
     if ssh:
-        if ssh.group("owner").startswith("-") or ssh.group("repo").startswith("-"):
+        if (
+            ssh.group("owner").startswith("-")
+            or ssh.group("repo").startswith("-")
+            or ssh.group("owner") in {".", ".."}
+            or ssh.group("repo").removesuffix(".git") in {".", ".."}
+        ):
             raise RuntimeOperationError(
                 "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid", category="validation"
             )
@@ -112,8 +170,20 @@ def validate_git_repository_url(value: str) -> str:
             "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid", category="validation"
         )
     parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) != 2 or any(
-        not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", part.removesuffix(".git")) for part in parts
+    if len(parts) != 2:
+        raise RuntimeOperationError(
+            "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid", category="validation"
+        )
+    owner, repository = parts
+    repository_name = repository.removesuffix(".git")
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", owner)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", repository_name)
+        or owner.startswith("-")
+        or repository_name.startswith("-")
+        or owner in {".", ".."}
+        or repository_name in {".", ".."}
+        or parsed.path != f"/{owner}/{repository}"
     ):
         raise RuntimeOperationError(
             "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid", category="validation"
@@ -141,7 +211,11 @@ def validate_branch_name(value: str) -> str:
 
 def redact_remote_url(value: str) -> str | None:
     """Remove userinfo/query/fragment; invalid or local transports are not displayed."""
+    if len(value) > 4096:
+        return None
     value = value.strip()
+    if any(unicodedata.category(character).startswith("C") for character in value):
+        return None
     ssh = _GITHUB_SSH.fullmatch(value)
     if ssh:
         repository = ssh.group("repo").removesuffix(".git")
@@ -174,10 +248,14 @@ class GitAdapter:
                 "GCM_INTERACTIVE": "Never",
                 "GIT_CONFIG_NOSYSTEM": "1",
                 "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_EDITOR": "/bin/false",
                 "GIT_ASKPASS": "/bin/false",
+                "GIT_PAGER": "cat",
+                "GIT_SEQUENCE_EDITOR": "/bin/false",
                 "SSH_ASKPASS": "/bin/false",
                 "GIT_LFS_SKIP_SMUDGE": "1",
                 "GIT_ALLOW_PROTOCOL": "https:ssh",
+                "PAGER": "cat",
             }
         )
         self._runner = runner or ControlledProcessRunner()
@@ -316,7 +394,6 @@ class GitAdapter:
 
     async def pull(self, project: Path) -> GitActionResult:
         identity = self._require_repository(project)
-        await self._assert_safe_repository_config(identity, project)
         status = await self.status(project)
         if status.detached_head:
             raise RuntimeOperationError(
@@ -324,13 +401,20 @@ class GitAdapter:
                 "Pull is unavailable in detached HEAD state",
                 category="conflict",
             )
-        if status.upstream is None:
-            raise RuntimeOperationError(
-                "GIT_UPSTREAM_MISSING", "Current branch has no upstream", category="conflict"
-            )
+        branch, remote_branch = await self._upstream_target(identity, project, status)
         result = await self._run(
             identity,
-            (*_SAFE_CONFIG, "pull", "--ff-only", "--no-rebase"),
+            (
+                *_SAFE_CONFIG,
+                "pull",
+                "--ff-only",
+                "--no-rebase",
+                "--no-tags",
+                "--no-recurse-submodules",
+                "--no-verify",
+                "origin",
+                f"refs/heads/{remote_branch}",
+            ),
             cwd=project,
             timeout=300,
             stdout_limit=64 * 1024,
@@ -345,11 +429,10 @@ class GitAdapter:
                     category="conflict",
                 )
             self._raise_network_failure(result, "GIT_PULL_FAILED", "Pull failed")
-        return GitActionResult("pulled", status.branch)
+        return GitActionResult("pulled", branch)
 
     async def push(self, project: Path) -> GitActionResult:
         identity = self._require_repository(project)
-        await self._assert_safe_repository_config(identity, project)
         status = await self.status(project)
         if status.detached_head:
             raise RuntimeOperationError(
@@ -357,13 +440,11 @@ class GitAdapter:
                 "Push is unavailable in detached HEAD state",
                 category="conflict",
             )
-        if status.upstream is None:
-            raise RuntimeOperationError(
-                "GIT_UPSTREAM_MISSING", "Current branch has no upstream", category="conflict"
-            )
+        branch, remote_branch = await self._upstream_target(identity, project, status)
+        refspec = f"refs/heads/{branch}:refs/heads/{remote_branch}"
         result = await self._run(
             identity,
-            (*_SAFE_CONFIG, "push"),
+            (*_SAFE_CONFIG, "push", "--no-verify", "--porcelain", "origin", refspec),
             cwd=project,
             timeout=300,
             stdout_limit=64 * 1024,
@@ -371,7 +452,117 @@ class GitAdapter:
         )
         if result.exit_code != 0:
             self._raise_network_failure(result, "GIT_PUSH_FAILED", "Push failed")
-        return GitActionResult("pushed", status.branch)
+        return GitActionResult("pushed", branch)
+
+    async def _upstream_target(
+        self, identity: ExecutableIdentity, project: Path, status: GitStatus
+    ) -> tuple[str, str]:
+        """Resolve one existing origin upstream into explicit, non-forcing refs."""
+        if status.branch is None or status.upstream is None:
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_MISSING", "Current branch has no upstream", category="conflict"
+            )
+        try:
+            branch = validate_branch_name(status.branch)
+        except RuntimeOperationError as exc:
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_UNSAFE",
+                "Current branch upstream is invalid",
+                category="forbidden",
+            ) from exc
+        remote = await self._local_config_value(identity, project, f"branch.{branch}.remote")
+        merge_ref = await self._local_config_value(identity, project, f"branch.{branch}.merge")
+        if remote is None or merge_ref is None:
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_MISSING", "Current branch has no upstream", category="conflict"
+            )
+        prefix = "refs/heads/"
+        if remote != "origin" or not merge_ref.startswith(prefix):
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_UNSAFE",
+                "Current branch upstream is not an approved origin branch",
+                category="forbidden",
+            )
+        try:
+            remote_branch = validate_branch_name(merge_ref.removeprefix(prefix))
+        except RuntimeOperationError as exc:
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_UNSAFE",
+                "Current branch upstream is invalid",
+                category="forbidden",
+            ) from exc
+        if status.upstream != f"origin/{remote_branch}":
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_UNSAFE",
+                "Current branch upstream is inconsistent",
+                category="forbidden",
+            )
+        await self._assert_safe_origin(identity, project)
+        return branch, remote_branch
+
+    async def _local_config_value(
+        self, identity: ExecutableIdentity, project: Path, key: str
+    ) -> str | None:
+        result = await self._run(
+            identity,
+            (
+                "--no-optional-locks",
+                "config",
+                "--no-includes",
+                "--get",
+                key,
+            ),
+            cwd=project,
+            stdout_limit=4096,
+            stderr_limit=4096,
+        )
+        if result.exit_code == 1:
+            return None
+        if result.exit_code != 0:
+            raise RuntimeOperationError("GIT_CONFIG_UNSAFE", "Repository configuration is unsafe")
+        value = result.stdout.decode("utf-8", errors="replace").rstrip("\n")
+        if not value or "\n" in value or "\x00" in value or len(value) > 512:
+            raise RuntimeOperationError("GIT_CONFIG_UNSAFE", "Repository configuration is unsafe")
+        return value
+
+    async def _assert_safe_origin(self, identity: ExecutableIdentity, project: Path) -> None:
+        result = await self._run(
+            identity,
+            (
+                "--no-optional-locks",
+                "config",
+                "--no-includes",
+                "--null",
+                "--get-all",
+                "remote.origin.url",
+            ),
+            cwd=project,
+            stdout_limit=4096,
+            stderr_limit=4096,
+        )
+        if result.exit_code != 0:
+            raise RuntimeOperationError(
+                "GIT_REMOTE_UNSAFE", "Origin remote is unavailable", category="forbidden"
+            )
+        urls = [
+            value
+            for value in result.stdout.decode("utf-8", errors="replace").split("\x00")
+            if value
+        ]
+        if len(urls) != 1:
+            raise RuntimeOperationError(
+                "GIT_REMOTE_UNSAFE",
+                "Origin remote is not uniquely configured",
+                category="forbidden",
+            )
+        try:
+            validate_git_repository_url(urls[0])
+        except RuntimeOperationError as exc:
+            raise RuntimeOperationError(
+                "GIT_REMOTE_UNSAFE",
+                "Origin remote is not an approved GitHub transport",
+                category="forbidden",
+            ) from exc
 
     async def _parse_status(
         self, identity: ExecutableIdentity, project: Path, raw: bytes
@@ -439,7 +630,6 @@ class GitAdapter:
             (
                 "--no-optional-locks",
                 "config",
-                "--local",
                 "--no-includes",
                 "--null",
                 "--list",

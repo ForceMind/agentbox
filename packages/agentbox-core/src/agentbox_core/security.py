@@ -33,6 +33,7 @@ SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(password|passwd|token|secret|cookie|authorization|csrf|session)"
     r"(\s*[:=]\s*)([^\s,;]+)"
 )
+CREDENTIAL_URL_PATTERN = re.compile(r"(?i)\b(https?://)[^/@\s]+@")
 
 
 class PasswordManager:
@@ -127,8 +128,12 @@ def is_sensitive_key(key: str) -> bool:
 
 
 def redact_text(value: str, *, limit: int = 1024) -> str:
-    bounded = value.replace("\r", " ").replace("\n", " ")[:limit]
-    return SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", bounded)
+    sanitized = "".join(
+        " " if unicodedata.category(character).startswith("C") else character for character in value
+    )
+    without_url_credentials = CREDENTIAL_URL_PATTERN.sub(r"\1", sanitized)
+    redacted = SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", without_url_credentials)
+    return redacted[:limit]
 
 
 def sanitize_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -144,7 +149,7 @@ def sanitize_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
         if value is None or isinstance(value, (bool, int)):
             sanitized[key] = value
         elif isinstance(value, str) and len(value) <= 256:
-            sanitized[key] = value.replace("\r", " ").replace("\n", " ")
+            sanitized[key] = redact_text(value, limit=256)
         else:
             raise ValueError("audit metadata values must be bounded scalars")
     return sanitized

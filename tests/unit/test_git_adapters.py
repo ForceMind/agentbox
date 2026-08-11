@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -17,7 +19,12 @@ from agentbox_runtime.models import (
     GitStatus,
     RuntimeOperationError,
 )
-from agentbox_runtime.process import ExecutableIdentity, ProcessResult
+from agentbox_runtime.process import (
+    ControlledProcessRunner,
+    ExecutableIdentity,
+    ProcessResult,
+    inspect_executable,
+)
 
 IDENTITY = ExecutableIdentity(Path("/usr/bin/git"), 1, 2, 0o755, 1, 1)
 
@@ -106,6 +113,58 @@ def git_adapter(
 
 
 @pytest.mark.anyio
+async def test_clone_uses_fixed_protocol_submodule_and_lfs_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = RecordingRunner([(0, b"cloned", b"")])
+    adapter = git_adapter(monkeypatch, runner)
+    destination = tmp_path / "workspace"
+
+    await adapter.clone("https://github.com/owner/repo.git", cwd=tmp_path, destination=destination)
+
+    call = runner.calls[0]
+    arguments = call["arguments"]
+    environment = call["environment"]
+    assert isinstance(arguments, tuple)
+    assert isinstance(environment, dict)
+    assert arguments[-6:] == (
+        "clone",
+        "--no-recurse-submodules",
+        "--no-hardlinks",
+        "--",
+        "https://github.com/owner/repo.git",
+        str(destination),
+    )
+    assert "--recurse-submodules" not in arguments
+    assert environment["GIT_ALLOW_PROTOCOL"] == "https:ssh"
+    assert environment["GIT_LFS_SKIP_SMUDGE"] == "1"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "repository_url",
+    [
+        "file:///etc",
+        "ext::sh -c id",
+        "fd::7/repository",
+        "../local-repository",
+        "https://user:secret@github.com/owner/repo.git",
+        "https://github.com/owner/repo.git\n--upload-pack=evil",
+    ],
+)
+async def test_clone_rejects_unsafe_url_before_process_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository_url: str
+) -> None:
+    runner = RecordingRunner([])
+    with pytest.raises(RuntimeOperationError) as raised:
+        await git_adapter(monkeypatch, runner).clone(
+            repository_url, cwd=tmp_path, destination=tmp_path / "workspace"
+        )
+    assert raised.value.code == "GIT_REPOSITORY_URL_INVALID"
+    assert runner.calls == []
+
+
+@pytest.mark.anyio
 async def test_git_status_parses_porcelain_v2_and_redacts_remote_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -141,6 +200,10 @@ async def test_git_status_parses_porcelain_v2_and_redacts_remote_credentials(
     assert environment["SSH_ASKPASS"] == "/bin/false"
     assert environment["GIT_ALLOW_PROTOCOL"] == "https:ssh"
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
+    assert environment["GIT_PAGER"] == "cat"
+    assert environment["PAGER"] == "cat"
+    assert environment["GIT_EDITOR"] == "/bin/false"
+    assert environment["GIT_SEQUENCE_EDITOR"] == "/bin/false"
 
 
 @pytest.mark.anyio
@@ -172,8 +235,13 @@ async def test_git_status_handles_detached_and_unborn_branches(
     "key",
     [
         "core.hooksPath",
+        "core.alternateRefsCommand",
+        "core.attributesFile",
+        "core.excludesFile",
         "core.pager",
+        "pager.branch",
         "core.editor",
+        "sequence.editor",
         "core.sshCommand",
         "credential.helper",
         "credential.https://github.com.helper",
@@ -185,7 +253,17 @@ async def test_git_status_handles_detached_and_unborn_branches(
         "protocol.file.allow",
         "remote.origin.receivepack",
         "remote.origin.uploadpack",
+        "remote.origin.push",
+        "remote.origin.pushurl",
+        "remote.origin.mirror",
+        "push.default",
+        "branch.main.pushRemote",
+        "branch.main.mergeOptions",
         "http.https://github.com/.extraHeader",
+        "http.proxy",
+        "http.curloptResolve",
+        "interactive.diffFilter",
+        "pull.twohead",
         "alias.publish",
         "include.path",
         "includeIf.gitdir:/tmp.path",
@@ -199,14 +277,58 @@ async def test_repository_controlled_executable_config_is_rejected(
         await git_adapter(monkeypatch, runner).status(repository(tmp_path))
     assert raised.value.code == "GIT_CONFIG_UNSAFE"
     assert len(runner.calls) == 1
-    assert runner.calls[0]["arguments"] == (
-        "--no-optional-locks",
-        "config",
-        "--local",
-        "--no-includes",
-        "--null",
-        "--list",
+    arguments = runner.calls[0]["arguments"]
+    assert isinstance(arguments, tuple)
+    assert arguments[-4:] == ("config", "--no-includes", "--null", "--list")
+
+
+@pytest.mark.anyio
+async def test_worktree_config_cannot_execute_repository_controlled_program(
+    tmp_path: Path,
+) -> None:
+    git_path = shutil.which("git")
+    if git_path is None:
+        pytest.skip("Git is unavailable")
+    identity = inspect_executable(Path(git_path).absolute(), error_prefix="GIT")
+    runner = ControlledProcessRunner()
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    environment = {
+        "HOME": str(home),
+        "PATH": os.pathsep.join((str(Path(git_path).parent), "/usr/bin", "/bin")),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+    }
+    initialized = await runner.run(
+        identity,
+        ("init", "--quiet"),
+        environment=environment,
+        cwd=project,
+        timeout_seconds=10,
+        stdout_limit=4096,
+        stderr_limit=4096,
+        error_prefix="GIT",
     )
+    assert initialized.exit_code == 0
+    canary = tmp_path / "executed-canary"
+    executable = tmp_path / "malicious-fsmonitor"
+    executable.write_text(f"#!/bin/sh\ntouch {canary}\n", encoding="utf-8")
+    executable.chmod(0o700)
+    config = project / ".git" / "config"
+    with config.open("a", encoding="utf-8") as stream:
+        stream.write("\n[extensions]\n\tworktreeConfig = true\n")
+    (project / ".git" / "config.worktree").write_text(
+        f"[core]\n\tfsmonitor = {executable}\n", encoding="utf-8"
+    )
+    adapter = GitAdapter(environment=environment)
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await adapter.status(project)
+
+    assert raised.value.code == "GIT_CONFIG_UNSAFE"
+    assert not canary.exists()
 
 
 @pytest.mark.anyio
@@ -264,19 +386,38 @@ def status_results(*, upstream: bool = True) -> list[tuple[int, bytes, bytes]]:
     raw = b"# branch.oid abc\0# branch.head main\0"
     if upstream:
         raw += b"# branch.upstream origin/main\0# branch.ab +0 -0\0"
-    return [(0, b"", b""), (0, b"", b""), (0, raw, b""), (0, b"", b"")]
+    return [(0, b"", b""), (0, raw, b""), (0, b"", b"")]
+
+
+def approved_upstream_results() -> list[tuple[int, bytes, bytes]]:
+    return [
+        (0, b"origin\n", b""),
+        (0, b"refs/heads/main\n", b""),
+        (0, b"https://github.com/owner/repo.git\0", b""),
+    ]
 
 
 @pytest.mark.anyio
 async def test_pull_is_fast_forward_only_and_never_falls_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    runner = RecordingRunner([*status_results(), (0, b"updated", b"")])
+    runner = RecordingRunner(
+        [*status_results(), *approved_upstream_results(), (0, b"updated", b"")]
+    )
     result = await git_adapter(monkeypatch, runner).pull(repository(tmp_path))
     assert result.outcome == "pulled"
     arguments = runner.calls[-1]["arguments"]
     assert isinstance(arguments, tuple)
-    assert arguments[-3:] == ("pull", "--ff-only", "--no-rebase")
+    assert arguments[-8:] == (
+        "pull",
+        "--ff-only",
+        "--no-rebase",
+        "--no-tags",
+        "--no-recurse-submodules",
+        "--no-verify",
+        "origin",
+        "refs/heads/main",
+    )
     assert "merge" not in arguments and "rebase" not in arguments
 
 
@@ -286,7 +427,11 @@ async def test_pull_divergence_and_missing_upstream_are_normalized(
 ) -> None:
     project = repository(tmp_path)
     diverged = RecordingRunner(
-        [*status_results(), (1, b"", b"fatal: Not possible to fast-forward, aborting.")]
+        [
+            *status_results(),
+            *approved_upstream_results(),
+            (1, b"", b"fatal: Not possible to fast-forward, aborting."),
+        ]
     )
     with pytest.raises(RuntimeOperationError) as raised:
         await git_adapter(monkeypatch, diverged).pull(project)
@@ -310,6 +455,7 @@ async def test_push_has_no_force_surface_and_auth_errors_do_not_leak(
     runner = RecordingRunner(
         [
             *status_results(),
+            *approved_upstream_results(),
             (1, b"", f"could not read Username for '{canary}'".encode()),
         ]
     )
@@ -320,8 +466,64 @@ async def test_push_has_no_force_surface_and_auth_errors_do_not_leak(
     assert "SECRET-CANARY" not in caplog.text
     arguments = runner.calls[-1]["arguments"]
     assert isinstance(arguments, tuple)
-    assert arguments[-1] == "push"
+    assert arguments[-5:] == (
+        "push",
+        "--no-verify",
+        "--porcelain",
+        "origin",
+        "refs/heads/main:refs/heads/main",
+    )
     assert not any("force" in value for value in arguments)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("remote", "merge_ref", "origin_url", "expected"),
+    [
+        (
+            "attacker",
+            "refs/heads/main",
+            "https://github.com/owner/repo.git\0",
+            "GIT_UPSTREAM_UNSAFE",
+        ),
+        (
+            "origin",
+            "+refs/heads/main",
+            "https://github.com/owner/repo.git\0",
+            "GIT_UPSTREAM_UNSAFE",
+        ),
+        ("origin", "refs/heads/main", "file:///tmp/repository\0", "GIT_REMOTE_UNSAFE"),
+        (
+            "origin",
+            "refs/heads/main",
+            "https://github.com/owner/one.git\0https://github.com/owner/two.git\0",
+            "GIT_REMOTE_UNSAFE",
+        ),
+    ],
+)
+async def test_network_mutations_reject_unsafe_upstream_and_remote_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    remote: str,
+    merge_ref: str,
+    origin_url: str,
+    expected: str,
+) -> None:
+    runner = RecordingRunner(
+        [
+            *status_results(),
+            (0, f"{remote}\n".encode(), b""),
+            (0, f"{merge_ref}\n".encode(), b""),
+            (0, origin_url.encode(), b""),
+        ]
+    )
+    with pytest.raises(RuntimeOperationError) as raised:
+        await git_adapter(monkeypatch, runner).push(repository(tmp_path))
+    assert raised.value.code == expected
+    for call in runner.calls:
+        arguments = call["arguments"]
+        assert isinstance(arguments, tuple)
+        assert "push" not in arguments
 
 
 @pytest.mark.parametrize("value", ["", "bad\x00title", "e\u0301"])
@@ -336,6 +538,10 @@ def test_pr_body_is_bounded_and_github_identity_is_conservative() -> None:
     assert github_repository_from_remote("https://github.com/owner/repo.git") == "owner/repo"
     assert github_repository_from_remote("git@github.com:owner/repo.git") == "owner/repo"
     assert github_repository_from_remote("https://example.com/owner/repo.git") is None
+    assert github_repository_from_remote("http://github.com/owner/repo.git") is None
+    assert github_repository_from_remote("ssh://git@github.com/owner/repo.git") is None
+    assert github_repository_from_remote("https://user:token@github.com/owner/repo.git") is None
+    assert github_repository_from_remote("https://github.com/owner/repo.git?token=bad") is None
 
 
 def github_adapter(
@@ -398,7 +604,14 @@ async def test_github_project_status_parses_pr_and_check_matrix(
         b'"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]}'
     )
     runner = RecordingRunner([(0, b"gh version 2.50.0", b""), (0, b"ok", b""), (0, payload, b"")])
-    git = FakeGit(GitStatus(True, branch="feature", remote_url="https://github.com/owner/repo.git"))
+    git = FakeGit(
+        GitStatus(
+            True,
+            branch="feature",
+            upstream="origin/feature",
+            remote_url="https://github.com/owner/repo.git",
+        )
+    )
     status = await github_adapter(monkeypatch, runner, git).project_status(tmp_path)
     assert status.repository == "owner/repo"
     assert status.pull_request_number == 42
@@ -422,7 +635,14 @@ async def test_github_malformed_output_fails_closed(
     runner = RecordingRunner(
         [(0, b"gh version 2.50.0", b""), (0, b"ok", b""), (0, b"not-json", b"")]
     )
-    git = FakeGit(GitStatus(True, branch="feature", remote_url="https://github.com/owner/repo.git"))
+    git = FakeGit(
+        GitStatus(
+            True,
+            branch="feature",
+            upstream="origin/feature",
+            remote_url="https://github.com/owner/repo.git",
+        )
+    )
     with pytest.raises(RuntimeOperationError) as raised:
         await github_adapter(monkeypatch, runner, git).project_status(tmp_path)
     assert raised.value.code == "GITHUB_OUTPUT_INVALID"
@@ -432,7 +652,7 @@ async def test_github_malformed_output_fails_closed(
 async def test_draft_pr_uses_fixed_argv_and_body_stdin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    title = "Literal $(touch never) ; title"
+    title = 'Literal "quoted" \' $(touch never) ; title'
     body = "Literal body\n$(touch never)\nTOKENISH=not-a-secret"
     runner = RecordingRunner(
         [
@@ -441,7 +661,14 @@ async def test_draft_pr_uses_fixed_argv_and_body_stdin(
             (0, b"https://github.com/owner/repo/pull/77\n", b""),
         ]
     )
-    git = FakeGit(GitStatus(True, branch="feature", remote_url="https://github.com/owner/repo.git"))
+    git = FakeGit(
+        GitStatus(
+            True,
+            branch="feature",
+            upstream="origin/feature",
+            remote_url="https://github.com/owner/repo.git",
+        )
+    )
     result = await github_adapter(monkeypatch, runner, git).create_draft_pull_request(
         tmp_path, title=title, body=body, base="develop"
     )
@@ -460,3 +687,20 @@ async def test_draft_pr_uses_fixed_argv_and_body_stdin(
     )
     assert call["stdin"] == body.encode()
     assert call["sensitive"] is True
+
+
+@pytest.mark.anyio
+async def test_draft_pr_rejects_unpublished_branch_before_gh_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = RecordingRunner([(0, b"gh version 2.50.0", b""), (0, b"ok", b"")])
+    git = FakeGit(GitStatus(True, branch="feature", remote_url="https://github.com/owner/repo.git"))
+    with pytest.raises(RuntimeOperationError) as raised:
+        await github_adapter(monkeypatch, runner, git).create_draft_pull_request(
+            tmp_path, title="Safe title", body="bounded markdown", base=None
+        )
+    assert raised.value.code == "GIT_UPSTREAM_MISSING"
+    for call in runner.calls:
+        arguments = call["arguments"]
+        assert isinstance(arguments, tuple)
+        assert arguments[:2] != ("pr", "create")

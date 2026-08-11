@@ -10,9 +10,10 @@ values for `GIT_CONFIG_GLOBAL`, `GIT_ASKPASS`, and `SSH_ASKPASS` may reach the
 final Git process. Fixed command-level configuration disables hooks, pagers,
 editors, external diff, and optional locks for read-only inspection.
 
-Repository-local executable or transport-changing configuration is enumerated
-with includes disabled and fails closed.
-The deny set covers credentials and HTTP extra headers; `core.sshCommand`,
+Repository and worktree-scope executable or transport-changing configuration is
+enumerated with includes disabled and fails closed. System/global configuration
+is disabled, while command-scope safety overrides remain fixed by AgentBox.
+The deny set covers credentials and all repository HTTP settings; `core.sshCommand`,
 `core.hooksPath`, `core.askPass`, `core.fsmonitor`, `core.worktree`,
 `core.gitProxy`, pagers and editors; aliases and includes; diff drivers and
 external diff; clean/smudge/process filters; `url.*.insteadOf` rewrites;
@@ -23,8 +24,8 @@ adapter policy, not a user-extensible Git config allowlist.
 
 - Status uses porcelain v2 and returns only structured branch, upstream, ahead/behind, staged, unstaged, untracked, conflict, clean, redacted remote, and submodule-presence fields.
 - Branch names pass a strict lexical validator and `git check-ref-format --branch`. Switch never stashes, resets, or discards changes.
-- Pull is always `--ff-only --no-rebase`; divergence returns `GIT_PULL_REQUIRES_RECONCILIATION` and never falls back to merge or rebase.
-- Push requires an existing upstream and never uses force or guesses a remote.
+- Pull fixes the target to the validated `origin` upstream ref and always uses `--ff-only --no-rebase --no-tags --no-recurse-submodules --no-verify`; divergence returns `GIT_PULL_REQUIRES_RECONCILIATION` and never falls back to merge or rebase.
+- Push requires a uniquely configured, approved GitHub `origin` upstream and sends one explicit non-`+` local-to-remote branch refspec with hooks disabled. It never uses force, guesses a remote, mirrors, or deletes a branch.
 - Pull and branch switch are rejected while the Project has a running or needs-interaction managed Claude session.
 
 Remote credentials, query strings, fragments, control characters, and raw stdout/stderr are not returned, logged, audited, or persisted. Errors are normalized to stable codes. Repository and `.git` ownership must match the Runtime user; AgentBox never adds wildcard `safe.directory` or changes ownership.

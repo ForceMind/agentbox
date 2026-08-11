@@ -3,11 +3,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-dangerous_python='(shell[[:space:]]*=[[:space:]]*True|os\.system[[:space:]]*\(|subprocess\.(run|Popen|call|check_call|check_output)[[:space:]]*\(|(^|[^[:alnum:]_])exec[[:space:]]*\(|run_as_root[[:space:]]*\()'
+dangerous_python='(shell[[:space:]]*=[[:space:]]*True|asyncio\.create_subprocess_shell[[:space:]]*\(|os\.(system|popen|spawn[a-z_]*)[[:space:]]*\(|subprocess\.(run|Popen|call|check_call|check_output)[[:space:]]*\(|(^|[^[:alnum:]_])exec[[:space:]]*\(|run_as_root[[:space:]]*\()'
 
 if grep --recursive --line-number --extended-regexp --include='*.py' \
   "$dangerous_python" apps packages; then
   printf 'Forbidden execution primitive found in AgentBox Python source.\n' >&2
+  exit 1
+fi
+
+os_exec_calls="$({
+  grep --recursive --line-number --extended-regexp --include='*.py' \
+    'os\.exec[a-z_]*[[:space:]]*\(' apps packages || true
+})"
+unexpected_os_exec_calls="$(printf '%s\n' "$os_exec_calls" | grep --invert-match --extended-regexp \
+  '^apps/cli/src/agentbox_cli/main\.py:[0-9]+:        os\.execv\(tmux, \[tmux, "attach-session", "-t", f"=\{runtime_session\.session_name\}"\]\)$' || true)"
+if [[ -n "$unexpected_os_exec_calls" ]]; then
+  printf 'OS exec use escaped the approved local tmux attach boundary:\n%s\n' \
+    "$unexpected_os_exec_calls" >&2
   exit 1
 fi
 
@@ -20,6 +32,30 @@ unexpected_process_calls="$(printf '%s\n' "$process_calls" | grep --invert-match
 if [[ -n "$unexpected_process_calls" ]]; then
   printf 'Subprocess use escaped the approved controlled-runner boundary:\n%s\n' \
     "$unexpected_process_calls" >&2
+  exit 1
+fi
+
+runner_references="$({
+  grep --recursive --line-number --include='*.py' \
+    'ControlledProcessRunner' apps packages || true
+})"
+unexpected_runner_references="$(printf '%s\n' "$runner_references" | grep --invert-match \
+  --extended-regexp '^packages/agentbox-runtime/src/agentbox_runtime/(process|codex|claude|tmux|git|github)\.py:' || true)"
+if [[ -n "$unexpected_runner_references" ]]; then
+  printf 'Controlled runner use escaped approved Runtime adapters:\n%s\n' \
+    "$unexpected_runner_references" >&2
+  exit 1
+fi
+
+git_tool_selectors="$({
+  grep --recursive --line-number --extended-regexp --include='*.py' \
+    'shutil\.which\("(git|gh)"' apps packages || true
+})"
+unexpected_git_tool_selectors="$(printf '%s\n' "$git_tool_selectors" | grep --invert-match \
+  --extended-regexp '^packages/agentbox-runtime/src/agentbox_runtime/(git|github)\.py:' || true)"
+if [[ -n "$unexpected_git_tool_selectors" ]]; then
+  printf 'Git/GitHub executable selection escaped approved adapters:\n%s\n' \
+    "$unexpected_git_tool_selectors" >&2
   exit 1
 fi
 

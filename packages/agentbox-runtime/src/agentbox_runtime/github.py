@@ -41,12 +41,37 @@ def github_repository_from_remote(remote: str | None) -> str | None:
         return f"{ssh.group(1)}/{ssh.group(2).removesuffix('.git')}"
     try:
         parsed = urlsplit(remote)
+        hostname = parsed.hostname
+        port = parsed.port
+        username = parsed.username
+        password = parsed.password
     except ValueError:
         return None
     parts = [part for part in parsed.path.split("/") if part]
-    if parsed.hostname != "github.com" or len(parts) != 2:
+    if (
+        parsed.scheme != "https"
+        or hostname != "github.com"
+        or port is not None
+        or username is not None
+        or password is not None
+        or parsed.query
+        or parsed.fragment
+        or len(parts) != 2
+    ):
         return None
-    return f"{parts[0]}/{parts[1].removesuffix('.git')}"
+    owner = parts[0]
+    repository = parts[1].removesuffix(".git")
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", owner)
+        or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", repository)
+        or owner.startswith("-")
+        or repository.startswith("-")
+        or owner in {".", ".."}
+        or repository in {".", ".."}
+        or parsed.path != f"/{parts[0]}/{parts[1]}"
+    ):
+        return None
+    return f"{owner}/{repository}"
 
 
 def validate_pr_title(value: str) -> str:
@@ -97,7 +122,10 @@ class GitHubAdapter:
                 "GCM_INTERACTIVE": "Never",
                 "GIT_CONFIG_NOSYSTEM": "1",
                 "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_EDITOR": "/bin/false",
                 "GIT_ASKPASS": "/bin/false",
+                "GIT_PAGER": "cat",
+                "GIT_SEQUENCE_EDITOR": "/bin/false",
                 "SSH_ASKPASS": "/bin/false",
                 "GIT_LFS_SKIP_SMUDGE": "1",
                 "GIT_ALLOW_PROTOCOL": "https:ssh",
@@ -165,11 +193,12 @@ class GitHubAdapter:
             payload = json.loads(result.stdout)
             if not isinstance(payload, dict):
                 raise ValueError
+            title = validate_pr_title(str(payload["title"]))
             return GitHubProjectStatus(
                 available=True,
                 repository=repository,
                 pull_request_number=int(payload["number"]),
-                pull_request_title=str(payload["title"])[:256],
+                pull_request_title=title,
                 pull_request_state=str(payload["state"])[:32].casefold(),
                 pull_request_draft=bool(payload["isDraft"]),
                 pull_request_url=self._validated_pr_url(str(payload["url"])),
@@ -213,6 +242,12 @@ class GitHubAdapter:
             raise RuntimeOperationError(
                 "GIT_DETACHED_HEAD",
                 "Draft pull request requires a local branch",
+                category="conflict",
+            )
+        if git_status.upstream is None:
+            raise RuntimeOperationError(
+                "GIT_UPSTREAM_MISSING",
+                "Draft pull request requires a published branch",
                 category="conflict",
             )
         if github_repository_from_remote(git_status.remote_url) is None:

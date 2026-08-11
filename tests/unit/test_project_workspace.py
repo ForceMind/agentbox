@@ -53,7 +53,7 @@ async def test_clone_stages_then_atomically_finalizes_owned_workspace(tmp_path: 
     final = root / "safe-project"
     assert result.outcome == "cloned" and result.branch == "main"
     assert final.is_dir()
-    assert (final / ".agentbox-project").read_text(encoding="ascii") == OPERATION_ID
+    assert (final / ".agentbox-project").read_text(encoding="ascii") == (f"clone:{OPERATION_ID}")
     assert not any((root / ".agentbox-tmp").glob("*/workspace"))
 
     assert workspace.finalize("safe-project", OPERATION_ID).outcome == "finalized"
@@ -95,6 +95,117 @@ async def test_collision_cleans_staging_without_touching_existing_target(tmp_pat
 
 
 @pytest.mark.anyio
+async def test_case_normalized_filesystem_collision_fails_closed(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    existing = root / "Safe-Project"
+    existing.mkdir()
+    (existing / "canary").write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await manager(root, FakeGit()).create("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_PATH_COLLISION"
+    assert (existing / "canary").read_text(encoding="utf-8") == "preserve"
+    assert not (root / "safe-project").exists()
+
+
+@pytest.mark.anyio
+async def test_existing_file_collision_is_preserved(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    target = root / "safe-project"
+    target.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await manager(root, FakeGit()).create("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_PATH_COLLISION"
+    assert target.read_text(encoding="utf-8") == "preserve"
+
+
+@pytest.mark.anyio
+async def test_activation_race_never_replaces_new_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    original = workspace._rename_noreplace
+
+    def create_collision_then_activate(
+        source_directory: Path,
+        source_name: str,
+        destination_directory: Path,
+        destination_name: str,
+    ) -> None:
+        collision = destination_directory / destination_name
+        collision.mkdir()
+        (collision / "canary").write_text("must survive", encoding="utf-8")
+        original(source_directory, source_name, destination_directory, destination_name)
+
+    monkeypatch.setattr(workspace, "_rename_noreplace", create_collision_then_activate)
+    with pytest.raises(RuntimeOperationError) as raised:
+        await workspace.create("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_PATH_COLLISION"
+    assert (root / "safe-project" / "canary").read_text(encoding="utf-8") == "must survive"
+    assert list((root / ".agentbox-tmp").iterdir()) == []
+
+
+@pytest.mark.anyio
+async def test_activation_failure_cleans_only_operation_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+
+    def fail_activation(*_args: object) -> None:
+        raise RuntimeOperationError("PROJECT_ACTIVATION_FAILED", "simulated rename failure")
+
+    monkeypatch.setattr(workspace, "_rename_noreplace", fail_activation)
+    with pytest.raises(RuntimeOperationError) as raised:
+        await workspace.create("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_ACTIVATION_FAILED"
+    assert not (root / "safe-project").exists()
+    assert list((root / ".agentbox-tmp").iterdir()) == []
+
+
+@pytest.mark.anyio
+async def test_post_rename_failure_preserves_rollback_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    original = workspace._rename_noreplace
+
+    def activate_then_report_uncertain(
+        source_directory: Path,
+        source_name: str,
+        destination_directory: Path,
+        destination_name: str,
+    ) -> None:
+        original(source_directory, source_name, destination_directory, destination_name)
+        raise RuntimeOperationError(
+            "PROJECT_ACTIVATION_DURABILITY_UNKNOWN", "simulated directory fsync failure"
+        )
+
+    monkeypatch.setattr(workspace, "_rename_noreplace", activate_then_report_uncertain)
+    with pytest.raises(RuntimeOperationError) as raised:
+        await workspace.create("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_ACTIVATION_DURABILITY_UNKNOWN"
+    operation_dir = workspace._operation_dir(root, OPERATION_ID)
+    assert operation_dir.is_dir()
+    assert (root / "safe-project" / ".agentbox-project").is_file()
+    assert workspace.rollback("safe-project", OPERATION_ID).outcome == "rolled_back"
+    assert not (root / "safe-project").exists()
+
+
+@pytest.mark.anyio
 async def test_rollback_requires_exact_identity_marker_and_preserves_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -110,6 +221,115 @@ async def test_rollback_requires_exact_identity_marker_and_preserves_mismatch(
 
     assert raised.value.code == "PROJECT_ROLLBACK_INVALID"
     assert (root / "safe-project").is_dir()
+
+
+@pytest.mark.anyio
+async def test_rollback_requires_present_identity_marker(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    await workspace.create("safe-project", OPERATION_ID)
+    final = root / "safe-project"
+    (final / ".agentbox-project").unlink()
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        workspace.rollback("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_ROLLBACK_INVALID"
+    assert final.is_dir()
+
+
+@pytest.mark.anyio
+async def test_empty_project_rollback_refuses_new_content_and_preserves_identity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    await workspace.create("safe-project", OPERATION_ID)
+    final = root / "safe-project"
+    (final / "user-content").write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        workspace.rollback("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_CLEANUP_UNSAFE"
+    assert (final / "user-content").read_text(encoding="utf-8") == "preserve"
+    assert (final / ".agentbox-project").read_text(encoding="ascii") == (f"empty:{OPERATION_ID}")
+
+
+@pytest.mark.anyio
+async def test_clone_rollback_removes_only_exact_marker_bound_workspace(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    await workspace.clone("safe-project", OPERATION_ID, "https://github.com/owner/repo.git")
+
+    assert workspace.rollback("safe-project", OPERATION_ID).outcome == "rolled_back"
+    assert not (root / "safe-project").exists()
+    assert list((root / ".agentbox-tmp").iterdir()) == []
+
+
+def test_rollback_without_final_cleans_only_owned_staging(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    _root, operation_dir, staging = workspace._staging(OPERATION_ID)
+    staging.mkdir()
+    (staging / "partial").write_text("owned", encoding="utf-8")
+
+    assert workspace.rollback("safe-project", OPERATION_ID).outcome == "rolled_back"
+    assert not operation_dir.exists()
+
+
+def test_rollback_without_final_rejects_mismatched_staging_marker(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    _root, operation_dir, _staging = workspace._staging(OPERATION_ID)
+    (operation_dir / ".agentbox-operation").write_text(
+        "job_ffffffffffffffffffffffffffffffff", encoding="ascii"
+    )
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        workspace.rollback("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_ROLLBACK_INVALID"
+    assert operation_dir.is_dir()
+
+
+@pytest.mark.anyio
+async def test_rollback_with_final_validates_staging_before_workspace_delete(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    await workspace.clone("safe-project", OPERATION_ID, "https://github.com/owner/repo.git")
+    operation_dir = workspace._operation_dir(root, OPERATION_ID)
+    (operation_dir / ".agentbox-operation").write_text(
+        "job_ffffffffffffffffffffffffffffffff", encoding="ascii"
+    )
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        workspace.rollback("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_ROLLBACK_INVALID"
+    assert (root / "safe-project" / ".git").is_dir()
+
+
+@pytest.mark.anyio
+async def test_stale_staging_is_not_replayed_or_blindly_deleted(tmp_path: Path) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    workspace = manager(root, FakeGit())
+    _root, operation_dir, _staging = workspace._staging(OPERATION_ID)
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await workspace.create("safe-project", OPERATION_ID)
+
+    assert raised.value.code == "PROJECT_OPERATION_CONFLICT"
+    assert (operation_dir / ".agentbox-operation").read_text(encoding="ascii") == OPERATION_ID
 
 
 def test_project_root_group_writable_and_symlink_roots_fail_closed(tmp_path: Path) -> None:

@@ -16,10 +16,18 @@ Development uses `.agentbox-dev/projects`. The production architecture remains `
 
 Create and Clone reserve a Project row in `creating` state and enqueue a typed
 durable Job. Runtime creates a marker-bound staging workspace under
-`.agentbox-tmp`, then atomically renames it. A failure can remove only the
-operation directory or final directory carrying the exact Job marker. A
-final-path collision removes the unused staging identity before failing.
-Unknown or user-created directories are never recursively removed.
+`.agentbox-tmp`, then activates it with descriptor-relative Linux
+`renameat2(RENAME_NOREPLACE)` and a directory fsync. It never falls back to an
+overwriting rename. A failure can remove only the operation directory or final
+directory carrying both the exact Job marker and staging identity. Empty
+Project rollback additionally requires the marker to be the only entry; clone
+rollback uses the distinct clone marker before bounded recursive cleanup. A
+final-path or case-normalized collision removes only unused owned staging.
+Unknown, non-empty empty-Project, or user-created directories are never removed.
+
+The Project becomes `ready` in the database only after activation and Runtime
+validation. Failure after that transition preserves the workspace and records
+`needs_attention`; it never rolls back an already-ready workspace.
 
 Clone accepts only bounded GitHub HTTPS and `git@github.com` repository identities. Local paths and Git `file`, `ext`, helper, or option injection are rejected. Submodules are not initialized and LFS smudge is disabled.
 

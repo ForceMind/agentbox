@@ -37,12 +37,19 @@ def test_project_slugs_reject_path_and_option_injection(value: str) -> None:
     [
         "file:///etc/passwd",
         "ext::sh -c id",
+        "fd::7/repository",
+        "helper::command",
         "/tmp/repository",
+        "../relative-repository",
         "https://user:secret@github.com/owner/repo.git",
         "https://example.com/owner/repo.git",
+        "https://github.com/../repo.git",
+        "https://github.com/owner//repo.git",
+        "git@github.com:../repo.git",
         "https://[",
         "https://github.com:99999/owner/repo.git",
         "--upload-pack=evil",
+        "https://github.com/owner/repo.git\n--upload-pack=evil",
     ],
 )
 def test_repository_urls_reject_protocol_and_credential_injection(value: str) -> None:
@@ -52,7 +59,17 @@ def test_repository_urls_reject_protocol_and_credential_injection(value: str) ->
 
 @pytest.mark.parametrize(
     "value",
-    ["-force", "HEAD", "@", "feature/../escape", "name@{1}", "bad//name", "bad.lock"],
+    [
+        "--help",
+        "+refs/heads/x",
+        "-force",
+        "HEAD",
+        "@",
+        "feature/../escape",
+        "name@{1}",
+        "bad//name",
+        "bad.lock",
+    ],
 )
 def test_branch_names_reject_ref_and_option_injection(value: str) -> None:
     with pytest.raises(RuntimeOperationError):
@@ -67,7 +84,12 @@ def test_remote_url_credentials_are_redacted() -> None:
     assert redact_remote_url("file:///tmp/private") is None
     assert redact_remote_url("https://github.com:99999/owner/repo.git") is None
     assert redact_remote_url("https://[") is None
+    assert redact_remote_url("https://github.com/owner/repo.git\nunsafe") is None
     assert redact_remote_url("git@github.com:owner/repo.git") == "git@github.com:owner/repo.git"
+    assert (
+        redact_remote_url("https://oauth2:TOKEN-CANARY@github.com/owner/repo.git")
+        == "https://github.com/owner/repo.git"
+    )
 
 
 def test_registry_rejects_root_and_project_symlinks(tmp_path: Path) -> None:

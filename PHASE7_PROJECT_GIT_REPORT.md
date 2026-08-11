@@ -5,7 +5,7 @@
 Phase 7 replaces Phase 6 directory enumeration with formal persistent
 Projects, adds a minimal durable single-host Job system, and implements typed
 Git/GitHub Runtime operations for create, clone, status, branches,
-fast-forward-only Pull, ordinary no-force Push, and Draft PR creation. The
+fast-forward-only Pull, explicit no-force Push, and Draft PR creation. The
 implementation exposes no arbitrary shell, Git argv/config/path, filesystem
 Project deletion, dangerous Git mutation, Provider/Secret Manager, privileged
 Helper, installer, systemd deployment, or production host mutation.
@@ -60,11 +60,13 @@ by similarity.
 ## Project Create
 
 Create validates and reserves a `creating` Project, queues a typed Job, creates
-a marker-bound staging identity with safe permissions, atomically renames it to
-the final server-derived destination, and removes the marker only after the DB
-state is ready. Reservation, filesystem, DB, finalization, and audit failures
-have explicit rollback or `needs_attention` semantics. No Project filesystem
-Delete is exposed.
+a marker-bound staging identity with safe permissions, and uses descriptor-
+relative Linux `renameat2(RENAME_NOREPLACE)` plus directory fsync to activate
+the final server-derived destination without an overwrite fallback. The marker
+is removed only after the DB state is ready. Reservation, filesystem, DB,
+finalization, and audit failures have explicit rollback or `needs_attention`
+semantics. Empty-Project rollback refuses any unexpected content. No Project
+filesystem Delete is exposed.
 
 ## Clone
 
@@ -73,20 +75,23 @@ identities. Userinfo, credentials, query/fragment data, malformed authority,
 option injection, local paths, and `file`/`ext`/helper transports are rejected.
 Git clones the parent repository only into a per-Job temporary sibling with
 hardlinks, prompts, recursive submodules, and LFS smudge disabled. A valid Git
-repository is required before atomic final rename. Cleanup is limited to the
-exact marker-bearing operation/final identity; a collision never removes the
-existing target.
+repository is required before atomic no-replace activation. Recursive cleanup
+is limited to a clone identity whose final marker and staging operation marker
+both match the Job; a collision never removes the existing target. Stale or
+mismatched staging fails closed for operator review.
 
 ## Git Security Model
 
 Only `GitAdapter` invokes Git through `ControlledProcessRunner`; every operation
 has fixed argv, exact cwd, bounded timeout/output, sanitized environment, and no
 shell. Git system/global config, prompts, credential/SSH askpass, unapproved
-protocols, hooks, pagers, editors, and external diff are disabled. Local config
-is enumerated with includes disabled and fails closed on credentials, HTTP
-headers, aliases/includes, filters, URL/protocol rewrites, `core.sshCommand`,
-hooks/askpass/fsmonitor/worktree/gitProxy, remote programs, pager/editor, and
-external diff. AgentBox never changes ownership or adds Git `safe.directory`.
+protocols, hooks, pagers, editors, and external diff are disabled. Repository
+and worktree config scopes are enumerated with includes disabled and fail closed
+on credentials, HTTP settings, aliases/includes, filters, URL/protocol rewrites,
+`core.sshCommand`, hooks/askpass/fsmonitor/worktree/gitProxy, remote programs,
+push/pull strategy, pager/editor, and external diff. A real Git canary test
+proves malicious `config.worktree` cannot execute its `core.fsmonitor` program.
+AgentBox never changes ownership or adds Git `safe.directory`.
 
 ## Git Status
 
@@ -105,15 +110,20 @@ normalized conflict.
 
 ## Pull
 
-Pull is strictly `git pull --ff-only --no-rebase`. It requires a non-detached
-branch with an existing upstream. Divergence returns
-`GIT_PULL_REQUIRES_RECONCILIATION`; there is no merge or rebase fallback.
+Pull fixes the network target to the uniquely configured, validated GitHub
+`origin` upstream branch and uses `git pull --ff-only --no-rebase --no-tags
+--no-recurse-submodules --no-verify origin refs/heads/<upstream>`. Command-scope
+configuration also pins ff-only/no-rebase and disables autostash. Divergence
+returns `GIT_PULL_REQUIRES_RECONCILIATION`; there is no merge or rebase fallback.
 
 ## Push
 
-Push is ordinary `git push` against the existing configured upstream. AgentBox
-does not guess/publish a remote, accept a remote selector, delete branches, or
-offer force/force-with-lease.
+Push requires the same uniquely configured, validated GitHub `origin` upstream
+and invokes one explicit `git push --no-verify --porcelain origin
+refs/heads/<local>:refs/heads/<upstream>` refspec. Both branch components are
+validated and the refspec can never begin with `+`. AgentBox does not guess or
+publish a remote, accept a remote selector, mirror/delete branches, or offer
+force/force-with-lease.
 
 ## GitHub Integration
 
@@ -193,8 +203,8 @@ credential-bearing remotes, or raw CLI output.
 
 ## Tests
 
-- Backend: Ruff PASS; Black PASS; mypy PASS; `248 passed` after final security
-  and rollback-audit additions.
+- Backend: Ruff PASS; Black PASS; mypy PASS; `300 passed` after final security,
+  worktree-config canary, no-replace, rollback-identity, and audit additions.
 - Frontend: ESLint PASS; Prettier PASS; TypeScript PASS; Vitest `22 passed`;
   production build PASS.
 - Migration: isolated `upgrade → downgrade base → upgrade` PASS; final head is
@@ -228,25 +238,48 @@ observed GitHub CLI 2.97.0 and an authenticated public `gh auth status` signal;
 no token was read. Real Draft PR mutation was skipped. No user Project,
 Claude/tmux session, or host configuration was touched.
 
-## Security Review
+## Final Security Review
 
 - Shell/argv: no `shell=True`, `os.system`, route subprocess, general exec, or
   application-layer arbitrary Git argv.
 - Protocol/URL: GitHub HTTPS/SSH only; malformed authority and local/file/ext/
   helper/option injection rejected; `GIT_ALLOW_PROTOCOL=https:ssh`.
 - Path/symlink: formal ID lookup, canonical immediate child, ownership/mode
-  checks, non-symlink root/workspace/temp, marker-bound destructive cleanup.
-- Git config: include expansion disabled; executable/credential/transport
-  settings rejected; no global `safe.directory` or chown.
+  checks, non-symlink root/workspace/temp, descriptor-relative no-replace
+  activation, case-normalized collision rejection, and dual-marker cleanup.
+- Clone atomicity/rollback: final-path overwrite is impossible; empty and clone
+  markers have distinct cleanup semantics; a ready workspace survives uncertain
+  finalization; stale/mismatched staging and unknown content require attention.
+- Git config execution: include expansion is disabled and all active repository
+  scopes, including `config.worktree`, fail closed on executable, credential,
+  transport, HTTP, pull/push, pager/editor, filter/driver, and helper settings.
+  A real Git fsmonitor canary remains unexecuted. There is no global
+  `safe.directory` or chown.
 - Credentials: remote userinfo/query/fragment redacted; prompts disabled; raw
   Git/gh output absent from API, DB, Audit and logs.
-- Branch/remote: strict ref validation; no arbitrary remote, force, reset,
-  clean, delete, merge, or rebase fallback.
-- Claude: Pull/switch blocked while managed session is active.
-- Partial clone: per-Job temp, exact marker identity, atomic rename, bounded
-  cleanup; unknown directories remain untouched.
+- Branch/remote: strict ref validation; explicit validated origin targets and a
+  non-`+` Push refspec; no arbitrary remote, force, reset, clean, delete, merge,
+  or rebase fallback.
+- Claude: the Runtime UDS enforces Pull/switch blocking while the managed tmux
+  session is active, so API, CLI, and direct Runtime dispatch share the guard.
+- Jobs: scoped Idempotency-Key digests deduplicate mutations; expired running
+  leases become `needs_attention` and are never replayed after an uncertain
+  worker crash.
+- GitHub/PR: fixed `gh` operations, prompts/editors/pagers disabled, published
+  current branch required, bounded title/body/base, body via stdin, no shell or
+  caller-controlled flags/repository selector.
+- Phase 6 compatibility: formal opaque IDs resolve to the unchanged immutable
+  relative Runtime key, preserving deterministic tmux identity and discovery.
 - Output/logging: stable normalized codes, bounded sanitized summaries, no
-  source/filename/raw-tool persistence.
+  source/filename/raw-tool persistence; URL userinfo and sensitive assignments
+  are redacted before length truncation, including token-only userinfo.
+
+The final code and security review found and corrected unsafe Push config
+influence, worktree-scope Git-config inspection gaps, activation overwrite
+races, rollback identity ordering, ready/finalize rollback ambiguity, and
+credential/control-character sanitation. Local review gates pass with no
+remaining Phase 7 blocker. Merge readiness still requires the required checks
+on the pushed final-review head; their live result is reported in the handoff.
 
 ## Dependencies
 
@@ -256,10 +289,11 @@ vulnerabilities.
 
 ## CI
 
-Local lint/type/unit/build/migration/audit/security gates pass. Draft PR #27
-required checks and CI E2E were pending when this report commit was prepared;
-their final public state is recorded in the Phase 7 handoff rather than claimed
-in advance.
+Local lint/type/unit/build/migration/audit/security gates pass. All required
+checks, including 54-case E2E, passed on the pre-review PR head
+`dea474321573e3f64e0ba40554b21734c25105b4`. Required checks on the pushed
+final-review head are intentionally not claimed in advance; their final public
+state is recorded in the Phase 7 handoff.
 
 ## Deviations
 

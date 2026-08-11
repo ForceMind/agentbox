@@ -98,12 +98,48 @@ def test_job_summaries_are_bounded_redacted_and_raw_output_is_not_persisted(
     initialized_services.jobs.fail(
         job.id,
         code="GIT_PUSH_FAILED",
-        summary="token=SECRET-CANARY\n" + "x" * 900,
+        summary=(
+            "token=SECRET-CANARY\n"
+            "https://oauth2:URL-CREDENTIAL-CANARY@github.com/owner/repo.git\x1b[31m " + "x" * 900
+        ),
     )
 
     stored = initialized_services.jobs.get(job.id)
     assert stored is not None
     assert stored.error_code == "GIT_PUSH_FAILED"
     assert "SECRET-CANARY" not in str(stored.error_summary)
+    assert "URL-CREDENTIAL-CANARY" not in str(stored.error_summary)
+    assert "\x1b" not in str(stored.error_summary)
+    assert "https://github.com/owner/repo.git" in str(stored.error_summary)
     assert "[REDACTED]" in str(stored.error_summary)
     assert len(str(stored.error_summary)) <= 512
+
+
+def test_url_credentials_are_redacted_before_summary_truncation(
+    initialized_services: ControlPlaneServices,
+) -> None:
+    job = enqueue(
+        initialized_services,
+        project(initialized_services, "credential-boundary-project"),
+        "credential-boundary-001",
+    )
+    claimed = initialized_services.jobs.claim_next("worker-test")
+    assert claimed is not None and claimed.id == job.id
+    canary = "URL-CREDENTIAL-CANARY-" * 40
+
+    initialized_services.jobs.fail(
+        job.id,
+        code="GIT_PUSH_FAILED",
+        summary=(
+            f"https://oauth2:{canary}@github.com/owner/repo.git "
+            "https://TOKEN-ONLY-CANARY@github.com/owner/other.git"
+        ),
+    )
+
+    stored = initialized_services.jobs.get(job.id)
+    assert stored is not None
+    assert "URL-CREDENTIAL-CANARY" not in str(stored.error_summary)
+    assert "TOKEN-ONLY-CANARY" not in str(stored.error_summary)
+    assert stored.error_summary == (
+        "https://github.com/owner/repo.git https://github.com/owner/other.git"
+    )
