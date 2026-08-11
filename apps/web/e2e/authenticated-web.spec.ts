@@ -151,7 +151,7 @@ test('shows formal Projects and queues safe create operations', async ({
   await navigate(page, 'Projects', '/projects')
   await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
   const workspaceName = `E2E Workspace ${testInfo.project.name}`
-  await page.getByLabel('Project name').fill(workspaceName)
+  await page.getByLabel('Project name', { exact: true }).fill(workspaceName)
   const request = page.waitForRequest(
     (value) =>
       value.url().endsWith('/api/v1/projects') && value.method() === 'POST',
@@ -270,7 +270,9 @@ test('shows structured Git state without dangerous actions', async ({
   await login(page)
   await navigate(page, 'Projects', '/projects')
   await page.getByRole('heading', { name: 'project-a' }).click()
-  await expect(page.getByRole('heading', { name: 'Git' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Git', exact: true }),
+  ).toBeVisible()
   await expect(page.getByText('Clean')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pull' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Push' })).toBeVisible()
