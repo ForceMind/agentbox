@@ -25,6 +25,27 @@ async function navigate(page: Page, label: string, expectedPath: string) {
   await expect(page).toHaveURL(new RegExp(`${expectedPath}$`))
 }
 
+async function formalClaudeProjectId(page: Page, displayName: string) {
+  const projectId = await page.evaluate(async (name) => {
+    const response = await fetch('/api/v1/claude/sessions', {
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('could not load formal Claude Projects')
+    const body = (await response.json()) as {
+      data?: {
+        sessions?: Array<{ display_name?: string; project_id?: string }>
+      }
+    }
+    return body.data?.sessions?.find((session) => session.display_name === name)
+      ?.project_id
+  }, displayName)
+  if (!projectId)
+    throw new Error(`formal Project ${displayName} is unavailable`)
+  expect(projectId).toMatch(/^prj_[0-9a-f]{32}$/)
+  expect(projectId).not.toBe(displayName)
+  return projectId
+}
+
 function projectData(overrides: Record<string, unknown> = {}) {
   return {
     id: 'prj_e2e',
@@ -128,7 +149,7 @@ test('shows formal Projects and queues safe create operations', async ({
 }, testInfo) => {
   await login(page)
   await navigate(page, 'Projects', '/projects')
-  await expect(page.getByText('Project A')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
   const workspaceName = `E2E Workspace ${testInfo.project.name}`
   await page.getByLabel('Project name').fill(workspaceName)
   const request = page.waitForRequest(
@@ -248,7 +269,7 @@ test('shows structured Git state without dangerous actions', async ({
 }) => {
   await login(page)
   await navigate(page, 'Projects', '/projects')
-  await page.getByText('Project A').click()
+  await page.getByRole('heading', { name: 'project-a' }).click()
   await expect(page.getByRole('heading', { name: 'Git' })).toBeVisible()
   await expect(page.getByText('Clean')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pull' })).toBeVisible()
@@ -662,7 +683,7 @@ test('shows installed Claude, conservative Remote state, and unmanaged count onl
   await navigate(page, 'Claude', '/claude')
   await expect(page.getByText('1.e2e.fixture')).toBeVisible()
   await expect(page.getByText('3.e2e.fixture')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Project A' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
   await expect(page.getByText('Needs Interaction')).toBeVisible()
   await expect(
     page.getByText(/never accepts Workspace Trust automatically/i),
@@ -680,9 +701,10 @@ test('starts, detects duplicate start, and stops only a managed Claude session',
 }) => {
   await login(page)
   await navigate(page, 'Claude', '/claude')
+  const projectId = await formalClaudeProjectId(page, 'project-a')
   const startRequest = page.waitForRequest(
     (request) =>
-      request.url().endsWith('/api/v1/claude/sessions/project-a/start') &&
+      request.url().endsWith(`/api/v1/claude/sessions/${projectId}/start`) &&
       request.method() === 'POST',
   )
   await page.getByRole('button', { name: 'Start Session' }).click()
@@ -691,20 +713,26 @@ test('starts, detects duplicate start, and stops only a managed Claude session',
   expect(csrf).toBeTruthy()
   await expect(page.getByText('Running').first()).toBeVisible()
 
-  const duplicate = await page.evaluate(async (token) => {
-    const response = await fetch('/api/v1/claude/sessions/project-a/start', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-CSRF-Token': token },
-    })
-    return { status: response.status, body: await response.json() }
-  }, csrf)
+  const duplicate = await page.evaluate(
+    async ({ token, id }) => {
+      const response = await fetch(
+        `/api/v1/claude/sessions/${encodeURIComponent(id)}/start`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-CSRF-Token': token },
+        },
+      )
+      return { status: response.status, body: await response.json() }
+    },
+    { token: csrf, id: projectId },
+  )
   expect(duplicate.status).toBe(200)
   expect(duplicate.body.data.outcome).toBe('already_running')
 
   const stopRequest = page.waitForRequest(
     (stop) =>
-      stop.url().endsWith('/api/v1/claude/sessions/project-a/stop') &&
+      stop.url().endsWith(`/api/v1/claude/sessions/${projectId}/stop`) &&
       stop.method() === 'POST',
   )
   await page.getByRole('button', { name: 'Stop Session' }).first().click()
@@ -731,9 +759,10 @@ test('copies generated attach command and reveals sensitive output only on deman
     })
   })
   await login(page)
+  const projectId = await formalClaudeProjectId(page, 'trust-project')
   let outputRequests = 0
   page.on('request', (request) => {
-    if (request.url().endsWith('/sessions/trust-project/output')) {
+    if (request.url().endsWith(`/sessions/${projectId}/output`)) {
       outputRequests += 1
     }
   })
@@ -749,7 +778,7 @@ test('copies generated attach command and reveals sensitive output only on deman
     .toBe('tmux attach-session -t =agentbox-claude-trust-project-e2efixture')
 
   const outputResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/sessions/trust-project/output'),
+    response.url().endsWith(`/sessions/${projectId}/output`),
   )
   await page.getByRole('button', { name: 'Reveal' }).nth(1).click()
   const response = await outputResponse
