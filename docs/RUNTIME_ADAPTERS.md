@@ -395,3 +395,18 @@ operations only. UDS arguments are a controlled relative Project key plus
 bounded operation-specific values; path, argv, shell, environment, PID, and Git
 config are forbidden. Clone staging uses exact Job markers and atomic rename.
 Git/GitHub output is bounded and normalized before crossing the socket.
+
+## Phase 8 Production Runtime Identity
+
+The installed Runtime Executor runs only as `agentbox-runtime` with HOME
+`/home/agentbox-runtime`, Project Root `/srv/agentbox/projects`, and a fixed
+server-owned PATH/XDG policy. `/run/agentbox/runtime.sock` is mode `0660` under
+the narrow IPC group, and the executor verifies the expected supplementary
+group before serving.
+
+Installation does not read, copy, chown, stop, adopt, or rename root Codex,
+Claude, gh, tmux, or Project state. `detect`, `version`, and verification are
+separate from installation and authentication; production may honestly report
+Unavailable, Unauthenticated, or Unknown until the Runtime user completes each
+official login. No Phase 8 component changes Provider selection or Codex
+configuration.

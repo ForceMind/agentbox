@@ -1,5 +1,8 @@
 # AgentBox Upgrade and Rollback Design
 
+Status: Phase 1 design baseline. Phase 8 implemented behavior is documented in
+`UPGRADE.md` and `ROLLBACK.md`.
+
 Status: Phase 1 design baseline
 
 ## Objectives

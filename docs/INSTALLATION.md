@@ -1,0 +1,92 @@
+# AgentBox Installation
+
+Status: Phase 8 implementation, pending human review
+
+## Safety boundary
+
+The installer owns only AgentBox users, groups, FHS paths, release files, unit
+files, configuration, and database state listed by `agentbox-install plan`.
+It does not modify SSH, firewall rules, cloud security groups, cloudflared,
+reverse proxies, Docker, existing root Runtime installations, root tmux
+sessions, `/root/projects`, or Provider/Secret configuration.
+
+Never install an unverified network stream directly into a shell on a shared
+host. Obtain the bootstrap and release artifact through an authenticated source,
+verify the published SHA-256 value, inspect the plan, and then apply it:
+
+```bash
+sha256sum agentbox-<version>.tar.gz
+sudo ./installer/install.sh plan \
+  --artifact ./agentbox-<version>.tar.gz \
+  --sha256 <expected-sha256>
+sudo ./installer/install.sh apply \
+  --artifact ./agentbox-<version>.tar.gz \
+  --sha256 <expected-sha256>
+```
+
+Phase 8 has no production download URL and uses checksums rather than signed
+artifacts. A future `curl | bash` convenience form does not replace artifact
+authentication and is not the recommended verification path.
+
+## Preflight
+
+`plan` is read-only. It parses `/etc/os-release`, checks architecture and
+systemd, tests only `127.0.0.1:8787`, detects exact dependencies, classifies an
+existing installation, verifies the release archive and checksum, and prints
+all planned users, groups, directories, files, units, packages, services, and
+network effects. It does not use `uname` to guess a distribution.
+
+Apply requires effective UID 0. The ordinary `agentbox` CLI remains non-root;
+only lifecycle mutations require an administrator to invoke the installer.
+Port conflicts fail closed and the installer never kills the owner or silently
+changes the product default.
+
+## Transaction
+
+The apply path takes a global non-blocking lifecycle lock and then:
+
+1. installs a fixed platform package set when required;
+2. creates fixed system identities and exact FHS directories;
+3. preserves or creates restrictive configuration and a CSPRNG application secret;
+4. verifies and stages an immutable versioned release and release-local venv;
+5. stops AgentBox services only for an upgrade;
+6. creates an online SQLite/config/unit backup;
+7. runs `alembic upgrade head` explicitly as `agentbox`;
+8. installs exact unit files and atomically switches `/opt/agentbox/current`;
+9. reloads, enables, and starts exact AgentBox units;
+10. verifies health, readiness, and release metadata before committing a receipt.
+
+Installer logs and receipts never contain the application secret, Runtime
+credentials, passwords, Pair Codes, Provider keys, or arbitrary request data.
+
+## Idempotency and partial failure
+
+Reinstalling the same exact artifact verifies it and leaves the secret,
+configuration, database, administrator records, Runtime HOME, and projects
+unchanged. A different artifact with the same version is rejected. Older
+versions require the rollback flow; in-place overwrite is unavailable.
+
+An interrupted first install may retain clearly AgentBox-owned identities,
+directories, configuration, staged releases, units, and a secret-free journal
+so a later inspection can distinguish partial state. It never removes unknown
+files while guessing. Upgrade failures attempt restoration and report either
+`rollback verified` or `rollback attempted but verification failed`.
+
+## Authentication after install
+
+No default administrator or password is created. Initialize the production
+administrator locally without printing the password:
+
+```bash
+sudo -u agentbox /opt/agentbox/current/venv/bin/agentbox admin init
+```
+
+The Runtime user authenticates independently with public Codex, Claude, and
+GitHub CLI flows. Do not copy or `chown` `/root/.codex`, `/root/.claude`, or
+`/root/.config/gh`.
+
+## Verification
+
+Use `agentbox status`, `agentbox doctor`, `systemctl status` for the exact units,
+and loopback-only `/healthz` and `/readyz`. See [Deployment](DEPLOYMENT.md),
+[Upgrade](UPGRADE.md), and [Platform Support](PLATFORM_SUPPORT.md).

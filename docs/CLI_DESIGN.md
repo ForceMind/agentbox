@@ -2,13 +2,14 @@
 
 Status: Phase 1 contract design with Phase 3 local administration, Phase 5
 Codex, Phase 6 Claude, and Phase 7 Project/Git/GitHub command subsets
-implemented on their respective release branches.
+implemented on their respective release branches; Phase 8 adds production
+system status/update/rollback/uninstall recovery commands.
 
 Phase 3 implements `agentbox status`, `agentbox doctor`, `agentbox admin init`,
 `agentbox admin status`, and `agentbox secret generate`. Phase 5 adds
 `agentbox codex status/start/stop/pair` over the typed Runtime socket. Phase 6
 adds Claude commands; Phase 7 adds the Project/Git/GitHub commands documented
-below. Update, API-service UDS, and later-phase commands remain unimplemented.
+below. API-service UDS and later-phase commands remain unimplemented.
 
 ## Role
 
@@ -54,12 +55,27 @@ Sensitive values are never accepted on argv because process lists/history can ex
 ```text
 agentbox status
 agentbox doctor
-agentbox update
+agentbox system status
+agentbox system update --artifact <path> --sha256 <digest>
+agentbox system rollback [--version <version>]
+agentbox system uninstall
 ```
 
 - `status`: compact component/Runtime/Job summary; read-only.
 - `doctor`: creates Diagnostic Run Job in service mode; `--local` runs safe subset.
-- `update`: shows plan by default; `--apply` (future flag within command contract) requires service, dry-run review, recent auth/confirmation where applicable.
+- `system status`: compact read-only production service/database/Runtime summary.
+- `system update`: root-only local staged lifecycle operation after an explicit
+  artifact/digest plan; no network download or in-place overwrite.
+- `system rollback`: root-only receipt/backup-bound rollback with mandatory
+  verification.
+- `system uninstall`: root-only, removes verified program/unit assets and
+  preserves all data; purge is unavailable.
+
+The separate `agentbox-install plan/apply/build-artifact` entry is an
+administrator bootstrap/release tool, not a Web or ordinary Runtime command.
+Only mutating lifecycle commands require root. `status` and `doctor` report
+actual production identities, modes, units, sockets, listener, migration, and
+tool states without showing secrets.
 
 ### Phase 3 local administration
 

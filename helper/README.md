@@ -1,4 +1,11 @@
-# AgentBox Privileged Helper — Design Placeholder
+# AgentBox Privileged Helper
+
+Phase 8 implements a socket-activated root Helper with six argument-free,
+fixed AgentBox systemd lifecycle actions. It is not a command runner and has no
+arbitrary service, path, argv, environment, package, PID, or signal field.
+
+See [`docs/PRIVILEGED_HELPER.md`](../docs/PRIVILEGED_HELPER.md) for the protocol
+and threat boundary.
 
 No Privileged Helper is implemented in Phase 2. This directory contains no root-execution source, systemd unit, socket, or executable.
 

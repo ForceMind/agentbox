@@ -146,6 +146,8 @@ Status: merged in PR #25.
 
 ## Phase 8 — Installation, upgrade, rollback, and deployment
 
+Status: implemented on `phase/8-installation-deployment`, pending human review.
+
 - **Goal:** make native systemd installation reproducible, idempotent, verifiable, and reversible.
 - **Input:** approved units and protocols, signed/checksummed release artifact design, distro test images.
 - **Output:** dry-run/apply/repair installer, Web/API/Worker/Runtime Executor/Helper units, release switching, schema migration, health gate, rollback, and uninstall plan.
@@ -156,6 +158,10 @@ Status: merged in PR #25.
 - **Commit/PR:** installer, units, and Helper policy changes need security and operations review; releases come only from tagged protected commits.
 - **Stop condition:** deployment tests pass on each supported distribution family or documented preview support is narrowed.
 - **Human approval:** host installation, user/group creation, service enable/start, and remediation of conflicting services.
+
+Phase 8 does not alter Phase 11 scope or order. Provider Manager, Provider
+Registry, Secret Manager, Provider API/UI/CLI, Runtime bindings, Codex config
+mutation, and automatic Provider switching remain `NOT STARTED`.
 
 ## Phase 9 — Security audit and compatibility hardening
 

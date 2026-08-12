@@ -200,7 +200,9 @@ For each supported distribution family:
 6. confirm failure rollback preserves config, database, projects, authentication directories, and pre-existing unrelated services;
 7. run explicit uninstall tests and confirm preserved data matches the stated policy.
 
-Package installation is never tested directly on a shared CI runner or the assessed server.
+Package installation is never tested directly on a shared CI runner. The
+designated OpenCloudOS host may receive only the exact printed Phase 8 package
+plan after every fixture/security/backup gate passes.
 
 ## Upgrade, rollback, backup, and migration
 
@@ -224,10 +226,30 @@ repository mutation, Pair Code, or browser terminal.
 
 | Family | MVP target | Test expectation |
 |---|---|---|
-| OpenCloudOS 9 | Supported target | disposable VM: install, units, upgrade, Runtime smoke |
-| Rocky Linux 9 | Supported target | disposable VM: full RPM-family path |
-| Ubuntu LTS | Supported target | disposable VM: full APT-family path |
-| Debian stable | Supported target | disposable VM: full APT-family path |
+| OpenCloudOS 9 | validation target | fixture plus one gated real-host install/update/rollback |
+| Rocky Linux 9 | preview | DNF/os-release fixtures; VM remains required |
+| Ubuntu 22.04/24.04 | CI preview | APT fixtures and GitHub Actions; native VM systemd remains required |
+| Debian 12 | preview | APT/os-release fixtures; VM remains required |
+
+## Phase 8 Implemented Coverage
+
+The installer/deployment suite uses temporary filesystem roots and fake host
+operations for fresh/repeated/partial installs, config/secret/admin/project
+preservation, migration failure, activation/service failure, online WAL backup,
+update, rollback, rollback-verification failure, collisions, lifecycle locking,
+and data-preserving uninstall. Platform fixtures cover every matrix row and
+unsupported distribution/architecture behavior.
+
+Helper tests exercise wrong peers, invalid/unknown/extra frames, malformed and
+oversized messages, path/argv/service injection, timeout, request-ID sanitation,
+and concurrency caps. Real temporary POSIX identities verify cross-user file
+denials. Unit tests combine semantic assertions with actual
+`systemd-analyze verify` and offline security analysis where available.
+
+GitHub deployment CI runs the safe fixture subset on Ubuntu 22.04/24.04 with
+Python 3.11/3.13. It never creates `/etc/agentbox`, users, units, or services.
+Rocky/OpenCloudOS/Debian fixture evidence is not represented as a native VM
+claim. The Phase 8 report records real-host evidence separately.
 
 Exact minor releases and architecture coverage are pinned in Phase 2/8 based on available runners. `x86_64` is the first verified architecture; `aarch64` is not claimed until its matrix passes. Container jobs can test pure Python/Node behavior but cannot substitute for PID 1 systemd, SELinux/AppArmor, package-manager, UDS ownership, tmux, cgroup, or privileged Helper VM tests.
 

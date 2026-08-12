@@ -418,3 +418,35 @@ origin refspec, and Pull/switch are blocked during an active managed Claude
 session. Clone activation is atomic no-replace; rollback validates both Project
 and staging markers before any recursive removal. Credentials and raw tool
 output never enter API, logs, Audit or Jobs.
+
+## Phase 8 Installation and Privilege Boundary
+
+Phase 8 preserves `browser-facing process != root`. API and Worker run as
+`agentbox`; Runtime runs as `agentbox-runtime`; only the socket-activated Helper
+is root. The Helper protocol has no arbitrary command, service, path, argv,
+environment, PID, signal, package, user, or mode field. Peer UID, frame size,
+protocol version, exact schema, concurrency, and timeout fail closed.
+
+Installer mutation requires effective UID 0 and an exact checksum-reviewed
+plan. Archive extraction rejects absolute/traversal paths, duplicate entries,
+links, special files, and count/size overflow. Files use no-follow writes,
+fsync, restrictive modes, and atomic replacement. Existing unit/config/release
+collisions are verified before mutation; unknown objects stop the transaction.
+
+The application secret is CSPRNG-generated in a separate root-created
+environment file, never printed or logged, and never made readable to Runtime.
+Runtime authentication remains exclusively in the Runtime user's HOME; root
+authentication is neither read nor copied. Phase 11 Provider/Secret management
+remains unimplemented.
+
+SQLite backup uses the online backup API plus integrity verification, including
+WAL-active databases. Upgrade is staged and health/version gated. Rollback
+restores only the recorded AgentBox snapshot and must verify service,
+health/readiness, version, and database compatibility before success is
+reported. Unsigned checksum-only Phase 8 artifacts leave a documented
+supply-chain residual risk.
+
+The network default is loopback and trusted proxies default empty. Installer
+never modifies SSH, firewall, cloudflared, reverse proxies, or TLS. Secure
+cookies and exact HTTPS origins remain mandatory for authenticated production
+browser use behind an operator-managed proxy.

@@ -1,4 +1,14 @@
-# AgentBox Installer — Design Placeholder
+# AgentBox Installer
+
+Phase 8 implements a typed, platform-aware native installer. The Bash entry is
+only a root/bootstrap gate; Python owns detection, planning, artifact safety,
+identities, FHS layout, migrations, systemd, backup, update, rollback, and
+data-preserving uninstall.
+
+Use `install.sh plan` before `install.sh apply`. Fixture tests set
+`AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
+normal callers cannot select an alternate filesystem root. See
+[`docs/INSTALLATION.md`](../docs/INSTALLATION.md).
 
 No installer, bootstrap script, package-manager command, systemd unit, or host mutation is implemented in Phase 2.
 

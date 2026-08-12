@@ -21,17 +21,18 @@ The MVP uses one Runtime identity for all managed projects. Future multi-user su
 
 Exact numeric UID/GID values are selected at install time after collision checks; no fixed numeric ID is assumed.
 
-Suggested logical groups:
+Implemented Phase 8 logical groups:
 
 - `agentbox`: primary service group for API/Worker state;
 - `agentbox-runtime`: primary Runtime group;
-- `agentbox-control`: narrow group allowing Worker-to-Runtime socket access;
+- `agentbox-runtime-ipc`: narrow supplementary group allowing
+  API/Worker-to-Runtime socket access;
 - `agentbox-admin`: optional local OS users allowed to access `api.sock`.
 
 | Socket | Owner/group | Mode | Allowed peers |
 |---|---|---:|---|
 | `/run/agentbox/api.sock` | `agentbox:agentbox-admin` | `0660` | local CLI users in admin group; peer UID mapped to a local principal |
-| `/run/agentbox/runtime.sock` | `agentbox-runtime:agentbox-control` | `0660` | Worker identity only |
+| `/run/agentbox/runtime.sock` | `agentbox-runtime:agentbox-runtime-ipc` | `0660` | API/Worker service identity |
 | `/run/agentbox/helper.sock` | `root:agentbox` | `0660` | Worker identity only |
 
 Every server also enforces peer credentials and protocol version. Filesystem mode alone is insufficient.
@@ -76,21 +77,13 @@ The executor accepts Project IDs and RuntimeInstallation IDs; it resolves paths 
 
 The Helper is root only because its allowed actions need root. It does not become a generic privilege broker.
 
-### Allowed Action Families
+### Phase 8 Allowed Actions
 
-- `platform_query_privileged`
-- `package_plan_apply` using a server-created logical dependency plan
-- `agentbox_release_install`
-- `agentbox_release_activate`
-- `agentbox_release_rollback`
-- `agentbox_units_reload`
-- `agentbox_unit_action` for an exact compiled allowlist
-- `agentbox_identity_initialize`
-- `agentbox_directory_initialize`
-- `agentbox_path_mode_repair` for exact FHS roots
-- `agentbox_backup_snapshot` for approved AgentBox data
-
-Each action has schema, preconditions, fixed executable resolution, time/output/concurrency limits, and a rollback/uncertainty policy.
+The v1 Helper accepts only daemon reload and start/stop/restart/enable/disable
+of a compiled exact set of AgentBox units. Each request has protocol version,
+sanitized request ID, and one argument-free enum. Installation, packages,
+identities, directories, backup, release activation, update, and rollback stay
+in the explicitly invoked root Installer and are not remotely brokered.
 
 ### Explicitly Forbidden
 
@@ -166,6 +159,18 @@ Before identities or units are created:
 - preflight port 8787 and existing cloudflared/iptables boundaries.
 
 These are implementation gates, not blockers to Phase 1 documentation.
+
+## Phase 8 Production Ownership
+
+The installer uses dynamically allocated system UID/GID values after collision
+checks; it does not reserve or reuse UID 1001. Directories use the exact
+owner/mode table in `DEPLOYMENT.md`. Unit files and release contents are
+root-owned, while writable access is limited to DB/log state for `agentbox` and
+Runtime HOME/Project Root for `agentbox-runtime`.
+
+POSIX tests with distinct temporary real UIDs prove that `agentbox` cannot read
+Runtime credentials, write Project source, or change systemd files, and that
+`agentbox-runtime` cannot read the application secret or write systemd/config.
 ## Phase 7 ownership
 
 The Runtime user owns Project Root, non-group/world-writable workspace
