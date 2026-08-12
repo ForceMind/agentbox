@@ -90,6 +90,8 @@ def test_systemd_analyze_verifies_units_against_fixture_root(tmp_path: Path) -> 
         check=False,
     )
 
+    if "Option --root is only supported for cat-config" in result.stderr:
+        pytest.skip("installed systemd-analyze cannot verify a fixture root")
     assert result.returncode == 0, result.stderr
     for name in (
         "agentbox-api.service",

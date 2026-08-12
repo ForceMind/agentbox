@@ -97,6 +97,7 @@ strict = true
 warn_unreachable = true
 pretty = true
 exclude = ["apps/web", ".venv"]
+mypy_path = "apps/api/src:apps/cli/src:apps/worker/src:packages/agentbox-core/src:packages/agentbox-protocol/src:packages/agentbox-runtime/src:helper/src:installer/src"
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
