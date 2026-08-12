@@ -10,6 +10,7 @@ import shutil
 import socket
 import stat
 import subprocess
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,23 +66,33 @@ class HostOperations:
             return False
         return comm == "systemd" and Path("/run/systemd/system").is_dir()
 
-    def ensure_identities(self) -> IdentityFacts:
+    def ensure_identities(self, expected: IdentityFacts | None = None) -> IdentityFacts:
         if not self.real_host:
             return IdentityFacts(19001, 19001, 19002, 19003)
         self.require_root()
-        for group_name in ("agentbox", "agentbox-runtime", "agentbox-runtime-ipc"):
-            try:
-                grp.getgrnam(group_name)
-            except KeyError:
-                self._run(("/usr/sbin/groupadd", "--system", group_name))
+        group_names = ("agentbox", "agentbox-runtime", "agentbox-runtime-ipc")
         users = (
             ("agentbox", "/var/lib/agentbox", "agentbox"),
             ("agentbox-runtime", "/home/agentbox-runtime", "agentbox-runtime"),
         )
-        for user_name, home, primary_group in users:
-            try:
-                pwd.getpwnam(user_name)
-            except KeyError:
+        existing_groups = {}
+        existing_users = {}
+        for group_name in group_names:
+            with suppress(KeyError):
+                existing_groups[group_name] = grp.getgrnam(group_name)
+        for user_name, _home, _primary_group in users:
+            with suppress(KeyError):
+                existing_users[user_name] = pwd.getpwnam(user_name)
+        if existing_groups or existing_users:
+            if expected is None:
+                raise HostMutationError(
+                    "pre-existing AgentBox identity names lack an installation receipt"
+                )
+            self._validate_existing_identities(existing_users, existing_groups, expected)
+        else:
+            for group_name in group_names:
+                self._run(("/usr/sbin/groupadd", "--system", group_name))
+            for user_name, home, primary_group in users:
                 self._run(
                     (
                         "/usr/sbin/useradd",
@@ -107,10 +118,55 @@ class HostOperations:
         )
         agentbox = pwd.getpwnam("agentbox")
         runtime = pwd.getpwnam("agentbox-runtime")
+        agentbox_group = grp.getgrnam("agentbox")
+        runtime_group = grp.getgrnam("agentbox-runtime")
         ipc = grp.getgrnam("agentbox-runtime-ipc")
         if agentbox.pw_uid == runtime.pw_uid or ipc.gr_gid in {agentbox.pw_gid, runtime.pw_gid}:
             raise HostMutationError("AgentBox identity collision detected")
-        return IdentityFacts(agentbox.pw_uid, agentbox.pw_gid, runtime.pw_uid, ipc.gr_gid)
+        observed = IdentityFacts(agentbox.pw_uid, agentbox.pw_gid, runtime.pw_uid, ipc.gr_gid)
+        self._validate_existing_identities(
+            {"agentbox": agentbox, "agentbox-runtime": runtime},
+            {
+                "agentbox": agentbox_group,
+                "agentbox-runtime": runtime_group,
+                "agentbox-runtime-ipc": ipc,
+            },
+            observed,
+        )
+        if expected is not None and observed != expected:
+            raise HostMutationError("AgentBox identity no longer matches its installation receipt")
+        return observed
+
+    @staticmethod
+    def _validate_existing_identities(
+        users: Mapping[str, object],
+        groups: Mapping[str, object],
+        expected: IdentityFacts,
+    ) -> None:
+        if set(users) != {"agentbox", "agentbox-runtime"} or set(groups) != {
+            "agentbox",
+            "agentbox-runtime",
+            "agentbox-runtime-ipc",
+        }:
+            raise HostMutationError("AgentBox identity set is incomplete or colliding")
+        agentbox = users["agentbox"]
+        runtime = users["agentbox-runtime"]
+        agentbox_group = groups["agentbox"]
+        runtime_group = groups["agentbox-runtime"]
+        ipc_group = groups["agentbox-runtime-ipc"]
+        if (
+            getattr(agentbox, "pw_uid", None) != expected.agentbox_uid
+            or getattr(agentbox, "pw_gid", None) != expected.agentbox_gid
+            or getattr(agentbox, "pw_dir", None) != "/var/lib/agentbox"
+            or getattr(agentbox, "pw_shell", None) != "/usr/sbin/nologin"
+            or getattr(runtime, "pw_uid", None) != expected.runtime_uid
+            or getattr(runtime, "pw_gid", None) != getattr(runtime_group, "gr_gid", None)
+            or getattr(runtime, "pw_dir", None) != "/home/agentbox-runtime"
+            or getattr(runtime, "pw_shell", None) != "/usr/sbin/nologin"
+            or getattr(agentbox_group, "gr_gid", None) != expected.agentbox_gid
+            or getattr(ipc_group, "gr_gid", None) != expected.ipc_gid
+        ):
+            raise HostMutationError("pre-existing AgentBox identity does not match its receipt")
 
     def owner_ids(self, owner: str, group: str) -> tuple[int, int]:
         if not self.real_host:

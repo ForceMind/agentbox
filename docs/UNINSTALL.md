@@ -2,10 +2,11 @@
 
 Status: Phase 8 limited implementation, pending human review
 
-`agentbox system uninstall` stops/disables exact AgentBox units, verifies
-installed unit content and every recorded release, removes only verified
-program files/unit assets, reloads systemd, and marks the receipt as
-data-preserved.
+`agentbox system uninstall` first verifies current/receipt identity, every
+retained release, every present managed unit, and the tmpfiles policy. Only
+after that complete preflight does it stop/disable exact AgentBox units and
+remove verified program assets. It then reloads systemd and marks the receipt
+as data-preserved.
 
 The default and only Phase 8 behavior preserves:
 
@@ -21,4 +22,4 @@ recovery semantics require separate human-approved design. Do not manually
 `rm -rf` Project Root as an uninstall substitute.
 
 If a unit or release no longer matches its verified AgentBox identity,
-uninstall stops and reports the collision instead of deleting it.
+uninstall reports the collision before stopping services or deleting anything.

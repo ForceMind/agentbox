@@ -21,19 +21,20 @@ claim.
 - Repository: `ForceMind/agentbox`
 - Baseline: `90c7f5dd6d15369753079e9f8965d67091eed818`
 - Branch: `phase/8-installation-deployment`
-- Commits: 9 semantic Phase 8 commits, including this final privilege/recovery review
+- Commits: 10 semantic Phase 8 commits, including the post-review blocker fixes
 - Draft PR: `https://github.com/ForceMind/agentbox/pull/28`
-- Final development version: `0.2.5+dev.8`
+- Final development version: `0.2.8+dev.8`
 - Validation artifact SHA-256:
-  `09d604ba1000befbe06e4d9d28887794b2456533b2e8cd0609ca275bbac3192f`
+  `b93544f3235067aa8150b8c280ded283ae0b7659fe3bd1885b1afe7b19c6b6cb`
 
 ## Platform
 
 The real validation host is OpenCloudOS 9.4 x86_64 with native systemd. The
 installer parses `/etc/os-release`; it never infers distribution from `uname`.
-OpenCloudOS 9 is the real-host validation target. Ubuntu 22.04/24.04 have
-fixture plus GitHub Actions groundwork. Rocky 9 and Debian 12 have fixture-only
-preview coverage. `aarch64` is detected but explicitly unsupported until
+OpenCloudOS 9 is the real-host validation target. Ubuntu 24.04 has CI-preview
+coverage. Ubuntu 22.04 is an unsupported rejection fixture because stock
+Python 3.10 is below the AgentBox 3.11 minimum. Rocky 9 and Debian 12 have
+fixture-only preview coverage. `aarch64` is detected but explicitly unsupported until
 artifacts and Runtime dependencies are qualified.
 
 No package change was necessary on the real host because Python/venv, Git,
@@ -192,6 +193,8 @@ Worker, Runtime, Helper socket, both UDS files, health/readiness, and meta
 version before commit. Real healthy upgrade `0.2.2+dev.8 → 0.2.3+dev.8` passed.
 The final review found and repaired two recovery incompatibilities before the
 verified forward update `0.2.4+dev.8 → 0.2.5+dev.8` passed.
+After automated review feedback, the receipt-bound identity and rollback-target
+fixes were validated by healthy updates through `0.2.8+dev.8`.
 
 ## Rollback
 
@@ -224,10 +227,10 @@ socket, listener, migration, config, and Runtime-tool evidence without secrets.
 
 ## Automated Tests
 
-- Backend: 417 passed
+- Backend: 423 passed
 - Frontend Vitest: 25 passed
 - Playwright: 54 passed (desktop and mobile Chromium)
-- Installer/deployment focused: 109 passed
+- Installer/deployment focused: 115 passed
 - Black, Ruff, mypy, source boundary: passed
 - `systemd-analyze verify`: passed
 - pip audit and pnpm high-level audit: no known vulnerabilities
@@ -380,7 +383,7 @@ Only the complete predicate can report `Rollback verified`.
 
 ### Real-host post-review evidence
 
-The final active release is `0.2.5+dev.8`; API/Worker/Runtime and Helper socket
+The final active release is `0.2.8+dev.8`; API/Worker/Runtime and Helper socket
 are active, Helper service is normally inactive, and all process UIDs match the
 model. `/healthz`, `/readyz`, meta version, SQLite integrity/revision, both UDS
 owners/modes, Doctor, systemd unit verification, and exposure analysis pass.
@@ -397,11 +400,21 @@ verified, failed releases were moved intact to named `/tmp` quarantine paths,
 and each defect received an automated regression before the final real update
 passed.
 
+The post-ready automated review then identified five additional blockers. The
+installer now refuses unproven pre-existing service-account/group names,
+restricts rollback to the receipt's direct previous release and validates the
+backup's target version/revision, preflights every uninstall target before
+stopping services, rejects stock Ubuntu 22.04 due its Python 3.10 runtime, and
+documents the implemented `--to` rollback option. Targeted tests cover account
+shape/provenance, retained-release rollback mismatch, backup-target mismatch,
+and zero-mutation uninstall refusal. The final `0.2.8+dev.8` real-host update
+proves the receipt-bound identities match the installed accounts.
+
 ## Known Limitations
 
 - checksum verification is implemented; release signing/provenance is not;
-- only OpenCloudOS has real-host evidence; Ubuntu is CI preview and
-  Rocky/Debian fixture preview;
+- only OpenCloudOS has real-host evidence; Ubuntu 24.04 is CI preview, Ubuntu
+  22.04 is unsupported, and Rocky/Debian are fixture preview;
 - `aarch64` is unsupported;
 - SELinux/AppArmor policy coverage is absent on this host;
 - reverse proxy/TLS/Tailscale/Cloudflare setup is operator-managed;

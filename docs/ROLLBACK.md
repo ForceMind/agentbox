@@ -2,10 +2,11 @@
 
 Status: Phase 8 implementation, pending human review
 
-Use `agentbox system rollback [--version VERSION]` as root. Without an explicit
-target, the install receipt selects the previous release. The command refuses
-an unknown/unverified release or a database-incompatible target without the
-recorded verified backup.
+Use `agentbox system rollback [--to VERSION]` as root. Without an explicit
+target, the install receipt selects the previous release. An explicit target
+must exactly match that receipt-bound previous release; arbitrary older
+retained releases are rejected. The backup manifest's application version and
+migration revision must also match the target.
 
 Rollback stops only AgentBox services, restores the recorded DB/config/unit
 and tmpfiles snapshot when required, atomically activates the verified prior release,

@@ -212,6 +212,7 @@ class AgentBoxInstaller:
             candidate = self._peek_artifact_manifest(artifact)
             if existing != candidate:
                 raise InstallError("same-version artifact does not match installed release")
+            self.host.ensure_identities(self._receipt_identities(self._read_receipt()))
             return LifecycleResult(plan.version, current, False, None, self.health_check())
         if state == "installed_newer_version":
             raise InstallError("downgrade is not supported; use a verified rollback target")
@@ -251,7 +252,7 @@ class AgentBoxInstaller:
 
         transaction_id = secrets.token_hex(16)
         resources = self._snapshot_transaction_resources(plan.version)
-        identities = self.host.ensure_identities()
+        identities = self.host.ensure_identities(self._receipt_identities(self._read_receipt()))
         self._ensure_directories()
         self._write_journal(
             status="running",
@@ -404,9 +405,14 @@ class AgentBoxInstaller:
         current = self.current_version()
         if receipt is None or current is None:
             raise InstallError("AgentBox installation receipt is unavailable")
-        target = target_version or receipt.get("previous_version")
-        if not isinstance(target, str) or not VERSION_PATTERN.fullmatch(target):
+        recorded_previous = receipt.get("previous_version")
+        if not isinstance(recorded_previous, str) or not VERSION_PATTERN.fullmatch(
+            recorded_previous
+        ):
             raise InstallError("no previous release is recorded")
+        if target_version is not None and target_version != recorded_previous:
+            raise InstallError("rollback target must match the receipt's previous release")
+        target = recorded_previous
         if self.host.real_host and self._uses_legacy_database_layout(target):
             raise InstallError(
                 "rollback target predates the hardened database layout; "
@@ -427,7 +433,11 @@ class AgentBoxInstaller:
         if not target_manifest.database_backward_compatible and backup is None:
             raise InstallError("application rollback requires a verified database backup")
         if backup is not None:
-            self._verify_backup_for_restore(backup)
+            self._verify_backup_for_target(
+                backup,
+                application_version=target,
+                migration_revision=target_manifest.database_revision,
+            )
         transaction_id = secrets.token_hex(16)
         resources = self._snapshot_transaction_resources(target)
         self._write_journal(
@@ -471,7 +481,7 @@ class AgentBoxInstaller:
             )
             if not verified:
                 raise RollbackVerificationError("rollback attempted but verification failed")
-            identities = self.host.ensure_identities()
+            identities = self.host.ensure_identities(self._receipt_identities(receipt))
             self._write_receipt(target_manifest, current, None, identities)
             self._write_journal(
                 status="committed",
@@ -587,18 +597,20 @@ class AgentBoxInstaller:
         receipt = self._read_receipt()
         if receipt is None:
             raise InstallError("AgentBox installation receipt is unavailable")
-        self.host.disable_and_stop()
         link = self.layout.current_link
-        if link.is_symlink() and self.current_version() is not None:
-            link.unlink()
+        current = self.current_version()
+        if not link.is_symlink() or current is None or receipt.get("active_version") != current:
+            raise InstallError("uninstall current release identity is invalid")
         releases_root = self.layout.map("/opt/agentbox/releases")
-        if releases_root.is_dir() and not releases_root.is_symlink():
-            for release in releases_root.iterdir():
-                if release.is_symlink() or not release.is_dir():
-                    raise InstallError("uninstall found an unknown release object")
-                verify_release(release, allow_generated_venv=True)
-                remove_verified_tree(release)
+        if releases_root.is_symlink() or not releases_root.is_dir():
+            raise InstallError("uninstall release root is unsafe")
+        releases = tuple(sorted(releases_root.iterdir()))
+        for release in releases:
+            if release.is_symlink() or not release.is_dir():
+                raise InstallError("uninstall found an unknown release object")
+            verify_release(release, allow_generated_venv=True)
         package_root = importlib.resources.files("agentbox_installer") / "assets/systemd"
+        units: list[Path] = []
         for name in UNIT_NAMES:
             target = self.layout.map(f"/etc/systemd/system/{name}")
             if not target.exists() and not target.is_symlink():
@@ -610,14 +622,27 @@ class AgentBoxInstaller:
                 or target.read_bytes() != source.read_bytes()
             ):
                 raise InstallError("refusing to remove a modified or unsafe systemd unit")
-            target.unlink()
+            units.append(target)
         tmpfiles = self.layout.map("/etc/tmpfiles.d/agentbox.conf")
         expected_tmpfiles = Path(
             str(importlib.resources.files("agentbox_installer") / "assets/tmpfiles.d/agentbox.conf")
         )
-        if tmpfiles.is_file() and not tmpfiles.is_symlink():
-            if tmpfiles.read_bytes() != expected_tmpfiles.read_bytes():
-                raise InstallError("refusing to remove a modified tmpfiles policy")
+        remove_tmpfiles = tmpfiles.exists() or tmpfiles.is_symlink()
+        if remove_tmpfiles and (
+            tmpfiles.is_symlink()
+            or not tmpfiles.is_file()
+            or tmpfiles.read_bytes() != expected_tmpfiles.read_bytes()
+        ):
+            raise InstallError("refusing to remove a modified tmpfiles policy")
+
+        # Every removable object is validated before the first host mutation.
+        self.host.disable_and_stop()
+        link.unlink()
+        for release in releases:
+            remove_verified_tree(release)
+        for target in units:
+            target.unlink()
+        if remove_tmpfiles:
             tmpfiles.unlink()
         self.host.daemon_reload()
         receipt["uninstalled_at"] = datetime.now(UTC).isoformat()
@@ -674,22 +699,7 @@ class AgentBoxInstaller:
         if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
             raise InstallError("installer lifecycle lock parent is unsafe")
         if self.host.real_host and details.st_uid != 0:
-            try:
-                agentbox_uid, agentbox_gid = self.host.owner_ids("agentbox", "agentbox")
-            except KeyError as exc:
-                raise InstallError("installer lifecycle lock parent is not root-owned") from exc
-            if (
-                details.st_uid != agentbox_uid
-                or details.st_gid != agentbox_gid
-                or stat.S_IMODE(details.st_mode) != 0o700
-            ):
-                raise InstallError("installer lifecycle lock parent is not root-owned")
-            # One-way upgrade from the original Phase 8 layout. The exact old
-            # identity/mode is required before root takes ownership.
-            self.host.set_owner_mode(parent, "root", "agentbox", 0o1770)
-            details = parent.lstat()
-            if details.st_uid != 0:
-                raise InstallError("installer lifecycle lock parent hardening failed")
+            raise InstallError("installer lifecycle lock parent is not root-owned")
         descriptor = os.open(
             parent / ".install.lock",
             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
@@ -1229,6 +1239,26 @@ class AgentBoxInstaller:
         if not verify_sqlite_backup(backup):
             raise InstallError("database backup verification failed")
 
+    def _verify_backup_for_target(
+        self,
+        backup: BackupResult,
+        *,
+        application_version: str,
+        migration_revision: str,
+    ) -> None:
+        self._verify_backup_for_restore(backup)
+        manifest_path = backup.path / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise InstallError("database backup target evidence is unavailable") from exc
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("application_version") != application_version
+            or manifest.get("migration_revision") != migration_revision
+        ):
+            raise InstallError("database backup is not bound to the rollback target")
+
     def _load_backup(
         self, backup_id: str, *, expected_manifest_sha256: str | None = None
     ) -> BackupResult:
@@ -1512,11 +1542,36 @@ class AgentBoxInstaller:
         path = self.layout.receipt
         if path.is_symlink() or not path.is_file():
             return None
+        details = path.lstat()
+        if self.host.real_host and (
+            details.st_uid != 0 or details.st_gid != 0 or stat.S_IMODE(details.st_mode) != 0o600
+        ):
+            return None
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):
             return None
         return value if isinstance(value, dict) and value.get("schema_version") == 1 else None
+
+    @staticmethod
+    def _receipt_identities(receipt: dict[str, Any] | None) -> IdentityFacts | None:
+        if receipt is None:
+            return None
+        raw = receipt.get("identities")
+        required = {"agentbox_uid", "agentbox_gid", "runtime_uid", "ipc_gid"}
+        if not isinstance(raw, dict) or set(raw) != required:
+            raise InstallError("installation receipt identity evidence is invalid")
+        values = tuple(raw[key] for key in sorted(required))
+        if any(
+            not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in values
+        ):
+            raise InstallError("installation receipt identity evidence is invalid")
+        return IdentityFacts(
+            agentbox_uid=raw["agentbox_uid"],
+            agentbox_gid=raw["agentbox_gid"],
+            runtime_uid=raw["runtime_uid"],
+            ipc_gid=raw["ipc_gid"],
+        )
 
     def _read_journal(self) -> dict[str, Any] | None:
         path = self.layout.journal

@@ -19,7 +19,7 @@ from agentbox_installer.platform import (
     [
         ("opencloudos", "9.4", PackageFamily.DNF, PlatformSupport.SUPPORTED),
         ("rocky", "9.5", PackageFamily.DNF, PlatformSupport.PREVIEW),
-        ("ubuntu", "22.04", PackageFamily.APT, PlatformSupport.PREVIEW),
+        ("ubuntu", "22.04", PackageFamily.APT, PlatformSupport.UNSUPPORTED),
         ("ubuntu", "24.04", PackageFamily.APT, PlatformSupport.PREVIEW),
         ("debian", "12", PackageFamily.APT, PlatformSupport.PREVIEW),
     ],
@@ -56,6 +56,19 @@ def test_unsupported_platforms_fail_closed(
     os_release.write_text(f"ID={identifier}\nVERSION_ID={version}\n", encoding="utf-8")
 
     assert detect_platform(os_release, architecture=architecture).supported is False
+
+
+def test_ubuntu_2204_is_fixture_only_until_python_runtime_is_qualified(
+    tmp_path: Path,
+) -> None:
+    os_release = tmp_path / "os-release"
+    os_release.write_text('ID="ubuntu"\nVERSION_ID="22.04"\n', encoding="utf-8")
+
+    facts = detect_platform(os_release, architecture="x86_64")
+
+    assert facts.support is PlatformSupport.UNSUPPORTED
+    assert facts.package_family is PackageFamily.APT
+    assert "Python 3.10" in facts.reason
 
 
 def test_os_release_parser_never_evaluates_shell() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from agentbox_installer.host import HostMutationError, HostOperations
+from agentbox_installer.host import HostMutationError, HostOperations, IdentityFacts
 from pytest import MonkeyPatch
 
 
@@ -75,3 +75,69 @@ def test_migration_environment_rejects_unknown_keys_and_shell_syntax(
 
     with pytest.raises(HostMutationError, match="environment file"):
         HostOperations(real_host=True).migrate(release, environment_file)
+
+
+def test_preexisting_service_account_name_without_receipt_is_rejected(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    agentbox = SimpleNamespace(
+        pw_uid=993,
+        pw_gid=994,
+        pw_dir="/var/lib/agentbox",
+        pw_shell="/usr/sbin/nologin",
+    )
+
+    def user(name: str) -> object:
+        if name == "agentbox":
+            return agentbox
+        raise KeyError(name)
+
+    monkeypatch.setattr("agentbox_installer.host.pwd.getpwnam", user)
+    monkeypatch.setattr(
+        "agentbox_installer.host.grp.getgrnam",
+        lambda name: (_ for _ in ()).throw(KeyError(name)),
+    )
+    host = HostOperations(real_host=True)
+    monkeypatch.setattr(host, "_run", lambda _argv: pytest.fail("host was mutated"))
+
+    with pytest.raises(HostMutationError, match="lack an installation receipt"):
+        host.ensure_identities()
+
+
+def test_receipt_bound_service_accounts_require_exact_shape(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    users = {
+        "agentbox": SimpleNamespace(
+            pw_uid=993,
+            pw_gid=994,
+            pw_dir="/var/lib/agentbox",
+            pw_shell="/usr/sbin/nologin",
+        ),
+        "agentbox-runtime": SimpleNamespace(
+            pw_uid=992,
+            pw_gid=993,
+            pw_dir="/home/agentbox-runtime",
+            pw_shell="/usr/sbin/nologin",
+        ),
+    }
+    groups = {
+        "agentbox": SimpleNamespace(gr_gid=994, gr_mem=[]),
+        "agentbox-runtime": SimpleNamespace(gr_gid=993, gr_mem=[]),
+        "agentbox-runtime-ipc": SimpleNamespace(
+            gr_gid=992, gr_mem=["agentbox", "agentbox-runtime"]
+        ),
+    }
+    monkeypatch.setattr("agentbox_installer.host.pwd.getpwnam", users.__getitem__)
+    monkeypatch.setattr("agentbox_installer.host.grp.getgrnam", groups.__getitem__)
+    host = HostOperations(real_host=True)
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(host, "_run", commands.append)
+    expected = IdentityFacts(993, 994, 992, 992)
+
+    assert host.ensure_identities(expected) == expected
+    assert len(commands) == 2
+
+    users["agentbox-runtime"].pw_dir = "/home/unrelated"
+    with pytest.raises(HostMutationError, match="does not match its receipt"):
+        host.ensure_identities(expected)

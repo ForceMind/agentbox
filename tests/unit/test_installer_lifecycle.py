@@ -257,6 +257,32 @@ def test_uninstall_removes_only_program_files_and_preserves_all_data(tmp_path: P
     )
 
 
+def test_uninstall_preflights_every_managed_object_before_stopping_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    installer.apply(artifact, digest)
+    unit = layout.map("/etc/systemd/system/agentbox-worker.service")
+    unit.write_text("[Service]\nExecStart=/modified\n", encoding="utf-8")
+    stopped = False
+
+    def disable_and_stop() -> None:
+        nonlocal stopped
+        stopped = True
+
+    monkeypatch.setattr(installer.host, "disable_and_stop", disable_and_stop)
+
+    with pytest.raises(InstallError, match="modified or unsafe systemd unit"):
+        installer.uninstall()
+
+    assert stopped is False
+    assert installer.current_version() == "0.2.0+dev.8"
+    assert layout.current_link.is_symlink()
+    assert layout.release("0.2.0+dev.8").is_dir()
+
+
 def test_fresh_install_refuses_unknown_unit_and_records_verified_cleanup(
     tmp_path: Path,
 ) -> None:
@@ -322,6 +348,47 @@ def test_rollback_rejects_untrusted_receipt_target(tmp_path: Path, target: str) 
 
     with pytest.raises(InstallError, match="previous release"):
         installer.rollback()
+
+
+def test_rollback_rejects_retained_release_other_than_receipt_previous(
+    tmp_path: Path,
+) -> None:
+    installer, layout = _installer(tmp_path)
+    releases = [
+        _artifact(tmp_path, "0.2.0+dev.8", "revision_one"),
+        _artifact(tmp_path, "0.2.1+dev.8", "revision_two"),
+        _artifact(tmp_path, "0.2.2+dev.8", "revision_three"),
+    ]
+    for artifact, digest in releases:
+        installer.apply(artifact, digest)
+
+    with pytest.raises(InstallError, match="must match the receipt's previous release"):
+        installer.rollback("0.2.0+dev.8")
+
+    assert installer.current_version() == "0.2.2+dev.8"
+    assert layout.database.is_file()
+
+
+def test_rollback_backup_metadata_must_match_direct_previous_release(
+    tmp_path: Path,
+) -> None:
+    installer, layout = _installer(tmp_path)
+    first_artifact, first_digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    second_artifact, second_digest = _artifact(tmp_path, "0.2.1+dev.8", "revision_two")
+    installer.apply(first_artifact, first_digest)
+    installer.apply(second_artifact, second_digest)
+    receipt = json.loads(layout.receipt.read_text(encoding="utf-8"))
+    backup_manifest = layout.backups / str(receipt["pre_change_backup_id"]) / "manifest.json"
+    manifest = json.loads(backup_manifest.read_text(encoding="utf-8"))
+    manifest["application_version"] = "0.1.9"
+    backup_manifest.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+    receipt["pre_change_backup_manifest_sha256"] = installer._digest(backup_manifest)
+    layout.receipt.write_text(json.dumps(receipt), encoding="utf-8")
+
+    with pytest.raises(InstallError, match="not bound to the rollback target"):
+        installer.rollback()
+
+    assert installer.current_version() == "0.2.1+dev.8"
 
 
 def stat_mode(path: Path) -> int:

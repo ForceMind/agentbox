@@ -57,7 +57,7 @@ agentbox status
 agentbox doctor
 agentbox system status
 agentbox system update --artifact <path> --sha256 <digest>
-agentbox system rollback [--version <version>]
+agentbox system rollback [--to <version>]
 agentbox system recover
 agentbox system uninstall
 ```

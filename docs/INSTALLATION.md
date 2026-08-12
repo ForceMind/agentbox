@@ -41,6 +41,12 @@ only lifecycle mutations require an administrator to invoke the installer.
 Port conflicts fail closed and the installer never kills the owner or silently
 changes the product default.
 
+Service-account names are not adopted merely because they exist. On a fresh
+host, any pre-existing `agentbox`, `agentbox-runtime`, or associated group name
+is a collision. On reinstall/update, reuse requires root-owned receipt evidence
+whose UID/GID values match the fixed primary groups, homes, and nologin shells;
+partial or mismatched identity sets fail before user/group mutation or chown.
+
 ## Transaction
 
 The apply path takes a global non-blocking lifecycle lock and then:

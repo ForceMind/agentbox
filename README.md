@@ -190,10 +190,11 @@ The Vite development proxy points only to `http://127.0.0.1:8787`. These command
 
 ## Environment support status
 
-OpenCloudOS 9 x86_64 is the first real-host validation target. Ubuntu 22.04 and
-24.04 receive fixture and GitHub Actions coverage; Rocky Linux 9 and Debian 12
-are preview platforms with fixture coverage only. `aarch64` is detected but
-fails closed until release artifacts and Runtime tools are qualified. See
+OpenCloudOS 9 x86_64 is the first real-host validation target. Ubuntu 24.04 is
+a CI preview; Ubuntu 22.04 remains an unsupported CI fixture because its stock
+Python 3.10 does not satisfy AgentBox's Python 3.11 minimum. Rocky Linux 9 and
+Debian 12 are preview platforms with fixture coverage only. `aarch64` is
+detected but fails closed until release artifacts and Runtime tools are qualified. See
 [Platform Support](docs/PLATFORM_SUPPORT.md); none of these labels is a general
 production support promise.
 

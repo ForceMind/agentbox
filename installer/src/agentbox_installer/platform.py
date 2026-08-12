@@ -108,7 +108,16 @@ def detect_platform(
             PlatformSupport.PREVIEW,
             "fixture-tested preview",
         )
-    if distro == "ubuntu" and version in {"22.04", "24.04"}:
+    if distro == "ubuntu" and version == "22.04":
+        return PlatformFacts(
+            distro,
+            version,
+            arch,
+            PackageFamily.APT,
+            PlatformSupport.UNSUPPORTED,
+            "stock Python 3.10 does not satisfy AgentBox Python >=3.11",
+        )
+    if distro == "ubuntu" and version == "24.04":
         return PlatformFacts(
             distro, version, arch, PackageFamily.APT, PlatformSupport.PREVIEW, "CI target"
         )

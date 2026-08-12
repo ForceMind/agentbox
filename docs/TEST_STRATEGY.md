@@ -229,7 +229,8 @@ repository mutation, Pair Code, or browser terminal.
 |---|---|---|
 | OpenCloudOS 9 | validation target | fixture plus one gated real-host install/update/rollback |
 | Rocky Linux 9 | preview | DNF/os-release fixtures; VM remains required |
-| Ubuntu 22.04/24.04 | CI preview | APT fixtures and GitHub Actions; native VM systemd remains required |
+| Ubuntu 22.04 | unsupported fixture | rejection plus GitHub Actions; stock Python 3.10 is below the product minimum |
+| Ubuntu 24.04 | CI preview | APT fixtures and GitHub Actions; native VM systemd remains required |
 | Debian 12 | preview | APT/os-release fixtures; VM remains required |
 
 ## Phase 8 Implemented Coverage
@@ -248,7 +249,8 @@ denials. Unit tests combine semantic assertions with actual
 `systemd-analyze verify` and offline security analysis where available.
 
 GitHub deployment CI runs the safe fixture subset on Ubuntu 22.04/24.04 with
-Python 3.11/3.13. It never creates `/etc/agentbox`, users, units, or services.
+Python 3.11/3.13. This does not make stock Ubuntu 22.04 installable. It never
+creates `/etc/agentbox`, users, units, or services.
 Rocky/OpenCloudOS/Debian fixture evidence is not represented as a native VM
 claim. The Phase 8 report records real-host evidence separately.
 
