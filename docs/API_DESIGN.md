@@ -314,6 +314,12 @@ The three Diagnostic Run routes remain future designs. Doctor plans but does
 not automatically repair. A remediation becomes a separately validated
 action/Job.
 
+Phase 8 production CLI Doctor extends local diagnostics with exact service,
+identity, directory owner/mode, socket, loopback listener, Project Root, and
+Runtime tool checks. This does not add a root-management HTTP endpoint. There
+is no Web/API route for installer apply, package installation, update,
+rollback, systemctl, arbitrary service restart, or Helper action.
+
 ## Settings API
 
 | Method/path | Purpose |
@@ -365,4 +371,8 @@ Breaking resource/semantic changes require `/api/v2`. V1 may add optional fields
 
 ## Explicitly Absent API
 
-There is no `/shell`, `/exec`, `/terminal`, `/command`, arbitrary filesystem, arbitrary Git, arbitrary systemd, arbitrary package, credential read/write, Pair Code history, raw environment, root impersonation, Provider, or Secret Manager endpoint. The Provider routes above are future planning only.
+There is no `/shell`, `/exec`, `/terminal`, `/command`, arbitrary filesystem,
+arbitrary Git, arbitrary systemd, arbitrary package, install/update/rollback,
+credential read/write, Pair Code history, raw environment, root impersonation,
+Provider, or Secret Manager endpoint. The Provider routes above are future
+planning only.

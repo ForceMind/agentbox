@@ -10,7 +10,8 @@ rejects roots or children that are symlinks, inaccessible, nested, missing,
 outside the root, foreign-owned, or unsafe because the root/workspace is
 group/world writable.
 
-Development uses `.agentbox-dev/projects`. The production architecture remains `/srv/agentbox/projects`; this phase does not create that directory or modify host ownership.
+Development uses `.agentbox-dev/projects`. Phase 8 creates the production root
+at `/srv/agentbox/projects`; Phase 7 itself did not create host paths.
 
 ## Creation and cloning
 
@@ -38,3 +39,15 @@ Safe immediate children previously enumerated by Phase 6 are reconciled into for
 ## Lifecycle limits
 
 There is no filesystem Project Delete. Creating, ready, error, and archived states are modeled, but Phase 7 does not expose destructive deletion. Workspace paths are not accepted in API bodies. Project mutations are serialized by the durable Job resource lock.
+
+## Phase 8 Production Deployment
+
+The installer creates `/srv/agentbox/projects` as
+`agentbox-runtime:agentbox-runtime` mode `0700`. API/Worker cannot write source;
+all create/clone/Git/gh/Claude/tmux operations still cross the typed Runtime
+UDS and execute under `agentbox-runtime`.
+
+Install, update, rollback, backup, and uninstall preserve Project Root. AgentBox
+does not automatically back up project contents; Git remotes and the operator's
+own backup policy provide recovery. Existing `/root/projects` is never moved,
+copied, adopted, or chowned by Phase 8 validation.

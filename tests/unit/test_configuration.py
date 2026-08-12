@@ -41,6 +41,34 @@ def test_environment_overrides_optional_local_toml(
     assert Settings().bind_port == 9002
 
 
+def test_explicit_production_toml_path_is_supported_without_secret_in_toml(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "agentbox.toml"
+    production_data = Path("/var/lib/agentbox-settings-fixture")
+    config.write_text(
+        'env = "production"\n'
+        'bind_host = "127.0.0.1"\n'
+        "bind_port = 8787\n"
+        f'data_dir = "{production_data}"\n'
+        f'database_url = "sqlite+pysqlite:///{production_data / "agentbox.db"}"\n'
+        'runtime_socket = "/run/agentbox/runtime.sock"\n'
+        'project_root = "/srv/agentbox/projects"\n'
+        'static_dir = "/opt/agentbox/current/web/dist"\n'
+        "allowed_origins = []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENTBOX_TOML_FILE", str(config))
+    monkeypatch.setenv("AGENTBOX_SECRET_KEY", "x" * 48)
+
+    settings = Settings()
+
+    assert settings.env is Environment.PRODUCTION
+    assert settings.bind_host == "127.0.0.1"
+    assert settings.allowed_origins == ()
+    assert "secret" not in config.read_text().lower()
+
+
 @pytest.mark.parametrize("bind_host", ["0.0.0.0", "192.0.2.10"])
 def test_production_rejects_non_loopback_bind(bind_host: str, tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="loopback"):

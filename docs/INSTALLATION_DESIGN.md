@@ -1,5 +1,9 @@
 # AgentBox Installation Design
 
+Status: Phase 1 design baseline. Phase 8 implementation and operator guidance
+supersede operational details here; see `INSTALLATION.md`, `DEPLOYMENT.md`, and
+`PLATFORM_SUPPORT.md`.
+
 Status: Phase 1 design baseline; no installer is implemented in this phase.
 
 ## Goals

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 from pathlib import Path
 from typing import cast
 
@@ -165,6 +166,26 @@ async def test_runtime_socket_accepts_only_typed_actions(tmp_path: Path) -> None
     finally:
         await server.close()
     assert not socket_path.exists()
+
+
+@pytest.mark.anyio
+async def test_runtime_server_replaces_only_same_uid_stale_socket(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale.bind(str(socket_path))
+    stale.close()
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+    )
+
+    await server.start()
+    try:
+        client = UnixCodexRuntimeClient(socket_path, status_timeout_seconds=2)
+        assert (await client.status("req_stale-recovery")).installed is True
+    finally:
+        await server.close()
 
 
 @pytest.mark.anyio

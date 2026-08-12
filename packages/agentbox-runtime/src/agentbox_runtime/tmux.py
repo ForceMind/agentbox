@@ -60,7 +60,13 @@ class TmuxAdapter:
         )
         if result.exit_code != 0:
             text = self._text(result).lower()
-            if "no server running" in text or "no sessions" in text or "failed to connect" in text:
+            empty_server = (
+                "no server running" in text
+                or "no sessions" in text
+                or "failed to connect" in text
+                or ("error connecting to" in text and "no such file" in text)
+            )
+            if empty_server:
                 return ()
             raise RuntimeOperationError("TMUX_LIST_FAILED", "tmux sessions could not be listed")
         sessions: list[str] = []

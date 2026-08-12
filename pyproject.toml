@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentbox"
-version = "0.1.0.dev0"
+version = "0.2.8+dev.8"
 description = "Turn any Linux server into a remotely managed AI development workstation."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,6 +44,8 @@ dev = [
 [project.scripts]
 agentbox = "agentbox_cli.main:main"
 agentbox-api = "agentbox_api.main:run"
+agentbox-helper = "agentbox_helper.server:main"
+agentbox-install = "agentbox_installer.cli:main"
 agentbox-worker = "agentbox_worker.main:main"
 agentbox-runtime = "agentbox_runtime.server:main"
 
@@ -52,6 +54,8 @@ packages = [
   "agentbox_api",
   "agentbox_cli",
   "agentbox_core",
+  "agentbox_helper",
+  "agentbox_installer",
   "agentbox_protocol",
   "agentbox_runtime",
   "agentbox_worker",
@@ -61,9 +65,18 @@ packages = [
 agentbox_api = "apps/api/src/agentbox_api"
 agentbox_cli = "apps/cli/src/agentbox_cli"
 agentbox_core = "packages/agentbox-core/src/agentbox_core"
+agentbox_helper = "helper/src/agentbox_helper"
+agentbox_installer = "installer/src/agentbox_installer"
 agentbox_protocol = "packages/agentbox-protocol/src/agentbox_protocol"
 agentbox_runtime = "packages/agentbox-runtime/src/agentbox_runtime"
 agentbox_worker = "apps/worker/src/agentbox_worker"
+
+[tool.setuptools.package-data]
+agentbox_installer = [
+  "assets/systemd/*.service",
+  "assets/systemd/*.socket",
+  "assets/tmpfiles.d/*.conf",
+]
 
 [tool.black]
 line-length = 100
@@ -84,6 +97,7 @@ strict = true
 warn_unreachable = true
 pretty = true
 exclude = ["apps/web", ".venv"]
+mypy_path = "apps/api/src:apps/cli/src:apps/worker/src:packages/agentbox-core/src:packages/agentbox-protocol/src:packages/agentbox-runtime/src:helper/src:installer/src"
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"

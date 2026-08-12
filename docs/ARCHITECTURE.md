@@ -223,12 +223,12 @@ It may execute public Codex, Claude, tmux, Git, and gh commands selected by serv
 
 Runs as root and listens only on `/run/agentbox/helper.sock`. It performs the minimal actions that genuinely require root:
 
-- query/apply an approved package installation plan;
-- install/activate/rollback versioned AgentBox release files;
-- manage an exact allowlist of AgentBox systemd units;
-- create/validate approved AgentBox users, groups, and FHS directories during installation;
-- perform bounded ownership/mode transitions on known AgentBox paths;
-- run host diagnostics that require privilege with redacted results.
+- reload systemd; and
+- start, stop, restart, enable, or disable the compiled exact AgentBox unit set.
+
+Package plans, users/groups/directories, release activation, migration, backup,
+update, and rollback remain local administrator/root Installer operations and
+are not exposed through the runtime Helper protocol.
 
 It does not manage arbitrary units, run user shell commands, execute Git, read Runtime credentials, generate Pair Codes, invoke Claude/tmux as root, modify SSH/firewall/tunnels, or accept caller-supplied package names.
 
@@ -452,7 +452,8 @@ future work and Phase 6 uses bounded typed UDS calls.
 1. Bootstrap performs read-only platform and conflict detection.
 2. Installer builds a typed plan from logical dependencies and exact AgentBox version.
 3. Administrator reviews dry-run, affected paths/units, downloads, and rollback boundary.
-4. Helper applies approved steps with per-step preconditions and completion markers.
+4. The administrator-invoked root Installer applies approved installation
+   steps; the runtime Helper is deliberately not an installer.
 5. Files install under a versioned `/opt/agentbox/releases/<version>` directory.
 6. Database and configuration backups precede migration.
 7. `current` switches atomically, units reload/restart in order, and loopback health checks run.
@@ -461,6 +462,41 @@ future work and Phase 6 uses bounded typed UDS calls.
 ### Upgrade Flow
 
 Upgrade is a privileged Job with a global lifecycle lock. It downloads to staging, verifies available publisher metadata and locally recorded digest, stops acceptance of new Jobs, drains/cancels safe work, backs up SQLite/config, applies forward-compatible migrations, switches the release symlink, restarts Runtime/Worker/API/Helper in dependency order, and runs health checks. Automatic rollback is attempted only when the reverse migration/restore plan is proven safe.
+
+## Phase 8 Production Deployment
+
+Phase 8 implements the accepted three-identity boundary as `agentbox`
+(API/Worker/data), `agentbox-runtime` (Runtime HOME/projects/tools), and a
+socket-activated root Helper. A narrow `agentbox-runtime-ipc` supplementary
+group provides access to `runtime.sock`; neither service identity shares the
+other's secrets or writable filesystem roots.
+
+The SQLite parent is `root:agentbox 1770`: `agentbox` can create SQLite
+WAL/SHM files, while the sticky root-owned parent prevents it from replacing
+root-owned receipt, transaction-journal, or backup names. `/run/agentbox` is
+setgid/sticky `3770` so the two IPC identities cannot unlink one another's
+socket directory entries.
+
+Production state uses `/etc/agentbox`, `/var/lib/agentbox`, `/run/agentbox`,
+`/srv/agentbox/projects`, and immutable releases below `/opt/agentbox`. The API
+serves prebuilt static assets and binds only `127.0.0.1:8787`. SQLite migrations
+are an explicit installer action, not an application-startup side effect.
+
+The installer owns package/user/directory/unit/release/config/DB lifecycle and
+runs only from a local administrator root context. The Helper owns only six
+fixed, argument-free AgentBox systemd actions. Neither accepts caller-selected
+commands, paths, packages, PIDs, signals, or unit names.
+
+Release activation is a verified directory plus atomic relative symlink.
+Upgrade takes a lifecycle lock, quiesces AgentBox, creates an online SQLite and
+configuration/unit backup, migrates, activates, restarts, and verifies health,
+readiness, and version. Failure restores the prior snapshot when available and
+reports rollback verification separately from rollback attempt.
+
+The transaction journal is root-only and records transaction ID, expected
+path/type, existed-before state, and filesystem identity. Interrupted staged,
+partially-migrated, activated, rollback-pending, and unknown states fail closed
+on re-entry rather than replaying an unproven mutation.
 
 ## CLI and Service Behavior
 

@@ -6,10 +6,10 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. Phases 2–6 are merged. Phase 7
-Project Workspace and Git/GitHub management is implemented on
-`phase/7-project-git-management` and awaits human review; it is not a
-production support claim.
+AgentBox is in **early pre-alpha development**. Phases 2–7 are merged. Phase 8
+installation and deployment is implemented on
+`phase/8-installation-deployment` and awaits human review; it is not a
+production-readiness or broad platform-support claim.
 
 The current codebase provides:
 
@@ -29,6 +29,14 @@ The current codebase provides:
   Codex, Claude, and Project management pages alongside clearly marked future sections;
 - package boundaries, tests, CI, governance templates, and architecture documents.
 
+Phase 8 adds a checksum-verified, fixture-testable native installer; distinct
+`agentbox` and `agentbox-runtime` identities; hardened systemd units; a minimal
+socket-activated root Helper; FHS production paths; loopback static/API
+serving; online SQLite backup; staged update; verified rollback; safe
+data-preserving uninstall; and production `status`/`doctor` diagnostics. See
+[Installation](docs/INSTALLATION.md), [Deployment](docs/DEPLOYMENT.md), and
+[Rollback](docs/ROLLBACK.md).
+
 Phase 7 adds formal Project Workspaces plus safe Git/GitHub foundations. Web and
 CLI can create or clone managed workspaces, inspect structured status, manage
 ordinary branches, perform fast-forward-only Pull and no-force Push, and create
@@ -37,10 +45,12 @@ Executor. See [Project Workspaces](docs/PROJECT_WORKSPACES.md),
 [Git Integration](docs/GIT_INTEGRATION.md), and
 [GitHub Integration](docs/GITHUB_INTEGRATION.md).
 
-AgentBox still does **not** install/update/migrate Codex or Claude, delete
-Project files, expose arbitrary paths or Git commands, force push, reset,
-clean, stage/commit files, operate a root Helper, install system services,
-expose a public listener, or change Provider/Secret configuration.
+AgentBox still does **not** migrate Runtime credentials or existing root
+sessions/projects, delete Project files, expose arbitrary paths or commands,
+force push, reset, clean, stage/commit files, expose a public listener, manage
+SSH/firewall/tunnels, or change Provider/Secret configuration. Codex and Claude
+are detected separately; installation guidance is versioned but no existing
+Runtime is automatically upgraded.
 
 A future Phase 11 — Provider, Secret & Runtime Continuity Management is
 architecture/backlog only. It separates concrete `ProviderDefinitionID` values
@@ -62,8 +72,9 @@ The planned MVP targets one Linux server and one administrator. It aims to provi
 - a loopback-only authenticated Web panel and recovery-oriented CLI;
 - durable SQLite-backed Jobs and SSE progress.
 
-Installer, production deployment, privileged operations, and release support
-in this list remain roadmap goals.
+Phase 8 provides the deployment mechanics in this list. Publication, signed
+release distribution, broader VM validation, and a production support promise
+remain later release gates.
 
 ## What AgentBox is not
 
@@ -71,10 +82,11 @@ AgentBox is not a general Linux administration panel, browser IDE, arbitrary Web
 
 ## Architecture baseline
 
-- native systemd deployment is planned; Docker is not the default;
+- native systemd deployment is implemented; Docker is not the default;
 - Web/API and Worker run as non-root `agentbox`;
 - projects, Git, gh, Codex, Claude, and tmux belong to non-root `agentbox-runtime`;
-- a future minimal root Privileged Helper accepts only typed allowlisted actions over a protected Unix Domain Socket;
+- a minimal socket-activated root Privileged Helper accepts only six typed,
+  argument-free AgentBox service actions over a protected Unix Domain Socket;
 - Project Workspaces default to `/srv/agentbox/projects`;
 - configuration, state, runtime files, and installed releases use `/etc/agentbox`, `/var/lib/agentbox`, `/run/agentbox`, and `/opt/agentbox`;
 - Web/API defaults to `127.0.0.1:8787`;
@@ -95,8 +107,8 @@ See [the security design](docs/SECURITY.md), [permissions model](docs/PERMISSION
 ```text
 apps/                 API, Worker, CLI, and Web application shells
 packages/             shared core, protocol, and Runtime boundaries
-helper/               root Helper design placeholder only
-installer/            installer design placeholder only
+helper/               minimal typed root Helper and socket protocol
+installer/            platform-aware installer and deployment assets
 tests/                 unit tests and reserved fixture/integration areas
 scripts/               repository-only safety checks
 docs/                  product, architecture, security, and ADR documents
@@ -178,7 +190,13 @@ The Vite development proxy points only to `http://127.0.0.1:8787`. These command
 
 ## Environment support status
 
-OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP distribution families. Only the Phase 0 OpenCloudOS host has been inventoried; no distribution is yet claimed as deployment-tested or production-supported. x86_64 is the first planned release architecture, and other architectures remain unqualified.
+OpenCloudOS 9 x86_64 is the first real-host validation target. Ubuntu 24.04 is
+a CI preview; Ubuntu 22.04 remains an unsupported CI fixture because its stock
+Python 3.10 does not satisfy AgentBox's Python 3.11 minimum. Rocky Linux 9 and
+Debian 12 are preview platforms with fixture coverage only. `aarch64` is
+detected but fails closed until release artifacts and Runtime tools are qualified. See
+[Platform Support](docs/PLATFORM_SUPPORT.md); none of these labels is a general
+production support promise.
 
 ## Roadmap
 
@@ -187,8 +205,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 3. Phase 4: authenticated Web foundation — merged in PR #21.
 4. Phase 5: capability-aware Codex management — merged in PR #22.
 5. Phase 6: Claude/tmux session management — merged in PR #25.
-6. Phase 7: Project Workspaces and safe Git/GitHub foundation — pending review.
-7. Phase 8: installation, deployment, upgrade, and rollback.
+6. Phase 7: Project Workspaces and safe Git/GitHub foundation — merged in PR #27.
+7. Phase 8: installation, deployment, upgrade, and rollback — pending review.
 8. Phase 9: security and compatibility hardening.
 9. Phase 10: first release.
 10. Phase 11: Provider, Secret & Runtime Continuity Management — future
@@ -211,6 +229,13 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Provider Manager](docs/PROVIDER_MANAGER.md)
 - [Web UI design](docs/WEB_UI.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
+- [Installation](docs/INSTALLATION.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Upgrade](docs/UPGRADE.md)
+- [Rollback](docs/ROLLBACK.md)
+- [Uninstall](docs/UNINSTALL.md)
+- [Platform support](docs/PLATFORM_SUPPORT.md)
+- [Privileged Helper](docs/PRIVILEGED_HELPER.md)
 - [ADRs](docs/adr/README.md)
 - [Phase 0 report](PHASE0_ENVIRONMENT_REPORT.md)
 - [Phase 1 summary](PHASE1_ARCHITECTURE_SUMMARY.md)
@@ -219,6 +244,8 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Phase 4 report](PHASE4_WEB_FOUNDATION_REPORT.md)
 - [Phase 5 report](PHASE5_CODEX_MANAGEMENT_REPORT.md)
 - [Phase 6 report](PHASE6_CLAUDE_SESSION_REPORT.md)
+- [Phase 7 report](PHASE7_PROJECT_GIT_REPORT.md)
+- [Phase 8 report](PHASE8_INSTALLATION_DEPLOYMENT_REPORT.md)
 
 ## Contributing
 

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from agentbox_cli.main import main
+from agentbox_cli.main import create_parser, main
 from agentbox_core import __version__
 from agentbox_core.configuration import Settings
 from agentbox_core.services import build_services
@@ -52,6 +52,13 @@ def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert exc_info.value.code == 0
     assert capsys.readouterr().out.strip() == __version__
+
+
+def test_system_recover_is_an_explicit_root_lifecycle_command() -> None:
+    args = create_parser().parse_args(["system", "recover"])
+
+    assert args.command == "system"
+    assert args.system_command == "recover"
 
 
 def test_cli_status_json_reports_control_plane_only(

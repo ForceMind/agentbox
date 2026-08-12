@@ -20,9 +20,12 @@ target_metadata = Base.metadata
 
 def configured_database_url() -> str:
     url = os.environ.get("AGENTBOX_DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    if not url:
+        raise RuntimeError("database URL is required")
     parsed = make_url(url)
-    if parsed.get_backend_name() == "sqlite" and parsed.database not in (None, ":memory:"):
-        parent = Path(parsed.database).expanduser().parent
+    database = parsed.database
+    if parsed.get_backend_name() == "sqlite" and database is not None and database != ":memory:":
+        parent = Path(database).expanduser().parent
         if not parent.exists():
             if os.environ.get("AGENTBOX_ENV", "development") == "production":
                 raise RuntimeError("production database directory must be created by the installer")

@@ -1,0 +1,39 @@
+name: Deployment
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        python-version: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip "setuptools>=83"
+      - run: python -m pip install -e ".[dev]"
+      - run: >-
+          pytest
+          tests/unit/test_installer_platform.py
+          tests/unit/test_installer_artifact.py
+          tests/unit/test_installer_backup.py
+          tests/unit/test_database_security.py
+          tests/unit/test_installer_host.py
+          tests/unit/test_installer_lifecycle.py
+          tests/unit/test_helper_protocol.py
+          tests/unit/test_deployment_assets.py
+          tests/unit/test_privilege_isolation.py
+          tests/integration/test_static_web.py
+      - run: bash scripts/check-skeleton-boundaries.sh
