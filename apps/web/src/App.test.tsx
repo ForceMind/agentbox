@@ -729,4 +729,32 @@ describe('AgentBox authenticated Web foundation', () => {
     expect(window.localStorage).toHaveLength(0)
     expect(window.sessionStorage).toHaveLength(0)
   })
+
+  it('renders a Project detail load failure instead of permanent loading', async () => {
+    window.history.replaceState({}, '', '/projects/prj_missing')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (input.toString().endsWith('/api/v1/projects/prj_missing')) {
+          return Promise.resolve(
+            jsonResponse(404, {
+              request_id: 'req_missing_project',
+              error: {
+                code: 'PROJECT_NOT_FOUND',
+                message: 'Project not found',
+              },
+            }),
+          )
+        }
+        return authenticatedFetch(input, init)
+      }),
+    )
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Project not found',
+    )
+    expect(screen.queryByText('Loading Project…')).not.toBeInTheDocument()
+  })
 })

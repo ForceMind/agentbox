@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { ApiError } from '../../lib/api'
@@ -32,6 +32,23 @@ function key() {
   return `web-${crypto.randomUUID()}`
 }
 
+function idempotencyKey(
+  keys: Map<string, string>,
+  operation: string,
+  body: object,
+) {
+  const fingerprint = operation + ':' + JSON.stringify(body)
+  const existing = keys.get(fingerprint)
+  if (existing) return { fingerprint, value: existing }
+  const value = key()
+  keys.set(fingerprint, value)
+  return { fingerprint, value }
+}
+
+function receivedDefinitiveFailure(value: unknown) {
+  return value instanceof ApiError && value.status > 0
+}
+
 export function useProjects() {
   const { api, auth } = useAuth()
   const [projects, setProjects] = useState<ProjectData[]>([])
@@ -39,6 +56,7 @@ export function useProjects() {
   const [error, setError] = useState<ApiError | null>(null)
   const [pending, setPending] = useState(false)
   const [job, setJob] = useState<JobView | null>(null)
+  const idempotencyKeys = useRef(new Map<string, string>())
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -84,18 +102,28 @@ export function useProjects() {
 
   async function create(name: string) {
     if (!auth) return
+    const body = { name }
+    const requestKey = idempotencyKey(
+      idempotencyKeys.current,
+      'project.create',
+      body,
+    )
     setPending(true)
     try {
       const response = await api.post<ProjectJobResponse>('/api/v1/projects', {
-        body: { name },
+        body,
         csrfToken: auth.csrf_token,
-        idempotencyKey: key(),
+        idempotencyKey: requestKey.value,
         validate: parseProjectJobResponse,
       })
+      idempotencyKeys.current.delete(requestKey.fingerprint)
       setJob(response.data.job)
       setProjects((current) => [...current, response.data.project])
       setError(null)
     } catch (value) {
+      if (receivedDefinitiveFailure(value)) {
+        idempotencyKeys.current.delete(requestKey.fingerprint)
+      }
       setError(value as ApiError)
     } finally {
       setPending(false)
@@ -104,21 +132,31 @@ export function useProjects() {
 
   async function clone(repositoryUrl: string, name: string) {
     if (!auth) return
+    const body = { repository_url: repositoryUrl, name: name || null }
+    const requestKey = idempotencyKey(
+      idempotencyKeys.current,
+      'project.clone',
+      body,
+    )
     setPending(true)
     try {
       const response = await api.post<ProjectJobResponse>(
         '/api/v1/projects/clone',
         {
-          body: { repository_url: repositoryUrl, name: name || null },
+          body,
           csrfToken: auth.csrf_token,
-          idempotencyKey: key(),
+          idempotencyKey: requestKey.value,
           validate: parseProjectJobResponse,
         },
       )
+      idempotencyKeys.current.delete(requestKey.fingerprint)
       setJob(response.data.job)
       setProjects((current) => [...current, response.data.project])
       setError(null)
     } catch (value) {
+      if (receivedDefinitiveFailure(value)) {
+        idempotencyKeys.current.delete(requestKey.fingerprint)
+      }
       setError(value as ApiError)
     } finally {
       setPending(false)
@@ -135,6 +173,7 @@ export function useProject(projectId: string | undefined) {
   const [pending, setPending] = useState<string | null>(null)
   const [branches, setBranches] = useState<GitBranchData[]>([])
   const [job, setJob] = useState<JobView | null>(null)
+  const idempotencyKeys = useRef(new Map<string, string>())
 
   const refresh = useCallback(async () => {
     if (!projectId) return
@@ -187,6 +226,12 @@ export function useProject(projectId: string | undefined) {
 
   async function mutate(path: string, body?: object) {
     if (!auth || !projectId) return
+    const requestBody = body ?? {}
+    const requestKey = idempotencyKey(
+      idempotencyKeys.current,
+      projectId + ':' + path,
+      requestBody,
+    )
     setPending(path)
     try {
       const response = await api.post<JobResponse>(
@@ -194,13 +239,17 @@ export function useProject(projectId: string | undefined) {
         {
           body,
           csrfToken: auth.csrf_token,
-          idempotencyKey: key(),
+          idempotencyKey: requestKey.value,
           validate: parseJobResponse,
         },
       )
+      idempotencyKeys.current.delete(requestKey.fingerprint)
       setJob(response.data)
       setError(null)
     } catch (value) {
+      if (receivedDefinitiveFailure(value)) {
+        idempotencyKeys.current.delete(requestKey.fingerprint)
+      }
       setError(value as ApiError)
     } finally {
       setPending(null)

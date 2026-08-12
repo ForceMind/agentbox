@@ -28,6 +28,7 @@ from agentbox_runtime.process import (
 )
 
 _PR_URL = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/(\d+)")
+MAX_PR_BODY_BYTES = 7 * 1024
 
 
 def github_repository_from_remote(remote: str | None) -> str | None:
@@ -88,7 +89,7 @@ def validate_pr_title(value: str) -> str:
 
 
 def validate_pr_body(value: str) -> str:
-    if not isinstance(value, str) or len(value.encode("utf-8")) > 16 * 1024:
+    if not isinstance(value, str) or len(value.encode("utf-8")) > MAX_PR_BODY_BYTES:
         raise RuntimeOperationError(
             "GITHUB_PR_INPUT_INVALID", "Pull request body is invalid", category="validation"
         )

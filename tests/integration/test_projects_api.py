@@ -8,6 +8,7 @@ import pytest
 from agentbox_core.models import AuditEvent, Job, Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_runtime import GitActionResult, RuntimeOperationError
+from agentbox_runtime.github import MAX_PR_BODY_BYTES
 from agentbox_worker.main import execute_job
 from conftest import FakeProjectRuntime
 from sqlalchemy import select
@@ -136,7 +137,7 @@ async def test_draft_pr_api_rejects_invalid_title_body_and_base_before_queue(
     }
     for payload in (
         {"title": "bad\ntitle", "body": "", "base": None},
-        {"title": "Safe", "body": "x" * (16 * 1024 + 1), "base": None},
+        {"title": "Safe", "body": "x" * (MAX_PR_BODY_BYTES + 1), "base": None},
         {"title": "Safe", "body": "", "base": "--repo"},
     ):
         response = await client.post(
@@ -144,8 +145,30 @@ async def test_draft_pr_api_rejects_invalid_title_body_and_base_before_queue(
             json=payload,
             headers=headers,
         )
-        assert response.status_code in {413, 422}
+        assert response.status_code == 422
     assert initialized_services.jobs.list() == ()
+
+
+@pytest.mark.anyio
+async def test_draft_pr_max_body_fits_inside_http_request_limit(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    initialized_services: ControlPlaneServices,
+) -> None:
+    csrf = await login(client, origin_headers)
+    project = initialized_services.projects.reconcile_existing(("project-a",))[0]
+    response = await client.post(
+        f"/api/v1/projects/{project.id}/github/pull-requests",
+        json={"title": "Safe", "body": "\t" * MAX_PR_BODY_BYTES, "base": "main"},
+        headers={
+            **origin_headers,
+            "X-CSRF-Token": csrf,
+            "Idempotency-Key": "draft-pr-max-body-fixture-001",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json()["data"]["type"] == "github.pr.create"
 
 
 @pytest.mark.anyio

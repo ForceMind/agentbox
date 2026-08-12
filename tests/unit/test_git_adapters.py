@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from agentbox_runtime.git import GitAdapter, validate_git_repository_url
 from agentbox_runtime.github import (
+    MAX_PR_BODY_BYTES,
     GitHubAdapter,
     github_repository_from_remote,
     validate_pr_body,
@@ -533,8 +534,9 @@ def test_pr_title_validation_rejects_control_and_normalization(value: str) -> No
 
 
 def test_pr_body_is_bounded_and_github_identity_is_conservative() -> None:
+    assert validate_pr_body("x" * MAX_PR_BODY_BYTES) == "x" * MAX_PR_BODY_BYTES
     with pytest.raises(RuntimeOperationError):
-        validate_pr_body("x" * (16 * 1024 + 1))
+        validate_pr_body("x" * (MAX_PR_BODY_BYTES + 1))
     assert github_repository_from_remote("https://github.com/owner/repo.git") == "owner/repo"
     assert github_repository_from_remote("git@github.com:owner/repo.git") == "owner/repo"
     assert github_repository_from_remote("https://example.com/owner/repo.git") is None

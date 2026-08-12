@@ -23,7 +23,15 @@ export function ProjectDetailPage() {
       setBranch(model.branches.find((item) => item.current)?.name ?? '')
     }
   }, [branch, model.branches])
-  if (!model.project) return <p className="loading-panel">Loading Project…</p>
+  if (!model.project) {
+    return model.error ? (
+      <p className="error-panel" role="alert">
+        {model.error.message}
+      </p>
+    ) : (
+      <p className="loading-panel">Loading Project…</p>
+    )
+  }
   const project = model.project
   const git = project.git
   const changes = git

@@ -519,15 +519,12 @@ async def _project_command(settings: Settings, args: argparse.Namespace) -> int:
         )
         print(f"Branch operation queued: {job_id}")
         return 0
-    except (AgentBoxError, RuntimeOperationError, ValueError) as exc:
-        code = (
-            exc.code
-            if isinstance(exc, (AgentBoxError, RuntimeOperationError))
-            else "PROJECT_INPUT_INVALID"
-        )
-        message = (
-            exc.message if isinstance(exc, (AgentBoxError, RuntimeOperationError)) else str(exc)
-        )
+    except RuntimeOperationError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return _runtime_exit_code(exc)
+    except (AgentBoxError, ValueError) as exc:
+        code = exc.code if isinstance(exc, AgentBoxError) else "PROJECT_INPUT_INVALID"
+        message = exc.message if isinstance(exc, AgentBoxError) else str(exc)
         print(f"ERROR [{code}]: {message}", file=sys.stderr)
         return 15
     finally:
@@ -565,15 +562,12 @@ async def _github_command(settings: Settings, args: argparse.Namespace) -> int:
         )
         print(f"Draft pull request queued: {job_id}")
         return 0
-    except (AgentBoxError, RuntimeOperationError, ValueError) as exc:
-        code = (
-            exc.code
-            if isinstance(exc, (AgentBoxError, RuntimeOperationError))
-            else "GITHUB_INPUT_INVALID"
-        )
-        message = (
-            exc.message if isinstance(exc, (AgentBoxError, RuntimeOperationError)) else str(exc)
-        )
+    except RuntimeOperationError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return _runtime_exit_code(exc)
+    except (AgentBoxError, ValueError) as exc:
+        code = exc.code if isinstance(exc, AgentBoxError) else "GITHUB_INPUT_INVALID"
+        message = exc.message if isinstance(exc, AgentBoxError) else str(exc)
         print(f"ERROR [{code}]: {message}", file=sys.stderr)
         return 15
     finally:

@@ -29,6 +29,7 @@ from agentbox_runtime import (
     ProjectWorkspace,
     RemoteActionResult,
     RemoteState,
+    RuntimeOperationError,
     WorkspaceState,
 )
 from conftest import migrate_database
@@ -263,6 +264,30 @@ class FakeProjectRuntimeClient:
         )
 
 
+class FailingProjectRuntimeClient(FakeProjectRuntimeClient):
+    async def git_status(self, request_id: str, project_key: str) -> GitStatus:
+        del request_id, project_key
+        raise RuntimeOperationError("RUNTIME_TIMEOUT", "Runtime timed out", category="timeout")
+
+    async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
+        del request_id, project_key
+        raise RuntimeOperationError(
+            "RUNTIME_FORBIDDEN", "Runtime operation forbidden", category="forbidden"
+        )
+
+    async def github_status(self, request_id: str) -> GitHubStatus:
+        del request_id
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE", "Runtime unavailable", category="unavailable"
+        )
+
+    async def github_project_status(self, request_id: str, project_key: str) -> GitHubProjectStatus:
+        del request_id, project_key
+        raise RuntimeOperationError(
+            "RUNTIME_CONFLICT", "Runtime operation conflicted", category="conflict"
+        )
+
+
 def _formal_project_id() -> str:
     services = build_services(Settings())
     try:
@@ -465,3 +490,31 @@ def test_project_and_github_cli_queue_only_typed_operations(
         assert all("argv" not in job.payload_json for job in jobs)
     finally:
         services.database.close()
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected_exit", "expected_code"),
+    [
+        (["project", "status", "{project}"], 16, "RUNTIME_TIMEOUT"),
+        (["project", "branch", "list", "{project}"], 13, "RUNTIME_FORBIDDEN"),
+        (["github", "status"], 10, "RUNTIME_UNAVAILABLE"),
+        (["github", "pr", "status", "{project}"], 14, "RUNTIME_CONFLICT"),
+    ],
+)
+def test_project_and_github_cli_map_runtime_failure_exit_codes(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    expected_exit: int,
+    expected_code: str,
+) -> None:
+    del cli_environment
+    formal_id = _formal_project_id()
+    monkeypatch.setattr("agentbox_cli.main.UnixProjectRuntimeClient", FailingProjectRuntimeClient)
+
+    resolved_arguments = [
+        formal_id if argument == "{project}" else argument for argument in arguments
+    ]
+    assert main(resolved_arguments) == expected_exit
+    assert expected_code in capsys.readouterr().err
