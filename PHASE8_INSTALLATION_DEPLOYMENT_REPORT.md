@@ -21,7 +21,7 @@ claim.
 - Repository: `ForceMind/agentbox`
 - Baseline: `90c7f5dd6d15369753079e9f8965d67091eed818`
 - Branch: `phase/8-installation-deployment`
-- Commits: 10 semantic Phase 8 commits, including the post-review blocker fixes
+- Commits: 11 semantic Phase 8 commits, including the post-review blocker fixes
 - Draft PR: `https://github.com/ForceMind/agentbox/pull/28`
 - Final development version: `0.2.8+dev.8`
 - Validation artifact SHA-256:

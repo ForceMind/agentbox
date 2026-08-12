@@ -80,6 +80,7 @@ def test_migration_environment_rejects_unknown_keys_and_shell_syntax(
 def test_preexisting_service_account_name_without_receipt_is_rejected(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("agentbox_installer.host.os.geteuid", lambda: 0)
     agentbox = SimpleNamespace(
         pw_uid=993,
         pw_gid=994,
@@ -107,6 +108,7 @@ def test_preexisting_service_account_name_without_receipt_is_rejected(
 def test_receipt_bound_service_accounts_require_exact_shape(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("agentbox_installer.host.os.geteuid", lambda: 0)
     users = {
         "agentbox": SimpleNamespace(
             pw_uid=993,
