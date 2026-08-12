@@ -7,16 +7,75 @@ import {
   ClaudeSessionData,
   ClaudeSessionListResponse,
   ClaudeSessionOutputResponse,
+  ClaudeSessionResponse,
   ClaudeStatusResponse,
   parseClaudeSessionActionResponse,
   parseClaudeSessionListResponse,
   parseClaudeSessionOutputResponse,
+  parseClaudeSessionResponse,
   parseClaudeStatusResponse,
 } from '../../lib/contracts'
 
 type LoadedClaude = {
   status: ClaudeStatusResponse['data']
   sessions: ClaudeSessionData[]
+}
+
+export function useClaudeProject(projectId: string | undefined) {
+  const { api, auth } = useAuth()
+  const [session, setSession] = useState<ClaudeSessionData | null>(null)
+  const [loading, setLoading] = useState(Boolean(projectId))
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<ApiError | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (!projectId) {
+      setSession(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const response = await api.get<ClaudeSessionResponse>(
+        `/api/v1/claude/sessions/${encodeURIComponent(projectId)}`,
+        {
+          timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+          validate: parseClaudeSessionResponse,
+        },
+      )
+      setSession(response.data)
+      setError(null)
+    } catch (value) {
+      setError(normalizedError(value, 'Claude session status is unavailable'))
+    } finally {
+      setLoading(false)
+    }
+  }, [api, projectId])
+
+  useEffect(() => void refresh(), [refresh])
+
+  async function action(operation: 'start' | 'stop') {
+    if (!auth || !projectId) return
+    setPending(true)
+    try {
+      const response = await api.post<ClaudeSessionActionResponse>(
+        `/api/v1/claude/sessions/${encodeURIComponent(projectId)}/${operation}`,
+        {
+          csrfToken: auth.csrf_token,
+          timeoutMs: CLAUDE_MUTATION_TIMEOUT_MS,
+          validate: parseClaudeSessionActionResponse,
+        },
+      )
+      setSession(response.data.session)
+      setError(null)
+    } catch (value) {
+      setError(normalizedError(value, 'Claude session action failed'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return { action, error, loading, pending, refresh, session }
 }
 
 export type ClaudeViewState =

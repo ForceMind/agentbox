@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal, cast
 
 from agentbox_core.errors import RuntimeGatewayError
+from agentbox_core.models import Project
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
 from agentbox_protocol import (
     ClaudeCapabilityView,
@@ -56,10 +57,12 @@ def _translate_error(exc: RuntimeOperationError) -> RuntimeGatewayError:
     )
 
 
-def _session_data(session: ClaudeSession) -> ClaudeSessionData:
+def _session_data(
+    session: ClaudeSession, *, project_id: str | None = None, display_name: str | None = None
+) -> ClaudeSessionData:
     return ClaudeSessionData(
-        project_id=session.project_id,
-        display_name=session.display_name,
+        project_id=project_id or session.project_id,
+        display_name=display_name or session.display_name,
         state=session.state.value,
         managed=session.managed,
         session_name=session.session_name,
@@ -68,6 +71,21 @@ def _session_data(session: ClaudeSession) -> ClaudeSessionData:
         tmux_running=session.tmux_running,
         remote_readiness=cast(Literal["ready", "unknown"], session.remote_readiness),
     )
+
+
+async def _formal_projects(request: Request) -> tuple[Project, ...]:
+    """Reconcile safe Phase 6 children, preserving their Runtime identity key."""
+    try:
+        sessions = await _runtime(request).list_sessions(_request_id(request))
+    except RuntimeOperationError:
+        return _services(request).projects.list()
+    return _services(request).projects.reconcile_existing(
+        tuple(session.project_id for session in sessions)
+    )
+
+
+def _project(request: Request, project_id: str) -> Project:
+    return _services(request).projects.get(project_id, ready=True)
 
 
 def _status_data(status: ClaudeStatus) -> ClaudeStatusData:
@@ -153,13 +171,25 @@ async def list_sessions(
 ) -> ClaudeSessionListResponse:
     authenticate_request(request, agentbox_session)
     try:
+        projects = await _formal_projects(request)
         sessions = await _runtime(request).list_sessions(_request_id(request))
     except RuntimeOperationError as exc:
         raise _translate_error(exc) from exc
     response.headers["Cache-Control"] = "no-store"
     return ClaudeSessionListResponse(
         request_id=_request_id(request),
-        data=ClaudeSessionListData(sessions=[_session_data(session) for session in sessions]),
+        data=ClaudeSessionListData(
+            sessions=[
+                _session_data(
+                    session,
+                    project_id=project.id,
+                    display_name=project.display_name,
+                )
+                for project in projects
+                for session in sessions
+                if session.project_id == project.relative_path
+            ]
+        ),
     )
 
 
@@ -172,12 +202,16 @@ async def session_status(
 ) -> ClaudeSessionResponse:
     authenticate_request(request, agentbox_session)
     try:
-        validate_project_id(project_id)
-        session = await _runtime(request).session(_request_id(request), project_id)
+        project = _project(request, project_id)
+        validate_project_id(project.relative_path)
+        session = await _runtime(request).session(_request_id(request), project.relative_path)
     except RuntimeOperationError as exc:
         raise _translate_error(exc) from exc
     response.headers["Cache-Control"] = "no-store"
-    return ClaudeSessionResponse(request_id=_request_id(request), data=_session_data(session))
+    return ClaudeSessionResponse(
+        request_id=_request_id(request),
+        data=_session_data(session, project_id=project.id, display_name=project.display_name),
+    )
 
 
 async def _mutation(
@@ -189,13 +223,14 @@ async def _mutation(
     *,
     operation: Literal["start", "stop"],
 ) -> ClaudeSessionActionResponse:
-    try:
-        validate_project_id(project_id)
-    except RuntimeOperationError as exc:
-        raise _translate_error(exc) from exc
     _validate_origin(request)
     authenticated = authenticate_request(request, raw_session)
     _services(request).sessions.validate_csrf(authenticated, csrf_token)
+    try:
+        project = _project(request, project_id)
+        validate_project_id(project.relative_path)
+    except RuntimeOperationError as exc:
+        raise _translate_error(exc) from exc
     prefix = f"claude_session_{operation}"
     _audit(
         request,
@@ -207,9 +242,9 @@ async def _mutation(
     try:
         runtime = _runtime(request)
         result = (
-            await runtime.start_session(_request_id(request), project_id)
+            await runtime.start_session(_request_id(request), project.relative_path)
             if operation == "start"
-            else await runtime.stop_session(_request_id(request), project_id)
+            else await runtime.stop_session(_request_id(request), project.relative_path)
         )
     except RuntimeOperationError as exc:
         _audit(
@@ -237,7 +272,11 @@ async def _mutation(
                 Literal["started", "stopped", "already_running", "already_stopped"],
                 result.outcome,
             ),
-            session=_session_data(result.session),
+            session=_session_data(
+                result.session,
+                project_id=project.id,
+                display_name=project.display_name,
+            ),
         ),
     )
 
@@ -289,8 +328,9 @@ async def recent_output(
 ) -> ClaudeSessionOutputResponse:
     authenticated = authenticate_request(request, agentbox_session)
     try:
-        validate_project_id(project_id)
-        output = await _runtime(request).recent_output(_request_id(request), project_id)
+        project = _project(request, project_id)
+        validate_project_id(project.relative_path)
+        output = await _runtime(request).recent_output(_request_id(request), project.relative_path)
     except RuntimeOperationError as exc:
         raise _translate_error(exc) from exc
     # Deliberately audit only access metadata, never pane output or prompt text.
@@ -306,7 +346,7 @@ async def recent_output(
     return ClaudeSessionOutputResponse(
         request_id=_request_id(request),
         data=ClaudeSessionOutputData(
-            project_id=output.project_id,
+            project_id=project.id,
             session_name=output.session_name,
             output=output.output,
             truncated=output.truncated,

@@ -166,3 +166,11 @@ Before identities or units are created:
 - preflight port 8787 and existing cloudflared/iptables boundaries.
 
 These are implementation gates, not blockers to Phase 1 documentation.
+## Phase 7 ownership
+
+The Runtime user owns Project Root, non-group/world-writable workspace
+directories, Git processes, `gh` processes and Claude/tmux sessions. Web/API
+never invokes Git or `gh`. AgentBox neither adds global `safe.directory`,
+changes ownership, crosses into root's Git/GitHub authentication, nor creates
+`/srv` in this phase. Ownership or top-level mode mismatch is
+diagnostic/fail-closed work for deployment migration.

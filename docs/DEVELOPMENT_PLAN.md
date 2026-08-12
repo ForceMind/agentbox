@@ -96,10 +96,9 @@ Status: merged in PR #22.
   deliberately uses the current existing-user context without migrating auth.
 - **Human approval:** remediation of the existing legacy Codex unit and UID/GID 1001 ownership anomaly on the assessed host.
 
-## Phase 6 — Claude session management
+## Phase 6 — Claude session management (completed and merged)
 
-Status: implemented on `phase/6-claude-session-management`; awaiting Draft PR
-review. This does not authorize Phase 7.
+Status: merged in PR #25.
 
 - **Goal:** manage project-scoped Claude Remote sessions through tmux without embedding a terminal.
 - **Input:** synthetic/redacted Claude fixtures, Runtime Executor, a minimal configured-root immediate-child registry, and Workspace Trust rules. Formal Project Workspaces remain Phase 7.
@@ -114,16 +113,36 @@ review. This does not authorize Phase 7.
 
 ## Phase 7 — Projects and basic Git
 
-- **Goal:** deliver the safe Project Workspace registry, create/clone/list/status, and Runtime launch integration.
-- **Input:** project-directory ADR, path-safety implementation plan, and Git fixtures.
-- **Output:** project registry, canonical path guard, safe clone, read-only status/branch/change count/remote display, and project-to-Claude launch.
-- **Not in scope:** commit, push, PR creation, deletion, hard reset, branch deletion, hooks execution, or automatic legacy movement.
-- **Acceptance:** all paths remain beneath `/srv/agentbox/projects`; symlink/race/path traversal tests pass; Git files are Runtime-user owned.
-- **Tests:** malicious URLs and repository names, symlink swaps, hooks/submodules, large output, concurrent clone, ownership, and interrupted clone recovery.
-- **Documentation:** project lifecycle, Git safety defaults, legacy `/root/projects` adoption, and backup expectations.
-- **Commit/PR:** path guard and Git process runner require dedicated security-focused review.
-- **Stop condition:** no arbitrary repository path or Git option is accepted.
-- **Human approval:** importing any legacy root-owned project or enabling later write-oriented Git operations.
+- **Goal:** deliver the formal safe Project Workspace registry, create/clone,
+  structured Git state, ordinary branch management, fast-forward-only Pull,
+  no-force Push, Draft PRs, and Project-bound Claude launch.
+- **Input:** accepted project-directory architecture, Phase 6 relative-key/tmux
+  compatibility, path-safety plan, and fake Git/GitHub/Runtime fixtures.
+- **Output:** persistent Project/Job/JobEvent models; canonical path and
+  ownership guard; marker-bound atomic create/clone; typed Git/GitHub adapters;
+  Project API/CLI/Web/Doctor; and compatible Claude Project-ID migration.
+- **Not in scope:** staging/commit, diff/file browser, force push, reset, clean,
+  stash/discard, branch deletion, Project filesystem deletion, submodule/LFS
+  management, workflow mutations, automatic legacy movement, or Project-aware
+  Codex sessions.
+- **Acceptance:** every Runtime path derives from Project Root plus immutable
+  relative key; roots/workspaces are non-symlink and Runtime-user-owned; local,
+  file, ext and helper protocols fail closed; Pull cannot merge/rebase; Push
+  cannot force; active managed Claude blocks Pull/switch; partial clones do not
+  become ready workspaces.
+- **Tests:** malicious URLs/config/branch/PR text, path traversal and symlink
+  swaps, ownership, exact argv/environment, redaction, porcelain states,
+  interrupted clone/Job recovery, serialization, authenticated desktop/mobile
+  flows, and migration round trips.
+- **Documentation:** Project lifecycle/root/path security, Git and GitHub
+  boundaries, Phase 6 migration, durable Job semantics, audit, and backup limits.
+- **Commit/PR:** path guard, Git process boundary, Web, expanded security tests,
+  and final report remain semantic review units.
+- **Stop condition:** no arbitrary repository path, Git argv/config, shell,
+  credential-bearing output, force/reset/clean, merge/rebase fallback, or active
+  Agent workspace mutation is reachable.
+- **Human approval:** importing root-owned legacy Projects, any future dangerous
+  Git or Project deletion feature, and Phase 7 merge.
 
 ## Phase 8 — Installation, upgrade, rollback, and deployment
 
@@ -214,3 +233,6 @@ Phase 10 and does not insert into, reorder, or authorize Phases 6–10.
 ## Cross-phase change control
 
 A changed trust boundary, default bind address, Runtime ownership model, project root, database choice, license, or deployment model requires an ADR update before implementation. A discovered external CLI behavior is recorded as a fixture and capability rule rather than silently becoming a new invariant.
+## Phase 7 status
+
+Project Workspace plus Git/GitHub foundation is implemented on `phase/7-project-git-management`: formal Projects, durable Jobs, create/clone, structured status, branch operations, ff-only Pull, no-force Push, Draft PR, Web/CLI/Doctor, and Phase 6 Claude migration. Provider/Secret Management remains Phase 11. Installer, production user/systemd migration, Helper and Phase 8 work are not included.

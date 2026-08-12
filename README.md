@@ -6,9 +6,10 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. Phases 2–5 are merged. Phase 6
-Claude/tmux session management is implemented in PR #25, has completed human
-review, and is not yet merged or a production support claim.
+AgentBox is in **early pre-alpha development**. Phases 2–6 are merged. Phase 7
+Project Workspace and Git/GitHub management is implemented on
+`phase/7-project-git-management` and awaits human review; it is not a
+production support claim.
 
 The current codebase provides:
 
@@ -16,20 +17,30 @@ The current codebase provides:
   capability-aware Codex endpoints;
 - explicit SQLite/Alembic persistence for AdminUser, hashed Sessions, and redacted Audit Events;
 - local-TTY administrator initialization, Argon2id, CSRF, secure Cookie policy, and bounded login throttling;
-- a Worker lifecycle limited to database readiness and expired Session cleanup;
+- a Worker that leases durable typed Jobs, serializes Project mutations,
+  renews bounded Runtime-operation leases, and recovers uncertain work to
+  `needs_attention`;
 - a typed non-root Runtime Executor over a versioned Unix socket, a no-shell
   process runner, public-help-based Codex detection, Remote start/stop, and an
-  ephemeral Pair Code channel, plus project-scoped Claude/tmux session actions;
+  ephemeral Pair Code channel, project-scoped Claude/tmux session actions, and
+  typed Project/Git/GitHub operations;
 - a control-plane CLI and a responsive React application shell with
-  login, authenticated Session recovery, Dashboard, Doctor, Settings, and
-  real Codex and Claude management pages alongside clearly marked future sections;
+  login, authenticated Session recovery, Dashboard, Doctor, Settings, and real
+  Codex, Claude, and Project management pages alongside clearly marked future sections;
 - package boundaries, tests, CI, governance templates, and architecture documents.
 
-It does **not** install/update/migrate Codex or Claude, implement Project CRUD,
-operate a root Helper, install system services, expose a public listener, or
-change Provider/Secret configuration. Runtime operations work only against
-existing tools and configured existing project directories under the non-root
-Runtime context.
+Phase 7 adds formal Project Workspaces plus safe Git/GitHub foundations. Web and
+CLI can create or clone managed workspaces, inspect structured status, manage
+ordinary branches, perform fast-forward-only Pull and no-force Push, and create
+Draft PRs. Long mutations run as durable typed Jobs through the Runtime
+Executor. See [Project Workspaces](docs/PROJECT_WORKSPACES.md),
+[Git Integration](docs/GIT_INTEGRATION.md), and
+[GitHub Integration](docs/GITHUB_INTEGRATION.md).
+
+AgentBox still does **not** install/update/migrate Codex or Claude, delete
+Project files, expose arbitrary paths or Git commands, force push, reset,
+clean, stage/commit files, operate a root Helper, install system services,
+expose a public listener, or change Provider/Secret configuration.
 
 A future Phase 11 — Provider, Secret & Runtime Continuity Management is
 architecture/backlog only. It separates concrete `ProviderDefinitionID` values
@@ -47,11 +58,12 @@ The planned MVP targets one Linux server and one administrator. It aims to provi
 - capability-aware Codex standalone and Remote Control management;
 - one-time Codex Pair Code delivery without persistence or logging;
 - project-scoped Claude Remote sessions persisted by tmux;
-- minimal Project Workspace and read-only Git visibility;
+- formal Project Workspaces, safe Git status/branch/Pull/Push, and Draft PRs;
 - a loopback-only authenticated Web panel and recovery-oriented CLI;
 - durable SQLite-backed Jobs and SSE progress.
 
-These are roadmap goals, not implemented features.
+Installer, production deployment, privileged operations, and release support
+in this list remain roadmap goals.
 
 ## What AgentBox is not
 
@@ -123,10 +135,11 @@ agentbox-runtime
 
 The API never spawns Codex. `agentbox codex status` may fall back to safe local
 detection when the Runtime socket is absent; `start`, `stop`, and `pair` do not.
-The API also never spawns tmux/Claude. For Phase 6 development, create existing
-project directories yourself beneath `.agentbox-dev/projects` or set
-`AGENTBOX_PROJECT_ROOT`; AgentBox does not create them. Claude commands require
-the Runtime socket and use only server-resolved project IDs.
+The API also never spawns tmux/Claude or Git/gh directly. Phase 7 development
+uses `.agentbox-dev/projects` (or `AGENTBOX_PROJECT_ROOT`); create/clone is
+performed only by the Runtime Executor through marker-bound staging and atomic
+finalization. Claude commands require the Runtime socket and use only
+server-resolved formal Project IDs.
 
 Initialize a development database and local administrator explicitly:
 
@@ -173,8 +186,8 @@ OpenCloudOS 9, Rocky Linux 9, Ubuntu LTS, and Debian stable are planned MVP dist
 2. Phase 3: control-plane foundation and single-admin authentication — merged in PR #20.
 3. Phase 4: authenticated Web foundation — merged in PR #21.
 4. Phase 5: capability-aware Codex management — merged in PR #22.
-5. Phase 6: Claude/tmux session management — PR #25 implementation passed human review and awaits merge.
-6. Phase 7: Project Workspaces and minimal Git.
+5. Phase 6: Claude/tmux session management — merged in PR #25.
+6. Phase 7: Project Workspaces and safe Git/GitHub foundation — pending review.
 7. Phase 8: installation, deployment, upgrade, and rollback.
 8. Phase 9: security and compatibility hardening.
 9. Phase 10: first release.

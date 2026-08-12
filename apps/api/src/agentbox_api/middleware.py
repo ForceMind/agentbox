@@ -123,6 +123,11 @@ class ControlPlaneHttpMiddleware:
                 for name, value in SECURITY_HEADERS:
                     if name not in existing:
                         response_headers.append((name, value))
+                if (
+                    str(scope.get("path", "")).startswith("/api/")
+                    and b"cache-control" not in existing
+                ):
+                    response_headers.append((b"cache-control", b"no-store"))
                 response_headers.append((b"x-request-id", request_id.encode("ascii")))
                 message["headers"] = response_headers
             await send(message)

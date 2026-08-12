@@ -1,8 +1,8 @@
 # AgentBox Web UI
 
-Status: Phase 4 authenticated Web foundation and Phase 5 Codex page merged;
-Phase 6 Claude page is implemented on its Draft review branch. Future Provider
-UI is planning only.
+Status: Phase 4 authenticated Web foundation and Phase 5 Codex/Phase 6 Claude
+pages are merged. Phase 7 Project Workspace UX is implemented on its review
+branch. Future Provider UI is planning only.
 
 ## Product boundary
 
@@ -13,10 +13,11 @@ client route guards exist only to provide a coherent user experience.
 
 Phase 4 implements the product frame and browser authentication lifecycle.
 Phase 5 replaces the Codex placeholder and Phase 6 replaces the Claude
-placeholder with typed API-backed surfaces. The browser never calls a Runtime
-binary or socket directly. Project CRUD, Git/GitHub business operations, the
-Privileged Helper, installer, systemd, host log tools, Provider Manager, and
-Secret Manager remain absent.
+placeholder with typed API-backed surfaces; Phase 7 replaces the Projects
+placeholder with formal Project list/create/clone/detail flows. The browser
+never calls a Runtime binary or socket directly. Project filesystem deletion,
+arbitrary/dangerous Git, the Privileged Helper, installer, systemd, host log
+tools, Provider Manager, and Secret Manager remain absent.
 
 ## Route map
 
@@ -27,7 +28,8 @@ Secret Manager remain absent.
 | `/dashboard` | required | real liveness, readiness, metadata, administrator and Session expiry |
 | `/codex` | required | real installation/capability/Remote state, bounded start/stop, explicit ephemeral Pair flow, diagnostics |
 | `/claude` | required | real public capability/tmux summary and configured project session cards with start/stop/attach/output |
-| `/projects` | required | planned-capability shell only |
+| `/projects` | required | real Project list/create/clone, Git/Claude summaries and Job state |
+| `/projects/:projectId` | required | structured Git/GitHub detail, branches, safe mutations, and Claude lifecycle |
 | `/doctor` | required | real control-plane-only checks from `GET /api/v1/doctor` |
 | `/logs` | required | not-implemented shell; no journal or file access |
 | `/settings` | required | safe read-only policy from the Doctor response |
@@ -226,7 +228,25 @@ action is implemented today.
 
 Later phases may replace the remaining planned cards only after real versioned
 APIs exist. Runtime pages must consume Capability states and must never directly
-construct CLI commands. Job progress should use SSE when the durable Job service exists.
+construct CLI commands. Phase 7 Project mutations poll authenticated Job state;
+the bounded authenticated per-Job SSE endpoint is also available for later UX
+adoption.
 WebSocket is reserved for a future genuinely bidirectional use case and is not
 justified by this application shell. Browser terminal functionality remains out
 of MVP scope.
+## Phase 7 Projects UX
+
+`/projects` is a responsive real-data Project list with New Project and approved
+GitHub Clone forms; no path field exists. Cards show real branch, bounded change
+counts, redacted remote, and Claude state. `/projects/:projectId` has a bounded
+detail timeout and shows Project state, structured staged/unstaged/untracked/
+conflicted and ahead/behind counts, submodule warning, bounded local branch
+list, safe Pull/Push/create/switch actions, GitHub PR/base/head/merge/check
+state, Draft PR
+title/body/base fields, and Project-bound Claude start/stop.
+
+Mutations poll their durable Job until a terminal state and disable competing
+buttons while active. Dirty state and normalized failures (including upstream
+missing, reconciliation required, and active Claude) remain explicit. The UI
+contains no force/reset/clean/delete/file-browser action and never renders raw
+Git/gh output.

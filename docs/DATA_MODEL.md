@@ -1,12 +1,14 @@
 # AgentBox MVP Data Model
 
-Status: Phase 1 logical design; the bounded Phase 3 control-plane subset is implemented.
-
-Phase 3 migration `0001_control_plane_foundation` creates only `admin_users`,
-`sessions`, and `audit_events`. Project, Runtime, Job, Setting, Diagnostic, and
-Confirmation and Phase 11 Provider/Binding/compatibility/transaction tables remain future designs. Development uses a configured path
-beneath `.agentbox-dev/` or a temporary test directory; production retains the
-accepted `/var/lib/agentbox/agentbox.db` policy and is not created by Phase 3.
+Status: Phase 1 logical design with the Phase 3 control-plane and Phase 7
+Project/Job subset implemented. Migration `0001_control_plane_foundation`
+creates `admin_users`, `sessions`, and `audit_events`; migration
+`0002_project_jobs` adds `projects`, `jobs`, and `job_events`. Runtime,
+Setting, Diagnostic, Confirmation, and Phase 11
+Provider/Binding/compatibility/transaction tables remain future designs.
+Development uses a configured path beneath `.agentbox-dev/` or a temporary
+test directory; production retains the accepted
+`/var/lib/agentbox/agentbox.db` policy and is not created by Phase 7.
 
 ## Database Decision
 
@@ -70,20 +72,21 @@ Restores revoking all Sessions remains a backup/restore policy for a later phase
 
 | Field | Purpose |
 |---|---|
-| `id` | opaque Project ID |
-| `name`, `slug` | display/search labels |
-| `storage_key` | server-generated relative directory name |
-| `project_root_id` | configured root reference |
-| `runtime_owner` | logical identity, not blindly copied numeric UID |
-| `source_kind` | `empty`, `git_clone`, `adopted` |
-| `remote_url_sanitized` | credential-free display URL |
-| `state` | `creating`, `ready`, `needs_attention`, `archived` |
-| `git_head`, `git_branch`, `dirty_count` | last bounded observation |
-| `observed_at` | freshness |
-| `created_at`, `updated_at` | lifecycle |
-| `revision` | confirmation/path state fingerprint input |
+| `id` | opaque `prj_*` Project ID and API identity |
+| `slug` | normalized bounded URL/filesystem-safe label, unique case-insensitively by normalization |
+| `display_name` | bounded user-facing name, never an authorization boundary |
+| `relative_path` | immutable server-derived immediate-child key, unique; never absolute |
+| `source_type` | `empty`, `git_clone`, or reconciled `existing` |
+| `repository_url` | validated credential-free clone identity or null |
+| `default_branch` | bounded observed clone default branch or null |
+| `state` | `creating`, `ready`, `error`, or `archived` |
+| `archived_at` | future reversible archive timestamp; no filesystem deletion |
+| `created_at`, `updated_at` | UTC lifecycle timestamps |
 
-Canonical path is derived from a configured root plus storage key and revalidated. The database never authorizes an arbitrary absolute path by itself.
+Canonical path is derived on every Runtime operation from the configured root
+plus `relative_path` and revalidated. Absolute paths, Git observations, full
+command output, workspace contents, numeric ownership, and Claude/tmux names
+are not Project columns.
 
 ## RuntimeInstallation
 
@@ -231,16 +234,13 @@ Additional execution fields:
 | Field | Purpose |
 |---|---|
 | `payload_schema_version` | validates typed payload |
-| `payload` | bounded type-specific non-secret JSON |
+| `payload_json` | bounded type-specific non-secret JSON |
 | `idempotency_key_digest` | deduplicate accepted request |
 | `resource_lock_key` | serialize conflicting work |
 | `attempt` / `max_attempts` | retry policy |
 | `lease_owner`, `lease_expires_at` | crash recovery |
 | `heartbeat_at` | worker liveness |
-| `cancel_requested_at` | cooperative cancellation |
-| `execution_class` | read-only/idempotent/reversible/uncertain |
 | `request_id` | correlation |
-| `revision` | state transition concurrency |
 
 Statuses:
 
@@ -248,7 +248,7 @@ Statuses:
 - `running`
 - `succeeded`
 - `failed`
-- `cancelled`
+- `cancelled` (reserved state; no Phase 7 cancellation endpoint)
 - `needs_attention`
 
 Allowed transitions are explicit. Terminal states do not return to running. A new retry becomes a new Job linked by correlation, unless the same lease attempt is safely requeued by recovery rules.
@@ -372,15 +372,14 @@ Worker atomically changes one eligible queued Job to running with lease owner/ex
 ### Recovery After Restart
 
 - queued: remains eligible;
-- running read-only/idempotent with expired lease: requeue if preconditions still match and attempts remain;
-- running reversible: adapter reconciles observed state, then either completes, safely resumes/requeues, or marks `needs_attention`;
-- running uncertain/non-idempotent: `needs_attention`, never blind replay;
-- cancellation requested: reconcile actual external process/state before final cancelled/needs_attention;
+- running with an expired lease: `needs_attention`, never blind replay in Phase 7;
 - Pair operation: no persistent secret result; interrupted delivery is discarded and regenerated by a new request.
 
 ### Progress and SSE
 
-Worker writes coarse non-secret phases and percentages. SSE reads JobEvent rows and does not hold a Worker connection. Progress is monotonic where meaningful; an indeterminate phase uses null percentage plus an enum label.
+Worker writes coarse non-secret phases and percentages. While a bounded Runtime
+RPC is active it renews the Job lease without emitting noisy progress rows. SSE
+reads JobEvent rows and does not hold a Worker connection.
 
 ## Retention
 

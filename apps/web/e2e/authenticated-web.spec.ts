@@ -25,6 +25,100 @@ async function navigate(page: Page, label: string, expectedPath: string) {
   await expect(page).toHaveURL(new RegExp(`${expectedPath}$`))
 }
 
+async function formalClaudeProjectId(page: Page, displayName: string) {
+  const projectId = await page.evaluate(async (name) => {
+    const response = await fetch('/api/v1/claude/sessions', {
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('could not load formal Claude Projects')
+    const body = (await response.json()) as {
+      data?: {
+        sessions?: Array<{ display_name?: string; project_id?: string }>
+      }
+    }
+    return body.data?.sessions?.find((session) => session.display_name === name)
+      ?.project_id
+  }, displayName)
+  if (!projectId)
+    throw new Error(`formal Project ${displayName} is unavailable`)
+  expect(projectId).toMatch(/^prj_[0-9a-f]{32}$/)
+  expect(projectId).not.toBe(displayName)
+  return projectId
+}
+
+function projectData(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'prj_e2e',
+    slug: 'project-a',
+    display_name: 'Project A',
+    source_type: 'existing',
+    state: 'ready',
+    repository_url: 'https://github.com/owner/repo.git',
+    default_branch: 'main',
+    created_at: '2026-08-10T00:00:00Z',
+    updated_at: '2026-08-10T00:00:00Z',
+    git: {
+      is_repository: true,
+      branch: 'main',
+      detached_head: false,
+      unborn_branch: false,
+      upstream: 'origin/main',
+      ahead: 0,
+      behind: 0,
+      staged_count: 0,
+      unstaged_count: 0,
+      untracked_count: 0,
+      conflicted_count: 0,
+      clean: true,
+      remote_url: 'https://github.com/owner/repo.git',
+      submodules_detected: false,
+    },
+    github: {
+      available: true,
+      repository: 'owner/repo',
+      pull_request_number: null,
+      pull_request_title: null,
+      pull_request_state: null,
+      pull_request_draft: null,
+      pull_request_url: null,
+      pull_request_base: null,
+      pull_request_head: null,
+      mergeability: null,
+      checks: 'pending',
+    },
+    claude_state: 'stopped',
+    ...overrides,
+  }
+}
+
+function jobData(
+  id: string,
+  status: 'queued' | 'succeeded' | 'failed' | 'needs_attention',
+  errorCode: string | null = null,
+  errorSummary: string | null = null,
+) {
+  return {
+    id,
+    type: 'git.operation',
+    status,
+    target_type: 'project',
+    target_id: 'prj_e2e',
+    project_id: 'prj_e2e',
+    progress: status === 'succeeded' ? 100 : status === 'queued' ? 0 : 25,
+    phase: status,
+    result_summary: status === 'succeeded' ? 'Operation completed' : null,
+    error_code: errorCode,
+    error_summary: errorSummary,
+    created_at: '2026-08-10T00:00:00Z',
+    started_at: status === 'queued' ? null : '2026-08-10T00:00:01Z',
+    finished_at: status === 'queued' ? null : '2026-08-10T00:00:02Z',
+  }
+}
+
+function envelope(data: unknown, requestId = 'req_e2e_project') {
+  return { api_version: 'v1', request_id: requestId, data }
+}
+
 test('protects authenticated routes and presents an accessible login', async ({
   page,
 }) => {
@@ -43,6 +137,334 @@ test('keeps the Claude page behind authentication', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Sign in to manage this workstation' }),
   ).toBeVisible()
+})
+
+test('keeps the Projects page behind authentication', async ({ page }) => {
+  await page.goto('/projects')
+  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('shows formal Projects and queues safe create operations', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  const workspaceName = `E2E Workspace ${testInfo.project.name}`
+  await page.getByLabel('Project name', { exact: true }).fill(workspaceName)
+  const request = page.waitForRequest(
+    (value) =>
+      value.url().endsWith('/api/v1/projects') && value.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Create Project' }).click()
+  const mutation = await request
+  expect(mutation.headers()['x-csrf-token']).toBeTruthy()
+  expect(mutation.headers()['idempotency-key']).toBeTruthy()
+  await expect(page.getByText(workspaceName)).toBeVisible()
+})
+
+test('renders the Project empty state from real API data', async ({ page }) => {
+  await login(page)
+  await page.route('**/api/v1/projects', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: envelope({ projects: [] }) })
+    } else {
+      await route.fallback()
+    }
+  })
+  await navigate(page, 'Projects', '/projects')
+  await expect(
+    page.getByRole('heading', { name: 'No Projects yet' }),
+  ).toBeVisible()
+})
+
+test('tracks successful and failed clone Jobs without fake percentages', async ({
+  page,
+}) => {
+  await login(page)
+  let project = projectData({
+    id: 'prj_clone',
+    slug: 'cloned-e2e',
+    display_name: 'Cloned E2E',
+    state: 'creating',
+    git: null,
+    github: null,
+    claude_state: null,
+  })
+  let cloneAttempt = 0
+  await page.route('**/api/v1/projects', async (route) => {
+    const url = new URL(route.request().url())
+    if (
+      url.pathname === '/api/v1/projects' &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill({
+        json: envelope({ projects: cloneAttempt ? [project] : [] }),
+      })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/api/v1/projects/clone', async (route) => {
+    cloneAttempt += 1
+    const id = cloneAttempt === 1 ? 'job_clone_success' : 'job_clone_failure'
+    project = projectData({
+      id: cloneAttempt === 1 ? 'prj_clone' : 'prj_clone_failure',
+      slug: cloneAttempt === 1 ? 'cloned-e2e' : 'failed-clone-e2e',
+      display_name: cloneAttempt === 1 ? 'Cloned E2E' : 'Failed Clone E2E',
+      state: 'creating',
+      git: null,
+      github: null,
+      claude_state: null,
+    })
+    await route.fulfill({
+      json: envelope({ project, job: jobData(id, 'queued') }),
+    })
+  })
+  await page.route('**/api/v1/jobs/job_clone_*', async (route) => {
+    const failed = route.request().url().endsWith('job_clone_failure')
+    if (failed) {
+      project = { ...project, state: 'error' }
+      await route.fulfill({
+        json: envelope(
+          jobData(
+            'job_clone_failure',
+            'failed',
+            'GIT_AUTH_REQUIRED',
+            'Git authentication is required',
+          ),
+        ),
+      })
+    } else {
+      project = projectData({
+        id: 'prj_clone',
+        slug: 'cloned-e2e',
+        display_name: 'Cloned E2E',
+      })
+      await route.fulfill({
+        json: envelope(jobData('job_clone_success', 'succeeded')),
+      })
+    }
+  })
+  await navigate(page, 'Projects', '/projects')
+  await page
+    .getByLabel('Repository URL')
+    .fill('https://github.com/owner/repo.git')
+  await page.getByLabel('Project name (optional)').fill('Cloned E2E')
+  await page.getByRole('button', { name: 'Clone' }).click()
+  await expect(page.getByText(/job_clone_success · succeeded/i)).toBeVisible()
+  await expect(page.getByText('Cloned E2E')).toBeVisible()
+
+  await page
+    .getByLabel('Repository URL')
+    .fill('https://github.com/owner/private.git')
+  await page.getByLabel('Project name (optional)').fill('Failed Clone E2E')
+  await page.getByRole('button', { name: 'Clone' }).click()
+  await expect(page.getByText(/job_clone_failure · failed/i)).toBeVisible()
+  await expect(page.getByText(/Git authentication is required/i)).toBeVisible()
+})
+
+test('shows structured Git state without dangerous actions', async ({
+  page,
+}) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Git', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByText('Clean')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pull' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Push' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /force/i })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: /reset|clean|delete/i }),
+  ).toHaveCount(0)
+})
+
+test('handles dirty Git, branches, safe failures, Draft PR, and Claude binding', async ({
+  page,
+}) => {
+  await login(page)
+  let draftCreated = false
+  const dirtyGit = {
+    is_repository: true,
+    branch: 'main',
+    detached_head: false,
+    unborn_branch: false,
+    upstream: 'origin/main',
+    ahead: 2,
+    behind: 1,
+    staged_count: 1,
+    unstaged_count: 2,
+    untracked_count: 1,
+    conflicted_count: 0,
+    clean: false,
+    remote_url: 'https://github.com/owner/repo.git',
+    submodules_detected: true,
+  }
+  const detail = () =>
+    projectData({
+      git: dirtyGit,
+      claude_state: 'stopped',
+      github: {
+        available: true,
+        repository: 'owner/repo',
+        pull_request_number: draftCreated ? 99 : null,
+        pull_request_title: draftCreated ? 'Phase 7 E2E Draft' : null,
+        pull_request_state: draftCreated ? 'open' : null,
+        pull_request_draft: draftCreated ? true : null,
+        pull_request_url: draftCreated
+          ? 'https://github.com/owner/repo/pull/99'
+          : null,
+        pull_request_base: draftCreated ? 'main' : null,
+        pull_request_head: draftCreated ? 'feature/phase-7' : null,
+        mergeability: draftCreated ? 'clean' : null,
+        checks: draftCreated ? 'pass' : 'pending',
+      },
+    })
+  const jobs: Record<
+    string,
+    { status: 'succeeded' | 'failed'; code?: string; summary?: string }
+  > = {}
+  await page.route('**/api/v1/projects', async (route) => {
+    const url = new URL(route.request().url())
+    if (
+      url.pathname === '/api/v1/projects' &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill({ json: envelope({ projects: [detail()] }) })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/api/v1/projects/prj_e2e/**', async (route) => {
+    const url = new URL(route.request().url())
+    const method = route.request().method()
+    if (method === 'GET' && url.pathname.endsWith('/git/branches')) {
+      await route.fulfill({
+        json: envelope({
+          branches: [
+            { name: 'main', current: true },
+            { name: 'feature/existing', current: false },
+          ],
+        }),
+      })
+      return
+    }
+    if (method === 'POST') {
+      let id = 'job_unknown'
+      if (url.pathname.endsWith('/git/branches')) {
+        id = 'job_branch_create'
+        jobs[id] = { status: 'succeeded' }
+      } else if (url.pathname.endsWith('/git/switch')) {
+        id = 'job_branch_switch'
+        jobs[id] = {
+          status: 'failed',
+          code: 'PROJECT_RUNTIME_ACTIVE',
+          summary:
+            'Stop the managed Claude session before changing the workspace',
+        }
+      } else if (url.pathname.endsWith('/git/pull')) {
+        id = 'job_pull'
+        jobs[id] = {
+          status: 'failed',
+          code: 'GIT_PULL_REQUIRES_RECONCILIATION',
+          summary: 'Pull requires manual reconciliation',
+        }
+      } else if (url.pathname.endsWith('/git/push')) {
+        id = 'job_push'
+        jobs[id] = {
+          status: 'failed',
+          code: 'GIT_UPSTREAM_MISSING',
+          summary: 'Current branch has no upstream',
+        }
+      } else if (url.pathname.endsWith('/github/pull-requests')) {
+        id = 'job_pr'
+        jobs[id] = { status: 'succeeded' }
+      }
+      await route.fulfill({ json: envelope(jobData(id, 'queued')) })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/api/v1/projects/prj_e2e', async (route) => {
+    await route.fulfill({ json: envelope(detail()) })
+  })
+  await page.route('**/api/v1/claude/sessions/prj_e2e', async (route) => {
+    await route.fulfill({
+      json: envelope({
+        project_id: 'prj_e2e',
+        display_name: 'Project A',
+        state: 'stopped',
+        managed: true,
+        session_name: 'agentbox-claude-project-a-e2e',
+        attach_command: 'tmux attach-session -t =agentbox-claude-project-a-e2e',
+        workspace_state: 'unknown',
+        tmux_running: false,
+        remote_readiness: 'unknown',
+      }),
+    })
+  })
+  await page.route('**/api/v1/jobs/job_*', async (route) => {
+    const segments = new URL(route.request().url()).pathname.split('/')
+    const id = segments[segments.length - 1] ?? ''
+    const result = jobs[id]
+    if (!result) {
+      await route.fallback()
+      return
+    }
+    if (id === 'job_pr') draftCreated = true
+    await route.fulfill({
+      json: envelope(
+        jobData(id, result.status, result.code ?? null, result.summary ?? null),
+      ),
+    })
+  })
+
+  await navigate(page, 'Projects', '/projects')
+  await page.getByText('Project A').click()
+  await expect(page.getByText('4 changes')).toBeVisible()
+  await expect(page.getByText('2 / 1')).toBeVisible()
+  await expect(page.getByText(/Submodules detected/i)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start Claude' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Current · main' }),
+  ).toBeVisible()
+
+  await page.getByLabel('Branch name').fill('feature/new')
+  await page.getByRole('button', { name: 'Create branch' }).click()
+  await expect(page.getByText(/job_branch_create · succeeded/i)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Switch branch' }).click()
+  await expect(page.getByText(/PROJECT_RUNTIME_ACTIVE/)).toBeVisible()
+  await page.getByRole('button', { name: 'Pull', exact: true }).click()
+  await expect(page.getByText(/GIT_PULL_REQUIRES_RECONCILIATION/)).toBeVisible()
+  await page.getByRole('button', { name: 'Push', exact: true }).click()
+  await expect(page.getByText(/GIT_UPSTREAM_MISSING/)).toBeVisible()
+
+  await page.getByLabel('Pull request title').fill('Phase 7 E2E Draft')
+  await page.getByLabel('Pull request base branch').fill('develop')
+  await page.getByLabel('Pull request body').fill('Safe bounded body')
+  const draftRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/github/pull-requests') &&
+      request.method() === 'POST',
+  )
+  await page.getByRole('button', { name: 'Create Draft PR' }).click()
+  expect((await draftRequest).postDataJSON()).toEqual({
+    title: 'Phase 7 E2E Draft',
+    body: 'Safe bounded body',
+    base: 'develop',
+  })
+  await expect(page.getByText(/job_pr · succeeded/i)).toBeVisible()
+  await expect(page.getByText(/#99 Phase 7 E2E Draft/)).toBeVisible()
+  await expect(page.getByText(/owner\/repo · checks pass/)).toBeVisible()
+  const viewport = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
 })
 
 test('returns the same public login error for incorrect credentials', async ({
@@ -263,7 +685,7 @@ test('shows installed Claude, conservative Remote state, and unmanaged count onl
   await navigate(page, 'Claude', '/claude')
   await expect(page.getByText('1.e2e.fixture')).toBeVisible()
   await expect(page.getByText('3.e2e.fixture')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Project A' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
   await expect(page.getByText('Needs Interaction')).toBeVisible()
   await expect(
     page.getByText(/never accepts Workspace Trust automatically/i),
@@ -281,9 +703,10 @@ test('starts, detects duplicate start, and stops only a managed Claude session',
 }) => {
   await login(page)
   await navigate(page, 'Claude', '/claude')
+  const projectId = await formalClaudeProjectId(page, 'project-a')
   const startRequest = page.waitForRequest(
     (request) =>
-      request.url().endsWith('/api/v1/claude/sessions/project-a/start') &&
+      request.url().endsWith(`/api/v1/claude/sessions/${projectId}/start`) &&
       request.method() === 'POST',
   )
   await page.getByRole('button', { name: 'Start Session' }).click()
@@ -292,20 +715,26 @@ test('starts, detects duplicate start, and stops only a managed Claude session',
   expect(csrf).toBeTruthy()
   await expect(page.getByText('Running').first()).toBeVisible()
 
-  const duplicate = await page.evaluate(async (token) => {
-    const response = await fetch('/api/v1/claude/sessions/project-a/start', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-CSRF-Token': token },
-    })
-    return { status: response.status, body: await response.json() }
-  }, csrf)
+  const duplicate = await page.evaluate(
+    async ({ token, id }) => {
+      const response = await fetch(
+        `/api/v1/claude/sessions/${encodeURIComponent(id)}/start`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-CSRF-Token': token },
+        },
+      )
+      return { status: response.status, body: await response.json() }
+    },
+    { token: csrf, id: projectId },
+  )
   expect(duplicate.status).toBe(200)
   expect(duplicate.body.data.outcome).toBe('already_running')
 
   const stopRequest = page.waitForRequest(
     (stop) =>
-      stop.url().endsWith('/api/v1/claude/sessions/project-a/stop') &&
+      stop.url().endsWith(`/api/v1/claude/sessions/${projectId}/stop`) &&
       stop.method() === 'POST',
   )
   await page.getByRole('button', { name: 'Stop Session' }).first().click()
@@ -332,9 +761,10 @@ test('copies generated attach command and reveals sensitive output only on deman
     })
   })
   await login(page)
+  const projectId = await formalClaudeProjectId(page, 'trust-project')
   let outputRequests = 0
   page.on('request', (request) => {
-    if (request.url().endsWith('/sessions/trust-project/output')) {
+    if (request.url().endsWith(`/sessions/${projectId}/output`)) {
       outputRequests += 1
     }
   })
@@ -350,7 +780,7 @@ test('copies generated attach command and reveals sensitive output only on deman
     .toBe('tmux attach-session -t =agentbox-claude-trust-project-e2efixture')
 
   const outputResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/sessions/trust-project/output'),
+    response.url().endsWith(`/sessions/${projectId}/output`),
   )
   await page.getByRole('button', { name: 'Reveal' }).nth(1).click()
   const response = await outputResponse

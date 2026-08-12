@@ -387,3 +387,11 @@ names. Unknown evidence stays `unknown`; no package is removed automatically.
   human approval;
 - execute the two-fake-provider continuity harness and preserve partial failures
   rather than treating an HTTP/Runtime request as full support.
+
+## Phase 7 Adapters
+
+`GitAdapter`, `GitHubAdapter`, and `ProjectWorkspaceManager` expose typed
+operations only. UDS arguments are a controlled relative Project key plus
+bounded operation-specific values; path, argv, shell, environment, PID, and Git
+config are forbidden. Clone staging uses exact Job markers and atomic rename.
+Git/GitHub output is bounded and normalized before crossing the socket.

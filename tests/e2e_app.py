@@ -19,8 +19,16 @@ from agentbox_runtime import (
     ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
+    GitActionResult,
+    GitBranch,
+    GitHubProjectStatus,
+    GitHubPullRequestResult,
+    GitHubStatus,
+    GitInstallationStatus,
+    GitStatus,
     InstallationType,
     PairCodeResult,
+    ProjectWorkspace,
     RemoteActionResult,
     RemoteState,
     WorkspaceState,
@@ -147,6 +155,73 @@ class E2EClaudeRuntime:
         )
 
 
+class E2EProjectRuntime:
+    async def list_workspaces(self, request_id: str) -> tuple[ProjectWorkspace, ...]:
+        return (ProjectWorkspace("project-a", "Project A"),)
+
+    async def create_workspace(
+        self, request_id: str, project_key: str, operation_id: str
+    ) -> GitActionResult:
+        return GitActionResult("created")
+
+    async def clone_workspace(
+        self, request_id: str, project_key: str, operation_id: str, repository_url: str
+    ) -> GitActionResult:
+        return GitActionResult("cloned", "main")
+
+    async def finalize_workspace(
+        self, request_id: str, project_key: str, operation_id: str
+    ) -> GitActionResult:
+        return GitActionResult("finalized")
+
+    async def rollback_workspace(
+        self, request_id: str, project_key: str, operation_id: str
+    ) -> GitActionResult:
+        return GitActionResult("rolled_back")
+
+    async def git_global_status(self, request_id: str) -> GitInstallationStatus:
+        return GitInstallationStatus(True, "2.e2e.fixture")
+
+    async def git_status(self, request_id: str, project_key: str) -> GitStatus:
+        return GitStatus(
+            is_repository=True,
+            branch="main",
+            upstream="origin/main",
+            clean=True,
+            remote_url="https://github.com/ForceMind/agentbox.git",
+        )
+
+    async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
+        return (GitBranch("main", True),)
+
+    async def create_branch(
+        self, request_id: str, project_key: str, branch: str
+    ) -> GitActionResult:
+        return GitActionResult("created", branch)
+
+    async def switch_branch(
+        self, request_id: str, project_key: str, branch: str
+    ) -> GitActionResult:
+        return GitActionResult("switched", branch)
+
+    async def pull(self, request_id: str, project_key: str) -> GitActionResult:
+        return GitActionResult("pulled", "main")
+
+    async def push(self, request_id: str, project_key: str) -> GitActionResult:
+        return GitActionResult("pushed", "main")
+
+    async def github_status(self, request_id: str) -> GitHubStatus:
+        return GitHubStatus(True, "2.e2e.fixture", AuthenticationState.AUTHENTICATED)
+
+    async def github_project_status(self, request_id: str, project_key: str) -> GitHubProjectStatus:
+        return GitHubProjectStatus(True, repository="ForceMind/agentbox", checks="pass")
+
+    async def create_draft_pr(
+        self, request_id: str, project_key: str, title: str, body: str, base: str | None
+    ) -> GitHubPullRequestResult:
+        return GitHubPullRequestResult(99, "https://github.com/ForceMind/agentbox/pull/99")
+
+
 settings = Settings()
 if settings.env is not Environment.TEST:
     raise RuntimeError("the Playwright API fixture requires AGENTBOX_ENV=test")
@@ -166,4 +241,5 @@ app = create_app(
     services,
     E2ECodexRuntime(os.environ["AGENTBOX_E2E_PAIR_CODE"]),
     E2EClaudeRuntime(),
+    E2EProjectRuntime(),
 )

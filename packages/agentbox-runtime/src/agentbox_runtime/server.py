@@ -14,10 +14,13 @@ from typing import Any
 
 from agentbox_runtime.claude import ClaudeAdapter, ClaudeSessionManager
 from agentbox_runtime.codex import CodexAdapter, CodexManager
+from agentbox_runtime.git import GitAdapter, validate_branch_name, validate_git_repository_url
+from agentbox_runtime.github import GitHubAdapter, validate_pr_body, validate_pr_title
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.project import ProjectRegistry, validate_project_id
 from agentbox_runtime.rpc import MAX_RUNTIME_FRAME, RUNTIME_PROTOCOL_VERSION
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
 _CODEX_ACTIONS = frozenset(
     {"codex.status", "codex.remote.start", "codex.remote.stop", "codex.pair"}
@@ -32,6 +35,24 @@ _CLAUDE_PROJECT_ACTIONS = frozenset(
     }
 )
 _ACTIONS = _CODEX_ACTIONS | _CLAUDE_GLOBAL_ACTIONS | _CLAUDE_PROJECT_ACTIONS
+_PROJECT_ACTION_KEYS: dict[str, frozenset[str]] = {
+    "project.list": frozenset(),
+    "project.create": frozenset({"project_key", "operation_id"}),
+    "project.clone": frozenset({"project_key", "operation_id", "repository_url"}),
+    "project.finalize": frozenset({"project_key", "operation_id"}),
+    "project.rollback": frozenset({"project_key", "operation_id"}),
+    "git.status": frozenset({"project_key"}),
+    "git.global.status": frozenset(),
+    "git.branches.list": frozenset({"project_key"}),
+    "git.branch.create": frozenset({"project_key", "branch"}),
+    "git.branch.switch": frozenset({"project_key", "branch"}),
+    "git.pull": frozenset({"project_key"}),
+    "git.push": frozenset({"project_key"}),
+    "github.status": frozenset(),
+    "github.project.status": frozenset({"project_key"}),
+    "github.pr.create": frozenset({"project_key", "title", "body", "base"}),
+}
+_ACTIONS |= frozenset(_PROJECT_ACTION_KEYS)
 
 
 class RuntimeExecutorServer:
@@ -42,10 +63,12 @@ class RuntimeExecutorServer:
         *,
         allowed_peer_uids: frozenset[int],
         claude_manager: ClaudeSessionManager | None = None,
+        project_manager: ProjectWorkspaceManager | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._manager = manager
         self._claude_manager = claude_manager
+        self._project_manager = project_manager
         self._allowed_peer_uids = allowed_peer_uids
         self._server: asyncio.AbstractServer | None = None
 
@@ -114,6 +137,7 @@ class RuntimeExecutorServer:
             expected_keys = {"protocol_version", "action", "request_id"}
             if action in _CLAUDE_PROJECT_ACTIONS:
                 expected_keys.add("project_id")
+            expected_keys.update(_PROJECT_ACTION_KEYS.get(action, ()))
             if set(request) != expected_keys:
                 await self._write_error(
                     writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
@@ -129,6 +153,14 @@ class RuntimeExecutorServer:
                             category="validation",
                         )
                     validate_project_id(raw_project_id)
+                except RuntimeOperationError:
+                    await self._write_error(
+                        writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
+                    )
+                    return
+            if action in _PROJECT_ACTION_KEYS:
+                try:
+                    self._validate_project_action(action, request)
                 except RuntimeOperationError:
                     await self._write_error(
                         writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
@@ -214,9 +246,124 @@ class RuntimeExecutorServer:
                 return (await self._claude_manager.stop(project_id)).to_dict()
             if action == "claude.session.output":
                 return (await self._claude_manager.recent_output(project_id)).to_dict()
+        if action in _PROJECT_ACTION_KEYS and self._project_manager is None:
+            raise RuntimeOperationError(
+                "PROJECT_RUNTIME_UNAVAILABLE",
+                "Project Runtime manager is unavailable",
+                category="unavailable",
+            )
+        if self._project_manager is not None:
+            project_key = str(request.get("project_key", ""))
+            operation_id = str(request.get("operation_id", ""))
+            if action == "project.list":
+                return {
+                    "projects": [item.to_dict() for item in self._project_manager.list_workspaces()]
+                }
+            if action == "project.create":
+                return (await self._project_manager.create(project_key, operation_id)).to_dict()
+            if action == "project.clone":
+                return (
+                    await self._project_manager.clone(
+                        project_key, operation_id, str(request["repository_url"])
+                    )
+                ).to_dict()
+            if action == "project.finalize":
+                return self._project_manager.finalize(project_key, operation_id).to_dict()
+            if action == "project.rollback":
+                return self._project_manager.rollback(project_key, operation_id).to_dict()
+            if action == "git.status":
+                return (await self._project_manager.git_status(project_key)).to_dict()
+            if action == "git.global.status":
+                return (await self._project_manager.git_global_status()).to_dict()
+            if action == "git.branches.list":
+                return {
+                    "branches": [
+                        branch.to_dict()
+                        for branch in await self._project_manager.branches(project_key)
+                    ]
+                }
+            if action == "git.branch.create":
+                return (
+                    await self._project_manager.create_branch(project_key, str(request["branch"]))
+                ).to_dict()
+            if action in {"git.branch.switch", "git.pull"}:
+                await self._require_inactive_claude(project_key)
+            if action == "git.branch.switch":
+                return (
+                    await self._project_manager.switch_branch(project_key, str(request["branch"]))
+                ).to_dict()
+            if action == "git.pull":
+                return (await self._project_manager.pull(project_key)).to_dict()
+            if action == "git.push":
+                return (await self._project_manager.push(project_key)).to_dict()
+            if action == "github.status":
+                return (await self._project_manager.github_global_status()).to_dict()
+            if action == "github.project.status":
+                return (await self._project_manager.github_status(project_key)).to_dict()
+            if action == "github.pr.create":
+                return (
+                    await self._project_manager.create_draft_pr(
+                        project_key,
+                        title=str(request["title"]),
+                        body=str(request["body"]),
+                        base=(str(request["base"]) if request["base"] is not None else None),
+                    )
+                ).to_dict()
         raise RuntimeOperationError(
             "RUNTIME_ACTION_UNSUPPORTED", "Runtime action is unsupported", category="unsupported"
         )
+
+    async def _require_inactive_claude(self, project_key: str) -> None:
+        if self._claude_manager is None:
+            return
+        session = await self._claude_manager.session(project_key)
+        if session.tmux_running:
+            raise RuntimeOperationError(
+                "PROJECT_RUNTIME_ACTIVE",
+                "Stop the managed Claude session before changing the workspace",
+                category="conflict",
+            )
+
+    @staticmethod
+    def _validate_project_action(action: str, request: dict[str, Any]) -> None:
+        if "project_key" in _PROJECT_ACTION_KEYS[action]:
+            value = request.get("project_key")
+            if not isinstance(value, str):
+                raise RuntimeOperationError("PROJECT_INPUT_INVALID", "Project input is invalid")
+            validate_project_id(value)
+        if "operation_id" in _PROJECT_ACTION_KEYS[action]:
+            value = request.get("operation_id")
+            if not isinstance(value, str):
+                raise RuntimeOperationError(
+                    "PROJECT_OPERATION_INVALID", "Project operation is invalid"
+                )
+            validate_operation_id(value)
+        if action == "project.clone":
+            value = request.get("repository_url")
+            if not isinstance(value, str):
+                raise RuntimeOperationError(
+                    "GIT_REPOSITORY_URL_INVALID", "Repository URL is invalid"
+                )
+            validate_git_repository_url(value)
+        if "branch" in _PROJECT_ACTION_KEYS[action]:
+            value = request.get("branch")
+            if not isinstance(value, str):
+                raise RuntimeOperationError("GIT_BRANCH_INVALID", "Branch name is invalid")
+            validate_branch_name(value)
+        if action == "github.pr.create":
+            title, body, base = request.get("title"), request.get("body"), request.get("base")
+            if (
+                not isinstance(title, str)
+                or not isinstance(body, str)
+                or not (base is None or isinstance(base, str))
+            ):
+                raise RuntimeOperationError(
+                    "GITHUB_PR_INPUT_INVALID", "Pull request input is invalid"
+                )
+            validate_pr_title(title)
+            validate_pr_body(body)
+            if base is not None:
+                validate_branch_name(base)
 
     async def _write_error(self, writer: asyncio.StreamWriter, code: str, message: str) -> None:
         await self._write(
@@ -275,26 +422,27 @@ async def _main() -> None:
         raise RuntimeError("AGENTBOX_CODEX_PAIR_COOLDOWN must be an integer") from exc
     if not 5 <= pair_cooldown <= 300:
         raise RuntimeError("AGENTBOX_CODEX_PAIR_COOLDOWN must be between 5 and 300 seconds")
+    project_registry = ProjectRegistry(
+        Path(
+            os.environ.get(
+                "AGENTBOX_PROJECT_ROOT",
+                (
+                    "/srv/agentbox/projects"
+                    if environment == "production"
+                    else ".agentbox-dev/projects"
+                ),
+            )
+        )
+    )
+    git = GitAdapter()
+    github = GitHubAdapter(git)
+    claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
     server = RuntimeExecutorServer(
         socket_path,
         CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown),
         allowed_peer_uids=allowed,
-        claude_manager=ClaudeSessionManager(
-            ClaudeAdapter(),
-            TmuxAdapter(),
-            ProjectRegistry(
-                Path(
-                    os.environ.get(
-                        "AGENTBOX_PROJECT_ROOT",
-                        (
-                            "/srv/agentbox/projects"
-                            if environment == "production"
-                            else ".agentbox-dev/projects"
-                        ),
-                    )
-                )
-            ),
-        ),
+        claude_manager=claude_manager,
+        project_manager=ProjectWorkspaceManager(project_registry, git, github),
     )
     await server.start(create_development_parent=environment != "production")
     try:

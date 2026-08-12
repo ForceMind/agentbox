@@ -18,6 +18,7 @@ export function useDoctor(): DoctorState {
     void api
       .get<DoctorResponse>('/api/v1/doctor', {
         signal: controller.signal,
+        timeoutMs: 90_000,
         validate: parseDoctorResponse,
       })
       .then((response) => setState({ status: 'loaded', response }))

@@ -162,6 +162,101 @@ class ClaudeSessionOutput:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ProjectWorkspace:
+    project_key: str
+    display_name: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitStatus:
+    is_repository: bool
+    branch: str | None = None
+    detached_head: bool = False
+    unborn_branch: bool = False
+    upstream: str | None = None
+    ahead: int = 0
+    behind: int = 0
+    staged_count: int = 0
+    unstaged_count: int = 0
+    untracked_count: int = 0
+    conflicted_count: int = 0
+    clean: bool = True
+    remote_url: str | None = None
+    submodules_detected: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitInstallationStatus:
+    installed: bool
+    version: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitBranch:
+    name: str
+    current: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitActionResult:
+    outcome: str
+    branch: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitHubStatus:
+    installed: bool
+    version: str | None
+    authentication: AuthenticationState
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitHubProjectStatus:
+    available: bool
+    repository: str | None = None
+    pull_request_number: int | None = None
+    pull_request_title: str | None = None
+    pull_request_state: str | None = None
+    pull_request_draft: bool | None = None
+    pull_request_url: str | None = None
+    pull_request_base: str | None = None
+    pull_request_head: str | None = None
+    mergeability: str | None = None
+    checks: str = "unknown"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitHubPullRequestResult:
+    number: int | None
+    url: str
+    draft: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 class RuntimeOperationError(Exception):
     """Normalized Runtime failure that never embeds captured process output."""
 

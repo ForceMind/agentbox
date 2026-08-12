@@ -23,8 +23,16 @@ from agentbox_runtime import (
     ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
+    GitActionResult,
+    GitBranch,
+    GitHubProjectStatus,
+    GitHubPullRequestResult,
+    GitHubStatus,
+    GitInstallationStatus,
+    GitStatus,
     InstallationType,
     PairCodeResult,
+    ProjectWorkspace,
     RemoteActionResult,
     RemoteState,
     WorkspaceState,
@@ -180,6 +188,73 @@ class FakeClaudeRuntime:
         )
 
 
+class FakeProjectRuntime:
+    def __init__(self) -> None:
+        self.workspaces = (ProjectWorkspace("project-a", "project-a"),)
+        self.calls: list[str] = []
+
+    async def list_workspaces(self, request_id: str) -> tuple[ProjectWorkspace, ...]:
+        return self.workspaces
+
+    async def create_workspace(
+        self, request_id: str, project_key: str, operation_id: str
+    ) -> GitActionResult:
+        self.calls.append(f"create:{project_key}:{operation_id}")
+        return GitActionResult("created")
+
+    async def clone_workspace(
+        self, request_id: str, project_key: str, operation_id: str, repository_url: str
+    ) -> GitActionResult:
+        self.calls.append(f"clone:{project_key}:{operation_id}")
+        return GitActionResult("cloned", "main")
+
+    async def finalize_workspace(
+        self, request_id: str, project_key: str, operation_id: str
+    ) -> GitActionResult:
+        return GitActionResult("finalized")
+
+    async def rollback_workspace(
+        self, request_id: str, project_key: str, operation_id: str
+    ) -> GitActionResult:
+        return GitActionResult("rolled_back")
+
+    async def git_status(self, request_id: str, project_key: str) -> GitStatus:
+        return GitStatus(is_repository=True, branch="main", clean=True)
+
+    async def git_global_status(self, request_id: str) -> GitInstallationStatus:
+        return GitInstallationStatus(True, "2.fixture")
+
+    async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
+        return (GitBranch("main", True),)
+
+    async def create_branch(
+        self, request_id: str, project_key: str, branch: str
+    ) -> GitActionResult:
+        return GitActionResult("created", branch)
+
+    async def switch_branch(
+        self, request_id: str, project_key: str, branch: str
+    ) -> GitActionResult:
+        return GitActionResult("switched", branch)
+
+    async def pull(self, request_id: str, project_key: str) -> GitActionResult:
+        return GitActionResult("pulled", "main")
+
+    async def push(self, request_id: str, project_key: str) -> GitActionResult:
+        return GitActionResult("pushed", "main")
+
+    async def github_status(self, request_id: str) -> GitHubStatus:
+        return GitHubStatus(True, "2.fixture", AuthenticationState.AUTHENTICATED)
+
+    async def github_project_status(self, request_id: str, project_key: str) -> GitHubProjectStatus:
+        return GitHubProjectStatus(True, repository="ForceMind/agentbox", checks="pass")
+
+    async def create_draft_pr(
+        self, request_id: str, project_key: str, title: str, body: str, base: str | None
+    ) -> GitHubPullRequestResult:
+        return GitHubPullRequestResult(99, "https://github.com/ForceMind/agentbox/pull/99", True)
+
+
 def migrate_database(database_url: str, revision: str = "head") -> None:
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
@@ -213,6 +288,7 @@ def settings(tmp_path: Path) -> Settings:
         login_lock_duration=300,
         argon2_max_concurrency=2,
         recent_auth_ttl=60,
+        project_root=tmp_path / "projects",
         allowed_origins=("http://testserver",),
     )
 
@@ -251,13 +327,25 @@ def claude_runtime() -> FakeClaudeRuntime:
 
 
 @pytest.fixture
+def project_runtime() -> FakeProjectRuntime:
+    return FakeProjectRuntime()
+
+
+@pytest.fixture
 async def client(
     settings: Settings,
     initialized_services: ControlPlaneServices,
     codex_runtime: FakeCodexRuntime,
     claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    application = create_app(settings, initialized_services, codex_runtime, claude_runtime)
+    application = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+    )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=application),
         base_url="http://testserver",

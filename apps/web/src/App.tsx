@@ -12,6 +12,7 @@ import { LoginPage } from './pages/LoginPage'
 import { LogsPage } from './pages/LogsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 function RootRedirect() {
@@ -47,6 +48,10 @@ export function App() {
               <Route element={<CodexPage />} path="/codex" />
               <Route element={<ClaudePage />} path="/claude" />
               <Route element={<ProjectsPage />} path="/projects" />
+              <Route
+                element={<ProjectDetailPage />}
+                path="/projects/:projectId"
+              />
               <Route element={<DoctorPage />} path="/doctor" />
               <Route element={<LogsPage />} path="/logs" />
               <Route element={<SettingsPage />} path="/settings" />

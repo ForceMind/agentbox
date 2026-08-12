@@ -115,3 +115,38 @@ class RuntimeGatewayError(AgentBoxError):
             "broken": 503,
         }.get(category, 503)
         super().__init__(retry_after=retry_after)
+
+
+class ProjectNotFound(AgentBoxError):
+    code = "PROJECT_NOT_FOUND"
+    category = "unavailable"
+    message = "Project was not found"
+    status_code = 404
+
+
+class ProjectNotReady(AgentBoxError):
+    code = "PROJECT_NOT_READY"
+    category = "conflict"
+    message = "Project is not ready"
+    status_code = 409
+
+
+class ProjectConflict(AgentBoxError):
+    code = "PROJECT_CONFLICT"
+    category = "conflict"
+    message = "Project conflicts with an existing workspace"
+    status_code = 409
+
+
+class ProjectValidationError(AgentBoxError):
+    code = "PROJECT_INPUT_INVALID"
+    category = "validation"
+    message = "Project input is invalid"
+    status_code = 422
+
+
+class JobNotFound(AgentBoxError):
+    code = "JOB_NOT_FOUND"
+    category = "unavailable"
+    message = "Job was not found"
+    status_code = 404

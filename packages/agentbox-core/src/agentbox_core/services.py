@@ -23,7 +23,9 @@ from agentbox_core.errors import (
     InvalidSession,
     LoginRateLimited,
 )
+from agentbox_core.jobs import JobService
 from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession
+from agentbox_core.projects import ProjectService
 from agentbox_core.rate_limit import LoginRateLimiter
 from agentbox_core.security import (
     PasswordManager,
@@ -449,6 +451,8 @@ class ControlPlaneServices:
     auth: AuthService
     sessions: SessionService
     audit: AuditService
+    projects: ProjectService
+    jobs: JobService
 
 
 def build_services(
@@ -479,12 +483,16 @@ def build_services(
         actual_clock,
     )
     admin = AdminService(database, actual_password_manager, audit, actual_clock)
+    projects = ProjectService(database, actual_clock)
+    jobs = JobService(database, settings, actual_clock)
     return ControlPlaneServices(
         database=database,
         admin=admin,
         auth=auth,
         sessions=sessions,
         audit=audit,
+        projects=projects,
+        jobs=jobs,
     )
 
 

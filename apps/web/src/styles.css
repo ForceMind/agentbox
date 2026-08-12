@@ -44,8 +44,82 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
+}
+
+.project-forms,
+.project-grid,
+.project-detail-grid {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.project-forms label,
+.inline-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inline-form textarea {
+  min-height: 8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+
+.branch-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+.project-forms input,
+.inline-form input {
+  min-height: 2.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--bg);
+  color: var(--text);
+}
+.project-forms form {
+  display: grid;
+  gap: 1rem;
+}
+.project-link {
+  color: inherit;
+  text-decoration: none;
+}
+.project-link:hover {
+  border-color: var(--accent);
+}
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.inline-form {
+  margin-top: 1rem;
+}
+
+@media (min-width: 720px) {
+  .project-forms,
+  .project-grid,
+  .project-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inline-form {
+    grid-template-columns: minmax(12rem, 1fr) auto auto;
+  }
+  .inline-form textarea {
+    grid-column: 1 / -1;
+  }
 }
 button,
 a {

@@ -37,12 +37,18 @@ async def test_runner_uses_argv_fixed_cwd_and_environment_allowlist(tmp_path: Pa
         "AGENTBOX_SECRET_KEY": "must-not-pass",
         "GITHUB_TOKEN": "must-not-pass",
         "OPENAI_API_KEY": "must-not-pass",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_ASKPASS": "/bin/false",
+        "SSH_ASKPASS": "/bin/false",
     }
     script = (
         "import json,os,sys;"
         "print(json.dumps({'cwd':os.getcwd(),'argv':sys.argv[1:],"
         "'secret':os.getenv('AGENTBOX_SECRET_KEY'),'github':os.getenv('GITHUB_TOKEN'),"
-        "'openai':os.getenv('OPENAI_API_KEY')}))"
+        "'openai':os.getenv('OPENAI_API_KEY'),"
+        "'git_config':os.getenv('GIT_CONFIG_GLOBAL'),"
+        "'git_askpass':os.getenv('GIT_ASKPASS'),"
+        "'ssh_askpass':os.getenv('SSH_ASKPASS')}))"
     )
     result = await runner.run(
         identity,
@@ -60,6 +66,9 @@ async def test_runner_uses_argv_fixed_cwd_and_environment_allowlist(tmp_path: Pa
     assert b'"secret": null' in result.stdout
     assert b'"github": null' in result.stdout
     assert b'"openai": null' in result.stdout
+    assert b'"git_config": "/dev/null"' in result.stdout
+    assert b'"git_askpass": "/bin/false"' in result.stdout
+    assert b'"ssh_askpass": "/bin/false"' in result.stdout
     assert result.argv[0] == str(identity.path)
 
 
@@ -158,12 +167,18 @@ def test_minimal_environment_is_an_explicit_allowlist() -> None:
             "TERM": "xterm",
             "AWS_SECRET_ACCESS_KEY": "no",
             "ANTHROPIC_API_KEY": "no",
+            "GIT_CONFIG_GLOBAL": "/hostile/global",
+            "GIT_ASKPASS": "/safe/askpass",
+            "SSH_ASKPASS": "/safe/ssh-askpass",
         }
     )
     assert result == {
         "HOME": "/runtime-home",
         "PATH": "/usr/bin:/bin",
         "TERM": "xterm",
+        "GIT_CONFIG_GLOBAL": "/hostile/global",
+        "GIT_ASKPASS": "/safe/askpass",
+        "SSH_ASKPASS": "/safe/ssh-askpass",
         "LANG": "C.UTF-8",
     }
 

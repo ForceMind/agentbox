@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from agentbox_cli.main import main
 from agentbox_core import __version__
+from agentbox_core.configuration import Settings
+from agentbox_core.services import build_services
 from agentbox_runtime import (
     AuthenticationState,
     CapabilityState,
@@ -18,10 +20,16 @@ from agentbox_runtime import (
     ClaudeStatus,
     CodexCapabilities,
     CodexStatus,
+    GitBranch,
+    GitHubProjectStatus,
+    GitHubStatus,
+    GitStatus,
     InstallationType,
     PairCodeResult,
+    ProjectWorkspace,
     RemoteActionResult,
     RemoteState,
+    RuntimeOperationError,
     WorkspaceState,
 )
 from conftest import migrate_database
@@ -211,6 +219,83 @@ class FakeClaudeRuntimeClient:
         )
 
 
+class FakeProjectRuntimeClient:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    async def list_workspaces(self, request_id: str) -> tuple[ProjectWorkspace, ...]:
+        del request_id
+        return (ProjectWorkspace("project-a", "Project A"),)
+
+    async def git_status(self, request_id: str, project_key: str) -> GitStatus:
+        del request_id
+        assert project_key == "project-a"
+        return GitStatus(
+            True,
+            branch="main",
+            upstream="origin/main",
+            remote_url="https://github.com/owner/repo.git",
+        )
+
+    async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
+        del request_id
+        assert project_key == "project-a"
+        return (GitBranch("main", True), GitBranch("feature/safe", False))
+
+    async def github_status(self, request_id: str) -> GitHubStatus:
+        del request_id
+        return GitHubStatus(True, "2.fixture", AuthenticationState.AUTHENTICATED)
+
+    async def github_project_status(self, request_id: str, project_key: str) -> GitHubProjectStatus:
+        del request_id
+        assert project_key == "project-a"
+        return GitHubProjectStatus(
+            True,
+            repository="owner/repo",
+            pull_request_number=7,
+            pull_request_title="Draft",
+            pull_request_state="open",
+            pull_request_draft=True,
+            pull_request_url="https://github.com/owner/repo/pull/7",
+            pull_request_base="main",
+            pull_request_head="feature/safe",
+            mergeability="blocked",
+            checks="pending",
+        )
+
+
+class FailingProjectRuntimeClient(FakeProjectRuntimeClient):
+    async def git_status(self, request_id: str, project_key: str) -> GitStatus:
+        del request_id, project_key
+        raise RuntimeOperationError("RUNTIME_TIMEOUT", "Runtime timed out", category="timeout")
+
+    async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
+        del request_id, project_key
+        raise RuntimeOperationError(
+            "RUNTIME_FORBIDDEN", "Runtime operation forbidden", category="forbidden"
+        )
+
+    async def github_status(self, request_id: str) -> GitHubStatus:
+        del request_id
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE", "Runtime unavailable", category="unavailable"
+        )
+
+    async def github_project_status(self, request_id: str, project_key: str) -> GitHubProjectStatus:
+        del request_id, project_key
+        raise RuntimeOperationError(
+            "RUNTIME_CONFLICT", "Runtime operation conflicted", category="conflict"
+        )
+
+
+def _formal_project_id() -> str:
+    services = build_services(Settings())
+    try:
+        return services.projects.reconcile_existing(("project-a",))[0].id
+    finally:
+        services.database.close()
+
+
 def test_codex_status_json_uses_typed_runtime_client(
     cli_environment: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -269,6 +354,7 @@ def test_claude_status_and_list_support_json_without_paths(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     del cli_environment
+    formal_id = _formal_project_id()
     monkeypatch.setattr("agentbox_cli.main.UnixClaudeRuntimeClient", FakeClaudeRuntimeClient)
     assert main(["claude", "status", "--json"]) == 0
     status = json.loads(capsys.readouterr().out)
@@ -277,7 +363,8 @@ def test_claude_status_and_list_support_json_without_paths(
 
     assert main(["claude", "list", "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed["data"]["sessions"][0]["project_id"] == "project-a"
+    assert listed["data"]["sessions"][0]["project_id"] == formal_id
+    assert listed["data"]["sessions"][0]["display_name"] == "project-a"
     assert "path" not in listed["data"]["sessions"][0]
 
 
@@ -287,12 +374,13 @@ def test_claude_start_stop_and_sensitive_output_use_typed_project_id(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     del cli_environment
+    formal_id = _formal_project_id()
     monkeypatch.setattr("agentbox_cli.main.UnixClaudeRuntimeClient", FakeClaudeRuntimeClient)
-    assert main(["claude", "start", "project-a"]) == 0
+    assert main(["claude", "start", formal_id]) == 0
     assert "started" in capsys.readouterr().out
-    assert main(["claude", "stop", "project-a"]) == 0
+    assert main(["claude", "stop", formal_id]) == 0
     assert "stopped" in capsys.readouterr().out
-    assert main(["claude", "output", "project-a"]) == 0
+    assert main(["claude", "output", formal_id]) == 0
     captured = capsys.readouterr()
     assert captured.out.strip() == "CLAUDE-OUTPUT-CANARY"
     assert "Sensitive Claude session output" in captured.err
@@ -304,9 +392,10 @@ def test_claude_attach_requires_tty_and_execs_only_exact_generated_name(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     del cli_environment
+    formal_id = _formal_project_id()
     monkeypatch.setattr("agentbox_cli.main.UnixClaudeRuntimeClient", FakeClaudeRuntimeClient)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
-    assert main(["claude", "attach", "project-a"]) == 13
+    assert main(["claude", "attach", formal_id]) == 13
     assert "CLAUDE_ATTACH_TTY_REQUIRED" in capsys.readouterr().err
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
@@ -320,7 +409,7 @@ def test_claude_attach_requires_tty_and_execs_only_exact_generated_name(
 
     monkeypatch.setattr("agentbox_cli.main.os.execv", capture_exec)
     with pytest.raises(RuntimeError, match="exec intercepted"):
-        main(["claude", "attach", "project-a"])
+        main(["claude", "attach", formal_id])
     assert executed == [
         (
             "/usr/bin/tmux",
@@ -332,3 +421,100 @@ def test_claude_attach_requires_tty_and_execs_only_exact_generated_name(
             ],
         )
     ]
+
+
+def test_project_cli_reconciles_formal_ids_and_supports_read_only_json(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr("agentbox_cli.main.UnixProjectRuntimeClient", FakeProjectRuntimeClient)
+
+    assert main(["project", "list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    formal_id = listed["data"]["projects"][0]["id"]
+    assert formal_id.startswith("prj_")
+    assert listed["data"]["projects"][0]["slug"] == "project-a"
+
+    assert main(["project", "status", formal_id, "--json"]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["data"]["branch"] == "main"
+    assert "argv" not in status["data"]
+
+    assert main(["project", "branch", "list", formal_id, "--json"]) == 0
+    branches = json.loads(capsys.readouterr().out)
+    assert branches["data"]["branches"] == [
+        {"current": True, "name": "main"},
+        {"current": False, "name": "feature/safe"},
+    ]
+
+
+def test_project_and_github_cli_queue_only_typed_operations(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    formal_id = _formal_project_id()
+    monkeypatch.setattr("agentbox_cli.main.UnixProjectRuntimeClient", FakeProjectRuntimeClient)
+
+    assert main(["project", "pull", formal_id]) == 0
+    assert "queued" in capsys.readouterr().out
+    assert main(["github", "status", "--json"]) == 0
+    github = json.loads(capsys.readouterr().out)
+    assert github["data"]["authentication"] == "authenticated"
+    assert main(["github", "pr", "status", formal_id, "--json"]) == 0
+    pull_request = json.loads(capsys.readouterr().out)
+    assert pull_request["data"]["pull_request_number"] == 7
+
+    assert (
+        main(
+            [
+                "github",
+                "pr",
+                "create",
+                formal_id,
+                "--title",
+                "bad\ntitle",
+            ]
+        )
+        == 15
+    )
+    assert "GITHUB_PR_INPUT_INVALID" in capsys.readouterr().err
+
+    services = build_services(Settings())
+    try:
+        jobs = services.jobs.list()
+        assert [job.type for job in jobs] == ["git.pull"]
+        assert all("argv" not in job.payload_json for job in jobs)
+    finally:
+        services.database.close()
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected_exit", "expected_code"),
+    [
+        (["project", "status", "{project}"], 16, "RUNTIME_TIMEOUT"),
+        (["project", "branch", "list", "{project}"], 13, "RUNTIME_FORBIDDEN"),
+        (["github", "status"], 10, "RUNTIME_UNAVAILABLE"),
+        (["github", "pr", "status", "{project}"], 14, "RUNTIME_CONFLICT"),
+    ],
+)
+def test_project_and_github_cli_map_runtime_failure_exit_codes(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    expected_exit: int,
+    expected_code: str,
+) -> None:
+    del cli_environment
+    formal_id = _formal_project_id()
+    monkeypatch.setattr("agentbox_cli.main.UnixProjectRuntimeClient", FailingProjectRuntimeClient)
+
+    resolved_arguments = [
+        formal_id if argument == "{project}" else argument for argument in arguments
+    ]
+    assert main(resolved_arguments) == expected_exit
+    assert expected_code in capsys.readouterr().err

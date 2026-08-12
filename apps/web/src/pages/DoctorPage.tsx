@@ -169,10 +169,57 @@ export function DoctorPage() {
               </div>
             </dl>
           </section>
+          <section
+            className="runtime-card doctor-runtime"
+            aria-labelledby="doctor-projects"
+          >
+            <div className="runtime-card-heading">
+              <div>
+                <p className="eyebrow">Workspace diagnostic</p>
+                <h2 id="doctor-projects">Projects + GitHub</h2>
+              </div>
+              <StatusBadge
+                tone={
+                  doctor.response.data.projects.github_cli_installed
+                    ? 'good'
+                    : 'warning'
+                }
+              >
+                {doctor.response.data.projects.project_count} Projects
+              </StatusBadge>
+            </div>
+            <dl className="runtime-details">
+              <div>
+                <dt>Project Root</dt>
+                <dd>{doctor.response.data.projects.project_root}</dd>
+              </div>
+              <div>
+                <dt>Git</dt>
+                <dd>
+                  {doctor.response.data.projects.git_version ?? 'Unknown'}
+                </dd>
+              </div>
+              <div>
+                <dt>GitHub CLI</dt>
+                <dd>
+                  {doctor.response.data.projects.github_cli_installed === true
+                    ? 'Installed'
+                    : doctor.response.data.projects.github_cli_installed ===
+                        false
+                      ? 'Not installed'
+                      : 'Unknown'}
+                </dd>
+              </div>
+              <div>
+                <dt>GitHub authentication</dt>
+                <dd>{doctor.response.data.projects.github_authentication}</dd>
+              </div>
+            </dl>
+          </section>
           <p className="scope-note">
             Runtime checks use safe adapter summaries. Unmanaged tmux names,
-            pane output, credentials, private Runtime configuration, GitHub,
-            general systemd state, and host networking are not exposed here.
+            pane output, credentials, private Runtime configuration, general
+            systemd state, and host networking are not exposed here.
           </p>
         </>
       )}

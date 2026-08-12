@@ -144,7 +144,7 @@ flowchart LR
     API --> DB[(SQLite)]
     API -->|typed runtime.sock RPC| Runtime[Runtime Executor]
     Worker[AgentBox Worker] --> DB
-    Worker -->|future Job runtime.sock RPC| Runtime
+    Worker -->|typed Project/Git Job RPC| Runtime
     Worker -->|helper.sock| Helper[Privileged Helper]
     Runtime --> Git[Git / gh]
     Runtime --> Codex[Codex CLI]
@@ -184,13 +184,13 @@ operations; no HTTP route runs migrations or Session cleanup. This is acceptable
 for the single-server foundation and must be revisited if profiling shows
 contention or these request paths acquire longer work.
 
-Phase 5 Codex routes await bounded UDS I/O; the API still executes no
-third-party process. Status/help/version work and Remote actions execute in the
-separate Runtime process. API-side SQLite work is limited to short Session and
-Audit transactions. Durable Job execution remains deferred, so the current
-start/stop/pair calls are bounded synchronous actions rather than recoverable
-Jobs; this boundary must be replaced by the Job model if real-world latency or
-restart behavior exceeds the MVP limits.
+Codex/Claude direct lifecycle routes await bounded UDS I/O; the API still
+executes no third-party process. Phase 7 network and workspace mutations are
+instead queued as durable Jobs for the Worker. API-side SQLite work remains
+limited to short Session, Project, Job, and Audit transactions. Pair Code and
+bounded Runtime lifecycle actions intentionally remain direct ephemeral
+operations because their secret/idempotency semantics differ from persistent
+Jobs.
 
 ### Application Services
 
@@ -342,7 +342,11 @@ sequenceDiagram
     A-->>B: SSE job event / GET job
 ```
 
-The Worker never stores raw stdout/stderr. Adapters normalize output into bounded summaries and ephemeral diagnostic buffers.
+The Worker never stores raw stdout/stderr. Adapters normalize output into
+bounded summaries and ephemeral diagnostic buffers. During each bounded
+Runtime RPC, the Worker periodically renews the durable Job lease without
+creating progress-event noise; a crashed or expired running mutation becomes
+`needs_attention` and is never blindly replayed.
 
 ### Future Provider Selection Flow
 
@@ -513,3 +517,13 @@ Upgrade is a privileged Job with a global lifecycle lock. It downloads to stagin
   contracts available when Phase 11 begins;
 - evidence required for every continuity level, the A/B harness, safe lifecycle
   restoration, and rollback verification during Provider activation.
+
+## Phase 7 Project and Job Flow
+
+`Web/CLI → API → durable Job → Worker → typed UDS action →
+ProjectWorkspaceManager → GitAdapter/GitHubAdapter` is the mutation path. API
+persists only controlled Project identity and bounded Job payloads; Runtime
+resolves the immutable relative key beneath Project Root. Worker leases
+serialize mutations per Project and interrupted work becomes `needs_attention`.
+Claude continues using the same relative key internally so managed tmux identity
+survives migration.
