@@ -138,7 +138,7 @@ status are bounded.
 
 ## Draft PR
 
-Draft PR input is bounded to a validated title, 16 KiB plain-text body, and
+Draft PR input is bounded to a validated title, 7 KiB plain-text body, and
 optional valid base branch. Runtime uses fixed `gh pr create --draft` argv,
 sends the body on stdin, disables prompts/editors/pagers, and keeps the current
 branch as head. No arbitrary flags, repo selector, template path, Web launch,
@@ -204,9 +204,9 @@ credential-bearing remotes, or raw CLI output.
 
 ## Tests
 
-- Backend: Ruff PASS; Black PASS; mypy PASS; `300 passed` after final security,
+- Backend: Ruff PASS; Black PASS; mypy PASS; `305 passed` after final security,
   worktree-config canary, no-replace, rollback-identity, and audit additions.
-- Frontend: ESLint PASS; Prettier PASS; TypeScript PASS; Vitest `22 passed`;
+- Frontend: ESLint PASS; Prettier PASS; TypeScript PASS; Vitest `25 passed`;
   production build PASS.
 - Migration: isolated `upgrade → downgrade base → upgrade` PASS; final head is
   `0002_project_jobs`.
@@ -282,6 +282,37 @@ credential/control-character sanitation. Local review gates pass with no
 remaining Phase 7 blocker. Merge readiness still requires the required checks
 on the pushed final-review head; their live result is reported in the handoff.
 
+## Post-Review Remediation
+
+The Ready-for-Review pass on implementation head
+`dd3ea7ae8237cc1a4125432cfc128a14ec76cb77` produced four actionable P2 review
+threads. Implementation head `af3f71c85276dfab20927a1516f25971b9c02340`
+addresses all four:
+
+- Web Project mutations retain the same Idempotency-Key after an uncertain
+  timeout/transport/response-validation failure and release it only after a
+  successful or definitive HTTP response. The fingerprint includes Project,
+  typed operation, and body. Create/clone use the same retry rule.
+- A failed initial Project detail request now renders the bounded API error
+  instead of remaining indefinitely in the loading state.
+- Project and GitHub CLI read operations map Runtime categories through the
+  documented exit-code contract instead of collapsing them to validation exit
+  15.
+- Draft PR bodies are capped at 7 KiB, reserving sufficient space beneath the
+  existing global 16 KiB mutation-body limit even for maximally JSON-escaped
+  accepted input. An integration test proves the accepted maximum reaches the
+  route and queues exactly one typed Job.
+
+Regression coverage proves uncertain retries reuse their key, definitive HTTP
+failures receive a new key, all four CLI Runtime category paths preserve exit
+codes, Project load failures are visible, and the maximum accepted Draft PR body
+does not fail at HTTP middleware. Full local results are Backend `305 passed`,
+Frontend `25 passed`, migration upgrade/downgrade/upgrade PASS, both dependency
+audits PASS, secret/boundary/forbidden-primitive scans PASS, and diff check PASS.
+Local Playwright again reached migration/build/API/Web startup but executed zero
+application assertions because Chromium lacks host `libgbm.so.1`; no system
+package was installed.
+
 ## Dependencies
 
 No Python or JavaScript runtime dependency was added. `pip-audit --local
@@ -291,20 +322,24 @@ vulnerabilities.
 ## CI
 
 Local lint/type/unit/build/migration/audit/security gates pass. All nine GitHub
-checks passed on final implementation head
+checks passed on the original final-review implementation head
 `dd3ea7ae8237cc1a4125432cfc128a14ec76cb77`: Backend on Python 3.11/3.12/3.13,
 Frontend, repository boundaries, dependency review, Python audit, Frontend
-audit, and the 54-case E2E suite. PR #27 was then marked Ready for Review. Any
-report-only follow-up head is revalidated before the final handoff.
+audit, and the 54-case E2E suite. PR #27 was then marked Ready for Review. The
+post-review remediation requires all applicable workflows to rerun on the
+pushed report head; their authoritative live result is reported in the final
+handoff.
 
 ## Final Conclusion
 
 Project path, clone atomicity, Git config/transport/command, ff-only Pull,
 no-force Push, branch/PR injection, credential redaction, active-Claude, Job
-non-replay/idempotency, GitHub CLI, and Phase 6 session-compatibility review
-gates pass. There is no remaining Phase 7 blocker. Merge recommendation:
-`READY TO MERGE`. PR #27 remains unmerged for human review. Phase 8 and Phase 11
-implementation remain `NOT STARTED`.
+non-replay/idempotency, GitHub CLI, Web retry/error behavior, CLI exit mapping,
+request-size compatibility, and Phase 6 session-compatibility review gates
+pass. There is no remaining local Phase 7 code blocker. Final merge
+recommendation depends only on required checks passing on the pushed
+post-review head and is reported in the handoff. PR #27 remains unmerged for
+human review. Phase 8 and Phase 11 implementation remain `NOT STARTED`.
 
 ## Deviations
 
