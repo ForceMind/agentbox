@@ -12,6 +12,8 @@ import secrets
 import shutil
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from agentbox_core import __version__
@@ -19,6 +21,10 @@ from agentbox_core.configuration import Settings
 from agentbox_core.errors import AdminAlreadyInitialized, AgentBoxError
 from agentbox_core.projects import repository_name_from_url, validate_repository_url
 from agentbox_core.services import build_services
+from agentbox_installer.diagnostics import DeploymentDoctor
+from agentbox_installer.host import HostOperations
+from agentbox_installer.layout import InstallLayout
+from agentbox_installer.lifecycle import AgentBoxInstaller, InstallError
 from agentbox_runtime import (
     CodexAdapter,
     RuntimeOperationError,
@@ -45,6 +51,22 @@ def create_parser() -> argparse.ArgumentParser:
             action="store_true",
             default=argparse.SUPPRESS,
         )
+
+    system = subcommands.add_parser("system")
+    system_commands = system.add_subparsers(dest="system_command", required=True)
+    system_status = system_commands.add_parser("status")
+    system_status.add_argument(
+        "--json", dest="json_output", action="store_true", default=argparse.SUPPRESS
+    )
+    system_update = system_commands.add_parser("update")
+    system_update.add_argument("--artifact", type=Path, required=True)
+    system_update.add_argument("--sha256", required=True)
+    system_rollback = system_commands.add_parser("rollback")
+    system_rollback.add_argument("--to")
+    system_uninstall = system_commands.add_parser("uninstall")
+    system_uninstall.add_argument(
+        "--preserve-data", action="store_true", default=True, help=argparse.SUPPRESS
+    )
 
     admin = subcommands.add_parser("admin")
     admin_commands = admin.add_subparsers(dest="admin_command", required=True)
@@ -178,6 +200,93 @@ def _control_plane_status(settings: Settings) -> dict[str, Any]:
         }
     finally:
         services.database.close()
+
+
+async def _production_runtime_diagnostics(settings: Settings) -> dict[str, object]:
+    request_id = f"req_cli-{secrets.token_hex(12)}"
+    result: dict[str, object] = {}
+    try:
+        codex = await UnixCodexRuntimeClient(settings.runtime_socket).status(request_id)
+        result["codex"] = "installed" if codex.installed else "unavailable"
+    except RuntimeOperationError:
+        result["codex"] = "unknown"
+    try:
+        claude = await UnixClaudeRuntimeClient(settings.runtime_socket).status(request_id)
+        result["claude"] = "installed" if claude.installed else "unavailable"
+        result["tmux"] = "installed" if claude.tmux_installed else "unavailable"
+    except RuntimeOperationError:
+        result["claude"] = "unknown"
+        result["tmux"] = "unknown"
+    project = UnixProjectRuntimeClient(settings.runtime_socket)
+    try:
+        git = await project.git_global_status(request_id)
+        result["git"] = "installed" if git.installed else "unavailable"
+    except RuntimeOperationError:
+        result["git"] = "unknown"
+    try:
+        github = await project.github_status(request_id)
+        result["github"] = github.authentication.value
+    except RuntimeOperationError:
+        result["github"] = "unknown"
+    return result
+
+
+def _system_command(args: argparse.Namespace) -> int:
+    command = str(args.system_command)
+    json_output = bool(getattr(args, "json_output", False))
+    installer = AgentBoxInstaller(InstallLayout(), HostOperations(real_host=True))
+    try:
+        if command == "status":
+            data = {
+                "installation": installer.installation_state(),
+                "version": installer.current_version() or "unavailable",
+                **DeploymentDoctor().inspect(),
+            }
+            _print_result(_envelope("system.status", ok=True, data=data), json_output)
+            return 0
+        if command == "update":
+            result = installer.apply(args.artifact, args.sha256)
+            _print_result(_envelope("system.update", ok=True, data=asdict(result)), json_output)
+            return 0
+        if command == "rollback":
+            result = installer.rollback(args.to)
+            _print_result(_envelope("system.rollback", ok=True, data=asdict(result)), json_output)
+            return 0
+        uninstall_result = installer.uninstall()
+        _print_result(_envelope("system.uninstall", ok=True, data=uninstall_result), json_output)
+        return 0
+    except (InstallError, RuntimeError, ValueError) as exc:
+        print(f"ERROR [SYSTEM_OPERATION_FAILED]: {exc}", file=sys.stderr)
+        return 17
+
+
+def _production_status(settings: Settings) -> dict[str, object]:
+    control = _control_plane_status(settings)
+    deployment = DeploymentDoctor().inspect()
+    services = deployment["services"]
+    assert isinstance(services, dict)
+    runtime_tools = asyncio.run(_production_runtime_diagnostics(settings))
+    helper_socket = deployment["helper_socket"]
+    project_root = deployment["project_root"]
+    assert isinstance(helper_socket, dict) and isinstance(project_root, dict)
+
+    def service(name: str) -> str:
+        value = services.get(name, "unknown")
+        return "running" if value == "active" else str(value)
+
+    return {
+        "agentbox_api": service("agentbox-api.service"),
+        "worker": service("agentbox-worker.service"),
+        "runtime": service("agentbox-runtime.service"),
+        "helper": ("available" if helper_socket.get("state") == "ready" else "unknown"),
+        "database": (
+            "ready"
+            if control["database"] == "reachable" and control["migrations"] == "current"
+            else "not_ready"
+        ),
+        "project_root": project_root.get("state", "unknown"),
+        **runtime_tools,
+    }
 
 
 def _admin_init(settings: Settings, username_argument: str | None) -> int:
@@ -587,6 +696,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(secrets.token_urlsafe(48))
         return 0
 
+    if args.command == "system":
+        return _system_command(args)
+
     try:
         settings = Settings()
     except Exception:
@@ -610,7 +722,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "github":
         return asyncio.run(_github_command(settings, args))
 
-    status = _control_plane_status(settings)
+    if args.command == "status" and settings.env.value == "production":
+        status = _production_status(settings)
+    else:
+        status = _control_plane_status(settings)
+    if args.command == "doctor" and settings.env.value == "production":
+        status["deployment"] = DeploymentDoctor().inspect()
+        status["runtime_tools"] = asyncio.run(_production_runtime_diagnostics(settings))
     result = _envelope(args.command, ok=True, data=status)
     _print_result(result, args.json_output)
     return 0

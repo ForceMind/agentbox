@@ -1,0 +1,32 @@
+[Unit]
+Description=AgentBox Non-root Runtime Executor
+After=local-fs.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=agentbox-runtime
+Group=agentbox-runtime
+SupplementaryGroups=agentbox-runtime-ipc
+WorkingDirectory=/srv/agentbox/projects
+EnvironmentFile=/etc/agentbox/runtime-environment
+ExecStart=/opt/agentbox/current/venv/bin/agentbox-runtime
+Restart=on-failure
+RestartSec=5s
+KillMode=process
+UMask=0007
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/run/agentbox /srv/agentbox/projects /home/agentbox-runtime
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=AgentBox Privileged Helper Socket
+
+[Socket]
+ListenStream=/run/agentbox/helper.sock
+SocketUser=root
+SocketGroup=agentbox
+SocketMode=0660
+RemoveOnStop=true
+Accept=no
+
+[Install]
+WantedBy=sockets.target

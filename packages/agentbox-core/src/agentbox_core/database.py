@@ -125,8 +125,8 @@ class Database:
                 "busy_timeout": int(connection.execute(text("PRAGMA busy_timeout")).scalar_one()),
             }
 
-    def migration_state(self, alembic_ini: str = "alembic.ini") -> tuple[str | None, str]:
-        config = Config(alembic_ini)
+    def migration_state(self, alembic_ini: str | Path | None = None) -> tuple[str | None, str]:
+        config = Config(str(alembic_ini or self.settings.alembic_ini))
         script = ScriptDirectory.from_config(config)
         expected = script.get_current_head()
         if expected is None:
@@ -135,7 +135,7 @@ class Database:
             current = MigrationContext.configure(connection).get_current_revision()
         return current, expected
 
-    def migrations_current(self, alembic_ini: str = "alembic.ini") -> bool:
+    def migrations_current(self, alembic_ini: str | Path | None = None) -> bool:
         if self._sqlite_path is not None and not self._sqlite_path.exists():
             return False
         try:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from agentbox_core import __version__
 from agentbox_core.configuration import Settings
@@ -26,9 +27,11 @@ from agentbox_runtime import (
     UnixCodexRuntimeClient,
     UnixProjectRuntimeClient,
 )
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from agentbox_api.auth import BoundedLoginExecutor
 from agentbox_api.auth import router as auth_router
@@ -41,6 +44,13 @@ from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
 
 logger = logging.getLogger("agentbox.api")
+
+
+class ImmutableStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
 
 def _request_id(request: Request) -> str:
@@ -201,7 +211,42 @@ def create_app(
     application.include_router(github_router)
     application.include_router(jobs_router)
     application.include_router(doctor_router)
+    static_root = actual_settings.static_dir
+    if static_root is not None:
+        _register_static_web(application, static_root)
     return application
+
+
+def _register_static_web(application: FastAPI, static_root: Path) -> None:
+    """Serve one immutable frontend artifact without exposing other filesystem roots."""
+    root = static_root.resolve(strict=True)
+    if static_root.is_symlink() or not root.is_dir() or not (root / "index.html").is_file():
+        raise RuntimeError("configured frontend artifact is unavailable or unsafe")
+    assets = root / "assets"
+    if assets.is_dir() and not assets.is_symlink():
+        application.mount("/assets", ImmutableStaticFiles(directory=assets), name="frontend-assets")
+
+    @application.get("/{frontend_path:path}", include_in_schema=False)
+    async def frontend(frontend_path: str) -> FileResponse:
+        if frontend_path.startswith(("api/", "healthz/", "readyz/")):
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = root / frontend_path
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (FileNotFoundError, OSError):
+            resolved = root / "index.html"
+        if not resolved.is_relative_to(root) or resolved.is_symlink() or not resolved.is_file():
+            resolved = root / "index.html"
+        return FileResponse(
+            resolved,
+            headers={
+                "Cache-Control": (
+                    "no-cache"
+                    if resolved.name == "index.html"
+                    else "public, max-age=31536000, immutable"
+                )
+            },
+        )
 
 
 app = create_app()

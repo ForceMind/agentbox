@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import secrets
 from enum import StrEnum
 from pathlib import Path
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
     bind_host: str = "127.0.0.1"
     bind_port: int = Field(default=8787, ge=1, le=65535)
     database_url: str = "sqlite+pysqlite:///./.agentbox-dev/agentbox.db"
+    alembic_ini: Path = Path("alembic.ini")
     secret_key: SecretStr = SecretStr("")
     session_ttl: int = Field(default=8 * 60 * 60, ge=300, le=30 * 24 * 60 * 60)
     session_idle_ttl: int = Field(default=30 * 60, ge=60, le=24 * 60 * 60)
@@ -60,6 +62,7 @@ class Settings(BaseSettings):
     runtime_socket: Path = Path(".agentbox-dev/runtime.sock")
     project_root: Path = Path(".agentbox-dev/projects")
     data_dir: Path = Path(".agentbox-dev")
+    static_dir: Path | None = None
     job_lease_seconds: int = Field(default=120, ge=30, le=3600)
     job_poll_interval: float = Field(default=1.0, ge=0.1, le=60.0)
     database_busy_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
@@ -83,6 +86,8 @@ class Settings(BaseSettings):
             Environment.PRODUCTION.value,
         }:
             values.setdefault("project_root", Path("/srv/agentbox/projects"))
+            values.setdefault("static_dir", Path("/opt/agentbox/current/web/dist"))
+            values.setdefault("alembic_ini", Path("/opt/agentbox/current/alembic.ini"))
         return values
 
     @classmethod
@@ -99,7 +104,10 @@ class Settings(BaseSettings):
         return (
             env_settings,
             init_settings,
-            TomlConfigSettingsSource(settings_cls),
+            TomlConfigSettingsSource(
+                settings_cls,
+                toml_file=Path(os.environ.get("AGENTBOX_TOML_FILE", ".agentbox-dev/config.toml")),
+            ),
             file_secret_settings,
         )
 
@@ -188,6 +196,10 @@ class Settings(BaseSettings):
             raise ValueError("production Runtime socket must be beneath /run/agentbox")
         if self.project_root != Path("/srv/agentbox/projects"):
             raise ValueError("production project root must be /srv/agentbox/projects")
+        if self.static_dir is None or not self.static_dir.is_absolute():
+            raise ValueError("production AGENTBOX_STATIC_DIR must be an absolute path")
+        if not self.alembic_ini.is_absolute():
+            raise ValueError("production Alembic configuration path must be absolute")
 
     @property
     def cookie_secure(self) -> bool:

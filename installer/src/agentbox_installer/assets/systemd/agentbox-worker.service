@@ -1,0 +1,32 @@
+[Unit]
+Description=AgentBox Job Worker
+After=agentbox-runtime.service
+Wants=agentbox-runtime.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=agentbox
+Group=agentbox
+SupplementaryGroups=agentbox-runtime-ipc
+WorkingDirectory=/opt/agentbox/current
+EnvironmentFile=/etc/agentbox/environment
+ExecStart=/opt/agentbox/current/venv/bin/agentbox-worker
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/lib/agentbox /var/log/agentbox
+
+[Install]
+WantedBy=multi-user.target

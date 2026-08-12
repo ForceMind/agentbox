@@ -1,0 +1,27 @@
+[Unit]
+Description=AgentBox Minimal Privileged Helper
+Requires=agentbox-helper.socket
+After=agentbox-helper.socket
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/agentbox/current
+EnvironmentFile=/etc/agentbox/helper-environment
+ExecStart=/opt/agentbox/current/venv/bin/agentbox-helper
+RuntimeMaxSec=60s
+TimeoutStopSec=5s
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/opt/agentbox /run/agentbox

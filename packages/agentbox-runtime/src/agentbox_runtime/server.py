@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import json
 import os
 import socket
@@ -82,12 +83,49 @@ class RuntimeExecutorServer:
             details = self._socket_path.lstat()
             if not stat.S_ISSOCK(details.st_mode) or details.st_uid != os.geteuid():
                 raise RuntimeError("refusing to replace an unexpected Runtime socket path")
-            raise RuntimeError("Runtime socket already exists")
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            probe.settimeout(0.2)
+            try:
+                probe.connect(str(self._socket_path))
+            except OSError as exc:
+                if exc.errno not in {errno.ECONNREFUSED, errno.ENOENT}:
+                    raise RuntimeError("Runtime socket state cannot be verified") from exc
+                try:
+                    current = self._socket_path.lstat()
+                except FileNotFoundError:
+                    current = None
+                if current is not None:
+                    if (
+                        not stat.S_ISSOCK(current.st_mode)
+                        or current.st_uid != os.geteuid()
+                        or (current.st_dev, current.st_ino) != (details.st_dev, details.st_ino)
+                    ):
+                        raise RuntimeError(
+                            "Runtime socket changed during stale-state check"
+                        ) from exc
+                    self._socket_path.unlink()
+            else:
+                raise RuntimeError("Runtime socket already has an active server")
+            finally:
+                probe.close()
         self._server = await asyncio.start_unix_server(
             self._handle, path=self._socket_path, start_serving=False
         )
-        self._socket_path.chmod(0o660)
-        await self._server.start_serving()
+        try:
+            configured_gid = os.environ.get("AGENTBOX_RUNTIME_SOCKET_GID")
+            if configured_gid:
+                try:
+                    socket_gid = int(configured_gid)
+                except ValueError as exc:
+                    raise RuntimeError("AGENTBOX_RUNTIME_SOCKET_GID must be an integer") from exc
+                if socket_gid not in os.getgroups() and socket_gid != os.getegid():
+                    raise RuntimeError("Runtime socket group is not assigned to this process")
+                os.chown(self._socket_path, -1, socket_gid)
+            self._socket_path.chmod(0o660)
+            await self._server.start_serving()
+        except Exception:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         if self._server is not None:
