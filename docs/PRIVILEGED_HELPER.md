@@ -29,23 +29,33 @@ package, URL, file content, or caller-selected service/unit.
 `agentbox-helper.socket` creates `/run/agentbox/helper.sock` as
 `root:agentbox` mode `0660`. The server accepts only socket activation file
 descriptor 3, requires effective UID 0, validates `SO_PEERCRED` against a
-root-owned numeric UID allowlist, and rejects unknown or duplicate fields.
+root-owned numeric UID and primary-GID allowlist, and rejects unknown or
+duplicate fields. The setgid/sticky `/run/agentbox` parent prevents either IPC
+identity from replacing the other identity's socket directory entry.
 
-Requests are one newline-delimited JSON object, protocol version 1, sanitized
+Requests are exactly one newline-delimited JSON object, protocol version 1, sanitized
 request ID, and one action. The frame is capped at 16 KiB; each connection has
-a timeout and one request; global concurrency is bounded. Commands use an
+a timeout and one request; concatenated frames fail before action dispatch;
+global concurrency is bounded. Commands use an
 absolute executable, fixed PATH/environment/cwd, no shell, fixed timeout,
 bounded output, and process-group termination on timeout.
 
-Auditing records only timestamp, action, caller UID, sanitized request ID, and
+Auditing records only timestamp, action, caller UID/GID, sanitized request ID, and
 success/failure. It never records request payloads, secrets, Runtime
 credentials, API keys, or command output.
 
 ## Security evidence
 
-Tests cover invalid peer UID, malformed JSON, invalid protocol, unknown action,
+The Helper unit has an empty capability and ambient-capability set, private
+devices/network/tmp, strict filesystem and HOME protection, namespace and ABI
+restrictions, kernel-log/tunable/module/control-group protection, writable-
+executable-memory denial, and AF_UNIX only. Root remains necessary solely for
+the fixed systemd manager calls.
+
+Tests cover invalid peer UID/GID, malformed JSON/Unicode, invalid protocol, unknown action,
 unknown/extra fields, oversized frames, timeouts, concurrency limits, request
-ID injection, and attempted path/argv/service injection. A repository boundary
+ID injection, concatenated requests, and attempted path/argv/environment/mode/
+UID/PID/signal/service injection. A repository boundary
 check prevents API/Worker/shared layers from importing Helper or installer
 implementation and confines root/process operations to approved layers.
 

@@ -36,6 +36,7 @@ def create_sqlite_backup(
     migration_revision: str,
     config_path: Path | None = None,
     unit_paths: tuple[Path, ...] = (),
+    tmpfiles_path: Path | None = None,
     backup_id: str | None = None,
 ) -> BackupResult:
     if source.is_symlink() or not source.is_file():
@@ -43,8 +44,10 @@ def create_sqlite_backup(
     identifier = backup_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", identifier):
         raise ValueError("backup identifier is invalid")
+    if backups_root.is_symlink() or not backups_root.is_dir():
+        raise RuntimeError("backup root is unavailable or unsafe")
     destination = backups_root / identifier
-    destination.mkdir(mode=0o700, parents=True, exist_ok=False)
+    destination.mkdir(mode=0o700, parents=False, exist_ok=False)
     database_copy = destination / "agentbox.db"
     try:
         with (
@@ -80,6 +83,16 @@ def create_sqlite_backup(
                 unit_copy.write_bytes(unit_path.read_bytes())
                 os.chmod(unit_copy, 0o600)
                 copied_units.append(unit_path.name)
+        copied_tmpfiles: list[str] = []
+        if tmpfiles_path is not None:
+            if tmpfiles_path.is_symlink() or not tmpfiles_path.is_file():
+                raise RuntimeError("managed tmpfiles backup source is unsafe")
+            tmpfiles_directory = destination / "tmpfiles"
+            tmpfiles_directory.mkdir(mode=0o700)
+            tmpfiles_copy = tmpfiles_directory / "agentbox.conf"
+            tmpfiles_copy.write_bytes(tmpfiles_path.read_bytes())
+            os.chmod(tmpfiles_copy, 0o600)
+            copied_tmpfiles.append("agentbox.conf")
         file_digests = {
             path.relative_to(destination).as_posix(): _digest(path)
             for path in sorted(destination.rglob("*"))
@@ -97,8 +110,10 @@ def create_sqlite_backup(
                 "database",
                 *(["config"] if (destination / "agentbox.toml").exists() else []),
                 *(["units"] if copied_units else []),
+                *(["tmpfiles"] if copied_tmpfiles else []),
             ],
             "units": copied_units,
+            "tmpfiles": copied_tmpfiles,
             "excluded": ["runtime_credentials", "projects", "provider_secrets"],
         }
         manifest_path = destination / "manifest.json"

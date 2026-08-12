@@ -162,6 +162,12 @@ def verify_release(
     *,
     allow_generated_venv: bool = False,
 ) -> ReleaseManifest:
+    try:
+        root_details = release.lstat()
+    except OSError as exc:
+        raise ArtifactError("release root is unavailable") from exc
+    if stat.S_ISLNK(root_details.st_mode) or not stat.S_ISDIR(root_details.st_mode):
+        raise ArtifactError("release root is unsafe")
     actual = manifest or load_manifest(release)
     observed: set[str] = set()
     for path in release.rglob("*"):

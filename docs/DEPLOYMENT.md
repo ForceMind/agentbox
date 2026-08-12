@@ -20,10 +20,10 @@ system management commands.
 | Path | Owner | Mode | Purpose |
 |---|---|---:|---|
 | `/etc/agentbox` | `root:agentbox` | `0750` | TOML and root-created environment files |
-| `/var/lib/agentbox` | `agentbox:agentbox` | `0700` | SQLite, receipt, lifecycle journal |
+| `/var/lib/agentbox` | `root:agentbox` | `1770` | SQLite parent; sticky bit protects root-owned recovery names |
 | `/var/lib/agentbox/backups` | `root:root` | `0700` | verified privileged lifecycle backups |
 | `/var/log/agentbox` | `agentbox:agentbox` | `0750` | reserved app logs; services default to journald |
-| `/run/agentbox` | `root:agentbox-runtime-ipc` | `2770` | protected sockets |
+| `/run/agentbox` | `root:agentbox-runtime-ipc` | `3770` | setgid/sticky protected sockets |
 | `/srv/agentbox/projects` | `agentbox-runtime:agentbox-runtime` | `0700` | managed workspaces |
 | `/home/agentbox-runtime` | `agentbox-runtime:agentbox-runtime` | `0700` | independent Runtime config/auth/tmux state |
 | `/opt/agentbox` | `root:root` | `0755` | releases and atomic `current` link |
@@ -47,12 +47,14 @@ versioned, bounded, typed, reject unknown fields, and enforce Linux peer
 credentials. Neither accepts executable, argv, environment, cwd, raw path,
 PID, signal, package, or caller-selected service.
 
-The unit sandbox uses an empty fixed PATH, capability bounds, loopback/network
-restrictions where applicable, `NoNewPrivileges`, `PrivateTmp`,
+The unit sandbox uses absolute entrypoints, an empty capability bounding set,
+loopback/network restrictions where applicable, `NoNewPrivileges`, private
+devices/tmp/network where compatible, namespace restrictions outside Runtime,
 `ProtectSystem=strict`, kernel/control-group protections, and exact
-`ReadWritePaths`. Offline `systemd-analyze security` currently reports Medium;
-this is recorded evidence, not a hardening certification. Functional sandbox
-behavior must also pass on the real validation host.
+`ReadWritePaths`. Offline `systemd-analyze security` reports API 2.9, Worker
+2.6, Runtime 3.7, and Helper 2.5 (`OK`). These are recorded exposure estimates,
+not a hardening certification; functional behavior must also pass on the real
+validation host.
 
 ## Network model
 
@@ -70,8 +72,8 @@ weaken cookie or origin policy.
 ## Production configuration
 
 `/etc/agentbox/agentbox.toml` contains non-secret metadata. The application
-secret is generated into `/etc/agentbox/environment` with restrictive access
-and is never printed. Runtime and Helper environment files are separate so the
+secret is generated into `/etc/agentbox/environment` as `root:root 0600`, is
+injected by systemd, and is never printed. Runtime and Helper environment files are separate so the
 Runtime cannot read the Web application secret and the API cannot read Runtime
 credentials. This application secret is not the future Phase 11 Secret Manager.
 

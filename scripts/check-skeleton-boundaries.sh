@@ -126,6 +126,13 @@ if grep --recursive --line-number --extended-regexp --include='*.py' \
   exit 1
 fi
 
+if grep --recursive --line-number --extended-regexp --include='*.py' \
+  '((^|[^[:alnum:]_])(sudo|runuser|setuid|seteuid|setgid|setegid)[^[:alnum:]_]|/usr/(bin|sbin)/(sudo|su|runuser))' \
+  apps packages helper; then
+  printf 'Runtime, Web, Worker, or Helper contains a sudo/set-ID escalation primitive.\n' >&2
+  exit 1
+fi
+
 helper_forbidden='("(shell|command|argv|executable|script|path|service|package|signal|pid)"[[:space:]]*:|request\.(get|\[)[^\n]*(shell|command|argv|executable|script|path|service|package|signal|pid))'
 if grep --recursive --line-number --extended-regexp --include='*.py' \
   "$helper_forbidden" helper/src; then

@@ -29,9 +29,17 @@ def _request(**changes: object) -> bytes:
         {"request_id": "bad\nrequest"},
         {"service": "ssh.service"},
         {"path": "/etc/shadow"},
-        {"argv": ["/bin/sh"]},
+        {"argv": ["sh", "-c", "id"]},
         {"command": "id"},
         {"executable": "/bin/bash"},
+        {"cwd": "/root"},
+        {"env": {"LD_PRELOAD": "/tmp/inject.so"}},
+        {"mode": "0777"},
+        {"uid": 0},
+        {"gid": 0},
+        {"package": "attacker-package"},
+        {"pid": 1},
+        {"signal": 9},
     ],
 )
 def test_helper_protocol_rejects_unknown_fields_actions_and_injection(
@@ -42,7 +50,13 @@ def test_helper_protocol_rejects_unknown_fields_actions_and_injection(
 
 
 def test_helper_protocol_rejects_malformed_and_oversized_frames() -> None:
-    for raw in (b"{malformed}\n", b"{}", b"x" * MAX_HELPER_FRAME + b"\n"):
+    for raw in (
+        b"{malformed}\n",
+        b"{}",
+        b"\xff\n",
+        _request() + _request(request_id="req_helper_fixture_002"),
+        b"x" * MAX_HELPER_FRAME + b"\n",
+    ):
         with pytest.raises(ValueError):
             HelperRequest.decode(raw)
 
@@ -73,7 +87,11 @@ async def test_helper_rejects_invalid_peer_uid(tmp_path: Path) -> None:
     async def runner(action: HelperAction) -> ActionResult:
         raise AssertionError(action)
 
-    helper = HelperServer(allowed_peer_uids=frozenset({os.geteuid() + 1}), runner=runner)
+    helper = HelperServer(
+        allowed_peer_uids=frozenset({os.geteuid() + 1}),
+        allowed_peer_gids=frozenset({os.getegid()}),
+        runner=runner,
+    )
     server = await asyncio.start_unix_server(helper.handle, path=socket_path)
     async with server:
         response = await _exchange(socket_path, _request())
@@ -90,7 +108,11 @@ async def test_helper_executes_one_typed_request_and_closes_connection(tmp_path:
         actions.append(action)
         return ActionResult(True, "HELPER_ACTION_SUCCEEDED", "AgentBox action completed")
 
-    helper = HelperServer(allowed_peer_uids=frozenset({os.geteuid()}), runner=runner)
+    helper = HelperServer(
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid()}),
+        runner=runner,
+    )
     server = await asyncio.start_unix_server(helper.handle, path=socket_path)
     async with server:
         response = await _exchange(socket_path, _request())
@@ -112,7 +134,10 @@ async def test_helper_enforces_concurrent_request_cap(tmp_path: Path) -> None:
         return ActionResult(True, "HELPER_ACTION_SUCCEEDED", "AgentBox action completed")
 
     helper = HelperServer(
-        allowed_peer_uids=frozenset({os.geteuid()}), runner=runner, max_concurrent_requests=1
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid()}),
+        runner=runner,
+        max_concurrent_requests=1,
     )
     server = await asyncio.start_unix_server(helper.handle, path=socket_path)
     async with server:
@@ -139,6 +164,7 @@ async def test_helper_bounds_action_timeout(tmp_path: Path) -> None:
 
     helper = HelperServer(
         allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid()}),
         runner=runner,
         action_timeout_seconds=0.01,
     )
@@ -147,3 +173,82 @@ async def test_helper_bounds_action_timeout(tmp_path: Path) -> None:
         response = await _exchange(socket_path, _request())
 
     assert response["code"] == "HELPER_ACTION_TIMEOUT"
+
+
+@pytest.mark.anyio
+async def test_helper_rejects_invalid_peer_gid(tmp_path: Path) -> None:
+    socket_path = tmp_path / "helper.sock"
+
+    async def runner(action: HelperAction) -> ActionResult:
+        raise AssertionError(action)
+
+    helper = HelperServer(
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid() + 1}),
+        runner=runner,
+    )
+    server = await asyncio.start_unix_server(helper.handle, path=socket_path)
+    async with server:
+        response = await _exchange(socket_path, _request())
+
+    assert response["code"] == "HELPER_PEER_FORBIDDEN"
+
+
+@pytest.mark.anyio
+async def test_compromised_api_payloads_cannot_expand_root_action_surface(
+    tmp_path: Path,
+) -> None:
+    socket_path = tmp_path / "helper.sock"
+    actions: list[HelperAction] = []
+
+    async def runner(action: HelperAction) -> ActionResult:
+        actions.append(action)
+        return ActionResult(True, "HELPER_ACTION_SUCCEEDED", "AgentBox action completed")
+
+    helper = HelperServer(
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid()}),
+        runner=runner,
+    )
+    server = await asyncio.start_unix_server(helper.handle, path=socket_path)
+    payloads = (
+        _request(action="../../ssh"),
+        _request(service="sshd"),
+        _request(path="/etc/shadow"),
+        _request(argv=["sh", "-c", "id"]),
+        _request(env={"LD_PRELOAD": "/tmp/inject.so"}),
+        _request(mode="0777"),
+        _request(uid=0),
+        _request(pid=1),
+        _request(signal=9),
+    )
+    async with server:
+        responses = [await _exchange(socket_path, payload) for payload in payloads]
+
+    assert {response["code"] for response in responses} == {"HELPER_PROTOCOL_INVALID"}
+    assert actions == []
+
+
+@pytest.mark.anyio
+async def test_helper_rejects_two_concatenated_requests_before_any_action(tmp_path: Path) -> None:
+    socket_path = tmp_path / "helper.sock"
+    actions: list[HelperAction] = []
+
+    async def runner(action: HelperAction) -> ActionResult:
+        actions.append(action)
+        return ActionResult(True, "HELPER_ACTION_SUCCEEDED", "AgentBox action completed")
+
+    helper = HelperServer(
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid()}),
+        runner=runner,
+    )
+    server = await asyncio.start_unix_server(helper.handle, path=socket_path)
+    async with server:
+        response = await _exchange(
+            socket_path,
+            _request() + _request(request_id="req_helper_fixture_002"),
+        )
+
+    assert response["code"] == "HELPER_PROTOCOL_INVALID"
+    assert actions == []

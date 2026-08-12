@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentbox"
-version = "0.2.4+dev.8"
+version = "0.2.5+dev.8"
 description = "Turn any Linux server into a remotely managed AI development workstation."
 readme = "README.md"
 requires-python = ">=3.11"

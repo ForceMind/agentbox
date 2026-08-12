@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -15,6 +16,23 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from agentbox_core.configuration import Environment, Settings
+
+
+def _production_database_directory_is_safe(
+    details: os.stat_result,
+    *,
+    effective_uid: int,
+    effective_gids: set[int],
+) -> bool:
+    """Accept only the legacy private layout or the installer-owned sticky layout."""
+    mode = stat.S_IMODE(details.st_mode)
+    legacy_private = details.st_uid == effective_uid and mode == 0o700
+    installer_managed = (
+        details.st_uid == 0
+        and mode == 0o1770
+        and (effective_uid == 0 or details.st_gid in effective_gids)
+    )
+    return legacy_private or installer_managed
 
 
 class Database:
@@ -39,10 +57,14 @@ class Database:
             if self.settings.env == Environment.PRODUCTION:
                 if parent.is_symlink() or not parent.is_dir():
                     raise RuntimeError("production database directory must be a real directory")
-                if parent.stat().st_mode & 0o077:
-                    raise RuntimeError(
-                        "production database directory must not be group/world accessible"
-                    )
+                details = parent.stat()
+                effective_gids = {os.getegid(), *os.getgroups()}
+                if not _production_database_directory_is_safe(
+                    details,
+                    effective_uid=os.geteuid(),
+                    effective_gids=effective_gids,
+                ):
+                    raise RuntimeError("production database directory ownership or mode is unsafe")
                 if self._sqlite_path.is_symlink():
                     raise RuntimeError("production database file must not be a symbolic link")
             return

@@ -11,7 +11,7 @@ import struct
 from collections.abc import Awaitable, Callable
 
 from agentbox_helper.actions import ActionResult, FixedActionRunner
-from agentbox_helper.protocol import HelperAction, HelperRequest, HelperResponse
+from agentbox_helper.protocol import MAX_HELPER_FRAME, HelperAction, HelperRequest, HelperResponse
 
 logger = logging.getLogger("agentbox.helper")
 
@@ -21,11 +21,13 @@ class HelperServer:
         self,
         *,
         allowed_peer_uids: frozenset[int],
+        allowed_peer_gids: frozenset[int],
         runner: Callable[[HelperAction], Awaitable[ActionResult]],
         max_concurrent_requests: int = 4,
         action_timeout_seconds: float = 35,
     ) -> None:
         self._allowed_peer_uids = allowed_peer_uids
+        self._allowed_peer_gids = allowed_peer_gids
         self._runner = runner
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         if action_timeout_seconds <= 0:
@@ -34,16 +36,27 @@ class HelperServer:
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         request: HelperRequest | None = None
-        peer_uid = self._peer_uid(writer)
+        peer_identity = self._peer_identity(writer)
         try:
-            if peer_uid is None or peer_uid not in self._allowed_peer_uids:
+            if (
+                peer_identity is None
+                or peer_identity[0] not in self._allowed_peer_uids
+                or peer_identity[1] not in self._allowed_peer_gids
+            ):
                 await self._write(
                     writer,
                     HelperResponse(None, False, "HELPER_PEER_FORBIDDEN", "Helper peer forbidden"),
                 )
                 return
+            peer_uid, peer_gid = peer_identity
             raw = await asyncio.wait_for(reader.readline(), timeout=5)
             request = HelperRequest.decode(raw)
+            try:
+                trailing = await asyncio.wait_for(reader.read(1), timeout=0.01)
+            except TimeoutError:
+                trailing = b""
+            if trailing:
+                raise ValueError("multiple frames are forbidden")
             if self._semaphore.locked():
                 await self._write(
                     writer,
@@ -65,9 +78,10 @@ class HelperServer:
                         False, "HELPER_ACTION_TIMEOUT", "AgentBox action timed out"
                     )
             logger.info(
-                "helper_action action=%s caller_uid=%d request_id=%s result=%s",
+                "helper_action action=%s caller_uid=%d caller_gid=%d request_id=%s result=%s",
                 request.action.value,
                 peer_uid,
+                peer_gid,
                 request.request_id,
                 "succeeded" if result.ok else "failed",
             )
@@ -75,7 +89,7 @@ class HelperServer:
                 writer,
                 HelperResponse(request.request_id, result.ok, result.code, result.message),
             )
-        except (TimeoutError, ValueError):
+        except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError, ValueError):
             await self._write(
                 writer,
                 HelperResponse(
@@ -91,13 +105,13 @@ class HelperServer:
                 await writer.wait_closed()
 
     @staticmethod
-    def _peer_uid(writer: asyncio.StreamWriter) -> int | None:
+    def _peer_identity(writer: asyncio.StreamWriter) -> tuple[int, int] | None:
         peer = writer.get_extra_info("socket")
         if peer is None or not hasattr(socket, "SO_PEERCRED"):
             return None
         credentials = peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
-        _pid, uid, _gid = struct.unpack("3i", credentials)
-        return int(uid)
+        _pid, uid, gid = struct.unpack("3i", credentials)
+        return int(uid), int(gid)
 
     @staticmethod
     async def _write(writer: asyncio.StreamWriter, response: HelperResponse) -> None:
@@ -117,14 +131,20 @@ async def _main() -> None:
     if os.geteuid() != 0:
         raise RuntimeError("agentbox-helper must run as root")
     raw_uids = os.environ.get("AGENTBOX_HELPER_ALLOWED_UIDS", "")
-    if not raw_uids:
-        raise RuntimeError("AGENTBOX_HELPER_ALLOWED_UIDS is required")
+    raw_gids = os.environ.get("AGENTBOX_HELPER_ALLOWED_GIDS", "")
+    if not raw_uids or not raw_gids:
+        raise RuntimeError("AgentBox Helper peer identities are required")
     try:
         allowed = frozenset(int(value) for value in raw_uids.split(","))
+        allowed_gids = frozenset(int(value) for value in raw_gids.split(","))
     except ValueError as exc:
-        raise RuntimeError("AGENTBOX_HELPER_ALLOWED_UIDS is invalid") from exc
+        raise RuntimeError("AgentBox Helper peer identities are invalid") from exc
     action_runner = FixedActionRunner()
-    helper = HelperServer(allowed_peer_uids=allowed, runner=action_runner.run)
+    helper = HelperServer(
+        allowed_peer_uids=allowed,
+        allowed_peer_gids=allowed_gids,
+        runner=action_runner.run,
+    )
     completed = asyncio.Event()
 
     async def handle_once(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -133,7 +153,11 @@ async def _main() -> None:
         finally:
             completed.set()
 
-    server = await asyncio.start_unix_server(handle_once, sock=_systemd_listen_socket())
+    server = await asyncio.start_unix_server(
+        handle_once,
+        sock=_systemd_listen_socket(),
+        limit=MAX_HELPER_FRAME + 1,
+    )
     async with server:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(completed.wait(), timeout=30)

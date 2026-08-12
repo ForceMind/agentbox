@@ -30,7 +30,16 @@ def test_archive_rejects_traversal_and_absolute_paths(tmp_path: Path, name: str)
     assert not (tmp_path / "release").exists()
 
 
-@pytest.mark.parametrize("kind", [tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.CHRTYPE])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        tarfile.SYMTYPE,
+        tarfile.LNKTYPE,
+        tarfile.CHRTYPE,
+        tarfile.BLKTYPE,
+        tarfile.FIFOTYPE,
+    ],
+)
 def test_archive_rejects_links_and_special_files(tmp_path: Path, kind: bytes) -> None:
     artifact = tmp_path / "bad.tar.gz"
     _tar_with_member(artifact, "unsafe", b"", kind=kind)

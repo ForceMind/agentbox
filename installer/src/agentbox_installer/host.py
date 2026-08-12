@@ -5,6 +5,7 @@ from __future__ import annotations
 import grp
 import os
 import pwd
+import re
 import shutil
 import socket
 import stat
@@ -23,6 +24,7 @@ class HostMutationError(RuntimeError):
 @dataclass(frozen=True)
 class IdentityFacts:
     agentbox_uid: int
+    agentbox_gid: int
     runtime_uid: int
     ipc_gid: int
 
@@ -65,7 +67,7 @@ class HostOperations:
 
     def ensure_identities(self) -> IdentityFacts:
         if not self.real_host:
-            return IdentityFacts(19001, 19002, 19003)
+            return IdentityFacts(19001, 19001, 19002, 19003)
         self.require_root()
         for group_name in ("agentbox", "agentbox-runtime", "agentbox-runtime-ipc"):
             try:
@@ -108,7 +110,7 @@ class HostOperations:
         ipc = grp.getgrnam("agentbox-runtime-ipc")
         if agentbox.pw_uid == runtime.pw_uid or ipc.gr_gid in {agentbox.pw_gid, runtime.pw_gid}:
             raise HostMutationError("AgentBox identity collision detected")
-        return IdentityFacts(agentbox.pw_uid, runtime.pw_uid, ipc.gr_gid)
+        return IdentityFacts(agentbox.pw_uid, agentbox.pw_gid, runtime.pw_uid, ipc.gr_gid)
 
     def owner_ids(self, owner: str, group: str) -> tuple[int, int]:
         if not self.real_host:
@@ -249,13 +251,28 @@ class HostOperations:
             "LANG": "C.UTF-8",
             "AGENTBOX_DATABASE_URL": "sqlite+pysqlite:////var/lib/agentbox/agentbox.db",
         }
+        allowed_environment_keys = {
+            "AGENTBOX_ENV",
+            "AGENTBOX_TOML_FILE",
+            "AGENTBOX_SECRET_KEY",
+            "AGENTBOX_STATIC_DIR",
+        }
+        observed_keys: set[str] = set()
         for line in environment_file.read_text(encoding="utf-8").splitlines():
             if not line or line.startswith("#"):
                 continue
             key, separator, value = line.partition("=")
-            if separator != "=" or not key.startswith("AGENTBOX_") or "\x00" in value:
+            if (
+                separator != "="
+                or key not in allowed_environment_keys
+                or key in observed_keys
+                or re.fullmatch(r"[A-Za-z0-9_./:+,-]+", value) is None
+            ):
                 raise HostMutationError("AgentBox environment file is invalid")
             environment[key] = value
+            observed_keys.add(key)
+        if observed_keys != allowed_environment_keys:
+            raise HostMutationError("AgentBox environment file is incomplete")
         try:
             result = subprocess.run(  # noqa: S603 - fixed release executable and argv
                 (

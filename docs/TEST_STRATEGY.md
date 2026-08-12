@@ -195,7 +195,8 @@ For each supported distribution family:
 1. dry-run a clean image and verify no mutation;
 2. install, capture declared resources, and validate units/users/permissions;
 3. install again and require no unexpected changes;
-4. interrupt after every durable stage, resume, and verify convergence;
+4. interrupt around migration/activation, require an exact recovery-state
+   classification, and prove a later invocation does not replay mutation;
 5. simulate missing repositories, DNS failure, corrupt/truncated artifacts, full disk, locked package manager, service health failure, and schema migration failure;
 6. confirm failure rollback preserves config, database, projects, authentication directories, and pre-existing unrelated services;
 7. run explicit uninstall tests and confirm preserved data matches the stated policy.

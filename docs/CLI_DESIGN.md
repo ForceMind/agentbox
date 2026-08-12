@@ -58,6 +58,7 @@ agentbox doctor
 agentbox system status
 agentbox system update --artifact <path> --sha256 <digest>
 agentbox system rollback [--version <version>]
+agentbox system recover
 agentbox system uninstall
 ```
 
@@ -68,6 +69,10 @@ agentbox system uninstall
   artifact/digest plan; no network download or in-place overwrite.
 - `system rollback`: root-only receipt/backup-bound rollback with mandatory
   verification.
+- `system recover`: root-only fail-closed recovery for an exact preflight-only
+  or `rollback_pending` journal. It verifies the already-selected release,
+  database revision, service/socket readiness, endpoints, and reported version;
+  it never replays migration or selects a target supplied by the caller.
 - `system uninstall`: root-only, removes verified program/unit assets and
   preserves all data; purge is unavailable.
 

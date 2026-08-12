@@ -29,8 +29,11 @@ jobs:
           tests/unit/test_installer_platform.py
           tests/unit/test_installer_artifact.py
           tests/unit/test_installer_backup.py
+          tests/unit/test_database_security.py
+          tests/unit/test_installer_host.py
           tests/unit/test_installer_lifecycle.py
           tests/unit/test_helper_protocol.py
           tests/unit/test_deployment_assets.py
+          tests/unit/test_privilege_isolation.py
           tests/integration/test_static_web.py
       - run: bash scripts/check-skeleton-boundaries.sh

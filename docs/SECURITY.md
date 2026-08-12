@@ -357,11 +357,12 @@ streaming is not an MVP feature.
 - `runtime.sock`: owned by `agentbox-runtime` and a narrow control group
   containing only authorized API/Worker identities, mode `0660`.
 - servers verify `SO_PEERCRED` against the expected peer identity and reject
-  unexpected peers even if filesystem permissions were misconfigured. The
-  Phase 5 implementation compares the peer UID to an explicit set; production
-  requires that set to be configured and Phase 8 owns the exact group/UID setup.
+  unexpected peers even if filesystem permissions were misconfigured. Runtime
+  checks an explicit UID set; production Helper checks explicit UID and
+  primary-GID sets from a root-only environment file.
 - messages are framed, versioned, size-limited, typed, request-ID-bound, and time-limited.
-- sockets are below `/run/agentbox`; symlink/socket replacement and stale inode checks fail closed.
+- sockets are below setgid/sticky `/run/agentbox`; symlink/socket replacement
+  and stale inode checks fail closed.
 - no UDS proxying over HTTP and no Helper TCP listener.
 
 The Runtime protocol is JSON-line V1 with a 64 KiB frame limit and exact keys.
@@ -426,23 +427,28 @@ Phase 8 preserves `browser-facing process != root`. API and Worker run as
 is root. The Helper protocol has no arbitrary command, service, path, argv,
 environment, PID, signal, package, user, or mode field. Peer UID, frame size,
 protocol version, exact schema, concurrency, and timeout fail closed.
+Production Helper additionally validates the peer's primary GID, rejects a
+second concatenated frame before dispatch, has an empty capability bounding
+set, and can communicate only over AF_UNIX.
 
 Installer mutation requires effective UID 0 and an exact checksum-reviewed
 plan. Archive extraction rejects absolute/traversal paths, duplicate entries,
 links, special files, and count/size overflow. Files use no-follow writes,
-fsync, restrictive modes, and atomic replacement. Existing unit/config/release
+fsync, restrictive modes, root-owned ancestor validation, and atomic replacement. Existing unit/config/release
 collisions are verified before mutation; unknown objects stop the transaction.
 
 The application secret is CSPRNG-generated in a separate root-created
-environment file, never printed or logged, and never made readable to Runtime.
+`root:root 0600` environment file, injected by systemd, never printed or logged,
+and not directly readable by either service identity.
 Runtime authentication remains exclusively in the Runtime user's HOME; root
 authentication is neither read nor copied. Phase 11 Provider/Secret management
 remains unimplemented.
 
 SQLite backup uses the online backup API plus integrity verification, including
 WAL-active databases. Upgrade is staged and health/version gated. Rollback
-restores only the recorded AgentBox snapshot and must verify service,
-health/readiness, version, and database compatibility before success is
+restores only the receipt-pinned AgentBox snapshot, removes stale WAL/SHM after
+quiesce, and must verify service/sockets, health/readiness, reported version,
+SQLite integrity, and exact migration revision before success is
 reported. Unsigned checksum-only Phase 8 artifacts leave a documented
 supply-chain residual risk.
 

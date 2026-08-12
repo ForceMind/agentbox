@@ -27,6 +27,7 @@ def create_parser() -> argparse.ArgumentParser:
     rollback = commands.add_parser("rollback")
     rollback.add_argument("--to")
     rollback.add_argument("--json", action="store_true")
+    commands.add_parser("recover").add_argument("--json", action="store_true")
     uninstall = commands.add_parser("uninstall")
     uninstall.add_argument("--json", action="store_true")
     uninstall.add_argument(
@@ -86,6 +87,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "rollback":
             result = installer.rollback(args.to)
+            _print(result.__dict__, json_output=json_output)
+            return 0
+        if args.command == "recover":
+            result = installer.recover()
             _print(result.__dict__, json_output=json_output)
             return 0
         if args.command == "uninstall":

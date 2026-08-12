@@ -122,14 +122,14 @@ and external model/API Provider. No implementation exists yet.
 | T-68 | I/E | Platform Secret backend exposes material across user or OS boundary | TB9/Secret backend | Linux restrictive structured file; macOS Keychain; current-user Windows DPAPI; WSL/native isolation | owner/mode, Keychain identity, DPAPI user, and shared-directory negative tests |
 | T-69 | I/T | Provider test leaks Authorization in argv or incurs undisclosed model cost | TB9/process/provider | in-memory header or restrictive mechanism; never argv; connectivity/runtime/continuity split; paid inference requires explicit opt-in | process-list canary and paid-test confirmation tests |
 | T-70 | R/I | Thread absent from discovery is reported as deleted or fully compatible | UI/CLI/operator | separate Resume/Context/Discovery results; `Thread not listed` wording; only validated public recovery guidance | A/B continuity harness partial-success fixtures |
-| T-71 | E | Compromised Web escalates through Helper | TB2/TB5/root | separate UID, no API Helper import, peer UID, six argument-free actions | boundary scan and Helper injection tests |
-| T-72 | S/E | Runtime or Helper UDS is spoofed or peer credentials bypassed | TB4/TB5 | protected parent/mode, socket activation, `SO_PEERCRED`, expected UID/group, protocol version | wrong-peer and socket ownership tests |
-| T-73 | T/E | Install symlink or TOCTOU redirects a privileged write | TB7/filesystem | no-follow open/copy, parent/type checks, same-parent atomic replace, exact owned paths | symlink/collision/race fixtures |
+| T-71 | E | Compromised Web escalates through Helper | TB2/TB5/root | separate UID, no API Helper import, peer UID/GID, six argument-free actions | boundary scan and Helper injection tests |
+| T-72 | S/E | Runtime or Helper UDS is spoofed or peer credentials bypassed | TB4/TB5 | setgid/sticky protected parent, socket activation, `SO_PEERCRED`, expected UID/GID, protocol version | wrong-peer and socket ownership tests |
+| T-73 | T/E | Install symlink or TOCTOU redirects a privileged write | TB7/filesystem | every ancestor lstat/root-owner check, no-follow open/copy, same-parent atomic replace, exact owned paths | parent-symlink/collision/race fixtures |
 | T-74 | E | World-writable install directory enables replacement | FHS/release | exact owner/mode specs, refuse unsafe existing objects, Doctor diagnostics | mode/owner and privilege tests |
 | T-75 | T/E | Package supply chain installs malicious dependency | TB7/root | fixed packages/repos, explicit plan, manager result plus binary verification | adapter fixtures and dependency review |
 | T-76 | T/E | Release archive traversal/link escape or bomb | TB7/releases | checksum, manifest digests, path/type/link/count/size validation, staging | hostile tar corpus |
 | T-77 | T/E | Malicious or substituted upgrade artifact activates | TB7/releases | expected SHA-256, semantic version, wheel/manifest match, immutable staged release | tamper/version tests; signatures remain residual |
-| T-78 | R/T | Rollback mismatch is reported successful | backup/release/DB | receipt-bound target/backup, restore verification, service/endpoint/meta version checks | rollback-verification failure injection |
+| T-78 | R/T | Rollback mismatch is reported successful | backup/release/DB | receipt-pinned backup manifest, sidecar cleanup, DB revision/integrity, service/socket/endpoint/meta version checks | rollback-verification failure injection |
 | T-79 | T/D | DB migration failure leaves incompatible active code | SQLite/release | quiesce, online backup, explicit migration before activation, rollback | migration fault injection |
 | T-80 | T/D | Stale or external `current` symlink selects unknown code | release layout | relative one-level link, verified manifest/digests, atomic replace | stale/symlink/collision tests |
 | T-81 | E | systemd unit or environment-file injection | root units/config | exact packaged units, no arbitrary values, strict key parser, root ownership, fixed PATH | unit verification and hostile config tests |
@@ -137,9 +137,10 @@ and external model/API Provider. No implementation exists yet.
 | T-83 | D | Service restart crash loop exhausts host | systemd | on-failure policy, RestartSec, StartLimit, health gate | unit parser/systemd analysis and real-host check |
 | T-84 | I/E | Runtime credentials cross into Web/root migration | process/HOME | independent Runtime HOME/login; no copy/chown; typed output only | privilege and real-host unchanged-state checks |
 | T-85 | T/E | Project ownership crosses into Web or root | Project Root | Runtime-only `0700`, typed Runtime operations, no automatic `/root/projects` migration | real-UID write denial and path tests |
-| T-86 | T/D | Partial install deletes or adopts unrelated objects | host state | journal/receipt, object identity checks, retain uncertain owned state, no guessed cleanup | partial/collision/re-entry tests |
+| T-86 | T/D | Partial install deletes or adopts unrelated objects | host state | root-only transaction journal with existed-before and inode identity, retain uncertain state, no guessed cleanup | partial/collision/re-entry tests |
 | T-87 | T/E | Release activation races another lifecycle writer | release/current | global nonblocking lock, stage/verify then atomic symlink, post-activation verification | concurrent transaction test |
 | T-88 | E | systemd process resolves attacker-controlled PATH | services/helper | minimal fixed PATH; Helper absolute `/usr/bin/systemctl`; no shell profile | unit and boundary inspection |
+| T-89 | T/D | Power loss leaves migrated DB and release activation out of sync | lifecycle journal | durable stage classification (`staged`, `partially_migrated`, `activated`, `rollback_pending`, `unknown`) and fail-closed re-entry | crash-state fixtures; automatic resume deferred |
 
 ## Phase 3 Control-Plane Attack Surface
 

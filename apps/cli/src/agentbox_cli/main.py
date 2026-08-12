@@ -63,6 +63,7 @@ def create_parser() -> argparse.ArgumentParser:
     system_update.add_argument("--sha256", required=True)
     system_rollback = system_commands.add_parser("rollback")
     system_rollback.add_argument("--to")
+    system_commands.add_parser("recover")
     system_uninstall = system_commands.add_parser("uninstall")
     system_uninstall.add_argument(
         "--preserve-data", action="store_true", default=True, help=argparse.SUPPRESS
@@ -251,6 +252,10 @@ def _system_command(args: argparse.Namespace) -> int:
         if command == "rollback":
             result = installer.rollback(args.to)
             _print_result(_envelope("system.rollback", ok=True, data=asdict(result)), json_output)
+            return 0
+        if command == "recover":
+            result = installer.recover()
+            _print_result(_envelope("system.recover", ok=True, data=asdict(result)), json_output)
             return 0
         uninstall_result = installer.uninstall()
         _print_result(_envelope("system.uninstall", ok=True, data=uninstall_result), json_output)

@@ -1,6 +1,6 @@
 {
   "name": "@agentbox/web",
-  "version": "0.2.4-dev.8",
+  "version": "0.2.5-dev.8",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",

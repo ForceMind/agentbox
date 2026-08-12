@@ -32,7 +32,14 @@ def _probe_as(uid: int, gid: int, groups: list[int], paths: dict[str, Path]) -> 
                     finally:
                         client.close()
                     continue
-                if name.startswith("read_"):
+                if name.startswith("list_"):
+                    try:
+                        list(path.iterdir())
+                    except OSError:
+                        result[name] = False
+                    else:
+                        result[name] = True
+                elif name.startswith("read_"):
                     try:
                         path.read_bytes()
                     except OSError:
@@ -81,8 +88,12 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
         os.chown(directory, uid, uid)
     app_secret = app_state / "environment"
     app_secret.write_text("AGENTBOX_SECRET_KEY=fixture-not-a-real-secret\n")
-    os.chown(app_secret, app_uid, app_uid)
+    os.chown(app_secret, 0, 0)
     app_secret.chmod(0o600)
+    app_database = app_state / "agentbox.db"
+    app_database.write_bytes(b"fixture-database")
+    os.chown(app_database, app_uid, app_uid)
+    app_database.chmod(0o600)
     runtime_credential = runtime_home / "credential-fixture"
     runtime_credential.write_text("runtime-only")
     os.chown(runtime_credential, runtime_uid, runtime_uid)
@@ -106,6 +117,7 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
             [ipc_gid],
             {
                 "read_runtime_credential": runtime_credential,
+                "list_runtime_home": runtime_home,
                 "write_project": project_file,
                 "write_systemd": units,
                 "runtime_socket": runtime_socket,
@@ -117,6 +129,7 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
             [ipc_gid],
             {
                 "read_app_secret": app_secret,
+                "read_app_database": app_database,
                 "write_systemd": units,
                 "runtime_socket": runtime_socket,
             },
@@ -126,12 +139,14 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
 
     assert app == {
         "read_runtime_credential": False,
+        "list_runtime_home": False,
         "write_project": False,
         "write_systemd": False,
         "runtime_socket": True,
     }
     assert runtime == {
         "read_app_secret": False,
+        "read_app_database": False,
         "write_systemd": False,
         "runtime_socket": True,
     }

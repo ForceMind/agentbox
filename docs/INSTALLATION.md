@@ -56,6 +56,11 @@ The apply path takes a global non-blocking lifecycle lock and then:
 9. reloads, enables, and starts exact AgentBox units;
 10. verifies health, readiness, and release metadata before committing a receipt.
 
+The root-only transaction journal includes a random transaction ID and the
+expected path, type, existed-before state, owner/mode/device/inode identity,
+and (where created) post-mutation identity. Fresh-install rollback removes only
+an unchanged database/current object proven to belong to that transaction.
+
 Installer logs and receipts never contain the application secret, Runtime
 credentials, passwords, Pair Codes, Provider keys, or arbitrary request data.
 
@@ -68,7 +73,9 @@ versions require the rollback flow; in-place overwrite is unavailable.
 
 An interrupted first install may retain clearly AgentBox-owned identities,
 directories, configuration, staged releases, units, and a secret-free journal
-so a later inspection can distinguish partial state. It never removes unknown
+so a later inspection classifies `staged`, `partially_migrated`, `activated`,
+`rollback_pending`, or `unknown`. Re-entry fails closed instead of replaying
+mutation. It never removes unknown
 files while guessing. Upgrade failures attempt restoration and report either
 `rollback verified` or `rollback attempted but verification failed`.
 

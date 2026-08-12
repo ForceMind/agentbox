@@ -31,6 +31,22 @@ def test_service_identities_and_loopback_configuration_are_separated() -> None:
     assert "ReadWritePaths=/srv/agentbox/projects" not in api
     assert "ReadWritePaths=/srv/agentbox/projects" not in worker
     assert "ReadWritePaths=/var/lib/agentbox" not in runtime
+    for unit in (api, worker, runtime, helper):
+        assert "CapabilityBoundingSet=\n" in unit
+        assert "AmbientCapabilities=\n" in unit
+        assert "PrivateDevices=true" in unit
+        assert "ProtectClock=true" in unit
+        assert "ProtectHostname=true" in unit
+        assert "ProtectKernelLogs=true" in unit
+        assert "RestrictRealtime=true" in unit
+        assert "SystemCallArchitectures=native" in unit
+    for unit in (api, worker, helper):
+        assert "RestrictNamespaces=true" in unit
+        assert "MemoryDenyWriteExecute=true" in unit
+    assert "RestrictNamespaces=true" not in runtime
+    assert "MemoryDenyWriteExecute=true" not in runtime
+    assert "PrivateNetwork=true" in helper
+    assert "ReadWritePaths=" not in helper
 
 
 def test_helper_socket_is_not_world_writable_and_units_are_namespaced() -> None:
@@ -46,6 +62,27 @@ def test_runtime_environment_has_no_application_secret_or_root_credentials() -> 
     runtime = _unit("agentbox-runtime.service")
     forbidden = ("/root/.codex", "/root/.claude", "/root/.config/gh", "SECRET_KEY")
     assert all(value not in runtime for value in forbidden)
+
+
+def test_systemd_units_contain_only_static_typed_execution_fields() -> None:
+    expected = {
+        "agentbox-api.service": "/opt/agentbox/current/venv/bin/agentbox-api",
+        "agentbox-worker.service": "/opt/agentbox/current/venv/bin/agentbox-worker",
+        "agentbox-runtime.service": "/opt/agentbox/current/venv/bin/agentbox-runtime",
+        "agentbox-helper.service": "/opt/agentbox/current/venv/bin/agentbox-helper",
+    }
+    for name, executable in expected.items():
+        unit = _unit(name)
+        exec_lines = [line for line in unit.splitlines() if line.startswith("ExecStart=")]
+        assert exec_lines == [f"ExecStart={executable}"]
+        assert "/bin/sh" not in unit
+        assert "$" not in unit
+        assert "{" not in unit
+        assert "Environment=" not in unit
+    assert "User=agentbox\n" in _unit("agentbox-api.service")
+    assert "User=agentbox\n" in _unit("agentbox-worker.service")
+    assert "User=agentbox-runtime\n" in _unit("agentbox-runtime.service")
+    assert "User=root\n" in _unit("agentbox-helper.service")
 
 
 def test_systemd_analyze_verifies_units_against_fixture_root(tmp_path: Path) -> None:

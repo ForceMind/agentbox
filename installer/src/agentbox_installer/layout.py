@@ -17,10 +17,14 @@ class DirectorySpec:
 
 DIRECTORIES = (
     DirectorySpec("/etc/agentbox", "root", "agentbox", 0o750),
-    DirectorySpec("/var/lib/agentbox", "agentbox", "agentbox", 0o700),
+    # The application needs directory write access for SQLite WAL/SHM files, but
+    # must not be able to replace root-owned backup, receipt, or journal names.
+    DirectorySpec("/var/lib/agentbox", "root", "agentbox", 0o1770),
     DirectorySpec("/var/lib/agentbox/backups", "root", "root", 0o700),
     DirectorySpec("/var/log/agentbox", "agentbox", "agentbox", 0o750),
-    DirectorySpec("/run/agentbox", "root", "agentbox-runtime-ipc", 0o2770, persistent=False),
+    # setgid keeps socket group ownership stable; sticky prevents either IPC
+    # peer from unlinking a socket owned by the other identity.
+    DirectorySpec("/run/agentbox", "root", "agentbox-runtime-ipc", 0o3770, persistent=False),
     DirectorySpec("/srv/agentbox/projects", "agentbox-runtime", "agentbox-runtime", 0o700),
     DirectorySpec("/opt/agentbox", "root", "root", 0o755),
     DirectorySpec("/opt/agentbox/releases", "root", "root", 0o755),

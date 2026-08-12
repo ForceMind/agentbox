@@ -21,11 +21,11 @@ claim.
 - Repository: `ForceMind/agentbox`
 - Baseline: `90c7f5dd6d15369753079e9f8965d67091eed818`
 - Branch: `phase/8-installation-deployment`
-- Commits: 8 semantic Phase 8 commits, including the final report/CI compatibility update
+- Commits: 9 semantic Phase 8 commits, including this final privilege/recovery review
 - Draft PR: `https://github.com/ForceMind/agentbox/pull/28`
-- Final development version: `0.2.4+dev.8`
+- Final development version: `0.2.5+dev.8`
 - Validation artifact SHA-256:
-  `250f1b9f63d157ea323ed9e52c7c4e3354cef407d6a0bc2c1bc0b8c26b0e8bb6`
+  `09d604ba1000befbe06e4d9d28887794b2456533b2e8cd0609ca275bbac3192f`
 
 ## Platform
 
@@ -57,17 +57,19 @@ Runtime socket filesystem boundary.
 | Path | Owner/group | Mode |
 |---|---|---:|
 | `/etc/agentbox` | `root:agentbox` | `0750` |
-| `/var/lib/agentbox` | `agentbox:agentbox` | `0700` |
+| `/var/lib/agentbox` | `root:agentbox` | `1770` |
 | `/var/lib/agentbox/backups` | `root:root` | `0700` |
 | `/var/log/agentbox` | `agentbox:agentbox` | `0750` |
-| `/run/agentbox` | `root:agentbox-runtime-ipc` | `2770` |
+| `/run/agentbox` | `root:agentbox-runtime-ipc` | `3770` |
 | `/srv/agentbox/projects` | `agentbox-runtime:agentbox-runtime` | `0700` |
 | `/home/agentbox-runtime` | `agentbox-runtime:agentbox-runtime` | `0700` |
 | `/opt/agentbox` | `root:root` | `0755` |
 
-Configuration files use `0640` with their exact reader group; the Helper
-environment is `root:root 0600`; DB/receipt/journal are `agentbox 0600`;
-backups are `root 0600`; unit files are `root:root 0644`.
+Non-secret configuration uses `root:agentbox 0640`; the application and Helper
+environments and receipt/journal are `root:root 0600`; DB is
+`agentbox:agentbox 0600`; backups are root-only; unit files are
+`root:root 0644`. Sticky/setgid parent modes prevent either application or IPC
+peer from replacing root- or other-peer-owned entries.
 
 ## systemd Units
 
@@ -78,9 +80,9 @@ backups are `root 0600`; unit files are `root:root 0644`.
 - `agentbox-helper.service`: socket activated, one bounded connection, then
   normal inactive state
 
-All five installed units pass `systemd-analyze verify`. Offline
-`systemd-analyze security` reports Medium: API 7.0, Worker 6.7, Runtime 7.1,
-Helper 7.1. The sandbox directives were functionally exercised on the real
+All five installed units pass `systemd-analyze verify`. Real-host
+`systemd-analyze security` reports API 2.7, Worker 2.0, Runtime 3.7, and Helper
+2.3 (`OK`). The sandbox directives were functionally exercised on the real
 host; these scores are evidence, not a hardening certification.
 
 ## API
@@ -179,7 +181,7 @@ migrations. No production administrator was auto-created.
 Before each upgrade, services are quiesced and SQLite's online backup API
 creates a root-owned snapshot. The backup switches its private copy to DELETE
 journal mode, passes integrity and complete per-file digest verification, and
-includes safe TOML, managed units, version, revision, and release metadata. It
+includes safe TOML, managed units, the tmpfiles policy, version, revision, and release metadata. It
 excludes projects, Runtime credentials, root state, and Provider secrets.
 
 ## Upgrade
@@ -187,8 +189,9 @@ excludes projects, Runtime credentials, root state, and Provider secrets.
 Upgrade stages a distinct verified release and venv, backs up, migrates,
 atomically activates `current`, restarts exact units, and now requires API,
 Worker, Runtime, Helper socket, both UDS files, health/readiness, and meta
-version before commit. Real healthy upgrade `0.2.2+dev.8 → 0.2.3+dev.8` passed;
-the final `0.2.4+dev.8` deployment also passed.
+version before commit. Real healthy upgrade `0.2.2+dev.8 → 0.2.3+dev.8` passed.
+The final review found and repaired two recovery incompatibilities before the
+verified forward update `0.2.4+dev.8 → 0.2.5+dev.8` passed.
 
 ## Rollback
 
@@ -221,10 +224,10 @@ socket, listener, migration, config, and Runtime-tool evidence without secrets.
 
 ## Automated Tests
 
-- Backend: 362 passed
+- Backend: 417 passed
 - Frontend Vitest: 25 passed
 - Playwright: 54 passed (desktop and mobile Chromium)
-- Installer/deployment focused: 55 passed
+- Installer/deployment focused: 109 passed
 - Black, Ruff, mypy, source boundary: passed
 - `systemd-analyze verify`: passed
 - pip audit and pnpm high-level audit: no known vulnerabilities
@@ -252,8 +255,11 @@ instead of being destructively discarded.
 Fresh install, migrations, services, static/API endpoints, loopback listener,
 users/modes, UDS, process identities, Helper rejection, cross-user denials,
 online backup, update, rollback, rollback verification, final update, status,
-Doctor, and systemd analysis pass. Root Codex and Claude PIDs and the active
-states of SSH, firewall, cloudflared, and legacy `codex.service` match the
+Doctor, and systemd analysis pass. The two baseline root Codex processes and
+the baseline root Claude process remain present with their original start
+times. Additional root Claude daemon activity is independent of AgentBox;
+no AgentBox service runs under root Runtime identity or accesses those homes.
+SSH, firewall, cloudflared, and legacy `codex.service` active states match the
 pre-install snapshot.
 
 ## Security Review
@@ -290,6 +296,107 @@ cycle.
 No Accepted ADR was overturned and no Proposed ADR or human architecture
 approval is required.
 
+## Final Privilege & Recovery Review
+
+### Remaining systemd security findings
+
+All four services now score `OK`, not Medium. Remaining analyzer findings are
+accepted, explicit capabilities rather than blanket access:
+
+- API — exposure 2.7. It needs AF_UNIX for Runtime IPC, AF_INET for the exact
+  loopback listener, host networking for that listener, and the IPC
+  supplementary group. `IPAddressAllow=localhost` plus `IPAddressDeny=any`
+  constrains IP destinations. A chroot/private user namespace and broad syscall
+  deny list remain deferred until Python/SQLite/static-serving compatibility is
+  qualified.
+- Worker — exposure 2.0. `PrivateNetwork=true`; AF_UNIX and the IPC
+  supplementary group are required for Runtime requests. A private user
+  namespace and broad syscall deny list remain deferred for Python/SQLite/UDS
+  compatibility.
+- Runtime — exposure 3.7. It requires its private HOME, Project Root, AF_UNIX,
+  provider network access, and user/mount/process namespaces used by bubblewrap.
+  `MemoryDenyWriteExecute` and namespace restriction remain intentionally off
+  for Node/V8, Codex, Claude, tmux, and bwrap. It still has an empty capability
+  bounding/ambient set and cannot write system configuration.
+- Helper — exposure 2.3. It remains UID 0 solely to issue the six compiled
+  AgentBox systemd lifecycle operations through `/usr/bin/systemctl`. Its
+  capability bounding and ambient sets are empty, network is private, only
+  AF_UNIX is allowed, filesystem is read-only, and it has no writable path.
+  Private users/chroot and a broad syscall deny list are deferred because they
+  can break host systemd-bus access; the Helper is socket activated and handles
+  one bounded request.
+
+### Privilege boundary
+
+Real UID probes confirm `agentbox` cannot read Runtime HOME/credentials, write
+Project Root or systemd units, and `agentbox-runtime` cannot read the root-only
+application environment or DB, or write AgentBox config/systemd. API, Worker,
+and Runtime run as their declared non-root users. `/var/lib/agentbox` is
+root-owned sticky `1770`; `/run/agentbox` is root-owned sticky/setgid `3770`;
+receipt, journal, backup, config-secret, releases, current symlink, and units
+cannot be replaced by either service identity. No set-ID executable, file
+capability, world-writable executable, runtime sudo, or generic root primitive
+exists.
+
+### Helper attack surface
+
+Protocol v1 is exact-schema and maps enum values only to fixed AgentBox unit
+operations. Tests and real probes reject caller fields for service, path,
+argv, executable, command, cwd, env, mode, UID/GID, package, PID, signal,
+unknown action, extra frame, invalid Unicode/newline, and oversized input.
+Socket mode is `root:agentbox 0660`; SO_PEERCRED validates both primary UID and
+GID. Runtime and an unrelated user cannot connect. An allowed API peer sending
+an SSH/service-injection payload receives `HELPER_PROTOCOL_INVALID`.
+
+### Upgrade crash recovery
+
+The root-only schema-2 journal records a random transaction ID plus each exact
+path/type, `existed_before`, initial owner/mode/device/inode, and created-object
+identity. Restart classifies preflight-interrupted, staged, partially migrated,
+activated, rollback-pending, and unknown states without replay. Explicit
+`system recover` is limited to exact preflight-only or rollback-pending state
+and verifies receipt-selected current release, DB revision/integrity, services,
+sockets, health/readiness, and reported version. A conflicting same-version
+staging directory is rejected before journal mutation.
+
+The review intentionally exercised failure recovery. It found that the new
+root-owned sticky DB parent initially conflicted with both the old application
+validator and root-run explicit migration. The final policy accepts only the
+legacy service-private `0700` shape or exact root-owned sticky `1770` shape;
+non-root processes additionally require the directory group. Pre-0.2.5
+automatic rollback is rejected because it cannot survive a later restart under
+the hardened boundary. The bounded legacy recovery probe exists only to reach
+a verified forward update.
+
+### Rollback verification
+
+The rollback bundle now includes DB, safe config, all managed units, and the
+tmpfiles policy, each covered by the root-owned manifest and receipt-pinned
+digest. Restore removes WAL/SHM after service stop, atomically restores the DB,
+and verifies integrity plus target migration revision. Service restart,
+healthz, readyz, reported version, Runtime/helper sockets, missing old release,
+corrupt backup, and DB-integrity failures all remain distinct negative tests.
+Only the complete predicate can report `Rollback verified`.
+
+### Real-host post-review evidence
+
+The final active release is `0.2.5+dev.8`; API/Worker/Runtime and Helper socket
+are active, Helper service is normally inactive, and all process UIDs match the
+model. `/healthz`, `/readyz`, meta version, SQLite integrity/revision, both UDS
+owners/modes, Doctor, systemd unit verification, and exposure analysis pass.
+The only TCP listener is `127.0.0.1:8787`. The application secret digest is
+unchanged from the pre-review snapshot, is absent from inspected journald, and
+the environment remains `root:root 0600`. No package, SSH, firewall,
+cloudflared, nginx, or root Runtime change was performed.
+
+The first post-review update attempts failed closed and were not hidden: one
+exposed the old-release DB-parent compatibility boundary; one exposed a
+preflight journal left by a conflicting staged artifact; and one exposed that
+tmpfiles had not been part of the rollback bundle. DB/current identities stayed
+verified, failed releases were moved intact to named `/tmp` quarantine paths,
+and each defect received an automated regression before the final real update
+passed.
+
 ## Known Limitations
 
 - checksum verification is implemented; release signing/provenance is not;
@@ -301,7 +408,8 @@ approval is required.
 - Project tree backup and destructive purge are unavailable;
 - Codex/Claude public behavior and authentication require per-version/operator
   validation;
-- systemd security scores remain Medium and require Phase 9 review.
+- system-call deny-list hardening is deferred pending Runtime/CLI compatibility
+  qualification; the real-host exposure scores are 2.0–3.7 (`OK`).
 
 ## Remaining Manual Setup
 
