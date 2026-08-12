@@ -3,17 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-dangerous_python='(shell[[:space:]]*=[[:space:]]*True|asyncio\.create_subprocess_shell[[:space:]]*\(|os\.(system|popen|spawn[a-z_]*)[[:space:]]*\(|subprocess\.(run|Popen|call|check_call|check_output)[[:space:]]*\(|(^|[^[:alnum:]_])exec[[:space:]]*\(|run_as_root[[:space:]]*\()'
+dangerous_python='(shell[[:space:]]*=[[:space:]]*True|asyncio\.create_subprocess_shell[[:space:]]*\(|os\.(system|popen|spawn[a-z_]*)[[:space:]]*\(|(^|[^[:alnum:]_])exec[[:space:]]*\(|run_as_root[[:space:]]*\()'
 
 if grep --recursive --line-number --extended-regexp --include='*.py' \
-  "$dangerous_python" apps packages; then
+  "$dangerous_python" apps packages helper installer; then
   printf 'Forbidden execution primitive found in AgentBox Python source.\n' >&2
   exit 1
 fi
 
 os_exec_calls="$({
   grep --recursive --line-number --extended-regexp --include='*.py' \
-    'os\.exec[a-z_]*[[:space:]]*\(' apps packages || true
+    'os\.exec[a-z_]*[[:space:]]*\(' apps packages helper installer || true
 })"
 unexpected_os_exec_calls="$(printf '%s\n' "$os_exec_calls" | grep --invert-match --extended-regexp \
   '^apps/cli/src/agentbox_cli/main\.py:[0-9]+:        os\.execv\(tmux, \[tmux, "attach-session", "-t", f"=\{runtime_session\.session_name\}"\]\)$' || true)"
@@ -25,10 +25,10 @@ fi
 
 process_calls="$({
   grep --recursive --line-number --include='*.py' \
-    'subprocess' apps packages || true
+    'subprocess' apps packages helper installer || true
 })"
-unexpected_process_calls="$(printf '%s\n' "$process_calls" | grep --invert-match \
-  '^packages/agentbox-runtime/src/agentbox_runtime/process\.py:' || true)"
+unexpected_process_calls="$(printf '%s\n' "$process_calls" | grep --invert-match --extended-regexp \
+  '^(packages/agentbox-runtime/src/agentbox_runtime/process\.py:|helper/src/agentbox_helper/actions\.py:|installer/src/agentbox_installer/(build|dependencies|diagnostics|host)\.py:)' || true)"
 if [[ -n "$unexpected_process_calls" ]]; then
   printf 'Subprocess use escaped the approved controlled-runner boundary:\n%s\n' \
     "$unexpected_process_calls" >&2
@@ -64,8 +64,8 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 31 ]]; then
-  printf 'Unexpected Phase 7 API route count: %s\n' "$route_count" >&2
+if [[ "$route_count" -ne 32 ]]; then
+  printf 'Unexpected Phase 8 API route count: %s\n' "$route_count" >&2
   exit 1
 fi
 
@@ -107,4 +107,37 @@ if grep --recursive --line-number --extended-regexp --include='*.py' \
   exit 1
 fi
 
-printf 'Phase 7 source-boundary check passed.\n'
+host_primitives="$({
+  grep --recursive --line-number --extended-regexp --include='*.py' \
+    '(useradd|groupadd|usermod|/etc/systemd/system|/usr/bin/systemctl|/usr/sbin/runuser)' \
+    apps packages || true
+})"
+unexpected_host_primitives="$(printf '%s\n' "$host_primitives" | grep --invert-match \
+  '^packages/agentbox-runtime/src/agentbox_runtime/codex\.py:[0-9]*:        if Path("/etc/systemd/system/codex\.service")\.exists():$' || true)"
+if [[ -n "$unexpected_host_primitives" ]]; then
+  printf '%s\n' "$unexpected_host_primitives"
+  printf 'Privileged host primitive escaped Installer/Helper boundaries.\n' >&2
+  exit 1
+fi
+
+if grep --recursive --line-number --extended-regexp --include='*.py' \
+  'agentbox_(helper|installer)' apps/api apps/worker packages; then
+  printf 'API, Worker, or shared packages imported a privileged implementation boundary.\n' >&2
+  exit 1
+fi
+
+helper_forbidden='("(shell|command|argv|executable|script|path|service|package|signal|pid)"[[:space:]]*:|request\.(get|\[)[^\n]*(shell|command|argv|executable|script|path|service|package|signal|pid))'
+if grep --recursive --line-number --extended-regexp --include='*.py' \
+  "$helper_forbidden" helper/src; then
+  printf 'Privileged Helper protocol can represent a forbidden caller-controlled field.\n' >&2
+  exit 1
+fi
+
+if grep --recursive --line-number --extended-regexp --include='*.py' \
+  '(provider[._ -]*(add|edit|remove|use|test)|SecretManager|CodexProviderConfigAdapter)' \
+  apps packages helper installer; then
+  printf 'Phase 11 Provider or Secret Manager implementation was introduced early.\n' >&2
+  exit 1
+fi
+
+printf 'Phase 8 source-boundary check passed.\n'

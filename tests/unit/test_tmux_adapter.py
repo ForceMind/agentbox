@@ -129,6 +129,12 @@ async def test_tmux_list_fixtures_distinguish_safe_and_malformed_names(tmp_path:
         ProcessResult(("tmux",), 0, (FIXTURES / "empty-list.txt").read_bytes(), b""),
         ProcessResult(
             ("tmux",),
+            1,
+            b"",
+            b"error connecting to /tmp/tmux-992/default (No such file or directory)\n",
+        ),
+        ProcessResult(
+            ("tmux",),
             0,
             b"".join(
                 [
@@ -146,6 +152,7 @@ async def test_tmux_list_fixtures_distinguish_safe_and_malformed_names(tmp_path:
         runner=runner,  # type: ignore[arg-type]
     )
 
+    assert await adapter.list_sessions() == ()
     assert await adapter.list_sessions() == ()
     assert await adapter.list_sessions() == (
         "agentbox-claude-project-a-123456789abc",
