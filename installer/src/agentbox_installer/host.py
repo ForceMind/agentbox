@@ -66,6 +66,27 @@ class HostOperations:
             return False
         return comm == "systemd" and Path("/run/systemd/system").is_dir()
 
+    def systemd_version(self) -> int:
+        if not self.real_host:
+            return 255
+        try:
+            result = subprocess.run(  # noqa: S603 - fixed read-only version query
+                ("/usr/bin/systemctl", "--version"),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HostMutationError("systemd version could not be determined") from exc
+        first_line = result.stdout.splitlines()[0] if result.returncode == 0 else ""
+        match = re.fullmatch(r"systemd ([0-9]{3,4})(?: .*)?", first_line)
+        if match is None:
+            raise HostMutationError("systemd version could not be determined")
+        return int(match.group(1))
+
     def ensure_identities(self, expected: IdentityFacts | None = None) -> IdentityFacts:
         if not self.real_host:
             return IdentityFacts(19001, 19001, 19002, 19003)

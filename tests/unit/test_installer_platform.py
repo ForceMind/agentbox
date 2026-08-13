@@ -8,8 +8,10 @@ from agentbox_installer.layout import InstallLayout
 from agentbox_installer.platform import (
     PackageFamily,
     PlatformSupport,
+    QualificationLevel,
     detect_platform,
     parse_os_release,
+    qualify_platform,
     resolve_packages,
 )
 
@@ -105,5 +107,47 @@ def test_dependency_detection_accepts_only_executables_in_fixed_roots(tmp_path: 
 
     assert status["git"].installed is True
     assert status["python"].installed is False
-    assert status["node"].required_for_runtime is False
+    assert status["node"].required_for_core is False
+    assert status["node"].required_for_runtime is True
     assert "official" in status["codex"].installation_policy
+
+
+@pytest.mark.parametrize(
+    ("identifier", "version", "qualification", "systemd_version"),
+    [
+        ("opencloudos", "9.4", QualificationLevel.REAL_HOST_VALIDATED, 255),
+        ("ubuntu", "22.04", QualificationLevel.UNSUPPORTED, 249),
+        ("ubuntu", "24.04", QualificationLevel.CI_VALIDATED, 255),
+        ("rocky", "9.5", QualificationLevel.FIXTURE_VALIDATED, 252),
+        ("debian", "12", QualificationLevel.FIXTURE_VALIDATED, 252),
+    ],
+)
+def test_platform_qualification_never_promotes_fixture_evidence(
+    tmp_path: Path,
+    identifier: str,
+    version: str,
+    qualification: QualificationLevel,
+    systemd_version: int,
+) -> None:
+    os_release = tmp_path / f"{identifier}-os-release"
+    os_release.write_text(f"ID={identifier}\nVERSION_ID={version}\n", encoding="utf-8")
+
+    observed = qualify_platform(detect_platform(os_release, architecture="x86_64"))
+
+    assert observed.qualification is qualification
+    assert observed.systemd_baseline == systemd_version
+
+
+def test_runtime_tools_are_optional_without_weakening_core_dependency_evidence(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    (root / "usr/bin").mkdir(parents=True)
+
+    status = {item.name: item for item in detect_dependencies(InstallLayout(root))}
+
+    assert status["tmux"].required_for_core is False
+    assert status["tmux"].required_for_runtime is True
+    assert status["codex"].required_for_core is False
+    assert status["claude"].required_for_core is False
+    assert status["node"].required_for_core is False

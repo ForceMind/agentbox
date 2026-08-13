@@ -7,6 +7,11 @@ from importlib import resources
 from pathlib import Path
 
 import pytest
+from agentbox_installer.hardening import (
+    HardeningDecision,
+    review_unit_hardening,
+    systemd_capabilities,
+)
 from agentbox_installer.lifecycle import UNIT_NAMES
 
 
@@ -43,6 +48,8 @@ def test_service_identities_and_loopback_configuration_are_separated() -> None:
     for unit in (api, worker, helper):
         assert "RestrictNamespaces=true" in unit
         assert "MemoryDenyWriteExecute=true" in unit
+        assert "SystemCallFilter=@system-service" in unit
+        assert "SystemCallErrorNumber=EPERM" in unit
     assert "RestrictNamespaces=true" not in runtime
     assert "MemoryDenyWriteExecute=true" not in runtime
     assert "PrivateNetwork=true" in helper
@@ -152,3 +159,30 @@ def test_systemd_analyze_verifies_units_against_fixture_root(tmp_path: Path) -> 
         )
         assert security.returncode == 0, security.stderr
         assert "Overall exposure level" in security.stdout
+
+
+@pytest.mark.parametrize("systemd_version", [249, 252, 255])
+def test_units_are_compatible_with_every_qualified_systemd_baseline(
+    systemd_version: int,
+) -> None:
+    for name in UNIT_NAMES:
+        matrix = systemd_capabilities(_unit(name), systemd_version)
+        assert matrix.compatible, (name, matrix.unsupported_directives)
+
+
+def test_hardening_review_preserves_runtime_compatibility_exceptions() -> None:
+    for name in (
+        "agentbox-api.service",
+        "agentbox-worker.service",
+        "agentbox-helper.service",
+    ):
+        findings = review_unit_hardening(name, _unit(name))
+        assert all(item.decision is HardeningDecision.APPLIED for item in findings)
+
+    runtime = review_unit_hardening("agentbox-runtime.service", _unit("agentbox-runtime.service"))
+    assert {item.directive for item in runtime} == {
+        "SystemCallFilter",
+        "RestrictNamespaces",
+        "MemoryDenyWriteExecute",
+    }
+    assert all(item.decision is HardeningDecision.ACCEPTED_LIMITATION for item in runtime)
