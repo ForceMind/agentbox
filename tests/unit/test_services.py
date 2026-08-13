@@ -450,19 +450,18 @@ def test_stale_rehash_cannot_overwrite_a_concurrent_password_change(
         admin = session.scalar(select(AdminUser))
         assert admin is not None
         assert admin.password_hash != stale_replacement_hashes[0]
-        assert original_verify(
-            admin.password_hash, "a different sufficiently long passphrase"
-        )
+        assert original_verify(admin.password_hash, "a different sufficiently long passphrase")
         assert not original_verify(admin.password_hash, "a sufficiently long passphrase")
-        assert session.scalar(
-            select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
-        ) is None
-        assert session.scalar(
-            select(AuditEvent).where(AuditEvent.action == "login_succeeded")
-        ) is None
-        failed = session.scalar(
-            select(AuditEvent).where(AuditEvent.action == "login_failed")
+        assert (
+            session.scalar(
+                select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
+            )
+            is None
         )
+        assert (
+            session.scalar(select(AuditEvent).where(AuditEvent.action == "login_succeeded")) is None
+        )
+        failed = session.scalar(select(AuditEvent).where(AuditEvent.action == "login_failed"))
         assert failed is not None
         assert "password" not in repr(failed.metadata_json).casefold()
         assert "argon2" not in repr(failed.metadata_json).casefold()

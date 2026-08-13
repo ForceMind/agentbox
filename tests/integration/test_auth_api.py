@@ -568,9 +568,12 @@ async def test_password_change_wins_against_login_that_verified_the_old_hash(
     }
     assert registered_successes == []
     with initialized_services.database.transaction() as session:
-        assert session.scalar(
-            select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
-        ) is None
+        assert (
+            session.scalar(
+                select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
+            )
+            is None
+        )
         account_bucket = session.get(LoginRateLimitBucket, account_key)
         combined_bucket = session.get(LoginRateLimitBucket, combined_key)
         assert account_bucket is not None
@@ -582,9 +585,7 @@ async def test_password_change_wins_against_login_that_verified_the_old_hash(
         assert len(source_bucket.failure_timestamps) == 2
         login_events = tuple(
             session.scalars(
-                select(AuditEvent).where(
-                    AuditEvent.action.in_(("login_failed", "login_succeeded"))
-                )
+                select(AuditEvent).where(AuditEvent.action.in_(("login_failed", "login_succeeded")))
             )
         )
         assert [event.action for event in login_events] == ["login_failed"]

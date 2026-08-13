@@ -540,9 +540,7 @@ class AuthService:
                     target_type="session",
                     target_id=issued.session_id,
                     metadata={
-                        "source_fingerprint": source_fingerprint(
-                            self._secret, source_identifier
-                        )
+                        "source_fingerprint": source_fingerprint(self._secret, source_identifier)
                     },
                 )
         except InvalidCredentials:
