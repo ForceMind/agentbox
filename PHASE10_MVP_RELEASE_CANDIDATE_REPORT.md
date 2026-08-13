@@ -16,10 +16,12 @@ No tag or GitHub Release has been created. Phase 11 is not started.
 
 - Branch: `phase/10-mvp-release-candidate`
 - Baseline main: `0334f8249ceddbcd9ff32a95435905002694e360`
-- Rehearsal artifact source: `2dfd62e4e96cac749e190a5951d28eddbc8c95bb`
+- Final local candidate artifact source: `0c54b5087a97f993a9365777df529b6c3cffdd49`
+- Real-host rehearsal artifact source: `2dfd62e4e96cac749e190a5951d28eddbc8c95bb`
 - Draft PR: <https://github.com/ForceMind/agentbox/pull/31>
-- Commits: twelve scoped build, test, CI, documentation, release-version
-  compatibility, and CI portability commits at the time of the real-host rehearsal
+- Commits: fourteen scoped build, test, CI, documentation, release-version,
+  CI portability, report, and dependency-security commits at the time of the
+  final local candidate build
 
 ## Candidate Version
 
@@ -31,11 +33,14 @@ No tag or GitHub Release has been created. Phase 11 is not started.
 
 ## Source Commit
 
-The local reproducibility, artifact-only rehearsal, and real-host rehearsal
-described below used `2dfd62e4e96cac749e190a5951d28eddbc8c95bb`.
-The GitHub workflow independently records and builds the exact PR head; any
-subsequent report-only commit is therefore covered by fresh CI rather than
-silently attributed to this local artifact.
+The final local reproducibility/artifact-only rehearsal used
+`0c54b5087a97f993a9365777df529b6c3cffdd49`. The real-host rehearsal used
+`2dfd62e4e96cac749e190a5951d28eddbc8c95bb`; subsequent changes are this report
+and a development/build-only nanoid security pin, so the shipped Runtime payload
+is unchanged apart from source provenance. The GitHub workflow independently
+records and builds the exact PR head; any subsequent report-only commit is
+therefore covered by fresh CI rather than silently attributed to the local
+artifact.
 
 ## Version Consistency
 
@@ -50,10 +55,10 @@ checks passed.
 
 | File | Size | SHA-256 |
 |---|---:|---|
-| `agentbox-0.3.0rc1-linux-x86_64.tar.gz` | 20,808,632 bytes | `84bcbe7bad31dd1b747553522b4597ea66e80ba9c514a5028f0277d18134bd18` |
-| `RELEASE_MANIFEST.json` | 12,363 bytes | `7231540c6d1c438ee25ff2b68e45eb26afb35217646ee7148de20dd728be5c62` |
-| `SBOM.spdx.json` | 21,917 bytes | `ae4065529c4b8f347cc0f34c95a23a311195269b2363b577a8160273131a8524` |
-| `SHA256SUMS` | 273 bytes | `4ea6490b56730050b218fd2ac11a1e4d325c35c786fa457066d6544e8dbf7c75` |
+| `agentbox-0.3.0rc1-linux-x86_64.tar.gz` | 20,808,669 bytes | `775bf64db03a8e9748b4e1cdb2ca7ca3bdf2874cd15f647e92bd80b2d8f8a2b7` |
+| `RELEASE_MANIFEST.json` | 12,363 bytes | `d2df80b231a430b1aeab32c629b030770997be58c9989c15cd1d8b3c8f93aa1e` |
+| `SBOM.spdx.json` | 21,917 bytes | `c9edaad90d24ecdef5d38c79b24e7477f33a94183db397b5c09cefb5e8d73939` |
+| `SHA256SUMS` | 273 bytes | `b3c39e0f9414a25b8dd4bff1e74e5c1397bd762d6c9b0d14aeca9e620b401cf6` |
 
 ## Artifact Layout
 
@@ -79,7 +84,7 @@ passed locally.
 Two builds from separate empty staging directories, the same clean commit,
 dependency locks, and `SOURCE_DATE_EPOCH` produced byte-identical public output.
 Both tarballs have SHA-256
-`84bcbe7bad31dd1b747553522b4597ea66e80ba9c514a5028f0277d18134bd18`.
+`775bf64db03a8e9748b4e1cdb2ca7ca3bdf2874cd15f647e92bd80b2d8f8a2b7`.
 Ordering, timestamps, uid/gid, user/group names, file modes, JSON ordering, and
 gzip metadata are normalized. The first rehearsal exposed and fixed an
 out-of-tree wheel-staging defect before this passing run.
@@ -151,6 +156,13 @@ successfully on the rehearsal source commit.
   `release-gate` passed on GitHub.
 - Protect main remained unchanged with its existing ten required checks, all of
   which passed on the rehearsal source commit.
+
+The final report-triggered audit detected newly published High advisory
+`GHSA-2v37-7h3g-55p8` in the Vite/PostCSS development chain. The transitive
+`nanoid` build dependency is now explicitly pinned from vulnerable `3.3.17` to
+patched `3.3.18`; frozen install, `pnpm why`, audit, lint, format, typecheck,
+25 tests, production build, and frontend-license drift check pass locally. This
+dependency is not part of the shipped production runtime SBOM.
 
 ## Installer Smoke
 
@@ -233,7 +245,7 @@ active production target.
 At approximately 16 seconds after candidate activation, observed RSS was API
 77,284 KiB, Worker 63,796 KiB, and Runtime 23,080 KiB. The complete
 backup/update/restart/health transaction finished in approximately 9.1 seconds.
-The control-plane DB was 172,032 bytes, artifact 20,808,632 bytes, and production
+The control-plane DB was 172,032 bytes, final artifact 20,808,669 bytes, and production
 static assets 326,056 bytes. This is a single operational observation on the
 2-vCPU/3.5-GiB OpenCloudOS host, not benchmark certification.
 
