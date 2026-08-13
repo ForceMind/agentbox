@@ -37,3 +37,15 @@ jobs:
           tests/unit/test_privilege_isolation.py
           tests/integration/test_static_web.py
       - run: bash scripts/check-skeleton-boundaries.sh
+
+  deployment-gate:
+    name: deployment-gate
+    needs: installer
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require the complete installer matrix
+        env:
+          INSTALLER_RESULT: ${{ needs.installer.result }}
+        run: test "$INSTALLER_RESULT" = "success"
