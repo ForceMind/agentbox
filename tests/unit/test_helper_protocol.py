@@ -54,7 +54,13 @@ def test_helper_protocol_rejects_malformed_and_oversized_frames() -> None:
         b"{malformed}\n",
         b"{}",
         b"\xff\n",
+        b'{"protocol_version":1,"protocol_version":1,'
+        b'"request_id":"req_helper_fixture_001",'
+        b'"action":"systemd.restart_agentbox"}\n',
+        b'{"protocol_version":true,"request_id":"req_helper_fixture_001",'
+        b'"action":"systemd.restart_agentbox"}\n',
         _request() + _request(request_id="req_helper_fixture_002"),
+        (b"[" * 1100) + (b"]" * 1100) + b"\n",
         b"x" * MAX_HELPER_FRAME + b"\n",
     ):
         with pytest.raises(ValueError):

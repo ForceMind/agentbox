@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -38,6 +39,32 @@ from agentbox_runtime.models import (
 
 RUNTIME_PROTOCOL_VERSION = 1
 MAX_RUNTIME_FRAME = 64 * 1024
+REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
+
+
+def strict_json_loads(raw: bytes) -> Any:
+    """Decode JSON while rejecting duplicate object keys at every depth."""
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON key")
+            value[key] = item
+        return value
+
+    return json.loads(raw, object_pairs_hook=unique_object)
+
+
+def validate_request_id(request_id: str) -> str:
+    if not REQUEST_ID_PATTERN.fullmatch(request_id):
+        raise RuntimeOperationError(
+            "RUNTIME_REQUEST_ID_INVALID",
+            "Runtime request identifier is invalid",
+            category="validation",
+        )
+    return request_id
+
 
 # A complete status probe can sequentially consume up to 58 seconds across the
 # public Codex version/help/login/npm/status commands. A mutation can then use a
@@ -174,6 +201,7 @@ class UnixCodexRuntimeClient:
         timeout_seconds: float,
         project_id: str | None = None,
     ) -> dict[str, Any]:
+        validate_request_id(request_id)
         request: dict[str, Any] = {
             "protocol_version": RUNTIME_PROTOCOL_VERSION,
             "action": action,
@@ -199,7 +227,7 @@ class UnixCodexRuntimeClient:
             raw = await asyncio.wait_for(reader.readline(), timeout=timeout_seconds)
             if not raw or len(raw) > MAX_RUNTIME_FRAME or not raw.endswith(b"\n"):
                 raise _protocol_error()
-            payload = json.loads(raw)
+            payload = strict_json_loads(raw)
             if (
                 not isinstance(payload, dict)
                 or payload.get("protocol_version") != 1
@@ -225,7 +253,7 @@ class UnixCodexRuntimeClient:
             if not isinstance(data, dict):
                 raise ValueError("invalid data")
             return data
-        except (json.JSONDecodeError, UnicodeError, ValueError) as exc:
+        except (json.JSONDecodeError, UnicodeError, ValueError, RecursionError) as exc:
             raise _protocol_error() from exc
         except TimeoutError as exc:
             raise RuntimeOperationError(
@@ -627,6 +655,10 @@ class UnixProjectRuntimeClient:
 async def _typed_transport_request(
     transport: UnixCodexRuntimeClient, request: dict[str, object], *, timeout_seconds: float
 ) -> dict[str, Any]:
+    request_id = request.get("request_id")
+    if not isinstance(request_id, str):
+        raise _protocol_error()
+    validate_request_id(request_id)
     encoded = json.dumps(request, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
     try:
         reader, writer = await asyncio.wait_for(
@@ -645,7 +677,7 @@ async def _typed_transport_request(
         raw = await asyncio.wait_for(reader.readline(), timeout=timeout_seconds)
         if not raw or len(raw) > MAX_RUNTIME_FRAME or not raw.endswith(b"\n"):
             raise _protocol_error()
-        payload = json.loads(raw)
+        payload = strict_json_loads(raw)
         if (
             not isinstance(payload, dict)
             or payload.get("protocol_version") != 1
@@ -673,7 +705,7 @@ async def _typed_transport_request(
             category="timeout",
             retryable=True,
         ) from exc
-    except (json.JSONDecodeError, UnicodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeError, OSError, ValueError, RecursionError) as exc:
         raise _protocol_error() from exc
     finally:
         writer.close()
