@@ -22,10 +22,16 @@ certification, stable-release declaration, or broad distribution support claim.
 
 - Baseline: `main` at `90c51cb4d5071ed3393d132e2cc959d2b102ab61`
 - Branch: `phase/9-security-hardening-compatibility`
-- Commits: semantic security, recovery, diagnostics, CI, test, and documentation
-  commits on this branch; exact hashes are authoritative in Git/PR history.
-- Draft PR: to be recorded after publication; merge is explicitly not
-  authorized by Phase 9.
+- Commits before this report-finalization commit:
+  - `6b3726a` — `security(auth): persist throttling and add admin recovery`
+  - `df6170c` — `security(ipc): reject ambiguous runtime and helper frames`
+  - `d0b266a` — `security(systemd): apply compatible sandbox limits`
+  - `8aaed4f` — `test(recovery): harden lifecycle crash and retention handling`
+  - `00b379b` — `feat(diagnostics): add sanitized production export`
+  - `3786061` — `ci(security): pin third-party workflow actions`
+  - `8217541` — `docs: record Phase 9 hardening and compatibility evidence`
+- Draft PR: [ForceMind/agentbox#30](https://github.com/ForceMind/agentbox/pull/30).
+  Merge is explicitly not authorized by Phase 9.
 
 ## Security Scope
 
