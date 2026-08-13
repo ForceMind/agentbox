@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
@@ -22,10 +23,11 @@ from agentbox_core.models import (
     LoginRateLimitBucket,
 )
 from agentbox_core.security import PasswordManager, sanitize_metadata
-from agentbox_core.services import ControlPlaneServices, build_services
+from agentbox_core.services import ControlPlaneServices, IssuedSession, build_services
 from conftest import FakeClock
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 
 def test_first_admin_initialization_is_hashed_and_second_is_rejected(
@@ -310,6 +312,160 @@ def test_local_password_change_is_atomic_when_audit_write_fails(
             source_identifier="127.0.0.3",
             request_id="req_atomic_new_password",
         )
+
+
+def test_login_final_transaction_wins_then_password_change_revokes_its_session(
+    initialized_services: ControlPlaneServices,
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_issue = initialized_services.sessions.issue
+    issue_entered = threading.Event()
+    release_issue = threading.Event()
+
+    def pause_issue(
+        session: Session,
+        user: AdminUser,
+        client_label: str | None,
+    ) -> IssuedSession:
+        issue_entered.set()
+        if not release_issue.wait(timeout=5):
+            raise AssertionError("test did not release the serialized Login transaction")
+        return original_issue(session, user, client_label)
+
+    monkeypatch.setattr(initialized_services.sessions, "issue", pause_issue)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        login_future = executor.submit(
+            initialized_services.auth.login,
+            username="maintainer",
+            password="a sufficiently long passphrase",
+            source_identifier="127.0.0.10",
+            request_id="req_login_transaction_wins",
+        )
+        assert issue_entered.wait(timeout=5)
+
+        original_hash = password_manager.hash
+        password_change_hash_ready = threading.Event()
+
+        def track_password_change_hash(password: str) -> str:
+            replacement = original_hash(password)
+            if password == "a different sufficiently long passphrase":
+                password_change_hash_ready.set()
+            return replacement
+
+        monkeypatch.setattr(password_manager, "hash", track_password_change_hash)
+        change_future = executor.submit(
+            initialized_services.admin.change_password,
+            "a sufficiently long passphrase",
+            "a different sufficiently long passphrase",
+            request_id="req_change_after_login_transaction",
+        )
+        try:
+            assert password_change_hash_ready.wait(timeout=5)
+        finally:
+            release_issue.set()
+
+        issued = login_future.result(timeout=5)
+        assert change_future.result(timeout=5) == 1
+
+    with pytest.raises(InvalidSession):
+        initialized_services.sessions.authenticate(issued.token)
+    with initialized_services.database.transaction() as session:
+        stored = session.get(ControlPlaneSession, issued.session_id)
+        assert stored is not None
+        assert stored.revoked_at is not None
+        actions = tuple(
+            session.scalars(
+                select(AuditEvent.action).where(
+                    AuditEvent.action.in_(("login_succeeded", "admin_password_changed"))
+                )
+            )
+        )
+        assert sorted(actions) == ["admin_password_changed", "login_succeeded"]
+
+
+def test_stale_rehash_cannot_overwrite_a_concurrent_password_change(
+    initialized_services: ControlPlaneServices,
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_verify = password_manager.verify
+    original_hash = password_manager.hash
+    old_password_verified = threading.Event()
+    release_stale_login = threading.Event()
+    coordination_lock = threading.Lock()
+    login_verify_intercepted = False
+    stale_replacement_hashes: list[str] = []
+
+    def pause_first_successful_old_password_verify(
+        encoded_hash: str, supplied_password: str
+    ) -> bool:
+        nonlocal login_verify_intercepted
+        verified = original_verify(encoded_hash, supplied_password)
+        should_pause = False
+        if verified and supplied_password == "a sufficiently long passphrase":
+            with coordination_lock:
+                if not login_verify_intercepted:
+                    login_verify_intercepted = True
+                    should_pause = True
+        if should_pause:
+            old_password_verified.set()
+            if not release_stale_login.wait(timeout=5):
+                raise AssertionError("test did not release the stale rehash Login")
+        return verified
+
+    def track_replacement_hash(password: str) -> str:
+        replacement = original_hash(password)
+        if password == "a sufficiently long passphrase":
+            stale_replacement_hashes.append(replacement)
+        return replacement
+
+    monkeypatch.setattr(password_manager, "verify", pause_first_successful_old_password_verify)
+    monkeypatch.setattr(password_manager, "needs_rehash", lambda encoded_hash: True)
+    monkeypatch.setattr(password_manager, "hash", track_replacement_hash)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        stale_login = executor.submit(
+            initialized_services.auth.login,
+            username="maintainer",
+            password="a sufficiently long passphrase",
+            source_identifier="127.0.0.11",
+            request_id="req_stale_rehash",
+        )
+        assert old_password_verified.wait(timeout=5)
+        assert (
+            initialized_services.admin.change_password(
+                "a sufficiently long passphrase",
+                "a different sufficiently long passphrase",
+                request_id="req_change_wins_rehash",
+            )
+            == 0
+        )
+        release_stale_login.set()
+        with pytest.raises(InvalidCredentials):
+            stale_login.result(timeout=5)
+
+    assert len(stale_replacement_hashes) == 1
+    with initialized_services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser))
+        assert admin is not None
+        assert admin.password_hash != stale_replacement_hashes[0]
+        assert original_verify(
+            admin.password_hash, "a different sufficiently long passphrase"
+        )
+        assert not original_verify(admin.password_hash, "a sufficiently long passphrase")
+        assert session.scalar(
+            select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
+        ) is None
+        assert session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "login_succeeded")
+        ) is None
+        failed = session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "login_failed")
+        )
+        assert failed is not None
+        assert "password" not in repr(failed.metadata_json).casefold()
+        assert "argon2" not in repr(failed.metadata_json).casefold()
 
 
 def test_local_session_listing_and_revoke_all_expose_metadata_only(

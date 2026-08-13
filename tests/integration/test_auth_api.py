@@ -9,7 +9,12 @@ import httpx
 import pytest
 from agentbox_api.main import create_app
 from agentbox_core.configuration import Environment, Settings
-from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession
+from agentbox_core.models import (
+    AdminUser,
+    AuditEvent,
+    ControlPlaneSession,
+    LoginRateLimitBucket,
+)
 from agentbox_core.security import PasswordManager, source_fingerprint
 from agentbox_core.services import ControlPlaneServices, build_services
 from conftest import (
@@ -492,6 +497,114 @@ async def test_local_password_change_invalidates_old_sessions_csrf_and_password(
             password="a different sufficiently long passphrase",
         )
     ).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_password_change_wins_against_login_that_verified_the_old_hash(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = "127.0.0.1"
+    initialized_services.rate_limits.register_failure("maintainer", source)
+    account_key, source_key, combined_key = initialized_services.rate_limits._keys(
+        "maintainer", source
+    )
+    original_verify = password_manager.verify
+    original_register_success = initialized_services.rate_limits.register_success
+    old_password_verified = threading.Event()
+    release_stale_login = threading.Event()
+    coordination_lock = threading.Lock()
+    login_verify_intercepted = False
+    registered_successes: list[tuple[str, str]] = []
+
+    def pause_first_successful_old_password_verify(
+        encoded_hash: str, supplied_password: str
+    ) -> bool:
+        nonlocal login_verify_intercepted
+        verified = original_verify(encoded_hash, supplied_password)
+        should_pause = False
+        if verified and supplied_password == PASSWORD:
+            with coordination_lock:
+                if not login_verify_intercepted:
+                    login_verify_intercepted = True
+                    should_pause = True
+        if should_pause:
+            old_password_verified.set()
+            if not release_stale_login.wait(timeout=5):
+                raise AssertionError("test did not release the stale Login")
+        return verified
+
+    def track_register_success(username: str, source_identifier: str) -> None:
+        registered_successes.append((username, source_identifier))
+        original_register_success(username, source_identifier)
+
+    monkeypatch.setattr(password_manager, "verify", pause_first_successful_old_password_verify)
+    monkeypatch.setattr(
+        initialized_services.rate_limits, "register_success", track_register_success
+    )
+    stale_login = asyncio.create_task(login(client, origin_headers))
+    assert await asyncio.to_thread(old_password_verified.wait, 5)
+
+    changed = await asyncio.to_thread(
+        initialized_services.admin.change_password,
+        PASSWORD,
+        "a different sufficiently long passphrase",
+        request_id="req_password_change_wins",
+    )
+    assert changed == 0
+    release_stale_login.set()
+    stale_response = await asyncio.wait_for(stale_login, timeout=5)
+
+    assert stale_response.status_code == 401
+    assert stale_response.json()["error"] == {
+        "code": "AUTH_INVALID_CREDENTIALS",
+        "message": "Invalid credentials",
+        "category": "unauthenticated",
+        "retryable": False,
+        "details": {},
+    }
+    assert registered_successes == []
+    with initialized_services.database.transaction() as session:
+        assert session.scalar(
+            select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
+        ) is None
+        account_bucket = session.get(LoginRateLimitBucket, account_key)
+        combined_bucket = session.get(LoginRateLimitBucket, combined_key)
+        assert account_bucket is not None
+        assert combined_bucket is not None
+        assert len(account_bucket.failure_timestamps) == 2
+        assert len(combined_bucket.failure_timestamps) == 2
+        source_bucket = session.get(LoginRateLimitBucket, source_key)
+        assert source_bucket is not None
+        assert len(source_bucket.failure_timestamps) == 2
+        login_events = tuple(
+            session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action.in_(("login_failed", "login_succeeded"))
+                )
+            )
+        )
+        assert [event.action for event in login_events] == ["login_failed"]
+        assert login_events[0].metadata_json.keys() == {
+            "reason",
+            "source_fingerprint",
+            "username_fingerprint",
+        }
+        assert "password" not in repr(login_events[0].metadata_json).casefold()
+        assert "argon2" not in repr(login_events[0].metadata_json).casefold()
+
+    assert (await login(client, origin_headers, password=PASSWORD)).status_code == 401
+    assert (
+        await login(
+            client,
+            origin_headers,
+            password="a different sufficiently long passphrase",
+        )
+    ).status_code == 200
+    assert registered_successes == [("maintainer", source)]
 
 
 @pytest.mark.anyio

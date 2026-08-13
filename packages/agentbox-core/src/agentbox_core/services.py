@@ -510,33 +510,55 @@ class AuthService:
         if self._password_manager.needs_rehash(encoded_hash):
             replacement_hash = self._password_manager.hash(password)
 
-        self._rate_limiter.register_success(normalized, source_identifier)
         now = self._clock.now()
-        with self._database.transaction() as session:
-            current_user = session.get(AdminUser, user_id)
-            if current_user is None or not current_user.is_active:
-                raise InvalidCredentials()
-            current_user.last_login_at = now
-            current_user.updated_at = now
-            if replacement_hash is not None and hmac.compare_digest(
-                current_user.password_hash, encoded_hash
-            ):
-                current_user.password_hash = replacement_hash
-            issued = self._sessions.issue(session, current_user, client_label)
-            self._audit.record(
-                session,
-                actor_type="admin",
-                actor_id=current_user.id,
-                action="login_succeeded",
-                result="succeeded",
-                request_id=request_id,
-                target_type="session",
-                target_id=issued.session_id,
-                metadata={
-                    "source_fingerprint": source_fingerprint(self._secret, source_identifier)
-                },
+        try:
+            with self._database.transaction() as session:
+                # Reserve SQLite's single writer before revalidating the hash.
+                # Password rotation then either commits first and invalidates
+                # this Login, or waits until this Session is committed and
+                # revokes it in the subsequent password-change transaction.
+                session.execute(text("BEGIN IMMEDIATE"))
+                current_user = session.get(AdminUser, user_id)
+                if (
+                    current_user is None
+                    or not current_user.is_active
+                    or not hmac.compare_digest(current_user.password_hash, encoded_hash)
+                ):
+                    raise InvalidCredentials()
+                current_user.last_login_at = now
+                current_user.updated_at = now
+                if replacement_hash is not None:
+                    current_user.password_hash = replacement_hash
+                issued = self._sessions.issue(session, current_user, client_label)
+                self._audit.record(
+                    session,
+                    actor_type="admin",
+                    actor_id=current_user.id,
+                    action="login_succeeded",
+                    result="succeeded",
+                    request_id=request_id,
+                    target_type="session",
+                    target_id=issued.session_id,
+                    metadata={
+                        "source_fingerprint": source_fingerprint(
+                            self._secret, source_identifier
+                        )
+                    },
+                )
+        except InvalidCredentials:
+            self._rate_limiter.register_failure(normalized, source_identifier)
+            self._record_failed_login(
+                normalized,
+                source_identifier,
+                request_id,
+                reason="invalid_credentials",
             )
-            return issued
+            raise
+
+        # Clear only the account-specific failure buckets after the complete
+        # authorization, Session, and success-audit transaction has committed.
+        self._rate_limiter.register_success(normalized, source_identifier)
+        return issued
 
     def _record_failed_login(
         self,

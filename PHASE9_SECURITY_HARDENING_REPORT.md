@@ -375,6 +375,25 @@ manipulation is structurally unavailable. Listing returns only the opaque
 display ID, bounded client label, and timestamps—not cookie/token hashes or
 CSRF material. Repeated all-Session revocation is safely idempotent.
 
+The final review identified and reproduced one password-rotation/Login race:
+an old-password Login could finish Argon2 verification before a password
+change committed, then issue a Session afterward. The final Login write now
+uses `BEGIN IMMEDIATE`, reloads the administrator, and compares the stored hash
+in constant time with the exact encoded hash that was verified. The hash
+revalidation, optional rehash, `last_login_at` update, Session issue, and
+`login_succeeded` audit are protected by that same serialized transaction.
+Limiter success cleanup runs only after it commits. A stale Login instead keeps
+the generic invalid-credentials response, records a failure, preserves failure
+buckets, emits no success audit, issues no Session, and cannot write a stale
+rehash over the new password.
+
+Deterministic Event-coordinated tests (all with five-second failure timeouts)
+cover both commit orders. If password change commits first, the paused Login is
+rejected. If the Login transaction owns the writer reservation first, password
+change subsequently revokes the Session it created. These tests establish the
+fix for the identified SQLite transaction interleaving; they are not a claim
+of a general proof over every external database engine.
+
 ### Diagnostics allowlist and canaries
 
 The collector constructs a fixed observation schema; it does not collect logs,
@@ -448,11 +467,11 @@ bubblewrap, Node, Git/gh, tmux, and future supported versions.
 
 ### Final regression and host evidence
 
-- Python: Ruff, Black, strict mypy, 507 pytest cases, and Alembic
+- Python: Ruff, Black, strict mypy, 510 pytest cases, and Alembic
   upgrade/downgrade/re-upgrade pass. `pip-audit` reports no known vulnerability.
 - Web: lint, formatting, typecheck, 25 Vitest cases, build, and high-level pnpm
   audit pass with no known vulnerability.
-- Deployment/security: 170 isolated tests pass; secret, privilege-boundary,
+- Deployment/security: 150 workflow-local tests pass; secret, privilege-boundary,
   forbidden-primitive, exact action-pin, and diff checks pass.
 - Local Playwright reaches the 54-case runner but Chromium cannot load
   `libgbm.so.1`; no host package was installed. GitHub E2E remains the required
