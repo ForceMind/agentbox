@@ -92,19 +92,30 @@ the minimum reproducible, redacted evidence.
 
 ## Phase 10 release-artifact boundary
 
-The RC builder requires a clean tracked commit, exact Python release lock,
+The RC builder requires a clean tracked commit, a hash-locked 73-package Python
+build/test toolchain, exact Python runtime release lock, fixed Node/pnpm,
 frozen pnpm lock, fixed `SOURCE_DATE_EPOCH`, deterministic Web/wheel/tar/gzip
-inputs, and two independent same-runner builds with identical output. The
-manifest records source commit, version, platform, migration head, allowlist,
-per-file digests, required Python, SBOM/license files, and unsigned status.
+inputs, and two independent same-runner builds with identical output. PR jobs
+explicitly build the PR head rather than GitHub's synthetic merge ref. The
+manifest records the actual source commit and ref kind, build toolchain,
+version, platform, migration head, allowlist, per-file digests,
+`>=3.11,<3.14`/cp311-cp313 artifact compatibility, SBOM/license files, and
+unsigned status.
 
 Verification checks external `SHA256SUMS`, external/internal manifest and SBOM
 identity, schema, version/wheel/API consistency, complete file allowlist,
 digests, target platform, migration metadata, path normalization, duplicate
 paths, archive links/types/modes/limits, required static files, and secret
-canaries. The artifact carries a CPython 3.11–3.13 Linux x86_64 wheelhouse and
+canaries. Secret scanning covers tar members and bounded, in-memory nested wheel
+member names and decompressed bytes; malformed, duplicate, unsafe, or oversized
+wheels fail closed. The artifact carries a CPython 3.11–3.13 Linux x86_64 wheelhouse and
 prebuilt Web files; Node/Vite are absent from the production control-plane
 runtime requirement.
+
+CI executes the exact bundled `install.sh`: shell syntax, public bundle
+verification, offline wheelhouse-only bootstrap, fixture plan/apply, cleanup,
+and data-preserving uninstall. A manually recreated venv remains a second-layer
+runtime smoke, not a substitute for the bootstrap test.
 
 The PR Release Candidate workflow has read-only permissions, immutable Action
 pins, no Secrets, no publishing permission, one bounded CI artifact, and a

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import io
 import json
 import os
 import re
@@ -23,6 +24,9 @@ VERSION_PATTERN = re.compile(
 )
 MAX_ARCHIVE_MEMBERS = 20_000
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
+MAX_WHEEL_MEMBERS = 10_000
+MAX_WHEEL_MEMBER_BYTES = 32 * 1024 * 1024
+MAX_WHEEL_EXPANDED_BYTES = 256 * 1024 * 1024
 RELEASE_MANIFEST_NAME = "RELEASE_MANIFEST.json"
 LEGACY_MANIFEST_NAME = "manifest.json"
 REQUIRED_RELEASE_PATHS = frozenset(
@@ -50,10 +54,13 @@ class ReleaseManifest:
     files: dict[str, str]
     schema_version: int = 1
     source_commit: str | None = None
+    source_ref_kind: str | None = None
     target_platform: str | None = None
     target_architecture: str | None = None
     build_mode: str | None = None
     required_python: str | None = None
+    supported_python_abis: tuple[str, ...] = ()
+    build_toolchain: dict[str, str] | None = None
     platform_support: tuple[dict[str, str], ...] = ()
     artifact_authenticity: str | None = None
     sbom_filename: str | None = None
@@ -79,12 +86,11 @@ def verify_artifact_digest(path: Path, expected_sha256: str) -> None:
 
 def _safe_member_path(name: str) -> PurePosixPath:
     value = PurePosixPath(name)
+    raw_parts = name.split("/")
     if (
         not name
         or value.is_absolute()
-        or ".." in value.parts
-        or "." in value.parts
-        or "" in value.parts
+        or any(part in {"", ".", ".."} for part in raw_parts)
         or "\\" in name
         or unicodedata.normalize("NFKC", name) != name
         or any(ord(character) < 32 or ord(character) == 127 for character in name)
@@ -185,7 +191,7 @@ def load_manifest(release: Path) -> ReleaseManifest:
         "database_backward_compatible",
         "files",
     }
-    current_keys = legacy_keys | {
+    version_two_keys = legacy_keys | {
         "source_commit",
         "target_platform",
         "target_architecture",
@@ -199,11 +205,18 @@ def load_manifest(release: Path) -> ReleaseManifest:
         "third_party_notices_filename",
         "executable_files",
     }
-    if (schema_version == 1 and set(value) != legacy_keys) or (
-        schema_version == 2 and set(value) != current_keys
+    current_keys = version_two_keys | {
+        "source_ref_kind",
+        "supported_python_abis",
+        "build_toolchain",
+    }
+    if (
+        (schema_version == 1 and set(value) != legacy_keys)
+        or (schema_version == 2 and set(value) != version_two_keys)
+        or (schema_version == 3 and set(value) != current_keys)
     ):
         raise ArtifactError("release manifest schema is invalid")
-    if schema_version not in {1, 2}:
+    if schema_version not in {1, 2, 3}:
         raise ArtifactError("release manifest schema is invalid")
     version = value["version"]
     revision = value["database_revision"]
@@ -233,10 +246,13 @@ def load_manifest(release: Path) -> ReleaseManifest:
         return ReleaseManifest(version, revision, compatible, normalized)
 
     source_commit = value["source_commit"]
+    source_ref_kind = value.get("source_ref_kind")
     target_platform = value["target_platform"]
     target_architecture = value["target_architecture"]
     build_mode = value["build_mode"]
     required_python = value["required_python"]
+    supported_python_abis = value.get("supported_python_abis", [])
+    build_toolchain = value.get("build_toolchain")
     platform_support = value["platform_support"]
     authenticity = value["artifact_authenticity"]
     sbom_filename = value["sbom_filename"]
@@ -250,7 +266,7 @@ def load_manifest(release: Path) -> ReleaseManifest:
         or target_platform != "linux"
         or target_architecture != "x86_64"
         or build_mode != "release-candidate"
-        or required_python != ">=3.11"
+        or required_python != (">=3.11" if schema_version == 2 else ">=3.11,<3.14")
         or authenticity != "unsigned; sha256 integrity only"
         or sbom_filename != "SBOM.spdx.json"
         or license_filename != "LICENSE"
@@ -263,6 +279,19 @@ def load_manifest(release: Path) -> ReleaseManifest:
         or not platform_support
     ):
         raise ArtifactError("release manifest values are invalid")
+    if schema_version == 3 and (
+        source_ref_kind not in {"pull_request_head", "main", "tag", "other"}
+        or supported_python_abis != ["cp311", "cp312", "cp313"]
+        or not isinstance(build_toolchain, dict)
+        or set(build_toolchain) != {"node", "pip", "pnpm", "setuptools", "wheel"}
+        or not all(
+            isinstance(name, str)
+            and isinstance(version, str)
+            and re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}", version)
+            for name, version in build_toolchain.items()
+        )
+    ):
+        raise ArtifactError("release build compatibility metadata is invalid")
     expected_platform_keys = {"distribution", "release", "architecture", "qualification"}
     normalized_platforms: list[dict[str, str]] = []
     for entry in platform_support:
@@ -280,12 +309,15 @@ def load_manifest(release: Path) -> ReleaseManifest:
         revision,
         compatible,
         normalized,
-        schema_version=2,
+        schema_version=schema_version,
         source_commit=source_commit,
+        source_ref_kind=source_ref_kind,
         target_platform=target_platform,
         target_architecture=target_architecture,
         build_mode=build_mode,
         required_python=required_python,
+        supported_python_abis=tuple(supported_python_abis),
+        build_toolchain=dict(build_toolchain) if build_toolchain is not None else None,
         platform_support=tuple(normalized_platforms),
         artifact_authenticity=authenticity,
         sbom_filename=sbom_filename,
@@ -332,7 +364,7 @@ def verify_release(
                 raise ArtifactError("release file digest mismatch")
     if observed != set(actual.files):
         raise ArtifactError("release file set does not match its manifest")
-    if actual.schema_version == 2:
+    if actual.schema_version in {2, 3}:
         if observed_executables != set(actual.executable_files):
             raise ArtifactError("release executable file set does not match its manifest")
         _verify_release_candidate_contract(release, actual)
@@ -349,6 +381,14 @@ def _verify_release_candidate_contract(release: Path, manifest: ReleaseManifest)
     wheels = sorted((release / "wheelhouse").glob("agentbox-*.whl"))
     if len(wheels) != 1 or _wheel_version(wheels[0]) != manifest.version:
         raise ArtifactError("release wheel version does not match its manifest")
+    if manifest.schema_version == 3:
+        observed_abis = {
+            match.group(1)
+            for wheel in (release / "wheelhouse").glob("*.whl")
+            if (match := re.search(r"-(cp3(?:11|12|13))-", wheel.name)) is not None
+        }
+        if observed_abis != set(manifest.supported_python_abis):
+            raise ArtifactError("release wheelhouse ABI inventory does not match its manifest")
     try:
         sbom: Any = json.loads((release / "SBOM.spdx.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -418,6 +458,74 @@ def _wheel_version(wheel: Path) -> str:
     if len(versions) != 1:
         raise ArtifactError("release wheel metadata is invalid")
     return versions[0]
+
+
+def scan_wheel_bytes(payload: bytes, canaries: tuple[bytes, ...]) -> int:
+    """Scan a nested wheel without extracting it; malformed or ambiguous ZIPs fail closed."""
+    member_count = 0
+    expanded_bytes = 0
+    observed_paths: set[str] = set()
+    normalized_paths: set[str] = set()
+    observed_files: set[str] = set()
+    observed_directories: set[str] = set()
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            for member in archive.infolist():
+                member_count += 1
+                if member_count > MAX_WHEEL_MEMBERS:
+                    raise ArtifactError("wheel exceeds its member count limit")
+                canonical_name = member.filename.rstrip("/")
+                _safe_member_path(canonical_name)
+                normalized = unicodedata.normalize("NFKC", canonical_name).casefold()
+                if canonical_name in observed_paths or normalized in normalized_paths:
+                    raise ArtifactError("wheel contains a duplicate or colliding path")
+                parents = PurePosixPath(canonical_name).parents
+                if any(parent.as_posix() in observed_files for parent in parents):
+                    raise ArtifactError("wheel contains a file/directory path collision")
+                if not member.is_dir() and canonical_name in observed_directories:
+                    raise ArtifactError("wheel contains a file/directory path collision")
+                observed_paths.add(canonical_name)
+                normalized_paths.add(normalized)
+                if member.is_dir():
+                    observed_directories.add(canonical_name)
+                else:
+                    observed_files.add(canonical_name)
+                if any(canary in member.filename.encode("utf-8") for canary in canaries):
+                    raise ArtifactError("wheel member name contains a release canary")
+                if member.flag_bits & 0x1:
+                    raise ArtifactError("encrypted wheel members are forbidden")
+                if member.file_size > MAX_WHEEL_MEMBER_BYTES:
+                    raise ArtifactError("wheel member exceeds its expanded size limit")
+                expanded_bytes += member.file_size
+                if expanded_bytes > MAX_WHEEL_EXPANDED_BYTES:
+                    raise ArtifactError("wheel exceeds its expanded size limit")
+                unix_mode = member.external_attr >> 16
+                file_type = stat.S_IFMT(unix_mode)
+                if file_type and not (stat.S_ISREG(unix_mode) or stat.S_ISDIR(unix_mode)):
+                    raise ArtifactError("wheel links and special files are forbidden")
+                if member.is_dir():
+                    continue
+                tail = b""
+                observed_size = 0
+                with archive.open(member, "r") as stream:
+                    while True:
+                        chunk = stream.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        observed_size += len(chunk)
+                        scan = tail + chunk
+                        if any(canary in scan for canary in canaries):
+                            raise ArtifactError("wheel member contains a release canary")
+                        longest = max((len(canary) for canary in canaries), default=1)
+                        retained = max(0, longest - 1)
+                        tail = scan[-retained:] if retained else b""
+                if observed_size != member.file_size:
+                    raise ArtifactError("wheel member expanded size is inconsistent")
+    except ArtifactError:
+        raise
+    except (OSError, UnicodeError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        raise ArtifactError("wheel archive is malformed") from exc
+    return member_count
 
 
 def verify_release_bundle(

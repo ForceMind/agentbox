@@ -92,12 +92,18 @@ WHEEL_SOURCE_DIRECTORIES = (
     "packages",
 )
 WHEEL_SOURCE_FILES = ("pyproject.toml", "README.md", "LICENSE")
+SUPPORTED_PYTHON_ABIS = ("cp311", "cp312", "cp313")
+RELEASE_NODE_VERSION = "22.23.2"
+RELEASE_PNPM_VERSION = "11.20.0"
+RELEASE_BUILD_TOOL_NAMES = ("pip", "setuptools", "wheel")
+SOURCE_REF_KINDS = frozenset({"pull_request_head", "main", "tag", "other"})
 
 
 @dataclass(frozen=True)
 class ReleaseBundle:
     version: str
     source_commit: str
+    source_ref_kind: str
     artifact: Path
     artifact_sha256: str
     manifest: Path
@@ -189,6 +195,30 @@ def verify_version_consistency(source: Path) -> str:
     return version
 
 
+def release_build_toolchain(source: Path) -> dict[str, str]:
+    """Return reviewed artifact-affecting tool versions from committed locks."""
+    versions: dict[str, str] = {}
+    try:
+        lines = (
+            (source / "requirements-release-build.lock").read_text(encoding="utf-8").splitlines()
+        )
+    except (OSError, UnicodeError) as exc:
+        raise BuildError("release build toolchain lock is unavailable") from exc
+    for line in lines:
+        match = re.match(r"([A-Za-z0-9_.-]+)==([0-9]+(?:\.[0-9]+){1,2})(?:\s|\\|$)", line)
+        if match is not None:
+            versions[re.sub(r"[-_.]+", "-", match.group(1)).casefold()] = match.group(2)
+    if any(name not in versions for name in RELEASE_BUILD_TOOL_NAMES):
+        raise BuildError("release build toolchain lock is incomplete")
+    return {
+        "node": RELEASE_NODE_VERSION,
+        "pip": versions["pip"],
+        "pnpm": RELEASE_PNPM_VERSION,
+        "setuptools": versions["setuptools"],
+        "wheel": versions["wheel"],
+    }
+
+
 def _git_metadata(source: Path) -> tuple[str, int]:
     if not (source / ".git").exists():
         raise BuildError("release build requires a Git checkout")
@@ -258,6 +288,7 @@ def build_release_artifact(
     python: Path,
     source_commit: str | None = None,
     source_date_epoch: int | None = None,
+    source_ref_kind: str = "other",
 ) -> str:
     if not VERSION_PATTERN.fullmatch(version):
         raise BuildError("release version must follow semantic version syntax")
@@ -278,6 +309,9 @@ def build_release_artifact(
         source_date_epoch = source_date_epoch or observed_epoch
     if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None or source_date_epoch < 315532800:
         raise BuildError("release source metadata is invalid")
+    if source_ref_kind not in SOURCE_REF_KINDS:
+        raise BuildError("release source ref kind is invalid")
+    build_toolchain = release_build_toolchain(source)
     with tempfile.TemporaryDirectory(prefix="agentbox-release-") as temporary:
         release = Path(temporary) / "release"
         wheel_source = Path(temporary) / "wheel-source"
@@ -365,6 +399,8 @@ def build_release_artifact(
 
         python_packages = _python_package_inventory(wheelhouse)
         frontend_packages = _frontend_package_inventory(source)
+        _verify_runtime_lock_inventory(source, python_packages)
+        _verify_notice_inventory(source, python_packages + frontend_packages)
         _verify_license_inventory(python_packages + frontend_packages)
         sbom = _spdx_sbom(
             version,
@@ -385,9 +421,10 @@ def build_release_artifact(
             if path.is_file()
         }
         manifest = {
-            "schema_version": 2,
+            "schema_version": 3,
             "version": version,
             "source_commit": source_commit,
+            "source_ref_kind": source_ref_kind,
             "target_platform": "linux",
             "target_architecture": "x86_64",
             "build_mode": "release-candidate",
@@ -395,7 +432,9 @@ def build_release_artifact(
             "database_backward_compatible": False,
             "file_allowlist": sorted(files),
             "files": files,
-            "required_python": ">=3.11",
+            "required_python": ">=3.11,<3.14",
+            "supported_python_abis": list(SUPPORTED_PYTHON_ABIS),
+            "build_toolchain": build_toolchain,
             "platform_support": PLATFORM_SUPPORT,
             "artifact_authenticity": "unsigned; sha256 integrity only",
             "sbom_filename": "SBOM.spdx.json",
@@ -412,7 +451,13 @@ def build_release_artifact(
         return sha256_file(output)
 
 
-def build_release_bundle(source: Path, output_directory: Path, *, python: Path) -> ReleaseBundle:
+def build_release_bundle(
+    source: Path,
+    output_directory: Path,
+    *,
+    python: Path,
+    source_ref_kind: str = "other",
+) -> ReleaseBundle:
     source = source.resolve()
     version = verify_version_consistency(source)
     commit, epoch = _git_metadata(source)
@@ -427,6 +472,7 @@ def build_release_bundle(source: Path, output_directory: Path, *, python: Path) 
         python=python,
         source_commit=commit,
         source_date_epoch=epoch,
+        source_ref_kind=source_ref_kind,
     )
     with tempfile.TemporaryDirectory(prefix="agentbox-metadata-") as temporary:
         from agentbox_installer.artifact import extract_verified_tar
@@ -444,7 +490,16 @@ def build_release_bundle(source: Path, output_directory: Path, *, python: Path) 
         encoding="ascii",
     )
     verify_release_bundle(artifact, checksums, manifest, sbom)
-    return ReleaseBundle(version, commit, artifact, digest, manifest, sbom, checksums)
+    return ReleaseBundle(
+        version,
+        commit,
+        source_ref_kind,
+        artifact,
+        digest,
+        manifest,
+        sbom,
+        checksums,
+    )
 
 
 def _write_reproducible_tar(source: Path, output: Path, epoch: int) -> None:
@@ -597,6 +652,95 @@ def _verify_license_inventory(packages: list[dict[str, str]]) -> None:
         raise BuildError("dependency license inventory contains an unknown license")
     if any(forbidden.search(item["license"]) for item in packages):
         raise BuildError("dependency license inventory contains a distribution blocker")
+
+
+def _canonical_package_name(value: str) -> str:
+    return re.sub(r"[-_.]+", "-", value).casefold()
+
+
+def _verify_runtime_lock_inventory(source: Path, packages: list[dict[str, str]]) -> None:
+    expected: set[tuple[str, str]] = set()
+    try:
+        lines = (source / "requirements-release.lock").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise BuildError("Python release dependency lock is unavailable") from exc
+    for line in lines:
+        match = re.match(r"([A-Za-z0-9_.-]+)==([^\s\\]+)(?:\s|\\|$)", line)
+        if match is not None:
+            expected.add((_canonical_package_name(match.group(1)), match.group(2)))
+    observed = {
+        (_canonical_package_name(item["name"]), item["version"])
+        for item in packages
+        if item["manager"] == "pypi"
+    }
+    if not expected or observed != expected:
+        raise BuildError("Python wheelhouse inventory drifted from requirements-release.lock")
+
+
+def _verify_notice_inventory(source: Path, packages: list[dict[str, str]]) -> None:
+    try:
+        lines = (source / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise BuildError("third-party notice inventory is unavailable") from exc
+    observed: set[tuple[str, str, str]] = set()
+    for line in lines:
+        if not line.startswith("|") or line.startswith("|---") or "Package | Version" in line:
+            continue
+        fields = [field.strip() for field in line.strip("|").split("|")]
+        if len(fields) == 3 and all(fields):
+            observed.add((_canonical_package_name(fields[0]), fields[1], fields[2]))
+    expected = {
+        (_canonical_package_name(item["name"]), item["version"], item["license"])
+        for item in packages
+    }
+    if observed != expected:
+        raise BuildError("THIRD_PARTY_NOTICES.md dependency inventory drifted from the release")
+
+
+def verify_release_inventory(source: Path, release: Path) -> int:
+    """Cross-check locks, wheelhouse, reviewed frontend inventory, notices, and SBOM."""
+    python_packages = _python_package_inventory(release / "wheelhouse")
+    frontend_packages = _frontend_package_inventory(source)
+    packages = python_packages + frontend_packages
+    _verify_runtime_lock_inventory(source, python_packages)
+    _verify_notice_inventory(release, packages)
+    try:
+        sbom: Any = json.loads((release / "SBOM.spdx.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise BuildError("release SBOM inventory is invalid") from exc
+    observed: set[tuple[str, str, str, str]] = set()
+    for item in sbom.get("packages", []) if isinstance(sbom, dict) else []:
+        if not isinstance(item, dict) or item.get("name") == "agentbox":
+            continue
+        refs = item.get("externalRefs")
+        if not isinstance(refs, list) or len(refs) != 1 or not isinstance(refs[0], dict):
+            raise BuildError("release SBOM inventory is invalid")
+        locator = refs[0].get("referenceLocator")
+        if not isinstance(locator, str):
+            raise BuildError("release SBOM inventory is invalid")
+        match = re.fullmatch(r"pkg:(pypi|npm)/(.+)@([^@]+)", locator)
+        if match is None:
+            raise BuildError("release SBOM inventory is invalid")
+        observed.add(
+            (
+                match.group(1),
+                _canonical_package_name(match.group(2)),
+                match.group(3),
+                str(item.get("licenseDeclared")),
+            )
+        )
+    expected = {
+        (
+            item["manager"],
+            _canonical_package_name(item["name"]),
+            item["version"],
+            item["license"],
+        )
+        for item in packages
+    }
+    if observed != expected:
+        raise BuildError("release SBOM inventory drifted from the packaged dependencies")
+    return len(expected)
 
 
 def _spdx_id(manager: str, name: str, version: str) -> str:

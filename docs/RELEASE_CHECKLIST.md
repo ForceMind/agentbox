@@ -21,6 +21,11 @@ the Phase 10 PR is merged.
 
 - [ ] Python release dependencies are exact and SHA-256 locked; the artifact
       contains the qualified Linux x86_64 CPython 3.11–3.13 wheelhouse.
+- [ ] `requirements-release-build.lock` pins and hashes every Python build/test
+      package, including pip/setuptools/wheel; the workflow installs no
+      range-resolved `.[dev]` or `latest` packaging tool.
+- [ ] Node `22.23.2` and pnpm `11.20.0` match the toolchain recorded in the
+      manifest, and the toolchain checker passes against the clean CI environment.
 - [ ] `pnpm install --frozen-lockfile` and production Web build pass.
 - [ ] GitHub Actions use only audited immutable SHA pins and minimal read-only
       permissions; PR builds receive no secrets or write token.
@@ -39,8 +44,9 @@ the Phase 10 PR is merged.
 - [ ] Artifact filename is `agentbox-<version>-linux-x86_64.tar.gz` and size is
       within the documented limit without node_modules, browser, dev venv, test
       cache, source map, database, config, Project, or credential content.
-- [ ] `RELEASE_MANIFEST.json` schema, source commit, target, file allowlist,
-      per-file SHA-256, Python requirement, migration head, SBOM/license names,
+- [ ] `RELEASE_MANIFEST.json` schema, actual source commit/ref kind, target,
+      file allowlist, per-file SHA-256, `>=3.11,<3.14` plus cp311/cp312/cp313
+      ABI contract, locked build toolchain, migration head, SBOM/license names,
       and unsigned status verify.
 - [ ] `SHA256SUMS` independently verifies the tarball, external manifest, and
       external SBOM using safe relative filenames.
@@ -62,6 +68,9 @@ the Phase 10 PR is merged.
 
 - [ ] Source and final artifact secret scans pass, including all Phase 10
       password/Session/CSRF/Pair/Claude/Git/GitHub/Provider/SSH canaries.
+- [ ] Secret scanning covers tar member names/bytes and bounded decompression of
+      every nested wheel member; malformed, duplicate, unsafe, oversized, or
+      canary-containing wheel content fails closed.
 - [ ] Static assets have no production source maps, developer absolute paths,
       or secret canaries.
 - [ ] Artifact contains no world-writable executable, setuid/setgid bit, file
@@ -74,7 +83,9 @@ the Phase 10 PR is merged.
 
 ## Installation and recovery
 
-- [ ] Artifact verification and install bootstrap work without a source checkout.
+- [ ] `bash -n` and the artifact's actual `install.sh` verification, offline
+      bootstrap, fixture plan/apply, failure cleanup, and argument forwarding
+      work without an installed source-checkout AgentBox package.
 - [ ] AgentBox API/static Web installs and runs without Node/Vite.
 - [ ] Fixture fresh install, triple reinstall, application-secret/admin/DB/
       Project/Runtime-HOME preservation, and data-preserving uninstall pass.
@@ -111,3 +122,11 @@ the Phase 10 PR is merged.
 - [ ] Create a Draft GitHub Release marked pre-release and attach all files.
 - [ ] Review rendered notes and downloaded artifacts before publication.
 - [ ] Publish the pre-release only with explicit human authorization.
+
+## Reviewed lock regeneration
+
+`requirements-release-build.in` is the human-reviewed direct input. Regenerate
+the Linux x86_64/CPython 3.11 lock only in a disposable environment by
+downloading binary wheels, recording each selected distribution's exact version
+and SHA-256, then run `scripts/check-release-toolchain.py`. Review every diff;
+never regenerate the lock dynamically inside the Release Candidate workflow.

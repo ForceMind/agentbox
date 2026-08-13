@@ -7,7 +7,7 @@ import argparse
 import tarfile
 from pathlib import Path
 
-from agentbox_installer.artifact import verify_release_bundle
+from agentbox_installer.artifact import scan_wheel_bytes, verify_release_bundle
 
 CANARIES = (
     b"APP-SECRET-CANARY",
@@ -42,6 +42,8 @@ def main() -> int:
     parser.add_argument("--checksums", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--sbom", type=Path, required=True)
+    parser.add_argument("--expected-source-commit")
+    parser.add_argument("--expected-source-ref-kind")
     args = parser.parse_args()
 
     artifact_size = args.artifact.stat().st_size
@@ -50,7 +52,16 @@ def main() -> int:
             f"release artifact exceeds the {MAX_ARTIFACT_BYTES // (1024 * 1024)} MiB limit"
         )
     manifest = verify_release_bundle(args.artifact, args.checksums, args.manifest, args.sbom)
+    if args.expected_source_commit is not None and (
+        manifest.source_commit != args.expected_source_commit
+    ):
+        raise SystemExit("release provenance source commit mismatch")
+    if args.expected_source_ref_kind is not None and (
+        manifest.source_ref_kind != args.expected_source_ref_kind
+    ):
+        raise SystemExit("release provenance ref kind mismatch")
     checked = 0
+    wheel_members_checked = 0
     for public_file in (args.artifact, args.checksums, args.manifest, args.sbom):
         payload = public_file.read_bytes()
         if any(canary in payload for canary in CANARIES):
@@ -69,9 +80,12 @@ def main() -> int:
                     payload = stream.read()
                 if any(canary in payload for canary in CANARIES):
                     raise SystemExit(f"release secret scan failed: {member.name}")
+                if member.name.endswith(".whl"):
+                    wheel_members_checked += scan_wheel_bytes(payload, CANARIES)
     print(
         f"Release artifact scan passed ({checked} members, AgentBox {manifest.version}, "
-        f"{artifact_size} bytes, no source maps or canaries)."
+        f"{wheel_members_checked} nested wheel members, {artifact_size} bytes, "
+        "no source maps or canaries)."
     )
     return 0
 

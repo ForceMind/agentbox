@@ -50,6 +50,12 @@ only lifecycle mutations require an administrator to invoke the installer.
 Port conflicts fail closed and the installer never kills the owner or silently
 changes the product default.
 
+The `0.3.0rc1` bundle is qualified only for Linux x86_64 with CPython 3.11,
+3.12, or 3.13. The bundled `install.sh` checks this contract before creating
+its temporary venv or invoking pip, and reports an explicit error for Python
+3.10 or 3.14. Its offline bootstrap uses only the artifact wheelhouse and does
+not resolve packages from PyPI.
+
 Service-account names are not adopted merely because they exist. On a fresh
 host, any pre-existing `agentbox`, `agentbox-runtime`, or associated group name
 is a collision. On reinstall/update, reuse requires root-owned receipt evidence
@@ -114,7 +120,7 @@ GitHub CLI flows. Do not copy or `chown` `/root/.codex`, `/root/.claude`, or
 Phase 9 validates generated unit directives against the installed systemd
 version before any privileged write. Missing optional Runtime dependencies
 degrade only their integration and do not invalidate the prebuilt API/Web core.
-Ubuntu 22.04 native installation remains rejected until a trusted Python 3.11+
+Ubuntu 22.04 native installation remains rejected until a trusted Python 3.11–3.13
 strategy exists; CI-provided Python is test evidence, not an installer source.
 
 Use `agentbox status`, `agentbox doctor`, `systemctl status` for the exact units,

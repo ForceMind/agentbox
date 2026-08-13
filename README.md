@@ -49,9 +49,11 @@ old, and aarch64 remains unqualified. See [Platform support](docs/PLATFORM_SUPPO
 and the [MVP security review](docs/SECURITY_REVIEW_MVP.md).
 
 Phase 10 prepares the `0.3.0rc1` Linux x86_64 bundle with a single version
-source, prebuilt static Web, exact Python wheel lock, deterministic archive,
+source, prebuilt static Web, exact Python runtime and build-tool locks, an
+artifact-specific CPython 3.11–3.13 contract, deterministic archive,
 `RELEASE_MANIFEST.json`, `SHA256SUMS`, SPDX 2.3 JSON SBOM, third-party license
-inventory, artifact-only install smoke, recovery rehearsal, and a fail-closed
+inventory, nested-wheel secret scanning, actual bundled-installer smoke,
+recovery rehearsal, and a fail-closed
 `release-gate`. The artifact remains unsigned: SHA-256 verifies integrity, not
 publisher authenticity. See [Quickstart](docs/QUICKSTART.md),
 [Release notes](docs/releases/0.3.0rc1.md), and

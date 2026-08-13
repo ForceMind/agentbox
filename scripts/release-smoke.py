@@ -7,32 +7,64 @@ import argparse
 import json
 import os
 import socket
-import sqlite3
 import subprocess
+import sys
+import tarfile
 import tempfile
 import time
 import urllib.request
-from pathlib import Path
-
-from agentbox_installer.artifact import extract_verified_tar, verify_release_bundle
-from agentbox_installer.host import HostOperations
-from agentbox_installer.layout import InstallLayout
-from agentbox_installer.lifecycle import AgentBoxInstaller
+from pathlib import Path, PurePosixPath
+from typing import cast
 
 
-def _run(argv: tuple[str, ...], *, cwd: Path, env: dict[str, str] | None = None) -> None:
+def _run(
+    argv: tuple[str, ...],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    capture: bool = False,
+) -> str:
     result = subprocess.run(
         argv,
         cwd=cwd,
         env=env,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+        stderr=subprocess.PIPE if capture else subprocess.DEVNULL,
         timeout=300,
         check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(f"release smoke command failed: {Path(argv[0]).name}")
+    return result.stdout.decode("utf-8", "strict") if capture else ""
+
+
+def _extract_regular_archive(artifact: Path, destination: Path) -> None:
+    destination.mkdir(mode=0o755)
+    observed: set[str] = set()
+    with tarfile.open(artifact, "r:gz") as archive:
+        for member in archive:
+            relative = PurePosixPath(member.name)
+            if (
+                relative.is_absolute()
+                or ".." in relative.parts
+                or member.name in observed
+                or not (member.isfile() or member.isdir())
+            ):
+                raise RuntimeError("release smoke archive is unsafe")
+            observed.add(member.name)
+            target = destination.joinpath(*relative.parts)
+            if member.isdir():
+                target.mkdir(mode=0o755, parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise RuntimeError("release smoke member is unavailable")
+            with stream, target.open("xb") as output:
+                while chunk := stream.read(1024 * 1024):
+                    output.write(chunk)
+            target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
 def _free_port() -> int:
@@ -43,7 +75,7 @@ def _free_port() -> int:
 
 def _http_json(url: str) -> dict[str, object]:
     with urllib.request.urlopen(url, timeout=2) as response:  # noqa: S310 - fixed loopback URL
-        return json.loads(response.read())
+        return cast(dict[str, object], json.loads(response.read()))
 
 
 def main() -> int:
@@ -53,7 +85,8 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--sbom", type=Path, required=True)
     args = parser.parse_args()
-    manifest = verify_release_bundle(args.artifact, args.checksums, args.manifest, args.sbom)
+    manifest_value = json.loads(args.manifest.read_text(encoding="utf-8"))
+    version = manifest_value["version"]
     digest = next(
         line.split()[0]
         for line in args.checksums.read_text(encoding="ascii").splitlines()
@@ -63,10 +96,34 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="agentbox-rc-smoke-") as temporary:
         root = Path(temporary)
         release = root / "release"
-        extract_verified_tar(args.artifact, release)
+        _extract_regular_archive(args.artifact, release)
+        install_script = release / "install.sh"
+        bootstrap_env = {
+            **os.environ,
+            "PIP_INDEX_URL": "http://127.0.0.1:9/forbidden",
+            "PIP_NO_INDEX": "1",
+            "PYTHONNOUSERSITE": "1",
+        }
+        _run(("/usr/bin/bash", "-n", str(install_script)), cwd=release)
+        _run(
+            (
+                str(install_script),
+                "verify-artifact",
+                "--artifact",
+                str(args.artifact.resolve()),
+                "--checksums",
+                str(args.checksums.resolve()),
+                "--manifest",
+                str(args.manifest.resolve()),
+                "--sbom",
+                str(args.sbom.resolve()),
+            ),
+            cwd=release,
+            env=bootstrap_env,
+        )
 
         venv = root / "venv"
-        _run((os.sys.executable, "-m", "venv", str(venv)), cwd=root)
+        _run((sys.executable, "-m", "venv", str(venv)), cwd=root)
         smoke_env = {
             # Deliberately omit host Node/npm/pnpm: the installed control plane
             # and prebuilt static Web must not require them.
@@ -82,7 +139,7 @@ def main() -> int:
                 "--disable-pip-version-check",
                 "--find-links",
                 str(release / "wheelhouse"),
-                f"agentbox=={manifest.version}",
+                f"agentbox=={version}",
             ),
             cwd=release,
             env=smoke_env,
@@ -130,7 +187,7 @@ def main() -> int:
                     time.sleep(0.1)
             if health != {"status": "ok"} or readiness.get("status") != "ready":
                 raise RuntimeError("release health/readiness smoke failed")
-            if metadata.get("version") != manifest.version:
+            if metadata.get("version") != version:
                 raise RuntimeError("release API version smoke failed")
         finally:
             process.terminate()
@@ -145,35 +202,86 @@ def main() -> int:
         (fixture_root / "etc/os-release").write_text(
             'ID="opencloudos"\nVERSION_ID="9.4"\n', encoding="utf-8"
         )
-        layout = InstallLayout(fixture_root)
-        installer = AgentBoxInstaller(layout, HostOperations(real_host=False))
-        installer.apply(args.artifact, digest)
-        secret_before = layout.map("/etc/agentbox/environment").read_bytes()
-        project = layout.map("/srv/agentbox/projects/release-smoke-project")
+        fixture_env = {
+            **bootstrap_env,
+            "AGENTBOX_INSTALLER_TEST_MODE": "1",
+        }
+        common = (
+            str(install_script),
+            "--fixture-root",
+            str(fixture_root),
+        )
+        artifact_arguments = (
+            "--artifact",
+            str(args.artifact.resolve()),
+            "--sha256",
+            digest,
+            "--json",
+        )
+        plan = json.loads(
+            _run(
+                common + ("plan",) + artifact_arguments, cwd=release, env=fixture_env, capture=True
+            )
+        )
+        if plan.get("version") != version:
+            raise RuntimeError("bundled install.sh did not forward plan arguments")
+        _run(common + ("apply",) + artifact_arguments, cwd=release, env=fixture_env)
+        environment_path = fixture_root / "etc/agentbox/environment"
+        secret_before = environment_path.read_bytes()
+        project = fixture_root / "srv/agentbox/projects/release-smoke-project"
         project.write_text("preserved", encoding="utf-8")
-        runtime_auth = layout.map("/home/agentbox-runtime/.codex")
+        runtime_auth = fixture_root / "home/agentbox-runtime/.codex"
         runtime_auth.mkdir()
         (runtime_auth / "identity").write_text("preserved", encoding="utf-8")
-        with sqlite3.connect(layout.database) as connection:
-            connection.execute("CREATE TABLE release_admin_canary(value TEXT)")
-            connection.execute("INSERT INTO release_admin_canary VALUES ('preserved')")
-        assert installer.apply(args.artifact, digest).changed is False
-        assert installer.apply(args.artifact, digest).changed is False
-        assert layout.map("/etc/agentbox/environment").read_bytes() == secret_before
-        result = installer.uninstall()
+        database = fixture_root / "var/lib/agentbox/agentbox.db"
+        with subprocess.Popen(
+            (
+                str(venv / "bin/python"),
+                "-c",
+                (
+                    "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); "
+                    "c.execute('CREATE TABLE release_admin_canary(value TEXT)'); "
+                    "c.execute(\"INSERT INTO release_admin_canary VALUES ('preserved')\"); "
+                    "c.commit()"
+                ),
+                str(database),
+            ),
+            cwd=release,
+            env=smoke_env,
+        ) as process:
+            if process.wait(timeout=30) != 0:
+                raise RuntimeError("release data-preservation canary setup failed")
+        _run(common + ("apply",) + artifact_arguments, cwd=release, env=fixture_env)
+        _run(common + ("apply",) + artifact_arguments, cwd=release, env=fixture_env)
+        assert environment_path.read_bytes() == secret_before
+        result = json.loads(
+            _run(common + ("uninstall", "--json"), cwd=release, env=fixture_env, capture=True)
+        )
         assert result["database"] == "preserved"
         assert result["projects"] == "preserved"
         assert result["runtime_home"] == "preserved"
         assert project.read_text(encoding="utf-8") == "preserved"
         assert (runtime_auth / "identity").read_text(encoding="utf-8") == "preserved"
-        with sqlite3.connect(layout.database) as connection:
-            assert connection.execute("SELECT value FROM release_admin_canary").fetchone() == (
-                "preserved",
-            )
+        database_check = _run(
+            (
+                str(venv / "bin/python"),
+                "-c",
+                (
+                    "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute("
+                    "'SELECT value FROM release_admin_canary').fetchone()[0])"
+                ),
+                str(database),
+            ),
+            cwd=release,
+            env=smoke_env,
+            capture=True,
+        )
+        assert database_check.strip() == "preserved"
 
     print(
-        f"Release smoke passed for AgentBox {manifest.version}: offline wheel install, "
-        "migration, CLI, static API, triple install, and data-preserving uninstall."
+        f"Release smoke passed for AgentBox {version}: bundled install.sh verification and "
+        "offline bootstrap, migration, CLI, static API, triple install, and "
+        "data-preserving uninstall."
     )
     return 0
 

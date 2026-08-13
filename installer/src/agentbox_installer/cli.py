@@ -51,6 +51,11 @@ def create_parser() -> argparse.ArgumentParser:
     candidate.add_argument("--source", type=Path, required=True)
     candidate.add_argument("--output-dir", type=Path, required=True)
     candidate.add_argument("--python", type=Path, default=Path(sys.executable))
+    candidate.add_argument(
+        "--source-ref-kind",
+        choices=("pull_request_head", "main", "tag", "other"),
+        default="other",
+    )
     verify = commands.add_parser("verify-artifact")
     verify.add_argument("--artifact", type=Path, required=True)
     verify.add_argument("--checksums", type=Path, required=True)
@@ -94,9 +99,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"SHA256: {digest}")
             return 0
         if args.command == "build-release-candidate":
-            bundle = build_release_bundle(args.source, args.output_dir, python=args.python)
+            bundle = build_release_bundle(
+                args.source,
+                args.output_dir,
+                python=args.python,
+                source_ref_kind=args.source_ref_kind,
+            )
             print(f"Version: {bundle.version}")
             print(f"Source commit: {bundle.source_commit}")
+            print(f"Source ref kind: {bundle.source_ref_kind}")
             print(f"Artifact: {bundle.artifact}")
             print(f"SHA256: {bundle.artifact_sha256}")
             print(f"Manifest: {bundle.manifest}")
