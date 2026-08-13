@@ -217,6 +217,10 @@ SHAs and checked by `scripts/check-workflow-action-pins.py`. Existing
 forbidden-primitive, Backend, Frontend, E2E, and Deployment gates remain.
 Shell syntax is checked; actionlint/shellcheck were not added as new required
 contexts because the existing targeted checks provide stable low-noise coverage.
+The first PR run exposed a test-fixture portability defect: a proxy/Cookie test
+used the production `/opt/agentbox` static path, which existed on the designated
+host but not clean runners. The fixture now disables unrelated static serving;
+the production static artifact retains separate integration coverage.
 
 ## Diagnostics
 

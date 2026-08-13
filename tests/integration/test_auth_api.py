@@ -526,7 +526,9 @@ async def test_proxy_source_and_secure_cookie_semantics_are_explicit(
         secret_key=SecretStr(secret),
         runtime_socket=Path("/run/agentbox/runtime.sock"),
         project_root=Path("/srv/agentbox/projects"),
-        static_dir=Path("/opt/agentbox/current/web/dist"),
+        # Static serving has its own production integration tests. Keep this
+        # proxy/Cookie fixture independent from a host installation layout.
+        static_dir=None,
         alembic_ini=Path.cwd() / "alembic.ini",
         allowed_origins=("https://agentbox.example",),
         trusted_proxies=trusted_proxies,
