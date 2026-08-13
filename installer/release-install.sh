@@ -84,4 +84,7 @@ PIP_NO_INDEX=1 "${bootstrap_dir}/venv/bin/pip" install \
   --find-links "${wheelhouse}" \
   "agentbox==${version}" >/dev/null
 
+# The bootstrap venv stays root-private; production release paths created by
+# agentbox-install must use their explicitly managed modes, not this umask.
+umask 022
 "${bootstrap_dir}/venv/bin/agentbox-install" "$@"
