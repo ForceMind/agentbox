@@ -233,10 +233,21 @@ def _run_build_command(
             env=environment,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise BuildError("release build command failed") from exc
+        raise BuildError(f"release build command failed ({_build_command_label(argv)})") from exc
     if result.returncode != 0:
-        raise BuildError("release build command failed")
+        raise BuildError(f"release build command failed ({_build_command_label(argv)})")
     return result
+
+
+def _build_command_label(argv: tuple[str, ...]) -> str:
+    executable = Path(argv[0]).name
+    if len(argv) >= 4 and argv[1:3] == ("-m", "pip") and argv[3] in {"download", "wheel"}:
+        return f"pip {argv[3]}"
+    if executable == "git" and len(argv) >= 2 and argv[1] in {"show", "status", "rev-parse"}:
+        return f"git {argv[1]}"
+    if executable == "pnpm" and argv[1:4] == ("licenses", "list", "--prod"):
+        return "pnpm licenses"
+    return "reviewed build subprocess"
 
 
 def build_release_artifact(

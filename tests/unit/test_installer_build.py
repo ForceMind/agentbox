@@ -7,6 +7,7 @@ from agentbox_installer.build import (
     WHEEL_SOURCE_DIRECTORIES,
     WHEEL_SOURCE_FILES,
     BuildError,
+    _build_command_label,
     _copy_regular_tree,
     _migration_head,
     _prepare_wheel_source,
@@ -77,3 +78,13 @@ def test_wheel_build_uses_an_isolated_allowlisted_source(tmp_path: Path) -> None
     assert all((destination / name).exists() for name in WHEEL_SOURCE_DIRECTORIES)
     assert all((destination / name).is_file() for name in WHEEL_SOURCE_FILES)
     assert not (destination / "build").exists()
+
+
+def test_build_failure_labels_are_bounded_and_do_not_include_paths() -> None:
+    assert _build_command_label(("/secret/python", "-m", "pip", "download")) == "pip download"
+    assert _build_command_label(("/secret/pnpm", "licenses", "list", "--prod", "--json")) == (
+        "pnpm licenses"
+    )
+    assert _build_command_label(("/secret/custom-tool", "--token", "canary")) == (
+        "reviewed build subprocess"
+    )
