@@ -79,6 +79,18 @@ credentials. This application secret is not the future Phase 11 Secret Manager.
 
 ## Runtime migration
 
+## Phase 9 sandbox profile
+
+API, Worker, and Helper use `SystemCallFilter=@system-service` with `EPERM` for
+denied calls. Worker and Helper have private networking; API is limited to Unix
+and loopback Internet-family sockets. Runtime retains Internet access,
+HOME/Project writes, namespace creation, and executable-memory compatibility,
+while keeping an empty capability set, strict system files, private devices/tmp,
+and kernel/control-group protection. Offline scores are API 1.4, Worker 0.6,
+Runtime 3.7, and Helper 0.9; scores are evidence, not a security guarantee.
+
+### Existing-state migration
+
 Installation does not stop, adopt, rename, or migrate existing root Codex,
 Claude, tmux, gh, or project state. The production Runtime begins independently
 and may correctly report installed-but-unauthenticated or unavailable. Project

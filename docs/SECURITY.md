@@ -456,3 +456,12 @@ The network default is loopback and trusted proxies default empty. Installer
 never modifies SSH, firewall, cloudflared, reverse proxies, or TLS. Secure
 cookies and exact HTTPS origins remain mandatory for authenticated production
 browser use behind an operator-managed proxy.
+
+## Phase 9 release-candidate hardening
+
+- Login failure buckets are SQLite-persisted, automatically expired, row bounded, and keyed with the application secret; neither account text nor raw source address is stored.
+- Password changes and session revocation are local TTY-only operations. The current password is required and a successful password change revokes every existing session.
+- API, Worker, and Helper apply `@system-service` syscall filters. Runtime keeps a broader syscall/namespace/executable-memory surface for Codex, Claude, Node/V8, tmux, Git, and bubblewrap compatibility.
+- Runtime and Helper reject duplicate/deep malformed JSON, invalid UTF-8, concatenated/oversized frames, unknown fields/actions/versions, and unbounded correlation IDs. UID and primary GID are checked with `SO_PEERCRED`.
+- GitHub Actions use immutable commit pins. Checksums establish artifact integrity only, not publisher authenticity; signed distribution remains a Phase 10 gate.
+- Job/Audit/login buckets and verified lifecycle artifacts have bounded retention. Cleanup protects active rollback identities and leaves unknown objects for operator review.

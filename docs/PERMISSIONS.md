@@ -179,6 +179,14 @@ Runtime HOME/Project Root for `agentbox-runtime`.
 POSIX tests with distinct temporary real UIDs prove that `agentbox` cannot read
 Runtime credentials, write Project source, or change systemd files, and that
 `agentbox-runtime` cannot read the application secret or write systemd/config.
+## Phase 9 permission verification
+
+Distinct-UID probes reassert that `agentbox` cannot traverse Runtime HOME or
+write Project source, while `agentbox-runtime` cannot read the application
+environment, database, backup root, or units. Runtime and Helper sockets require
+filesystem permissions plus `SO_PEERCRED` UID/GID validation. Doctor reports
+drift but never automatically chowns an unknown tree.
+
 ## Phase 7 ownership
 
 The Runtime user owns Project Root, non-group/world-writable workspace

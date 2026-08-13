@@ -554,6 +554,14 @@ on re-entry rather than replaying an unproven mutation.
 - evidence required for every continuity level, the A/B harness, safe lifecycle
   restoration, and rollback verification during Provider activation.
 
+## Phase 9 hardening boundary
+
+Phase 9 does not change the accepted process or privilege architecture. It adds
+version-aware unit validation, persistent pseudonymous authentication
+throttling, strict IPC/schema parsing, deterministic recovery faults,
+actionable diagnostics, and verified-object retention. Runtime compatibility
+exceptions do not weaken API, Worker, or Helper. Phase 11 remains planning only.
+
 ## Phase 7 Project and Job Flow
 
 `Web/CLI → API → durable Job → Worker → typed UDS action →

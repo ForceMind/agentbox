@@ -146,7 +146,8 @@ Status: merged in PR #25.
 
 ## Phase 8 — Installation, upgrade, rollback, and deployment
 
-Status: implemented on `phase/8-installation-deployment`, pending human review.
+Status: completed and merged in PR #28; Deployment aggregate gate completed in
+PR #29.
 
 - **Goal:** make native systemd installation reproducible, idempotent, verifiable, and reversible.
 - **Input:** approved units and protocols, signed/checksummed release artifact design, distro test images.
@@ -164,6 +165,9 @@ Registry, Secret Manager, Provider API/UI/CLI, Runtime bindings, Codex config
 mutation, and automatic Provider switching remain `NOT STARTED`.
 
 ## Phase 9 — Security audit and compatibility hardening
+
+Status: in progress on `phase/9-security-hardening-compatibility`; Phase 10 and
+Phase 11 remain not started.
 
 - **Goal:** validate the complete MVP against its threat model and supported host/Runtime matrix.
 - **Input:** feature-complete release candidate, fixtures, ephemeral VMs, and Phase 0 risk register.

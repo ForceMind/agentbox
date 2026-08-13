@@ -53,3 +53,9 @@ also rejected before the transaction journal changes.
 Database migrations are not assumed reversible. A release manifest declares
 backward compatibility; otherwise application rollback requires the verified
 pre-change database backup and restore.
+
+After health verification, lifecycle retention keeps five verified backups
+and four verified releases by default, always protecting the current release,
+direct rollback candidate, and current transaction backup. Corrupt, unknown,
+or symlinked objects are retained. A retention failure uses the ordinary
+verified rollback path rather than committing an incomplete transaction.

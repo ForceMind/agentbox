@@ -262,6 +262,22 @@ Revisit the threat model before adding Provider/Secret/config mutation,
 staging/commit or dangerous Git, browser PTY/WebSocket, project deletion,
 multi-user/multi-server, plugins, container control, third-party webhooks,
 enterprise auth, or any non-loopback direct listener.
+## Phase 9 hardening review
+
+Phase 9 retests persistent lockout bypass, backward-clock expiry,
+proxy-source spoofing, Bearer-token redaction, duplicate/deep/concatenated UDS
+messages, peer UID/GID mismatch, unit directive incompatibility, partial
+installer/update state, corrupt rollback evidence, concurrent WAL backup,
+permission drift, and retention deletion identity. A full-system canary gate
+scans logs plus SQLite/WAL/SHM for password, Session, CSRF, application secret,
+Git credential, gh token, Codex Pair Code, and Claude output values.
+
+Residual risks remain explicit: Runtime needs network, HOME, user namespaces,
+and JIT-compatible memory; service sandboxing is not a chroot; checksums do not
+authenticate their publisher; only OpenCloudOS has real-host evidence; TLS and
+trusted-proxy configuration remain operator responsibilities; secret-pattern
+detection remains defense in depth.
+
 ## Phase 7 threats and mitigations
 
 New threats include malicious repository URLs/protocol helpers, credential helpers and `core.sshCommand`, repository/worktree config scope bypass, hooks/pagers/editors/external diff, submodules/LFS, clone residue/no-replace/rollback races, branch/refspec injection, remote credential leakage, ownership mismatch, workspace mutation under an active Agent, Draft PR input injection, `gh` prompt blocking and long network DoS. Mitigations are protocol/input allowlists, fixed config/environment/argv, all active repository-scope config inspection with includes disabled, ownership/canonical-path checks, descriptor-relative no-replace activation, dual-marker rollback identity, mutation leases, bounded time/output, normalized errors, credential redaction and Claude activity guards.

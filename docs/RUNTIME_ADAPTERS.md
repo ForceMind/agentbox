@@ -396,6 +396,15 @@ bounded operation-specific values; path, argv, shell, environment, PID, and Git
 config are forbidden. Clone staging uses exact Job markers and atomic rename.
 Git/GitHub output is bounded and normalized before crossing the socket.
 
+## Phase 9 compatibility exceptions
+
+Runtime syscall filtering, `RestrictNamespaces`, and
+`MemoryDenyWriteExecute` remain disabled as explicit compatibility limitations.
+Bubblewrap may require user namespaces and Node/V8 may require JIT memory. The
+executor instead relies on non-root identity, empty capabilities, typed actions,
+bounded processes, Project/HOME write scopes, UID/GID IPC, and redaction.
+API/Worker/Helper do not inherit these Runtime exceptions.
+
 ## Phase 8 Production Runtime Identity
 
 The installed Runtime Executor runs only as `agentbox-runtime` with HOME

@@ -389,6 +389,19 @@ reads JobEvent rows and does not hold a Worker connection.
 - Purge is an internal policy Job with limits; deleting backups/audit outside policy requires confirmation.
 - Database maintenance checks free disk and never blocks the API indefinitely.
 
+Phase 9 adds a bounded `login_rate_limit_buckets` table. Its key is a
+pseudonymous keyed digest of the normalized account/source tuple; raw account
+names and IP addresses are not stored. Each row contains only the bucket key,
+window start, failure count, and expiry. Expired rows and oldest overflow rows
+are removed under a fixed maximum, so restart persistence cannot become
+unbounded state or a permanent lockout.
+
+Default operational retention is 14 days for completed Jobs/JobEvents and 90
+days for Audit Events. Lifecycle storage separately keeps five verified SQLite
+backups and four verified releases while protecting the active and direct
+rollback identities. Unknown, corrupt, or symlinked objects are retained for
+operator review rather than inferred to be AgentBox-owned.
+
 ## Future PostgreSQL Boundary
 
 Repositories depend on SQLAlchemy models/repositories and transaction abstractions, not SQLite-specific SQL in routes/services. Job claim and migration behavior is isolated. Moving to PostgreSQL is a future multi-server decision; MVP does not pretend SQLite provides multi-host leases.
