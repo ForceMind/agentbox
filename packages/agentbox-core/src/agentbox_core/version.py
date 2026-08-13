@@ -1,3 +1,3 @@
-"""Single source of truth for the engineering-skeleton version."""
+"""Single source of truth for the AgentBox product version."""
 
-__version__ = "0.2.10+dev.9"
+__version__ = "0.3.0rc1"

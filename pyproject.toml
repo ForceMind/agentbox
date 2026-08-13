@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentbox"
-version = "0.2.10+dev.9"
+dynamic = ["version"]
 description = "Turn any Linux server into a remotely managed AI development workstation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "AgentBox contributors" }]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Framework :: FastAPI",
   "Operating System :: POSIX :: Linux",
@@ -60,6 +60,9 @@ packages = [
   "agentbox_runtime",
   "agentbox_worker",
 ]
+
+[tool.setuptools.dynamic]
+version = { attr = "agentbox_core.version.__version__" }
 
 [tool.setuptools.package-dir]
 agentbox_api = "apps/api/src/agentbox_api"
