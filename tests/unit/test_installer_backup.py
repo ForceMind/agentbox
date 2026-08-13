@@ -78,26 +78,40 @@ def test_online_backup_is_consistent_during_concurrent_wal_writes(tmp_path: Path
     database = tmp_path / "agentbox.db"
     with sqlite3.connect(database) as connection:
         connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("CREATE TABLE events(sequence INTEGER PRIMARY KEY, value TEXT)")
-        connection.execute("INSERT INTO events VALUES (0, 'seed')")
+        connection.execute(
+            "CREATE TABLE events(sequence INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT)"
+        )
+        connection.execute("INSERT INTO events(value) VALUES ('seed')")
     backups = tmp_path / "backups"
     backups.mkdir(mode=0o700)
     started = threading.Event()
+    reader_started = threading.Event()
     stopped = threading.Event()
+    observed_reads: list[int] = []
 
     def write_committed_rows() -> None:
-        sequence = 1
         with sqlite3.connect(database, timeout=5) as writer:
             while not stopped.is_set():
-                writer.execute("INSERT INTO events VALUES (?, 'committed')", (sequence,))
+                writer.execute("INSERT INTO events(value) VALUES ('committed')")
                 writer.commit()
                 started.set()
-                sequence += 1
+                time.sleep(0.001)
+
+    def read_during_backup() -> None:
+        with sqlite3.connect(database, timeout=5) as reader:
+            while not stopped.is_set():
+                observed_reads.append(
+                    int(reader.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+                )
+                reader_started.set()
                 time.sleep(0.001)
 
     thread = threading.Thread(target=write_committed_rows)
+    reader_thread = threading.Thread(target=read_during_backup)
     thread.start()
+    reader_thread.start()
     assert started.wait(timeout=5)
+    assert reader_started.wait(timeout=5)
     try:
         result = create_sqlite_backup(
             database,
@@ -109,8 +123,11 @@ def test_online_backup_is_consistent_during_concurrent_wal_writes(tmp_path: Path
     finally:
         stopped.set()
         thread.join(timeout=5)
+        reader_thread.join(timeout=5)
 
     assert not thread.is_alive()
+    assert not reader_thread.is_alive()
+    assert observed_reads
     assert verify_sqlite_backup(result)
     with sqlite3.connect(result.path / "agentbox.db") as restored:
         assert restored.execute("PRAGMA integrity_check").fetchone() == ("ok",)

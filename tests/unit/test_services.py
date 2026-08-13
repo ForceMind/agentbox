@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 from agentbox_core.errors import (
     AdminAlreadyInitialized,
+    DatabaseNotReady,
     InvalidCredentials,
     InvalidSession,
     LoginRateLimited,
@@ -22,7 +24,7 @@ from agentbox_core.models import (
 from agentbox_core.security import PasswordManager, sanitize_metadata
 from agentbox_core.services import ControlPlaneServices, build_services
 from conftest import FakeClock
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 
@@ -172,6 +174,27 @@ def test_expired_session_cleanup_uses_retention(
     assert initialized_services.sessions.cleanup() == 1
 
 
+def test_session_cleanup_race_preserves_an_active_session(
+    initialized_services: ControlPlaneServices,
+) -> None:
+    issued = initialized_services.auth.login(
+        username="maintainer",
+        password="a sufficiently long passphrase",
+        source_identifier="127.0.0.1",
+        request_id="req_active_cleanup_race",
+    )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(initialized_services.sessions.authenticate, issued.token)
+            for _index in range(12)
+        ] + [executor.submit(initialized_services.sessions.cleanup) for _index in range(12)]
+        results = [future.result() for future in futures]
+
+    assert 0 in results
+    assert initialized_services.sessions.authenticate(issued.token).session_id == issued.session_id
+
+
 def test_active_session_limit_revokes_the_oldest_session(
     initialized_services: ControlPlaneServices,
 ) -> None:
@@ -249,6 +272,46 @@ def test_local_password_change_requires_current_password_and_revokes_sessions(
         assert event.metadata_json == {"revoked_count": 2}
 
 
+def test_local_password_change_is_atomic_when_audit_write_fails(
+    initialized_services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issued = initialized_services.auth.login(
+        username="maintainer",
+        password="a sufficiently long passphrase",
+        source_identifier="127.0.0.1",
+        request_id="req_atomic_session",
+    )
+
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise RuntimeError("simulated audit persistence failure")
+
+    original_record = initialized_services.audit.record
+    monkeypatch.setattr(initialized_services.audit, "record", fail_audit)
+    with pytest.raises(RuntimeError, match="audit persistence"):
+        initialized_services.admin.change_password(
+            "a sufficiently long passphrase",
+            "a different sufficiently long passphrase",
+        )
+    monkeypatch.setattr(initialized_services.audit, "record", original_record)
+
+    assert initialized_services.sessions.authenticate(issued.token)
+    assert initialized_services.auth.login(
+        username="maintainer",
+        password="a sufficiently long passphrase",
+        source_identifier="127.0.0.2",
+        request_id="req_atomic_old_password",
+    )
+    with pytest.raises(InvalidCredentials):
+        initialized_services.auth.login(
+            username="maintainer",
+            password="a different sufficiently long passphrase",
+            source_identifier="127.0.0.3",
+            request_id="req_atomic_new_password",
+        )
+
+
 def test_local_session_listing_and_revoke_all_expose_metadata_only(
     initialized_services: ControlPlaneServices,
 ) -> None:
@@ -274,6 +337,7 @@ def test_local_session_listing_and_revoke_all_expose_metadata_only(
         == 1
     )
     assert initialized_services.admin.sessions("a sufficiently long passphrase") == ()
+    assert initialized_services.admin.revoke_sessions("a sufficiently long passphrase") == 0
     with initialized_services.database.transaction() as session:
         event = session.scalar(
             select(AuditEvent).where(AuditEvent.action == "admin_sessions_revoked")
@@ -369,6 +433,144 @@ def test_login_rate_limit_clock_rollback_does_not_erase_failures(
 
     assert decision.allowed is False
     assert 1 <= decision.retry_after <= 301
+
+
+def test_login_rate_limit_clock_rollback_cannot_extend_an_existing_lock(
+    services: ControlPlaneServices,
+    clock: FakeClock,
+) -> None:
+    for _attempt in range(5):
+        services.rate_limits.register_failure("unknown", "192.0.2.45")
+
+    clock.advance(seconds=-10 * 365 * 24 * 60 * 60)
+    decision = services.rate_limits.check("unknown", "192.0.2.45")
+
+    assert decision.allowed is False
+    assert 1 <= decision.retry_after <= 300
+
+
+def test_login_rate_limit_cleanup_retains_a_still_locked_bucket(
+    services: ControlPlaneServices,
+    clock: FakeClock,
+) -> None:
+    for _attempt in range(5):
+        services.rate_limits.register_failure("unknown", "192.0.2.46")
+
+    clock.advance(seconds=299)
+    assert services.rate_limits.cleanup() == 0
+    assert services.rate_limits.check("unknown", "192.0.2.46").allowed is False
+
+
+def test_login_rate_limit_success_clears_account_and_combined_but_retains_source(
+    services: ControlPlaneServices,
+) -> None:
+    username = "maintainer"
+    source = "198.51.100.60"
+    services.rate_limits.register_failure(username, source)
+    account, client, combined = services.rate_limits._keys(username, source)
+
+    services.rate_limits.register_success(username, source)
+
+    with services.database.transaction() as session:
+        assert session.get(LoginRateLimitBucket, account) is None
+        assert session.get(LoginRateLimitBucket, combined) is None
+        source_bucket = session.get(LoginRateLimitBucket, client)
+        assert source_bucket is not None
+        assert len(source_bucket.failure_timestamps) == 1
+
+
+def test_login_rate_limit_blocks_source_spray_and_distributed_account_attack(
+    services: ControlPlaneServices,
+) -> None:
+    spray_source = "198.51.100.61"
+    for index in range(5):
+        services.rate_limits.register_failure(f"unknown-{index}", spray_source)
+    assert services.rate_limits.check("another-account", spray_source).allowed is False
+
+    account = "one-account"
+    for index in range(5):
+        services.rate_limits.register_failure(account, f"203.0.113.{index + 1}")
+    assert services.rate_limits.check(account, "203.0.113.99").allowed is False
+
+
+def test_login_rate_limit_serializes_concurrent_failures(
+    services: ControlPlaneServices,
+) -> None:
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        list(
+            executor.map(
+                lambda _index: services.rate_limits.register_failure(
+                    "concurrent-account", "198.51.100.62"
+                ),
+                range(5),
+            )
+        )
+
+    assert services.rate_limits.check("concurrent-account", "198.51.100.62").allowed is False
+    with services.database.transaction() as session:
+        buckets = tuple(session.scalars(select(LoginRateLimitBucket)))
+        assert len(buckets) == 3
+        assert all(len(bucket.failure_timestamps) == 5 for bucket in buckets)
+
+
+def test_login_rate_limit_row_cap_is_enforced_inside_failure_transaction(
+    services: ControlPlaneServices,
+) -> None:
+    settings = services.database.settings.model_copy(update={"login_rate_max_buckets": 100})
+    bounded = build_services(
+        settings,
+        password_manager=PasswordManager(time_cost=1, memory_cost=8192, parallelism=1),
+    )
+    try:
+        for index in range(33):
+            bounded.rate_limits.register_failure(f"unique-account-{index}", f"198.18.0.{index + 1}")
+        with pytest.raises(LoginRateLimited):
+            bounded.rate_limits.register_failure("overflow-account", "198.18.1.1")
+        with bounded.database.transaction() as session:
+            assert session.scalar(select(func.count()).select_from(LoginRateLimitBucket)) == 99
+    finally:
+        bounded.database.close()
+
+
+def test_login_rate_limit_database_lock_fails_closed(
+    services: ControlPlaneServices,
+) -> None:
+    settings = services.database.settings.model_copy(update={"database_busy_timeout_ms": 100})
+    bounded = build_services(
+        settings,
+        password_manager=PasswordManager(time_cost=1, memory_cost=8192, parallelism=1),
+    )
+    database_path = Path(bounded.database.engine.url.database or "")
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        with pytest.raises(DatabaseNotReady):
+            bounded.rate_limits.check("maintainer", "198.51.100.63")
+    finally:
+        connection.rollback()
+        connection.close()
+        bounded.database.close()
+
+
+def test_malformed_username_limiter_identity_cannot_collide_with_valid_account(
+    services: ControlPlaneServices,
+) -> None:
+    services.admin.initialize("invalid", "a sufficiently long passphrase")
+    for _attempt in range(5):
+        with pytest.raises(InvalidCredentials):
+            services.auth.login(
+                username=" malformed username ",
+                password="wrong password value",
+                source_identifier="198.51.100.64",
+                request_id="req_malformed_rate",
+            )
+
+    assert services.auth.login(
+        username="invalid",
+        password="a sufficiently long passphrase",
+        source_identifier="198.51.100.65",
+        request_id="req_valid_invalid_account",
+    )
 
 
 def test_retention_cleanup_bounds_terminal_jobs_and_audit_but_preserves_active_work(

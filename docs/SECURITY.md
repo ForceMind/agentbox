@@ -33,17 +33,19 @@ missing/short application secrets, unsafe SQLite paths, and non-HTTPS remote
 origins. Loopback HTTP remains a development-mode-only workflow; production
 authentication origins require HTTPS and use `Secure` cookies.
 
-Production also requires the pre-created SQLite parent directory to be a real,
-non-group/world-accessible directory. Database/WAL/SHM files are restricted to
-mode `0600`; Phase 3 does not create the production directory or change system
-ownership.
+Production requires the pre-created SQLite parent to be either the legacy
+private application directory or the installer-managed root-owned sticky
+`root:agentbox 1770` state directory. The sticky bit prevents the application
+identity from replacing root-owned receipt/journal/backup names while allowing
+SQLite to create its own WAL/SHM files. Database/WAL/SHM files are mode `0600`.
 
-The Phase 3 login limiter keeps pseudonymous account, source, and combined
-buckets in API process memory: five failures in five minutes cause a five-minute
-bounded lock. A successful login clears its account/combined buckets but does
-not erase the source spray-defense bucket. Restarting the API clears limiter
-state; persistent throttling remains a documented hardening item rather than a
-claim of restart-resistant enforcement.
+The login limiter keeps pseudonymous account, source, and combined buckets in
+SQLite: five failures in five minutes cause a five-minute bounded lock. A
+successful login clears its account/combined buckets but does not erase the
+source spray-defense bucket. State therefore survives API restart. Expired rows
+are deleted and a hard row cap fails login closed instead of allowing the table
+to grow without bound. Backward wall-clock movement clamps both observations
+and active lock duration rather than creating a multi-year lock.
 
 Login request validation and exact Origin/Host checks run before the login
 service is scheduled. The service checks the rate-limit buckets before the user
@@ -52,8 +54,9 @@ performs the expensive verify. Accepted login work runs through
 `asyncio.to_thread` only after acquiring a process-local semaphore. The default
 `AGENTBOX_ARGON2_MAX_CONCURRENCY=2` is constrained to 1–4, bounding simultaneous
 Argon2 work and keeping password verify, dummy verify, hash, and rehash off the
-FastAPI event loop. Limiter state uses a lock because admitted login workers can
-execute concurrently.
+FastAPI event loop. Limiter decisions and updates use serialized SQLite write
+transactions because admitted login workers can execute concurrently; a busy
+database fails authentication closed after the configured bounded timeout.
 
 Request bodies are capped before JSON validation, authentication request models
 reject unknown fields, and request IDs use a bounded syntax. API errors never
@@ -97,12 +100,18 @@ The Phase 0 host already runs cloudflared and wildcard services, and port 8000 i
 
 ### Login Rate Limiting
 
-- Rate limits combine account and effective-client buckets with exponential delay.
+- Rate limits combine account, effective-client, and combined buckets with a
+  bounded lock.
 - Proxy client addresses are accepted only from configured trusted proxies.
-- The Phase 3 implementation pseudonymizes bucket keys and keeps them in process
-  memory. Persistence across API restart remains a pre-release hardening target;
-  no raw password, token, or public address is stored in a rate-limit record.
+- Bucket identities are keyed pseudonymous digests and persist in SQLite across
+  API restarts; no raw password, username, token, or public address is stored in
+  a rate-limit record.
 - Lockout is bounded to avoid permanent administrator denial of service; local recovery is documented and audited.
+- Phase 9 does not expose application-secret rotation. A future controlled
+  rotation must treat existing Session digests as invalid and explicitly clear
+  obsolete limiter buckets: their keyed identities cannot match after rotation,
+  although retention would eventually remove them. Reinstall/update/rollback
+  preserve the existing application secret and do not silently rotate it.
 
 ### Recent Authentication
 

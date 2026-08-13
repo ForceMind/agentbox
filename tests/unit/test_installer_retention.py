@@ -96,3 +96,48 @@ def test_retention_rejects_symlinked_roots_without_touching_target(tmp_path: Pat
     else:
         raise AssertionError("symlinked retention root was accepted")
     assert real_backups.is_dir()
+
+
+def test_retention_derives_and_preserves_current_release_target(tmp_path: Path) -> None:
+    backups = tmp_path / "backups"
+    releases = tmp_path / "releases"
+    backups.mkdir()
+    releases.mkdir()
+    for index in range(1, 7):
+        _release(releases, f"0.3.{index}")
+    (tmp_path / "current").symlink_to("releases/0.3.1")
+
+    result = enforce_retention(
+        backups_root=backups,
+        releases_root=releases,
+        protected_backup_ids=frozenset(),
+        protected_release_versions=frozenset(),
+    )
+
+    assert "0.3.1" not in result.removed_releases
+    assert (releases / "0.3.1").is_dir()
+    assert (tmp_path / "current").resolve() == releases / "0.3.1"
+
+
+def test_retention_fails_closed_for_escaping_current_release_link(tmp_path: Path) -> None:
+    backups = tmp_path / "backups"
+    releases = tmp_path / "releases"
+    outside = tmp_path / "outside"
+    backups.mkdir()
+    releases.mkdir()
+    outside.mkdir()
+    _release(releases, "0.4.1")
+    (tmp_path / "current").symlink_to(outside, target_is_directory=True)
+
+    try:
+        enforce_retention(
+            backups_root=backups,
+            releases_root=releases,
+            protected_backup_ids=frozenset(),
+            protected_release_versions=frozenset(),
+        )
+    except RuntimeError as exc:
+        assert "current release target is unsafe" in str(exc)
+    else:
+        raise AssertionError("escaping current release target was accepted")
+    assert (releases / "0.4.1").is_dir()

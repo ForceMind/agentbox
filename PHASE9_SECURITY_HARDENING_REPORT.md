@@ -211,8 +211,11 @@ artifacts, and manifest database revision is derived from the migration graph.
 
 ## Dependency / CI Security
 
-All 19 third-party GitHub Actions references are pinned to immutable commit
-SHAs and checked by `scripts/check-workflow-action-pins.py`. Existing
+All 19 external GitHub Actions references are pinned to immutable commit SHAs.
+`scripts/check-workflow-action-pins.py` checks every reference against an
+explicit five-source registry containing the official repository, exact
+release tag, and audited SHA; a previously unseen source or a SHA/tag-comment
+mismatch fails. Existing
 `pip-audit`, `pnpm audit`, dependency review, secret scan, repository-boundary,
 forbidden-primitive, Backend, Frontend, E2E, and Deployment gates remain.
 Shell syntax is checked; actionlint/shellcheck were not added as new required
@@ -228,17 +231,23 @@ Doctor findings use stable schema version 1 with `OK`, `WARN`, `FAIL`, and
 `UNKNOWN`, codes/categories, safe details, and remediation IDs. It checks
 platform, units, identities, directory/permission drift, sockets, loopback,
 database/migration, optional Runtime tools, and disk usage without recursive
-Project reads. Diagnostics export is new-file-only, no-follow, `0600`, 1 MiB
-capped, redacted, and guarded against known secret shapes. Operators are told
-to review it before sharing.
+Project reads. Diagnostics export is new-file-only, no-follow, `0600`, and
+guarded against known secret shapes before the first write. It rejects
+symlinked parent chains and unsafe shared parents, creates relative to a
+validated parent descriptor, removes an incomplete new file on failure, and
+caps total, section, finding, collection, nesting, message, and filename sizes.
+Operators are told to review it before sharing.
 
 ## Retention
 
 Worker cleanup defaults to 14 days for completed Jobs/JobEvents and 90 days for
 Audit Events, and removes expired login limiter buckets. Lifecycle retention
-keeps five verified backups and four verified releases while always protecting
-current, direct rollback, and current-transaction identities. Deletion requires
-verified manifests/digests and refuses symlinks or unknown objects.
+keeps five verified backups and four verified releases. It independently
+resolves and verifies the managed `current` link instead of relying only on a
+caller-supplied keep set, and also protects the direct rollback and
+current-transaction identities. Deletion requires verified manifests/digests
+and refuses symlinks or unknown objects. A diagnostic report is an
+operator-selected new file and has no AgentBox-owned temporary retention area.
 
 The real host contains exactly five Phase 8/9 backups that pass the new
 verification contract; all five are retained. Nine older Phase 8 directories
@@ -322,6 +331,148 @@ support.
 - Runtime authentication is deliberately independent and remains manual.
 - Signed releases, formal SBOM publication, stable packaging/release notes, and
   broader VM qualification remain future release gates.
+
+## Final Security Review
+
+The merge-preparation review on 2026-08-13 was limited to Phase 9 security
+surfaces. It did not add a product feature or touch Phase 10/11 scope.
+
+### Persistent limiter and account boundary
+
+- SQLite contains only keyed account/source/combined digests, a bounded failure
+  timestamp list, update time, and optional lock expiry. Raw passwords,
+  usernames, and source addresses are absent.
+- `BEGIN IMMEDIATE` serializes checks and failure writes. The row limit is
+  rechecked in the same failure transaction, and SQLite busy/lock failure maps
+  to a fail-closed database-not-ready result after the configured timeout.
+- Restart persistence, five-failure lock/expiry, source spray, distributed
+  account attack, successful-login cleanup, concurrent failures, row-cap
+  admission, cleanup boundary, forward/backward clock behavior, and malformed
+  username identity collision all pass. An active lock observed after a large
+  backward clock step is clamped to the configured lock duration.
+- Missing, inactive, wrong-password, and equivalently locked account paths use
+  matching public status/error shapes. Rate-limit admission occurs before the
+  bounded off-event-loop Argon2id verification.
+- Phase 9 exposes no application-secret rotation command. Update/reinstall/
+  rollback preserve it. A future controlled rotation must invalidate Sessions
+  and explicitly clear now-unmatchable limiter digests; this implication is
+  recorded in `docs/SECURITY.md`.
+
+### Password and Session review
+
+`agentbox admin password`, `sessions`, and `revoke-sessions` remain local
+TTY-only. Password values have no argv/environment/JSON path, terminal echo is
+disabled, current-password and policy checks run through Argon2id, and the hash
+change, all-Session revocation, and safe audit event commit atomically. An
+injected audit failure rolls back both hash and revocation. Two browser Sessions,
+their old CSRF values, and the old password are rejected after a successful
+change; the new password succeeds.
+
+The chosen local recovery policy revokes all browser Sessions, including any
+Session from which the operator may previously have authenticated. Phase 9 has
+no by-row or by-ID revoke surface, so one/other/current/expired/unknown-ID
+manipulation is structurally unavailable. Listing returns only the opaque
+display ID, bounded client label, and timestamps—not cookie/token hashes or
+CSRF material. Repeated all-Session revocation is safely idempotent.
+
+### Diagnostics allowlist and canaries
+
+The collector constructs a fixed observation schema; it does not collect logs,
+Project files, database rows, process environments, Runtime auth/config, Pair
+Code, Claude pane output, or credential-bearing Git data and then attempt to
+redact them. Pattern checks are a second fail-closed layer.
+
+Tests place `PASSWORD-CANARY`, `SESSION-TOKEN-CANARY`, `CSRF-CANARY`,
+`APP-SECRET-CANARY`, `CODEX-PAIR-CANARY`, `CLAUDE-OUTPUT-CANARY`,
+`GITHUB-TOKEN-CANARY`, `GIT-CREDENTIAL-CANARY`, `SSH-KEY-CANARY`, and
+`PROVIDER-KEY-CANARY` in simulated sensitive sources. Each forbidden source is
+rejected before output creation, and a generated allowlist report contains none
+of the values. Symlink destination/parent, overwrite, filename, structural,
+size, and injected fsync failure cases leave no secret-bearing partial file.
+The CLI says `Review this diagnostic report before sharing` and makes no
+guarantee that arbitrary text is secret-free.
+
+### Retention, recovery, and SQLite evidence
+
+- Terminal Jobs and their JobEvents use 14-day parent retention; Audit uses 90
+  days; active Jobs and Sessions survive cleanup; revoked/expired Sessions and
+  expired limiter rows have separate boundaries. Concurrent active Session
+  authentication and cleanup retains the Session.
+- Backup/release cleanup accepts only verified AgentBox manifests and digests,
+  refuses roots/candidates with symlinks or mismatched/unknown identity, and
+  preserves receipt/transaction targets plus the independently verified active
+  release target. Escaping `current` links stop cleanup without deletion.
+- `FailureInjector` exists only below `tests/support`; no packaged source,
+  environment variable, Web/API/config, or installer CLI switch can enable it.
+- Crash tests inject after real persistent mutations: journal/receipt writes,
+  backup, migration, activation, restart, health, and committed journal. A
+  corrupt journal or unknown schema now fails closed rather than being treated
+  as absent, and real-host reads require root ownership and mode `0600`.
+- Online SQLite backup ran with simultaneous committed WAL writes and live
+  reads, produced no dependent WAL/SHM sidecar, and passed digest plus
+  `PRAGMA integrity_check`. Concurrent limiter, Session, and Job transactions
+  exercise real SQLite rather than a mocked backup API.
+
+### GitHub Action provenance
+
+Official repository commit and tag endpoints were read during this review; each
+pinned commit was present at the exact release tag below. The script stores this
+mapping locally and checks all 19 uses. This is action-source provenance
+evidence, not a claim that the complete CI supply chain is cryptographically
+attested.
+
+| Action source | Exact tag | Pinned commit |
+|---|---|---|
+| `actions/checkout` | `v4.4.0` | `11d5960a326750d5838078e36cf38b85af677262` |
+| `actions/setup-python` | `v5.6.0` | `a26af69be951a213d495a4c3e4e4022e16d87065` |
+| `actions/setup-node` | `v4.4.0` | `49933ea5288caeca8642d1e84afbd3f7d6820020` |
+| `actions/dependency-review-action` | `v4.9.0` | `2031cfc080254a8a887f58cffee85186f0e49e48` |
+| `pnpm/action-setup` | `v4.3.0` | `b906affcce14559ad1aafd4ab0e942779e9f58b1` |
+
+### Platform and systemd claim audit
+
+Repository claims are consistent: OpenCloudOS 9 x86_64 is real-host validated;
+Ubuntu 24.04 is CI validated without PID 1/native-host evidence; Rocky 9 and
+Debian 12 are fixture validated; Ubuntu 22.04 native installation and aarch64
+are unsupported. No preview was promoted to supported.
+
+The live unit scores remain API `1.4 OK`, Worker `0.6 SAFE`, Runtime `3.7 OK`,
+and Helper `0.9 SAFE`. API/Worker/Helper retain the tested syscall filter;
+Runtime retains HOME/project writes, AF_UNIX/INET and host networking,
+namespace capability for bubblewrap-compatible workflows, executable-memory
+compatibility for Node/V8 tools, and broad third-party CLI syscalls. Individual
+namespace/JIT/syscall restrictions were not enabled experimentally on the
+stable host merely to improve a heuristic score; they remain explicit accepted
+compatibility findings until isolated VM evidence can cover Codex, Claude,
+bubblewrap, Node, Git/gh, tmux, and future supported versions.
+
+### Final regression and host evidence
+
+- Python: Ruff, Black, strict mypy, 507 pytest cases, and Alembic
+  upgrade/downgrade/re-upgrade pass. `pip-audit` reports no known vulnerability.
+- Web: lint, formatting, typecheck, 25 Vitest cases, build, and high-level pnpm
+  audit pass with no known vulnerability.
+- Deployment/security: 170 isolated tests pass; secret, privilege-boundary,
+  forbidden-primitive, exact action-pin, and diff checks pass.
+- Local Playwright reaches the 54-case runner but Chromium cannot load
+  `libgbm.so.1`; no host package was installed. GitHub E2E remains the required
+  browser result for the final pushed head.
+- The existing OpenCloudOS install remains release `0.2.10+dev.9`, journal
+  `committed`, DB revision `0003_security_hardening`, integrity `ok`, and bound
+  only to `127.0.0.1:8787`. API/Worker are `agentbox`, Runtime is
+  `agentbox-runtime`, Helper is socket-activated root, and socket/home/project/
+  environment/DB modes and owners match the design.
+- Production Doctor returned `OK`. A synthetic production diagnostics export
+  was 3,629 bytes, mode `0600`, contained only the seven allowlisted top-level
+  sections and sharing warning, and did not contain the application secret. The
+  temporary report was removed after verification.
+- No service restart, release update/rollback, reboot, SSH/firewall/cloudflared,
+  Project, Provider/Secret, or root Codex/Claude/tmux credential mutation was
+  performed. Root Runtime evidence was inspected as process/file metadata only.
+
+Post-push GitHub checks are deliberately not pre-claimed by this file. PR #30
+may leave Draft only after the final head's Backend, Frontend, Security, E2E,
+Deployment matrix, and `deployment-gate` results complete successfully.
 
 ## Phase 10 Recommendation
 

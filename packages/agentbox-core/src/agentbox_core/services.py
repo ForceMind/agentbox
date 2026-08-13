@@ -472,7 +472,10 @@ class AuthService:
         try:
             normalized = normalize_username(username)
         except ValueError:
-            normalized = "invalid"
+            # This sentinel cannot be produced by normalize_username, so
+            # malformed input cannot collide with a legitimate `invalid` user
+            # and lock that account through the persistent limiter.
+            normalized = "\0invalid"
 
         decision = self._rate_limiter.check(normalized, source_identifier)
         if not decision.allowed:

@@ -7,6 +7,7 @@ import httpx
 import pytest
 from agentbox_core.configuration import Settings
 from agentbox_core.services import ControlPlaneServices
+from agentbox_installer.diagnostics import export_diagnostics
 from conftest import FakeClaudeRuntime, FakeCodexRuntime
 from sqlalchemy.engine import make_url
 
@@ -22,6 +23,7 @@ async def test_phase9_full_system_secret_canaries_remain_ephemeral_or_redacted(
     codex_runtime: FakeCodexRuntime,
     claude_runtime: FakeClaudeRuntime,
     caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
 ) -> None:
     password_canary = "PHASE9-WRONG-PASSWORD-CANARY"
     git_url_canary = "https://oauth2:PHASE9-GIT-CREDENTIAL-CANARY@example.invalid/repo.git"
@@ -88,8 +90,50 @@ async def test_phase9_full_system_secret_canaries_remain_ephemeral_or_redacted(
         gh_token_canary,
         codex_runtime.pair_code,
         claude_runtime.output_canary,
+        "SSH-KEY-CANARY",
+        "PROVIDER-KEY-CANARY",
     )
     assert all(canary not in caplog.text for canary in canaries)
+
+    # Simulated sensitive sources exist beside the collector, but diagnostics
+    # is constructed from explicit safe observations rather than serializing
+    # those source objects and attempting to redact them afterwards.
+    simulated_sensitive_sources = {
+        "password": password_canary,
+        "session_token": raw_session,
+        "csrf": csrf,
+        "application_secret": settings.secret_key.get_secret_value(),
+        "codex_pair_code": codex_runtime.pair_code,
+        "claude_pane_output": claude_runtime.output_canary,
+        "github_token": gh_token_canary,
+        "git_credential_url": git_url_canary,
+        "ssh_private_key": "SSH-KEY-CANARY",
+        "provider_api_key": "PROVIDER-KEY-CANARY",
+    }
+    assert set(simulated_sensitive_sources.values()).issubset(set(canaries))
+    diagnostic = tmp_path / "phase9-diagnostics.json"
+    export_diagnostics(
+        diagnostic,
+        {
+            "schema_version": 1,
+            "control_plane": {
+                "database": "reachable",
+                "migrations": "current",
+                "admin": "initialized",
+            },
+            "deployment": {"overall": "OK", "findings": []},
+            "runtime_capabilities": {
+                "codex": "installed",
+                "claude": "installed",
+                "git": "installed",
+                "github": "available",
+                "tmux": "installed",
+            },
+            "sharing_warning": "Review this diagnostic report before sharing.",
+        },
+    )
+    diagnostic_bytes = diagnostic.read_bytes()
+    assert all(canary.encode() not in diagnostic_bytes for canary in canaries)
 
     initialized_services.database.engine.dispose()
     database = Path(make_url(initialized_services.database.engine.url).database or "")

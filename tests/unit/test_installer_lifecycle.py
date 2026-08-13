@@ -457,6 +457,36 @@ def test_unfinished_transaction_states_fail_closed(
         installer.apply(artifact, digest)
 
 
+@pytest.mark.parametrize(
+    ("journal_content", "message"),
+    [
+        ("{not-json", "journal is corrupt"),
+        ('{"schema_version": 999}', "journal schema is unsupported"),
+    ],
+)
+def test_corrupt_or_unknown_installer_journal_fails_closed(
+    tmp_path: Path, journal_content: str, message: str
+) -> None:
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    installer.apply(artifact, digest)
+    layout.journal.write_text(journal_content, encoding="utf-8")
+
+    with pytest.raises(InstallError, match=message):
+        installer.installation_state()
+
+
+def test_real_host_journal_reader_requires_root_owned_mode_0600(tmp_path: Path) -> None:
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    installer.apply(artifact, digest)
+    layout.journal.chmod(0o640)
+    real_host_reader = AgentBoxInstaller(layout, HostOperations(real_host=True))
+
+    with pytest.raises(InstallError, match="journal permissions are unsafe"):
+        real_host_reader.installation_state()
+
+
 def test_power_loss_after_activation_is_detected_without_reapplying_mutation(
     tmp_path: Path,
 ) -> None:

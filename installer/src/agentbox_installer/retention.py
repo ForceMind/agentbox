@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -80,6 +81,9 @@ def enforce_retention(
     releases = tuple(entry.name for entry in releases_root.iterdir() if _verified_release(entry))
     ordered_releases = tuple(sorted(releases, key=_version_key, reverse=True))
     kept_releases = set(protected_release_versions)
+    current_release = _current_release_version(releases_root)
+    if current_release is not None:
+        kept_releases.add(current_release)
     for version in ordered_releases:
         if len(kept_releases) >= release_limit:
             break
@@ -154,6 +158,27 @@ def _verified_release(path: Path) -> bool:
     except (ArtifactError, OSError):
         return False
     return manifest.version == path.name
+
+
+def _current_release_version(releases_root: Path) -> str | None:
+    """Fail closed and protect the verified target of the managed current link."""
+    current = releases_root.parent / "current"
+    if not current.exists() and not current.is_symlink():
+        return None
+    if not current.is_symlink():
+        raise RuntimeError("current release identity is unsafe")
+    try:
+        raw_target = os.readlink(current)
+        candidate = Path(raw_target)
+        if not candidate.is_absolute():
+            candidate = current.parent / candidate
+        target = candidate.resolve(strict=True)
+        trusted_releases = releases_root.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError("current release target is unavailable") from exc
+    if target.parent != trusted_releases or not _verified_release(target):
+        raise RuntimeError("current release target is unsafe")
+    return target.name
 
 
 def _version_key(version: str) -> tuple[int, int, int, str]:

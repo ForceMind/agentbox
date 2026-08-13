@@ -1681,14 +1681,21 @@ class AgentBoxInstaller:
 
     def _read_journal(self) -> dict[str, Any] | None:
         path = self.layout.journal
-        if path.is_symlink() or not path.is_file():
+        if not path.exists() and not path.is_symlink():
             return None
+        if path.is_symlink() or not path.is_file():
+            raise InstallError("installer journal is unsafe")
+        details = path.lstat()
+        if self.host.real_host and (
+            details.st_uid != 0 or details.st_gid != 0 or stat.S_IMODE(details.st_mode) != 0o600
+        ):
+            raise InstallError("installer journal permissions are unsafe")
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            return None
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise InstallError("installer journal is corrupt") from exc
         if not isinstance(value, dict) or value.get("schema_version") not in {1, 2}:
-            return None
+            raise InstallError("installer journal schema is unsupported")
         return value
 
     def _atomic_write(self, path: Path, content: str, mode: int) -> None:

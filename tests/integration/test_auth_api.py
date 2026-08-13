@@ -301,6 +301,48 @@ async def test_inactive_user_receives_generic_error(
 
 
 @pytest.mark.anyio
+async def test_missing_inactive_wrong_and_locked_accounts_do_not_enumerate(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    wrong = await login(client, origin_headers, password="wrong password value")
+    missing = await login(
+        client,
+        origin_headers,
+        username="missing-account",
+        password="wrong password value",
+    )
+    with initialized_services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser))
+        assert admin is not None
+        admin.is_active = False
+    inactive = await login(client, origin_headers)
+    with initialized_services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser))
+        assert admin is not None
+        admin.is_active = True
+
+    public_errors = [response.json()["error"] for response in (wrong, missing, inactive)]
+    assert [response.status_code for response in (wrong, missing, inactive)] == [401, 401, 401]
+    assert all(error == public_errors[0] for error in public_errors)
+    assert public_errors[0]["code"] == "AUTH_INVALID_CREDENTIALS"
+
+    for username in ("maintainer", "missing-account"):
+        for index in range(5):
+            initialized_services.rate_limits.register_failure(username, f"198.51.100.{100 + index}")
+    locked_existing = await login(client, origin_headers)
+    locked_missing = await login(
+        client,
+        origin_headers,
+        username="missing-account",
+        password="wrong password value",
+    )
+    assert locked_existing.status_code == locked_missing.status_code == 429
+    assert locked_existing.json()["error"] == locked_missing.json()["error"]
+
+
+@pytest.mark.anyio
 async def test_login_rate_limit_is_deterministic_and_recovers(
     client: httpx.AsyncClient,
     clock: FakeClock,
@@ -388,8 +430,7 @@ async def test_expired_and_revoked_sessions_are_rejected(
     initialized_services: ControlPlaneServices,
     origin_headers: dict[str, str],
 ) -> None:
-    response = await login(client, origin_headers)
-    token = response.cookies["agentbox_session"]
+    await login(client, origin_headers)
     clock.advance(seconds=601)
     assert (await client.get("/api/v1/auth/me")).status_code == 401
 
@@ -410,6 +451,47 @@ async def test_expired_and_revoked_sessions_are_rejected(
         assert session.scalar(
             select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_not(None))
         )
+
+
+@pytest.mark.anyio
+async def test_local_password_change_invalidates_old_sessions_csrf_and_password(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    first = await login(client, origin_headers)
+    first_token = first.cookies["agentbox_session"]
+    first_csrf = first.json()["data"]["csrf_token"]
+    second = await login(client, origin_headers)
+    second_token = second.cookies["agentbox_session"]
+    second_csrf = second.json()["data"]["csrf_token"]
+
+    assert (
+        initialized_services.admin.change_password(
+            PASSWORD,
+            "a different sufficiently long passphrase",
+            request_id="req_password_session_regression",
+        )
+        == 2
+    )
+
+    for token, csrf in ((first_token, first_csrf), (second_token, second_csrf)):
+        client.cookies.set("agentbox_session", token)
+        assert (await client.get("/api/v1/auth/me")).status_code == 401
+        rejected_csrf = await client.post(
+            "/api/v1/auth/logout",
+            headers={**origin_headers, "X-CSRF-Token": csrf},
+        )
+        assert rejected_csrf.status_code == 401
+
+    assert (await login(client, origin_headers, password=PASSWORD)).status_code == 401
+    assert (
+        await login(
+            client,
+            origin_headers,
+            password="a different sufficiently long passphrase",
+        )
+    ).status_code == 200
 
 
 @pytest.mark.anyio

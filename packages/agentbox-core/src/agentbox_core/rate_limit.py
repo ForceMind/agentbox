@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import ceil
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from agentbox_core.clock import Clock
 from agentbox_core.database import Database
+from agentbox_core.errors import DatabaseNotReady, LoginRateLimited
 from agentbox_core.models import LoginRateLimitBucket
 from agentbox_core.security import keyed_digest
 
@@ -57,69 +60,102 @@ class LoginRateLimiter:
     def check(self, username: str, source: str) -> RateLimitDecision:
         now = self._clock.now()
         retry_after = 0
-        with self._database.transaction() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            self._delete_expired(session, now)
-            keys = self._keys(username, source)
-            existing = {
-                bucket.key_digest: bucket
-                for bucket in session.scalars(
-                    select(LoginRateLimitBucket).where(LoginRateLimitBucket.key_digest.in_(keys))
-                )
-            }
-            row_count = int(
-                session.scalar(select(func.count()).select_from(LoginRateLimitBucket)) or 0
-            )
-            missing_count = sum(key not in existing for key in keys)
-            if missing_count and row_count + missing_count > self._max_rows:
-                return RateLimitDecision(
-                    allowed=False,
-                    retry_after=max(1, int(self._lock.total_seconds())),
-                )
-            for bucket in existing.values():
-                if bucket.locked_until is not None and bucket.locked_until > now:
-                    retry_after = max(
-                        retry_after,
-                        int((bucket.locked_until - now).total_seconds()) + 1,
+        try:
+            with self._database.transaction() as session:
+                session.execute(text("BEGIN IMMEDIATE"))
+                self._delete_expired(session, now)
+                keys = self._keys(username, source)
+                existing = {
+                    bucket.key_digest: bucket
+                    for bucket in session.scalars(
+                        select(LoginRateLimitBucket).where(
+                            LoginRateLimitBucket.key_digest.in_(keys)
+                        )
                     )
-                    continue
-                attempts = self._pruned_attempts(bucket, now)
-                bucket.failure_timestamps = [value.isoformat() for value in attempts]
-                bucket.locked_until = None
-                bucket.updated_at = now
+                }
+                row_count = int(
+                    session.scalar(select(func.count()).select_from(LoginRateLimitBucket)) or 0
+                )
+                missing_count = sum(key not in existing for key in keys)
+                if missing_count and row_count + missing_count > self._max_rows:
+                    return RateLimitDecision(
+                        allowed=False,
+                        retry_after=max(1, ceil(self._lock.total_seconds())),
+                    )
+                for bucket in existing.values():
+                    if bucket.locked_until is not None and bucket.locked_until > now:
+                        remaining = bucket.locked_until - now
+                        if remaining > self._lock:
+                            # A backwards wall-clock step must not turn a bounded
+                            # lock into an arbitrarily long denial of service.
+                            remaining = self._lock
+                            bucket.locked_until = now + self._lock
+                            bucket.updated_at = now
+                        retry_after = max(retry_after, max(1, ceil(remaining.total_seconds())))
+                        continue
+                    attempts = self._pruned_attempts(bucket, now)
+                    bucket.failure_timestamps = [value.isoformat() for value in attempts]
+                    bucket.locked_until = None
+                    bucket.updated_at = now
+        except OperationalError as exc:
+            # Authentication must fail closed and predictably when SQLite cannot
+            # serialize the throttle decision inside its bounded busy timeout.
+            raise DatabaseNotReady() from exc
         return RateLimitDecision(allowed=retry_after == 0, retry_after=retry_after)
 
     def register_failure(self, username: str, source: str) -> None:
         now = self._clock.now()
-        with self._database.transaction() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            for key in self._keys(username, source):
-                bucket = session.get(LoginRateLimitBucket, key)
-                if bucket is None:
-                    bucket = LoginRateLimitBucket(
-                        key_digest=key,
-                        failure_timestamps=[],
-                        locked_until=None,
-                        updated_at=now,
+        try:
+            with self._database.transaction() as session:
+                session.execute(text("BEGIN IMMEDIATE"))
+                self._delete_expired(session, now)
+                keys = self._keys(username, source)
+                existing = {
+                    bucket.key_digest: bucket
+                    for bucket in session.scalars(
+                        select(LoginRateLimitBucket).where(
+                            LoginRateLimitBucket.key_digest.in_(keys)
+                        )
                     )
-                    session.add(bucket)
-                attempts = self._pruned_attempts(bucket, now)
-                attempts.append(now)
-                attempts = attempts[-self._limit :]
-                bucket.failure_timestamps = [value.isoformat() for value in attempts]
-                bucket.updated_at = now
-                if len(attempts) >= self._limit:
-                    bucket.locked_until = now + self._lock
+                }
+                row_count = int(
+                    session.scalar(select(func.count()).select_from(LoginRateLimitBucket)) or 0
+                )
+                missing_count = sum(key not in existing for key in keys)
+                if row_count + missing_count > self._max_rows:
+                    raise LoginRateLimited(retry_after=max(1, ceil(self._lock.total_seconds())))
+                for key in keys:
+                    bucket = existing.get(key)
+                    if bucket is None:
+                        bucket = LoginRateLimitBucket(
+                            key_digest=key,
+                            failure_timestamps=[],
+                            locked_until=None,
+                            updated_at=now,
+                        )
+                        session.add(bucket)
+                    attempts = self._pruned_attempts(bucket, now)
+                    attempts.append(now)
+                    attempts = attempts[-self._limit :]
+                    bucket.failure_timestamps = [value.isoformat() for value in attempts]
+                    bucket.updated_at = now
+                    if len(attempts) >= self._limit:
+                        bucket.locked_until = now + self._lock
+        except OperationalError as exc:
+            raise DatabaseNotReady() from exc
 
     def register_success(self, username: str, source: str) -> None:
         account, _client, combined = self._keys(username, source)
-        with self._database.transaction() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            session.execute(
-                delete(LoginRateLimitBucket).where(
-                    LoginRateLimitBucket.key_digest.in_((account, combined))
+        try:
+            with self._database.transaction() as session:
+                session.execute(text("BEGIN IMMEDIATE"))
+                session.execute(
+                    delete(LoginRateLimitBucket).where(
+                        LoginRateLimitBucket.key_digest.in_((account, combined))
+                    )
                 )
-            )
+        except OperationalError as exc:
+            raise DatabaseNotReady() from exc
 
     def cleanup(self) -> int:
         """Delete expired buckets while retaining active spray-defense state."""

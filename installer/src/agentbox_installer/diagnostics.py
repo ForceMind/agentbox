@@ -10,6 +10,7 @@ import re
 import socket
 import stat
 import subprocess
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -343,7 +344,9 @@ def _overall(findings: tuple[DiagnosticFinding, ...]) -> DiagnosticSeverity:
 
 
 _SENSITIVE_KEY = re.compile(
-    r"(?:password|secret|token|authorization|cookie|csrf|pair.?code|pane.?output)", re.I
+    r"(?:password|secret|token|authorization|cookie|csrf|pair.?code|pane.?output|"
+    r"private.?key|credential|api.?key|provider.?key)",
+    re.I,
 )
 _SENSITIVE_VALUE = re.compile(
     r"(?:Bearer\s+[A-Za-z0-9._~-]+|gh[pousr]_[A-Za-z0-9]{16,}|"
@@ -351,37 +354,109 @@ _SENSITIVE_VALUE = re.compile(
     re.I,
 )
 
+_MAX_DIAGNOSTIC_BYTES = 1024 * 1024
+_MAX_SECTION_BYTES = 128 * 1024
+_MAX_DEPTH = 8
+_MAX_MAPPING_ITEMS = 64
+_MAX_SEQUENCE_ITEMS = 128
+_MAX_FINDINGS = 64
+_MAX_KEY_CHARACTERS = 80
+_MAX_STRING_CHARACTERS = 1024
+_MAX_FILENAME_BYTES = 128
 
-def validate_diagnostic_payload(value: object) -> None:
+
+def validate_diagnostic_payload(value: object, *, _depth: int = 0) -> None:
     """Reject known secret-shaped keys/values before a report is written."""
+    if _depth > _MAX_DEPTH:
+        raise ValueError("diagnostic payload exceeds its nesting limit")
     if isinstance(value, dict):
+        if len(value) > _MAX_MAPPING_ITEMS:
+            raise ValueError("diagnostic payload exceeds its mapping limit")
         for key, nested in value.items():
-            if _SENSITIVE_KEY.search(str(key)):
+            if not isinstance(key, str) or len(key) > _MAX_KEY_CHARACTERS:
+                raise ValueError("diagnostic payload contains an invalid field name")
+            if _SENSITIVE_KEY.search(key):
                 raise ValueError("diagnostic payload contains a forbidden field")
-            validate_diagnostic_payload(nested)
+            if key == "findings" and isinstance(nested, list) and len(nested) > _MAX_FINDINGS:
+                raise ValueError("diagnostic payload exceeds its findings limit")
+            validate_diagnostic_payload(nested, _depth=_depth + 1)
         return
     if isinstance(value, list | tuple):
+        if len(value) > _MAX_SEQUENCE_ITEMS:
+            raise ValueError("diagnostic payload exceeds its sequence limit")
         for nested in value:
-            validate_diagnostic_payload(nested)
+            validate_diagnostic_payload(nested, _depth=_depth + 1)
         return
-    if isinstance(value, str) and _SENSITIVE_VALUE.search(value):
-        raise ValueError("diagnostic payload contains secret-shaped content")
+    if isinstance(value, str):
+        if len(value) > _MAX_STRING_CHARACTERS:
+            raise ValueError("diagnostic payload exceeds its message limit")
+        if _SENSITIVE_VALUE.search(value):
+            raise ValueError("diagnostic payload contains secret-shaped content")
+        return
+    if value is not None and not isinstance(value, bool | int | float):
+        raise ValueError("diagnostic payload contains an unsupported value")
 
 
 def export_diagnostics(output: Path, payload: dict[str, Any]) -> None:
     """Create one restrictive, non-overwriting sanitized JSON report."""
     validate_diagnostic_payload(payload)
+    for section in payload.values():
+        if len(json.dumps(section, sort_keys=True).encode("utf-8")) > _MAX_SECTION_BYTES:
+            raise ValueError("diagnostic payload exceeds its per-section size limit")
     encoded = (json.dumps(payload, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    if len(encoded) > 1024 * 1024:
+    if len(encoded) > _MAX_DIAGNOSTIC_BYTES:
         raise ValueError("diagnostic payload exceeds its size limit")
-    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+
+    absolute_output = Path(os.path.abspath(output))
+    filename = absolute_output.name
+    if (
+        not filename
+        or len(os.fsencode(filename)) > _MAX_FILENAME_BYTES
+        or any(ord(character) < 32 or ord(character) == 127 for character in filename)
+    ):
+        raise ValueError("diagnostic output filename is invalid")
+    parent = absolute_output.parent
     try:
-        with os.fdopen(descriptor, "wb", closefd=False) as stream:
+        resolved_parent = parent.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("diagnostic output parent is unavailable") from exc
+    if resolved_parent != parent:
+        raise ValueError("diagnostic output parent must not contain symlinks")
+    parent_details = parent.stat()
+    if not stat.S_ISDIR(parent_details.st_mode) or (
+        parent_details.st_mode & 0o022 and not parent_details.st_mode & stat.S_ISVTX
+    ):
+        raise ValueError("diagnostic output parent permissions are unsafe")
+
+    directory_descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    created = False
+    try:
+        opened_parent = os.fstat(directory_descriptor)
+        if (opened_parent.st_dev, opened_parent.st_ino) != (
+            parent_details.st_dev,
+            parent_details.st_ino,
+        ):
+            raise ValueError("diagnostic output parent changed during validation")
+        descriptor = os.open(
+            filename,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory_descriptor,
+        )
+        created = True
+        with os.fdopen(descriptor, "wb") as stream:
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
+        os.fsync(directory_descriptor)
+    except Exception:
+        if created:
+            with suppress(OSError):
+                os.unlink(filename, dir_fd=directory_descriptor)
+                os.fsync(directory_descriptor)
+        raise
     finally:
-        os.close(descriptor)
+        os.close(directory_descriptor)
 
 
 def _proc_listeners(port: int) -> set[str]:
