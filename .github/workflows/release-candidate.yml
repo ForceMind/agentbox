@@ -39,6 +39,7 @@ jobs:
         run: |
           agentbox-install verify-version --source .
           python scripts/check-doc-links.py
+          pnpm licenses list --prod --json | python scripts/check-frontend-licenses.py --source .
       - name: Build candidate twice
         run: |
           export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"

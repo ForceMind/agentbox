@@ -258,7 +258,6 @@ def build_release_artifact(
     python: Path,
     source_commit: str | None = None,
     source_date_epoch: int | None = None,
-    pnpm: Path | None = None,
 ) -> str:
     if not VERSION_PATTERN.fullmatch(version):
         raise BuildError("release version must follow semantic version syntax")
@@ -279,12 +278,6 @@ def build_release_artifact(
         source_date_epoch = source_date_epoch or observed_epoch
     if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None or source_date_epoch < 315532800:
         raise BuildError("release source metadata is invalid")
-    pnpm = pnpm or Path(shutil.which("pnpm") or "")
-    if not pnpm.is_absolute() or not pnpm.is_file():
-        raise BuildError("pnpm is required to inventory frontend production dependencies")
-    node = Path(shutil.which("node") or "")
-    if not node.is_absolute() or not node.is_file():
-        raise BuildError("Node is required to run the frontend license inventory")
     with tempfile.TemporaryDirectory(prefix="agentbox-release-") as temporary:
         release = Path(temporary) / "release"
         wheel_source = Path(temporary) / "wheel-source"
@@ -371,7 +364,7 @@ def build_release_artifact(
         os.chmod(release_docs / "releases" / release_notes.name, 0o644)
 
         python_packages = _python_package_inventory(wheelhouse)
-        frontend_packages = _frontend_package_inventory(source, pnpm, node)
+        frontend_packages = _frontend_package_inventory(source)
         _verify_license_inventory(python_packages + frontend_packages)
         sbom = _spdx_sbom(
             version,
@@ -520,21 +513,45 @@ def _python_package_inventory(wheelhouse: Path) -> list[dict[str, str]]:
     return [packages[key] for key in sorted(packages)]
 
 
-def _frontend_package_inventory(source: Path, pnpm: Path, node: Path) -> list[dict[str, str]]:
-    environment = {
-        "PATH": f"{pnpm.parent}:{node.parent}:/usr/bin:/bin",
-        "HOME": os.environ.get("HOME", "/tmp"),
-    }
-    result = _run_build_command(
-        (str(pnpm), "licenses", "list", "--prod", "--json"),
-        source,
-        timeout=120,
-        extra_env=environment,
-    )
+def _frontend_package_inventory(source: Path) -> list[dict[str, str]]:
     try:
-        value: Any = json.loads(result.stdout)
-    except (UnicodeError, json.JSONDecodeError) as exc:
-        raise BuildError("frontend license inventory is invalid") from exc
+        value: Any = json.loads((source / "licenses-frontend.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise BuildError("reviewed frontend license inventory is invalid") from exc
+    if not isinstance(value, list) or not value:
+        raise BuildError("reviewed frontend license inventory is invalid")
+    packages: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {
+            "name",
+            "version",
+            "license",
+            "download",
+            "manager",
+        }:
+            raise BuildError("reviewed frontend license inventory is invalid")
+        if (
+            not all(isinstance(item[key], str) for key in item)
+            or item["manager"] != "npm"
+            or re.fullmatch(r"@?[A-Za-z0-9][A-Za-z0-9._@/-]{0,199}", item["name"]) is None
+            or re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,99}", item["version"]) is None
+            or len(item["license"]) > 200
+            or not (
+                item["download"] == "NOASSERTION"
+                or re.fullmatch(r"https://[^\s]{1,500}", item["download"])
+            )
+        ):
+            raise BuildError("reviewed frontend license inventory is invalid")
+        packages.append({key: item[key] for key in item})
+    ordered = sorted(packages, key=lambda item: (item["name"].casefold(), item["version"]))
+    if packages != ordered or len({(item["name"], item["version"]) for item in packages}) != len(
+        packages
+    ):
+        raise BuildError("reviewed frontend license inventory is not canonical")
+    return packages
+
+
+def frontend_inventory_from_pnpm(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, dict):
         raise BuildError("frontend license inventory is invalid")
     packages: dict[tuple[str, str], dict[str, str]] = {}

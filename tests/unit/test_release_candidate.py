@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
@@ -13,6 +12,7 @@ from agentbox_installer.artifact import ArtifactError, extract_verified_tar, ver
 from agentbox_installer.build import (
     _frontend_package_inventory,
     _python_package_inventory,
+    frontend_inventory_from_pnpm,
     npm_version,
     verify_version_consistency,
 )
@@ -102,32 +102,22 @@ def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Pat
     assert _python_package_inventory(tmp_path) == []
 
 
-def test_frontend_inventory_allowlists_the_explicit_node_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    pnpm = tmp_path / "pnpm-bin/pnpm"
-    node = tmp_path / "node-bin/node"
-    pnpm.parent.mkdir()
-    node.parent.mkdir()
-    pnpm.write_text("fixture\n", encoding="utf-8")
-    node.write_text("fixture\n", encoding="utf-8")
-    observed: dict[str, str] = {}
+def test_reviewed_frontend_inventory_matches_normalized_pnpm_shape() -> None:
+    root = Path(__file__).resolve().parents[2]
+    reviewed = _frontend_package_inventory(root)
+    pnpm_value: dict[str, list[dict[str, object]]] = {}
+    for item in reviewed:
+        pnpm_value.setdefault(item["license"], []).append(
+            {
+                "name": item["name"],
+                "versions": [item["version"]],
+                "license": item["license"],
+                "homepage": item["download"],
+            }
+        )
 
-    def run(
-        argv: tuple[str, ...],
-        cwd: Path,
-        *,
-        timeout: int,
-        extra_env: dict[str, str] | None = None,
-    ) -> subprocess.CompletedProcess[bytes]:
-        del argv, cwd, timeout
-        observed.update(extra_env or {})
-        return subprocess.CompletedProcess((), 0, b"{}", b"")
-
-    monkeypatch.setattr("agentbox_installer.build._run_build_command", run)
-
-    assert _frontend_package_inventory(tmp_path, pnpm, node) == []
-    assert observed["PATH"] == f"{pnpm.parent}:{node.parent}:/usr/bin:/bin"
+    assert len(reviewed) == 8
+    assert frontend_inventory_from_pnpm(pnpm_value) == reviewed
 
 
 def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -> None:
