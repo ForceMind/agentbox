@@ -16,12 +16,12 @@ No tag or GitHub Release has been created. Phase 11 is not started.
 
 - Branch: `phase/10-mvp-release-candidate`
 - Baseline main: `0334f8249ceddbcd9ff32a95435905002694e360`
-- Final local candidate artifact source: `0c54b5087a97f993a9365777df529b6c3cffdd49`
-- Real-host rehearsal artifact source: `2dfd62e4e96cac749e190a5951d28eddbc8c95bb`
+- Final local integrity artifact source: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Final real-host rehearsal artifact source: `29e65078afba5c998981e6f66867bf55d459ad89`
 - Draft PR: <https://github.com/ForceMind/agentbox/pull/31>
-- Commits: fourteen scoped build, test, CI, documentation, release-version,
-  CI portability, report, and dependency-security commits at the time of the
-  final local candidate build
+- Commits: seventeen scoped build, test, CI, documentation, release-version,
+  CI portability, report, dependency-security, and final integrity commits
+  before this evidence update
 
 ## Candidate Version
 
@@ -31,16 +31,47 @@ No tag or GitHub Release has been created. Phase 11 is not started.
 - Tag created: no
 - GitHub Release created: no
 
-## Source Commit
+## Artifact Provenance Evidence
 
-The final local reproducibility/artifact-only rehearsal used
-`0c54b5087a97f993a9365777df529b6c3cffdd49`. The real-host rehearsal used
-`2dfd62e4e96cac749e190a5951d28eddbc8c95bb`; subsequent changes are this report
-and a development/build-only nanoid security pin, so the shipped Runtime payload
-is unchanged apart from source provenance. The GitHub workflow independently
-records and builds the exact PR head; any subsequent report-only commit is
-therefore covered by fresh CI rather than silently attributed to the local
-artifact.
+### Local reproducibility artifact
+
+- Source commit: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Source ref kind: `other` (clean local branch-head build)
+- SHA-256: `82fda14bdbf81d8fccc0f16881f63ea842e17e634a15a226771ce666ea582149`
+- Size: 20,812,329 bytes
+- Purpose: two independent same-environment builds, manifest/inventory/nested
+  wheel scans, and bundled-installer artifact-only smoke
+
+### Real-host rehearsal artifact
+
+- Source commit: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Source ref kind: `pull_request_head`
+- SHA-256: `1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667`
+- Size: 20,812,312 bytes
+- Purpose: AgentBox-only OpenCloudOS update/health/identity/rollback rehearsal
+
+### Current PR CI artifact
+
+- PR head at build: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Actual checkout/source commit: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Source ref kind: `pull_request_head`
+- SHA-256: `1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667`
+- Size: 20,812,312 bytes
+- Workflow evidence: Release Candidate run `31727404716`, including successful
+  `release-candidate` and `release-gate`
+
+This committed report cannot permanently contain the hash of an artifact that
+also contains this exact report commit without changing that artifact. The CI
+job summary/artifact remains the authoritative per-head hash. A report-only
+successor head must receive fresh CI and is not silently attributed to the
+evidence above.
+
+### Future tag artifact
+
+- Status: **NOT BUILT**
+- SHA-256: unknown
+- Requirement: rebuild from the separately reviewed tag commit after merge and
+  explicit tag authorization; no PR artifact hash is promised to match it
 
 ## Version Consistency
 
@@ -55,10 +86,10 @@ checks passed.
 
 | File | Size | SHA-256 |
 |---|---:|---|
-| `agentbox-0.3.0rc1-linux-x86_64.tar.gz` | 20,808,669 bytes | `775bf64db03a8e9748b4e1cdb2ca7ca3bdf2874cd15f647e92bd80b2d8f8a2b7` |
-| `RELEASE_MANIFEST.json` | 12,363 bytes | `d2df80b231a430b1aeab32c629b030770997be58c9989c15cd1d8b3c8f93aa1e` |
-| `SBOM.spdx.json` | 21,917 bytes | `c9edaad90d24ecdef5d38c79b24e7477f33a94183db397b5c09cefb5e8d73939` |
-| `SHA256SUMS` | 273 bytes | `b3c39e0f9414a25b8dd4bff1e74e5c1397bd762d6c9b0d14aeca9e620b401cf6` |
+| `agentbox-0.3.0rc1-linux-x86_64.tar.gz` | 20,812,312 bytes | `1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667` |
+| `RELEASE_MANIFEST.json` | CI artifact member | verified by `SHA256SUMS` and internal/external identity |
+| `SBOM.spdx.json` | CI artifact member | verified by `SHA256SUMS` and internal/external identity |
+| `SHA256SUMS` | 273 bytes | independently verified in run `31727404716` |
 
 ## Artifact Layout
 
@@ -72,24 +103,26 @@ Playwright output, and user files. Only `install.sh` is executable.
 
 ## Release Manifest
 
-Schema 2 records candidate version, exact source commit, target platform and
-architecture, RC build mode, required Python range, qualified platform claims,
-migration head, authenticity status, public metadata filenames, exact file
-allowlist, executable allowlist, and per-file SHA-256. Strict schema, values,
-required files, version/wheel/SBOM/migration agreement, file modes, and digests
-passed locally.
+Schema 3 records candidate version, actual source commit and ref kind, target
+platform/architecture, RC build mode, artifact-specific Python range
+`>=3.11,<3.14`, supported ABIs cp311/cp312/cp313, locked pip/setuptools/wheel/
+Node/pnpm toolchain, qualified platform claims, migration head, authenticity
+status, public metadata filenames, exact file/executable allowlists, and
+per-file SHA-256. The verifier rejects missing, unknown, broadened, or
+inconsistent compatibility/provenance metadata and checks the observed
+wheelhouse ABI inventory.
 
 ## Reproducibility
 
 Two builds from separate empty staging directories, the same clean commit,
 dependency locks, and `SOURCE_DATE_EPOCH` produced byte-identical public output.
-Both tarballs have SHA-256
-`775bf64db03a8e9748b4e1cdb2ca7ca3bdf2874cd15f647e92bd80b2d8f8a2b7`.
+Both final local tarballs have SHA-256
+`82fda14bdbf81d8fccc0f16881f63ea842e17e634a15a226771ce666ea582149`.
 Ordering, timestamps, uid/gid, user/group names, file modes, JSON ordering, and
 gzip metadata are normalized. The first rehearsal exposed and fixed an
 out-of-tree wheel-staging defect before this passing run.
 
-- Same-runner exact reproducibility: pass
+- Same-environment exact reproducibility: pass
 - Cross-runner byte reproducibility: not qualified
 
 ## Checksums
@@ -108,7 +141,10 @@ inventory, credential, or user path.
 
 ## Third-party Licenses
 
-`THIRD_PARTY_NOTICES.md` mirrors the locked runtime inventory. Observed licenses
+The builder and CI cross-check `requirements-release.lock`, the actual
+wheelhouse, reviewed frontend production inventory, SPDX package entries, and
+`THIRD_PARTY_NOTICES.md`; 32 third-party package identities/versions/licenses
+matched. Observed licenses
 are Apache-2.0, MIT, MIT-0, ISC, BSD-3-Clause, PSF-2.0, and the declared
 `MIT AND PSF-2.0` expression. No GPL/AGPL or unknown runtime license was accepted
 by the build. This is an engineering inventory, not legal advice; publication
@@ -127,10 +163,14 @@ their absence does not block the control plane.
 
 `.github/workflows/release-candidate.yml` is read-only, uses immutable audited
 Action SHAs, persists no checkout credential, consumes no secret, and cannot
-tag, publish, or write to a registry. It verifies the version/docs, builds twice,
-compares all public output, validates manifest/checksums/SBOM/archive/secrets,
-runs artifact-only install and recovery smoke tests, and uploads a seven-day CI
-artifact.
+tag, publish, or write to a registry. Pull requests explicitly checkout
+`github.event.pull_request.head.sha`; pushes build `github.sha`. CI asserts the
+checkout and manifest commit/ref-kind before upload. The workflow installs a
+73-package exact/hash-locked Python build/test environment rather than upgrading
+to latest pip/wheel or resolving `.[dev]`, verifies fixed Node `22.23.2` and
+pnpm `11.20.0`, builds twice, compares public output, validates
+manifest/checksums/SBOM/licenses/archive/secrets, runs artifact-only install and
+recovery smoke, and uploads a seven-day artifact.
 
 ## release-gate
 
@@ -138,11 +178,12 @@ artifact.
 `always()` plus an exact `success` result check, so failure, cancellation, or
 skip cannot report success. It performs no duplicate build. Local equivalent
 steps passed and the real GitHub check context `release-gate` completed
-successfully on the rehearsal source commit.
+successfully on source commit `29e65078afba5c998981e6f66867bf55d459ad89`.
 
 ## Validation and CI
 
-- Backend: Ruff, Black, mypy, migrations and 523 pytest tests passed locally;
+- Backend: Ruff, Black, mypy, migration upgrade/downgrade/upgrade and 541 pytest
+  tests passed locally;
   all Python 3.11/3.12/3.13 GitHub quality jobs passed.
 - Frontend: lint, format, typecheck, 25 unit tests, production build, and
   high-severity audit passed locally and on GitHub.
@@ -151,11 +192,12 @@ successfully on the rehearsal source commit.
   matrix jobs and `deployment-gate` passed on GitHub.
 - Security: repository boundaries, Action pins, secret scan, dependency review,
   Python audit, and frontend audit passed.
-- Release: version/docs/license drift, double build, reproducibility, manifest,
-  checksums, SBOM, archive/secret scan, artifact smoke, upload, and
+- Release: locked toolchain, version/docs/license drift, double build,
+  reproducibility, manifest, checksums, SBOM, tar/nested-wheel secret scan,
+  actual `install.sh` smoke, upload, and
   `release-gate` passed on GitHub.
 - Protect main remained unchanged with its existing ten required checks, all of
-  which passed on the rehearsal source commit.
+  which passed on `29e65078afba5c998981e6f66867bf55d459ad89`.
 
 The final report-triggered audit detected newly published High advisory
 `GHSA-2v37-7h3g-55p8` in the Vite/PostCSS development chain. The transitive
@@ -166,11 +208,14 @@ dependency is not part of the shipped production runtime SBOM.
 
 ## Installer Smoke
 
-The RC was verified and installed only from its extracted artifact into a
-temporary filesystem root. Directory/release state, manifest, Python entry
+The exact extracted `install.sh` passed `bash -n`, ran public artifact
+verification, created a private bootstrap venv, installed with `PIP_NO_INDEX=1`
+and artifact wheelhouse only, forwarded fixture plan/apply/uninstall arguments,
+and cleaned its temporary directory on venv/pip failures. Negative coverage
+rejects missing VERSION/wheelhouse, Python 3.10/3.14, test override misuse, and
+bootstrap failures. A second manually created venv still validates Python entry
 points, production static Web, migration, loopback health/readiness/meta, and
-data-preserving uninstall passed. No source checkout or Node executable was
-available to the isolated installed application.
+data-preserving uninstall without Node or source-installed AgentBox.
 
 ## Fixture Fresh Install
 
@@ -186,9 +231,19 @@ Phase 8/9 lifecycle tests cover staged activation, online SQLite backup, partial
 migration failure, interrupted staged/migrated/activated recovery states,
 service/readiness/version/migration gates, and forward recovery. Phase 10 added
 PEP 440 RC comparison and retention support after artifact-only smoke exposed
-the old parser limitation. Fixture upgrade coverage passed. The real host then
-updated from `0.2.10+dev.9` to `0.3.0rc1`, created verified backup
-`20260813T161847.614298Z`, and completed health verification.
+the old parser limitation. Fixture upgrade coverage passed. The final real-host
+run used the PR-head CI artifact, updated from `0.2.10+dev.9` to `0.3.0rc1`,
+created verified backup `20260813T175038.550897Z`, and completed version,
+health, readiness, identity, socket, and loopback verification.
+
+An initial post-integrity rehearsal attempt exposed a real bootstrap defect:
+the private bootstrap `umask 077` was inherited by production Installer venv
+creation, preventing the non-root `agentbox` identity from executing Alembic.
+The transaction automatically reported `upgrade failed; rollback verified` and
+restored the stable release. Commit `29e65078afba5c998981e6f66867bf55d459ad89`
+restores managed `umask 022` immediately before invoking `agentbox-install`,
+retains a private bootstrap venv, adds deterministic forwarding/umask tests, and
+passed the subsequent real-host update and rollback.
 
 ## Rollback Dress Rehearsal
 
@@ -203,8 +258,10 @@ Doctor checks passed.
 
 ## Real-host Dress Rehearsal
 
-Passed after Backend, Frontend, Security, E2E, Deployment, `deployment-gate`,
-and `release-gate` were green on the Draft PR. The AgentBox-only cycle was:
+Passed using CI artifact SHA-256
+`1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667`
+after Backend, Frontend, Security, E2E, Deployment, `deployment-gate`, and
+`release-gate` were green on the Draft PR. The AgentBox-only cycle was:
 
 1. recorded stable release `0.2.10+dev.9`, process identities, listener,
    config/application-secret hashes, Runtime/root-Runtime metadata and services;
@@ -226,8 +283,10 @@ real-host update/rollback rehearsal, not a real-host fresh install.
 ## Final Host State
 
 **PRE-REHEARSAL STABLE RELEASE**: `0.2.10+dev.9`, healthy and ready on
-`127.0.0.1:8787`. The candidate remains an inactive verified release, not the
-active production target.
+`127.0.0.1:8787`. The final candidate payload was removed after verified
+rollback; the pre-existing inactive earlier rehearsal release was restored to
+its original path. The final PR-head candidate is not the active production
+target.
 
 ## Platform Matrix
 
@@ -242,19 +301,23 @@ active production target.
 
 ## Resource Baseline
 
-At approximately 16 seconds after candidate activation, observed RSS was API
-77,284 KiB, Worker 63,796 KiB, and Runtime 23,080 KiB. The complete
-backup/update/restart/health transaction finished in approximately 9.1 seconds.
-The control-plane DB was 172,032 bytes, final artifact 20,808,669 bytes, and production
-static assets 326,056 bytes. This is a single operational observation on the
+The control-plane DB was 172,032 bytes, final rehearsed CI artifact 20,812,312
+bytes, and production static assets 326,056 bytes. Earlier RC evidence recorded
+idle process RSS and a complete lifecycle transaction within the available
+2-vCPU/3.5-GiB host envelope. This is a single operational observation on the
 2-vCPU/3.5-GiB OpenCloudOS host, not benchmark certification.
 
 ## Secret Scan
 
-Repository secret-pattern checks and the public bundle scan passed. The archive,
-manifest, SBOM, docs, static JavaScript, member names, and checksums were checked
-for application/session/CSRF/Codex Pair/Claude output/GitHub/Git/Provider/SSH
-canaries. No source maps or canaries were present.
+Repository secret-pattern checks and the public bundle scan passed. Tar member
+names and regular bytes plus 2,079 nested wheel member names and bounded,
+decompressed regular bytes were checked in memory for application/session/CSRF/
+Codex Pair/Claude output/GitHub/Git/Provider/SSH canaries. Wheel count,
+per-member size, aggregate expanded size, duplicate/colliding path, malformed
+ZIP, encrypted member, and unexpected file-type failures are fail closed. No
+source maps or canaries were present. This claim is deliberately limited to tar
+members and nested wheel contents; it does not claim arbitrary recursive
+decompression of every possible file format.
 
 ## Release Notes / Changelog
 
@@ -283,12 +346,14 @@ end-user workflow remain operator acceptance items.
 
 ## Security Review
 
-The release boundary fails closed on a dirty checkout; archive traversal,
+The release boundary fails closed on a dirty checkout; provenance/ref mismatch;
+overbroad Python/ABI or unlocked build-toolchain metadata; archive traversal,
 non-canonical/duplicate/case-fold-colliding names, links and special files;
 undeclared content; unsafe modes; digest, schema, version, platform, migration,
 or SBOM mismatch; unknown/GPL/AGPL license; artifact size over 100 MiB; source
-maps; or embedded canaries. The workflow is read-only and action-pinned. This is
-not a penetration test or a general production-readiness claim.
+maps; or embedded tar/nested-wheel canaries. The workflow is read-only and
+action-pinned. This is not a penetration test or a general production-readiness
+claim.
 
 ## Unsigned Artifact Risk
 
