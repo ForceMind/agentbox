@@ -278,24 +278,7 @@ def build_release_artifact(
         wheelhouse.mkdir(mode=0o755, parents=True)
         _prepare_wheel_source(source, wheel_source)
         build_environment = {"SOURCE_DATE_EPOCH": str(source_date_epoch)}
-        _run_build_command(
-            (
-                str(python),
-                "-m",
-                "pip",
-                "download",
-                "--require-hashes",
-                "--only-binary=:all:",
-                "--dest",
-                str(wheelhouse),
-                "--requirement",
-                str(source / "requirements-release.lock"),
-            ),
-            source,
-            timeout=600,
-            extra_env=build_environment,
-        )
-        for python_abi in ("312", "313"):
+        for python_abi in ("311", "312", "313"):
             _run_build_command(
                 (
                     str(python),
