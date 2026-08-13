@@ -506,6 +506,8 @@ def _python_package_inventory(wheelhouse: Path) -> list[dict[str, str]]:
         homepage = message.get("Home-page") or "NOASSERTION"
         if not name or not version:
             raise BuildError("Python dependency wheel metadata is incomplete")
+        if str(name).casefold() == "agentbox":
+            continue
         item = {
             "name": str(name),
             "version": str(version),

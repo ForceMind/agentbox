@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 from agentbox_installer.artifact import ArtifactError, extract_verified_tar, verify_release
-from agentbox_installer.build import npm_version, verify_version_consistency
+from agentbox_installer.build import (
+    _python_package_inventory,
+    npm_version,
+    verify_version_consistency,
+)
 
 
 def _minimal_wheel(path: Path, version: str) -> None:
@@ -88,6 +92,12 @@ def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
     assert verify_version_consistency(root) == "0.3.0rc1"
     assert npm_version("0.3.0rc1") == "0.3.0-rc.1"
+
+
+def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Path) -> None:
+    _minimal_wheel(tmp_path / "agentbox-0.3.0rc1-py3-none-any.whl", "0.3.0rc1")
+
+    assert _python_package_inventory(tmp_path) == []
 
 
 def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -> None:
