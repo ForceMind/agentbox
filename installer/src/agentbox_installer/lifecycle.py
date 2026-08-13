@@ -53,15 +53,39 @@ HARDENED_DATA_LAYOUT_MIN_VERSION = "0.2.5"
 
 
 def _compare_versions(candidate: str, current: str) -> int:
-    """Compare the ordered SemVer core; build metadata never authorizes downgrade."""
-    pattern = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
+    """Compare release precedence; build metadata never authorizes downgrade."""
+    pattern = re.compile(
+        r"^(\d+)\.(\d+)\.(\d+)(?:(?:rc([1-9]\d*))|-([0-9A-Za-z][0-9A-Za-z.-]*))?"
+        r"(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$"
+    )
     candidate_match = pattern.fullmatch(candidate)
     current_match = pattern.fullmatch(current)
     if candidate_match is None or current_match is None:
         raise InstallError("installed or candidate release version is invalid")
-    candidate_key = tuple(int(part) for part in candidate_match.groups())
-    current_key = tuple(int(part) for part in current_match.groups())
+    candidate_key = _release_precedence(candidate_match)
+    current_key = _release_precedence(current_match)
     return (candidate_key > current_key) - (candidate_key < current_key)
+
+
+def _release_precedence(match: re.Match[str]) -> tuple[int, int, int, int, int, str]:
+    major, minor, patch, rc_number, prerelease = match.groups()
+    if rc_number is not None:
+        release_rank = 2
+        prerelease_number = int(rc_number)
+    elif prerelease is not None:
+        release_rank = 1
+        prerelease_number = 0
+    else:
+        release_rank = 3
+        prerelease_number = 0
+    return (
+        int(major),
+        int(minor),
+        int(patch),
+        release_rank,
+        prerelease_number,
+        prerelease or "",
+    )
 
 
 class InstallError(RuntimeError):

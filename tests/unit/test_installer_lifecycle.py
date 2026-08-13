@@ -21,6 +21,7 @@ from agentbox_installer.lifecycle import (
     InstallError,
     RollbackVerificationError,
     RollbackVerifiedError,
+    _compare_versions,
 )
 from support.failure_injection import FailureInjector, InjectedCrash
 
@@ -105,6 +106,13 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox")) == 0o1770
     assert stat_mode(layout.map("/srv/agentbox/projects")) == 0o700
     assert stat_mode(layout.map("/run/agentbox")) == 0o3770
+
+
+def test_release_candidate_version_precedence_and_local_metadata() -> None:
+    assert _compare_versions("0.3.0rc1", "0.3.0rc1") == 0
+    assert _compare_versions("0.3.0rc2", "0.3.0rc1") == 1
+    assert _compare_versions("0.3.0", "0.3.0rc2") == 1
+    assert _compare_versions("0.2.10+dev.9", "0.2.10+dev.8") == 0
 
 
 def test_upgrade_creates_verified_backup_and_rollback_restores_database(
