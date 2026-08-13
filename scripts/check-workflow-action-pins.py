@@ -40,6 +40,11 @@ AUDITED_ACTIONS = {
         "49933ea5288caeca8642d1e84afbd3f7d6820020",
         "https://github.com/actions/setup-node",
     ),
+    "actions/upload-artifact": AuditedAction(
+        "v4.6.2",
+        "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        "https://github.com/actions/upload-artifact",
+    ),
     "actions/dependency-review-action": AuditedAction(
         "v4.9.0",
         "2031cfc080254a8a887f58cffee85186f0e49e48",
