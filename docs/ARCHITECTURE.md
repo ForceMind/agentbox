@@ -571,3 +571,22 @@ resolves the immutable relative key beneath Project Root. Worker leases
 serialize mutations per Project and interrupted work becomes `needs_attention`.
 Claude continues using the same relative key internally so managed tmux identity
 survives migration.
+
+## Phase 10 release boundary
+
+Phase 10 packages the accepted single-host architecture; it does not add a new
+runtime or privilege path. A clean tracked commit, the locked dependency graph,
+and a fixed `SOURCE_DATE_EPOCH` produce one allowlisted Linux x86_64 artifact.
+The archive contains the application wheel and locked wheelhouse, built Web
+assets, migrations, installer entry point, unit/helper assets already owned by
+the Python package, release documentation, SPDX SBOM, and a canonical release
+manifest. It contains no checkout metadata, development environment, user data,
+configuration, credentials, source maps, or Runtime state.
+
+`RELEASE_MANIFEST.json` binds the candidate version, source commit, platform,
+migration head, file allowlist, modes, and per-file SHA-256 values. An external
+`SHA256SUMS` binds the tarball, manifest, and SBOM before extraction. These
+controls establish integrity, not publisher authenticity: RC artifacts are
+explicitly unsigned. Installation continues through the Phase 8 typed,
+transactional installer and never requires a source checkout or a production
+Node/Vite process.

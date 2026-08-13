@@ -1,6 +1,6 @@
 # AgentBox Installation
 
-Status: Phase 8 implementation, pending human review
+Status: Phase 10 MVP Release Candidate runbook
 
 ## Safety boundary
 
@@ -11,22 +11,31 @@ reverse proxies, Docker, existing root Runtime installations, root tmux
 sessions, `/root/projects`, or Provider/Secret configuration.
 
 Never install an unverified network stream directly into a shell on a shared
-host. Obtain the bootstrap and release artifact through an authenticated source,
-verify the published SHA-256 value, inspect the plan, and then apply it:
+host. Download the tarball, `RELEASE_MANIFEST.json`, `SBOM.spdx.json`, and
+`SHA256SUMS`; verify the published hashes and bundled artifact contract, inspect
+the plan, and then apply it:
 
 ```bash
-sha256sum agentbox-<version>.tar.gz
-sudo ./installer/install.sh plan \
-  --artifact ./agentbox-<version>.tar.gz \
+sha256sum --check SHA256SUMS
+mkdir agentbox-release
+tar -xzf agentbox-<version>-linux-x86_64.tar.gz -C agentbox-release
+./agentbox-release/install.sh verify-artifact \
+  --artifact ./agentbox-<version>-linux-x86_64.tar.gz \
+  --checksums ./SHA256SUMS \
+  --manifest ./RELEASE_MANIFEST.json \
+  --sbom ./SBOM.spdx.json
+sudo ./agentbox-release/install.sh plan \
+  --artifact ./agentbox-<version>-linux-x86_64.tar.gz \
   --sha256 <expected-sha256>
-sudo ./installer/install.sh apply \
-  --artifact ./agentbox-<version>.tar.gz \
+sudo ./agentbox-release/install.sh apply \
+  --artifact ./agentbox-<version>-linux-x86_64.tar.gz \
   --sha256 <expected-sha256>
 ```
 
-Phase 8 has no production download URL and uses checksums rather than signed
-artifacts. A future `curl | bash` convenience form does not replace artifact
-authentication and is not the recommended verification path.
+The RC has no production download URL and uses checksums rather than signed
+artifacts. Checksums provide integrity only when acquired independently; they
+do not authenticate the publisher. A future `curl | bash` convenience form is
+not the recommended verification path.
 
 ## Preflight
 

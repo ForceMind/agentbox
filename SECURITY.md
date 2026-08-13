@@ -2,9 +2,18 @@
 
 ## Current maturity
 
-AgentBox is pre-alpha. The current repository is an engineering skeleton and is not production-ready. It does not yet implement authentication, Runtime control, Pair Code generation, project operations, installation, systemd deployment, or privileged host actions.
+AgentBox `0.3.0rc1` is an MVP Release Candidate. It implements authentication,
+typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
+operations, native installation, systemd deployment, staged update, and
+verified rollback for a single-server/single-administrator Linux x86_64 model.
+It is a pre-release—not a production-readiness, penetration-test, or broad
+platform-support claim.
 
-The intended security architecture is documented in `docs/SECURITY.md`, `docs/PERMISSIONS.md`, and `docs/THREAT_MODEL.md`. Those are design commitments, not evidence that future features have passed a security review.
+The security architecture and completed internal review are documented in
+`docs/SECURITY.md`, `docs/PERMISSIONS.md`, `docs/THREAT_MODEL.md`, and
+`docs/SECURITY_REVIEW_MVP.md`. Release artifacts are reproducible in the same
+CI environment and have SHA-256 integrity metadata, but remain unsigned and do
+not provide cryptographically verified publisher authenticity.
 
 ## Reporting a vulnerability
 
@@ -28,7 +37,10 @@ Never use production tokens or real Pair Codes as proof.
 
 ## Response expectations
 
-Maintainers will acknowledge a credible report, assess severity and supported versions, coordinate a fix/advisory, and credit the reporter with consent. Formal response timelines and supported-version guarantees will be published before the first release; none are promised for this pre-alpha skeleton.
+Maintainers will acknowledge a credible report, assess severity and affected
+candidate versions, coordinate a fix/advisory, and credit the reporter with
+consent. This Release Candidate has no formal response-time SLA or stable
+supported-version guarantee.
 
 ## Scope boundaries
 

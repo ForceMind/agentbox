@@ -335,3 +335,22 @@ Most destructive Git/project operations are outside MVP. When introduced, CLI fi
 ## Shell Completion and Privacy
 
 Completion lists static commands/options and non-sensitive project display names only when locally authorized. It never queries Pair Codes, tokens, remote URLs with userinfo, logs, or project files, and does not execute Runtime commands.
+
+## Phase 10 release tooling
+
+The root installer entry point exposes maintainer/operator tooling rather than
+new control-plane features:
+
+- `agentbox-install verify-version` checks the single product version source
+  against Python and Web package metadata.
+- `agentbox-install build-release-candidate` builds an unsigned, deterministic
+  Linux x86_64 RC bundle from a clean tracked checkout.
+- `agentbox-install verify-artifact` verifies external checksums, the manifest,
+  internal digests, archive safety, target platform, version, required files,
+  modes and migration metadata.
+
+Normal `agentbox` help remains non-root and exposes only implemented product
+commands. The existing `secret generate` command creates an AgentBox application
+secret; it is not a Provider Secret Manager. Provider and Provider-secret
+commands remain absent because Phase 11 is not started. Release commands cannot
+publish a tag or GitHub Release.

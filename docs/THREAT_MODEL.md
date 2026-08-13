@@ -281,3 +281,20 @@ detection remains defense in depth.
 ## Phase 7 threats and mitigations
 
 New threats include malicious repository URLs/protocol helpers, credential helpers and `core.sshCommand`, repository/worktree config scope bypass, hooks/pagers/editors/external diff, submodules/LFS, clone residue/no-replace/rollback races, branch/refspec injection, remote credential leakage, ownership mismatch, workspace mutation under an active Agent, Draft PR input injection, `gh` prompt blocking and long network DoS. Mitigations are protocol/input allowlists, fixed config/environment/argv, all active repository-scope config inspection with includes disabled, ownership/canonical-path checks, descriptor-relative no-replace activation, dual-marker rollback identity, mutation leases, bounded time/output, normalized errors, credential redaction and Claude activity guards.
+
+## Phase 10 release artifact review
+
+The release boundary adds threats from dirty-checkout inclusion, nondeterministic
+output, archive path ambiguity, manifest substitution, dependency/license drift,
+source-map disclosure, artifact growth, and a compromised PR workflow. Controls
+are a clean-commit gate, locked Python and pnpm dependencies, normalized
+bit-for-bit same-runner builds, a 100 MiB artifact ceiling, a strict archive
+allowlist, external and per-file SHA-256 verification, SPDX SBOM, license
+inventory, canary scan, no source maps, immutable Action pins, read-only workflow
+permissions, and artifact-only install/upgrade/rollback fixtures.
+
+Residual risk remains that SHA-256 does not authenticate the publisher and that
+cross-runner reproducibility is unqualified. An operator who obtains both an
+artifact and checksum from the same compromised origin has no independent
+signature. Signing and provenance key governance require separate human review;
+Phase 10 creates neither keys nor a public release.

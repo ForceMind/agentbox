@@ -1,6 +1,6 @@
 # AgentBox Platform Support
 
-Status: Phase 9 qualification matrix, pending human review
+Status: `0.3.0rc1` qualification matrix
 
 | Platform | Package adapter | Evidence | Qualification |
 |---|---|---|---|
@@ -23,6 +23,11 @@ Claude, Node, npm, and pnpm have separate detect/version/install-policy/verify
 results. The prebuilt Web does not require Node in production. Codex and Claude
 installation guidance must be revalidated against current official public
 documentation before any distribution change; install does not imply login.
+
+The `0.3.0rc1` Linux x86_64 artifact carries a hash-locked wheelhouse for
+CPython 3.11, 3.12, and 3.13. AgentBox core installation is offline after the
+artifact and checksum files are obtained; distro package installation and
+optional Runtime-tool installation may still require configured repositories.
 
 Fixture evidence is not a real systemd/VM support claim. Rocky/Debian are not
 described as deployment-tested. Expanding this matrix requires verified

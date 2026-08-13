@@ -1,69 +1,113 @@
-# AgentBox MVP Release Checklist
+# AgentBox MVP Release Candidate Checklist
 
-Status: Phase 9 release-candidate gate; completing this list does not publish a
-release or authorize Phase 10.
+Candidate: `0.3.0rc1`; planned tag: `v0.3.0-rc.1`.
 
-## Source and governance
+Completing the preparation boxes does not authorize a tag, GitHub Release, or
+stable-support claim. Publication boxes remain manual and require review after
+the Phase 10 PR is merged.
 
-- [ ] Release commit is on protected `main` and all required checks are green.
-- [ ] Version and changelog are approved; tag does not already exist.
-- [ ] Diff contains no Provider Manager, Secret Manager, public-network, SSH,
-      firewall, tunnel, multi-server, or SaaS scope.
-- [ ] Open Critical/High security findings are zero; accepted residual risks
-      have an owner and human approval.
+## Source and version
 
-## Build and dependencies
+- [ ] Build from a clean tracked checkout at the reviewed source commit.
+- [ ] Protected-main required checks and review conversations are green/resolved.
+- [ ] Python core, package metadata, `agentbox --version`, `/api/v1/meta`, Web
+      package, installer, manifest, artifact name, release notes, and changelog
+      report one consistent candidate version.
+- [ ] Planned tag does not already exist; source commit and
+      `SOURCE_DATE_EPOCH` are recorded.
+- [ ] No tag or GitHub Release is created by the PR workflow.
 
-- [ ] Backend ruff, Black, mypy, pytest, Alembic round trip, and `pip-audit`
-      pass on the supported Python matrix.
-- [ ] Frontend lint, format, typecheck, unit tests, production build, and
-      high-level audit pass.
-- [ ] Playwright E2E and the four-job Deployment matrix plus
-      `deployment-gate` pass.
-- [ ] Secret, repository-boundary, forbidden-primitive, and immutable workflow
-      action-pin scans pass.
-- [ ] Python/frontend dependency inventories and release file manifest are
-      generated. If an SBOM is produced, its format/tool/version is recorded.
+## Build and dependency controls
 
-## Database and recovery
+- [ ] Python release dependencies are exact and SHA-256 locked; the artifact
+      contains the qualified Linux x86_64 CPython 3.11–3.13 wheelhouse.
+- [ ] `pnpm install --frozen-lockfile` and production Web build pass.
+- [ ] GitHub Actions use only audited immutable SHA pins and minimal read-only
+      permissions; PR builds receive no secrets or write token.
+- [ ] Backend ruff, Black, mypy, pytest, Alembic
+      upgrade/downgrade/upgrade, and `pip-audit` pass.
+- [ ] Frontend lint, format, typecheck, unit, build, and high audit pass.
+- [ ] E2E, four-job Deployment matrix, `deployment-gate`, and all ten current
+      required checks pass.
 
-- [ ] Alembic upgrade/downgrade/upgrade works on a disposable database.
-- [ ] WAL-active online backup passes integrity and concurrent-write tests.
-- [ ] Upgrade backup, migration, activation, service restart, readiness,
-      version, and commit stages have fault evidence.
-- [ ] Rollback rejects missing/corrupt/mismatched release, DB, unit, socket,
-      health, readiness, and version evidence.
-- [ ] Retention protects current/previous release and receipt-pinned backup and
-      never deletes an unverified object.
+## Reproducibility and artifact contract
 
-## Installation and compatibility
+- [ ] Two independent clean staging builds with the same source, lockfiles, and
+      `SOURCE_DATE_EPOCH` produce byte-identical artifact SHA-256 values.
+- [ ] Tar order, timestamps, uid/gid, names, modes, gzip timestamp, JSON order,
+      Web output, and wheel output are deterministic in the same CI environment.
+- [ ] Artifact filename is `agentbox-<version>-linux-x86_64.tar.gz` and size is
+      within the documented limit without node_modules, browser, dev venv, test
+      cache, source map, database, config, Project, or credential content.
+- [ ] `RELEASE_MANIFEST.json` schema, source commit, target, file allowlist,
+      per-file SHA-256, Python requirement, migration head, SBOM/license names,
+      and unsigned status verify.
+- [ ] `SHA256SUMS` independently verifies the tarball, external manifest, and
+      external SBOM using safe relative filenames.
+- [ ] Archive verification rejects absolute/traversal/normalization-colliding/
+      duplicate paths, links, devices, FIFO/socket, unexpected type, unsafe
+      mode, member/size overflow, missing file, and digest mismatch.
 
-- [ ] Artifact checksum, manifest, archive bounds, extraction type/path/link
-      defenses, and unit minimum-version validation pass.
-- [ ] OpenCloudOS read-only/service lifecycle validation is current.
-- [ ] Ubuntu/Rocky/Debian claims exactly match `PLATFORM_SUPPORT.md`; fixture
-      evidence is not called real-host support.
-- [ ] API remains loopback-only and services run under documented identities.
-- [ ] Existing root Codex/Claude/tmux/gh/project state remains unchanged.
+## SBOM and licenses
+
+- [ ] SPDX 2.3 JSON SBOM contains AgentBox plus direct/transitive Python and
+      production frontend packages with versions, managers, and declared
+      licenses.
+- [ ] `THIRD_PARTY_NOTICES.md` and generated inventory match the lockfiles.
+- [ ] Unknown licenses are flagged; no obvious Apache-2.0 distribution blocker
+      is accepted without human/legal review.
+- [ ] License results are described as an engineering inventory, not legal advice.
 
 ## Security and privacy
 
-- [ ] Password, Session, CSRF, application secret, Git URL, gh token, Pair Code,
-      and Claude output canaries are absent from logs and persistence.
-- [ ] Runtime/Helper malformed-frame, peer UID/GID, and fixed-action tests pass.
-- [ ] Production secure Cookie/exact HTTPS Origin and explicit trusted-proxy
-      semantics pass; no direct HTTP login is recommended.
-- [ ] Diagnostics export is new-file-only, `0600`, size bounded, redacted, and
-      reviewed manually before sharing.
+- [ ] Source and final artifact secret scans pass, including all Phase 10
+      password/Session/CSRF/Pair/Claude/Git/GitHub/Provider/SSH canaries.
+- [ ] Static assets have no production source maps, developer absolute paths,
+      or secret canaries.
+- [ ] Artifact contains no world-writable executable, setuid/setgid bit, file
+      capability, unexpected executable, symlink, hardlink, or special node.
+- [ ] SHA-256 is called integrity evidence only; artifact signature and
+      authenticity are explicitly `not available`.
+- [ ] Open P0/P1 security issues and unresolved blocking review threads are zero.
+- [ ] `SECURITY_REVIEW_MVP.md`, threat model, security policy, and known residual
+      risks are current; this work is not described as a penetration test.
 
-## Artifacts and publication
+## Installation and recovery
 
-- [ ] Release archive is produced from the approved commit with prebuilt Web
-      assets and a release-local venv strategy.
-- [ ] SHA-256 values are published separately and described as integrity—not
-      authenticity—evidence.
-- [ ] A signed-release mechanism is approved before claiming authenticity.
-- [ ] Install, update, rollback, known limitations, platform qualification,
-      backup responsibility, security reporting, and remaining manual Runtime
-      login steps are current.
-- [ ] Human approval explicitly authorizes Phase 10 publication.
+- [ ] Artifact verification and install bootstrap work without a source checkout.
+- [ ] AgentBox API/static Web installs and runs without Node/Vite.
+- [ ] Fixture fresh install, triple reinstall, application-secret/admin/DB/
+      Project/Runtime-HOME preservation, and data-preserving uninstall pass.
+- [ ] Alembic migration reaches the manifest head in a temporary SQLite DB.
+- [ ] Health, readiness, metadata version, static Web, and CLI help/version smoke pass.
+- [ ] Upgrade backup/migration/activation and injected failure evidence pass.
+- [ ] Rollback verifies release, DB integrity/revision, units, sockets,
+      health/readiness, and version; verification failure is never called success.
+- [ ] OpenCloudOS rehearsal plan is reviewed only after all automated gates pass.
+- [ ] Real-host rehearsal updates only AgentBox-owned release state, verifies the
+      candidate, rolls back, and ends at the pre-rehearsal stable release.
+- [ ] DB/admin/Projects/config/application secret/Runtime HOME and credential
+      metadata remain unchanged; root Runtime, SSH, firewall, and cloudflared
+      remain untouched.
+
+## Documentation and claims
+
+- [ ] README, Quickstart, release notes, Installation, Upgrade, Rollback,
+      Platform Support, MVP Acceptance, Known Limitations, and Changelog agree.
+- [ ] Relative documentation links and reasonable anchors pass automated checks.
+- [ ] CLI help lists only implemented commands; no Provider command or dangerous
+      Git operation is documented as available.
+- [ ] Platform claims use only Real-host validated, CI validated, Fixture
+      validated, or Unsupported.
+- [ ] Release notes list manual admin initialization, independent Runtime logins,
+      secure remote access, backup limits, unsigned artifact, and out-of-scope work.
+
+## Publication after merge (manual, not Phase 10 PR actions)
+
+- [ ] Rebuild from merged protected `main` and compare reviewed source commit.
+- [ ] Obtain human approval for the candidate version and release notes.
+- [ ] Create the reviewed tag once; never replace or force-update it.
+- [ ] Build final artifacts from the tag and repeat checksums/verify/SBOM/audits.
+- [ ] Create a Draft GitHub Release marked pre-release and attach all files.
+- [ ] Review rendered notes and downloaded artifacts before publication.
+- [ ] Publish the pre-release only with explicit human authorization.

@@ -1,16 +1,17 @@
 # AgentBox MVP Scope
 
-Status: Phase 1 design baseline
+Status: MVP Release Candidate scope through Phase 10
 
 ## Scope Decision
 
 The MVP is a **single-server, single-administrator, native-systemd AI workstation manager**. It includes a secure local Web panel, a recovery-oriented CLI, an idempotent installer, capability-aware Runtime management, persistent Claude sessions, minimal project/Git visibility, and durable single-host Jobs.
 
-The candidate scope is accepted with three corrections:
-
-1. Git write operations (`commit`, `push`, PR creation) are deferred because the first release must first prove path, credential, hook, confirmation, and audit boundaries.
-2. Project hard deletion is deferred; MVP may create/clone/list projects but cannot permanently delete them.
-3. Python 3.12+ is not an MVP minimum because the verified OpenCloudOS host has Python 3.11.6. The backend target is Python 3.11+ with CI covering supported versions; adopting 3.12 as a later minimum requires a compatibility ADR update.
+The accepted scope evolved through reviewed implementation phases. Phase 7
+delivered bounded ordinary branch management, fast-forward-only Pull, no-force
+Push, and Draft PR creation after the path, credential, hook, confirmation, and
+audit boundaries were proven. Staging, commit, destructive Git, and Project
+hard deletion remain deferred. Python 3.11+ remains the minimum because the
+real-host validated OpenCloudOS system uses Python 3.11.
 
 ## MVP Must-Have
 
@@ -54,7 +55,8 @@ The candidate scope is accepted with three corrections:
 ### Minimal Projects and Git
 
 - configure one project root, default `/srv/agentbox/projects`;
-- create an empty Project Workspace and clone a credential-free HTTP(S) or SSH Git URL through a Job;
+- create an empty Project Workspace and clone a credential-free approved
+  GitHub HTTPS or SSH identity through a Job;
 - list projects, copy path, and show branch, dirty-file count, HEAD summary, and sanitized remote URL;
 - start Claude Remote from a registered project;
 - validate ownership, canonical paths, symlinks, repository boundaries, and time/output limits;
@@ -96,8 +98,9 @@ Optional work cannot delay security, rollback, Runtime, pairing, or project-sess
 
 ## Deferred Beyond MVP
 
-- `git add`, `git commit`, `git pull`, `git push`, branch deletion, force push, hard reset, and `gh pr create`;
-- GitHub Issue, Actions, PR review, and repository administration;
+- `git add`, `git commit`, branch deletion, force push, hard reset, clean,
+  stash/discard, merge/rebase fallback, and filesystem Project deletion;
+- GitHub Issue, Actions mutation, PR review, and repository administration;
 - project permanent deletion and automated destructive cleanup;
 - embedded browser terminal, interactive PTY, and general filesystem editor;
 - WebSocket unless a later bidirectional PTY feature is approved;
@@ -131,7 +134,7 @@ Optional work cannot delay security, rollback, Runtime, pairing, or project-sess
 | Jobs | Restart recovery deterministically requeues safe work or marks uncertain work `needs_attention` |
 | Upgrade | Previous release and database backup can be restored after an injected post-migration health failure |
 | Security | No unresolved Critical/High release-blocking finding; required threat-model tests pass |
-| Compatibility | Release-gated tests pass on the declared OpenCloudOS/Rocky/Ubuntu/Debian matrix |
+| Compatibility | Claims distinguish OpenCloudOS real-host, Ubuntu 24 CI, Rocky/Debian fixture, and unsupported targets |
 
 ## Release Conditions
 
