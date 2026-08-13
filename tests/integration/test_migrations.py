@@ -27,6 +27,7 @@ def test_upgrade_downgrade_and_upgrade_again(tmp_path: Path) -> None:
             "admin_users",
             "sessions",
             "audit_events",
+            "login_rate_limit_buckets",
             "alembic_version",
         }
         assert database.migrations_current()

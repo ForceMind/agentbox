@@ -320,6 +320,16 @@ Runtime tool checks. This does not add a root-management HTTP endpoint. There
 is no Web/API route for installer apply, package installation, update,
 rollback, systemctl, arbitrary service restart, or Helper action.
 
+Phase 9 diagnostics use schema version 1 and stable `code`, `category`,
+`severity`, `summary`, safe `details`, and `remediation_id` fields. Severity is
+one of `OK`, `WARN`, `FAIL`, or `UNKNOWN`. The local diagnostics export creates
+a new `0600` file, refuses overwrite/symlink targets, caps output at 1 MiB, and
+runs a final secret-pattern guard. It does not expose a new HTTP mutation.
+
+All implemented Pydantic request models reject unknown fields and use strict
+types. Security-relevant mutation input is not coerced from strings (for
+example, `"1"` is not accepted as integer `1`).
+
 ## Settings API
 
 | Method/path | Purpose |

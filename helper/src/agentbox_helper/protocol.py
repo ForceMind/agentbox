@@ -13,6 +13,18 @@ MAX_HELPER_FRAME = 16 * 1024
 REQUEST_ID = re.compile(r"req_[A-Za-z0-9_-]{8,60}")
 
 
+def _strict_json_loads(raw: bytes) -> Any:
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON key")
+            value[key] = item
+        return value
+
+    return json.loads(raw, object_pairs_hook=unique_object)
+
+
 class HelperAction(StrEnum):
     SYSTEMD_DAEMON_RELOAD = "systemd.daemon_reload"
     SYSTEMD_START_AGENTBOX = "systemd.start_agentbox"
@@ -32,8 +44,8 @@ class HelperRequest:
         if not raw or len(raw) > MAX_HELPER_FRAME or not raw.endswith(b"\n"):
             raise ValueError("invalid frame")
         try:
-            value: Any = json.loads(raw)
-        except (UnicodeError, json.JSONDecodeError) as exc:
+            value: Any = _strict_json_loads(raw)
+        except (UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
             raise ValueError("invalid JSON") from exc
         if not isinstance(value, dict) or set(value) != {
             "protocol_version",
@@ -41,7 +53,10 @@ class HelperRequest:
             "action",
         }:
             raise ValueError("invalid schema")
-        if value["protocol_version"] != HELPER_PROTOCOL_VERSION:
+        if (
+            type(value["protocol_version"]) is not int
+            or value["protocol_version"] != HELPER_PROTOCOL_VERSION
+        ):
             raise ValueError("unsupported protocol")
         request_id = value["request_id"]
         if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):

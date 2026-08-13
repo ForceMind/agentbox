@@ -19,7 +19,12 @@ from agentbox_runtime.git import GitAdapter, validate_branch_name, validate_git_
 from agentbox_runtime.github import GitHubAdapter, validate_pr_body, validate_pr_title
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.project import ProjectRegistry, validate_project_id
-from agentbox_runtime.rpc import MAX_RUNTIME_FRAME, RUNTIME_PROTOCOL_VERSION
+from agentbox_runtime.rpc import (
+    MAX_RUNTIME_FRAME,
+    RUNTIME_PROTOCOL_VERSION,
+    strict_json_loads,
+    validate_request_id,
+)
 from agentbox_runtime.tmux import TmuxAdapter
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
@@ -63,6 +68,7 @@ class RuntimeExecutorServer:
         manager: CodexManager,
         *,
         allowed_peer_uids: frozenset[int],
+        allowed_peer_gids: frozenset[int] | None = None,
         claude_manager: ClaudeSessionManager | None = None,
         project_manager: ProjectWorkspaceManager | None = None,
     ) -> None:
@@ -71,6 +77,7 @@ class RuntimeExecutorServer:
         self._claude_manager = claude_manager
         self._project_manager = project_manager
         self._allowed_peer_uids = allowed_peer_uids
+        self._allowed_peer_gids = allowed_peer_gids or frozenset({os.getegid()})
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self, *, create_development_parent: bool = False) -> None:
@@ -109,7 +116,10 @@ class RuntimeExecutorServer:
             finally:
                 probe.close()
         self._server = await asyncio.start_unix_server(
-            self._handle, path=self._socket_path, start_serving=False
+            self._handle,
+            path=self._socket_path,
+            start_serving=False,
+            limit=MAX_RUNTIME_FRAME + 1,
         )
         try:
             configured_gid = os.environ.get("AGENTBOX_RUNTIME_SOCKET_GID")
@@ -159,14 +169,31 @@ class RuntimeExecutorServer:
                     writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
                 )
                 return
-            request = json.loads(raw)
+            request = strict_json_loads(raw)
             if (
                 not isinstance(request, dict)
-                or request.get("protocol_version") != RUNTIME_PROTOCOL_VERSION
-                or request.get("action") not in _ACTIONS
+                or type(request.get("protocol_version")) is not int
+                or request["protocol_version"] != RUNTIME_PROTOCOL_VERSION
+                or not isinstance(request.get("action"), str)
+                or request["action"] not in _ACTIONS
                 or not isinstance(request.get("request_id"), str)
-                or not (1 <= len(request["request_id"]) <= 64)
             ):
+                await self._write_error(
+                    writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
+                )
+                return
+            try:
+                validate_request_id(request["request_id"])
+            except RuntimeOperationError:
+                await self._write_error(
+                    writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
+                )
+                return
+            try:
+                trailing = await asyncio.wait_for(reader.read(1), timeout=0.01)
+            except TimeoutError:
+                trailing = b""
+            if trailing:
                 await self._write_error(
                     writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
                 )
@@ -215,7 +242,15 @@ class RuntimeExecutorServer:
                     "error": None,
                 },
             )
-        except (TimeoutError, json.JSONDecodeError, UnicodeError):
+        except (
+            asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
+            TimeoutError,
+            json.JSONDecodeError,
+            UnicodeError,
+            ValueError,
+            RecursionError,
+        ):
             await self._write_error(
                 writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
             )
@@ -247,8 +282,8 @@ class RuntimeExecutorServer:
         credentials = transport_socket.getsockopt(
             socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
         )
-        _pid, uid, _gid = struct.unpack("3i", credentials)
-        return uid in self._allowed_peer_uids
+        _pid, uid, gid = struct.unpack("3i", credentials)
+        return uid in self._allowed_peer_uids and gid in self._allowed_peer_gids
 
     async def _dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         action = str(request["action"])
@@ -447,12 +482,18 @@ async def _main() -> None:
     ):
         raise RuntimeError("production Runtime socket must be beneath /run/agentbox")
     configured_uids = os.environ.get("AGENTBOX_RUNTIME_ALLOWED_UIDS")
-    if environment == "production" and not configured_uids:
-        raise RuntimeError("AGENTBOX_RUNTIME_ALLOWED_UIDS is required in production")
+    configured_gids = os.environ.get("AGENTBOX_RUNTIME_ALLOWED_GIDS")
+    if environment == "production" and (not configured_uids or not configured_gids):
+        raise RuntimeError("Runtime peer UID and GID allowlists are required in production")
     allowed = (
         frozenset(int(value) for value in configured_uids.split(","))
         if configured_uids
         else frozenset({os.geteuid()})
+    )
+    allowed_gids = (
+        frozenset(int(value) for value in configured_gids.split(","))
+        if configured_gids
+        else frozenset({os.getegid()})
     )
     try:
         pair_cooldown = int(os.environ.get("AGENTBOX_CODEX_PAIR_COOLDOWN", "10"))
@@ -479,6 +520,7 @@ async def _main() -> None:
         socket_path,
         CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown),
         allowed_peer_uids=allowed,
+        allowed_peer_gids=allowed_gids,
         claude_manager=claude_manager,
         project_manager=ProjectWorkspaceManager(project_registry, git, github),
     )

@@ -56,7 +56,14 @@ class Settings(BaseSettings):
     login_rate_limit: int = Field(default=5, ge=1, le=100)
     login_rate_window: int = Field(default=5 * 60, ge=10, le=24 * 60 * 60)
     login_lock_duration: int = Field(default=5 * 60, ge=10, le=24 * 60 * 60)
+    login_rate_max_buckets: int = Field(default=10_000, ge=100, le=100_000)
     argon2_max_concurrency: int = Field(default=2, ge=1, le=4)
+    job_retention: int = Field(default=14 * 24 * 60 * 60, ge=24 * 60 * 60, le=365 * 24 * 60 * 60)
+    audit_retention: int = Field(
+        default=90 * 24 * 60 * 60,
+        ge=30 * 24 * 60 * 60,
+        le=730 * 24 * 60 * 60,
+    )
     codex_pair_cooldown: int = Field(default=10, ge=5, le=300)
     recent_auth_ttl: int = Field(default=10 * 60, ge=60, le=60 * 60)
     runtime_socket: Path = Path(".agentbox-dev/runtime.sock")

@@ -2,6 +2,7 @@ import json
 import logging
 
 from agentbox_core.logging import JsonLogFormatter
+from agentbox_core.security import redact_text
 
 
 def test_structured_logging_redacts_sensitive_assignments_and_fields() -> None:
@@ -27,3 +28,11 @@ def test_structured_logging_redacts_sensitive_assignments_and_fields() -> None:
     assert "raw-cookie" not in rendered
     assert payload["request_id"] == "req_test"
     assert payload["event"] == "login_failed"
+
+
+def test_bearer_and_standalone_github_tokens_are_fully_redacted() -> None:
+    token = "".join(("gh", "p_", "PHASE9FAKETOKEN1234567890123456789012"))
+    rendered = redact_text(f"Authorization: Bearer {token} token={token}")
+
+    assert token not in rendered
+    assert rendered == "Authorization: [REDACTED] token=[REDACTED]"

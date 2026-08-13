@@ -6,10 +6,9 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox is in **early pre-alpha development**. Phases 2–7 are merged. Phase 8
-installation and deployment is implemented on
-`phase/8-installation-deployment` and awaits human review; it is not a
-production-readiness or broad platform-support claim.
+AgentBox is a **pre-release / MVP candidate**. Phases 0–8 and the stable
+Deployment gate are merged. Phase 9 security hardening and compatibility work
+is under review; this is not a stable-release or broad platform-support claim.
 
 The current codebase provides:
 
@@ -36,6 +35,16 @@ serving; online SQLite backup; staged update; verified rollback; safe
 data-preserving uninstall; and production `status`/`doctor` diagnostics. See
 [Installation](docs/INSTALLATION.md), [Deployment](docs/DEPLOYMENT.md), and
 [Rollback](docs/ROLLBACK.md).
+
+Phase 9 adds restart-persistent pseudonymous login throttling, local TTY-only
+password/session recovery, stricter Runtime/Helper IPC, syscall filters where
+compatible, version-aware systemd validation, crash-injection recovery tests,
+sanitized diagnostics export, bounded state retention, and immutable GitHub
+Action pins. OpenCloudOS 9 is the designated real-host target; Ubuntu 24.04 is
+CI validated, Rocky 9 and Debian 12 remain fixture validated, Ubuntu 22.04 is
+explicitly rejected by the native installer because its stock Python is too
+old, and aarch64 remains unqualified. See [Platform support](docs/PLATFORM_SUPPORT.md)
+and the [MVP security review](docs/SECURITY_REVIEW_MVP.md).
 
 Phase 7 adds formal Project Workspaces plus safe Git/GitHub foundations. Web and
 CLI can create or clone managed workspaces, inspect structured status, manage
@@ -72,9 +81,10 @@ The planned MVP targets one Linux server and one administrator. It aims to provi
 - a loopback-only authenticated Web panel and recovery-oriented CLI;
 - durable SQLite-backed Jobs and SSE progress.
 
-Phase 8 provides the deployment mechanics in this list. Publication, signed
-release distribution, broader VM validation, and a production support promise
-remain later release gates.
+Phase 8 provides the deployment mechanics in this list and Phase 9 hardens
+their release-candidate boundary. Publication, signed release distribution,
+broader native-host validation, and a production support promise remain later
+release gates.
 
 ## What AgentBox is not
 

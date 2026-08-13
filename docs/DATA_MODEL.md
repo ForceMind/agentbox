@@ -383,11 +383,30 @@ reads JobEvent rows and does not hold a Worker connection.
 
 ## Retention
 
-- Jobs/Audit/Diagnostics have bounded configurable retention with safe defaults.
+- Completed Jobs/JobEvents, Audit Events, Sessions, and login-limiter buckets
+  have independent bounded retention policies with safe defaults.
 - Pair Codes never participate in retention.
-- JobEvent retention is shorter than Job retention.
-- Purge is an internal policy Job with limits; deleting backups/audit outside policy requires confirmation.
+- JobEvents are deleted only with their verified terminal parent Job through the
+  database relationship; active Jobs and their events are never selected.
+- Diagnostics export creates only the operator-selected new file. AgentBox has
+  no diagnostics temp directory or automatic deletion policy; the operator owns
+  retention of that report.
+- Phase 9 exposes no generic purge or arbitrary backup/audit deletion operation.
 - Database maintenance checks free disk and never blocks the API indefinitely.
+
+Phase 9 adds a bounded `login_rate_limit_buckets` table. Its key is a
+pseudonymous keyed digest of the normalized account/source tuple; raw account
+names and IP addresses are not stored. Each row contains only the bucket key, a
+bounded failure-timestamp list, update time, and optional bounded lock expiry.
+Expired rows are removed. At the fixed maximum, admission fails closed rather
+than evicting active spray evidence, so restart persistence cannot become
+unbounded state or a permanent lockout.
+
+Default operational retention is 14 days for completed Jobs/JobEvents and 90
+days for Audit Events. Lifecycle storage separately keeps five verified SQLite
+backups and four verified releases while protecting the active and direct
+rollback identities. Unknown, corrupt, or symlinked objects are retained for
+operator review rather than inferred to be AgentBox-owned.
 
 ## Future PostgreSQL Boundary
 

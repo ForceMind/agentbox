@@ -100,6 +100,14 @@ GitHub CLI flows. Do not copy or `chown` `/root/.codex`, `/root/.claude`, or
 
 ## Verification
 
+### Phase 9 verification addition
+
+Phase 9 validates generated unit directives against the installed systemd
+version before any privileged write. Missing optional Runtime dependencies
+degrade only their integration and do not invalidate the prebuilt API/Web core.
+Ubuntu 22.04 native installation remains rejected until a trusted Python 3.11+
+strategy exists; CI-provided Python is test evidence, not an installer source.
+
 Use `agentbox status`, `agentbox doctor`, `systemctl status` for the exact units,
 and loopback-only `/healthz` and `/readyz`. See [Deployment](DEPLOYMENT.md),
 [Upgrade](UPGRADE.md), and [Platform Support](PLATFORM_SUPPORT.md).

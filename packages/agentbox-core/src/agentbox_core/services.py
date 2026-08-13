@@ -24,7 +24,7 @@ from agentbox_core.errors import (
     LoginRateLimited,
 )
 from agentbox_core.jobs import JobService
-from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession
+from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession, Job
 from agentbox_core.projects import ProjectService
 from agentbox_core.rate_limit import LoginRateLimiter
 from agentbox_core.security import (
@@ -58,6 +58,16 @@ class AuthenticatedSession:
     expires_at: datetime
     authenticated_at: datetime
     csrf_token: str
+
+
+@dataclass(frozen=True)
+class SessionMetadata:
+    session_id: str
+    created_at: datetime
+    last_seen_at: datetime
+    idle_expires_at: datetime
+    expires_at: datetime
+    client_label: str | None
 
 
 class AuditService:
@@ -146,6 +156,115 @@ class AdminService:
         with self._database.transaction() as session:
             admin = session.scalar(select(AdminUser).where(AdminUser.is_active.is_(True)))
             return admin is not None, admin.username if admin else None
+
+    def change_password(
+        self,
+        current_password: str,
+        new_password: str,
+        *,
+        request_id: str | None = None,
+    ) -> int:
+        """Change the sole administrator password and revoke every Session."""
+        admin_id, observed_hash = self._verify_local_password(current_password)
+        replacement_hash = self._password_manager.hash(new_password)
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            admin = session.get(AdminUser, admin_id)
+            if (
+                admin is None
+                or not admin.is_active
+                or not hmac.compare_digest(admin.password_hash, observed_hash)
+            ):
+                raise InvalidCredentials()
+            admin.password_hash = replacement_hash
+            admin.updated_at = now
+            active_sessions = tuple(
+                session.scalars(
+                    select(ControlPlaneSession).where(
+                        ControlPlaneSession.user_id == admin.id,
+                        ControlPlaneSession.revoked_at.is_(None),
+                    )
+                )
+            )
+            for stored in active_sessions:
+                stored.revoked_at = now
+            self._audit.record(
+                session,
+                actor_type="local_admin",
+                actor_id=admin.id,
+                action="admin_password_changed",
+                result="succeeded",
+                request_id=request_id,
+                target_type="admin_user",
+                target_id=admin.id,
+                metadata={"revoked_count": len(active_sessions)},
+            )
+            return len(active_sessions)
+
+    def sessions(self, current_password: str) -> tuple[SessionMetadata, ...]:
+        admin_id, _observed_hash = self._verify_local_password(current_password)
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            return tuple(
+                SessionMetadata(
+                    session_id=stored.id,
+                    created_at=stored.created_at,
+                    last_seen_at=stored.last_seen_at,
+                    idle_expires_at=stored.idle_expires_at,
+                    expires_at=stored.expires_at,
+                    client_label=stored.client_label,
+                )
+                for stored in session.scalars(
+                    select(ControlPlaneSession)
+                    .where(
+                        ControlPlaneSession.user_id == admin_id,
+                        ControlPlaneSession.revoked_at.is_(None),
+                        ControlPlaneSession.expires_at > now,
+                        ControlPlaneSession.idle_expires_at > now,
+                    )
+                    .order_by(ControlPlaneSession.created_at.desc())
+                )
+            )
+
+    def revoke_sessions(self, current_password: str, *, request_id: str | None = None) -> int:
+        admin_id, _observed_hash = self._verify_local_password(current_password)
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            active_sessions = tuple(
+                session.scalars(
+                    select(ControlPlaneSession).where(
+                        ControlPlaneSession.user_id == admin_id,
+                        ControlPlaneSession.revoked_at.is_(None),
+                    )
+                )
+            )
+            for stored in active_sessions:
+                stored.revoked_at = now
+            self._audit.record(
+                session,
+                actor_type="local_admin",
+                actor_id=admin_id,
+                action="admin_sessions_revoked",
+                result="succeeded",
+                request_id=request_id,
+                target_type="admin_user",
+                target_id=admin_id,
+                metadata={"revoked_count": len(active_sessions)},
+            )
+            return len(active_sessions)
+
+    def _verify_local_password(self, password: str) -> tuple[str, str]:
+        with self._database.transaction() as session:
+            admin = session.scalar(select(AdminUser).where(AdminUser.is_active.is_(True)))
+            if admin is None:
+                raise AdminNotInitialized()
+            admin_id = admin.id
+            encoded_hash = admin.password_hash
+        if not self._password_manager.verify(encoded_hash, password):
+            raise InvalidCredentials()
+        return admin_id, encoded_hash
 
 
 class SessionService:
@@ -353,7 +472,10 @@ class AuthService:
         try:
             normalized = normalize_username(username)
         except ValueError:
-            normalized = "invalid"
+            # This sentinel cannot be produced by normalize_username, so
+            # malformed input cannot collide with a legitimate `invalid` user
+            # and lock that account through the persistent limiter.
+            normalized = "\0invalid"
 
         decision = self._rate_limiter.check(normalized, source_identifier)
         if not decision.allowed:
@@ -388,33 +510,53 @@ class AuthService:
         if self._password_manager.needs_rehash(encoded_hash):
             replacement_hash = self._password_manager.hash(password)
 
-        self._rate_limiter.register_success(normalized, source_identifier)
         now = self._clock.now()
-        with self._database.transaction() as session:
-            current_user = session.get(AdminUser, user_id)
-            if current_user is None or not current_user.is_active:
-                raise InvalidCredentials()
-            current_user.last_login_at = now
-            current_user.updated_at = now
-            if replacement_hash is not None and hmac.compare_digest(
-                current_user.password_hash, encoded_hash
-            ):
-                current_user.password_hash = replacement_hash
-            issued = self._sessions.issue(session, current_user, client_label)
-            self._audit.record(
-                session,
-                actor_type="admin",
-                actor_id=current_user.id,
-                action="login_succeeded",
-                result="succeeded",
-                request_id=request_id,
-                target_type="session",
-                target_id=issued.session_id,
-                metadata={
-                    "source_fingerprint": source_fingerprint(self._secret, source_identifier)
-                },
+        try:
+            with self._database.transaction() as session:
+                # Reserve SQLite's single writer before revalidating the hash.
+                # Password rotation then either commits first and invalidates
+                # this Login, or waits until this Session is committed and
+                # revokes it in the subsequent password-change transaction.
+                session.execute(text("BEGIN IMMEDIATE"))
+                current_user = session.get(AdminUser, user_id)
+                if (
+                    current_user is None
+                    or not current_user.is_active
+                    or not hmac.compare_digest(current_user.password_hash, encoded_hash)
+                ):
+                    raise InvalidCredentials()
+                current_user.last_login_at = now
+                current_user.updated_at = now
+                if replacement_hash is not None:
+                    current_user.password_hash = replacement_hash
+                issued = self._sessions.issue(session, current_user, client_label)
+                self._audit.record(
+                    session,
+                    actor_type="admin",
+                    actor_id=current_user.id,
+                    action="login_succeeded",
+                    result="succeeded",
+                    request_id=request_id,
+                    target_type="session",
+                    target_id=issued.session_id,
+                    metadata={
+                        "source_fingerprint": source_fingerprint(self._secret, source_identifier)
+                    },
+                )
+        except InvalidCredentials:
+            self._rate_limiter.register_failure(normalized, source_identifier)
+            self._record_failed_login(
+                normalized,
+                source_identifier,
+                request_id,
+                reason="invalid_credentials",
             )
-            return issued
+            raise
+
+        # Clear only the account-specific failure buckets after the complete
+        # authorization, Session, and success-audit transaction has committed.
+        self._rate_limiter.register_success(normalized, source_identifier)
+        return issued
 
     def _record_failed_login(
         self,
@@ -445,14 +587,66 @@ class AuthService:
 
 
 @dataclass(frozen=True)
+class RetentionResult:
+    jobs_deleted: int
+    audit_events_deleted: int
+    rate_limit_buckets_deleted: int
+
+
+class RetentionService:
+    """Bound durable control-plane metadata without touching active work."""
+
+    def __init__(
+        self,
+        database: Database,
+        settings: Settings,
+        clock: Clock,
+        rate_limits: LoginRateLimiter,
+    ) -> None:
+        self._database = database
+        self._clock = clock
+        self._job_retention = timedelta(seconds=settings.job_retention)
+        self._audit_retention = timedelta(seconds=settings.audit_retention)
+        self._rate_limits = rate_limits
+
+    def cleanup(self) -> RetentionResult:
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            job_result = cast(
+                CursorResult[object],
+                session.execute(
+                    delete(Job).where(
+                        Job.status.in_(("succeeded", "failed", "cancelled")),
+                        Job.finished_at.is_not(None),
+                        Job.finished_at <= now - self._job_retention,
+                    )
+                ),
+            )
+            audit_result = cast(
+                CursorResult[object],
+                session.execute(
+                    delete(AuditEvent).where(AuditEvent.created_at <= now - self._audit_retention)
+                ),
+            )
+        return RetentionResult(
+            jobs_deleted=int(job_result.rowcount or 0),
+            audit_events_deleted=int(audit_result.rowcount or 0),
+            rate_limit_buckets_deleted=self._rate_limits.cleanup(),
+        )
+
+
+@dataclass(frozen=True)
 class ControlPlaneServices:
     database: Database
     admin: AdminService
     auth: AuthService
     sessions: SessionService
+    rate_limits: LoginRateLimiter
     audit: AuditService
     projects: ProjectService
     jobs: JobService
+    retention: RetentionService
 
 
 def build_services(
@@ -467,11 +661,13 @@ def build_services(
     audit = AuditService(actual_clock)
     sessions = SessionService(database, settings, audit, actual_clock)
     rate_limiter = LoginRateLimiter(
+        database=database,
         secret=settings.secret_key.get_secret_value(),
         clock=actual_clock,
         limit=settings.login_rate_limit,
         window_seconds=settings.login_rate_window,
         lock_seconds=settings.login_lock_duration,
+        max_rows=settings.login_rate_max_buckets,
     )
     auth = AuthService(
         database,
@@ -485,14 +681,17 @@ def build_services(
     admin = AdminService(database, actual_password_manager, audit, actual_clock)
     projects = ProjectService(database, actual_clock)
     jobs = JobService(database, settings, actual_clock)
+    retention = RetentionService(database, settings, actual_clock, rate_limiter)
     return ControlPlaneServices(
         database=database,
         admin=admin,
         auth=auth,
         sessions=sessions,
+        rate_limits=rate_limiter,
         audit=audit,
         projects=projects,
         jobs=jobs,
+        retention=retention,
     )
 
 

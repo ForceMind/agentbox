@@ -225,6 +225,80 @@ async def test_runtime_socket_rejects_extra_fields_and_unknown_action(tmp_path: 
 
 
 @pytest.mark.anyio
+async def test_runtime_protocol_fuzz_cases_fail_closed_before_dispatch(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    manager = FakeManager()
+    server = RuntimeExecutorServer(
+        socket_path,
+        manager,  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid()}),
+    )
+    await server.start()
+    payloads = (
+        b'{"protocol_version":1,"protocol_version":1,'
+        b'"action":"codex.status","request_id":"req_duplicate"}\n',
+        b'{"protocol_version":true,"action":"codex.status",' b'"request_id":"req_boolean"}\n',
+        b'{"protocol_version":1,"action":"codex.status","request_id":null}\n',
+        b'{"protocol_version":1,"action":"codex.status",' b'"request_id":"bad\\ncorrelation"}\n',
+        b"\xff\n",
+        (b"[" * 1100) + (b"]" * 1100) + b"\n",
+        (
+            b'{"protocol_version":1,"action":"codex.status",'
+            b'"request_id":"req_first"}\n'
+            b'{"protocol_version":1,"action":"codex.status",'
+            b'"request_id":"req_second"}\n'
+        ),
+    )
+    try:
+        for payload in payloads:
+            reader, writer = await asyncio.open_unix_connection(socket_path)
+            writer.write(payload)
+            await writer.drain()
+            response = json.loads(await reader.readline())
+            writer.close()
+            await writer.wait_closed()
+            assert response["error"]["code"] == "RUNTIME_PROTOCOL_INVALID"
+        assert manager.actions == []
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_socket_rejects_unapproved_peer_gid(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        allowed_peer_gids=frozenset({os.getegid() + 1}),
+    )
+    await server.start()
+    try:
+        reader, writer = await asyncio.open_unix_connection(socket_path)
+        writer.write(
+            b'{"protocol_version":1,"action":"codex.status",' b'"request_id":"req_peer_gid"}\n'
+        )
+        await writer.drain()
+        response = json.loads(await reader.readline())
+        writer.close()
+        await writer.wait_closed()
+        assert response["error"]["code"] == "RUNTIME_PEER_FORBIDDEN"
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_client_rejects_invalid_request_id_before_connect(tmp_path: Path) -> None:
+    client = UnixCodexRuntimeClient(tmp_path / "absent.sock")
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await client.status("bad\ncorrelation")
+
+    assert raised.value.code == "RUNTIME_REQUEST_ID_INVALID"
+
+
+@pytest.mark.anyio
 async def test_runtime_socket_accepts_only_typed_claude_project_actions(tmp_path: Path) -> None:
     socket_path = tmp_path / "runtime.sock"
     claude = FakeClaudeManager()

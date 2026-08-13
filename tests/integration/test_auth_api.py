@@ -3,13 +3,28 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
-from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession
-from agentbox_core.security import PasswordManager
-from agentbox_core.services import ControlPlaneServices
-from conftest import FakeClock
+from agentbox_api.main import create_app
+from agentbox_core.configuration import Environment, Settings
+from agentbox_core.models import (
+    AdminUser,
+    AuditEvent,
+    ControlPlaneSession,
+    LoginRateLimitBucket,
+)
+from agentbox_core.security import PasswordManager, source_fingerprint
+from agentbox_core.services import ControlPlaneServices, build_services
+from conftest import (
+    FakeClaudeRuntime,
+    FakeClock,
+    FakeCodexRuntime,
+    FakeProjectRuntime,
+    migrate_database,
+)
+from pydantic import SecretStr
 from sqlalchemy import select
 
 PASSWORD = "a sufficiently long passphrase"
@@ -291,6 +306,48 @@ async def test_inactive_user_receives_generic_error(
 
 
 @pytest.mark.anyio
+async def test_missing_inactive_wrong_and_locked_accounts_do_not_enumerate(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    wrong = await login(client, origin_headers, password="wrong password value")
+    missing = await login(
+        client,
+        origin_headers,
+        username="missing-account",
+        password="wrong password value",
+    )
+    with initialized_services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser))
+        assert admin is not None
+        admin.is_active = False
+    inactive = await login(client, origin_headers)
+    with initialized_services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser))
+        assert admin is not None
+        admin.is_active = True
+
+    public_errors = [response.json()["error"] for response in (wrong, missing, inactive)]
+    assert [response.status_code for response in (wrong, missing, inactive)] == [401, 401, 401]
+    assert all(error == public_errors[0] for error in public_errors)
+    assert public_errors[0]["code"] == "AUTH_INVALID_CREDENTIALS"
+
+    for username in ("maintainer", "missing-account"):
+        for index in range(5):
+            initialized_services.rate_limits.register_failure(username, f"198.51.100.{100 + index}")
+    locked_existing = await login(client, origin_headers)
+    locked_missing = await login(
+        client,
+        origin_headers,
+        username="missing-account",
+        password="wrong password value",
+    )
+    assert locked_existing.status_code == locked_missing.status_code == 429
+    assert locked_existing.json()["error"] == locked_missing.json()["error"]
+
+
+@pytest.mark.anyio
 async def test_login_rate_limit_is_deterministic_and_recovers(
     client: httpx.AsyncClient,
     clock: FakeClock,
@@ -378,8 +435,7 @@ async def test_expired_and_revoked_sessions_are_rejected(
     initialized_services: ControlPlaneServices,
     origin_headers: dict[str, str],
 ) -> None:
-    response = await login(client, origin_headers)
-    token = response.cookies["agentbox_session"]
+    await login(client, origin_headers)
     clock.advance(seconds=601)
     assert (await client.get("/api/v1/auth/me")).status_code == 401
 
@@ -400,6 +456,156 @@ async def test_expired_and_revoked_sessions_are_rejected(
         assert session.scalar(
             select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_not(None))
         )
+
+
+@pytest.mark.anyio
+async def test_local_password_change_invalidates_old_sessions_csrf_and_password(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    first = await login(client, origin_headers)
+    first_token = first.cookies["agentbox_session"]
+    first_csrf = first.json()["data"]["csrf_token"]
+    second = await login(client, origin_headers)
+    second_token = second.cookies["agentbox_session"]
+    second_csrf = second.json()["data"]["csrf_token"]
+
+    assert (
+        initialized_services.admin.change_password(
+            PASSWORD,
+            "a different sufficiently long passphrase",
+            request_id="req_password_session_regression",
+        )
+        == 2
+    )
+
+    for token, csrf in ((first_token, first_csrf), (second_token, second_csrf)):
+        client.cookies.set("agentbox_session", token)
+        assert (await client.get("/api/v1/auth/me")).status_code == 401
+        rejected_csrf = await client.post(
+            "/api/v1/auth/logout",
+            headers={**origin_headers, "X-CSRF-Token": csrf},
+        )
+        assert rejected_csrf.status_code == 401
+
+    assert (await login(client, origin_headers, password=PASSWORD)).status_code == 401
+    assert (
+        await login(
+            client,
+            origin_headers,
+            password="a different sufficiently long passphrase",
+        )
+    ).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_password_change_wins_against_login_that_verified_the_old_hash(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    password_manager: PasswordManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = "127.0.0.1"
+    initialized_services.rate_limits.register_failure("maintainer", source)
+    account_key, source_key, combined_key = initialized_services.rate_limits._keys(
+        "maintainer", source
+    )
+    original_verify = password_manager.verify
+    original_register_success = initialized_services.rate_limits.register_success
+    old_password_verified = threading.Event()
+    release_stale_login = threading.Event()
+    coordination_lock = threading.Lock()
+    login_verify_intercepted = False
+    registered_successes: list[tuple[str, str]] = []
+
+    def pause_first_successful_old_password_verify(
+        encoded_hash: str, supplied_password: str
+    ) -> bool:
+        nonlocal login_verify_intercepted
+        verified = original_verify(encoded_hash, supplied_password)
+        should_pause = False
+        if verified and supplied_password == PASSWORD:
+            with coordination_lock:
+                if not login_verify_intercepted:
+                    login_verify_intercepted = True
+                    should_pause = True
+        if should_pause:
+            old_password_verified.set()
+            if not release_stale_login.wait(timeout=5):
+                raise AssertionError("test did not release the stale Login")
+        return verified
+
+    def track_register_success(username: str, source_identifier: str) -> None:
+        registered_successes.append((username, source_identifier))
+        original_register_success(username, source_identifier)
+
+    monkeypatch.setattr(password_manager, "verify", pause_first_successful_old_password_verify)
+    monkeypatch.setattr(
+        initialized_services.rate_limits, "register_success", track_register_success
+    )
+    stale_login = asyncio.create_task(login(client, origin_headers))
+    assert await asyncio.to_thread(old_password_verified.wait, 5)
+
+    changed = await asyncio.to_thread(
+        initialized_services.admin.change_password,
+        PASSWORD,
+        "a different sufficiently long passphrase",
+        request_id="req_password_change_wins",
+    )
+    assert changed == 0
+    release_stale_login.set()
+    stale_response = await asyncio.wait_for(stale_login, timeout=5)
+
+    assert stale_response.status_code == 401
+    assert stale_response.json()["error"] == {
+        "code": "AUTH_INVALID_CREDENTIALS",
+        "message": "Invalid credentials",
+        "category": "unauthenticated",
+        "retryable": False,
+        "details": {},
+    }
+    assert registered_successes == []
+    with initialized_services.database.transaction() as session:
+        assert (
+            session.scalar(
+                select(ControlPlaneSession).where(ControlPlaneSession.revoked_at.is_(None))
+            )
+            is None
+        )
+        account_bucket = session.get(LoginRateLimitBucket, account_key)
+        combined_bucket = session.get(LoginRateLimitBucket, combined_key)
+        assert account_bucket is not None
+        assert combined_bucket is not None
+        assert len(account_bucket.failure_timestamps) == 2
+        assert len(combined_bucket.failure_timestamps) == 2
+        source_bucket = session.get(LoginRateLimitBucket, source_key)
+        assert source_bucket is not None
+        assert len(source_bucket.failure_timestamps) == 2
+        login_events = tuple(
+            session.scalars(
+                select(AuditEvent).where(AuditEvent.action.in_(("login_failed", "login_succeeded")))
+            )
+        )
+        assert [event.action for event in login_events] == ["login_failed"]
+        assert login_events[0].metadata_json.keys() == {
+            "reason",
+            "source_fingerprint",
+            "username_fingerprint",
+        }
+        assert "password" not in repr(login_events[0].metadata_json).casefold()
+        assert "argon2" not in repr(login_events[0].metadata_json).casefold()
+
+    assert (await login(client, origin_headers, password=PASSWORD)).status_code == 401
+    assert (
+        await login(
+            client,
+            origin_headers,
+            password="a different sufficiently long passphrase",
+        )
+    ).status_code == 200
+    assert registered_successes == [("maintainer", source)]
 
 
 @pytest.mark.anyio
@@ -489,3 +695,94 @@ async def test_password_and_session_values_never_enter_audit_metadata(
     assert canary not in rendered
     assert raw_session not in rendered
     assert raw_csrf not in rendered
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_proxies", "expected_source"),
+    [
+        ((), "127.0.0.1"),
+        (("127.0.0.1/32",), "198.51.100.77"),
+    ],
+)
+async def test_proxy_source_and_secure_cookie_semantics_are_explicit(
+    tmp_path: Path,
+    trusted_proxies: tuple[str, ...],
+    expected_source: str,
+) -> None:
+    data_dir = tmp_path / ("trusted" if trusted_proxies else "untrusted")
+    data_dir.mkdir(mode=0o700)
+    database_url = f"sqlite+pysqlite:///{data_dir / 'agentbox.db'}"
+    migrate_database(database_url)
+    secret = "proxy-test-secret-that-is-at-least-thirty-two-bytes"
+    settings = Settings(
+        env=Environment.TEST,
+        database_url=database_url,
+        data_dir=data_dir,
+        secret_key=SecretStr(secret),
+        runtime_socket=Path("/run/agentbox/runtime.sock"),
+        project_root=Path("/srv/agentbox/projects"),
+        # Static serving has its own production integration tests. Keep this
+        # proxy/Cookie fixture independent from a host installation layout.
+        static_dir=None,
+        alembic_ini=Path.cwd() / "alembic.ini",
+        allowed_origins=("https://agentbox.example",),
+        trusted_proxies=trusted_proxies,
+    )
+    services = build_services(
+        settings,
+        password_manager=PasswordManager(time_cost=1, memory_cost=8192, parallelism=1),
+    )
+    services.admin.initialize("maintainer", PASSWORD)
+    # Database fixture paths are intentionally temporary; switch only the cookie
+    # policy after service construction so the request exercises production semantics.
+    settings.env = Environment.PRODUCTION
+    application = create_app(
+        settings,
+        services,
+        FakeCodexRuntime(),
+        FakeClaudeRuntime(),
+        FakeProjectRuntime(),
+    )
+    try:
+        transport = httpx.ASGITransport(app=application, client=("127.0.0.1", 44000))
+        async with httpx.AsyncClient(
+            transport=transport, base_url="https://agentbox.example"
+        ) as proxy_client:
+            headers = {
+                "Origin": "https://agentbox.example",
+                "X-Forwarded-For": "198.51.100.77, 203.0.113.9",
+                "X-Forwarded-Proto": "http",
+            }
+            failed = await login(proxy_client, headers, password="wrong password value")
+            assert failed.status_code == 401
+            succeeded = await login(proxy_client, headers)
+            assert succeeded.status_code == 200
+            assert "Secure" in succeeded.headers["set-cookie"]
+        with services.database.transaction() as session:
+            failure = session.scalar(
+                select(AuditEvent)
+                .where(AuditEvent.action == "login_failed")
+                .order_by(AuditEvent.created_at.desc())
+            )
+            assert failure is not None
+            assert failure.metadata_json["source_fingerprint"] == source_fingerprint(
+                secret, expected_source
+            )
+    finally:
+        services.database.close()
+
+
+@pytest.mark.anyio
+async def test_mutation_models_reject_type_coercion(
+    client: httpx.AsyncClient, origin_headers: dict[str, str]
+) -> None:
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": 1, "password": PASSWORD},
+        headers=origin_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REQUEST_VALIDATION_FAILED"
+    assert "input" not in response.json()["error"]

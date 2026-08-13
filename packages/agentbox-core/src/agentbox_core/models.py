@@ -77,6 +77,23 @@ class AuditEvent(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class LoginRateLimitBucket(Base):
+    """Restart-persistent pseudonymous login-throttle state.
+
+    Keys are application-secret-derived digests.  Neither account names nor
+    source addresses are stored in this table.
+    """
+
+    __tablename__ = "login_rate_limit_buckets"
+
+    key_digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failure_timestamps: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class Project(Base):
     """Formal Project Workspace metadata; paths remain relative to the configured root."""
 

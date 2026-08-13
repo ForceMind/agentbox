@@ -323,6 +323,15 @@ For a newer CLI talking to an older service, unsupported service operations rema
 
 Most destructive Git/project operations are outside MVP. When introduced, CLI first displays a dry-run and obtains a server Confirmation Challenge bound to target/state. A user must type the required target phrase; `--yes` cannot bypass it. Force push remains disabled unless a future security ADR explicitly adds it.
 
+## Phase 9 administrator and diagnostics commands
+
+- `agentbox admin password` is local TTY-only, accepts no password argv, and
+  revokes every Session after success.
+- `agentbox admin sessions [--json]` lists bounded metadata only.
+- `agentbox admin revoke-sessions` requires the current password.
+- `agentbox diagnostics export --output <new-file>` creates a non-overwriting
+  `0600`, size-bounded, secret-guarded report for operator review.
+
 ## Shell Completion and Privacy
 
 Completion lists static commands/options and non-sensitive project display names only when locally authorized. It never queries Pair Codes, tokens, remote URLs with userinfo, logs, or project files, and does not execute Runtime commands.

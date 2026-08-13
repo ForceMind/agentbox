@@ -40,4 +40,6 @@ closed.
 
 Rollback never changes Runtime HOME, Runtime authentication, project source,
 root sessions, SSH, firewall, cloudflared, or Provider configuration. Backups
-under `/var/lib/agentbox/backups` are retained for explicit recovery.
+under `/var/lib/agentbox/backups` participate only in verified bounded
+retention. Receipt-pinned backup and direct rollback release identities are
+protected; unknown objects remain for explicit operator review.

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -24,6 +26,8 @@ def _copy_regular_tree(source: Path, destination: Path) -> None:
     destination.mkdir(mode=0o755, parents=True)
     for item in source.rglob("*"):
         relative = item.relative_to(source)
+        if "__pycache__" in relative.parts or item.suffix in {".pyc", ".pyo"}:
+            continue
         target = destination / relative
         if item.is_symlink():
             raise BuildError("release input contains a symbolic link")
@@ -89,7 +93,7 @@ def build_release_artifact(source: Path, output: Path, *, version: str, python: 
         manifest = {
             "schema_version": 1,
             "version": version,
-            "database_revision": "0002_project_jobs",
+            "database_revision": _migration_head(source / "migrations/versions"),
             "database_backward_compatible": False,
             "files": files,
         }
@@ -123,3 +127,48 @@ def _wheel_version(wheel: Path) -> str:
     if len(versions) != 1:
         raise BuildError("AgentBox wheel version is unavailable")
     return versions[0]
+
+
+def _migration_head(versions_directory: Path) -> str:
+    """Read the unique Alembic head without importing migration code."""
+    if versions_directory.is_symlink() or not versions_directory.is_dir():
+        raise BuildError("migration versions directory is unavailable")
+    revisions: set[str] = set()
+    predecessors: set[str] = set()
+    for path in sorted(versions_directory.glob("*.py")):
+        if path.is_symlink() or not path.is_file():
+            raise BuildError("migration source contains an unsafe object")
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.name)
+        except (OSError, UnicodeError, SyntaxError) as exc:
+            raise BuildError("migration source is invalid") from exc
+        values: dict[str, object] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id in {"revision", "down_revision"}:
+                try:
+                    values[target.id] = ast.literal_eval(node.value)
+                except (ValueError, SyntaxError) as exc:
+                    raise BuildError("migration identity must be a literal") from exc
+        revision = values.get("revision")
+        down_revision = values.get("down_revision")
+        if not isinstance(revision, str) or re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", revision) is None:
+            raise BuildError("migration revision is invalid")
+        if revision in revisions:
+            raise BuildError("migration revision is duplicated")
+        revisions.add(revision)
+        if down_revision is not None:
+            if (
+                not isinstance(down_revision, str)
+                or re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", down_revision) is None
+            ):
+                raise BuildError("branched migration graphs are unsupported")
+            predecessors.add(down_revision)
+    if not revisions or not predecessors.issubset(revisions):
+        raise BuildError("migration graph is incomplete")
+    heads = revisions - predecessors
+    if len(heads) != 1:
+        raise BuildError("migration graph must have exactly one head")
+    return heads.pop()

@@ -12,6 +12,7 @@ from agentbox_installer.layout import InstallLayout
 @dataclass(frozen=True)
 class DependencyStatus:
     name: str
+    required_for_core: bool
     required_for_runtime: bool
     installed: bool
     selected_path: str | None
@@ -52,13 +53,13 @@ REQUIRED_BASE = frozenset(
         "python",
         "python_venv",
         "git",
-        "tmux",
         "curl",
-        "bubblewrap",
         "sqlite",
         "systemd",
     }
 )
+
+OPTIONAL_RUNTIME = frozenset({"tmux", "bubblewrap", "gh", "node", "npm", "pnpm", "codex", "claude"})
 
 
 def detect_dependencies(layout: InstallLayout) -> tuple[DependencyStatus, ...]:
@@ -81,7 +82,8 @@ def detect_dependencies(layout: InstallLayout) -> tuple[DependencyStatus, ...]:
         result.append(
             DependencyStatus(
                 name=name,
-                required_for_runtime=name in REQUIRED_BASE or name in {"gh", "codex", "claude"},
+                required_for_core=name in REQUIRED_BASE,
+                required_for_runtime=name in OPTIONAL_RUNTIME or name == "git",
                 installed=selected is not None,
                 selected_path=selected,
                 installation_policy=policy,

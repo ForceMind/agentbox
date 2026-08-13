@@ -21,6 +21,13 @@ class PackageFamily(StrEnum):
     UNKNOWN = "unknown"
 
 
+class QualificationLevel(StrEnum):
+    REAL_HOST_VALIDATED = "real_host_validated"
+    CI_VALIDATED = "ci_validated"
+    FIXTURE_VALIDATED = "fixture_validated"
+    UNSUPPORTED = "unsupported"
+
+
 @dataclass(frozen=True)
 class PlatformFacts:
     distribution_id: str
@@ -33,6 +40,80 @@ class PlatformFacts:
     @property
     def supported(self) -> bool:
         return self.support != PlatformSupport.UNSUPPORTED
+
+
+@dataclass(frozen=True)
+class PlatformQualification:
+    distribution: str
+    release: str
+    architecture: str
+    qualification: QualificationLevel
+    package_family: PackageFamily
+    systemd_baseline: int
+    python_strategy: str
+    evidence: tuple[str, ...]
+    limitations: tuple[str, ...]
+
+
+def qualify_platform(facts: PlatformFacts) -> PlatformQualification:
+    """Describe actual Phase 9 evidence without promoting fixture coverage."""
+    identity = (facts.distribution_id, facts.version_id.split(".", 1)[0])
+    if facts.architecture != "x86_64" or not facts.supported:
+        systemd_baseline = 249 if facts.distribution_id == "ubuntu" else 0
+        return PlatformQualification(
+            facts.distribution_id,
+            facts.version_id,
+            facts.architecture,
+            QualificationLevel.UNSUPPORTED,
+            facts.package_family,
+            systemd_baseline,
+            (
+                "stock Python 3.10 is below AgentBox >=3.11"
+                if facts.distribution_id == "ubuntu" and facts.version_id == "22.04"
+                else "no qualified Python/release artifact strategy"
+            ),
+            ("detection and rejection fixture",),
+            (facts.reason,),
+        )
+    if identity == ("opencloudos", "9"):
+        return PlatformQualification(
+            facts.distribution_id,
+            facts.version_id,
+            facts.architecture,
+            QualificationLevel.REAL_HOST_VALIDATED,
+            facts.package_family,
+            255,
+            "distribution Python 3.11 and release-local venv",
+            ("fixture", "systemd-analyze", "OpenCloudOS 9.4 real host"),
+            ("validation is limited to the designated x86_64 host",),
+        )
+    if identity == ("ubuntu", "24"):
+        return PlatformQualification(
+            facts.distribution_id,
+            facts.version_id,
+            facts.architecture,
+            QualificationLevel.CI_VALIDATED,
+            facts.package_family,
+            255,
+            "stock Python 3.12 and release-local venv",
+            ("GitHub Actions installer fixture", "systemd-analyze offline verification"),
+            ("native PID 1 systemd and Runtime tools remain unverified",),
+        )
+    if identity == ("rocky", "9"):
+        systemd_version, python = 252, "typed Python 3.11 package mapping; repository unverified"
+    else:
+        systemd_version, python = 252, "stock Python 3.11 and release-local venv"
+    return PlatformQualification(
+        facts.distribution_id,
+        facts.version_id,
+        facts.architecture,
+        QualificationLevel.FIXTURE_VALIDATED,
+        facts.package_family,
+        systemd_version,
+        python,
+        ("os-release/package fixture", "filesystem plan", "offline unit verification"),
+        ("native install, PID 1 systemd, upgrade, rollback, and Runtime remain unverified",),
+    )
 
 
 _VALUE = re.compile(r"^[A-Za-z0-9._+ -]{0,256}$")

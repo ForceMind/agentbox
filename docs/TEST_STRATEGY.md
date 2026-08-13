@@ -275,6 +275,21 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 ## Release quality gates
 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
+## Phase 9 hardening and recovery coverage
+
+The release-candidate suite adds systemd minimum-version/capability fixtures,
+offline unit verification, restart-persistent login throttling, local
+password/session management, strict mutation types, proxy trust/source tests,
+UID+GID UDS peers, malformed/deep/duplicate/concatenated frames, lifecycle
+crash points, corrupt rollback evidence, concurrent WAL backup, retention
+identity, permission-drift diagnostics, clock rollback, and a cross-path secret
+scan.
+
+The Deployment matrix runs installer/security/recovery fixtures on Ubuntu
+22.04 and 24.04 with Python 3.11 and 3.13, then a fail-closed aggregate gate.
+This does not emulate PID 1 or qualify Rocky/Debian native installs. Full host
+reboot remains unperformed without separate human approval.
+
 ## Phase 7 coverage
 
 Tests cover Project normalization/idempotency/rollback, traversal and symlink escape, clone protocol and option injection, marker-bound cleanup and no-replace activation, porcelain v2 variants, branch/refspec injection, ff-only Pull, explicit no-force Push, active-Claude guards, dangerous repository and worktree Git config (including a real executable canary), credential redaction, public `gh` auth states, bounded Draft PR stdin, Jobs/non-replay recovery, authenticated API/CSRF/no-store, responsive Web and Fake Runtime E2E. Core tests never require GitHub network access.
