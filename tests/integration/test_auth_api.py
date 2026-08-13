@@ -3,13 +3,23 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
+from agentbox_api.main import create_app
+from agentbox_core.configuration import Environment, Settings
 from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession
-from agentbox_core.security import PasswordManager
-from agentbox_core.services import ControlPlaneServices
-from conftest import FakeClock
+from agentbox_core.security import PasswordManager, source_fingerprint
+from agentbox_core.services import ControlPlaneServices, build_services
+from conftest import (
+    FakeClaudeRuntime,
+    FakeClock,
+    FakeCodexRuntime,
+    FakeProjectRuntime,
+    migrate_database,
+)
+from pydantic import SecretStr
 from sqlalchemy import select
 
 PASSWORD = "a sufficiently long passphrase"
@@ -489,3 +499,92 @@ async def test_password_and_session_values_never_enter_audit_metadata(
     assert canary not in rendered
     assert raw_session not in rendered
     assert raw_csrf not in rendered
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("trusted_proxies", "expected_source"),
+    [
+        ((), "127.0.0.1"),
+        (("127.0.0.1/32",), "198.51.100.77"),
+    ],
+)
+async def test_proxy_source_and_secure_cookie_semantics_are_explicit(
+    tmp_path: Path,
+    trusted_proxies: tuple[str, ...],
+    expected_source: str,
+) -> None:
+    data_dir = tmp_path / ("trusted" if trusted_proxies else "untrusted")
+    data_dir.mkdir(mode=0o700)
+    database_url = f"sqlite+pysqlite:///{data_dir / 'agentbox.db'}"
+    migrate_database(database_url)
+    secret = "proxy-test-secret-that-is-at-least-thirty-two-bytes"
+    settings = Settings(
+        env=Environment.TEST,
+        database_url=database_url,
+        data_dir=data_dir,
+        secret_key=SecretStr(secret),
+        runtime_socket=Path("/run/agentbox/runtime.sock"),
+        project_root=Path("/srv/agentbox/projects"),
+        static_dir=Path("/opt/agentbox/current/web/dist"),
+        alembic_ini=Path.cwd() / "alembic.ini",
+        allowed_origins=("https://agentbox.example",),
+        trusted_proxies=trusted_proxies,
+    )
+    services = build_services(
+        settings,
+        password_manager=PasswordManager(time_cost=1, memory_cost=8192, parallelism=1),
+    )
+    services.admin.initialize("maintainer", PASSWORD)
+    # Database fixture paths are intentionally temporary; switch only the cookie
+    # policy after service construction so the request exercises production semantics.
+    settings.env = Environment.PRODUCTION
+    application = create_app(
+        settings,
+        services,
+        FakeCodexRuntime(),
+        FakeClaudeRuntime(),
+        FakeProjectRuntime(),
+    )
+    try:
+        transport = httpx.ASGITransport(app=application, client=("127.0.0.1", 44000))
+        async with httpx.AsyncClient(
+            transport=transport, base_url="https://agentbox.example"
+        ) as proxy_client:
+            headers = {
+                "Origin": "https://agentbox.example",
+                "X-Forwarded-For": "198.51.100.77, 203.0.113.9",
+                "X-Forwarded-Proto": "http",
+            }
+            failed = await login(proxy_client, headers, password="wrong password value")
+            assert failed.status_code == 401
+            succeeded = await login(proxy_client, headers)
+            assert succeeded.status_code == 200
+            assert "Secure" in succeeded.headers["set-cookie"]
+        with services.database.transaction() as session:
+            failure = session.scalar(
+                select(AuditEvent)
+                .where(AuditEvent.action == "login_failed")
+                .order_by(AuditEvent.created_at.desc())
+            )
+            assert failure is not None
+            assert failure.metadata_json["source_fingerprint"] == source_fingerprint(
+                secret, expected_source
+            )
+    finally:
+        services.database.close()
+
+
+@pytest.mark.anyio
+async def test_mutation_models_reject_type_coercion(
+    client: httpx.AsyncClient, origin_headers: dict[str, str]
+) -> None:
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": 1, "password": PASSWORD},
+        headers=origin_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REQUEST_VALIDATION_FAILED"
+    assert "input" not in response.json()["error"]

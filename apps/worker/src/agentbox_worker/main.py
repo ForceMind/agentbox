@@ -335,6 +335,7 @@ async def run_worker(
         now = loop.time()
         if now >= next_cleanup:
             services.sessions.cleanup()
+            services.retention.cleanup()
             next_cleanup = now + cleanup_interval
         job = services.jobs.claim_next(worker_id)
         if job is not None:
@@ -362,13 +363,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print("AgentBox Worker: not ready")
                 return 10
             deleted = services.sessions.cleanup()
+            retention = services.retention.cleanup()
             services.jobs.recover_expired()
             job = services.jobs.claim_next(f"worker-once-{os.getpid()}")
             if job is not None:
                 asyncio.run(execute_job(services, runtime, job))
             print(
                 "AgentBox Worker: maintenance complete "
-                f"({deleted} sessions removed, {'one Job' if job else 'no Jobs'})"
+                f"({deleted} sessions, {retention.jobs_deleted} Jobs, "
+                f"{retention.audit_events_deleted} audit events, "
+                f"{retention.rate_limit_buckets_deleted} rate buckets removed; "
+                f"{'one Job' if job else 'no Jobs'})"
             )
             return 0
 

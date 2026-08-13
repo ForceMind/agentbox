@@ -31,9 +31,12 @@ SENSITIVE_KEY_PARTS = (
 )
 SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(password|passwd|token|secret|cookie|authorization|csrf|session)"
-    r"(\s*[:=]\s*)([^\s,;]+)"
+    r"(\s*[:=]\s*)(?:Bearer\s+)?([^\s,;]+)"
 )
 CREDENTIAL_URL_PATTERN = re.compile(r"(?i)\b(https?://)[^/@\s]+@")
+TOKEN_VALUE_PATTERN = re.compile(
+    r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,255}|github_pat_[A-Za-z0-9_]{20,255})\b"
+)
 
 
 class PasswordManager:
@@ -132,7 +135,10 @@ def redact_text(value: str, *, limit: int = 1024) -> str:
         " " if unicodedata.category(character).startswith("C") else character for character in value
     )
     without_url_credentials = CREDENTIAL_URL_PATTERN.sub(r"\1", sanitized)
-    redacted = SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", without_url_credentials)
+    without_assignments = SENSITIVE_ASSIGNMENT_PATTERN.sub(
+        r"\1\2[REDACTED]", without_url_credentials
+    )
+    redacted = TOKEN_VALUE_PATTERN.sub("[REDACTED]", without_assignments)
     return redacted[:limit]
 
 

@@ -115,6 +115,61 @@ def test_admin_init_prompts_without_password_argv_and_refuses_second_admin(
     assert "ADMIN_ALREADY_INITIALIZED" in capsys.readouterr().err
 
 
+def test_admin_password_and_sessions_are_tty_only_and_never_accept_password_argv(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = Settings()
+    services = build_services(settings)
+    services.admin.initialize("maintainer", "a sufficiently long passphrase")
+    services.auth.login(
+        username="maintainer",
+        password="a sufficiently long passphrase",
+        source_identifier="127.0.0.1",
+        request_id="req_cli_session",
+    )
+    services.database.close()
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    prompts = iter(
+        (
+            "a sufficiently long passphrase",
+            "a different sufficiently long passphrase",
+            "a different sufficiently long passphrase",
+        )
+    )
+    monkeypatch.setattr("agentbox_cli.main.getpass.getpass", lambda _prompt: next(prompts))
+
+    assert main(["admin", "password"]) == 0
+    output = capsys.readouterr().out
+    assert "password changed" in output
+    assert "a sufficiently" not in output
+
+    monkeypatch.setattr(
+        "agentbox_cli.main.getpass.getpass",
+        lambda _prompt: "a different sufficiently long passphrase",
+    )
+    assert main(["admin", "sessions", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["data"]["sessions"] == []
+
+    parser = create_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["admin", "password", "--password", "forbidden"])
+
+
+def test_admin_session_revocation_requires_tty(
+    cli_environment: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    del cli_environment
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+
+    assert main(["admin", "revoke-sessions"]) == 13
+    assert "ADMIN_REVOKE_SESSIONS_TTY_REQUIRED" in capsys.readouterr().err
+
+
 def test_secret_generate_outputs_random_value_without_file_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

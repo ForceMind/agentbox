@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class StrictMetadataModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 class HealthResponse(StrictMetadataModel):

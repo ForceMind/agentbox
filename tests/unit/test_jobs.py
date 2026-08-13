@@ -86,6 +86,27 @@ def test_running_job_heartbeat_renews_lease_without_creating_progress_noise(
     assert initialized_services.jobs.recover_expired() == 1
 
 
+def test_backward_clock_skew_never_replays_or_reassigns_a_running_job(
+    initialized_services: ControlPlaneServices,
+    clock: FakeClock,
+) -> None:
+    job = enqueue(
+        initialized_services,
+        project(initialized_services, "skew-project"),
+        "job-skew-backward",
+    )
+    claimed = initialized_services.jobs.claim_next("worker-original")
+    assert claimed is not None and claimed.id == job.id
+    clock.advance(seconds=-3600)
+
+    assert initialized_services.jobs.recover_expired() == 0
+    assert initialized_services.jobs.claim_next("worker-duplicate") is None
+    observed = initialized_services.jobs.get(job.id)
+    assert observed is not None
+    assert observed.status == "running"
+    assert observed.lease_owner == "worker-original"
+
+
 def test_job_summaries_are_bounded_redacted_and_raw_output_is_not_persisted(
     initialized_services: ControlPlaneServices,
 ) -> None:

@@ -32,9 +32,11 @@ if grep --recursive --line-number --extended-regexp \
   --exclude-dir=.git \
   --exclude-dir=.venv \
   --exclude-dir=.agentbox-dev \
+  --exclude-dir=__pycache__ \
   --exclude-dir=node_modules \
   --exclude-dir=dist \
   --exclude=check-secrets.sh \
+  --binary-files=without-match \
   "$secret_pattern" .; then
   printf 'Potential credential literal found. Review without printing any real secret.\n' >&2
   exit 1

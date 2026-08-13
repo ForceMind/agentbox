@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 class LoginRequest(StrictModel):

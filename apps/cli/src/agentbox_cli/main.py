@@ -13,6 +13,7 @@ import shutil
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ from agentbox_core.configuration import Settings
 from agentbox_core.errors import AdminAlreadyInitialized, AgentBoxError
 from agentbox_core.projects import repository_name_from_url, validate_repository_url
 from agentbox_core.services import build_services
-from agentbox_installer.diagnostics import DeploymentDoctor
+from agentbox_installer.diagnostics import DeploymentDoctor, export_diagnostics
 from agentbox_installer.host import HostOperations
 from agentbox_installer.layout import InstallLayout
 from agentbox_installer.lifecycle import AgentBoxInstaller, InstallError
@@ -80,10 +81,24 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=argparse.SUPPRESS,
     )
+    admin_commands.add_parser("password")
+    admin_sessions = admin_commands.add_parser("sessions")
+    admin_sessions.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=argparse.SUPPRESS,
+    )
+    admin_commands.add_parser("revoke-sessions")
 
     secret = subcommands.add_parser("secret")
     secret_commands = secret.add_subparsers(dest="secret_command", required=True)
     secret_commands.add_parser("generate")
+
+    diagnostics = subcommands.add_parser("diagnostics")
+    diagnostics_commands = diagnostics.add_subparsers(dest="diagnostics_command", required=True)
+    diagnostics_export = diagnostics_commands.add_parser("export")
+    diagnostics_export.add_argument("--output", type=Path, required=True)
 
     codex = subcommands.add_parser("codex")
     codex_commands = codex.add_subparsers(dest="codex_command", required=True)
@@ -294,6 +309,29 @@ def _production_status(settings: Settings) -> dict[str, object]:
     }
 
 
+def _diagnostics_export(settings: Settings, output: Path) -> int:
+    try:
+        payload: dict[str, Any] = {
+            "schema_version": 1,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "agentbox_version": __version__,
+            "control_plane": _control_plane_status(settings),
+            "deployment": DeploymentDoctor().inspect(),
+            "runtime_capabilities": asyncio.run(_production_runtime_diagnostics(settings)),
+            "sharing_warning": "Review this diagnostic report before sharing.",
+        }
+        export_diagnostics(output, payload)
+    except (OSError, RuntimeError, ValueError):
+        print(
+            "ERROR [DIAGNOSTICS_EXPORT_FAILED]: diagnostic report was not created",
+            file=sys.stderr,
+        )
+        return 17
+    print(f"Diagnostic report created: {output}")
+    print("Review this diagnostic report before sharing.")
+    return 0
+
+
 def _admin_init(settings: Settings, username_argument: str | None) -> int:
     if not sys.stdin.isatty():
         print(
@@ -345,6 +383,91 @@ def _admin_status(settings: Settings, json_output: bool) -> int:
         )
         _print_result(result, json_output)
         return 0
+    finally:
+        services.database.close()
+
+
+def _require_admin_tty(action: str) -> bool:
+    if sys.stdin.isatty():
+        return True
+    print(
+        f"ERROR [ADMIN_{action.upper()}_TTY_REQUIRED]: "
+        f"administrator {action.replace('_', ' ')} requires a local TTY",
+        file=sys.stderr,
+    )
+    return False
+
+
+def _admin_password(settings: Settings) -> int:
+    if not _require_admin_tty("password"):
+        return 13
+    services = build_services(settings)
+    try:
+        current = getpass.getpass("Current administrator password: ")
+        replacement = getpass.getpass("New administrator password: ")
+        confirmation = getpass.getpass("Confirm new administrator password: ")
+        if replacement != confirmation:
+            print("ERROR [AUTH_PASSWORD_MISMATCH]: passwords do not match", file=sys.stderr)
+            return 15
+        revoked = services.admin.change_password(current, replacement)
+        print(f"Administrator password changed; {revoked} session(s) revoked")
+        return 0
+    except AgentBoxError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return 15
+    finally:
+        services.database.close()
+
+
+def _admin_sessions(settings: Settings, json_output: bool) -> int:
+    if not _require_admin_tty("sessions"):
+        return 13
+    services = build_services(settings)
+    try:
+        current = getpass.getpass("Administrator password: ")
+        sessions = services.admin.sessions(current)
+        data = {
+            "sessions": [
+                {
+                    "session_id": item.session_id,
+                    "created_at": item.created_at.isoformat(),
+                    "last_seen_at": item.last_seen_at.isoformat(),
+                    "idle_expires_at": item.idle_expires_at.isoformat(),
+                    "expires_at": item.expires_at.isoformat(),
+                    "client_label": item.client_label,
+                }
+                for item in sessions
+            ]
+        }
+        if json_output:
+            _print_result(_envelope("admin.sessions", ok=True, data=data), True)
+        else:
+            print(f"Active administrator sessions: {len(sessions)}")
+            for item in sessions:
+                print(
+                    f"{item.session_id}  last seen {item.last_seen_at.isoformat()}  "
+                    f"expires {item.expires_at.isoformat()}"
+                )
+        return 0
+    except AgentBoxError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return 15
+    finally:
+        services.database.close()
+
+
+def _admin_revoke_sessions(settings: Settings) -> int:
+    if not _require_admin_tty("revoke_sessions"):
+        return 13
+    services = build_services(settings)
+    try:
+        current = getpass.getpass("Administrator password: ")
+        revoked = services.admin.revoke_sessions(current)
+        print(f"Revoked {revoked} administrator session(s)")
+        return 0
+    except AgentBoxError as exc:
+        print(f"ERROR [{exc.code}]: {exc.message}", file=sys.stderr)
+        return 15
     finally:
         services.database.close()
 
@@ -713,7 +836,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "admin":
         if args.admin_command == "init":
             return _admin_init(settings, args.username)
-        return _admin_status(settings, getattr(args, "json_output", False))
+        if args.admin_command == "status":
+            return _admin_status(settings, getattr(args, "json_output", False))
+        if args.admin_command == "password":
+            return _admin_password(settings)
+        if args.admin_command == "sessions":
+            return _admin_sessions(settings, getattr(args, "json_output", False))
+        return _admin_revoke_sessions(settings)
+
+    if args.command == "diagnostics":
+        return _diagnostics_export(settings, args.output)
 
     if args.command == "codex":
         return asyncio.run(_codex_command(settings, args))
