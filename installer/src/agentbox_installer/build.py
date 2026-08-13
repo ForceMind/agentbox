@@ -271,6 +271,9 @@ def build_release_artifact(
     pnpm = pnpm or Path(shutil.which("pnpm") or "")
     if not pnpm.is_absolute() or not pnpm.is_file():
         raise BuildError("pnpm is required to inventory frontend production dependencies")
+    node = Path(shutil.which("node") or "")
+    if not node.is_absolute() or not node.is_file():
+        raise BuildError("Node is required to run the frontend license inventory")
     with tempfile.TemporaryDirectory(prefix="agentbox-release-") as temporary:
         release = Path(temporary) / "release"
         wheel_source = Path(temporary) / "wheel-source"
@@ -357,7 +360,7 @@ def build_release_artifact(
         os.chmod(release_docs / "releases" / release_notes.name, 0o644)
 
         python_packages = _python_package_inventory(wheelhouse)
-        frontend_packages = _frontend_package_inventory(source, pnpm)
+        frontend_packages = _frontend_package_inventory(source, pnpm, node)
         _verify_license_inventory(python_packages + frontend_packages)
         sbom = _spdx_sbom(
             version,
@@ -506,8 +509,11 @@ def _python_package_inventory(wheelhouse: Path) -> list[dict[str, str]]:
     return [packages[key] for key in sorted(packages)]
 
 
-def _frontend_package_inventory(source: Path, pnpm: Path) -> list[dict[str, str]]:
-    environment = {"PATH": f"{pnpm.parent}:/usr/bin:/bin", "HOME": os.environ.get("HOME", "/tmp")}
+def _frontend_package_inventory(source: Path, pnpm: Path, node: Path) -> list[dict[str, str]]:
+    environment = {
+        "PATH": f"{pnpm.parent}:{node.parent}:/usr/bin:/bin",
+        "HOME": os.environ.get("HOME", "/tmp"),
+    }
     result = _run_build_command(
         (str(pnpm), "licenses", "list", "--prod", "--json"),
         source,
