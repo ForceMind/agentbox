@@ -9,7 +9,7 @@ from pathlib import Path
 
 from agentbox_installer.artifact import extract_verified_tar
 from agentbox_installer.backup import create_sqlite_backup
-from agentbox_installer.retention import enforce_retention
+from agentbox_installer.retention import _version_key, enforce_retention
 
 
 def _release(root: Path, version: str) -> None:
@@ -141,3 +141,9 @@ def test_retention_fails_closed_for_escaping_current_release_link(tmp_path: Path
     else:
         raise AssertionError("escaping current release target was accepted")
     assert (releases / "0.4.1").is_dir()
+
+
+def test_retention_orders_release_candidates_before_the_stable_release() -> None:
+    versions = ["0.2.10+dev.9", "0.3.0-rc.0", "0.3.0rc1", "0.3.0rc2", "0.3.0"]
+
+    assert sorted(versions, key=_version_key) == versions

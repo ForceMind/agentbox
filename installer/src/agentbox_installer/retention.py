@@ -181,9 +181,29 @@ def _current_release_version(releases_root: Path) -> str | None:
     return target.name
 
 
-def _version_key(version: str) -> tuple[int, int, int, str]:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+](.*))?", version)
+def _version_key(version: str) -> tuple[int, int, int, int, int, str]:
+    match = re.fullmatch(
+        r"(\d+)\.(\d+)\.(\d+)(?:(?:rc([1-9]\d*))|-([0-9A-Za-z][0-9A-Za-z.-]*))?"
+        r"(?:\+([0-9A-Za-z][0-9A-Za-z.-]*))?",
+        version,
+    )
     if match is None:
         raise ValueError("verified release version is invalid")
-    major, minor, patch, suffix = match.groups()
-    return int(major), int(minor), int(patch), suffix or ""
+    major, minor, patch, rc_number, prerelease, local = match.groups()
+    if rc_number is not None:
+        release_rank = 2
+        prerelease_number = int(rc_number)
+    elif prerelease is not None:
+        release_rank = 1
+        prerelease_number = 0
+    else:
+        release_rank = 3
+        prerelease_number = 0
+    return (
+        int(major),
+        int(minor),
+        int(patch),
+        release_rank,
+        prerelease_number,
+        local or prerelease or "",
+    )
