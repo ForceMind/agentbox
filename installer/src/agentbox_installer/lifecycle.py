@@ -36,9 +36,11 @@ from agentbox_installer.artifact import (
 )
 from agentbox_installer.backup import BackupResult, create_sqlite_backup, verify_sqlite_backup
 from agentbox_installer.dependencies import REQUIRED_BASE, detect_dependencies
+from agentbox_installer.hardening import validate_unit_compatibility
 from agentbox_installer.host import HostOperations, IdentityFacts
 from agentbox_installer.layout import DIRECTORIES, InstallLayout
 from agentbox_installer.platform import PlatformFacts, detect_platform, resolve_packages
+from agentbox_installer.retention import enforce_retention
 
 UNIT_NAMES = (
     "agentbox-api.service",
@@ -252,7 +254,21 @@ class AgentBoxInstaller:
 
         transaction_id = secrets.token_hex(16)
         resources = self._snapshot_transaction_resources(plan.version)
+        self._write_journal(
+            status="running",
+            version=plan.version,
+            completed=(),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
         identities = self.host.ensure_identities(self._receipt_identities(self._read_receipt()))
+        self._write_journal(
+            status="running",
+            version=plan.version,
+            completed=("identities",),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
         self._ensure_directories()
         self._write_journal(
             status="running",
@@ -266,6 +282,18 @@ class AgentBoxInstaller:
             status="running",
             version=plan.version,
             completed=("identities", "directories", "configuration"),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
+        self._write_journal(
+            status="running",
+            version=plan.version,
+            completed=(
+                "identities",
+                "directories",
+                "configuration",
+                "release_staging_started",
+            ),
             transaction_id=transaction_id,
             resources=resources,
         )
@@ -289,6 +317,19 @@ class AgentBoxInstaller:
             raise
         activated = False
         try:
+            self._write_journal(
+                status="running",
+                version=plan.version,
+                completed=(
+                    "identities",
+                    "directories",
+                    "configuration",
+                    "release_staged",
+                    "database_migration_started",
+                ),
+                transaction_id=transaction_id,
+                resources=resources,
+            )
             try:
                 self._run_migration(manifest)
             finally:
@@ -344,6 +385,34 @@ class AgentBoxInstaller:
             self.host.enable_and_start()
             if not self.health_check():
                 raise InstallError("post-install health verification failed")
+            enforce_retention(
+                backups_root=self.layout.backups,
+                releases_root=self.layout.map("/opt/agentbox/releases"),
+                protected_backup_ids=(
+                    frozenset({backup.backup_id}) if backup is not None else frozenset()
+                ),
+                protected_release_versions=frozenset(
+                    value for value in (manifest.version, previous) if value is not None
+                ),
+            )
+            self._write_journal(
+                status="running",
+                version=plan.version,
+                completed=(
+                    "identities",
+                    "directories",
+                    "configuration",
+                    "release_staged",
+                    "database_migrated",
+                    "units_installed",
+                    "release_activated",
+                    "health_verified",
+                    "retention_applied",
+                    "receipt_write_started",
+                ),
+                transaction_id=transaction_id,
+                resources=resources,
+            )
             self._write_receipt(manifest, previous, backup, identities)
             self._write_journal(
                 status="committed",
@@ -357,6 +426,7 @@ class AgentBoxInstaller:
                     "units_installed",
                     "release_activated",
                     "health_verified",
+                    "retention_applied",
                     "receipt_written",
                 ),
                 transaction_id=transaction_id,
@@ -836,6 +906,23 @@ class AgentBoxInstaller:
         environment = self.layout.map("/etc/agentbox/environment")
         runtime_environment = self.layout.map("/etc/agentbox/runtime-environment")
         helper_environment = self.layout.map("/etc/agentbox/helper-environment")
+        runtime_lines = (
+            "AGENTBOX_ENV=production",
+            "AGENTBOX_RUNTIME_SOCKET=/run/agentbox/runtime.sock",
+            f"AGENTBOX_RUNTIME_SOCKET_GID={identities.ipc_gid}",
+            f"AGENTBOX_RUNTIME_ALLOWED_UIDS={identities.agentbox_uid}",
+            f"AGENTBOX_RUNTIME_ALLOWED_GIDS={identities.agentbox_gid}",
+            "AGENTBOX_PROJECT_ROOT=/srv/agentbox/projects",
+            "HOME=/home/agentbox-runtime",
+            "PATH=/home/agentbox-runtime/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "LANG=C.UTF-8",
+            "TERM=xterm-256color",
+            "XDG_CACHE_HOME=/home/agentbox-runtime/.cache",
+            "XDG_CONFIG_HOME=/home/agentbox-runtime/.config",
+            "XDG_DATA_HOME=/home/agentbox-runtime/.local/share",
+            "XDG_STATE_HOME=/home/agentbox-runtime/.local/state",
+        )
+        runtime_content = "\n".join((*runtime_lines, ""))
         if not config.exists():
             self._atomic_write(
                 config,
@@ -869,28 +956,24 @@ class AgentBoxInstaller:
                 0o640,
             )
         if not runtime_environment.exists():
-            self._atomic_write(
-                runtime_environment,
-                "\n".join(
-                    (
-                        "AGENTBOX_ENV=production",
-                        "AGENTBOX_RUNTIME_SOCKET=/run/agentbox/runtime.sock",
-                        f"AGENTBOX_RUNTIME_SOCKET_GID={identities.ipc_gid}",
-                        f"AGENTBOX_RUNTIME_ALLOWED_UIDS={identities.agentbox_uid}",
-                        "AGENTBOX_PROJECT_ROOT=/srv/agentbox/projects",
-                        "HOME=/home/agentbox-runtime",
-                        "PATH=/home/agentbox-runtime/.local/bin:/usr/local/bin:/usr/bin:/bin",
-                        "LANG=C.UTF-8",
-                        "TERM=xterm-256color",
-                        "XDG_CACHE_HOME=/home/agentbox-runtime/.cache",
-                        "XDG_CONFIG_HOME=/home/agentbox-runtime/.config",
-                        "XDG_DATA_HOME=/home/agentbox-runtime/.local/share",
-                        "XDG_STATE_HOME=/home/agentbox-runtime/.local/state",
-                        "",
-                    )
-                ),
-                0o640,
+            self._atomic_write(runtime_environment, runtime_content, 0o640)
+        else:
+            legacy_runtime_content = "\n".join(
+                (
+                    *(
+                        line
+                        for line in runtime_lines
+                        if not line.startswith("AGENTBOX_RUNTIME_ALLOWED_GIDS=")
+                    ),
+                    "",
+                )
             )
+            try:
+                observed_runtime_content = runtime_environment.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                raise InstallError("AgentBox Runtime environment is unavailable") from exc
+            if observed_runtime_content == legacy_runtime_content:
+                self._atomic_write(runtime_environment, runtime_content, 0o640)
         helper_content = (
             f"AGENTBOX_HELPER_ALLOWED_UIDS={identities.agentbox_uid}\n"
             f"AGENTBOX_HELPER_ALLOWED_GIDS={identities.agentbox_gid}\n"
@@ -968,6 +1051,7 @@ class AgentBoxInstaller:
                 "AGENTBOX_RUNTIME_SOCKET",
                 "AGENTBOX_RUNTIME_SOCKET_GID",
                 "AGENTBOX_RUNTIME_ALLOWED_UIDS",
+                "AGENTBOX_RUNTIME_ALLOWED_GIDS",
                 "AGENTBOX_PROJECT_ROOT",
                 "HOME",
                 "PATH",
@@ -979,9 +1063,11 @@ class AgentBoxInstaller:
                 "XDG_STATE_HOME",
             },
         )
-        if runtime_values["AGENTBOX_RUNTIME_ALLOWED_UIDS"] != str(
-            identities.agentbox_uid
-        ) or runtime_values["AGENTBOX_RUNTIME_SOCKET_GID"] != str(identities.ipc_gid):
+        if (
+            runtime_values["AGENTBOX_RUNTIME_ALLOWED_UIDS"] != str(identities.agentbox_uid)
+            or runtime_values["AGENTBOX_RUNTIME_ALLOWED_GIDS"] != str(identities.agentbox_gid)
+            or runtime_values["AGENTBOX_RUNTIME_SOCKET_GID"] != str(identities.ipc_gid)
+        ):
             raise InstallError("AgentBox Runtime environment identity is stale")
         helper_values = self._parse_environment_file(
             helper_environment,
@@ -1009,8 +1095,13 @@ class AgentBoxInstaller:
         package_root = importlib.resources.files("agentbox_installer") / "assets"
         receipt = self._read_receipt()
         managed_hashes = receipt.get("managed_unit_sha256", {}) if receipt else {}
+        systemd_version = self.host.systemd_version()
         for name in UNIT_NAMES:
             source = Path(str(package_root / "systemd" / name))
+            try:
+                validate_unit_compatibility(source.read_text(encoding="utf-8"), systemd_version)
+            except (OSError, UnicodeError, ValueError) as exc:
+                raise InstallError("AgentBox unit is incompatible with host systemd") from exc
             target = unit_root / name
             if target.exists() or target.is_symlink():
                 if target.is_symlink() or not target.is_file():
@@ -1457,10 +1548,25 @@ class AgentBoxInstaller:
         receipt_version = receipt.get("active_version") if receipt is not None else None
         if current == version and receipt_version != version:
             return "activated"
-        if "database_migrated" in completed:
+        if (
+            current == version
+            and receipt_version == version
+            and "receipt_write_started" in completed
+        ):
+            # The release receipt was durably replaced, but the final committed
+            # journal write was interrupted. Treat it as activated/verify-only,
+            # never as a partially migrated state that could invite DB replay.
+            return "activated"
+        if "database_migrated" in completed or "database_migration_started" in completed:
             return "partially_migrated"
         if "release_staged" in completed:
             return "staged"
+        if "release_staging_started" in completed:
+            try:
+                staged = verify_release(self.layout.release(version), allow_generated_venv=True)
+            except (ArtifactError, OSError):
+                return "unknown"
+            return "staged" if staged.version == version else "unknown"
         return "unknown"
 
     def _write_receipt(

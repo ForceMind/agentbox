@@ -22,6 +22,7 @@ from agentbox_installer.lifecycle import (
     RollbackVerificationError,
     RollbackVerifiedError,
 )
+from support.failure_injection import FailureInjector, InjectedCrash
 
 
 def _artifact(tmp_path: Path, version: str, revision: str) -> tuple[Path, str]:
@@ -689,3 +690,150 @@ def test_rollback_rejects_corrupt_backup_before_stopping_services(tmp_path: Path
         installer.rollback()
 
     assert installer.current_version() == "0.2.1+dev.8"
+
+
+@pytest.mark.parametrize(
+    ("point", "target", "attribute", "expected_state"),
+    [
+        ("after_users", "host", "ensure_identities", "preflight_interrupted"),
+        ("after_dirs", "installer", "_ensure_directories", "preflight_interrupted"),
+        ("after_config", "installer", "_write_initial_configuration", "preflight_interrupted"),
+        ("after_release_extraction", "installer", "_stage_release", "staged"),
+        ("after_migration", "installer", "_run_migration", "partially_migrated"),
+        ("after_current_symlink", "installer", "_activate", "activated"),
+        ("after_daemon_reload", "host", "daemon_reload", "activated"),
+        ("after_service_start", "host", "enable_and_start", "activated"),
+        ("before_health_verification", "installer", "health_check", "activated"),
+    ],
+)
+def test_test_only_installer_crash_matrix_is_classified_without_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    point: str,
+    target: str,
+    attribute: str,
+    expected_state: str,
+) -> None:
+    installer, _layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.2.0+dev.9", "0003_security_hardening")
+    injector = FailureInjector(point)
+    owner = installer if target == "installer" else installer.host
+    monkeypatch.setattr(owner, attribute, injector.after(point, getattr(owner, attribute)))
+
+    with pytest.raises(InjectedCrash, match=point):
+        installer.apply(artifact, digest)
+
+    assert installer.installation_state() == expected_state
+    with pytest.raises(InstallError, match=f"recovery state is {expected_state}"):
+        installer.apply(artifact, digest)
+
+
+def test_upgrade_crash_after_backup_preserves_old_release_and_stops_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer, _layout = _installer(tmp_path)
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.9", "revision_one")
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.9", "revision_two")
+    installer.apply(first, first_digest)
+    injector = FailureInjector("after_backup")
+    monkeypatch.setattr(
+        installer,
+        "_backup_before_change",
+        injector.after("after_backup", installer._backup_before_change),
+    )
+
+    with pytest.raises(InjectedCrash, match="after_backup"):
+        installer.apply(second, second_digest)
+
+    assert installer.current_version() == "0.2.0+dev.9"
+    assert installer.installation_state() == "staged"
+    with pytest.raises(InstallError, match="recovery state is staged"):
+        installer.apply(second, second_digest)
+
+
+@pytest.mark.parametrize(
+    ("point", "target", "attribute", "expected_version", "expected_state"),
+    [
+        ("upgrade_stage", "installer", "_stage_release", "0.2.0+dev.9", "staged"),
+        ("upgrade_backup", "installer", "_backup_before_change", "0.2.0+dev.9", "staged"),
+        (
+            "upgrade_migration",
+            "installer",
+            "_run_migration",
+            "0.2.0+dev.9",
+            "partially_migrated",
+        ),
+        ("upgrade_activate", "installer", "_activate", "0.2.1+dev.9", "activated"),
+        ("upgrade_restart", "host", "enable_and_start", "0.2.1+dev.9", "activated"),
+        ("upgrade_health", "installer", "health_check", "0.2.1+dev.9", "activated"),
+        ("upgrade_receipt", "installer", "_write_receipt", "0.2.1+dev.9", "activated"),
+    ],
+)
+def test_upgrade_crash_matrix_is_classified_without_mutation_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    point: str,
+    target: str,
+    attribute: str,
+    expected_version: str,
+    expected_state: str,
+) -> None:
+    installer, _layout = _installer(tmp_path)
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.9", "revision_one")
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.9", "revision_two")
+    installer.apply(first, first_digest)
+    injector = FailureInjector(point)
+    owner = installer if target == "installer" else installer.host
+    monkeypatch.setattr(owner, attribute, injector.after(point, getattr(owner, attribute)))
+
+    with pytest.raises(InjectedCrash, match=point):
+        installer.apply(second, second_digest)
+
+    assert installer.current_version() == expected_version
+    assert installer.installation_state() == expected_state
+    with pytest.raises(InstallError, match=f"recovery state is {expected_state}"):
+        installer.apply(second, second_digest)
+
+
+def test_crash_after_committed_journal_is_a_completed_idempotent_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer, _layout = _installer(tmp_path)
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.9", "revision_one")
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.9", "revision_two")
+    installer.apply(first, first_digest)
+    original = installer._write_journal
+
+    def crash_after_commit(**values: object) -> None:
+        original(**values)  # type: ignore[arg-type]
+        if values.get("status") == "committed":
+            raise InjectedCrash("injected crash at upgrade_commit")
+
+    monkeypatch.setattr(installer, "_write_journal", crash_after_commit)
+    with pytest.raises(InjectedCrash, match="upgrade_commit"):
+        installer.apply(second, second_digest)
+
+    assert installer.current_version() == "0.2.1+dev.9"
+    assert installer.installation_state() == "installed"
+    monkeypatch.setattr(installer, "_write_journal", original)
+    result = installer.apply(second, second_digest)
+    assert result.changed is False
+
+
+def test_release_staging_disk_full_never_replaces_current_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer, _layout = _installer(tmp_path)
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.9", "revision_one")
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.9", "revision_two")
+    installer.apply(first, first_digest)
+
+    def disk_full(_artifact: Path, _digest: str) -> ReleaseManifest:
+        raise OSError(28, "fixture disk full")
+
+    monkeypatch.setattr(installer, "_stage_release", disk_full)
+    with pytest.raises(OSError, match="disk full"):
+        installer.apply(second, second_digest)
+
+    assert installer.current_version() == "0.2.0+dev.9"
+    assert installer.installation_state() == "unknown"
