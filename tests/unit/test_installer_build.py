@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from agentbox_installer.build import BuildError, _copy_regular_tree, _migration_head
+from agentbox_installer.build import (
+    WHEEL_SOURCE_DIRECTORIES,
+    WHEEL_SOURCE_FILES,
+    BuildError,
+    _copy_regular_tree,
+    _migration_head,
+    _prepare_wheel_source,
+)
 
 
 def _migration(path: Path, revision: str, down_revision: str | None) -> None:
@@ -49,3 +56,24 @@ def test_release_tree_excludes_interpreter_cache_artifacts(tmp_path: Path) -> No
 
     assert (destination / "migration.py").is_file()
     assert not (destination / "__pycache__").exists()
+
+
+def test_wheel_build_uses_an_isolated_allowlisted_source(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "wheel-source"
+    source.mkdir()
+    for name in WHEEL_SOURCE_DIRECTORIES:
+        package = source / name
+        package.mkdir(parents=True)
+        (package / "tracked.py").write_text("value = True\n", encoding="utf-8")
+    for name in WHEEL_SOURCE_FILES:
+        (source / name).write_text("fixture\n", encoding="utf-8")
+    generated = source / "build/untracked.py"
+    generated.parent.mkdir()
+    generated.write_text("must_not_be_copied = True\n", encoding="utf-8")
+
+    _prepare_wheel_source(source, destination)
+
+    assert all((destination / name).exists() for name in WHEEL_SOURCE_DIRECTORIES)
+    assert all((destination / name).is_file() for name in WHEEL_SOURCE_FILES)
+    assert not (destination / "build").exists()

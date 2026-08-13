@@ -83,6 +83,15 @@ PLATFORM_SUPPORT = (
         "qualification": "unsupported",
     },
 )
+WHEEL_SOURCE_DIRECTORIES = (
+    "apps/api",
+    "apps/cli",
+    "apps/worker",
+    "helper",
+    "installer",
+    "packages",
+)
+WHEEL_SOURCE_FILES = ("pyproject.toml", "README.md", "LICENSE")
 
 
 @dataclass(frozen=True)
@@ -115,6 +124,18 @@ def _copy_regular_tree(source: Path, destination: Path) -> None:
             os.chmod(target, 0o644)
         else:
             raise BuildError("release input contains a special file")
+
+
+def _prepare_wheel_source(source: Path, destination: Path) -> None:
+    destination.mkdir(mode=0o755)
+    for name in WHEEL_SOURCE_DIRECTORIES:
+        _copy_regular_tree(source / name, destination / name)
+    for name in WHEEL_SOURCE_FILES:
+        source_path = source / name
+        if source_path.is_symlink() or not source_path.is_file():
+            raise BuildError(f"required wheel input is unavailable: {name}")
+        shutil.copyfile(source_path, destination / name)
+        os.chmod(destination / name, 0o644)
 
 
 def release_version(source: Path) -> str:
@@ -252,8 +273,10 @@ def build_release_artifact(
         raise BuildError("pnpm is required to inventory frontend production dependencies")
     with tempfile.TemporaryDirectory(prefix="agentbox-release-") as temporary:
         release = Path(temporary) / "release"
+        wheel_source = Path(temporary) / "wheel-source"
         wheelhouse = release / "wheelhouse"
         wheelhouse.mkdir(mode=0o755, parents=True)
+        _prepare_wheel_source(source, wheel_source)
         build_environment = {"SOURCE_DATE_EPOCH": str(source_date_epoch)}
         _run_build_command(
             (
@@ -310,9 +333,9 @@ def build_release_artifact(
                 "--no-build-isolation",
                 "--wheel-dir",
                 str(wheelhouse),
-                str(source),
+                str(wheel_source),
             ),
-            source,
+            wheel_source,
             timeout=600,
             extra_env=build_environment,
         )
