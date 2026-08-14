@@ -57,8 +57,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "1.0",
             "fixture",
         )
-    bootstrap_wheel = release / "bootstrap/pip-25.3-py3-none-any.whl"
-    _minimal_wheel(bootstrap_wheel, "25.3", "pip")
+    bootstrap_wheel = release / "bootstrap/pip-26.2.1-py3-none-any.whl"
+    _minimal_wheel(bootstrap_wheel, "26.2.1", "pip")
     sbom = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
@@ -90,15 +90,15 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         "supported_python_abis": ["cp311", "cp312", "cp313"],
         "build_toolchain": {
             "node": "22.23.2",
-            "pip": "25.3",
+            "pip": "26.2.1",
             "pnpm": "11.20.0",
             "setuptools": "83.0.0",
-            "wheel": "0.45.1",
+            "wheel": "0.46.2",
         },
         "bootstrap_pip": {
-            "filename": "bootstrap/pip-25.3-py3-none-any.whl",
-            "version": "25.3",
-            "sha256": files["bootstrap/pip-25.3-py3-none-any.whl"],
+            "filename": "bootstrap/pip-26.2.1-py3-none-any.whl",
+            "version": "26.2.1",
+            "sha256": files["bootstrap/pip-26.2.1-py3-none-any.whl"],
             "method": "pythonpath-wheel-target",
         },
         "platform_support": [
@@ -132,17 +132,42 @@ def test_release_build_toolchain_is_read_from_the_reviewed_lock() -> None:
 
     assert release_build_toolchain(root) == {
         "node": "22.23.2",
-        "pip": "25.3",
+        "pip": "26.2.1",
         "pnpm": "11.20.0",
         "setuptools": "83.0.0",
-        "wheel": "0.45.1",
+        "wheel": "0.46.2",
     }
     assert release_bootstrap_pip(root) == {
-        "filename": "bootstrap/pip-25.3-py3-none-any.whl",
-        "version": "25.3",
-        "sha256": "9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd",
+        "filename": "bootstrap/pip-26.2.1-py3-none-any.whl",
+        "version": "26.2.1",
+        "sha256": "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e",
         "method": "pythonpath-wheel-target",
     }
+
+
+def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    packaging_lock = [
+        line
+        for line in (root / "requirements-release-packaging.lock")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert packaging_lock == [
+        "pip==26.2.1 "
+        "--hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e",
+        "wheel==0.46.2 "
+        "--hash=sha256:33ae60725d69eaa249bc1982e739943c23b34b58d51f1cb6253453773aca6e65",
+    ]
+
+    workflow = (root / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
+    assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
+    assert "--requirement requirements-release-packaging.lock" in workflow
+    assert "python -m pip_audit --local --skip-editable" in workflow
+    assert "needs: [packaging-toolchain, release-candidate]" in workflow
+    assert 'test "$PACKAGING_TOOLCHAIN_RESULT" = "success"' in workflow
+    assert 'test "$RELEASE_CANDIDATE_RESULT" = "success"' in workflow
 
 
 def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Path) -> None:
@@ -174,7 +199,7 @@ def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -
     observed = verify_release(release)
     expected_files = manifest["files"]
     assert isinstance(expected_files, dict)
-    expected_bootstrap_digest = expected_files["bootstrap/pip-25.3-py3-none-any.whl"]
+    expected_bootstrap_digest = expected_files["bootstrap/pip-26.2.1-py3-none-any.whl"]
     assert isinstance(expected_bootstrap_digest, str)
 
     assert observed.schema_version == 4
@@ -184,8 +209,8 @@ def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -
     assert observed.required_python == ">=3.11,<3.14"
     assert observed.supported_python_abis == ("cp311", "cp312", "cp313")
     assert observed.bootstrap_pip == {
-        "filename": "bootstrap/pip-25.3-py3-none-any.whl",
-        "version": "25.3",
+        "filename": "bootstrap/pip-26.2.1-py3-none-any.whl",
+        "version": "26.2.1",
         "sha256": expected_bootstrap_digest,
         "method": "pythonpath-wheel-target",
     }

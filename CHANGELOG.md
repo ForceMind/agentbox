@@ -44,6 +44,9 @@ versioning for release display and PEP 440 for the Python package.
 - Artifacts reject traversal, path-normalization collisions, links, special
   files, unsafe modes, duplicate paths, unallowlisted files, and digest/schema/
   platform/version/migration inconsistencies.
+- Release bootstrap/build packaging tools are pinned to patched `pip 26.2.1`
+  and `wheel 0.46.2`, audited in the exact build environment, and compatibility
+  checked on CPython 3.11–3.13 before `release-gate` can succeed.
 - SHA-256 provides integrity only. This candidate has no signature or verified
   publisher authenticity.
 

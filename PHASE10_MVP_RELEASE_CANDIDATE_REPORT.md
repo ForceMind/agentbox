@@ -12,6 +12,21 @@ fail-closed `release-gate` workflow.
 
 No tag or GitHub Release has been created. Phase 11 is not started.
 
+## Release Finalization Security Follow-up
+
+The merged Phase 10 evidence below is historical and includes artifacts built
+with `pip 25.3` and `wheel 0.45.1`. A publication-time audit subsequently found
+known vulnerabilities in those packaging tools, so those artifacts were not
+tagged or published. The scoped `release/security-toolchain-fix` follow-up pins
+`pip 26.2.1` and `wheel 0.46.2` with reviewed SHA-256 hashes, binds the new pip
+wheel into the offline bootstrap/manifest/SBOM/notices, verifies both universal
+wheels on CPython 3.11–3.13, and makes the exact-environment vulnerability audit
+plus packaging matrix prerequisites of the fail-closed `release-gate`.
+
+Any publishable artifact must be rebuilt from the merged follow-up commit. The
+older artifact hashes in this report remain provenance evidence only and must
+not be uploaded to a GitHub Release.
+
 ## Branch / Commits / PR
 
 - Branch: `phase/10-mvp-release-candidate`

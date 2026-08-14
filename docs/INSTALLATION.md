@@ -53,7 +53,7 @@ changes the product default.
 The `0.3.0rc1` bundle is qualified only for Linux x86_64 with CPython 3.11,
 3.12, or 3.13. The bundled `install.sh` checks this contract before bootstrap
 and reports an explicit error for Python 3.10 or 3.14. It verifies and imports
-the artifact's exact/hash-locked `pip 25.3` wheel directly, then installs the
+the artifact's exact/hash-locked `pip 26.2.1` wheel directly, then installs the
 temporary Installer with `--target`, `--no-index`, and the artifact wheelhouse.
 It does not require host `python3-venv`, `ensurepip`, global pip, PyPI, or a
 source checkout. After platform/package preflight, the inner Installer may

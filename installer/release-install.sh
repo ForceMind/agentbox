@@ -4,8 +4,8 @@ umask 077
 
 release_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 wheelhouse="${release_dir}/wheelhouse"
-bootstrap_pip="${release_dir}/bootstrap/pip-25.3-py3-none-any.whl"
-bootstrap_pip_sha256="9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd"
+bootstrap_pip="${release_dir}/bootstrap/pip-26.2.1-py3-none-any.whl"
+bootstrap_pip_sha256="71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e"
 
 if [[
   ! -f "${release_dir}/VERSION" || -L "${release_dir}/VERSION" ||

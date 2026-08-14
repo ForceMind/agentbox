@@ -100,8 +100,13 @@ explicitly build the PR head rather than GitHub's synthetic merge ref. The
 manifest records the actual source commit and ref kind, build toolchain,
 version, platform, migration head, allowlist, per-file digests,
 `>=3.11,<3.14`/cp311-cp313 artifact compatibility, SBOM/license files, and
-unsigned status. A separate exact/hash-locked `pip 25.3` bootstrap wheel is
+unsigned status. A separate exact/hash-locked `pip 26.2.1` bootstrap wheel is
 bound into the manifest, file inventory, SBOM, notices, and nested scan.
+
+Release finalization also pins `wheel 0.46.2` and verifies the universal pip and
+wheel artifacts on CPython 3.11, 3.12, and 3.13. The Release Candidate job runs
+`pip-audit` against the exact build environment, and `release-gate` fails closed
+unless both this packaging matrix and the complete build/verification job pass.
 
 Verification checks external `SHA256SUMS`, external/internal manifest and SBOM
 identity, schema, version/wheel/API consistency, complete file allowlist,

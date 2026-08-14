@@ -27,6 +27,11 @@ the Phase 10 PR is merged.
 - [ ] `requirements-release-bootstrap.lock` contains exactly the pip wheel
       version/hash embedded in `install.sh`; manifest, SBOM, notices, nested
       wheel scan, and per-file digest inventory include that wheel.
+- [ ] `requirements-release-packaging.lock` matches the pip/wheel entries in the
+      full build lock, installs with `--require-hashes --no-deps`, and passes on
+      CPython 3.11, 3.12, and 3.13 before `release-gate` succeeds.
+- [ ] `pip-audit --local --skip-editable` reports no known vulnerability in the
+      exact release build/test environment.
 - [ ] Node `22.23.2` and pnpm `11.20.0` match the toolchain recorded in the
       manifest, and the toolchain checker passes against the clean CI environment.
 - [ ] `pnpm install --frozen-lockfile` and production Web build pass.
@@ -139,3 +144,5 @@ the Linux x86_64/CPython 3.11 lock only in a disposable environment by
 downloading binary wheels, recording each selected distribution's exact version
 and SHA-256, then run `scripts/check-release-toolchain.py`. Review every diff;
 never regenerate the lock dynamically inside the Release Candidate workflow.
+The two-line `requirements-release-packaging.lock` must be reviewed at the same
+time and must exactly match the pip/wheel versions and hashes in the full lock.

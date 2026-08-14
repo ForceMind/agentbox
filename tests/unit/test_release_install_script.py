@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-PRODUCTION_PIP_SHA256 = "9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd"
+PRODUCTION_PIP_SHA256 = "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e"
 FIXTURE_PIP = b"fixture bootstrap pip wheel"
 FIXTURE_PIP_SHA256 = hashlib.sha256(FIXTURE_PIP).hexdigest()
 
@@ -35,7 +35,7 @@ def _release_script(
     if bootstrap:
         bootstrap_dir = release / "bootstrap"
         bootstrap_dir.mkdir()
-        (bootstrap_dir / "pip-25.3-py3-none-any.whl").write_bytes(FIXTURE_PIP)
+        (bootstrap_dir / "pip-26.2.1-py3-none-any.whl").write_bytes(FIXTURE_PIP)
     return script
 
 
@@ -50,7 +50,7 @@ def _fake_python(tmp_path: Path) -> Path:
         'if [ "$1" = "-c" ]; then exit 0; fi\n'
         'if [ "$1" = "-" ]; then exec "${AGENTBOX_REAL_TEST_PYTHON}" "$@"; fi\n'
         'if [ "$1" = "-m" ] && [ "$2" = "pip" ]; then\n'
-        '  case "${PYTHONPATH:-}" in *pip-25.3-py3-none-any.whl*) ;; *) exit 96 ;; esac\n'
+        '  case "${PYTHONPATH:-}" in *pip-26.2.1-py3-none-any.whl*) ;; *) exit 96 ;; esac\n'
         '  exit "${AGENTBOX_FAKE_PIP_RESULT:-0}"\n'
         "fi\n"
         'if [ "$1" = "-m" ] && [ "$2" = "agentbox_installer.cli" ]; then\n'
@@ -173,7 +173,7 @@ def test_release_install_rejects_malformed_version(tmp_path: Path) -> None:
 
 def test_release_install_rejects_bootstrap_wheel_digest_mismatch(tmp_path: Path) -> None:
     script = _release_script(tmp_path)
-    (script.parent / "bootstrap/pip-25.3-py3-none-any.whl").write_bytes(b"tampered")
+    (script.parent / "bootstrap/pip-26.2.1-py3-none-any.whl").write_bytes(b"tampered")
 
     result = _run(script)
 

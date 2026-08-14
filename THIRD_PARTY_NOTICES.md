@@ -40,7 +40,7 @@ does not replace the license text distributed by each upstream project.
 
 | Package | Version | Declared license |
 |---|---:|---|
-| pip | 25.3 | MIT |
+| pip | 26.2.1 | MIT |
 
 ## Frontend runtime dependencies
 
