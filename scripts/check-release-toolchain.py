@@ -27,17 +27,16 @@ REQUIRED_BUILD_PACKAGES = {
     "setuptools",
     "wheel",
 }
+PACKAGING_PACKAGES = {"pip", "wheel"}
 
 
 def _canonical(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).casefold()
 
 
-def _locked_versions(source: Path) -> dict[str, str]:
+def _lock_versions(path: Path) -> dict[str, str]:
     versions: dict[str, str] = {}
-    for line in (
-        (source / "requirements-release-build.lock").read_text(encoding="utf-8").splitlines()
-    ):
+    for line in path.read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
         match = LOCK_LINE.fullmatch(line)
@@ -47,8 +46,24 @@ def _locked_versions(source: Path) -> dict[str, str]:
         if name in versions:
             raise RuntimeError("release build lock contains a duplicate package")
         versions[name] = match.group(2)
+    return versions
+
+
+def _locked_versions(source: Path) -> dict[str, str]:
+    versions = _lock_versions(source / "requirements-release-build.lock")
     if len(versions) < 50 or not REQUIRED_BUILD_PACKAGES.issubset(versions):
         raise RuntimeError("release build lock is incomplete")
+    return versions
+
+
+def _packaging_versions(source: Path, build_versions: dict[str, str]) -> dict[str, str]:
+    versions = _lock_versions(source / "requirements-release-packaging.lock")
+    if set(versions) != PACKAGING_PACKAGES:
+        raise RuntimeError("release packaging compatibility lock is incomplete")
+    if any(versions[name] != build_versions[name] for name in PACKAGING_PACKAGES):
+        raise RuntimeError("release packaging compatibility lock drifted from build lock")
+    if release_bootstrap_pip(source)["version"] != versions["pip"]:
+        raise RuntimeError("release bootstrap pip differs from compatibility lock")
     return versions
 
 
@@ -70,10 +85,13 @@ def _command_version(argv: tuple[str, ...]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
-    parser.add_argument("--check-installed", action="store_true")
+    installed = parser.add_mutually_exclusive_group()
+    installed.add_argument("--check-installed", action="store_true")
+    installed.add_argument("--check-packaging-installed", action="store_true")
     args = parser.parse_args()
     source = args.source.resolve()
     versions = _locked_versions(source)
+    packaging_versions = _packaging_versions(source, versions)
     workflow = (source / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
     forbidden = ("pip install --upgrade", ".[dev]", "node-version: 22\n", " wheel\n")
     if any(value in workflow for value in forbidden):
@@ -83,7 +101,10 @@ def main() -> int:
         "--only-binary=:all:",
         "requirements-release-build.lock",
         "requirements-release-bootstrap.lock",
+        "requirements-release-packaging.lock",
         "--no-deps --no-build-isolation --editable .",
+        "--check-packaging-installed",
+        "python -m pip_audit --local --skip-editable",
         'node-version: "22.23.2"',
         "version: 11.20.0",
     )
@@ -105,6 +126,12 @@ def main() -> int:
     if build_requirements != ["setuptools>=83"] or versions["setuptools"] < "83.0.0":
         raise RuntimeError("pyproject build requirements conflict with the release lock")
     expected = release_build_toolchain(source)
+    if args.check_packaging_installed:
+        for name, version in packaging_versions.items():
+            if importlib.metadata.version(name) != version:
+                raise RuntimeError(f"installed release packaging tool drifted: {name}")
+        print("Release packaging tools verified for this Python interpreter.")
+        return 0
     if args.check_installed:
         for name, version in versions.items():
             if importlib.metadata.version(name) != version:

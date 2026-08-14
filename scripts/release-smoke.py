@@ -109,7 +109,7 @@ def main() -> int:
             "  exit 97\n"
             "fi\n"
             "if [ \"${1:-}\" = '-m' ] && [ \"${2:-}\" = 'pip' ]; then\n"
-            '  case "${PYTHONPATH:-}" in *bootstrap/pip-25.3-py3-none-any.whl*) ;; '
+            '  case "${PYTHONPATH:-}" in *bootstrap/pip-26.2.1-py3-none-any.whl*) ;; '
             "*) exit 96 ;; esac\n"
             "fi\n"
             f'exec {shlex.quote(sys.executable)} -S "$@"\n',
