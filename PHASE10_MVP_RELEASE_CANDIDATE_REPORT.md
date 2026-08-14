@@ -16,12 +16,12 @@ No tag or GitHub Release has been created. Phase 11 is not started.
 
 - Branch: `phase/10-mvp-release-candidate`
 - Baseline main: `0334f8249ceddbcd9ff32a95435905002694e360`
-- Final local integrity artifact source: `29e65078afba5c998981e6f66867bf55d459ad89`
-- Final real-host rehearsal artifact source: `29e65078afba5c998981e6f66867bf55d459ad89`
-- Draft PR: <https://github.com/ForceMind/agentbox/pull/31>
-- Commits: seventeen scoped build, test, CI, documentation, release-version,
-  CI portability, report, dependency-security, and final integrity commits
-  before this evidence update
+- Final local bootstrap/version artifact source: `4b4e2806a81f2ffe12a703817f771905a9155cbd`
+- Final real-host rehearsal artifact source: `141452fb0b3c60d7148031e4a85d406d92123023`
+- PR: <https://github.com/ForceMind/agentbox/pull/31>
+- Commits: scoped build, test, CI, documentation, release-version,
+  dependency-security, no-venv bootstrap, prerelease-precedence, and evidence
+  commits before this report-only update
 
 ## Candidate Version
 
@@ -35,29 +35,29 @@ No tag or GitHub Release has been created. Phase 11 is not started.
 
 ### Local reproducibility artifact
 
-- Source commit: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Source commit: `4b4e2806a81f2ffe12a703817f771905a9155cbd`
 - Source ref kind: `other` (clean local branch-head build)
-- SHA-256: `82fda14bdbf81d8fccc0f16881f63ea842e17e634a15a226771ce666ea582149`
-- Size: 20,812,329 bytes
+- SHA-256: `60270b14c48c7b13436436252bb1c70e15c66d963e5e25ad3f25a4964a54b01b`
+- Size: 22,543,920 bytes
 - Purpose: two independent same-environment builds, manifest/inventory/nested
   wheel scans, and bundled-installer artifact-only smoke
 
 ### Real-host rehearsal artifact
 
-- Source commit: `29e65078afba5c998981e6f66867bf55d459ad89`
+- Source commit: `141452fb0b3c60d7148031e4a85d406d92123023`
 - Source ref kind: `pull_request_head`
-- SHA-256: `1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667`
-- Size: 20,812,312 bytes
+- SHA-256: `fda1c1fbc40ff0dd4df0ddd087fab79d46eecbf89970cafef598632a800a3cae`
+- Size: 22,543,902 bytes
 - Purpose: AgentBox-only OpenCloudOS update/health/identity/rollback rehearsal
 
 ### Current PR CI artifact
 
-- PR head at build: `29e65078afba5c998981e6f66867bf55d459ad89`
-- Actual checkout/source commit: `29e65078afba5c998981e6f66867bf55d459ad89`
+- PR head at build: `141452fb0b3c60d7148031e4a85d406d92123023`
+- Actual checkout/source commit: `141452fb0b3c60d7148031e4a85d406d92123023`
 - Source ref kind: `pull_request_head`
-- SHA-256: `1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667`
-- Size: 20,812,312 bytes
-- Workflow evidence: Release Candidate run `31727404716`, including successful
+- SHA-256: `fda1c1fbc40ff0dd4df0ddd087fab79d46eecbf89970cafef598632a800a3cae`
+- Size: 22,543,902 bytes
+- Workflow evidence: Release Candidate run `31759768574`, including successful
   `release-candidate` and `release-gate`
 
 This committed report cannot permanently contain the hash of an artifact that
@@ -86,15 +86,16 @@ checks passed.
 
 | File | Size | SHA-256 |
 |---|---:|---|
-| `agentbox-0.3.0rc1-linux-x86_64.tar.gz` | 20,812,312 bytes | `1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667` |
+| `agentbox-0.3.0rc1-linux-x86_64.tar.gz` | 22,543,902 bytes | `fda1c1fbc40ff0dd4df0ddd087fab79d46eecbf89970cafef598632a800a3cae` |
 | `RELEASE_MANIFEST.json` | CI artifact member | verified by `SHA256SUMS` and internal/external identity |
 | `SBOM.spdx.json` | CI artifact member | verified by `SHA256SUMS` and internal/external identity |
-| `SHA256SUMS` | 273 bytes | independently verified in run `31727404716` |
+| `SHA256SUMS` | 273 bytes | independently verified in run `31759768574` |
 
 ## Artifact Layout
 
-The 69-member archive contains only the VERSION and manifest, Apache-2.0
-license and notices, SPDX SBOM, release bootstrap, the AgentBox wheel and locked
+The 71-member archive contains only the VERSION and manifest, Apache-2.0
+license and notices, SPDX SBOM, the exact/hash-locked `pip 25.3` bootstrap
+wheel, install script, the AgentBox wheel and locked
 Linux x86_64 wheelhouse, Alembic migrations/config, production Web static files,
 and selected release documentation. The production Web contains no source map.
 The artifact excludes Git data, environment/config/secret files, databases,
@@ -103,10 +104,11 @@ Playwright output, and user files. Only `install.sh` is executable.
 
 ## Release Manifest
 
-Schema 3 records candidate version, actual source commit and ref kind, target
+Schema 4 records candidate version, actual source commit and ref kind, target
 platform/architecture, RC build mode, artifact-specific Python range
 `>=3.11,<3.14`, supported ABIs cp311/cp312/cp313, locked pip/setuptools/wheel/
-Node/pnpm toolchain, qualified platform claims, migration head, authenticity
+Node/pnpm toolchain, bootstrap pip filename/version/SHA/method, qualified
+platform claims, migration head, authenticity
 status, public metadata filenames, exact file/executable allowlists, and
 per-file SHA-256. The verifier rejects missing, unknown, broadened, or
 inconsistent compatibility/provenance metadata and checks the observed
@@ -117,7 +119,7 @@ wheelhouse ABI inventory.
 Two builds from separate empty staging directories, the same clean commit,
 dependency locks, and `SOURCE_DATE_EPOCH` produced byte-identical public output.
 Both final local tarballs have SHA-256
-`82fda14bdbf81d8fccc0f16881f63ea842e17e634a15a226771ce666ea582149`.
+`60270b14c48c7b13436436252bb1c70e15c66d963e5e25ad3f25a4964a54b01b`.
 Ordering, timestamps, uid/gid, user/group names, file modes, JSON ordering, and
 gzip metadata are normalized. The first rehearsal exposed and fixed an
 out-of-tree wheel-staging defect before this passing run.
@@ -143,7 +145,7 @@ inventory, credential, or user path.
 
 The builder and CI cross-check `requirements-release.lock`, the actual
 wheelhouse, reviewed frontend production inventory, SPDX package entries, and
-`THIRD_PARTY_NOTICES.md`; 32 third-party package identities/versions/licenses
+`THIRD_PARTY_NOTICES.md`; 33 third-party package identities/versions/licenses
 matched. Observed licenses
 are Apache-2.0, MIT, MIT-0, ISC, BSD-3-Clause, PSF-2.0, and the declared
 `MIT AND PSF-2.0` expression. No GPL/AGPL or unknown runtime license was accepted
@@ -155,8 +157,12 @@ still requires human license review.
 Offline install is **partial**. After the artifact and required system packages
 exist, its embedded hash-locked wheelhouse supports AgentBox on CPython
 3.11-3.13 Linux x86_64 without PyPI, and production Web needs no Node/Vite.
-Bootstrap package-manager prerequisites may still need configured distro
-repositories. Claude/Node, Codex, and `gh` remain optional Runtime dependencies;
+The outer bootstrap needs only a supported `/usr/bin/python3`: it imports the
+artifact's hash-locked pip wheel with `PYTHONPATH` and installs into a private
+temporary target using `--no-index`. Host venv, ensurepip, global pip, and PyPI
+are not bootstrap dependencies. The inner Installer may use configured distro
+repositories to install the typed production venv package. Claude/Node, Codex,
+and `gh` remain optional Runtime dependencies;
 their absence does not block the control plane.
 
 ## Release Workflow
@@ -178,17 +184,17 @@ recovery smoke, and uploads a seven-day artifact.
 `always()` plus an exact `success` result check, so failure, cancellation, or
 skip cannot report success. It performs no duplicate build. Local equivalent
 steps passed and the real GitHub check context `release-gate` completed
-successfully on source commit `29e65078afba5c998981e6f66867bf55d459ad89`.
+successfully on source commit `141452fb0b3c60d7148031e4a85d406d92123023`.
 
 ## Validation and CI
 
-- Backend: Ruff, Black, mypy, migration upgrade/downgrade/upgrade and 541 pytest
+- Backend: Ruff, Black, mypy, migration upgrade/downgrade/upgrade and 562 pytest
   tests passed locally;
   all Python 3.11/3.12/3.13 GitHub quality jobs passed.
 - Frontend: lint, format, typecheck, 25 unit tests, production build, and
   high-severity audit passed locally and on GitHub.
 - E2E: 54 Playwright tests passed on GitHub.
-- Deployment: 153 selected local tests passed; all four Ubuntu/Python installer
+- Deployment: 166 selected local tests passed; all four Ubuntu/Python installer
   matrix jobs and `deployment-gate` passed on GitHub.
 - Security: repository boundaries, Action pins, secret scan, dependency review,
   Python audit, and frontend audit passed.
@@ -197,7 +203,7 @@ successfully on source commit `29e65078afba5c998981e6f66867bf55d459ad89`.
   actual `install.sh` smoke, upload, and
   `release-gate` passed on GitHub.
 - Protect main remained unchanged with its existing ten required checks, all of
-  which passed on `29e65078afba5c998981e6f66867bf55d459ad89`.
+  which passed on `141452fb0b3c60d7148031e4a85d406d92123023`.
 
 The final report-triggered audit detected newly published High advisory
 `GHSA-2v37-7h3g-55p8` in the Vite/PostCSS development chain. The transitive
@@ -206,14 +212,39 @@ patched `3.3.18`; frozen install, `pnpm why`, audit, lint, format, typecheck,
 25 tests, production build, and frontend-license drift check pass locally. This
 dependency is not part of the shipped production runtime SBOM.
 
+## Bootstrap and Version Final Review
+
+The outer release entry no longer runs `python3 -m venv` and never imports host
+ensurepip or global pip. `requirements-release-bootstrap.lock` pins `pip 25.3`
+and SHA-256 `9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd`.
+The builder downloads exactly that wheel, schema 4 binds its filename, version,
+digest, and `pythonpath-wheel-target` method, and SBOM/notices/inventory/nested
+scan include it. The script verifies the digest with the Python standard
+library, uses `PYTHONPATH` plus `--no-index --target` under `umask 077`, cleans
+the bounded temporary tree on exit/signals, restores managed `umask 022`, and
+then invokes the typed Installer module. Ubuntu 24.04 and Debian 12 fixtures
+pass with Python available while venv, ensurepip, and global pip are rejected.
+
+The shared version parser compares numeric core and dotted prerelease
+identifiers deterministically. Numeric identifiers compare as integers and
+below text, text compares lexically, a shorter equal prefix sorts lower,
+`0.3.0rc1` normalizes to `0.3.0-rc.1`, stable sorts above prerelease, and build
+metadata is ignored. Malformed versions and numeric prerelease leading zeroes
+fail closed. Lifecycle plan/apply/idempotency/downgrade and retention ordering
+use the same parser.
+
 ## Installer Smoke
 
 The exact extracted `install.sh` passed `bash -n`, ran public artifact
-verification, created a private bootstrap venv, installed with `PIP_NO_INDEX=1`
-and artifact wheelhouse only, forwarded fixture plan/apply/uninstall arguments,
-and cleaned its temporary directory on venv/pip failures. Negative coverage
-rejects missing VERSION/wheelhouse, Python 3.10/3.14, test override misuse, and
-bootstrap failures. A second manually created venv still validates Python entry
+verification, verified/imported the artifact's pinned pip wheel, installed into
+a root-private target with `PIP_NO_INDEX=1` and artifact wheelhouse only,
+forwarded fixture plan/apply/uninstall arguments, and cleaned its temporary
+directory on pip/Installer failures. A no-site Python wrapper rejects venv,
+ensurepip, and global pip use while Ubuntu 24.04 and Debian 12 no-venv fixture
+plan/apply complete. Negative coverage rejects missing VERSION/wheelhouse/pip
+wheel, bootstrap digest mismatch, malformed VERSION, Python 3.10/3.14,
+unsupported architecture, test override misuse, and bootstrap failures. A
+second manually created venv still validates Python entry
 points, production static Web, migration, loopback health/readiness/meta, and
 data-preserving uninstall without Node or source-installed AgentBox.
 
@@ -230,10 +261,14 @@ evidence, not a clean-host real installation claim.
 Phase 8/9 lifecycle tests cover staged activation, online SQLite backup, partial
 migration failure, interrupted staged/migrated/activated recovery states,
 service/readiness/version/migration gates, and forward recovery. Phase 10 added
-PEP 440 RC comparison and retention support after artifact-only smoke exposed
-the old parser limitation. Fixture upgrade coverage passed. The final real-host
+normalized PEP 440 `rcN` plus dotted SemVer-like prerelease comparison: numeric
+identifiers compare numerically, numeric precedes textual, shorter equal
+prefixes precede longer ones, stable follows prerelease, build metadata is
+ignored, and numeric leading zeroes fail closed. Plan/apply, downgrade
+rejection, idempotency, rollback selection, and retention ordering coverage
+passed. The final real-host
 run used the PR-head CI artifact, updated from `0.2.10+dev.9` to `0.3.0rc1`,
-created verified backup `20260813T175038.550897Z`, and completed version,
+created verified backup `20260814T011503.868518Z`, and completed version,
 health, readiness, identity, socket, and loopback verification.
 
 An initial post-integrity rehearsal attempt exposed a real bootstrap defect:
@@ -242,8 +277,9 @@ creation, preventing the non-root `agentbox` identity from executing Alembic.
 The transaction automatically reported `upgrade failed; rollback verified` and
 restored the stable release. Commit `29e65078afba5c998981e6f66867bf55d459ad89`
 restores managed `umask 022` immediately before invoking `agentbox-install`,
-retains a private bootstrap venv, adds deterministic forwarding/umask tests, and
-passed the subsequent real-host update and rollback.
+and the final no-venv bootstrap retains this boundary immediately before the
+inner Installer. Deterministic forwarding/umask tests and the subsequent
+real-host update/rollback passed.
 
 ## Rollback Dress Rehearsal
 
@@ -259,7 +295,7 @@ Doctor checks passed.
 ## Real-host Dress Rehearsal
 
 Passed using CI artifact SHA-256
-`1e57d0169b3176f2b6b808a345356fb072e298e96fe00904973e688e41e7d667`
+`fda1c1fbc40ff0dd4df0ddd087fab79d46eecbf89970cafef598632a800a3cae`
 after Backend, Frontend, Security, E2E, Deployment, `deployment-gate`, and
 `release-gate` were green on the Draft PR. The AgentBox-only cycle was:
 
@@ -272,12 +308,16 @@ after Backend, Frontend, Security, E2E, Deployment, `deployment-gate`, and
 5. rolled back through the candidate lifecycle to `0.2.10+dev.9`;
 6. verified the final stable version, logical DB equality with the backup,
    integrity/migration head, health/readiness, Doctor, service identities,
-   sockets, listener, project count, Runtime HOME count, root Runtime metadata,
+   sockets, listener, project count, Runtime HOME credential metadata, root Runtime metadata,
    config and application-secret hashes.
 
-The existing root Codex/Claude PIDs, root tmux session, and credential-directory
-metadata were unchanged. SSH, firewall, cloudflared, reverse proxies, projects,
-Runtime credentials and root Runtime state were not mutated. This was a
+The existing root Codex/Claude process counts, root tmux session, config hashes,
+projects, service identities, DB revision/integrity, and credential file
+metadata remained stable. Starting the Runtime caused Claude CLI to create one
+empty `.claude.json.lock` directory owned by `agentbox-runtime`; no credential
+content was read, copied, moved, or rewritten, and the directory was preserved
+rather than destructively removed. SSH, firewall, cloudflared, reverse proxies,
+projects, Runtime credentials and root Runtime state were not mutated. This was a
 real-host update/rollback rehearsal, not a real-host fresh install.
 
 ## Final Host State
@@ -301,7 +341,7 @@ target.
 
 ## Resource Baseline
 
-The control-plane DB was 172,032 bytes, final rehearsed CI artifact 20,812,312
+The control-plane DB was 172,032 bytes, final rehearsed CI artifact 22,543,902
 bytes, and production static assets 326,056 bytes. Earlier RC evidence recorded
 idle process RSS and a complete lifecycle transaction within the available
 2-vCPU/3.5-GiB host envelope. This is a single operational observation on the
@@ -310,7 +350,7 @@ idle process RSS and a complete lifecycle transaction within the available
 ## Secret Scan
 
 Repository secret-pattern checks and the public bundle scan passed. Tar member
-names and regular bytes plus 2,079 nested wheel member names and bounded,
+names and regular bytes plus 2,549 nested wheel member names and bounded,
 decompressed regular bytes were checked in memory for application/session/CSRF/
 Codex Pair/Claude output/GitHub/Git/Provider/SSH canaries. Wheel count,
 per-member size, aggregate expanded size, duplicate/colliding path, malformed
