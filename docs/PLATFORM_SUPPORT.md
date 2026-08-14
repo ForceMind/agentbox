@@ -1,6 +1,6 @@
 # AgentBox Platform Support
 
-Status: Phase 9 qualification matrix, pending human review
+Status: `0.3.0rc1` qualification matrix
 
 | Platform | Package adapter | Evidence | Qualification |
 |---|---|---|---|
@@ -24,6 +24,19 @@ results. The prebuilt Web does not require Node in production. Codex and Claude
 installation guidance must be revalidated against current official public
 documentation before any distribution change; install does not imply login.
 
+The `0.3.0rc1` Linux x86_64 artifact carries a hash-locked wheelhouse for
+CPython ABIs `cp311`, `cp312`, and `cp313`; its manifest contract is
+`>=3.11,<3.14`. The bootstrap rejects Python 3.10 and 3.14 before installation.
+Its artifact-carried, hash-locked pip wheel runs through `PYTHONPATH` and a
+private `--target`; no host venv module, ensurepip, global pip, or PyPI access
+is required. Ubuntu 24.04 and Debian 12 fixtures explicitly begin with Python
+present and venv capability absent, then complete bundled-script plan/apply.
+The inner Installer installs the typed venv package before creating the
+permanent release environment. This artifact boundary does not permanently cap
+future source compatibility. AgentBox core installation is offline after the
+artifact and checksum files are obtained; distro package installation and
+optional Runtime-tool installation may still require configured repositories.
+
 Fixture evidence is not a real systemd/VM support claim. Rocky/Debian are not
 described as deployment-tested. Expanding this matrix requires verified
 release artifacts, systemd behavior, dependency repositories, Runtime tools,
@@ -40,7 +53,8 @@ is supported.
 
 ## Runtime dependency classification
 
-Python 3.11+, Git, SQLite, systemd, and the release-local venv are core. Codex,
+Python 3.11–3.13 for this RC artifact, Git, SQLite, systemd, and the
+release-local venv are core. Codex,
 Claude, gh, tmux, bubblewrap, Node, npm, and pnpm are separately reported
 Runtime capabilities. A missing optional Runtime tool degrades only that
 integration; the prebuilt API/Web control plane can remain ready without Node.

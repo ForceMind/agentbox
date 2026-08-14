@@ -1,14 +1,16 @@
 # AgentBox
 
-**Turn any Linux server into a remotely managed AI development workstation.**
+**Turn a user-controlled Linux server into a remotely managed AI development workstation.**
 
 AgentBox is open AI developer infrastructure for standardizing a user-controlled Linux server as a remotely manageable development workstation. It is designed around capability-aware AI Runtime integration, persistent project sessions, safe lifecycle operations, and minimal routine SSH.
 
 ## Project status
 
-AgentBox is a **pre-release / MVP candidate**. Phases 0–8 and the stable
-Deployment gate are merged. Phase 9 security hardening and compatibility work
-is under review; this is not a stable-release or broad platform-support claim.
+AgentBox `0.3.0rc1` is a **pre-release / MVP Release Candidate** for one Linux
+x86_64 server and one administrator. Phases 0–9 and the stable Deployment gate
+are merged; Phase 10 prepares reproducible artifacts and release documentation.
+This is not a stable-release, production-readiness, penetration-test,
+enterprise-support, or broad platform-support claim.
 
 The current codebase provides:
 
@@ -46,6 +48,17 @@ explicitly rejected by the native installer because its stock Python is too
 old, and aarch64 remains unqualified. See [Platform support](docs/PLATFORM_SUPPORT.md)
 and the [MVP security review](docs/SECURITY_REVIEW_MVP.md).
 
+Phase 10 prepares the `0.3.0rc1` Linux x86_64 bundle with a single version
+source, prebuilt static Web, exact Python runtime and build-tool locks, an
+artifact-specific CPython 3.11–3.13 contract, deterministic archive,
+`RELEASE_MANIFEST.json`, `SHA256SUMS`, SPDX 2.3 JSON SBOM, third-party license
+inventory, nested-wheel secret scanning, actual bundled-installer smoke,
+recovery rehearsal, and a fail-closed
+`release-gate`. The artifact remains unsigned: SHA-256 verifies integrity, not
+publisher authenticity. See [Quickstart](docs/QUICKSTART.md),
+[Release notes](docs/releases/0.3.0rc1.md), and
+[Known limitations](docs/KNOWN_LIMITATIONS.md).
+
 Phase 7 adds formal Project Workspaces plus safe Git/GitHub foundations. Web and
 CLI can create or clone managed workspaces, inspect structured status, manage
 ordinary branches, perform fast-forward-only Pull and no-force Push, and create
@@ -81,10 +94,10 @@ The planned MVP targets one Linux server and one administrator. It aims to provi
 - a loopback-only authenticated Web panel and recovery-oriented CLI;
 - durable SQLite-backed Jobs and SSE progress.
 
-Phase 8 provides the deployment mechanics in this list and Phase 9 hardens
-their release-candidate boundary. Publication, signed release distribution,
-broader native-host validation, and a production support promise remain later
-release gates.
+Phase 8 provides the deployment mechanics, Phase 9 hardens their security and
+compatibility boundary, and Phase 10 packages the reviewed candidate. A tag,
+GitHub Release, signed distribution, broader native-host validation, and a
+production support promise are not created or claimed by the Phase 10 PR.
 
 ## What AgentBox is not
 
@@ -216,10 +229,11 @@ production support promise.
 4. Phase 5: capability-aware Codex management — merged in PR #22.
 5. Phase 6: Claude/tmux session management — merged in PR #25.
 6. Phase 7: Project Workspaces and safe Git/GitHub foundation — merged in PR #27.
-7. Phase 8: installation, deployment, upgrade, and rollback — pending review.
-8. Phase 9: security and compatibility hardening.
-9. Phase 10: first release.
-10. Phase 11: Provider, Secret & Runtime Continuity Management — future
+7. Phase 8: installation, deployment, upgrade, and rollback — merged in PR #28.
+8. Deployment aggregate gate — merged in PR #29 and required on `main`.
+9. Phase 9: security and compatibility hardening — merged in PR #30.
+10. Phase 10: MVP Release Candidate packaging and documentation — in progress.
+11. Phase 11: Provider, Secret & Runtime Continuity Management — future
     post-MVP planning tracked in Issue #23; does not change Phases 6–10.
 
 The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
@@ -239,6 +253,10 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Provider Manager](docs/PROVIDER_MANAGER.md)
 - [Web UI design](docs/WEB_UI.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
+- [Quickstart](docs/QUICKSTART.md)
+- [MVP acceptance](docs/MVP_ACCEPTANCE.md)
+- [Known limitations](docs/KNOWN_LIMITATIONS.md)
+- [0.3.0rc1 release notes](docs/releases/0.3.0rc1.md)
 - [Installation](docs/INSTALLATION.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Upgrade](docs/UPGRADE.md)
@@ -256,6 +274,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Phase 6 report](PHASE6_CLAUDE_SESSION_REPORT.md)
 - [Phase 7 report](PHASE7_PROJECT_GIT_REPORT.md)
 - [Phase 8 report](PHASE8_INSTALLATION_DEPLOYMENT_REPORT.md)
+- [Phase 9 report](PHASE9_SECURITY_HARDENING_REPORT.md)
 
 ## Contributing
 

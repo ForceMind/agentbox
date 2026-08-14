@@ -275,6 +275,29 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 ## Release quality gates
 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
+## Phase 10 release-candidate coverage
+
+The independent Release Candidate workflow derives `0.3.0rc1` from the core
+version source, builds the production Web once, and creates two release bundles
+from separate staging directories at the same commit and
+`SOURCE_DATE_EPOCH`. Exact tarball, manifest, SBOM, and checksum equality is the
+same-runner reproducibility gate; cross-runner byte equality remains unverified.
+
+The release verifier checks the external/internal manifest and SPDX SBOM,
+SHA-256 files, complete file allowlist and per-file hashes, artifact naming,
+wheel/version/platform/migration consistency, canonical paths, duplicate and
+Unicode-normalization collisions, archive links/special types/unsafe modes and
+bounds. A separate canary scan covers archive names, extracted content, docs,
+static JavaScript, metadata, and public files; source maps are forbidden.
+
+The artifact-only smoke creates an isolated venv from the embedded wheelhouse
+without Node or a source checkout, runs CLI help/version, migrates a temporary
+SQLite database, starts loopback API/static Web, verifies health/readiness/meta,
+then exercises fixture fresh install, two idempotent reinstalls, and
+data-preserving uninstall. Existing fault matrices remain the update/rollback
+rehearsal. No CI job writes runner `/etc`/`/opt`, uses production credentials,
+creates a tag/Release, or connects to a real server.
+
 ## Phase 9 hardening and recovery coverage
 
 The release-candidate suite adds systemd minimum-version/capability fixtures,

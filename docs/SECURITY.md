@@ -474,3 +474,20 @@ browser use behind an operator-managed proxy.
 - Runtime and Helper reject duplicate/deep malformed JSON, invalid UTF-8, concatenated/oversized frames, unknown fields/actions/versions, and unbounded correlation IDs. UID and primary GID are checked with `SO_PEERCRED`.
 - GitHub Actions use immutable commit pins. Checksums establish artifact integrity only, not publisher authenticity; signed distribution remains a Phase 10 gate.
 - Job/Audit/login buckets and verified lifecycle artifacts have bounded retention. Cleanup protects active rollback identities and leaves unknown objects for operator review.
+
+## Phase 10 release-candidate artifacts
+
+The RC builder accepts only a clean tracked commit and an explicit source epoch.
+It normalizes archive ordering, timestamps, ownership and modes, then verifies a
+second independent build has the same SHA-256 in the same CI environment. The
+artifact verifier rejects absolute or non-canonical names, traversal,
+duplicates, case-fold collisions, links, sockets, devices, FIFOs, unexpected
+executables, setuid/setgid/world-writable modes, undeclared files, digest drift,
+version drift, migration drift, and platform mismatch.
+
+The public bundle includes an external manifest, SPDX 2.3 SBOM and
+`SHA256SUMS`. Checksums are an integrity control only. No signing key is created
+or used in Phase 10, so publisher authenticity remains unverified and must not
+be inferred from a successful checksum. The PR workflow is read-only, uses
+immutable Action pins, receives no release/signing secret, publishes only a
+short-lived CI artifact, and cannot create tags or GitHub Releases.

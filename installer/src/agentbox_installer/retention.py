@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from agentbox_installer.artifact import (
-    VERSION_PATTERN,
     ArtifactError,
     remove_verified_tree,
     verify_release,
 )
 from agentbox_installer.backup import BackupResult, verify_sqlite_backup
+from agentbox_installer.versioning import VersionPrecedence, valid_version, version_precedence
 
 DEFAULT_BACKUP_RETENTION = 5
 DEFAULT_RELEASE_RETENTION = 4
@@ -151,7 +151,7 @@ def _verified_backup(path: Path) -> _VerifiedBackup | None:
 
 
 def _verified_release(path: Path) -> bool:
-    if not VERSION_PATTERN.fullmatch(path.name) or path.is_symlink() or not path.is_dir():
+    if not valid_version(path.name) or path.is_symlink() or not path.is_dir():
         return False
     try:
         manifest = verify_release(path, allow_generated_venv=True)
@@ -181,9 +181,5 @@ def _current_release_version(releases_root: Path) -> str | None:
     return target.name
 
 
-def _version_key(version: str) -> tuple[int, int, int, str]:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+](.*))?", version)
-    if match is None:
-        raise ValueError("verified release version is invalid")
-    major, minor, patch, suffix = match.groups()
-    return int(major), int(minor), int(patch), suffix or ""
+def _version_key(version: str) -> VersionPrecedence:
+    return version_precedence(version)

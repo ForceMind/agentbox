@@ -1,0 +1,58 @@
+[
+  {
+    "download": "https://github.com/jshttp/cookie#readme",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "cookie",
+    "version": "1.1.1"
+  },
+  {
+    "download": "https://lucide.dev",
+    "license": "ISC",
+    "manager": "npm",
+    "name": "lucide-react",
+    "version": "1.30.0"
+  },
+  {
+    "download": "https://react.dev/",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "react",
+    "version": "19.2.8"
+  },
+  {
+    "download": "https://react.dev/",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "react-dom",
+    "version": "19.2.8"
+  },
+  {
+    "download": "https://github.com/remix-run/react-router#readme",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "react-router",
+    "version": "7.18.2"
+  },
+  {
+    "download": "https://github.com/remix-run/react-router#readme",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "react-router-dom",
+    "version": "7.18.2"
+  },
+  {
+    "download": "https://react.dev/",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "scheduler",
+    "version": "0.27.0"
+  },
+  {
+    "download": "https://github.com/nfriedly/set-cookie-parser",
+    "license": "MIT",
+    "manager": "npm",
+    "name": "set-cookie-parser",
+    "version": "2.7.2"
+  }
+]

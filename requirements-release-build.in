@@ -1,0 +1,14 @@
+# Reviewed inputs for the isolated Release Candidate build/test environment.
+# Compile with the documented pip-tools command in docs/RELEASE_CHECKLIST.md.
+-r requirements-release.lock
+
+black==26.5.1
+httpx==0.28.1
+mypy==1.20.2
+pip==25.3
+pip-audit==2.10.1
+pre-commit==4.6.1
+pytest==9.1.1
+ruff==0.16.2
+setuptools==83.0.0
+wheel==0.45.1

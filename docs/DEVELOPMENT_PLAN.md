@@ -166,8 +166,7 @@ mutation, and automatic Provider switching remain `NOT STARTED`.
 
 ## Phase 9 — Security audit and compatibility hardening
 
-Status: in progress on `phase/9-security-hardening-compatibility`; Phase 10 and
-Phase 11 remain not started.
+Status: completed and merged in PR #30. Phase 11 remains not started.
 
 - **Goal:** validate the complete MVP against its threat model and supported host/Runtime matrix.
 - **Input:** feature-complete release candidate, fixtures, ephemeral VMs, and Phase 0 risk register.
@@ -180,18 +179,37 @@ Phase 11 remain not started.
 - **Stop condition:** release candidate satisfies the documented security and support gates.
 - **Human approval:** acceptance of any residual Medium risk or reduced distro support.
 
-## Phase 10 — First release
+## Phase 10 — MVP Release Candidate
 
-- **Goal:** publish a reproducible, documented MVP release.
-- **Input:** approved release candidate, completed security gate, release signing/checksum material, and restore evidence.
-- **Output:** version tag, source archive, verified artifacts, checksums/signatures, changelog, installation docs, and rollback notice.
-- **Not in scope:** automatic deployment to user servers, telemetry, paid services, or post-MVP feature commitments.
-- **Acceptance:** clean-host install and upgrade-from-previous-candidate tests pass; artifacts match source; rollback and recovery instructions are validated.
-- **Tests:** final matrix rerun, artifact verification, smoke install, browser flows, adapter fixtures, and database migration/restore drill.
-- **Documentation:** release notes, support statement, security contact, known limitations, and checksums.
-- **Commit/PR:** release commit/tag comes from protected `main`; no force push or tag replacement.
-- **Stop condition:** artifacts are published and the next roadmap is separately approved.
-- **Human approval:** version number, license, public release, support promise, and publication credentials.
+Status: in progress on `phase/10-mvp-release-candidate`. This phase prepares a
+candidate but does not publish a tag or GitHub Release.
+
+- **Goal:** prepare a reproducible, documented, installable and recoverable MVP
+  Release Candidate.
+- **Input:** merged Phase 9 security gate, protected-main source, exact locks,
+  checksum material, and restore evidence.
+- **Output:** candidate version source, deterministic Linux x86_64 artifact,
+  release manifest, external checksums, SPDX SBOM, license inventory, changelog,
+  release notes, acceptance/runbooks, Release Candidate CI, and stable
+  `release-gate`.
+- **Not in scope:** tag or GitHub Release creation, stable publication, signing
+  key creation, automatic deployment, telemetry, paid services, Provider/Secret
+  work, or post-MVP feature commitments.
+- **Acceptance:** same-runner double-build reproducibility, artifact-only install
+  smoke, fixture fresh install/update/rollback, accurate platform claims, all
+  existing checks, release-gate, and a gated OpenCloudOS upgrade/rollback
+  rehearsal that restores the pre-rehearsal stable release.
+- **Tests:** final backend/frontend/E2E/Deployment matrix; manifest/checksum/SBOM/
+  license/secret/archive verification; browser/API/CLI smoke; database
+  migration/backup/restore and rollback fault drills.
+- **Documentation:** Quickstart, release notes, support matrix, security contact,
+  known limitations, acceptance and executable release checklist.
+- **Commit/PR:** Draft PR from the Phase 10 branch. A future reviewed tag must
+  come from merged protected `main`; no force push or tag replacement.
+- **Stop condition:** Draft PR and CI/rehearsal evidence are ready for human
+  review, with tag and GitHub Release still absent.
+- **Human approval:** merge, version/tag, signing policy, Draft Release,
+  pre-release publication, and any support promise.
 
 ## Phase 11 — Provider, Secret & Runtime Continuity Management (future post-MVP)
 

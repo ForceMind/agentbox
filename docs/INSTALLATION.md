@@ -1,6 +1,6 @@
 # AgentBox Installation
 
-Status: Phase 8 implementation, pending human review
+Status: Phase 10 MVP Release Candidate runbook
 
 ## Safety boundary
 
@@ -11,22 +11,31 @@ reverse proxies, Docker, existing root Runtime installations, root tmux
 sessions, `/root/projects`, or Provider/Secret configuration.
 
 Never install an unverified network stream directly into a shell on a shared
-host. Obtain the bootstrap and release artifact through an authenticated source,
-verify the published SHA-256 value, inspect the plan, and then apply it:
+host. Download the tarball, `RELEASE_MANIFEST.json`, `SBOM.spdx.json`, and
+`SHA256SUMS`; verify the published hashes and bundled artifact contract, inspect
+the plan, and then apply it:
 
 ```bash
-sha256sum agentbox-<version>.tar.gz
-sudo ./installer/install.sh plan \
-  --artifact ./agentbox-<version>.tar.gz \
+sha256sum --check SHA256SUMS
+mkdir agentbox-release
+tar -xzf agentbox-<version>-linux-x86_64.tar.gz -C agentbox-release
+./agentbox-release/install.sh verify-artifact \
+  --artifact ./agentbox-<version>-linux-x86_64.tar.gz \
+  --checksums ./SHA256SUMS \
+  --manifest ./RELEASE_MANIFEST.json \
+  --sbom ./SBOM.spdx.json
+sudo ./agentbox-release/install.sh plan \
+  --artifact ./agentbox-<version>-linux-x86_64.tar.gz \
   --sha256 <expected-sha256>
-sudo ./installer/install.sh apply \
-  --artifact ./agentbox-<version>.tar.gz \
+sudo ./agentbox-release/install.sh apply \
+  --artifact ./agentbox-<version>-linux-x86_64.tar.gz \
   --sha256 <expected-sha256>
 ```
 
-Phase 8 has no production download URL and uses checksums rather than signed
-artifacts. A future `curl | bash` convenience form does not replace artifact
-authentication and is not the recommended verification path.
+The RC has no production download URL and uses checksums rather than signed
+artifacts. Checksums provide integrity only when acquired independently; they
+do not authenticate the publisher. A future `curl | bash` convenience form is
+not the recommended verification path.
 
 ## Preflight
 
@@ -40,6 +49,15 @@ Apply requires effective UID 0. The ordinary `agentbox` CLI remains non-root;
 only lifecycle mutations require an administrator to invoke the installer.
 Port conflicts fail closed and the installer never kills the owner or silently
 changes the product default.
+
+The `0.3.0rc1` bundle is qualified only for Linux x86_64 with CPython 3.11,
+3.12, or 3.13. The bundled `install.sh` checks this contract before bootstrap
+and reports an explicit error for Python 3.10 or 3.14. It verifies and imports
+the artifact's exact/hash-locked `pip 25.3` wheel directly, then installs the
+temporary Installer with `--target`, `--no-index`, and the artifact wheelhouse.
+It does not require host `python3-venv`, `ensurepip`, global pip, PyPI, or a
+source checkout. After platform/package preflight, the inner Installer may
+install the typed venv package needed by the permanent release-local venv.
 
 Service-account names are not adopted merely because they exist. On a fresh
 host, any pre-existing `agentbox`, `agentbox-runtime`, or associated group name
@@ -105,7 +123,7 @@ GitHub CLI flows. Do not copy or `chown` `/root/.codex`, `/root/.claude`, or
 Phase 9 validates generated unit directives against the installed systemd
 version before any privileged write. Missing optional Runtime dependencies
 degrade only their integration and do not invalidate the prebuilt API/Web core.
-Ubuntu 22.04 native installation remains rejected until a trusted Python 3.11+
+Ubuntu 22.04 native installation remains rejected until a trusted Python 3.11–3.13
 strategy exists; CI-provided Python is test evidence, not an installer source.
 
 Use `agentbox status`, `agentbox doctor`, `systemctl status` for the exact units,

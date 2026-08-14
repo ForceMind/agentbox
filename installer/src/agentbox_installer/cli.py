@@ -9,7 +9,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from agentbox_installer.build import build_release_artifact
+from agentbox_installer.artifact import verify_release_bundle
+from agentbox_installer.build import (
+    build_release_artifact,
+    build_release_bundle,
+    release_version,
+    verify_version_consistency,
+)
 from agentbox_installer.host import HostOperations
 from agentbox_installer.layout import InstallLayout
 from agentbox_installer.lifecycle import AgentBoxInstaller, InstallError
@@ -39,8 +45,24 @@ def create_parser() -> argparse.ArgumentParser:
     build = commands.add_parser("build-artifact")
     build.add_argument("--source", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
-    build.add_argument("--version", required=True)
+    build.add_argument("--version")
     build.add_argument("--python", type=Path, default=Path(sys.executable))
+    candidate = commands.add_parser("build-release-candidate")
+    candidate.add_argument("--source", type=Path, required=True)
+    candidate.add_argument("--output-dir", type=Path, required=True)
+    candidate.add_argument("--python", type=Path, default=Path(sys.executable))
+    candidate.add_argument(
+        "--source-ref-kind",
+        choices=("pull_request_head", "main", "tag", "other"),
+        default="other",
+    )
+    verify = commands.add_parser("verify-artifact")
+    verify.add_argument("--artifact", type=Path, required=True)
+    verify.add_argument("--checksums", type=Path, required=True)
+    verify.add_argument("--manifest", type=Path, required=True)
+    verify.add_argument("--sbom", type=Path, required=True)
+    version = commands.add_parser("verify-version")
+    version.add_argument("--source", type=Path, required=True)
     return parser
 
 
@@ -69,11 +91,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
     try:
         if args.command == "build-artifact":
+            version = args.version or release_version(args.source)
             digest = build_release_artifact(
-                args.source, args.output, version=args.version, python=args.python
+                args.source, args.output, version=version, python=args.python
             )
             print(f"Artifact: {args.output}")
             print(f"SHA256: {digest}")
+            return 0
+        if args.command == "build-release-candidate":
+            bundle = build_release_bundle(
+                args.source,
+                args.output_dir,
+                python=args.python,
+                source_ref_kind=args.source_ref_kind,
+            )
+            print(f"Version: {bundle.version}")
+            print(f"Source commit: {bundle.source_commit}")
+            print(f"Source ref kind: {bundle.source_ref_kind}")
+            print(f"Artifact: {bundle.artifact}")
+            print(f"SHA256: {bundle.artifact_sha256}")
+            print(f"Manifest: {bundle.manifest}")
+            print(f"SBOM: {bundle.sbom}")
+            print(f"Checksums: {bundle.checksums}")
+            return 0
+        if args.command == "verify-artifact":
+            manifest = verify_release_bundle(
+                args.artifact, args.checksums, args.manifest, args.sbom
+            )
+            print(f"Artifact verified: AgentBox {manifest.version} linux x86_64")
+            print("Integrity: SHA-256 verified")
+            print("Artifact signature: not available")
+            return 0
+        if args.command == "verify-version":
+            print(verify_version_consistency(args.source))
             return 0
         layout, host = _layout(args.fixture_root)
         installer = AgentBoxInstaller(layout, host)

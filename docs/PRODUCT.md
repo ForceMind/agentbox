@@ -1,13 +1,13 @@
 # AgentBox Product Definition
 
-Status: Phase 1 design baseline
+Status: MVP Release Candidate product boundary through Phase 10
 Audience: maintainers, contributors, security reviewers
 
 ## Product Vision
 
 AgentBox turns a user-controlled Linux server into a remotely managed AI development workstation. Its value is not general server administration or browser-based coding; it is a safe, repeatable control plane for AI development runtimes, persistent project sessions, workspaces, diagnostics, and lifecycle operations.
 
-English positioning: **Turn any Linux server into a remotely managed AI development workstation.**
+English positioning: **Turn a user-controlled Linux server into a remotely managed AI development workstation.**
 
 Chinese positioning: **把任意 Linux 服务器变成可远程管理的 AI 开发工作站。**
 
@@ -140,7 +140,13 @@ The MVP does not expose arbitrary shell input, full filesystem browsing, unrestr
 
 ## MVP Success Definition
 
-MVP succeeds when, on every release-gated supported distribution, a single administrator can bootstrap a clean server, sign in locally, run Doctor, register or clone a project, inspect Git state, manage a supported Codex Remote daemon and one-time pairing flow, and create/observe/stop a project-scoped Claude tmux session—without the Web/API running as root, without a default public listener, and without sensitive values appearing in the database, journal, audit log, or API history.
+MVP acceptance requires a single administrator to bootstrap through an isolated
+fixture and exercise the designated OpenCloudOS upgrade/rollback host, sign in,
+run Doctor, register or clone a project, inspect and safely update Git state,
+manage a supported Codex Remote daemon and one-time pairing flow, and
+create/observe/stop a project-scoped Claude tmux session—without Web/API root,
+a default public listener, or sensitive values in persistence/output. Platform
+evidence is stated at its actual Real-host/CI/Fixture/Unsupported level.
 
 ## Long-Term Directions
 

@@ -21,6 +21,7 @@ from agentbox_installer.lifecycle import (
     InstallError,
     RollbackVerificationError,
     RollbackVerifiedError,
+    _compare_versions,
 )
 from support.failure_injection import FailureInjector, InjectedCrash
 
@@ -105,6 +106,57 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox")) == 0o1770
     assert stat_mode(layout.map("/srv/agentbox/projects")) == 0o700
     assert stat_mode(layout.map("/run/agentbox")) == 0o3770
+
+
+@pytest.mark.parametrize(
+    ("older", "newer"),
+    (
+        ("0.3.0-alpha.9", "0.3.0-alpha.10"),
+        ("0.3.0-alpha", "0.3.0-alpha.1"),
+        ("0.3.0-alpha.1", "0.3.0-alpha.beta"),
+        ("0.3.0-beta.2", "0.3.0-beta.11"),
+        ("0.3.0-beta", "0.3.0-rc.1"),
+        ("0.3.0rc9", "0.3.0rc10"),
+        ("0.3.0rc2", "0.3.0"),
+    ),
+)
+def test_release_prerelease_identifiers_follow_numeric_semver_precedence(
+    older: str, newer: str
+) -> None:
+    assert _compare_versions(older, newer) == -1
+    assert _compare_versions(newer, older) == 1
+
+
+def test_release_candidate_rc_and_build_metadata_normalization() -> None:
+    assert _compare_versions("0.3.0rc1", "0.3.0-rc.1") == 0
+    assert _compare_versions("0.3.0+build.1", "0.3.0+build.2") == 0
+    assert _compare_versions("0.2.10+dev.9", "0.2.10+dev.8") == 0
+
+
+@pytest.mark.parametrize(
+    "version",
+    ("0.3.0-alpha.01", "0.3", "0.3.0-alpha..1", "01.3.0", "not-a-version"),
+)
+def test_release_version_comparison_rejects_malformed_versions(version: str) -> None:
+    with pytest.raises(InstallError, match="release version is invalid"):
+        _compare_versions(version, "0.3.0")
+
+
+def test_installer_plan_and_apply_accept_numeric_prerelease_upgrade_and_reject_downgrade(
+    tmp_path: Path,
+) -> None:
+    installer, _layout = _installer(tmp_path)
+    alpha_nine, alpha_nine_digest = _artifact(tmp_path, "0.3.0-alpha.9", "revision_one")
+    alpha_ten, alpha_ten_digest = _artifact(tmp_path, "0.3.0-alpha.10", "revision_two")
+    installer.apply(alpha_nine, alpha_nine_digest)
+
+    assert installer.plan(alpha_ten, alpha_ten_digest).state == "installed_older_version"
+    assert installer.apply(alpha_ten, alpha_ten_digest).version == "0.3.0-alpha.10"
+    assert installer.plan(alpha_ten, alpha_ten_digest).state == "installed_same_version"
+    assert installer.apply(alpha_ten, alpha_ten_digest).changed is False
+    assert installer.plan(alpha_nine, alpha_nine_digest).state == "installed_newer_version"
+    with pytest.raises(InstallError, match="downgrade is not supported"):
+        installer.apply(alpha_nine, alpha_nine_digest)
 
 
 def test_upgrade_creates_verified_backup_and_rollback_restores_database(

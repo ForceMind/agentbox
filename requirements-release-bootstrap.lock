@@ -1,0 +1,5 @@
+# AgentBox Release Candidate bootstrap lock.
+# The outer install.sh imports this wheel directly from the artifact and never
+# uses host pip, ensurepip, venv, or a package index.
+
+pip==25.3 --hash=sha256:9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd
