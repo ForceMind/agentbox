@@ -172,6 +172,10 @@ def test_reviewed_frontend_inventory_matches_normalized_pnpm_shape() -> None:
 def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -> None:
     release, manifest = _release_candidate(tmp_path)
     observed = verify_release(release)
+    expected_files = manifest["files"]
+    assert isinstance(expected_files, dict)
+    expected_bootstrap_digest = expected_files["bootstrap/pip-25.3-py3-none-any.whl"]
+    assert isinstance(expected_bootstrap_digest, str)
 
     assert observed.schema_version == 4
     assert observed.version == "0.3.0rc1"
@@ -182,7 +186,7 @@ def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -
     assert observed.bootstrap_pip == {
         "filename": "bootstrap/pip-25.3-py3-none-any.whl",
         "version": "25.3",
-        "sha256": manifest["files"]["bootstrap/pip-25.3-py3-none-any.whl"],
+        "sha256": expected_bootstrap_digest,
         "method": "pythonpath-wheel-target",
     }
     assert observed.artifact_authenticity == "unsigned; sha256 integrity only"
