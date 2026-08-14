@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from agentbox_installer.artifact import (
-    VERSION_PATTERN,
     ArtifactError,
     remove_verified_tree,
     verify_release,
 )
 from agentbox_installer.backup import BackupResult, verify_sqlite_backup
+from agentbox_installer.versioning import VersionPrecedence, valid_version, version_precedence
 
 DEFAULT_BACKUP_RETENTION = 5
 DEFAULT_RELEASE_RETENTION = 4
@@ -151,7 +151,7 @@ def _verified_backup(path: Path) -> _VerifiedBackup | None:
 
 
 def _verified_release(path: Path) -> bool:
-    if not VERSION_PATTERN.fullmatch(path.name) or path.is_symlink() or not path.is_dir():
+    if not valid_version(path.name) or path.is_symlink() or not path.is_dir():
         return False
     try:
         manifest = verify_release(path, allow_generated_venv=True)
@@ -181,29 +181,5 @@ def _current_release_version(releases_root: Path) -> str | None:
     return target.name
 
 
-def _version_key(version: str) -> tuple[int, int, int, int, int, str]:
-    match = re.fullmatch(
-        r"(\d+)\.(\d+)\.(\d+)(?:(?:rc([1-9]\d*))|-([0-9A-Za-z][0-9A-Za-z.-]*))?"
-        r"(?:\+([0-9A-Za-z][0-9A-Za-z.-]*))?",
-        version,
-    )
-    if match is None:
-        raise ValueError("verified release version is invalid")
-    major, minor, patch, rc_number, prerelease, local = match.groups()
-    if rc_number is not None:
-        release_rank = 2
-        prerelease_number = int(rc_number)
-    elif prerelease is not None:
-        release_rank = 1
-        prerelease_number = 0
-    else:
-        release_rank = 3
-        prerelease_number = 0
-    return (
-        int(major),
-        int(minor),
-        int(patch),
-        release_rank,
-        prerelease_number,
-        local or prerelease or "",
-    )
+def _version_key(version: str) -> VersionPrecedence:
+    return version_precedence(version)

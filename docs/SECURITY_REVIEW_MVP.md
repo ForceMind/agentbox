@@ -100,7 +100,8 @@ explicitly build the PR head rather than GitHub's synthetic merge ref. The
 manifest records the actual source commit and ref kind, build toolchain,
 version, platform, migration head, allowlist, per-file digests,
 `>=3.11,<3.14`/cp311-cp313 artifact compatibility, SBOM/license files, and
-unsigned status.
+unsigned status. A separate exact/hash-locked `pip 25.3` bootstrap wheel is
+bound into the manifest, file inventory, SBOM, notices, and nested scan.
 
 Verification checks external `SHA256SUMS`, external/internal manifest and SBOM
 identity, schema, version/wheel/API consistency, complete file allowlist,
@@ -114,8 +115,12 @@ runtime requirement.
 
 CI executes the exact bundled `install.sh`: shell syntax, public bundle
 verification, offline wheelhouse-only bootstrap, fixture plan/apply, cleanup,
-and data-preserving uninstall. A manually recreated venv remains a second-layer
-runtime smoke, not a substitute for the bootstrap test.
+and data-preserving uninstall. The root-private bootstrap imports pip directly
+from its verified wheel and installs to a temporary target, so it needs no host
+venv module, ensurepip, global pip, network index, or source checkout. CI runs
+this path under a Python wrapper that rejects those host facilities and covers
+Ubuntu 24.04/Debian 12 no-venv fixtures. A manually recreated venv remains a
+second-layer runtime smoke, not a substitute for the bootstrap test.
 
 The PR Release Candidate workflow has read-only permissions, immutable Action
 pins, no Secrets, no publishing permission, one bounded CI artifact, and a

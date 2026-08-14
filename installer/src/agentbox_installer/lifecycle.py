@@ -25,7 +25,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from agentbox_installer.artifact import (
-    VERSION_PATTERN,
     ArtifactError,
     ReleaseManifest,
     extract_verified_tar,
@@ -41,6 +40,7 @@ from agentbox_installer.host import HostOperations, IdentityFacts
 from agentbox_installer.layout import DIRECTORIES, InstallLayout
 from agentbox_installer.platform import PlatformFacts, detect_platform, resolve_packages
 from agentbox_installer.retention import enforce_retention
+from agentbox_installer.versioning import valid_version, version_precedence
 
 UNIT_NAMES = (
     "agentbox-api.service",
@@ -54,38 +54,13 @@ HARDENED_DATA_LAYOUT_MIN_VERSION = "0.2.5"
 
 def _compare_versions(candidate: str, current: str) -> int:
     """Compare release precedence; build metadata never authorizes downgrade."""
-    pattern = re.compile(
-        r"^(\d+)\.(\d+)\.(\d+)(?:(?:rc([1-9]\d*))|-([0-9A-Za-z][0-9A-Za-z.-]*))?"
-        r"(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$"
-    )
-    candidate_match = pattern.fullmatch(candidate)
-    current_match = pattern.fullmatch(current)
-    if candidate_match is None or current_match is None:
-        raise InstallError("installed or candidate release version is invalid")
-    candidate_key = _release_precedence(candidate_match)
-    current_key = _release_precedence(current_match)
+    try:
+        candidate_key = version_precedence(candidate)
+        current_key = version_precedence(current)
+    except ValueError as exc:
+        raise InstallError("installed or candidate release version is invalid") from exc
+
     return (candidate_key > current_key) - (candidate_key < current_key)
-
-
-def _release_precedence(match: re.Match[str]) -> tuple[int, int, int, int, int, str]:
-    major, minor, patch, rc_number, prerelease = match.groups()
-    if rc_number is not None:
-        release_rank = 2
-        prerelease_number = int(rc_number)
-    elif prerelease is not None:
-        release_rank = 1
-        prerelease_number = 0
-    else:
-        release_rank = 3
-        prerelease_number = 0
-    return (
-        int(major),
-        int(minor),
-        int(patch),
-        release_rank,
-        prerelease_number,
-        prerelease or "",
-    )
 
 
 class InstallError(RuntimeError):
@@ -500,9 +475,7 @@ class AgentBoxInstaller:
         if receipt is None or current is None:
             raise InstallError("AgentBox installation receipt is unavailable")
         recorded_previous = receipt.get("previous_version")
-        if not isinstance(recorded_previous, str) or not VERSION_PATTERN.fullmatch(
-            recorded_previous
-        ):
+        if not valid_version(recorded_previous):
             raise InstallError("no previous release is recorded")
         if target_version is not None and target_version != recorded_previous:
             raise InstallError("rollback target must match the receipt's previous release")
@@ -631,7 +604,7 @@ class AgentBoxInstaller:
             or not isinstance(resources, list)
             or not all(isinstance(item, dict) for item in resources)
             or not isinstance(attempted_version, str)
-            or VERSION_PATTERN.fullmatch(attempted_version) is None
+            or not valid_version(attempted_version)
             or receipt.get("active_version") != current
         ):
             raise InstallError("rollback recovery identity is invalid")
@@ -766,7 +739,7 @@ class AgentBoxInstaller:
             relative_target.is_absolute()
             or len(relative_target.parts) != 2
             or relative_target.parts[0] != "releases"
-            or not VERSION_PATTERN.fullmatch(relative_target.parts[1])
+            or not valid_version(relative_target.parts[1])
         ):
             return None
         path = (link.parent / target).resolve(strict=False)

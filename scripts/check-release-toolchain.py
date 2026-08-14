@@ -10,7 +10,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 
-from agentbox_installer.build import release_build_toolchain
+from agentbox_installer.build import release_bootstrap_pip, release_build_toolchain
 
 LOCK_LINE = re.compile(
     r"([A-Za-z0-9][A-Za-z0-9_.-]*)==([0-9A-Za-z][0-9A-Za-z.+-]*) " r"--hash=sha256:([0-9a-f]{64})"
@@ -82,12 +82,24 @@ def main() -> int:
         "--require-hashes",
         "--only-binary=:all:",
         "requirements-release-build.lock",
+        "requirements-release-bootstrap.lock",
         "--no-deps --no-build-isolation --editable .",
         'node-version: "22.23.2"',
         "version: 11.20.0",
     )
     if not all(value in workflow for value in required_workflow):
         raise RuntimeError("release workflow does not enforce the reviewed toolchain lock")
+    bootstrap = release_bootstrap_pip(source)
+    install_script = (source / "installer/release-install.sh").read_text(encoding="utf-8")
+    if (
+        " -m venv" in install_script
+        or "ensurepip" in install_script
+        or bootstrap["filename"].removeprefix("bootstrap/") not in install_script
+        or bootstrap["sha256"] not in install_script
+        or 'PYTHONPATH="${bootstrap_pip}"' not in install_script
+        or '--target "${bootstrap_target}"' not in install_script
+    ):
+        raise RuntimeError("release bootstrap is not bound to its reviewed offline pip wheel")
     pyproject = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
     build_requirements = pyproject.get("build-system", {}).get("requires")
     if build_requirements != ["setuptools>=83"] or versions["setuptools"] < "83.0.0":

@@ -42,11 +42,15 @@ tar -xzf agentbox-0.3.0rc1-linux-x86_64.tar.gz -C agentbox-0.3.0rc1
 
 The artifact contains the complete CPython 3.11/3.12/3.13 Linux x86_64
 wheelhouse and prebuilt Web assets. Its bootstrap rejects Python 3.10, Python
-3.14+, non-Linux systems, and non-x86_64 hosts before creating a venv or
-invoking pip. This artifact-specific boundary is narrower than the source
-package's open-ended `>=3.11` metadata. The AgentBox control plane does not need
-Node, npm, pnpm, Vite, or a source checkout at runtime. Run the read-only plan
-first:
+3.14+, non-Linux systems, and non-x86_64 hosts before installation. It imports
+the artifact's hash-locked `pip 25.3` wheel directly and installs the temporary
+Installer into a root-private target directory with `--no-index`; host
+`python3-venv`, `ensurepip`, global pip, PyPI, and a source checkout are not
+bootstrap prerequisites. The inner Installer can then provision the typed
+production venv package when needed. This artifact-specific boundary is
+narrower than the source package's open-ended `>=3.11` metadata. The AgentBox
+control plane does not need Node, npm, pnpm, or Vite at runtime. Run the
+read-only plan first:
 
 ```bash
 sudo ./agentbox-0.3.0rc1/install.sh plan \

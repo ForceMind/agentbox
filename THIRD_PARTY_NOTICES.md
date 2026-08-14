@@ -3,7 +3,8 @@
 AgentBox is licensed under Apache-2.0. The AgentBox release artifact also
 contains unmodified or compiled forms of the following third-party packages.
 This inventory records the dependency versions selected by
-`requirements-release.lock` and `pnpm-lock.yaml`; it is not legal advice and
+`requirements-release.lock`, `requirements-release-bootstrap.lock`, and
+`pnpm-lock.yaml`; it is not legal advice and
 does not replace the license text distributed by each upstream project.
 
 ## Python runtime dependencies
@@ -34,6 +35,12 @@ does not replace the license text distributed by each upstream project.
 | typing-extensions | 4.16.0 | PSF-2.0 |
 | typing-inspection | 0.4.4 | MIT |
 | Uvicorn | 0.52.2 | BSD-3-Clause |
+
+## Offline bootstrap tooling
+
+| Package | Version | Declared license |
+|---|---:|---|
+| pip | 25.3 | MIT |
 
 ## Frontend runtime dependencies
 

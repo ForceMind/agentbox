@@ -1,24 +1,71 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+PRODUCTION_PIP_SHA256 = "9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd"
+FIXTURE_PIP = b"fixture bootstrap pip wheel"
+FIXTURE_PIP_SHA256 = hashlib.sha256(FIXTURE_PIP).hexdigest()
 
-def _release_script(tmp_path: Path, *, version: bool = True, wheelhouse: bool = True) -> Path:
+
+def _release_script(
+    tmp_path: Path,
+    *,
+    version: bool = True,
+    wheelhouse: bool = True,
+    bootstrap: bool = True,
+) -> Path:
     root = Path(__file__).resolve().parents[2]
     release = tmp_path / "release"
     release.mkdir()
     script = release / "install.sh"
-    script.write_bytes((root / "installer/release-install.sh").read_bytes())
+    payload = (root / "installer/release-install.sh").read_text(encoding="utf-8")
+    payload = payload.replace(PRODUCTION_PIP_SHA256, FIXTURE_PIP_SHA256)
+    script.write_text(payload, encoding="utf-8")
     script.chmod(0o755)
     if version:
         (release / "VERSION").write_text("0.3.0rc1\n", encoding="ascii")
     if wheelhouse:
         (release / "wheelhouse").mkdir()
+    if bootstrap:
+        bootstrap_dir = release / "bootstrap"
+        bootstrap_dir.mkdir()
+        (bootstrap_dir / "pip-25.3-py3-none-any.whl").write_bytes(FIXTURE_PIP)
     return script
+
+
+def _fake_python(tmp_path: Path) -> Path:
+    executable = tmp_path / "python-without-venv-pip-or-ensurepip"
+    executable.write_text(
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$*" >> "${AGENTBOX_BOOTSTRAP_TRACE:-/dev/null}"\n'
+        'if [ "$1" = "-m" ] && { [ "$2" = "venv" ] || [ "$2" = "ensurepip" ]; }; then\n'
+        "  exit 97\n"
+        "fi\n"
+        'if [ "$1" = "-c" ]; then exit 0; fi\n'
+        'if [ "$1" = "-" ]; then exec "${AGENTBOX_REAL_TEST_PYTHON}" "$@"; fi\n'
+        'if [ "$1" = "-m" ] && [ "$2" = "pip" ]; then\n'
+        '  case "${PYTHONPATH:-}" in *pip-25.3-py3-none-any.whl*) ;; *) exit 96 ;; esac\n'
+        '  exit "${AGENTBOX_FAKE_PIP_RESULT:-0}"\n'
+        "fi\n"
+        'if [ "$1" = "-m" ] && [ "$2" = "agentbox_installer.cli" ]; then\n'
+        "  shift 2\n"
+        '  if [ -n "${AGENTBOX_UMASK_OUTPUT:-}" ]; then umask > "$AGENTBOX_UMASK_OUTPUT"; fi\n'
+        '  if [ -n "${AGENTBOX_ARGUMENT_OUTPUT:-}" ]; then\n'
+        '    printf \'%s\\n\' "$@" > "$AGENTBOX_ARGUMENT_OUTPUT"\n'
+        "  fi\n"
+        '  exit "${AGENTBOX_FAKE_CLI_RESULT:-0}"\n'
+        "fi\n"
+        "exit 95\n",
+        encoding="ascii",
+    )
+    executable.chmod(0o755)
+    return executable
 
 
 def _run(
@@ -38,13 +85,21 @@ def _run(
     )
 
 
+def _fake_environment(tmp_path: Path, fake_python: Path) -> dict[str, str]:
+    return {
+        "AGENTBOX_INSTALLER_TEST_MODE": "1",
+        "AGENTBOX_RELEASE_BOOTSTRAP_PYTHON": str(fake_python),
+        "AGENTBOX_REAL_TEST_PYTHON": sys.executable,
+        "AGENTBOX_BOOTSTRAP_TRACE": str(tmp_path / "trace"),
+    }
+
+
 @pytest.mark.parametrize("version", ("3.11", "3.12", "3.13"))
 def test_release_install_accepts_supported_artifact_python_versions(
     tmp_path: Path, version: str
 ) -> None:
-    script = _release_script(tmp_path)
     result = _run(
-        script,
+        _release_script(tmp_path),
         env={
             "AGENTBOX_INSTALLER_TEST_MODE": "1",
             "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1",
@@ -59,9 +114,8 @@ def test_release_install_accepts_supported_artifact_python_versions(
 def test_release_install_rejects_unsupported_artifact_python_before_bootstrap(
     tmp_path: Path, version: str
 ) -> None:
-    script = _release_script(tmp_path)
     result = _run(
-        script,
+        _release_script(tmp_path),
         env={
             "AGENTBOX_INSTALLER_TEST_MODE": "1",
             "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1",
@@ -73,74 +127,113 @@ def test_release_install_rejects_unsupported_artifact_python_before_bootstrap(
     assert "requires Python 3.11, 3.12, or 3.13" in result.stderr
 
 
+def test_release_install_rejects_unsupported_architecture(tmp_path: Path) -> None:
+    result = _run(
+        _release_script(tmp_path),
+        env={
+            "AGENTBOX_INSTALLER_TEST_MODE": "1",
+            "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1",
+            "AGENTBOX_RELEASE_PLATFORM_TEST_OVERRIDE": "Linux:aarch64:3.12",
+        },
+    )
+
+    assert result.returncode == 18
+    assert "supports x86_64 only" in result.stderr
+
+
 @pytest.mark.parametrize(
-    ("version", "wheelhouse"),
-    ((False, True), (True, False)),
+    ("version", "wheelhouse", "bootstrap"),
+    ((False, True, True), (True, False, True), (True, True, False)),
 )
 def test_release_install_rejects_incomplete_payload(
-    tmp_path: Path, version: bool, wheelhouse: bool
+    tmp_path: Path, version: bool, wheelhouse: bool, bootstrap: bool
 ) -> None:
-    result = _run(_release_script(tmp_path, version=version, wheelhouse=wheelhouse))
+    result = _run(
+        _release_script(
+            tmp_path,
+            version=version,
+            wheelhouse=wheelhouse,
+            bootstrap=bootstrap,
+        )
+    )
 
     assert result.returncode == 16
     assert "payload is incomplete" in result.stderr
 
 
-def test_release_install_cleans_bootstrap_directory_after_venv_failure(tmp_path: Path) -> None:
+def test_release_install_rejects_malformed_version(tmp_path: Path) -> None:
     script = _release_script(tmp_path)
-    fake_python = tmp_path / "fake-python"
-    fake_python.write_text(
-        '#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\nexit 42\n',
-        encoding="ascii",
-    )
-    fake_python.chmod(0o755)
-    temporary = tmp_path / "temporary"
-    temporary.mkdir()
+    (script.parent / "VERSION").write_text("0.3-rc-one\n", encoding="ascii")
 
-    result = _run(
-        script,
-        env={
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
-            "AGENTBOX_RELEASE_BOOTSTRAP_PYTHON": str(fake_python),
-            "TMPDIR": str(temporary),
-        },
-    )
+    result = _run(script)
 
-    assert result.returncode == 42
-    assert list(temporary.iterdir()) == []
+    assert result.returncode == 16
+    assert "VERSION is invalid" in result.stderr
+
+
+def test_release_install_rejects_bootstrap_wheel_digest_mismatch(tmp_path: Path) -> None:
+    script = _release_script(tmp_path)
+    (script.parent / "bootstrap/pip-25.3-py3-none-any.whl").write_bytes(b"tampered")
+
+    result = _run(script)
+
+    assert result.returncode == 16
+    assert "checksum mismatch" in result.stderr
+
+
+def test_release_install_bootstrap_never_invokes_venv_ensurepip_or_global_pip(
+    tmp_path: Path,
+) -> None:
+    script = _release_script(tmp_path)
+    fake_python = _fake_python(tmp_path)
+    environment = _fake_environment(tmp_path, fake_python)
+
+    result = _run(script, env=environment)
+
+    assert result.returncode == 0
+    trace = (tmp_path / "trace").read_text(encoding="utf-8")
+    assert "-m venv" not in trace
+    assert "-m ensurepip" not in trace
+    assert "-m pip install" in trace
+    assert "--no-index" in trace
+    assert "--target" in trace
 
 
 def test_release_install_cleans_bootstrap_directory_after_offline_pip_failure(
     tmp_path: Path,
 ) -> None:
     script = _release_script(tmp_path)
-    fake_python = tmp_path / "fake-python"
-    fake_python.write_text(
-        "#!/bin/sh\n"
-        'if [ "$1" = "-c" ]; then exit 0; fi\n'
-        'if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then\n'
-        '  mkdir -p "$3/bin"\n'
-        "  printf '#!/bin/sh\\nexit 41\\n' > \"$3/bin/pip\"\n"
-        '  chmod 755 "$3/bin/pip"\n'
-        "  exit 0\n"
-        "fi\n"
-        "exit 42\n",
-        encoding="ascii",
-    )
-    fake_python.chmod(0o755)
+    fake_python = _fake_python(tmp_path)
     temporary = tmp_path / "temporary"
     temporary.mkdir()
+    environment = {
+        **_fake_environment(tmp_path, fake_python),
+        "AGENTBOX_FAKE_PIP_RESULT": "41",
+        "TMPDIR": str(temporary),
+    }
 
-    result = _run(
-        script,
-        env={
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
-            "AGENTBOX_RELEASE_BOOTSTRAP_PYTHON": str(fake_python),
-            "TMPDIR": str(temporary),
-        },
-    )
+    result = _run(script, env=environment)
 
     assert result.returncode == 41
+    assert list(temporary.iterdir()) == []
+
+
+def test_release_install_cleans_bootstrap_directory_after_installer_failure(
+    tmp_path: Path,
+) -> None:
+    script = _release_script(tmp_path)
+    fake_python = _fake_python(tmp_path)
+    temporary = tmp_path / "temporary"
+    temporary.mkdir()
+    environment = {
+        **_fake_environment(tmp_path, fake_python),
+        "AGENTBOX_FAKE_CLI_RESULT": "42",
+        "TMPDIR": str(temporary),
+    }
+
+    result = _run(script, env=environment)
+
+    assert result.returncode == 42
     assert list(temporary.iterdir()) == []
 
 
@@ -156,40 +249,18 @@ def test_release_install_rejects_bootstrap_override_outside_test_mode(tmp_path: 
 
 def test_release_install_restores_managed_umask_and_forwards_arguments(tmp_path: Path) -> None:
     script = _release_script(tmp_path)
-    fake_python = tmp_path / "fake-python"
-    fake_python.write_text(
-        "#!/bin/sh\n"
-        'if [ "$1" = "-c" ]; then exit 0; fi\n'
-        'if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then\n'
-        '  mkdir -p "$3/bin"\n'
-        "  cat > \"$3/bin/pip\" <<'PIP'\n"
-        "#!/bin/sh\n"
-        'target="$(dirname "$0")/agentbox-install"\n'
-        "cat > \"$target\" <<'INSTALLER'\n"
-        "#!/bin/sh\n"
-        'umask > "$AGENTBOX_UMASK_OUTPUT"\n'
-        'printf \'%s\\n\' "$@" > "$AGENTBOX_ARGUMENT_OUTPUT"\n'
-        "INSTALLER\n"
-        'chmod 755 "$target"\n'
-        "PIP\n"
-        '  chmod 755 "$3/bin/pip"\n'
-        "  exit 0\n"
-        "fi\n"
-        "exit 42\n",
-        encoding="ascii",
-    )
-    fake_python.chmod(0o755)
+    fake_python = _fake_python(tmp_path)
     umask_output = tmp_path / "umask"
     argument_output = tmp_path / "arguments"
+    environment = {
+        **_fake_environment(tmp_path, fake_python),
+        "AGENTBOX_UMASK_OUTPUT": str(umask_output),
+        "AGENTBOX_ARGUMENT_OUTPUT": str(argument_output),
+    }
 
     result = _run(
         script,
-        env={
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
-            "AGENTBOX_RELEASE_BOOTSTRAP_PYTHON": str(fake_python),
-            "AGENTBOX_UMASK_OUTPUT": str(umask_output),
-            "AGENTBOX_ARGUMENT_OUTPUT": str(argument_output),
-        },
+        env=environment,
         arguments=("plan", "--artifact", "/tmp/candidate", "--sha256", "abc"),
     )
 

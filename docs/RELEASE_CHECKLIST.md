@@ -24,6 +24,9 @@ the Phase 10 PR is merged.
 - [ ] `requirements-release-build.lock` pins and hashes every Python build/test
       package, including pip/setuptools/wheel; the workflow installs no
       range-resolved `.[dev]` or `latest` packaging tool.
+- [ ] `requirements-release-bootstrap.lock` contains exactly the pip wheel
+      version/hash embedded in `install.sh`; manifest, SBOM, notices, nested
+      wheel scan, and per-file digest inventory include that wheel.
 - [ ] Node `22.23.2` and pnpm `11.20.0` match the toolchain recorded in the
       manifest, and the toolchain checker passes against the clean CI environment.
 - [ ] `pnpm install --frozen-lockfile` and production Web build pass.
@@ -46,8 +49,8 @@ the Phase 10 PR is merged.
       cache, source map, database, config, Project, or credential content.
 - [ ] `RELEASE_MANIFEST.json` schema, actual source commit/ref kind, target,
       file allowlist, per-file SHA-256, `>=3.11,<3.14` plus cp311/cp312/cp313
-      ABI contract, locked build toolchain, migration head, SBOM/license names,
-      and unsigned status verify.
+      ABI contract, locked build/bootstrap toolchain, migration head,
+      SBOM/license names, and unsigned status verify.
 - [ ] `SHA256SUMS` independently verifies the tarball, external manifest, and
       external SBOM using safe relative filenames.
 - [ ] Archive verification rejects absolute/traversal/normalization-colliding/
@@ -86,6 +89,12 @@ the Phase 10 PR is merged.
 - [ ] `bash -n` and the artifact's actual `install.sh` verification, offline
       bootstrap, fixture plan/apply, failure cleanup, and argument forwarding
       work without an installed source-checkout AgentBox package.
+- [ ] Bootstrap succeeds with host venv/ensurepip/global pip unavailable, uses
+      only the artifact pip wheel and wheelhouse through `--no-index`/`--target`,
+      and Ubuntu 24.04 plus Debian 12 no-venv fixtures pass.
+- [ ] Prerelease precedence covers numeric identifiers, rc normalization,
+      stable ordering, ignored build metadata, leading-zero rejection, plan,
+      apply, downgrade rejection, rollback selection, and retention ordering.
 - [ ] AgentBox API/static Web installs and runs without Node/Vite.
 - [ ] Fixture fresh install, triple reinstall, application-secret/admin/DB/
       Project/Runtime-HOME preservation, and data-preserving uninstall pass.

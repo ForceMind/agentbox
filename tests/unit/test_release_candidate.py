@@ -20,6 +20,7 @@ from agentbox_installer.build import (
     _python_package_inventory,
     frontend_inventory_from_pnpm,
     npm_version,
+    release_bootstrap_pip,
     release_build_toolchain,
     verify_version_consistency,
 )
@@ -35,7 +36,7 @@ def _minimal_wheel(path: Path, version: str, name: str = "agentbox") -> None:
 
 def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     release = tmp_path / "release"
-    for directory in ("wheelhouse", "web/dist", "migrations/versions"):
+    for directory in ("bootstrap", "wheelhouse", "web/dist", "migrations/versions"):
         (release / directory).mkdir(parents=True, exist_ok=True)
     version = "0.3.0rc1"
     (release / "VERSION").write_text(f"{version}\n", encoding="ascii")
@@ -56,6 +57,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "1.0",
             "fixture",
         )
+    bootstrap_wheel = release / "bootstrap/pip-25.3-py3-none-any.whl"
+    _minimal_wheel(bootstrap_wheel, "25.3", "pip")
     sbom = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
@@ -72,7 +75,7 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         if path.is_file()
     }
     manifest: dict[str, object] = {
-        "schema_version": 3,
+        "schema_version": 4,
         "version": version,
         "source_commit": "a" * 40,
         "source_ref_kind": "pull_request_head",
@@ -91,6 +94,12 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "pnpm": "11.20.0",
             "setuptools": "83.0.0",
             "wheel": "0.45.1",
+        },
+        "bootstrap_pip": {
+            "filename": "bootstrap/pip-25.3-py3-none-any.whl",
+            "version": "25.3",
+            "sha256": files["bootstrap/pip-25.3-py3-none-any.whl"],
+            "method": "pythonpath-wheel-target",
         },
         "platform_support": [
             {
@@ -128,6 +137,12 @@ def test_release_build_toolchain_is_read_from_the_reviewed_lock() -> None:
         "setuptools": "83.0.0",
         "wheel": "0.45.1",
     }
+    assert release_bootstrap_pip(root) == {
+        "filename": "bootstrap/pip-25.3-py3-none-any.whl",
+        "version": "25.3",
+        "sha256": "9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd",
+        "method": "pythonpath-wheel-target",
+    }
 
 
 def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Path) -> None:
@@ -155,15 +170,21 @@ def test_reviewed_frontend_inventory_matches_normalized_pnpm_shape() -> None:
 
 
 def test_release_candidate_manifest_verifies_complete_contract(tmp_path: Path) -> None:
-    release, _manifest = _release_candidate(tmp_path)
+    release, manifest = _release_candidate(tmp_path)
     observed = verify_release(release)
 
-    assert observed.schema_version == 3
+    assert observed.schema_version == 4
     assert observed.version == "0.3.0rc1"
     assert observed.source_commit == "a" * 40
     assert observed.source_ref_kind == "pull_request_head"
     assert observed.required_python == ">=3.11,<3.14"
     assert observed.supported_python_abis == ("cp311", "cp312", "cp313")
+    assert observed.bootstrap_pip == {
+        "filename": "bootstrap/pip-25.3-py3-none-any.whl",
+        "version": "25.3",
+        "sha256": manifest["files"]["bootstrap/pip-25.3-py3-none-any.whl"],
+        "method": "pythonpath-wheel-target",
+    }
     assert observed.artifact_authenticity == "unsigned; sha256 integrity only"
 
 

@@ -17,11 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import IO, Any
 
-VERSION_PATTERN = re.compile(
-    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-    r"(?:rc[1-9][0-9]*|-[0-9A-Za-z][0-9A-Za-z.-]*)?"
-    r"(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?"
-)
+from agentbox_installer.versioning import valid_version
+
 MAX_ARCHIVE_MEMBERS = 20_000
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
 MAX_WHEEL_MEMBERS = 10_000
@@ -61,6 +58,7 @@ class ReleaseManifest:
     required_python: str | None = None
     supported_python_abis: tuple[str, ...] = ()
     build_toolchain: dict[str, str] | None = None
+    bootstrap_pip: dict[str, str] | None = None
     platform_support: tuple[dict[str, str], ...] = ()
     artifact_authenticity: str | None = None
     sbom_filename: str | None = None
@@ -205,26 +203,27 @@ def load_manifest(release: Path) -> ReleaseManifest:
         "third_party_notices_filename",
         "executable_files",
     }
-    current_keys = version_two_keys | {
+    version_three_keys = version_two_keys | {
         "source_ref_kind",
         "supported_python_abis",
         "build_toolchain",
     }
+    current_keys = version_three_keys | {"bootstrap_pip"}
     if (
         (schema_version == 1 and set(value) != legacy_keys)
         or (schema_version == 2 and set(value) != version_two_keys)
-        or (schema_version == 3 and set(value) != current_keys)
+        or (schema_version == 3 and set(value) != version_three_keys)
+        or (schema_version == 4 and set(value) != current_keys)
     ):
         raise ArtifactError("release manifest schema is invalid")
-    if schema_version not in {1, 2, 3}:
+    if schema_version not in {1, 2, 3, 4}:
         raise ArtifactError("release manifest schema is invalid")
     version = value["version"]
     revision = value["database_revision"]
     compatible = value["database_backward_compatible"]
     files = value["files"]
     if (
-        not isinstance(version, str)
-        or not VERSION_PATTERN.fullmatch(version)
+        not valid_version(version)
         or not isinstance(revision, str)
         or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", revision)
         or not isinstance(compatible, bool)
@@ -253,6 +252,7 @@ def load_manifest(release: Path) -> ReleaseManifest:
     required_python = value["required_python"]
     supported_python_abis = value.get("supported_python_abis", [])
     build_toolchain = value.get("build_toolchain")
+    bootstrap_pip = value.get("bootstrap_pip")
     platform_support = value["platform_support"]
     authenticity = value["artifact_authenticity"]
     sbom_filename = value["sbom_filename"]
@@ -279,7 +279,7 @@ def load_manifest(release: Path) -> ReleaseManifest:
         or not platform_support
     ):
         raise ArtifactError("release manifest values are invalid")
-    if schema_version == 3 and (
+    if schema_version in {3, 4} and (
         source_ref_kind not in {"pull_request_head", "main", "tag", "other"}
         or supported_python_abis != ["cp311", "cp312", "cp313"]
         or not isinstance(build_toolchain, dict)
@@ -292,6 +292,23 @@ def load_manifest(release: Path) -> ReleaseManifest:
         )
     ):
         raise ArtifactError("release build compatibility metadata is invalid")
+    if schema_version == 4 and (
+        not isinstance(bootstrap_pip, dict)
+        or not isinstance(build_toolchain, dict)
+        or set(bootstrap_pip) != {"filename", "version", "sha256", "method"}
+        or bootstrap_pip.get("method") != "pythonpath-wheel-target"
+        or bootstrap_pip.get("version") != build_toolchain.get("pip")
+        or not isinstance(bootstrap_pip.get("filename"), str)
+        or re.fullmatch(
+            r"bootstrap/pip-[0-9]+(?:\.[0-9]+){1,2}-py3-none-any\.whl",
+            bootstrap_pip["filename"],
+        )
+        is None
+        or not isinstance(bootstrap_pip.get("sha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", bootstrap_pip["sha256"]) is None
+        or normalized.get(bootstrap_pip["filename"]) != bootstrap_pip["sha256"]
+    ):
+        raise ArtifactError("release bootstrap pip metadata is invalid")
     expected_platform_keys = {"distribution", "release", "architecture", "qualification"}
     normalized_platforms: list[dict[str, str]] = []
     for entry in platform_support:
@@ -318,6 +335,7 @@ def load_manifest(release: Path) -> ReleaseManifest:
         required_python=required_python,
         supported_python_abis=tuple(supported_python_abis),
         build_toolchain=dict(build_toolchain) if build_toolchain is not None else None,
+        bootstrap_pip=dict(bootstrap_pip) if bootstrap_pip is not None else None,
         platform_support=tuple(normalized_platforms),
         artifact_authenticity=authenticity,
         sbom_filename=sbom_filename,
@@ -364,7 +382,7 @@ def verify_release(
                 raise ArtifactError("release file digest mismatch")
     if observed != set(actual.files):
         raise ArtifactError("release file set does not match its manifest")
-    if actual.schema_version in {2, 3}:
+    if actual.schema_version in {2, 3, 4}:
         if observed_executables != set(actual.executable_files):
             raise ArtifactError("release executable file set does not match its manifest")
         _verify_release_candidate_contract(release, actual)
@@ -381,7 +399,7 @@ def _verify_release_candidate_contract(release: Path, manifest: ReleaseManifest)
     wheels = sorted((release / "wheelhouse").glob("agentbox-*.whl"))
     if len(wheels) != 1 or _wheel_version(wheels[0]) != manifest.version:
         raise ArtifactError("release wheel version does not match its manifest")
-    if manifest.schema_version == 3:
+    if manifest.schema_version in {3, 4}:
         observed_abis = {
             match.group(1)
             for wheel in (release / "wheelhouse").glob("*.whl")
@@ -389,6 +407,15 @@ def _verify_release_candidate_contract(release: Path, manifest: ReleaseManifest)
         }
         if observed_abis != set(manifest.supported_python_abis):
             raise ArtifactError("release wheelhouse ABI inventory does not match its manifest")
+    if manifest.schema_version == 4:
+        assert manifest.bootstrap_pip is not None
+        bootstrap_wheel = release / manifest.bootstrap_pip["filename"]
+        if (
+            bootstrap_wheel.is_symlink()
+            or not bootstrap_wheel.is_file()
+            or _wheel_version(bootstrap_wheel) != manifest.bootstrap_pip["version"]
+        ):
+            raise ArtifactError("release bootstrap pip wheel does not match its manifest")
     try:
         sbom: Any = json.loads((release / "SBOM.spdx.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:

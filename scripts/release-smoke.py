@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -98,8 +99,29 @@ def main() -> int:
         release = root / "release"
         _extract_regular_archive(args.artifact, release)
         install_script = release / "install.sh"
+        bootstrap_trace = root / "no-venv-bootstrap.trace"
+        bootstrap_python = root / "python-without-venv-ensurepip-or-global-pip"
+        bootstrap_python.write_text(
+            "#!/bin/sh\n"
+            f"printf '%s\\n' \"$*\" >> {shlex.quote(str(bootstrap_trace))}\n"
+            "if [ \"${1:-}\" = '-m' ] && "
+            "{ [ \"${2:-}\" = 'venv' ] || [ \"${2:-}\" = 'ensurepip' ]; }; then\n"
+            "  exit 97\n"
+            "fi\n"
+            "if [ \"${1:-}\" = '-m' ] && [ \"${2:-}\" = 'pip' ]; then\n"
+            '  case "${PYTHONPATH:-}" in *bootstrap/pip-25.3-py3-none-any.whl*) ;; '
+            "*) exit 96 ;; esac\n"
+            "fi\n"
+            f'exec {shlex.quote(sys.executable)} -S "$@"\n',
+            encoding="ascii",
+        )
+        bootstrap_python.chmod(0o700)
         bootstrap_env = {
             **os.environ,
+            "AGENTBOX_INSTALLER_TEST_MODE": "1",
+            "AGENTBOX_RELEASE_BOOTSTRAP_PYTHON": str(bootstrap_python),
+            "HTTP_PROXY": "http://127.0.0.1:9",
+            "HTTPS_PROXY": "http://127.0.0.1:9",
             "PIP_INDEX_URL": "http://127.0.0.1:9/forbidden",
             "PIP_NO_INDEX": "1",
             "PYTHONNOUSERSITE": "1",
@@ -121,6 +143,11 @@ def main() -> int:
             cwd=release,
             env=bootstrap_env,
         )
+        trace = bootstrap_trace.read_text(encoding="utf-8")
+        if "-m venv" in trace or "-m ensurepip" in trace or "-m pip install" not in trace:
+            raise RuntimeError("bundled install.sh used a forbidden host bootstrap dependency")
+        if "--no-index" not in trace or "--target" not in trace:
+            raise RuntimeError("bundled install.sh did not enforce its offline target bootstrap")
 
         venv = root / "venv"
         _run((sys.executable, "-m", "venv", str(venv)), cwd=root)
@@ -197,6 +224,42 @@ def main() -> int:
                 process.kill()
                 process.wait(timeout=10)
 
+        for identifier, release_version in (("ubuntu", "24.04"), ("debian", "12")):
+            platform_root = root / f"fixture-{identifier}"
+            (platform_root / "etc").mkdir(parents=True)
+            (platform_root / "etc/os-release").write_text(
+                f'ID="{identifier}"\nVERSION_ID="{release_version}"\n', encoding="utf-8"
+            )
+            platform_common = (
+                str(install_script),
+                "--fixture-root",
+                str(platform_root),
+            )
+            platform_artifact_arguments = (
+                "--artifact",
+                str(args.artifact.resolve()),
+                "--sha256",
+                digest,
+                "--json",
+            )
+            platform_plan = json.loads(
+                _run(
+                    platform_common + ("plan",) + platform_artifact_arguments,
+                    cwd=release,
+                    env=bootstrap_env,
+                    capture=True,
+                )
+            )
+            if "python3-venv" not in platform_plan.get("package_changes", []):
+                raise RuntimeError(f"{identifier} no-venv fixture did not detect python3-venv")
+            _run(
+                platform_common + ("apply",) + platform_artifact_arguments,
+                cwd=release,
+                env=bootstrap_env,
+            )
+            if not (platform_root / "var/lib/agentbox/install-receipt.json").is_file():
+                raise RuntimeError(f"{identifier} no-venv fixture apply did not complete")
+
         fixture_root = root / "fixture-root"
         (fixture_root / "etc").mkdir(parents=True)
         (fixture_root / "etc/os-release").write_text(
@@ -204,7 +267,6 @@ def main() -> int:
         )
         fixture_env = {
             **bootstrap_env,
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
         }
         common = (
             str(install_script),
@@ -280,7 +342,8 @@ def main() -> int:
 
     print(
         f"Release smoke passed for AgentBox {version}: bundled install.sh verification and "
-        "offline bootstrap, migration, CLI, static API, triple install, and "
+        "no-venv Ubuntu 24.04/Debian 12 offline bootstrap, migration, CLI, static API, "
+        "triple install, and "
         "data-preserving uninstall."
     )
     return 0

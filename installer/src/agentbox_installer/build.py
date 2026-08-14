@@ -23,10 +23,10 @@ from typing import Any
 
 from agentbox_installer.artifact import (
     RELEASE_MANIFEST_NAME,
-    VERSION_PATTERN,
     sha256_file,
     verify_release_bundle,
 )
+from agentbox_installer.versioning import valid_version
 
 
 class BuildError(RuntimeError):
@@ -97,6 +97,7 @@ RELEASE_NODE_VERSION = "22.23.2"
 RELEASE_PNPM_VERSION = "11.20.0"
 RELEASE_BUILD_TOOL_NAMES = ("pip", "setuptools", "wheel")
 SOURCE_REF_KINDS = frozenset({"pull_request_head", "main", "tag", "other"})
+BOOTSTRAP_PIP_LOCK = "requirements-release-bootstrap.lock"
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,7 @@ def release_version(source: Path) -> str:
                 raise BuildError("AgentBox version source is invalid") from exc
             if isinstance(value, str):
                 values.append(value)
-    if len(values) != 1 or VERSION_PATTERN.fullmatch(values[0]) is None:
+    if len(values) != 1 or not valid_version(values[0]):
         raise BuildError("AgentBox version source is invalid")
     return values[0]
 
@@ -216,6 +217,32 @@ def release_build_toolchain(source: Path) -> dict[str, str]:
         "pnpm": RELEASE_PNPM_VERSION,
         "setuptools": versions["setuptools"],
         "wheel": versions["wheel"],
+    }
+
+
+def release_bootstrap_pip(source: Path) -> dict[str, str]:
+    """Return the one reviewed wheel used before host venv/pip is available."""
+    try:
+        lines = (source / BOOTSTRAP_PIP_LOCK).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise BuildError("release bootstrap pip lock is unavailable") from exc
+    entries = [line for line in lines if line and not line.startswith("#")]
+    if len(entries) != 1:
+        raise BuildError("release bootstrap pip lock must contain exactly one wheel")
+    match = re.fullmatch(
+        r"pip==([0-9]+(?:\.[0-9]+){1,2}) --hash=sha256:([0-9a-f]{64})",
+        entries[0],
+    )
+    if match is None:
+        raise BuildError("release bootstrap pip lock is not exact and hash-pinned")
+    version, digest = match.groups()
+    if release_build_toolchain(source)["pip"] != version:
+        raise BuildError("release bootstrap pip differs from the reviewed build toolchain")
+    return {
+        "filename": f"bootstrap/pip-{version}-py3-none-any.whl",
+        "version": version,
+        "sha256": digest,
+        "method": "pythonpath-wheel-target",
     }
 
 
@@ -290,7 +317,7 @@ def build_release_artifact(
     source_date_epoch: int | None = None,
     source_ref_kind: str = "other",
 ) -> str:
-    if not VERSION_PATTERN.fullmatch(version):
+    if not valid_version(version):
         raise BuildError("release version must follow semantic version syntax")
     source = source.resolve()
     if not (source / "pyproject.toml").is_file() or not (source / "alembic.ini").is_file():
@@ -312,13 +339,42 @@ def build_release_artifact(
     if source_ref_kind not in SOURCE_REF_KINDS:
         raise BuildError("release source ref kind is invalid")
     build_toolchain = release_build_toolchain(source)
+    bootstrap_pip = release_bootstrap_pip(source)
     with tempfile.TemporaryDirectory(prefix="agentbox-release-") as temporary:
         release = Path(temporary) / "release"
         wheel_source = Path(temporary) / "wheel-source"
         wheelhouse = release / "wheelhouse"
         wheelhouse.mkdir(mode=0o755, parents=True)
+        bootstrap = release / "bootstrap"
+        bootstrap.mkdir(mode=0o755)
         _prepare_wheel_source(source, wheel_source)
         build_environment = {"SOURCE_DATE_EPOCH": str(source_date_epoch)}
+        _run_build_command(
+            (
+                str(python),
+                "-m",
+                "pip",
+                "download",
+                "--require-hashes",
+                "--only-binary=:all:",
+                "--no-deps",
+                "--dest",
+                str(bootstrap),
+                "--requirement",
+                str(source / BOOTSTRAP_PIP_LOCK),
+            ),
+            source,
+            timeout=300,
+            extra_env=build_environment,
+        )
+        bootstrap_wheels = sorted(bootstrap.glob("*.whl"))
+        expected_bootstrap = release / bootstrap_pip["filename"]
+        if (
+            bootstrap_wheels != [expected_bootstrap]
+            or sha256_file(expected_bootstrap) != bootstrap_pip["sha256"]
+            or _wheel_version(expected_bootstrap) != bootstrap_pip["version"]
+        ):
+            raise BuildError("downloaded bootstrap pip wheel differs from its reviewed lock")
         for python_abi in ("311", "312", "313"):
             _run_build_command(
                 (
@@ -397,9 +453,12 @@ def build_release_artifact(
         shutil.copyfile(release_notes, release_docs / "releases" / release_notes.name)
         os.chmod(release_docs / "releases" / release_notes.name, 0o644)
 
-        python_packages = _python_package_inventory(wheelhouse)
+        runtime_python_packages = _python_package_inventory(wheelhouse)
+        bootstrap_python_packages = _python_package_inventory(bootstrap)
+        python_packages = runtime_python_packages + bootstrap_python_packages
         frontend_packages = _frontend_package_inventory(source)
-        _verify_runtime_lock_inventory(source, python_packages)
+        _verify_runtime_lock_inventory(source, runtime_python_packages)
+        _verify_bootstrap_lock_inventory(source, bootstrap_python_packages)
         _verify_notice_inventory(source, python_packages + frontend_packages)
         _verify_license_inventory(python_packages + frontend_packages)
         sbom = _spdx_sbom(
@@ -421,7 +480,7 @@ def build_release_artifact(
             if path.is_file()
         }
         manifest = {
-            "schema_version": 3,
+            "schema_version": 4,
             "version": version,
             "source_commit": source_commit,
             "source_ref_kind": source_ref_kind,
@@ -435,6 +494,7 @@ def build_release_artifact(
             "required_python": ">=3.11,<3.14",
             "supported_python_abis": list(SUPPORTED_PYTHON_ABIS),
             "build_toolchain": build_toolchain,
+            "bootstrap_pip": bootstrap_pip,
             "platform_support": PLATFORM_SUPPORT,
             "artifact_authenticity": "unsigned; sha256 integrity only",
             "sbom_filename": "SBOM.spdx.json",
@@ -677,6 +737,17 @@ def _verify_runtime_lock_inventory(source: Path, packages: list[dict[str, str]])
         raise BuildError("Python wheelhouse inventory drifted from requirements-release.lock")
 
 
+def _verify_bootstrap_lock_inventory(source: Path, packages: list[dict[str, str]]) -> None:
+    expected = release_bootstrap_pip(source)
+    observed = {
+        (_canonical_package_name(item["name"]), item["version"])
+        for item in packages
+        if item["manager"] == "pypi"
+    }
+    if observed != {("pip", expected["version"])}:
+        raise BuildError("bootstrap wheel inventory drifted from its reviewed lock")
+
+
 def _verify_notice_inventory(source: Path, packages: list[dict[str, str]]) -> None:
     try:
         lines = (source / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8").splitlines()
@@ -699,10 +770,13 @@ def _verify_notice_inventory(source: Path, packages: list[dict[str, str]]) -> No
 
 def verify_release_inventory(source: Path, release: Path) -> int:
     """Cross-check locks, wheelhouse, reviewed frontend inventory, notices, and SBOM."""
-    python_packages = _python_package_inventory(release / "wheelhouse")
+    runtime_python_packages = _python_package_inventory(release / "wheelhouse")
+    bootstrap_python_packages = _python_package_inventory(release / "bootstrap")
+    python_packages = runtime_python_packages + bootstrap_python_packages
     frontend_packages = _frontend_package_inventory(source)
     packages = python_packages + frontend_packages
-    _verify_runtime_lock_inventory(source, python_packages)
+    _verify_runtime_lock_inventory(source, runtime_python_packages)
+    _verify_bootstrap_lock_inventory(source, bootstrap_python_packages)
     _verify_notice_inventory(release, packages)
     try:
         sbom: Any = json.loads((release / "SBOM.spdx.json").read_text(encoding="utf-8"))
