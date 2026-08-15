@@ -6,6 +6,7 @@ import os
 from logging.config import fileConfig
 from pathlib import Path
 
+import agentbox_core.provider_models  # noqa: F401 -- registers Phase 11 metadata
 from agentbox_core.models import Base
 from alembic import context
 from sqlalchemy import engine_from_config, pool

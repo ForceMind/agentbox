@@ -150,3 +150,31 @@ class JobNotFound(AgentBoxError):
     category = "unavailable"
     message = "Job was not found"
     status_code = 404
+
+
+class ProviderMetadataNotFound(AgentBoxError):
+    code = "PROVIDER_METADATA_NOT_FOUND"
+    category = "unavailable"
+    message = "Provider metadata was not found"
+    status_code = 404
+
+
+class ProviderMetadataConflict(AgentBoxError):
+    code = "PROVIDER_METADATA_CONFLICT"
+    category = "conflict"
+    message = "Provider metadata conflicts with existing state"
+    status_code = 409
+
+
+class ProviderRevisionConflict(AgentBoxError):
+    code = "PROVIDER_REVISION_CONFLICT"
+    category = "conflict"
+    message = "Provider metadata revision is stale"
+    status_code = 409
+
+
+class ProviderInputInvalid(AgentBoxError):
+    code = "PROVIDER_INPUT_INVALID"
+    category = "validation"
+    message = "Provider metadata is invalid"
+    status_code = 422

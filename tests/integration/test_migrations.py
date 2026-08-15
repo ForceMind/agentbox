@@ -3,12 +3,140 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+import pytest
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.database import Database
-from agentbox_core.services import ControlPlaneServices
+from agentbox_core.errors import ProviderMetadataNotFound
+from agentbox_core.models import Base
+from agentbox_core.provider_models import RuntimeBindingState, RuntimeType
+from agentbox_core.services import ControlPlaneServices, build_services
 from conftest import downgrade_database, migrate_database
 from pydantic import SecretStr
-from sqlalchemy import inspect
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKeyConstraint,
+    UniqueConstraint,
+    create_engine,
+    inspect,
+    text,
+)
+from sqlalchemy.engine import Engine
+
+PHASE11_TABLES = {
+    "runtime_installations",
+    "provider_definitions",
+    "provider_credentials",
+    "runtime_provider_profiles",
+    "runtime_provider_bindings",
+    "runtime_session_provider_bindings",
+    "provider_compatibility_evidence_sets",
+    "provider_compatibility_observations",
+}
+
+PHASE11_TRIGGERS = {
+    "trg_runtime_profiles_valid_snapshot",
+    "trg_runtime_profiles_immutable_snapshot",
+    "trg_runtime_bindings_valid_snapshot",
+    "trg_runtime_bindings_immutable_selection",
+    "trg_session_bindings_valid_snapshot",
+    "trg_session_bindings_immutable_update",
+    "trg_session_bindings_immutable_delete",
+    "trg_compatibility_evidence_valid_scope",
+    "trg_compatibility_evidence_sets_start_building",
+    "trg_compatibility_expected_dimension",
+    "trg_compatibility_runtime_scope",
+    "trg_compatibility_auth_scope",
+    "trg_compatibility_evidence_sets_immutable_scope",
+    "trg_compatibility_evidence_sets_seal_transition",
+    "trg_compatibility_evidence_sets_complete",
+    "trg_provider_compatibility_evidence_sets_immutable_delete",
+    "trg_provider_compatibility_observations_immutable_update",
+    "trg_provider_compatibility_observations_immutable_delete",
+}
+
+
+def _normalize_sql(value: str | None) -> str:
+    return "" if value is None else "".join(value.lower().split())
+
+
+def _orm_check_sql(engine: Engine, table_name: str, constraint: CheckConstraint) -> str:
+    compiled = str(
+        constraint.sqltext.compile(
+            dialect=engine.dialect,
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    return _normalize_sql(compiled).replace(f"{table_name}.", "")
+
+
+def _migration_table_signature(engine: Engine, table_name: str) -> dict[str, object]:
+    inspector = inspect(engine)
+    return {
+        "columns": tuple(
+            (column["name"], str(column["type"]).upper(), column["nullable"])
+            for column in inspector.get_columns(table_name)
+        ),
+        "primary_key": tuple(inspector.get_pk_constraint(table_name)["constrained_columns"]),
+        "foreign_keys": {
+            (
+                tuple(item["constrained_columns"]),
+                item["referred_table"],
+                tuple(item["referred_columns"]),
+                item.get("options", {}).get("ondelete"),
+            )
+            for item in inspector.get_foreign_keys(table_name)
+        },
+        "unique": {
+            tuple(item["column_names"]) for item in inspector.get_unique_constraints(table_name)
+        },
+        "checks": {
+            (item["name"], _normalize_sql(item["sqltext"]))
+            for item in inspector.get_check_constraints(table_name)
+        },
+        "indexes": {
+            (item["name"], tuple(item["column_names"]), item["unique"])
+            for item in inspector.get_indexes(table_name)
+        },
+    }
+
+
+def _orm_table_signature(engine: Engine, table_name: str) -> dict[str, object]:
+    table = Base.metadata.tables[table_name]
+    return {
+        "columns": tuple(
+            (
+                column.name,
+                str(column.type.compile(dialect=engine.dialect)).upper(),
+                column.nullable,
+            )
+            for column in table.columns
+        ),
+        "primary_key": tuple(column.name for column in table.primary_key.columns),
+        "foreign_keys": {
+            (
+                tuple(element.parent.name for element in constraint.elements),
+                constraint.elements[0].column.table.name,
+                tuple(element.column.name for element in constraint.elements),
+                constraint.ondelete,
+            )
+            for constraint in table.constraints
+            if isinstance(constraint, ForeignKeyConstraint)
+        },
+        "unique": {
+            tuple(column.name for column in constraint.columns)
+            for constraint in table.constraints
+            if isinstance(constraint, UniqueConstraint)
+        },
+        "checks": {
+            (constraint.name, _orm_check_sql(engine, table_name, constraint))
+            for constraint in table.constraints
+            if isinstance(constraint, CheckConstraint)
+        },
+        "indexes": {
+            (index.name, tuple(column.name for column in index.columns), index.unique)
+            for index in table.indexes
+        },
+    }
 
 
 def test_upgrade_downgrade_and_upgrade_again(tmp_path: Path) -> None:
@@ -29,6 +157,7 @@ def test_upgrade_downgrade_and_upgrade_again(tmp_path: Path) -> None:
             "audit_events",
             "login_rate_limit_buckets",
             "alembic_version",
+            *PHASE11_TABLES,
         }
         assert database.migrations_current()
     finally:
@@ -48,6 +177,183 @@ def test_upgrade_downgrade_and_upgrade_again(tmp_path: Path) -> None:
         assert database.migrations_current()
     finally:
         database.close()
+
+
+def test_phase11_upgrade_preserves_existing_data_without_automatic_adoption(
+    tmp_path: Path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'pre-phase11.db'}"
+    migrate_database(database_url, "0003_security_hardening")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO admin_users "
+                    "(id, username, username_normalized, password_hash, is_active, "
+                    "created_at, updated_at, last_login_at) VALUES "
+                    "(:id, :username, :normalized, :hash, 1, :created, :updated, NULL)"
+                ),
+                {
+                    "id": "adm_00000000000000000000000000000000",
+                    "username": "maintainer",
+                    "normalized": "maintainer",
+                    "hash": "representative-existing-password-hash",
+                    "created": "2026-08-15 00:00:00",
+                    "updated": "2026-08-15 00:00:00",
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO projects "
+                    "(id, slug, display_name, relative_path, source_type, repository_url, "
+                    "default_branch, state, archived_at, created_at, updated_at) VALUES "
+                    "(:id, :slug, :name, :path, 'empty', NULL, NULL, 'ready', NULL, "
+                    ":created, :updated)"
+                ),
+                {
+                    "id": "prj_11111111111111111111111111111111",
+                    "slug": "existing-project",
+                    "name": "Existing Project",
+                    "path": "existing-project",
+                    "created": "2026-08-15 00:00:00",
+                    "updated": "2026-08-15 00:00:00",
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO sessions "
+                    "(id, user_id, token_hash, csrf_hash, created_at, last_seen_at, "
+                    "idle_expires_at, expires_at, revoked_at, client_label) VALUES "
+                    "(:id, :user_id, :token_hash, :csrf_hash, :created, :seen, "
+                    ":idle, :expires, NULL, :client_label)"
+                ),
+                {
+                    "id": "ses_22222222222222222222222222222222",
+                    "user_id": "adm_00000000000000000000000000000000",
+                    "token_hash": "a" * 64,
+                    "csrf_hash": "b" * 64,
+                    "created": "2026-08-15 00:00:00",
+                    "seen": "2026-08-15 00:00:00",
+                    "idle": "2026-08-15 01:00:00",
+                    "expires": "2026-08-16 00:00:00",
+                    "client_label": "migration-fixture",
+                },
+            )
+    finally:
+        engine.dispose()
+
+    migrate_database(database_url)
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT username FROM admin_users")).scalar_one() == (
+                "maintainer"
+            )
+            assert connection.execute(text("SELECT slug FROM projects")).scalar_one() == (
+                "existing-project"
+            )
+            assert connection.execute(text("SELECT client_label FROM sessions")).scalar_one() == (
+                "migration-fixture"
+            )
+            for table_name in PHASE11_TABLES:
+                assert (
+                    connection.execute(text(f'SELECT count(*) FROM "{table_name}"')).scalar_one()
+                    == 0
+                )
+        assert not any("secret" in name for name in inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    settings = Settings(
+        env=Environment.TEST,
+        database_url=database_url,
+        data_dir=tmp_path,
+        secret_key=SecretStr("migration-test-secret-that-is-long-enough"),
+    )
+    services = build_services(settings)
+    try:
+        with pytest.raises(ProviderMetadataNotFound):
+            services.providers.runtime_management("rti_22222222222222222222222222222222")
+        runtime = services.providers.register_runtime_installation(
+            runtime_type=RuntimeType.CODEX,
+            display_name="explicitly registered fixture",
+            actor_id="adm_00000000000000000000000000000000",
+        )
+        unmanaged = services.providers.runtime_management(runtime.id)
+        assert unmanaged.state is RuntimeBindingState.UNMANAGED
+        assert unmanaged.runtime_binding_id is None
+    finally:
+        services.database.close()
+
+
+def test_phase11_migration_matches_orm_metadata_and_installs_exact_triggers(
+    tmp_path: Path,
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'phase11-schema-parity.db'}"
+    migrate_database(database_url)
+    engine = create_engine(database_url)
+    try:
+        for table_name in PHASE11_TABLES:
+            assert _migration_table_signature(engine, table_name) == _orm_table_signature(
+                engine, table_name
+            )
+        with engine.connect() as connection:
+            triggers = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type = 'trigger' AND (name LIKE 'trg_session_bindings_%' "
+                        "OR name LIKE 'trg_runtime_profiles_%' "
+                        "OR name LIKE 'trg_runtime_bindings_%' "
+                        "OR name LIKE 'trg_compatibility_%' "
+                        "OR name LIKE 'trg_provider_compatibility_%')"
+                    )
+                )
+            }
+        assert triggers == PHASE11_TRIGGERS
+    finally:
+        engine.dispose()
+
+
+def test_phase11_downgrade_removes_only_additive_provider_schema(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'phase11-downgrade.db'}"
+    migrate_database(database_url)
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO projects "
+                    "(id, slug, display_name, relative_path, source_type, repository_url, "
+                    "default_branch, state, archived_at, created_at, updated_at) VALUES "
+                    "('prj_33333333333333333333333333333333', 'preserved', 'Preserved', "
+                    "'preserved', 'empty', NULL, NULL, 'ready', NULL, "
+                    "'2026-08-15 00:00:00', '2026-08-15 00:00:00')"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    downgrade_database(database_url, "0003_security_hardening")
+    engine = create_engine(database_url)
+    try:
+        table_names = set(inspect(engine).get_table_names())
+        assert not (PHASE11_TABLES & table_names)
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT slug FROM projects")).scalar_one() == (
+                "preserved"
+            )
+            remaining_triggers = {
+                row[0]
+                for row in connection.execute(
+                    text("SELECT name FROM sqlite_master WHERE type = 'trigger'")
+                )
+            }
+            assert not (remaining_triggers & PHASE11_TRIGGERS)
+    finally:
+        engine.dispose()
 
 
 def test_sqlite_security_pragmas(
