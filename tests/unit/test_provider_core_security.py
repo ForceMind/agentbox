@@ -113,8 +113,11 @@ NEW_TABLE_COLUMNS = {
         "credential_revision",
         "credential_secret_version",
         "evidence_schema_version",
+        "expected_dimension_mask",
+        "state",
         "observed_at",
         "expires_at",
+        "sealed_at",
     },
     "provider_compatibility_observations": {
         "id",
@@ -265,6 +268,12 @@ def test_provider_repository_has_no_runtime_network_or_privilege_dependency() ->
         "cryptography",
     }
     assert not {name.split(".", maxsplit=1)[0] for name in imports} & forbidden_roots
+
+
+def test_slice_one_exposes_no_provider_disable_transition() -> None:
+    from agentbox_core.providers import ProviderRepository
+
+    assert not hasattr(ProviderRepository, "disable_provider")
 
 
 def test_entity_identities_are_not_collapsed_in_the_orm() -> None:

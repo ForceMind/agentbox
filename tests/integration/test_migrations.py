@@ -34,12 +34,21 @@ PHASE11_TABLES = {
 }
 
 PHASE11_TRIGGERS = {
+    "trg_runtime_profiles_valid_snapshot",
+    "trg_runtime_profiles_immutable_snapshot",
+    "trg_runtime_bindings_valid_snapshot",
+    "trg_runtime_bindings_immutable_selection",
     "trg_session_bindings_valid_snapshot",
     "trg_session_bindings_immutable_update",
     "trg_session_bindings_immutable_delete",
+    "trg_compatibility_evidence_valid_scope",
+    "trg_compatibility_evidence_sets_start_building",
+    "trg_compatibility_expected_dimension",
     "trg_compatibility_runtime_scope",
     "trg_compatibility_auth_scope",
-    "trg_provider_compatibility_evidence_sets_immutable_update",
+    "trg_compatibility_evidence_sets_immutable_scope",
+    "trg_compatibility_evidence_sets_seal_transition",
+    "trg_compatibility_evidence_sets_complete",
     "trg_provider_compatibility_evidence_sets_immutable_delete",
     "trg_provider_compatibility_observations_immutable_update",
     "trg_provider_compatibility_observations_immutable_delete",
@@ -296,6 +305,8 @@ def test_phase11_migration_matches_orm_metadata_and_installs_exact_triggers(
                     text(
                         "SELECT name FROM sqlite_master "
                         "WHERE type = 'trigger' AND (name LIKE 'trg_session_bindings_%' "
+                        "OR name LIKE 'trg_runtime_profiles_%' "
+                        "OR name LIKE 'trg_runtime_bindings_%' "
                         "OR name LIKE 'trg_compatibility_%' "
                         "OR name LIKE 'trg_provider_compatibility_%')"
                     )

@@ -132,6 +132,13 @@ class CompatibilityEvidenceCode(StrEnum):
     NOT_EXECUTED = "NOT_EXECUTED"
 
 
+class CompatibilityEvidenceSetState(StrEnum):
+    """Persistence state for one atomically constructed evidence bundle."""
+
+    BUILDING = "building"
+    SEALED = "sealed"
+
+
 class RuntimeInstallation(Base):
     """Control-plane identity for one Runtime installation, without local paths."""
 
@@ -487,6 +494,12 @@ class RuntimeSessionProviderBinding(Base):
         CheckConstraint("runtime_binding_revision >= 1", name="ck_session_binding_revision"),
         CheckConstraint("runtime_profile_revision >= 1", name="ck_session_profile_revision"),
         CheckConstraint("provider_revision >= 1", name="ck_session_provider_revision"),
+        CheckConstraint(
+            "length(runtime_session_id) = 36 "
+            "AND substr(runtime_session_id, 1, 4) = 'rts_' "
+            "AND substr(runtime_session_id, 5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_session_binding_runtime_session_id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -546,6 +559,10 @@ class ProviderCompatibilityEvidenceSet(Base):
         CheckConstraint("provider_revision >= 1", name="ck_compatibility_provider_revision"),
         CheckConstraint("evidence_schema_version >= 1", name="ck_compatibility_evidence_schema"),
         CheckConstraint(
+            "expected_dimension_mask >= 1 AND expected_dimension_mask <= 2047",
+            name="ck_compatibility_expected_dimension_mask",
+        ),
+        CheckConstraint(
             "(runtime_installation_id IS NULL AND runtime_profile_id IS NULL "
             "AND runtime_profile_revision IS NULL) OR "
             "(runtime_installation_id IS NOT NULL AND runtime_profile_id IS NOT NULL "
@@ -561,6 +578,11 @@ class ProviderCompatibilityEvidenceSet(Base):
             name="ck_compatibility_credential_scope",
         ),
         CheckConstraint("expires_at > observed_at", name="ck_compatibility_evidence_expiry"),
+        CheckConstraint(
+            "(state = 'building' AND sealed_at IS NULL) OR "
+            "(state = 'sealed' AND sealed_at IS NOT NULL)",
+            name="ck_compatibility_evidence_seal_state",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -575,8 +597,21 @@ class ProviderCompatibilityEvidenceSet(Base):
     credential_revision: Mapped[int | None] = mapped_column(Integer)
     credential_secret_version: Mapped[int | None] = mapped_column(Integer)
     evidence_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_dimension_mask: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[CompatibilityEvidenceSetState] = mapped_column(
+        Enum(
+            CompatibilityEvidenceSetState,
+            values_callable=_values,
+            native_enum=False,
+            create_constraint=True,
+            validate_strings=True,
+            name="compatibility_evidence_set_state",
+        ),
+        nullable=False,
+    )
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     provider: Mapped[Provider] = relationship(back_populates="evidence_sets", viewonly=True)
     profile: Mapped[RuntimeProviderProfile | None] = relationship(

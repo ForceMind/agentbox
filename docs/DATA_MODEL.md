@@ -138,11 +138,15 @@ installation, Codex Remote state, and private Runtime state.
 | `endpoint` | normalized non-credential HTTPS destination identity; Official OpenAI is fixed |
 | `wire_protocol` | typed `responses` intent |
 | `model` | bounded model identifier |
-| `state` | typed configured/validated/needs-attention/disabled metadata state |
+| `state` | typed configured/validated/needs-attention/disabled metadata state; Slice 1 exposes no disable transition |
 | `created_at`, `updated_at`, `revision` | lifecycle and stale-write protection |
 
 There is no arbitrary options/headers/environment map. Provider active status
-is derived from a verified Runtime Binding; it is not stored on Provider.
+is derived from a verified Runtime Binding; it is not stored on Provider. The
+`disabled` value is reserved for a later transaction-aware lifecycle operation:
+Slice 1 cannot safely disable a Provider without rollback, recovery, active and
+pending Binding, and continuity authorities, so its Repository exposes no such
+method.
 
 ## ProviderCredential
 
@@ -183,7 +187,12 @@ not rendered Runtime configuration.
 Slice 1 admits Provider Profiles only for Codex. A Codex-only adapter enum and
 the composite Runtime identity foreign key enforce this at the database layer;
 Claude remains Runtime-only. No TOML, rendered config, path, command,
-environment, or snapshot bytes are representable.
+environment, or snapshot bytes are representable. Repository checks and a
+persistence insert rule both require a current non-disabled Provider revision
+and, when present, the exact current configured Credential revision and Secret
+version. The Runtime/Provider/Credential/adapter snapshot identity and creation
+time are immutable after insertion; only separately reviewed future lifecycle
+fields may change.
 
 ## RuntimeProviderBinding
 
@@ -203,12 +212,17 @@ operation. Persisted Binding rows cannot use `unmanaged`: absence of a managed
 Binding for an existing Runtime yields the explicit logical `UNMANAGED` read
 state. Unknown Runtime IDs are not unmanaged. Previous-Binding ancestry is a
 same-Runtime composite foreign key, and self-reference is rejected. Migration
-creates no rows and does not adopt an existing Runtime.
+creates no rows and does not adopt an existing Runtime. Repository and database
+insert rules require the exact current Profile and non-disabled Provider
+revision chain. Runtime/Profile/Provider selection, prior-Binding ancestry, and
+creation time are immutable; activation and recovery lifecycle mutation remain
+unimplemented.
 
 ## RuntimeSessionProviderBinding
 
 `runtime_session_provider_bindings` is immutable historical effective-state
-evidence with independent `SessionBindingID`, Runtime session ID, installation,
+evidence with independent `SessionBindingID` (`sbd_*`), Runtime Session ID
+(`rts_*`), installation,
 Binding/Profile/Provider IDs and exact revisions, typed evidence class, and
 timestamps. The existence of a row means one real bound snapshot; no persisted
 multi-state field doubles as legacy/continuity classification. An insertion
@@ -218,13 +232,18 @@ The migration does not inspect or backfill existing sessions. Absence of a row
 does not prove a legacy classification; synthetic legacy/unbound/continuity
 states belong to a later read-only Runtime/session capability slice. The row
 stores no conversation, private Runtime, Credential, or Secret data.
+Control Plane authentication Session IDs remain `ses_*` and are rejected at
+both Repository and database boundaries; no Runtime Session table is introduced
+by Slice 1.
 
 ## ProviderCompatibilityEvidenceSet and Observation
 
 `provider_compatibility_evidence_sets` is one immutable server-identified scope
 bound to an exact Provider revision and optional exact Runtime Profile and/or
 Credential/Secret-version references. It stores the evidence schema,
-observation time, and mandatory later expiry. `provider_compatibility_observations`
+observation time, mandatory later expiry, an exact typed dimension bit mask,
+and a one-way `building` to `sealed` completion state.
+`provider_compatibility_observations`
 contains only typed child dimensions, typed result states, and closed
 non-secret evidence codes. A child cannot select or alter Provider/Profile/
 Credential scope.
@@ -232,10 +251,19 @@ Credential scope.
 Provider endpoint, Network, Authentication, Model, Wire Protocol, Provider API,
 Codex Runtime, Remote, Resume, Context, and Discovery remain independent.
 Runtime-dependent dimensions require Profile scope; authentication PASS/FAIL
-requires an exact Credential revision and Secret-version reference. Duplicate
-dimensions, mixed scopes, expired sets, updates, and deletes are rejected.
-`NOT_TESTED` remains distinct from success. Slice 1 records metadata only and
-does not perform tests, network requests, or automatic compatibility PASS.
+requires an exact `CONFIGURED` Credential revision and Secret-version reference.
+Profile-scoped evidence must exactly match the Profile's Provider and optional
+Credential snapshot; an unrelated Credential cannot be attached. Children may
+be inserted only while building and only for the declared dimension mask.
+Sealing succeeds once, only when the complete expected set exists. Only sealed
+sets are usable evidence; append, reopen, update, delete, duplicate dimensions,
+mixed scopes, and invalid expiry are rejected. Parent creation, children,
+sealing, and one bounded audit event commit atomically.
+
+The future validator policy—not a user or API field—owns evidence TTL. Slice 1
+exposes neither a public evidence submission path nor Provider validation or
+activation. `NOT_TESTED` remains distinct from success, and no migration,
+startup, or fixture creates a production compatibility PASS.
 
 ## Future ProviderConfigTransaction
 
