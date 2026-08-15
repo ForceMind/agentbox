@@ -64,6 +64,12 @@ class RuntimeType(StrEnum):
     CLAUDE = "claude"
 
 
+class ProviderManagedAdapter(StrEnum):
+    """Runtime adapters eligible for Provider management in Phase 11 v1."""
+
+    CODEX = "codex"
+
+
 class RuntimeProfileState(StrEnum):
     DRAFT = "draft"
     VALID = "valid"
@@ -85,14 +91,6 @@ class RuntimeBindingState(StrEnum):
     SUPERSEDED = "superseded"
     NEEDS_ATTENTION = "needs_attention"
     UNKNOWN = "unknown"
-
-
-class SessionBindingState(StrEnum):
-    BOUND = "bound"
-    LEGACY_UNBOUND = "legacy_unbound"
-    REBIND_REQUIRED = "rebind_required"
-    CONTINUITY_UNKNOWN = "continuity_unknown"
-    RETIRED = "retired"
 
 
 class SessionEvidenceClass(StrEnum):
@@ -123,27 +121,15 @@ class CompatibilityState(StrEnum):
     NOT_TESTED = "not_tested"
 
 
-class ConfigTransactionState(StrEnum):
-    CREATED = "created"
-    PLANNING = "planning"
-    PREPARED = "prepared"
-    VALIDATED = "validated"
-    SNAPSHOT_CREATING = "snapshot_creating"
-    SNAPSHOT_CREATED = "snapshot_created"
-    APPLYING = "applying"
-    APPLIED = "applied"
-    CANDIDATE_VERIFICATION_AUTHORIZED = "candidate_verification_authorized"
-    VERIFYING = "verifying"
-    COMMIT_PENDING = "commit_pending"
-    COMMITTED = "committed"
-    FAILED_NO_CHANGE = "failed_no_change"
-    ROLLBACK_REQUIRED = "rollback_required"
-    ROLLING_BACK = "rolling_back"
-    ROLLBACK_VERIFYING = "rollback_verifying"
-    RECOVERED = "recovered"
-    INTERRUPTED = "interrupted"
-    RECONCILING = "reconciling"
-    NEEDS_ATTENTION = "needs_attention"
+class CompatibilityEvidenceCode(StrEnum):
+    """Closed, non-secret evidence classifications; never raw Provider output."""
+
+    VALIDATION_PASSED = "VALIDATION_PASSED"
+    VALIDATION_FAILED = "VALIDATION_FAILED"
+    UNSUPPORTED_CONTRACT = "UNSUPPORTED_CONTRACT"
+    EXPERIMENTAL_CONTRACT = "EXPERIMENTAL_CONTRACT"
+    UNKNOWN_EVIDENCE = "UNKNOWN_EVIDENCE"
+    NOT_EXECUTED = "NOT_EXECUTED"
 
 
 class RuntimeInstallation(Base):
@@ -244,7 +230,7 @@ class Provider(Base):
     profiles: Mapped[list[RuntimeProviderProfile]] = relationship(
         back_populates="provider", viewonly=True
     )
-    observations: Mapped[list[ProviderCompatibilityObservation]] = relationship(
+    evidence_sets: Mapped[list[ProviderCompatibilityEvidenceSet]] = relationship(
         back_populates="provider", viewonly=True
     )
 
@@ -258,9 +244,11 @@ class ProviderCredential(Base):
         UniqueConstraint("id", "provider_id", name="uq_provider_credentials_id_provider"),
         CheckConstraint("revision >= 1", name="ck_provider_credentials_revision"),
         CheckConstraint(
-            "(runtime_secret_ref IS NULL AND secret_version IS NULL) OR "
-            "(runtime_secret_ref IS NOT NULL AND secret_version >= 1)",
-            name="ck_provider_credentials_secret_reference_pair",
+            "(state = 'missing' AND runtime_secret_ref IS NULL AND secret_version IS NULL) OR "
+            "(state IN ('configured', 'rotating', 'revoked', 'needs_attention') "
+            "AND runtime_secret_ref IS NOT NULL AND secret_version IS NOT NULL "
+            "AND secret_version >= 1)",
+            name="ck_provider_credentials_state_reference",
         ),
         CheckConstraint(
             "runtime_secret_ref IS NULL OR "
@@ -337,7 +325,8 @@ class RuntimeProviderProfile(Base):
         CheckConstraint(
             "(credential_id IS NULL AND credential_revision IS NULL "
             "AND credential_secret_version IS NULL) OR "
-            "(credential_id IS NOT NULL AND credential_revision >= 1 "
+            "(credential_id IS NOT NULL AND credential_revision IS NOT NULL "
+            "AND credential_revision >= 1 AND credential_secret_version IS NOT NULL "
             "AND credential_secret_version >= 1)",
             name="ck_runtime_profiles_credential_reference",
         ),
@@ -352,9 +341,9 @@ class RuntimeProviderProfile(Base):
     credential_id: Mapped[str | None] = mapped_column(String(40))
     credential_revision: Mapped[int | None] = mapped_column(Integer)
     credential_secret_version: Mapped[int | None] = mapped_column(Integer)
-    adapter_type: Mapped[RuntimeType] = mapped_column(
+    adapter_type: Mapped[ProviderManagedAdapter] = mapped_column(
         Enum(
-            RuntimeType,
+            ProviderManagedAdapter,
             values_callable=_values,
             native_enum=False,
             create_constraint=True,
@@ -387,7 +376,7 @@ class RuntimeProviderProfile(Base):
     bindings: Mapped[list[RuntimeProviderBinding]] = relationship(
         back_populates="profile", viewonly=True
     )
-    observations: Mapped[list[ProviderCompatibilityObservation]] = relationship(
+    evidence_sets: Mapped[list[ProviderCompatibilityEvidenceSet]] = relationship(
         back_populates="profile", viewonly=True
     )
 
@@ -415,12 +404,25 @@ class RuntimeProviderBinding(Base):
             ondelete="RESTRICT",
             name="fk_runtime_bindings_profile_identity",
         ),
+        ForeignKeyConstraint(
+            ["previous_binding_id", "runtime_installation_id"],
+            [
+                "runtime_provider_bindings.id",
+                "runtime_provider_bindings.runtime_installation_id",
+            ],
+            ondelete="RESTRICT",
+            name="fk_runtime_bindings_previous_same_runtime",
+        ),
         CheckConstraint(
             "runtime_profile_revision >= 1", name="ck_runtime_bindings_profile_revision"
         ),
         CheckConstraint("provider_revision >= 1", name="ck_runtime_bindings_provider_revision"),
         CheckConstraint("revision >= 1", name="ck_runtime_bindings_revision"),
         CheckConstraint("state <> 'unmanaged'", name="ck_runtime_bindings_managed_rows_only"),
+        CheckConstraint(
+            "previous_binding_id IS NULL OR previous_binding_id <> id",
+            name="ck_runtime_bindings_previous_not_self",
+        ),
         Index(
             "uq_runtime_bindings_single_active",
             "runtime_installation_id",
@@ -448,22 +450,14 @@ class RuntimeProviderBinding(Base):
         ),
         nullable=False,
     )
-    previous_binding_id: Mapped[str | None] = mapped_column(
-        String(40), ForeignKey("runtime_provider_bindings.id", ondelete="RESTRICT")
-    )
+    previous_binding_id: Mapped[str | None] = mapped_column(String(40))
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     runtime: Mapped[RuntimeInstallation] = relationship(back_populates="bindings", viewonly=True)
     profile: Mapped[RuntimeProviderProfile] = relationship(back_populates="bindings", viewonly=True)
-    previous_binding: Mapped[RuntimeProviderBinding | None] = relationship(
-        remote_side="RuntimeProviderBinding.id", viewonly=True
-    )
     session_bindings: Mapped[list[RuntimeSessionProviderBinding]] = relationship(
-        back_populates="runtime_binding", viewonly=True
-    )
-    transactions: Mapped[list[ProviderConfigTransaction]] = relationship(
         back_populates="runtime_binding", viewonly=True
     )
 
@@ -517,17 +511,6 @@ class RuntimeSessionProviderBinding(Base):
         ),
         nullable=False,
     )
-    state: Mapped[SessionBindingState] = mapped_column(
-        Enum(
-            SessionBindingState,
-            values_callable=_values,
-            native_enum=False,
-            create_constraint=True,
-            validate_strings=True,
-            name="session_binding_state",
-        ),
-        nullable=False,
-    )
     effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -536,15 +519,13 @@ class RuntimeSessionProviderBinding(Base):
     )
 
 
-class ProviderCompatibilityObservation(Base):
-    """One typed dimension in a bounded compatibility evidence set."""
+class ProviderCompatibilityEvidenceSet(Base):
+    """One immutable, exact, non-secret compatibility evidence scope."""
 
-    __tablename__ = "provider_compatibility_observations"
+    __tablename__ = "provider_compatibility_evidence_sets"
     __table_args__ = (
         UniqueConstraint(
-            "observation_set_id",
-            "dimension",
-            name="uq_provider_compatibility_set_dimension",
+            "id", "provider_id", name="uq_provider_compatibility_evidence_set_provider"
         ),
         ForeignKeyConstraint(
             ["runtime_profile_id", "runtime_installation_id", "provider_id"],
@@ -554,23 +535,85 @@ class ProviderCompatibilityObservation(Base):
                 "runtime_provider_profiles.provider_id",
             ],
             ondelete="RESTRICT",
-            name="fk_compatibility_observation_profile_identity",
+            name="fk_compatibility_evidence_profile_identity",
         ),
+        ForeignKeyConstraint(
+            ["credential_id", "provider_id"],
+            ["provider_credentials.id", "provider_credentials.provider_id"],
+            ondelete="RESTRICT",
+            name="fk_compatibility_evidence_credential_provider",
+        ),
+        CheckConstraint("provider_revision >= 1", name="ck_compatibility_provider_revision"),
         CheckConstraint("evidence_schema_version >= 1", name="ck_compatibility_evidence_schema"),
         CheckConstraint(
-            "(runtime_profile_id IS NULL AND runtime_installation_id IS NULL) OR "
-            "(runtime_profile_id IS NOT NULL AND runtime_installation_id IS NOT NULL)",
-            name="ck_compatibility_runtime_profile_pair",
+            "(runtime_installation_id IS NULL AND runtime_profile_id IS NULL "
+            "AND runtime_profile_revision IS NULL) OR "
+            "(runtime_installation_id IS NOT NULL AND runtime_profile_id IS NOT NULL "
+            "AND runtime_profile_revision IS NOT NULL AND runtime_profile_revision >= 1)",
+            name="ck_compatibility_runtime_profile_scope",
+        ),
+        CheckConstraint(
+            "(credential_id IS NULL AND credential_revision IS NULL "
+            "AND credential_secret_version IS NULL) OR "
+            "(credential_id IS NOT NULL AND credential_revision IS NOT NULL "
+            "AND credential_revision >= 1 AND credential_secret_version IS NOT NULL "
+            "AND credential_secret_version >= 1)",
+            name="ck_compatibility_credential_scope",
+        ),
+        CheckConstraint("expires_at > observed_at", name="ck_compatibility_evidence_expiry"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    provider_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("provider_definitions.id", ondelete="RESTRICT"), nullable=False
+    )
+    provider_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    runtime_installation_id: Mapped[str | None] = mapped_column(String(40))
+    runtime_profile_id: Mapped[str | None] = mapped_column(String(40))
+    runtime_profile_revision: Mapped[int | None] = mapped_column(Integer)
+    credential_id: Mapped[str | None] = mapped_column(String(40))
+    credential_revision: Mapped[int | None] = mapped_column(Integer)
+    credential_secret_version: Mapped[int | None] = mapped_column(Integer)
+    evidence_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    provider: Mapped[Provider] = relationship(back_populates="evidence_sets", viewonly=True)
+    profile: Mapped[RuntimeProviderProfile | None] = relationship(
+        back_populates="evidence_sets", viewonly=True
+    )
+    observations: Mapped[list[ProviderCompatibilityObservation]] = relationship(
+        back_populates="evidence_set", viewonly=True
+    )
+
+
+class ProviderCompatibilityObservation(Base):
+    """One immutable typed dimension inside an exact evidence scope."""
+
+    __tablename__ = "provider_compatibility_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "evidence_set_id",
+            "dimension",
+            name="uq_provider_compatibility_set_dimension",
+        ),
+        CheckConstraint(
+            "(state = 'pass' AND evidence_code = 'VALIDATION_PASSED') OR "
+            "(state = 'fail' AND evidence_code = 'VALIDATION_FAILED') OR "
+            "(state = 'unsupported' AND evidence_code = 'UNSUPPORTED_CONTRACT') OR "
+            "(state = 'experimental' AND evidence_code = 'EXPERIMENTAL_CONTRACT') OR "
+            "(state = 'unknown' AND evidence_code = 'UNKNOWN_EVIDENCE') OR "
+            "(state = 'not_tested' AND evidence_code = 'NOT_EXECUTED')",
+            name="ck_compatibility_observation_state_code",
         ),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    observation_set_id: Mapped[str] = mapped_column(String(40), nullable=False)
-    provider_id: Mapped[str] = mapped_column(
-        String(40), ForeignKey("provider_definitions.id", ondelete="RESTRICT"), nullable=False
+    evidence_set_id: Mapped[str] = mapped_column(
+        String(40),
+        ForeignKey("provider_compatibility_evidence_sets.id", ondelete="RESTRICT"),
+        nullable=False,
     )
-    runtime_installation_id: Mapped[str | None] = mapped_column(String(40))
-    runtime_profile_id: Mapped[str | None] = mapped_column(String(40))
     dimension: Mapped[CompatibilityDimension] = mapped_column(
         Enum(
             CompatibilityDimension,
@@ -593,74 +636,18 @@ class ProviderCompatibilityObservation(Base):
         ),
         nullable=False,
     )
-    evidence_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    evidence_code: Mapped[str | None] = mapped_column(String(80))
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    provider: Mapped[Provider] = relationship(back_populates="observations", viewonly=True)
-    profile: Mapped[RuntimeProviderProfile | None] = relationship(
-        back_populates="observations", viewonly=True
-    )
-
-
-class ProviderConfigTransaction(Base):
-    """Non-secret control-plane orchestration metadata for a future transaction."""
-
-    __tablename__ = "provider_config_transactions"
-    __table_args__ = (
-        UniqueConstraint("job_id", name="uq_provider_config_transactions_job"),
-        ForeignKeyConstraint(
-            ["runtime_binding_id", "runtime_installation_id"],
-            ["runtime_provider_bindings.id", "runtime_provider_bindings.runtime_installation_id"],
-            ondelete="RESTRICT",
-            name="fk_provider_transactions_binding_runtime",
-        ),
-        CheckConstraint("expected_binding_revision >= 1", name="ck_tx_binding_revision"),
-        CheckConstraint("expected_profile_revision >= 1", name="ck_tx_profile_revision"),
-        CheckConstraint("expected_provider_revision >= 1", name="ck_tx_provider_revision"),
-        CheckConstraint(
-            "expected_credential_revision IS NULL OR expected_credential_revision >= 1",
-            name="ck_tx_credential_revision",
-        ),
-        CheckConstraint("revision >= 1", name="ck_provider_transactions_revision"),
-        CheckConstraint(
-            "runtime_snapshot_ref IS NULL OR "
-            "(length(runtime_snapshot_ref) = 36 "
-            "AND substr(runtime_snapshot_ref, 1, 4) = 'snp_' "
-            "AND substr(runtime_snapshot_ref, 5) NOT GLOB '*[^0-9a-f]*')",
-            name="ck_provider_transactions_snapshot_reference_format",
-        ),
-    )
-
-    id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    runtime_installation_id: Mapped[str] = mapped_column(String(40), nullable=False)
-    runtime_binding_id: Mapped[str] = mapped_column(String(40), nullable=False)
-    job_id: Mapped[str | None] = mapped_column(
-        String(40), ForeignKey("jobs.id", ondelete="SET NULL")
-    )
-    state: Mapped[ConfigTransactionState] = mapped_column(
+    evidence_code: Mapped[CompatibilityEvidenceCode] = mapped_column(
         Enum(
-            ConfigTransactionState,
+            CompatibilityEvidenceCode,
             values_callable=_values,
             native_enum=False,
             create_constraint=True,
             validate_strings=True,
-            name="provider_config_transaction_state",
+            name="compatibility_evidence_code",
         ),
         nullable=False,
     )
-    expected_binding_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    expected_profile_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    expected_provider_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    expected_credential_revision: Mapped[int | None] = mapped_column(Integer)
-    plan_digest: Mapped[str | None] = mapped_column(String(64))
-    runtime_snapshot_ref: Mapped[str | None] = mapped_column(String(40))
-    outcome_code: Mapped[str | None] = mapped_column(String(80))
-    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    runtime_binding: Mapped[RuntimeProviderBinding] = relationship(
-        back_populates="transactions", viewonly=True
+    evidence_set: Mapped[ProviderCompatibilityEvidenceSet] = relationship(
+        back_populates="observations", viewonly=True
     )

@@ -7,8 +7,8 @@ from pathlib import Path
 from agentbox_core.models import Base
 from agentbox_core.provider_models import (
     Provider,
+    ProviderCompatibilityEvidenceSet,
     ProviderCompatibilityObservation,
-    ProviderConfigTransaction,
     ProviderCredential,
     RuntimeInstallation,
     RuntimeProviderBinding,
@@ -16,7 +16,8 @@ from agentbox_core.provider_models import (
     RuntimeSessionProviderBinding,
 )
 from agentbox_core.providers import (
-    CompatibilityObservationCreate,
+    CompatibilityDimensionResult,
+    CompatibilityEvidenceSetCreate,
     CredentialMetadataCreate,
     ProviderCreate,
     RuntimeBindingCreate,
@@ -98,39 +99,29 @@ NEW_TABLE_COLUMNS = {
         "provider_id",
         "provider_revision",
         "evidence_class",
-        "state",
         "effective_at",
         "created_at",
     },
-    "provider_compatibility_observations": {
+    "provider_compatibility_evidence_sets": {
         "id",
-        "observation_set_id",
         "provider_id",
+        "provider_revision",
         "runtime_installation_id",
         "runtime_profile_id",
-        "dimension",
-        "state",
+        "runtime_profile_revision",
+        "credential_id",
+        "credential_revision",
+        "credential_secret_version",
         "evidence_schema_version",
-        "evidence_code",
         "observed_at",
         "expires_at",
     },
-    "provider_config_transactions": {
+    "provider_compatibility_observations": {
         "id",
-        "runtime_installation_id",
-        "runtime_binding_id",
-        "job_id",
+        "evidence_set_id",
+        "dimension",
         "state",
-        "expected_binding_revision",
-        "expected_profile_revision",
-        "expected_provider_revision",
-        "expected_credential_revision",
-        "plan_digest",
-        "runtime_snapshot_ref",
-        "outcome_code",
-        "revision",
-        "created_at",
-        "updated_at",
+        "evidence_code",
     },
 }
 
@@ -166,6 +157,7 @@ FORBIDDEN_STORAGE_NAMES = {
 
 def test_new_schema_is_exact_typed_and_contains_no_generic_payload_column() -> None:
     assert set(NEW_TABLE_COLUMNS).issubset(Base.metadata.tables)
+    assert "provider_config_transactions" not in Base.metadata.tables
     for table_name, expected_columns in NEW_TABLE_COLUMNS.items():
         table = Base.metadata.tables[table_name]
         actual_columns = {column.name for column in table.columns}
@@ -175,7 +167,7 @@ def test_new_schema_is_exact_typed_and_contains_no_generic_payload_column() -> N
             assert column_name not in FORBIDDEN_STORAGE_NAMES
 
 
-def test_credential_table_has_references_not_secret_material() -> None:
+def test_credential_table_reserves_only_opaque_references_not_secret_material() -> None:
     columns = NEW_TABLE_COLUMNS["provider_credentials"]
     assert SAFE_OPAQUE_REFERENCE_COLUMNS & columns == {
         "runtime_secret_ref",
@@ -195,14 +187,15 @@ def test_credential_table_has_references_not_secret_material() -> None:
     )
 
 
-def test_public_metadata_inputs_have_no_generic_or_secret_bearing_field() -> None:
+def test_slice_one_inputs_have_no_generic_or_secret_bearing_field() -> None:
     input_types = (
         ProviderCreate,
         CredentialMetadataCreate,
         RuntimeProfileCreate,
         RuntimeBindingCreate,
         SessionBindingCreate,
-        CompatibilityObservationCreate,
+        CompatibilityDimensionResult,
+        CompatibilityEvidenceSetCreate,
         RuntimeProviderManagement,
     )
     allowed = SAFE_OPAQUE_REFERENCE_COLUMNS | {"credential_secret_version"}
@@ -211,6 +204,48 @@ def test_public_metadata_inputs_have_no_generic_or_secret_bearing_field() -> Non
         names = {field.name for field in fields(input_type)}
         assert not ((names - allowed) & FORBIDDEN_STORAGE_NAMES)
         assert not ({"options", "metadata", "payload", "config", "parameters"} & names)
+    assert {field.name for field in fields(CredentialMetadataCreate)} == {
+        "provider_id",
+        "kind",
+    }
+    assert "id" not in {field.name for field in fields(CompatibilityEvidenceSetCreate)}
+    assert "observation_set_id" not in {
+        field.name for field in fields(CompatibilityEvidenceSetCreate)
+    }
+
+
+def test_compatibility_child_cannot_mix_provider_or_runtime_scope() -> None:
+    columns = NEW_TABLE_COLUMNS["provider_compatibility_observations"]
+    assert (
+        not {
+            "provider_id",
+            "provider_revision",
+            "runtime_installation_id",
+            "runtime_profile_id",
+            "runtime_profile_revision",
+            "credential_id",
+            "credential_revision",
+            "credential_secret_version",
+        }
+        & columns
+    )
+
+
+def test_session_binding_contains_no_credential_secret_or_runtime_private_state() -> None:
+    columns = NEW_TABLE_COLUMNS["runtime_session_provider_bindings"]
+    assert "state" not in columns
+    assert (
+        not {
+            "credential_id",
+            "runtime_secret_ref",
+            "secret_version",
+            "conversation",
+            "jsonl",
+            "rollout",
+            "runtime_data",
+        }
+        & columns
+    )
 
 
 def test_provider_repository_has_no_runtime_network_or_privilege_dependency() -> None:
@@ -242,8 +277,8 @@ def test_entity_identities_are_not_collapsed_in_the_orm() -> None:
             RuntimeProviderProfile,
             RuntimeProviderBinding,
             RuntimeSessionProviderBinding,
+            ProviderCompatibilityEvidenceSet,
             ProviderCompatibilityObservation,
-            ProviderConfigTransaction,
         )
     }
     assert all(value == ("id",) for value in primary_keys.values())

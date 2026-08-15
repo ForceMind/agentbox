@@ -29,13 +29,16 @@ from agentbox_core.errors import (
 )
 from agentbox_core.provider_models import (
     CompatibilityDimension,
+    CompatibilityEvidenceCode,
     CompatibilityState,
     CredentialKind,
     CredentialLifecycleState,
     Provider,
+    ProviderCompatibilityEvidenceSet,
     ProviderCompatibilityObservation,
     ProviderCredential,
     ProviderLifecycleState,
+    ProviderManagedAdapter,
     ProviderType,
     RuntimeBindingState,
     RuntimeInstallation,
@@ -44,7 +47,6 @@ from agentbox_core.provider_models import (
     RuntimeProviderProfile,
     RuntimeSessionProviderBinding,
     RuntimeType,
-    SessionBindingState,
     SessionEvidenceClass,
     WireProtocol,
 )
@@ -53,9 +55,26 @@ from agentbox_core.security import new_identifier
 OFFICIAL_OPENAI_ENDPOINT = "https://api.openai.com/v1"
 
 _MODEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:/-]{0,126}[A-Za-z0-9])?")
-_OPAQUE_ID = re.compile(r"[a-z]{3}_[0-9a-f]{32}")
-_SECRET_REFERENCE = re.compile(r"sec_[0-9a-f]{32}")
-_EVIDENCE_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,79}")
+_OPAQUE_SUFFIX = re.compile(r"[0-9a-f]{32}")
+
+_RUNTIME_SCOPED_DIMENSIONS = frozenset(
+    {
+        CompatibilityDimension.CODEX_RUNTIME,
+        CompatibilityDimension.REMOTE,
+        CompatibilityDimension.RESUME,
+        CompatibilityDimension.CONTEXT,
+        CompatibilityDimension.DISCOVERY,
+    }
+)
+
+_STATE_EVIDENCE_CODES = {
+    CompatibilityState.PASS: CompatibilityEvidenceCode.VALIDATION_PASSED,
+    CompatibilityState.FAIL: CompatibilityEvidenceCode.VALIDATION_FAILED,
+    CompatibilityState.UNSUPPORTED: CompatibilityEvidenceCode.UNSUPPORTED_CONTRACT,
+    CompatibilityState.EXPERIMENTAL: CompatibilityEvidenceCode.EXPERIMENTAL_CONTRACT,
+    CompatibilityState.UNKNOWN: CompatibilityEvidenceCode.UNKNOWN_EVIDENCE,
+    CompatibilityState.NOT_TESTED: CompatibilityEvidenceCode.NOT_EXECUTED,
+}
 
 
 class AuditRecorder(Protocol):
@@ -87,8 +106,6 @@ class ProviderCreate:
 class CredentialMetadataCreate:
     provider_id: str
     kind: CredentialKind
-    runtime_secret_ref: str | None = None
-    secret_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -119,16 +136,31 @@ class SessionBindingCreate:
 
 
 @dataclass(frozen=True)
-class CompatibilityObservationCreate:
-    observation_set_id: str
-    provider_id: str
+class CompatibilityDimensionResult:
     dimension: CompatibilityDimension
     state: CompatibilityState
+    evidence_code: CompatibilityEvidenceCode
+
+
+@dataclass(frozen=True)
+class CompatibilityEvidenceSetCreate:
+    provider_id: str
+    provider_revision: int
     evidence_schema_version: int
-    evidence_code: str | None = None
+    expires_at: datetime
+    results: tuple[CompatibilityDimensionResult, ...]
     runtime_installation_id: str | None = None
     runtime_profile_id: str | None = None
-    expires_at: datetime | None = None
+    runtime_profile_revision: int | None = None
+    credential_id: str | None = None
+    credential_revision: int | None = None
+    credential_secret_version: int | None = None
+
+
+@dataclass(frozen=True)
+class RecordedCompatibilityEvidenceSet:
+    evidence_set: ProviderCompatibilityEvidenceSet
+    observations: tuple[ProviderCompatibilityObservation, ...]
 
 
 @dataclass(frozen=True)
@@ -225,7 +257,7 @@ class ProviderRepository:
             raise ProviderMetadataConflict() from exc
 
     def get_provider(self, provider_id: str) -> Provider:
-        _require_id(provider_id)
+        _require_id(provider_id, "prv")
         with self._database.transaction() as session:
             provider = session.get(Provider, provider_id)
             if provider is None:
@@ -310,17 +342,14 @@ class ProviderRepository:
         actor_id: str,
         request_id: str | None = None,
     ) -> ProviderCredential:
-        reference, version, state = _credential_reference(
-            values.runtime_secret_ref, values.secret_version
-        )
         now = self._clock.now()
         credential = ProviderCredential(
             id=new_identifier("crd"),
-            provider_id=_require_id(values.provider_id),
+            provider_id=_require_id(values.provider_id, "prv"),
             kind=values.kind,
-            runtime_secret_ref=reference,
-            secret_version=version,
-            state=state,
+            runtime_secret_ref=None,
+            secret_version=None,
+            state=CredentialLifecycleState.MISSING,
             revision=1,
             created_at=now,
             updated_at=now,
@@ -339,7 +368,7 @@ class ProviderRepository:
                     request_id=request_id,
                     target_type="provider_credential",
                     target_id=credential.id,
-                    metadata={"configured": reference is not None, "revision": 1},
+                    metadata={"state": CredentialLifecycleState.MISSING.value, "revision": 1},
                 )
                 session.flush()
                 return credential
@@ -347,45 +376,11 @@ class ProviderRepository:
             raise ProviderMetadataConflict() from exc
 
     def get_credential_metadata(self, credential_id: str) -> ProviderCredential:
-        _require_id(credential_id)
+        _require_id(credential_id, "crd")
         with self._database.transaction() as session:
             credential = session.get(ProviderCredential, credential_id)
             if credential is None:
                 raise ProviderMetadataNotFound()
-            return credential
-
-    def update_credential_state(
-        self,
-        credential_id: str,
-        *,
-        state: CredentialLifecycleState,
-        expected_revision: int,
-        actor_id: str,
-        request_id: str | None = None,
-    ) -> ProviderCredential:
-        if state is CredentialLifecycleState.CONFIGURED:
-            raise ProviderInputInvalid()
-        with self._database.transaction() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
-            credential = session.get(ProviderCredential, _require_id(credential_id))
-            if credential is None:
-                raise ProviderMetadataNotFound()
-            _require_revision(credential.revision, expected_revision)
-            credential.state = state
-            credential.revision += 1
-            credential.updated_at = self._clock.now()
-            self._audit.record(
-                session,
-                actor_type="admin_user",
-                actor_id=actor_id,
-                action="provider_credential.state_changed",
-                result="succeeded",
-                request_id=request_id,
-                target_type="provider_credential",
-                target_id=credential.id,
-                metadata={"state": state.value, "revision": credential.revision},
-            )
-            session.flush()
             return credential
 
     def create_runtime_profile(
@@ -399,8 +394,10 @@ class ProviderRepository:
             raise ProviderInputInvalid()
         now = self._clock.now()
         with self._database.transaction() as session:
-            runtime = session.get(RuntimeInstallation, _require_id(values.runtime_installation_id))
-            provider = session.get(Provider, _require_id(values.provider_id))
+            runtime = session.get(
+                RuntimeInstallation, _require_id(values.runtime_installation_id, "rti")
+            )
+            provider = session.get(Provider, _require_id(values.provider_id, "prv"))
             if runtime is None or provider is None:
                 raise ProviderMetadataNotFound()
             if runtime.runtime_type is not RuntimeType.CODEX:
@@ -415,7 +412,7 @@ class ProviderRepository:
                 credential_id=credential.id if credential else None,
                 credential_revision=credential.revision if credential else None,
                 credential_secret_version=credential.secret_version if credential else None,
-                adapter_type=RuntimeType.CODEX,
+                adapter_type=ProviderManagedAdapter.CODEX,
                 adapter_schema_version=values.adapter_schema_version,
                 state=RuntimeProfileState.DRAFT,
                 revision=1,
@@ -432,13 +429,13 @@ class ProviderRepository:
                 request_id=request_id,
                 target_type="runtime_profile",
                 target_id=profile.id,
-                metadata={"adapter_type": RuntimeType.CODEX.value, "revision": 1},
+                metadata={"adapter_type": ProviderManagedAdapter.CODEX.value, "revision": 1},
             )
             session.flush()
             return profile
 
     def get_runtime_profile(self, profile_id: str) -> RuntimeProviderProfile:
-        _require_id(profile_id)
+        _require_id(profile_id, "rpf")
         with self._database.transaction() as session:
             profile = session.get(RuntimeProviderProfile, profile_id)
             if profile is None:
@@ -454,17 +451,20 @@ class ProviderRepository:
     ) -> RuntimeProviderBinding:
         if values.runtime_profile_revision < 1:
             raise ProviderInputInvalid()
+        _require_id(values.runtime_installation_id, "rti")
         now = self._clock.now()
         with self._database.transaction() as session:
             session.execute(text("BEGIN IMMEDIATE"))
-            profile = session.get(RuntimeProviderProfile, _require_id(values.runtime_profile_id))
+            profile = session.get(
+                RuntimeProviderProfile, _require_id(values.runtime_profile_id, "rpf")
+            )
             if profile is None or profile.runtime_installation_id != values.runtime_installation_id:
                 raise ProviderMetadataNotFound()
             _require_revision(profile.revision, values.runtime_profile_revision)
             previous = None
             if values.previous_binding_id is not None:
                 previous = session.get(
-                    RuntimeProviderBinding, _require_id(values.previous_binding_id)
+                    RuntimeProviderBinding, _require_id(values.previous_binding_id, "rbd")
                 )
                 if (
                     previous is None
@@ -500,7 +500,7 @@ class ProviderRepository:
             return binding
 
     def get_runtime_binding(self, binding_id: str) -> RuntimeProviderBinding:
-        _require_id(binding_id)
+        _require_id(binding_id, "rbd")
         with self._database.transaction() as session:
             binding = session.get(RuntimeProviderBinding, binding_id)
             if binding is None:
@@ -508,8 +508,10 @@ class ProviderRepository:
             return binding
 
     def runtime_management(self, runtime_installation_id: str) -> RuntimeProviderManagement:
-        _require_id(runtime_installation_id)
+        _require_id(runtime_installation_id, "rti")
         with self._database.transaction() as session:
+            if session.get(RuntimeInstallation, runtime_installation_id) is None:
+                raise ProviderMetadataNotFound()
             active = session.scalar(
                 select(RuntimeProviderBinding).where(
                     RuntimeProviderBinding.runtime_installation_id == runtime_installation_id,
@@ -552,14 +554,14 @@ class ProviderRepository:
         try:
             with self._database.transaction() as session:
                 binding = session.get(
-                    RuntimeProviderBinding, _require_id(values.runtime_binding_id)
+                    RuntimeProviderBinding, _require_id(values.runtime_binding_id, "rbd")
                 )
                 if binding is None or binding.state is not RuntimeBindingState.ACTIVE:
                     raise ProviderMetadataConflict()
                 _require_revision(binding.revision, values.runtime_binding_revision)
                 session_binding = RuntimeSessionProviderBinding(
                     id=new_identifier("sbd"),
-                    runtime_session_id=_require_id(values.runtime_session_id),
+                    runtime_session_id=_require_id(values.runtime_session_id, "ses"),
                     runtime_installation_id=binding.runtime_installation_id,
                     runtime_binding_id=binding.id,
                     runtime_binding_revision=binding.revision,
@@ -568,7 +570,6 @@ class ProviderRepository:
                     provider_id=binding.provider_id,
                     provider_revision=binding.provider_revision,
                     evidence_class=values.evidence_class,
-                    state=SessionBindingState.BOUND,
                     effective_at=now,
                     created_at=now,
                 )
@@ -582,7 +583,10 @@ class ProviderRepository:
                     request_id=request_id,
                     target_type="session_binding",
                     target_id=session_binding.id,
-                    metadata={"state": SessionBindingState.BOUND.value},
+                    metadata={
+                        "evidence_class": values.evidence_class.value,
+                        "runtime_binding_revision": binding.revision,
+                    },
                 )
                 session.flush()
                 return session_binding
@@ -590,35 +594,79 @@ class ProviderRepository:
             raise ProviderMetadataConflict() from exc
 
     def get_session_binding(self, session_binding_id: str) -> RuntimeSessionProviderBinding:
-        _require_id(session_binding_id)
+        _require_id(session_binding_id, "sbd")
         with self._database.transaction() as session:
             value = session.get(RuntimeSessionProviderBinding, session_binding_id)
             if value is None:
                 raise ProviderMetadataNotFound()
             return value
 
-    def record_compatibility_observation(
+    def record_compatibility_evidence_set(
         self,
-        values: CompatibilityObservationCreate,
+        values: CompatibilityEvidenceSetCreate,
         *,
         actor_id: str,
         request_id: str | None = None,
-    ) -> ProviderCompatibilityObservation:
-        if values.evidence_schema_version < 1:
+    ) -> RecordedCompatibilityEvidenceSet:
+        if (
+            values.provider_revision < 1
+            or values.evidence_schema_version < 1
+            or not 1 <= len(values.results) <= len(CompatibilityDimension)
+        ):
             raise ProviderInputInvalid()
-        _require_id(values.observation_set_id)
-        evidence_code = _safe_evidence_code(values.evidence_code)
+        now = self._clock.now()
+        if values.expires_at <= now:
+            raise ProviderInputInvalid()
+        dimensions = [result.dimension for result in values.results]
+        if len(set(dimensions)) != len(dimensions):
+            raise ProviderInputInvalid()
+        for result in values.results:
+            if _STATE_EVIDENCE_CODES[result.state] is not result.evidence_code:
+                raise ProviderInputInvalid()
+
+        runtime_scope = (
+            values.runtime_installation_id,
+            values.runtime_profile_id,
+            values.runtime_profile_revision,
+        )
+        credential_scope = (
+            values.credential_id,
+            values.credential_revision,
+            values.credential_secret_version,
+        )
+        if any(value is None for value in runtime_scope) and runtime_scope != (None, None, None):
+            raise ProviderInputInvalid()
+        if any(value is None for value in credential_scope) and credential_scope != (
+            None,
+            None,
+            None,
+        ):
+            raise ProviderInputInvalid()
+        if _RUNTIME_SCOPED_DIMENSIONS.intersection(dimensions) and runtime_scope == (
+            None,
+            None,
+            None,
+        ):
+            raise ProviderInputInvalid()
+        if any(
+            result.dimension is CompatibilityDimension.AUTHENTICATION
+            and result.state in {CompatibilityState.PASS, CompatibilityState.FAIL}
+            for result in values.results
+        ) and credential_scope == (None, None, None):
+            raise ProviderInputInvalid()
+
         try:
             with self._database.transaction() as session:
-                provider = session.get(Provider, _require_id(values.provider_id))
+                provider = session.get(Provider, _require_id(values.provider_id, "prv"))
                 if provider is None:
                     raise ProviderMetadataNotFound()
+                _require_revision(provider.revision, values.provider_revision)
+
                 profile = None
-                if (values.runtime_installation_id is None) != (values.runtime_profile_id is None):
-                    raise ProviderInputInvalid()
                 if values.runtime_profile_id is not None:
                     profile = session.get(
-                        RuntimeProviderProfile, _require_id(values.runtime_profile_id)
+                        RuntimeProviderProfile,
+                        _require_id(values.runtime_profile_id, "rpf"),
                     )
                     if (
                         profile is None
@@ -626,36 +674,67 @@ class ProviderRepository:
                         or profile.provider_id != provider.id
                     ):
                         raise ProviderMetadataConflict()
-                observation = ProviderCompatibilityObservation(
-                    id=new_identifier("pco"),
-                    observation_set_id=values.observation_set_id,
+                    _require_id(values.runtime_installation_id or "", "rti")
+                    _require_revision(profile.revision, values.runtime_profile_revision or 0)
+
+                credential = None
+                if values.credential_id is not None:
+                    credential = session.get(
+                        ProviderCredential, _require_id(values.credential_id, "crd")
+                    )
+                    if credential is None or credential.provider_id != provider.id:
+                        raise ProviderMetadataConflict()
+                    _require_revision(credential.revision, values.credential_revision or 0)
+                    if credential.secret_version != values.credential_secret_version:
+                        raise ProviderRevisionConflict()
+
+                evidence_set = ProviderCompatibilityEvidenceSet(
+                    id=new_identifier("ces"),
                     provider_id=provider.id,
-                    runtime_installation_id=(profile.runtime_installation_id if profile else None),
+                    provider_revision=provider.revision,
+                    runtime_installation_id=profile.runtime_installation_id if profile else None,
                     runtime_profile_id=profile.id if profile else None,
-                    dimension=values.dimension,
-                    state=values.state,
+                    runtime_profile_revision=profile.revision if profile else None,
+                    credential_id=credential.id if credential else None,
+                    credential_revision=credential.revision if credential else None,
+                    credential_secret_version=(credential.secret_version if credential else None),
                     evidence_schema_version=values.evidence_schema_version,
-                    evidence_code=evidence_code,
-                    observed_at=self._clock.now(),
+                    observed_at=now,
                     expires_at=values.expires_at,
                 )
-                session.add(observation)
+                observations = tuple(
+                    ProviderCompatibilityObservation(
+                        id=new_identifier("pco"),
+                        evidence_set_id=evidence_set.id,
+                        dimension=result.dimension,
+                        state=result.state,
+                        evidence_code=result.evidence_code,
+                    )
+                    for result in values.results
+                )
+                session.add(evidence_set)
+                session.add_all(observations)
                 self._audit.record(
                     session,
                     actor_type="admin_user",
                     actor_id=actor_id,
-                    action="compatibility_observation.recorded",
+                    action="compatibility_evidence_set.recorded",
                     result="succeeded",
                     request_id=request_id,
-                    target_type="compatibility_observation",
-                    target_id=observation.id,
+                    target_type="compatibility_evidence_set",
+                    target_id=evidence_set.id,
                     metadata={
-                        "dimension": values.dimension.value,
-                        "state": values.state.value,
+                        "dimension_count": len(observations),
+                        "provider_revision": provider.revision,
+                        "runtime_scoped": profile is not None,
+                        "credential_scoped": credential is not None,
                     },
                 )
                 session.flush()
-                return observation
+                return RecordedCompatibilityEvidenceSet(
+                    evidence_set=evidence_set,
+                    observations=observations,
+                )
         except IntegrityError as exc:
             raise ProviderMetadataConflict() from exc
 
@@ -672,7 +751,7 @@ class ProviderRepository:
             return None
         if any(item is None for item in supplied):
             raise ProviderInputInvalid()
-        credential = session.get(ProviderCredential, _require_id(values.credential_id or ""))
+        credential = session.get(ProviderCredential, _require_id(values.credential_id or "", "crd"))
         if credential is None or credential.provider_id != values.provider_id:
             raise ProviderMetadataConflict()
         _require_revision(credential.revision, values.credential_revision or 0)
@@ -684,7 +763,7 @@ class ProviderRepository:
 
 
 def _provider_for_update(session: Session, provider_id: str, expected_revision: int) -> Provider:
-    provider = session.get(Provider, _require_id(provider_id))
+    provider = session.get(Provider, _require_id(provider_id, "prv"))
     if provider is None:
         raise ProviderMetadataNotFound()
     _require_revision(provider.revision, expected_revision)
@@ -698,8 +777,13 @@ def _require_revision(current: int, expected: int) -> None:
         raise ProviderRevisionConflict()
 
 
-def _require_id(value: str) -> str:
-    if not isinstance(value, str) or not _OPAQUE_ID.fullmatch(value):
+def _require_id(value: str, expected_prefix: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(expected_prefix) != 3
+        or not value.startswith(f"{expected_prefix}_")
+        or not _OPAQUE_SUFFIX.fullmatch(value[4:])
+    ):
         raise ProviderInputInvalid()
     return value
 
@@ -785,26 +869,3 @@ def _normalize_https_endpoint(value: str) -> str:
     if "//" in path or any(part in {".", ".."} for part in path.split("/")):
         raise ProviderInputInvalid()
     return urlunsplit(("https", normalized_host, path, "", ""))
-
-
-def _credential_reference(
-    reference: str | None, version: int | None
-) -> tuple[str | None, int | None, CredentialLifecycleState]:
-    if reference is None and version is None:
-        return None, None, CredentialLifecycleState.MISSING
-    if (
-        reference is None
-        or version is None
-        or version < 1
-        or not _SECRET_REFERENCE.fullmatch(reference)
-    ):
-        raise ProviderInputInvalid()
-    return reference, version, CredentialLifecycleState.CONFIGURED
-
-
-def _safe_evidence_code(value: str | None) -> str | None:
-    if value is None:
-        return None
-    if not _EVIDENCE_CODE.fullmatch(value):
-        raise ProviderInputInvalid()
-    return value

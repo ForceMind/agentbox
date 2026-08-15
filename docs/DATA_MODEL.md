@@ -21,7 +21,8 @@ Database path: `/var/lib/agentbox/agentbox.db`, owned by `agentbox`, restrictive
 
 - opaque application IDs; never reuse filesystem names or tmux names as primary keys;
 - UTC timestamps and explicit revision numbers;
-- enum values persisted as stable lower-case strings;
+- domain/lifecycle enum values persist as stable lower-case strings; bounded
+  evidence/error code registries use explicitly allowlisted stable codes;
 - soft state observations carry `observed_at` and freshness/confidence;
 - user-supplied labels are separate from server-generated storage keys;
 - summaries are bounded and sanitized before persistence;
@@ -101,7 +102,10 @@ are not Project columns.
 
 The Slice 1 table does not contain entrypoints, paths, executable observations,
 process state, Runtime credentials, or auth-file metadata. Those observations
-require the later read-only Runtime capability contract.
+require the later read-only Runtime capability contract. A synthetic
+`UNMANAGED` Provider-management state requires an existing
+`RuntimeInstallation` with no Binding. An unknown `rti_*` identity is not
+treated as unmanaged; it is reported as not found.
 
 ## RuntimeCapability
 
@@ -155,7 +159,11 @@ is derived from a verified Runtime Binding; it is not stored on Provider.
 | `created_at`, `updated_at`, `revision` | lifecycle and stale-write protection |
 
 The table has no plaintext, ciphertext, key, nonce, tag, token, header, or
-cryptographic storage. Slice 1 does not create a Secret backend.
+cryptographic storage. Slice 1 does not create a Secret backend. Its only
+Credential creation operation always creates `MISSING` metadata with null
+`runtime_secret_ref` and `secret_version`. The columns are reserved for a
+future typed, Runtime-attested provisioning/reconciliation operation; Slice 1
+callers cannot populate them or manufacture `CONFIGURED` state.
 
 ## RuntimeProviderProfile
 
@@ -172,9 +180,10 @@ not rendered Runtime configuration.
 | `state` | draft/valid/superseded/incompatible/needs-attention |
 | `created_at`, `updated_at`, `revision` | lifecycle and stale-write protection |
 
-Slice 1 admits Provider Profiles only for Codex. Claude remains Runtime-only.
-No TOML, rendered config, path, command, environment, or snapshot bytes are
-representable.
+Slice 1 admits Provider Profiles only for Codex. A Codex-only adapter enum and
+the composite Runtime identity foreign key enforce this at the database layer;
+Claude remains Runtime-only. No TOML, rendered config, path, command,
+environment, or snapshot bytes are representable.
 
 ## RuntimeProviderBinding
 
@@ -191,37 +200,51 @@ representable.
 The database partial unique index permits at most one `active` Binding per
 Runtime. Slice 1 creates only `pending` Bindings and exposes no activation
 operation. Persisted Binding rows cannot use `unmanaged`: absence of a managed
-Binding yields the explicit logical `UNMANAGED` read state. Migration creates
-no rows and does not adopt an existing Runtime.
+Binding for an existing Runtime yields the explicit logical `UNMANAGED` read
+state. Unknown Runtime IDs are not unmanaged. Previous-Binding ancestry is a
+same-Runtime composite foreign key, and self-reference is rejected. Migration
+creates no rows and does not adopt an existing Runtime.
 
 ## RuntimeSessionProviderBinding
 
 `runtime_session_provider_bindings` is immutable historical effective-state
 evidence with independent `SessionBindingID`, Runtime session ID, installation,
-Binding/Profile/Provider IDs and exact revisions, typed evidence class/state,
-and timestamps. SQLite triggers reject update and delete. The migration does
-not inspect or backfill existing sessions and stores no conversation, private
-Runtime, Credential, or Secret data.
+Binding/Profile/Provider IDs and exact revisions, typed evidence class, and
+timestamps. The existence of a row means one real bound snapshot; no persisted
+multi-state field doubles as legacy/continuity classification. An insertion
+trigger requires the exact active Binding and matching Binding/Profile/Provider
+revisions, while update and delete triggers preserve the snapshot permanently.
+The migration does not inspect or backfill existing sessions. Absence of a row
+does not prove a legacy classification; synthetic legacy/unbound/continuity
+states belong to a later read-only Runtime/session capability slice. The row
+stores no conversation, private Runtime, Credential, or Secret data.
 
-## ProviderCompatibilityObservation
+## ProviderCompatibilityEvidenceSet and Observation
 
-One row records one typed dimension in a bounded observation set. Provider
-endpoint, Network, Authentication, Model, Wire Protocol, Provider API, Codex
-Runtime, Remote, Resume, Context, and Discovery remain independent. Each is
-`pass`, `fail`, `unsupported`, `experimental`, `unknown`, or `not_tested`, with
-schema, bounded non-secret evidence code, and freshness timestamps. Slice 1
-does not perform tests or network requests.
+`provider_compatibility_evidence_sets` is one immutable server-identified scope
+bound to an exact Provider revision and optional exact Runtime Profile and/or
+Credential/Secret-version references. It stores the evidence schema,
+observation time, and mandatory later expiry. `provider_compatibility_observations`
+contains only typed child dimensions, typed result states, and closed
+non-secret evidence codes. A child cannot select or alter Provider/Profile/
+Credential scope.
 
-## ProviderConfigTransaction
+Provider endpoint, Network, Authentication, Model, Wire Protocol, Provider API,
+Codex Runtime, Remote, Resume, Context, and Discovery remain independent.
+Runtime-dependent dimensions require Profile scope; authentication PASS/FAIL
+requires an exact Credential revision and Secret-version reference. Duplicate
+dimensions, mixed scopes, expired sets, updates, and deletes are rejected.
+`NOT_TESTED` remains distinct from success. Slice 1 records metadata only and
+does not perform tests, network requests, or automatic compatibility PASS.
 
-The additive table reserves only typed non-secret orchestration relationships:
-transaction identity/state, Runtime and Binding identity, optional Job,
-expected Binding/Profile/Provider/Credential revisions, plan digest, opaque
-Runtime-owned snapshot reference, bounded outcome code, revision, and
-timestamps. Slice 1 implements no transaction executor or mutation operation.
-It never stores raw config, snapshot bytes, Secret material, Authorization,
-Provider response bodies, prompts, model output, or private Runtime/session
-artifacts.
+## Future ProviderConfigTransaction
+
+Transaction persistence is deliberately deferred. Slice 1 does not create
+`provider_config_transactions`, because a safe schema must be introduced with
+the later planner/executor slice and durably bind the complete accepted plan,
+approval, evidence, Runtime journal, postimage, locking, recovery, and verified
+rollback contract. Deferral avoids freezing advanced transaction states in an
+incomplete table.
 
 Raw API keys, API-key hashes/suffixes, complete Runtime config, arbitrary TOML,
 Codex SQLite/session DB, JSONL, rollout, and thread metadata are prohibited
@@ -388,8 +411,8 @@ erDiagram
     Provider ||--o{ RuntimeProviderProfile : targets
     RuntimeProviderProfile ||--o{ RuntimeProviderBinding : selected_by
     RuntimeProviderBinding ||--o{ RuntimeSessionProviderBinding : evidenced_by
-    Provider ||--o{ ProviderCompatibilityObservation : observed_by
-    RuntimeProviderBinding ||--o{ ProviderConfigTransaction : changes_through
+    Provider ||--o{ ProviderCompatibilityEvidenceSet : scoped_by
+    ProviderCompatibilityEvidenceSet ||--o{ ProviderCompatibilityObservation : contains
     Job ||--o{ JobEvent : emits
     Job ||--o| DiagnosticRun : executes
     Job ||--o{ AuditEvent : correlates
