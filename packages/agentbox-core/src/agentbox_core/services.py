@@ -26,6 +26,7 @@ from agentbox_core.errors import (
 from agentbox_core.jobs import JobService
 from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession, Job
 from agentbox_core.projects import ProjectService
+from agentbox_core.providers import ProviderRepository
 from agentbox_core.rate_limit import LoginRateLimiter
 from agentbox_core.security import (
     PasswordManager,
@@ -645,6 +646,7 @@ class ControlPlaneServices:
     rate_limits: LoginRateLimiter
     audit: AuditService
     projects: ProjectService
+    providers: ProviderRepository
     jobs: JobService
     retention: RetentionService
 
@@ -680,6 +682,7 @@ def build_services(
     )
     admin = AdminService(database, actual_password_manager, audit, actual_clock)
     projects = ProjectService(database, actual_clock)
+    providers = ProviderRepository(database, actual_clock, audit)
     jobs = JobService(database, settings, actual_clock)
     retention = RetentionService(database, settings, actual_clock, rate_limiter)
     return ControlPlaneServices(
@@ -690,6 +693,7 @@ def build_services(
         rate_limits=rate_limiter,
         audit=audit,
         projects=projects,
+        providers=providers,
         jobs=jobs,
         retention=retention,
     )
