@@ -640,7 +640,23 @@ The Runtime parent service should not keep Provider Secrets in its long-lived
 environment. Resolution and decryption happen immediately before use, with
 bounded lifetime and no caller-provided variable names or destinations.
 
-### 7.2 Option 1 — Child-only environment injection
+The accepted Codex broker has exactly two typed eligibility modes:
+`COMMITTED_ACTIVE_USE` for a verified, committed active Binding and
+`CANDIDATE_ACTIVATION_VERIFICATION` for the transaction-local
+`CANDIDATE_VERIFICATION_AUTHORIZED` checkpoint. Candidate use does not make the
+Binding active, does not admit ordinary sessions, and does not create a Session
+Binding. It is bound to the exact plan/profile/Provider/Credential/Secret and
+transaction state, expires within 60 seconds, and permits at most two broker
+invocations/resolutions. The transaction-owned session admission fence is
+required; every conflicting, recovery, revocation, or inconsistent-state fence
+denies resolution.
+
+Direct live Provider validation is a separate typed Secret-use operation. Its
+authority cannot be reused by the Codex broker. Neither path creates a generic
+Secret-read response, caller-controlled command/environment/destination, or
+Root Helper action.
+
+### 7.2 Historical option — Child-only environment injection
 
 **Description**
 
@@ -663,11 +679,13 @@ environment.
 - crash dumps/debug tooling can expose memory;
 - must not leak into logs or environment diagnostics.
 
-**Recommendation**
+**Disposition after P11-ADR-072**
 
-Preferred for Codex v1 only if the then-current official public config contract
-supports a Secret environment reference. The variable name is fixed/generated
-by the adapter, not caller-controlled.
+Rejected for managed Codex v1 credential delivery. The accepted public-contract
+profile uses the fixed AgentBox command-backed broker and excludes `env_key` and
+long-lived or child-only Provider credential environment injection. This option
+remains analysis for a future Runtime adapter only; using it would require a new
+typed adapter decision and cannot silently replace the Codex broker contract.
 
 ### 7.3 Option 2 — Restrictive ephemeral file
 
@@ -1073,6 +1091,9 @@ and preserves the existing Runtime credential boundary.
 Only `agentbox-runtime` may resolve/decrypt a specific Secret version for one
 approved typed Provider operation. There is no generic enumerate/read/export/
 decrypt API and no permanent copying into Runtime credential/config files.
+For Codex, the approved operation is either exact committed active use or the
+bounded candidate-verification mode defined by P11-ADR-072/P11-ADR-075; staged
+Binding status alone never authorizes decryption.
 
 **Rationale**
 
@@ -1082,7 +1103,8 @@ reduces exposure from a compromised control-plane process.
 **Consequences**
 
 - Runtime resolves opaque references server-side.
-- Child-only environment injection is preferred only when publicly supported.
+- Managed Codex v1 uses the fixed command-backed broker; environment injection
+  is not an alternate Codex path.
 - Same-UID/root exposure remains an explicit residual risk.
 
 ### ADR-024 — Secret operations require Audit records
@@ -1229,8 +1251,8 @@ credentials in multiple formats.
 
 **Consequences**
 
-- Child-only environment is the preferred Codex candidate if publicly
-  supported.
+- Managed Codex v1 uses the fixed command-backed broker frozen by P11-ADR-072;
+  child-only environment injection is rejected for that contract.
 - File/descriptor mechanisms need separate proof and are not assumed.
 - Same-UID process visibility remains a documented risk.
 
@@ -1250,9 +1272,9 @@ Secret implementation:
    automation is ever supported.
 5. **Memory handling:** selected language/library guarantees, buffer lifetime,
    fork/child behavior, dump policy, and honest zeroization claims.
-6. **Codex delivery:** whether the then-current public config supports an
-   environment-variable Secret reference and whether a Runtime restart is
-   required.
+6. **Codex broker lifecycle:** which qualified Codex versions preserve the
+   fixed command-backed authentication behavior and whether profile changes
+   require a Runtime restart; `env_key` is not an alternate v1 delivery path.
 7. **Compatible Provider delivery:** whether all v1 Providers use the same
    approved credential reference or need typed per-adapter methods.
 8. **Master-key rotation:** rollback window, batch size, crash journal, old-key

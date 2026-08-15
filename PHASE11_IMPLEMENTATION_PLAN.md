@@ -413,8 +413,9 @@ produce trustworthy activation plans, while keeping real activation disabled.
 - Parse existing TOML and manage only a versioned AgentBox-owned scope.
 - Preserve all unrelated settings and reject duplicate or conflicting managed
   scope.
-- Reference Provider Secrets through the approved public credential reference,
-  preferably an environment-variable name, never a raw value in TOML.
+- Reference Provider Secrets only through the fixed AgentBox-owned Codex
+  command-backed broker; never place a raw value, transaction token, or bearer
+  capability in TOML.
 - Produce a revision-bound plan describing current/target Provider, model,
   destination, config changes by safe field name, restart impact, active
   writer/session findings, and expected verification.
@@ -462,8 +463,12 @@ with active-work protection and verified recovery.
 - Preflight Provider/Credential revisions, config fingerprint, Runtime
   capability, active writer/turn, current Remote state, and Session Bindings.
 - Apply the candidate through the config transaction framework.
-- Inject the Secret only into the allowlisted Codex child process or trusted
-  direct Provider test.
+- Resolve the candidate Secret only through the fixed Codex broker while the
+  transaction is in `CANDIDATE_VERIFICATION_AUTHORIZED`; keep the Binding
+  pending and the ordinary-session admission fence held.
+- Permit at most two durably counted candidate broker invocations/resolutions
+  within 60 seconds, only for the exact internal Codex verifier. Treat direct
+  Provider live validation as a separate typed authority.
 - Request any necessary stop/start through the existing non-root Codex Remote
   lifecycle manager; never through root Helper or a parallel daemon manager.
 - Verify Provider, Codex Runtime, Remote recovery, thread resume, context
@@ -483,6 +488,8 @@ with active-work protection and verified recovery.
 - Switching during an active turn or duplicate writer.
 - Breaking Pairing, Remote state, existing sessions, context, or discovery.
 - Applying config successfully but recording the wrong active binding.
+- Circularly requiring an active Binding before the pre-commit Codex verifier
+  can authenticate, or using candidate authority for an ordinary session.
 - Restarting with the wrong Secret version.
 - False-positive rollback after config, lifecycle, or DB restoration fails.
 - Automatic fallback changing privacy, model, cost, or data destination.
@@ -499,6 +506,9 @@ with active-work protection and verified recovery.
   `legacy_unbound` unless public evidence proves otherwise.
 - Pairing is never invoked, reset, or deleted by activation.
 - No automatic Provider fallback exists.
+- Candidate broker authorization is never reconstructed after a crash; an
+  uncertain invocation count or Secret-use result rolls back or becomes
+  `NEEDS_ATTENTION`.
 - Only fully restored config, binding, Secret reference, lifecycle, Runtime,
   and Remote state can produce `Rollback verified`.
 

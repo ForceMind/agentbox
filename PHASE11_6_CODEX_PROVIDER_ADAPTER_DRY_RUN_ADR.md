@@ -671,17 +671,22 @@ injects the Secret value. Secret canaries must never appear in current/candidate
 plan output, semantic diff, digest input visible to the control plane, logs,
 Audit, Jobs, or reports.
 
-### 9.2 Preferred future Codex interaction
+### 9.2 Approved future Codex interaction
 
-If the then-current public Codex contract supports an environment-variable
-credential reference, the managed configuration contains only a fixed/generated
-non-secret reference name. The name is selected by the adapter, not supplied by
-the Web/API, and it is not the Secret.
+The Phase 11.10 contract selects one fixed command-backed AgentBox credential
+broker. The managed profile contains only that root-owned executable path and
+the typed non-secret arguments `codex`, RuntimeBindingID, and Binding revision.
+It contains no Secret, bearer capability, transaction token, caller-supplied
+command, argument, path, environment, or destination.
 
 During a later separately authorized execution, `agentbox-runtime` may resolve
-exactly one opaque Secret version immediately before spawning the exact approved
-Codex process and inject it only into that child operation. The config adapter
-does not receive the plaintext value.
+the exact opaque Secret version only under `COMMITTED_ACTIVE_USE` or the
+transaction-local `CANDIDATE_ACTIVATION_VERIFICATION` eligibility mode. The
+candidate mode requires the exact post-publication
+`CANDIDATE_VERIFICATION_AUTHORIZED` checkpoint, retains the ordinary-session
+admission fence, expires within 60 seconds, and permits at most two durably
+counted broker invocations/resolutions. The config adapter and control plane do
+not receive the plaintext value.
 
 ### 9.3 Fail-closed delivery capability
 
@@ -758,7 +763,16 @@ and plan digest. It does not accept raw config. Runtime must:
 - stage, validate, atomically publish, fsync, reread, and verify according to
   Phase 11.4;
 - coordinate only the lifecycle action explicitly present in the plan;
+- enter `CANDIDATE_VERIFICATION_AUTHORIZED` only after profile postimage,
+  revisions, lease, Runtime lock, and transaction-owned session fence agree;
+- launch only the exact typed internal Codex candidate verifier;
+- close candidate authorization before commit or rollback; and
 - run required post-validation and report safe evidence.
+
+The candidate verifier is not a user session and creates no Session Binding.
+It cannot reuse direct Provider live-validation authority. A crash or uncertain
+broker attempt count/outcome prohibits another candidate Secret issue and moves
+to verified rollback or `NEEDS_ATTENTION`.
 
 ### 10.4 Stale plans and reconstruction
 
@@ -1027,9 +1041,10 @@ Codex adapter can be implemented:
 7. **Provider types:** Are Official OpenAI and which OpenAI-compatible profiles
    supported initially? Local and Runtime-native remain disabled until separate
    capability gates pass.
-8. **Credential reference:** Does the current Codex contract support a fixed
-   environment-variable reference, and what exact lifecycle limits child-only
-   injection?
+8. **Credential broker lifecycle:** Which qualified Codex versions preserve
+   the fixed command-backed authentication behavior, and what restart/profile
+   reload semantics apply? `env_key` and child-only injection are excluded from
+   the managed Codex v1 contract.
 9. **Existing inline credentials:** Must activation block until the user removes
    them, or can AgentBox preserve them opaquely without treating them as managed
    Secrets?

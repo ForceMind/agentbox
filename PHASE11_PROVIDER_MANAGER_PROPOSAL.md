@@ -382,12 +382,12 @@ decision and must be resolved before implementation.
 
 ### 6.4 Runtime injection
 
-For Codex, the preferred mechanism is the current official ability, if still
-publicly supported at implementation time, to refer to an environment variable
-name such as an `env_key`. Runtime configuration contains only the variable
-name. The Runtime Executor resolves and decrypts the Secret immediately before
-spawning the exact allowlisted Runtime process and supplies a minimal child-only
-environment.
+For Codex, the accepted Phase 11.10 mechanism is a fixed AgentBox-owned
+command-backed credential broker. Runtime configuration contains only its fixed
+executable and typed non-secret Binding ID/revision arguments. The Runtime
+resolves the Secret only for exact committed active use or the bounded
+transaction-local candidate verifier; no environment name, Secret, transaction
+token, or bearer capability is caller-controlled or stored in the profile.
 
 The Secret is never placed in argv, a URL, an ordinary generated TOML value,
 the Runtime UDS response, or a long-lived AgentBox service environment. It may
@@ -579,8 +579,9 @@ non-secret plan and revision check
     -> render and validate candidate
     -> atomic apply
     -> approved existing Remote lifecycle transition, if required
-    -> Provider test
-    -> Codex Runtime test
+    -> separately authorized Provider live test, where required
+    -> CANDIDATE_VERIFICATION_AUTHORIZED
+    -> exact internal Codex candidate verification
     -> Remote recovery test
     -> applicable session continuity tests
     -> commit or verified rollback
@@ -589,6 +590,13 @@ non-secret plan and revision check
 Pairing is not repeated, deleted, or changed by Provider activation. Codex login
 state and Provider API-key state remain separate observations. The Provider
 Manager never calls Pair automatically.
+
+The candidate authorization is not active Binding state. The ordinary-session
+admission fence remains held and admits only the owning transaction's internal
+verifier. The authorization lasts no more than 60 seconds, permits at most two
+durably counted broker invocations/resolutions, and is never reopened after a
+crash or uncertain Secret-use outcome. Successful verification closes it before
+Binding commit; failure closes it before verified rollback.
 
 When public behavior proves a config change affects only new requests, AgentBox
 may preserve the Remote process but still records the new effective binding only

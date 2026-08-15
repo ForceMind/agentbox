@@ -381,13 +381,121 @@ the reserved built-in `openai` Provider and does not call `codex login`.
 
 The credential broker is a root-owned immutable release executable running as
 `agentbox-runtime`. It accepts only the literal `codex` verb, one UUID-shaped
-Runtime Binding ID, and one positive integer revision. It returns a Secret only
-when that exact Binding/revision is active, verified, not fenced, and maps to
-one usable Secret version. It accepts no command, path, environment, Provider
-ID, Credential ID, Secret ID, or output-format selector. It receives no stdin,
-emits the token only on stdout to Codex, emits sanitized errors on stderr, and
-never involves the Root Helper. Same-UID Runtime compromise remains an explicit
-residual risk; this broker creates no Control Plane or cross-UID reveal API.
+Runtime Binding ID, and one positive integer revision. It accepts no command,
+path, environment, Provider ID, Credential ID, Secret ID, transaction token,
+bearer capability, or output-format selector. It receives no stdin, emits the
+Provider token only on stdout to Codex, emits sanitized errors on stderr, and
+never involves the Root Helper. The profile contains no Secret or transaction
+credential. The broker resolves all eligibility server-side from protected
+Runtime-owned transaction/binding state and the typed Control Plane agreement.
+
+### Credential-broker eligibility modes
+
+The broker has exactly two mutually exclusive eligibility modes. Neither mode
+is caller-selected; the fixed arguments remain:
+
+```text
+codex
+<RuntimeBindingID>
+<binding-revision>
+```
+
+#### `COMMITTED_ACTIVE_USE`
+
+Ordinary post-commit credential resolution is allowed only when:
+
+- the exact Runtime Binding ID and revision are durably committed as `ACTIVE`;
+- all policy-required verification passed for that exact revision;
+- the Binding references exactly one usable Credential and Secret version;
+- Runtime and Control Plane Binding revisions agree;
+- no recovery, contradiction, `NEEDS_ATTENTION`, conflicting mutation,
+  revocation, or key/store-integrity fence blocks use; and
+- invocation uses the fixed AgentBox Codex credential-broker contract.
+
+#### `CANDIDATE_ACTIVATION_VERIFICATION`
+
+Candidate resolution is allowed only while the Runtime transaction is in the
+canonical transaction-local state `CANDIDATE_VERIFICATION_AUTHORIZED`. That
+state is not an active/verified Runtime Binding, is not committed Provider
+selection, creates no Session Binding, and authorizes no ordinary session.
+
+The state may be entered only at the exact post-publication, pre-commit Codex
+candidate-verification checkpoint. The candidate Binding remains staged or
+pending and must not be represented as `ACTIVE` or verified. Before entering,
+the durable transaction must bind all of:
+
+- RuntimeInstallationID;
+- RuntimeBindingID and Binding revision;
+- Runtime Profile ID and revision;
+- Provider ID and revision;
+- Credential ID and exact Secret version;
+- approved plan digest;
+- expected profile postimage digest;
+- Codex public-contract profile;
+- transaction ID;
+- admission-fence ownership; and
+- control-plane lease epoch and expiry.
+
+Candidate resolution additionally requires all of the following:
+
+1. The currently published AgentBox-owned profile exactly matches the approved
+   postimage digest.
+2. The transaction owns the valid control-plane Runtime lease, Runtime-local
+   transaction lock, and AgentBox-managed session admission fence.
+3. Approval, validation evidence, dry-run evidence, Codex contract evidence,
+   Provider policy, and every bound revision remain fresh and unchanged.
+4. Runtime journal and Control Plane orchestration agree that this transaction
+   is performing the one approved internal Codex candidate-verification
+   operation.
+5. Protected Runtime state binds the invocation to the exact internally
+   launched verifier process; no caller supplies that association.
+6. No conflict/recovery fence described below is present.
+
+`CANDIDATE_VERIFICATION_AUTHORIZED` expires at the earliest of:
+
+- 60 seconds after entry;
+- transaction checkpoint change;
+- verification completion;
+- control-plane lease loss;
+- approval or evidence expiry;
+- Runtime lock loss;
+- session-admission-fence ownership loss;
+- transaction interruption;
+- rollback or recovery start; or
+- entry into `NEEDS_ATTENTION`.
+
+The candidate window permits at most two broker invocations and at most two
+successful Secret resolutions: one initial Codex authentication resolution and
+at most one authentication-retry resolution. The Runtime durably increments a
+bounded invocation counter before eligibility evaluation/decryption/release;
+an unsuccessful attempt after increment consumes that slot. A third invocation
+is denied and forces candidate verification failure. There is no proactive
+refresh loop. Every attempt produces only non-secret audit evidence.
+
+The authorization is usable only by the typed activation transaction's exact
+internal Codex verifier. It cannot authorize a user session, caller-selected
+Provider request, generic Secret read, raw Secret UDS response, arbitrary
+command/argument/path/environment/destination, or Root Helper action.
+
+### Fence semantics
+
+The transaction-owned **session admission fence** is required during candidate
+verification. It blocks every new ordinary AgentBox-managed Provider-sensitive
+session, remains held through candidate verification, and allows only the one
+typed internal verifier owned by that same transaction. That verifier is not a
+user session and creates no Session Binding.
+
+Credential resolution is always denied when a fence represents another
+transaction, external modification, lease loss, rollback, reconciliation,
+revocation, key/store inconsistency, contradictory state, or
+`NEEDS_ATTENTION`. Therefore the transaction-owned admission fence is a
+candidate-verification precondition, while every conflicting or recovery fence
+is a denial condition.
+
+Same-UID Runtime compromise remains explicit: a compromised
+`agentbox-runtime` identity is assumed capable of compromising Runtime-usable
+Provider Secrets. The broker is defense in depth and protects workflow
+integrity; it does not claim isolation from a fully compromised Runtime UID.
 
 The initial scope explicitly excludes:
 
@@ -724,6 +832,46 @@ policy, price/data warning, or session-state change invalidates it.
 Durable Job retry cannot reuse expired approval, change a Provider/Secret/model,
 or broaden the approved lifecycle action.
 
+## Candidate credential authorization and commit ordering
+
+Candidate authentication follows this exact transaction sequence:
+
+```text
+APPROVED
+    -> SNAPSHOT_DURABLE
+    -> PROFILE_PUBLISHED
+    -> CANDIDATE_VERIFICATION_AUTHORIZED
+    -> CODEX_CANDIDATE_VERIFICATION
+```
+
+`CANDIDATE_VERIFICATION_AUTHORIZED` is the transaction-local broker authority
+defined by P11-ADR-072. The candidate Runtime Binding remains staged/pending;
+it is neither active nor verified. The session admission fence remains owned
+and held by the transaction, blocks ordinary managed sessions, and admits only
+that transaction's typed internal Codex verifier.
+
+On successful Codex candidate verification:
+
+```text
+close candidate verification authorization
+    -> reverify durable evidence and every bound revision
+    -> commit Runtime Binding
+    -> enter COMMITTED_ACTIVE_USE
+    -> release session admission fence
+```
+
+The Binding cannot become `ACTIVE` before the verification and commit gate.
+On candidate failure, the Runtime closes candidate authorization, denies any
+further candidate Secret resolution, and begins verified rollback. No
+automatic Provider fallback exists.
+
+Direct authorized Provider live validation and post-publication Codex candidate
+verification are separate typed operations. Direct-validation Secret-use
+authority cannot be presented to or reused by the Codex broker. A direct
+Provider request does not replace Codex candidate verification. Each operation
+has its own revisions, approval, time/cost bounds, counters, and non-secret
+audit evidence.
+
 ## Initial session and Remote policy
 
 - Existing and legacy sessions are never migrated, rebound, relabeled, resumed,
@@ -813,12 +961,19 @@ there is no PID-file stale-lock deletion. Journal/snapshot directories are
 `0700`, files `0600`, fixed and owned by `agentbox-runtime`, with the same
 no-follow/trusted-parent rules as the Secret store.
 
-The admission fence is durably set before profile publication and blocks every
-new AgentBox-managed Provider-sensitive session. A complete activation has a
-five-minute wall limit; config publication has a 30-second limit, the approved
-live request its separate 30-second limit, and post-verification 60 seconds.
-Exceeding any limit records `INTERRUPTED`; it never infers success or blindly
-replays the step.
+The session admission fence is durably set before profile publication and
+blocks every new ordinary AgentBox-managed Provider-sensitive session. It
+remains held through candidate verification. Its only exception is the exact
+typed internal verifier of the transaction that owns the fence; the exception
+does not open session admission or create a Session Binding. A fence owned by
+another transaction, or representing conflict/recovery/revocation/inconsistent
+state, denies credential resolution.
+
+A complete activation has a five-minute wall limit; config publication has a
+30-second limit, the approved live request its separate 30-second limit, the
+candidate broker window 60 seconds, and post-verification 60 seconds. Exceeding
+any limit closes candidate authorization and records `INTERRUPTED`; it never
+infers success or blindly replays the step.
 
 Startup reconciliation is deterministic:
 
@@ -826,7 +981,9 @@ Startup reconciliation is deterministic:
 |---|---|
 | Before snapshot/preimage | Abort; verify no mutation; release fence/lock |
 | Snapshot durable, before publication | Verify preimage unchanged; abort; retain audit only |
-| Publication begun/applied, before verified commit | Never silently commit; restore exact preimage and run full rollback verification |
+| Publication begun/applied, before candidate authorization | Never silently commit; restore exact preimage and run full rollback verification |
+| `CANDIDATE_VERIFICATION_AUTHORIZED` or Codex candidate verification | Authorization is immediately unusable after restart/interruption; never reconstruct or reopen it. If invocation count or last Secret-use outcome is uncertain, issue no further candidate Secret and perform verified rollback or enter `NEEDS_ATTENTION` |
+| Candidate verification completed, before verified commit | Close candidate authorization; never silently commit without exact durable evidence/revision agreement; otherwise restore exact preimage and verify rollback |
 | `COMMIT_PENDING` | Commit only if exact plan/revisions, profile digest, Binding uniqueness, Secret/key reference, lifecycle evidence, and both journals agree; otherwise verified rollback |
 | Rollback begun | Resume idempotent exact restoration, then verify |
 | External edit, corrupt/missing journal/snapshot, contradictory state, or failed verification | `NEEDS_ATTENTION`; retain evidence and block mutation/admission |
@@ -995,6 +1152,53 @@ Relevant milestones require:
 - Platform/support claims describe actual fixture/CI/real-host evidence.
 - No tag or Release is created without separate human authorization.
 
+# Human-Review Contract Correction — Candidate Credential Authorization
+
+## Defect found during PR review
+
+The original P11-ADR-072 wording allowed broker resolution only when a Binding
+was already active, verified, and "not fenced." P11-ADR-075 correctly required
+the session admission fence to remain held from publication through candidate
+verification, and P11-ADR-039/P11-ADR-067 correctly prohibited an active
+Binding before that verification. Because Codex requires the command-backed
+broker during candidate verification, those statements formed a circular
+authorization impossibility.
+
+Prematurely marking the Binding active would violate the commit gate and make
+unverified Provider selection authoritative. Removing the fence would reopen
+the ordinary-session race. A raw Secret response, profile bearer capability,
+or generic broker mode would violate the Secret and Runtime boundaries. All
+four approaches remain prohibited.
+
+## Corrected contract
+
+P11-ADR-072 now freezes two broker eligibility modes:
+
+- `COMMITTED_ACTIVE_USE` for an exact verified, committed active Binding; and
+- `CANDIDATE_ACTIVATION_VERIFICATION`, available only during the exact
+  transaction-local `CANDIDATE_VERIFICATION_AUTHORIZED` state.
+
+The candidate state binds the full approved transaction/profile/Provider/
+Credential/Secret/revision/evidence set, lasts no more than 60 seconds, permits
+at most two total broker invocations and two successful resolutions, and is
+closed on every checkpoint/liveness/approval/fence/recovery terminal condition.
+The broker continues to receive only the fixed `codex`, RuntimeBindingID, and
+Binding-revision arguments and resolves transaction authority server-side.
+
+The session admission fence remains mandatory and blocks ordinary sessions;
+only the owning transaction's internal candidate verifier is admitted. Every
+conflict or recovery fence denies Secret resolution. A crash never reconstructs
+or reopens candidate authorization, and an uncertain invocation count or
+Secret-use outcome forces verified rollback or `NEEDS_ATTENTION` without
+another Secret issue.
+
+This correction does not reverse P11-ADR-001 through P11-ADR-070. It makes the
+P11-ADR-023/P11-ADR-030 action-specific Secret boundary executable while
+preserving P11-ADR-039/P11-ADR-067 verified-before-active ordering and
+P11-ADR-069 admission fencing. Technical closure remains complete after this
+correction; repository governance persistence remains blocked until PR #33 is
+reviewed and merged into protected `main`.
+
 # 8. Phase 11.9 Blocker Closure Matrix
 
 | Prior blocker | Result | Closure evidence |
@@ -1009,9 +1213,9 @@ Relevant milestones require:
 | 8. Lossless user config preservation frozen | **CLOSED** | Base config is fingerprint-only and never copied/modified; only wholly AgentBox-owned non-secret profile bytes are reversible |
 | 9. Provider endpoint/private-network policy frozen | **CLOSED** | Public HTTPS port 443 only, all-address validation/pinning, no redirects/proxies/custom CA/private/local destinations |
 | 10. Paid/live test policy frozen | **CLOSED** | Single explicit fixed 8-token request, fixed byte/time bounds, no retry/background probe |
-| 11. Activation/active-session policy frozen | **CLOSED** | New AgentBox-managed work only; affected active/unobservable work blocks; no Remote/session migration/restart/pair |
-| 12. Transaction lock/admission policy frozen | **CLOSED** | 60-second lease/20-second renewal, kernel lock, fixed order, durable admission fence |
-| 13. Crash recovery behavior frozen | **CLOSED** | Exact checkpoint reconciliation table; uncertainty/external edit becomes `NEEDS_ATTENTION` |
+| 11. Activation/active-session policy frozen | **CLOSED** | New managed work only; the Binding remains pending through candidate verification; no Remote/session migration/restart/pair |
+| 12. Transaction lock/admission policy frozen | **CLOSED** | 60-second lease/20-second renewal, kernel lock, fixed order, session fence with one owning-transaction verifier exception, and conflicting/recovery-fence denial |
+| 13. Crash recovery behavior frozen | **CLOSED** | Candidate authorization is never reopened; uncertain broker count/outcome forces verified rollback or `NEEDS_ATTENTION` |
 | 14. Rollback retention frozen | **CLOSED** | One generation per Runtime for 7 days; unresolved state exempt; audit remains 90 days |
 | 15. Implementation governance frozen | **CLOSED** | P11-ADR-076 fixes ADR, PR, security, test, release, and supersession gates |
 
@@ -1032,6 +1236,10 @@ clarifications resolve earlier open alternatives:
   limited to future managed work and cannot affect Remote or historical work.
 - P11-ADR-065 required explicit recovery for unknown state; the crash table
   preserves that behavior and never promotes uncertainty to success.
+- Human review found that the earlier broker predicate could not authorize the
+  pre-commit Codex verifier while preserving the admission fence. The two-mode
+  eligibility contract closes that execution gap without changing
+  verified-before-active ordering or opening ordinary session admission.
 - Phase 11.8 and 11.9 remain historical `BLOCKED` reviews. This document closes
   their technical blockers; it does not rewrite their outcomes.
 - The provisional P11-ADR-071 through 076 titles in Phase 11.9 are superseded

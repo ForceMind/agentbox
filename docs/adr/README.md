@@ -138,6 +138,14 @@ renumbered.
 | P11-ADR-075 | Activation and Recovery Policy | Accepted | [Phase 11.10](../../PHASE11_10_PUBLIC_CONTRACT_EVIDENCE_CLOSURE.md) |
 | P11-ADR-076 | Implementation Governance Contract | Accepted | [Phase 11.10](../../PHASE11_10_PUBLIC_CONTRACT_EVIDENCE_CLOSURE.md) |
 
+Human review of PR #33 corrected P11-ADR-072/P11-ADR-075 without changing their
+identifiers or titles. The broker now has two typed eligibility modes:
+`COMMITTED_ACTIVE_USE` and the transaction-local
+`CANDIDATE_ACTIVATION_VERIFICATION`. Candidate authorization never marks a
+Binding active, never opens ordinary session admission, expires within 60
+seconds, permits at most two durably counted broker invocations/resolutions,
+and is never reconstructed after crash or uncertain Secret use.
+
 ### Historical aliases and superseded provisional allocations
 
 Document-local labels in the Phase 11 design sequence are historical aliases,

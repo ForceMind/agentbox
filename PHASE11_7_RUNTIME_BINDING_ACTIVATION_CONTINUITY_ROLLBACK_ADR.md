@@ -248,6 +248,7 @@ REQUESTED
     -> AWAITING_APPROVAL
     -> APPROVED
     -> ACTIVATING
+    -> CANDIDATE_VERIFICATION_AUTHORIZED
     -> VERIFYING
     -> COMMIT_PENDING
     -> ACTIVE
@@ -266,6 +267,10 @@ REQUESTED
   and expiry.
 - **ACTIVATING** — Phase 11.4 has revalidated, fenced new work, created/verified
   a snapshot, and begun local application/lifecycle work.
+- **CANDIDATE_VERIFICATION_AUTHORIZED** — transaction-local authority admits
+  only the owning activation's internal Codex verifier. The Runtime Binding is
+  still pending, ordinary sessions remain fenced, and no Session Binding is
+  created.
 - **VERIFYING** — candidate is applied but required evidence is incomplete.
 - **COMMIT_PENDING** — Runtime evidence passed; control-plane binding commit and
   Runtime journal acknowledgement are being finalized.
@@ -390,7 +395,7 @@ Immediately before mutation, the transaction:
 1. acquires the control-plane per-Runtime activation lock;
 2. obtains the Runtime-local transaction lock;
 3. establishes a Runtime activation/admission fence preventing new
-   AgentBox-managed work from starting during the critical section;
+   ordinary AgentBox-managed work from starting during the critical section;
 4. refreshes active-writer/session/lifecycle evidence;
 5. revalidates all object revisions, evidence, plan digest, config fingerprint,
    Credential lifecycle, and Secret-version reference;
@@ -400,6 +405,13 @@ Immediately before mutation, the transaction:
 If unmanaged or unobservable work can still race the change, activation blocks
 unless a separately approved maintenance policy establishes safety. The fence
 does not stop or manipulate existing sessions.
+
+The transaction-owned session admission fence remains held through candidate
+verification. It admits only the exact typed internal verifier launched by the
+same transaction; that process is not a user session. A fence owned by another
+transaction or representing external modification, lease loss, rollback,
+reconciliation, revocation, key/store inconsistency, contradictory state, or
+`NEEDS_ATTENTION` denies every credential resolution.
 
 ### 4.6 Snapshot
 
@@ -429,10 +441,28 @@ Runtime gathers the exact post-activation evidence matrix in section 7. The
 control plane evaluates required dimensions under the plan's versioned policy.
 No single endpoint, process, or health result can substitute for the matrix.
 
+Before Codex candidate verification, Runtime enters the exact transaction-local
+state `CANDIDATE_VERIFICATION_AUTHORIZED`. It durably binds transaction,
+Runtime/Binding/Profile/Provider/Credential/Secret revisions, approved plan and
+profile postimage digests, public-contract evidence, lease epoch/expiry, and
+lock/fence ownership. The candidate Binding remains pending and cannot be
+reported active or verified.
+
+The broker window expires within 60 seconds or immediately on any checkpoint,
+verification, approval/evidence, lease, lock/fence, interruption, rollback,
+recovery, or `NEEDS_ATTENTION` terminal condition. It allows at most two
+durably counted broker invocations/resolutions: the initial authentication and
+one retry. A third invocation fails verification. Direct live Provider
+validation is separately typed and its Secret-use authority cannot be reused.
+
 ### 4.9 Commit
 
 Only after all mandatory evidence passes does the control plane:
 
+- close `CANDIDATE_VERIFICATION_AUTHORIZED` and deny further candidate Secret
+  resolution;
+- reverify all durable evidence, revisions, postimage digest, and journal
+  agreement;
 - atomically commit the candidate Runtime Binding as the one `ACTIVE` binding;
 - mark the previous binding `SUPERSEDED` while preserving history/rollback
   references;
@@ -561,9 +591,11 @@ resume an old thread under a new Provider merely to simulate migration.
 
 ### 6.4 Session creation race
 
-The activation admission fence prevents new AgentBox-managed sessions/turns
-from starting between the final active-work check and binding commit/rollback.
-At release, queued work rechecks the committed binding revision and creates its
+The activation session-admission fence prevents new ordinary AgentBox-managed
+sessions/turns from starting between the final active-work check and binding
+commit/rollback. The sole exception is the owning transaction's internal Codex
+candidate verifier; it is not a user session and creates no SessionBinding. At
+release, queued work rechecks the committed Binding revision and creates its
 SessionBinding from fresh public evidence.
 
 Unmanaged or independently started Codex work is outside AgentBox's admission
@@ -784,7 +816,8 @@ commit, or failure.
 | After publish, before journal checkpoint | Compare target candidate/snapshot digests; enter `RECONCILING`, never reapply blindly. |
 | After apply, before lifecycle transition | Decide verified rollback or resume only if the exact next step is idempotent and policy-approved. |
 | During restart/Remote recovery | Observe actual process/socket/Remote state before any lifecycle action; do not issue duplicate stop/start blindly. |
-| During post-validation | Preserve completed dimension evidence; repeat only explicitly safe tests, never an uncertain paid request. |
+| During `CANDIDATE_VERIFICATION_AUTHORIZED` or Codex candidate verification | Candidate authorization becomes unusable and is never reconstructed/reopened. If broker count or the last Secret-use outcome is uncertain, issue no further candidate Secret; perform verified rollback or enter `NEEDS_ATTENTION`. |
+| During other post-validation | Preserve completed dimension evidence; repeat only explicitly safe tests, never an uncertain paid request. |
 | Runtime verified, before DB commit | Remain `COMMIT_PENDING`; finish commit only if every revision/evidence still matches, otherwise roll back or require attention. |
 | DB committed, before Runtime acknowledgement | Verify target/journal/evidence before acknowledging; do not create a second active binding. |
 | During rollback | Determine which prior bytes/lifecycle steps are effective, then continue verification or enter `NEEDS_ATTENTION`. |
@@ -827,8 +860,10 @@ Activation uses:
    unique-active-binding intent;
 2. a Runtime-local transaction lock protecting config, lifecycle, Secret use,
    and verification;
-3. an admission fence preventing new AgentBox-managed sessions/turns/jobs from
-   entering the affected Runtime during the critical section;
+3. a session admission fence preventing new ordinary AgentBox-managed
+   sessions/turns/jobs from entering the affected Runtime during the critical
+   section, while admitting only the owning transaction's typed internal
+   candidate verifier;
 4. config identity/fingerprint checks detecting external writers.
 
 Exact lock primitives and leases remain open. Lock ownership is bound to
@@ -970,6 +1005,11 @@ cannot open AgentBox SQLite or change binding/approval state.
 Control Plane carries only Credential identity, opaque Secret-version reference,
 and safe lifecycle/evidence. Runtime resolves one Secret version for one
 approved operation and supplies only the minimal supported child delivery.
+
+The approved Codex operations are exact committed active use and the bounded
+transaction-local candidate-verification mode. Candidate authority is not
+Binding activation, does not bypass ordinary-session fencing, and is never
+reopened after crash or uncertain Secret use.
 
 Secrets never enter config values, argv, URLs, long-lived service environments,
 SQLite, plans, evidence, snapshots metadata, Audit, logs, reports, or root

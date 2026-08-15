@@ -189,6 +189,7 @@ CREATED
     -> SNAPSHOT_CREATED
     -> APPLYING
     -> APPLIED
+    -> CANDIDATE_VERIFICATION_AUTHORIZED
     -> VERIFYING
     -> COMMIT_PENDING
     -> COMMITTED
@@ -210,6 +211,10 @@ CREATED
   within the adapter-owned scope.
 - **APPLIED** — local publication and immediate reread/format checks completed;
   semantic/runtime verification remains outstanding.
+- **CANDIDATE_VERIFICATION_AUTHORIZED** — transaction-local, post-publication
+  authority exists for only the exact internal Codex candidate verifier. The
+  candidate Binding remains pending, the session admission fence remains held,
+  and ordinary sessions remain blocked. This is not active Binding state.
 - **VERIFYING** — required health, capability, Provider, Runtime, Remote Control,
   and continuity checks are being evaluated independently.
 - **COMMIT_PENDING** — Runtime application and required verification passed,
@@ -260,6 +265,31 @@ Every transition must be:
 
 A timeout indicates unknown outcome until reconciliation. It does not prove
 that the Runtime did nothing.
+
+### 3.4 Candidate credential authorization subflow
+
+For Codex candidate verification, the mutation path contains the exact subflow:
+
+```text
+APPROVED
+    -> SNAPSHOT_DURABLE
+    -> PROFILE_PUBLISHED
+    -> CANDIDATE_VERIFICATION_AUTHORIZED
+    -> CODEX_CANDIDATE_VERIFICATION
+```
+
+The authorization is bound durably to the transaction, lease epoch, lock/fence
+ownership, exact Binding/Profile/Provider/Credential/Secret revisions, plan and
+profile postimage digests, and public-contract evidence. It lasts no more than
+60 seconds and permits no more than two broker invocations/resolutions. Every
+attempt is durably counted before Secret release.
+
+Success closes the candidate authorization before revalidation and Binding
+commit. Failure closes it before verified rollback. Crash, interruption, lease
+or lock/fence loss, recovery, rollback, or `NEEDS_ATTENTION` makes it unusable;
+startup reconciliation never reconstructs or reopens it. An uncertain attempt
+counter or Secret-use outcome prohibits another issue and requires rollback or
+`NEEDS_ATTENTION`.
 
 ## 4. Plan vs Execution Separation
 
@@ -348,8 +378,9 @@ The Runtime adapter must:
   time, not an observed private file format;
 - parse the existing document and preserve unrelated settings;
 - generate only typed, allowlisted Provider-specific options;
-- keep plaintext Secret Material out of ordinary config when a public
-  environment-reference mechanism such as `env_key` is supported;
+- keep plaintext Secret Material out of ordinary config and, for managed Codex
+  v1, emit only the fixed non-secret command-backed broker reference frozen by
+  P11-ADR-072; `env_key` is not an alternate credential-delivery path;
 - reject duplicate/conflicting managed scopes and unsafe values;
 - stage with restrictive ownership/mode in the target directory;
 - validate candidate syntax and schema before publication;
@@ -767,8 +798,12 @@ action into an arbitrary file write.
 
 The control plane carries only CredentialID, SecretRecordID/version reference,
 and safe lifecycle evidence. Runtime resolves plaintext only within the bounded
-Secret-use operation defined by Phase 11.3. Candidate config prefers a public
-environment-variable reference capability; plaintext is never persisted in an
+Secret-use operation defined by Phase 11.3. The final Codex contract uses the
+fixed command-backed broker under either `COMMITTED_ACTIVE_USE` or the exact
+transaction-local `CANDIDATE_ACTIVATION_VERIFICATION` mode; it does not expose
+caller-defined environment injection. Candidate mode preserves the session
+admission fence and verified-before-active ordering while admitting only the
+owning transaction's internal verifier. Plaintext is never persisted in an
 ordinary config, plan, snapshot metadata, journal, audit, log, argv, API, or
 database field.
 
