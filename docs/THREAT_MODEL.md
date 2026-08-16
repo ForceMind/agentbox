@@ -1,7 +1,7 @@
 # AgentBox Threat Model
 
-Status: Phase 1 baseline updated through the Phase 8 installation and
-privileged-runtime implementation
+Status: Phase 1 baseline updated through Phase 11 Slice 2 and the Slice 3
+Secret-boundary architecture authorization review
 Method: pragmatic STRIDE-style analysis focused on AgentBox trust boundaries.
 
 ## Scope and Assets
@@ -44,9 +44,10 @@ TB5: Worker to root Privileged Helper.
 TB6: Runtime Executor to Project Workspaces and third-party CLIs.
 TB7: installer/updater to external repositories/artifacts.
 TB8: live state to backup/export media.
-TB9 (future): Provider Registry and Runtime Binding to Secret Manager, Config
-Transaction Manager, Runtime Continuity Manager, Runtime configuration/lifecycle,
-and external model/API Provider. No implementation exists yet.
+TB9: the Phase 11 non-secret Provider Registry and Runtime Binding metadata is
+present; the Runtime-owned Secret Store, Config Transaction Manager, Runtime
+Continuity Manager, Runtime configuration/lifecycle mutation, and external
+model/API Provider operations remain future, separately authorized boundaries.
 
 Phase 11 Slice 2 narrows TB4 with `runtime.capabilities.query`: the Control
 Plane supplies only a registered Runtime identity/revision and fixed capability
@@ -120,6 +121,16 @@ authority.
 | T-89 | S/T | Forged, stale, or mismatched Runtime report crosses a revision boundary | TB3/TB4 | UDS peer credentials, exact contract, ID/type/set/revision echo, post-IPC revision reread, expiry rejection | wrong-peer and mismatch/race fixtures |
 | T-90 | D/E | Outer capability timeout cancels a probe but leaves its child process running | TB6 | external cancellation terminates only the invocation-owned process group, completes I/O/wait tasks, re-raises cancellation, then releases single flight | real child PID cancellation and collector recovery tests |
 | T-91 | I/T | Runtime exfiltrates bounded text through a capability RPC error code or message | TB4 | exact envelope, closed expected-code mapping, fixed unknown-code collapse, discard remote message/category/retry semantics | error-code/message canary, Audit/log/serialized exception tests |
+| T-92 | I/E | Provider Secret crosses into Web/API/Worker or Control Plane SQLite | TB3/TB9, Provider credentials | Runtime-only authority; opaque `sec_*` reference/version only; no Secret-bearing API, model, event, log, or database field | schema/reachability inspection and Secret canaries across API/DB/WAL/SHM/Audit/logs |
+| T-93 | T/E | Symlink, hard link, ownership drift, or path race redirects the Runtime Secret Store or root key | TB9/Runtime filesystem | fixed Runtime-owned root; no caller path; ancestor/final no-follow checks; regular single-link files; exact UID/GID/modes; same-parent atomic commit and revalidation | parent/final link, owner/mode, swap-race, and inode tests |
+| T-94 | T/D | Missing or corrupt root key is silently replaced while encrypted records exist | TB9/key custody | startup never creates keys; replacement prohibited when any store/keyset/record evidence exists; subsystem unavailable and explicit recovery/re-provisioning required | missing/partial/corrupt state matrix and no-generation spy |
+| T-95 | T/I | Ciphertext, wrapped DEK, or record is substituted across Credential, Runtime, version, or key identity | TB9/envelope | exact RFC 8785 AAD binds Runtime/Credential/Secret/version/DEK/key identities; AES-256-GCM tag verification; immutable records | wrong-AAD/identity/version/key/tag/ciphertext adversarial tests |
+| T-96 | T/I | AES-GCM nonce reuse or uncertain crash state compromises payload/DEK confidentiality | TB9/cryptography/store | independent CSPRNG nonces; unique wrap-nonce index; one payload per DEK; immediate transaction; uncertain result blocks further use; KEK retired before `2^32` wraps | collision injection, crash-boundary, uniqueness, and wrap-count tests |
+| T-97 | I | Secret leaks through TTY ingress, argv, environment, temporary file, exception, diagnostic, or test output | TB3/TB9/process | local real-TTY input only in later slice; echo restoration; fixed non-secret argv; no env/file/clipboard ingress; bounded codes; best-effort memory cleanup | TTY failure matrix and cross-surface canary scan |
+| T-98 | S/T | Forged or replayed provisioning result attaches an arbitrary Runtime Secret reference to Credential metadata | TB3/TB4/TB9 | future expiring single-use authorization binds exact Runtime/Provider/Credential revisions and purpose; Runtime generates reference; Control Plane accepts typed attestation only after revision recheck | replay, stale-revision, wrong-peer, crash-uncertainty, and fabricated-reference tests |
+| T-99 | I | Ordinary backup, migration, release, or uninstall captures Secret Store/key material | TB7/TB8/TB9 | ordinary backup and release allowlists exclude fixed store; update/rollback/default uninstall preserve in place without copying; cross-host recovery re-provisions | archive/manifest canaries, uninstall/update preservation, and fixture-root inspection |
+| T-100 | I/E | Compromised Runtime UID uses a generic vault/decrypt interface to harvest every Provider Secret | TB6/TB9 | no generic get/list/reveal/export; typed purpose/revision-bound operations; admission and transaction policies in later slices; same-UID compromise remains explicit residual risk | operation allowlist, cross-purpose denial, and no-raw-response tests |
+| T-101 | T/D | Store corruption or interrupted key/Secret rotation is auto-repaired, deleted, or falsely reported healthy | TB9/store/recovery | bounded schema/integrity checks; preserve evidence; fail closed to `NEEDS_ATTENTION`; distinct Provider-Secret and root-key rotations; verified references before pruning | corrupt-page/schema/keyset, interrupted rotation, health-code, and no-delete fault tests |
 | T-57 | I | Raw Provider API key enters metadata/output/persistence | TB3/TB9 | opaque Secret reference only; dedicated input/injection channel; field allowlists; no value/suffix/hash in output/audit | schema inspection and cross-store Secret canary scan |
 | T-58 | T/E | Provider config update overwrites unrelated or concurrent Codex settings | TB6/TB9 | parse/preserve, typed managed keys, expected revision/digest, complete validation, stale-plan refusal | golden config and concurrent-edit tests |
 | T-59 | T/E | Symlink/replacement race redirects Provider config or backup write | TB6/TB9 | no-follow/lstat, owner/mode checks, same-directory temp, fingerprint recheck, restrictive atomic replace | symlink/swap/permission race tests |
@@ -231,7 +242,9 @@ typed identities/options, public-contract validation, active-writer preflight,
 full-scope config/lifecycle transactions, rollback verification, and independent
 Provider/Runtime/Remote/thread/context/discovery evidence. Direct mutation of
 private session DB/JSONL/rollout state and automatic Provider failover are
-prohibited. Phase 11 must revisit this model before implementation or real tests.
+prohibited. Phase 11 Slice 3 has now frozen the Runtime-only Secret custody,
+envelope, filesystem, backup, recovery, and first-foundation implementation
+boundary; no Secret Store or Provider mutation is implemented by that review.
 
 ### Web-to-Root Command Injection
 
