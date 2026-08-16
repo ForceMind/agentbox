@@ -13,6 +13,12 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from agentbox_protocol.runtime_capabilities import (
+    RUNTIME_CAPABILITY_ACTION,
+    RuntimeCapabilityQuery,
+)
+
+from agentbox_runtime.capabilities import RuntimeCapabilityCollector
 from agentbox_runtime.claude import ClaudeAdapter, ClaudeSessionManager
 from agentbox_runtime.codex import CodexAdapter, CodexManager
 from agentbox_runtime.git import GitAdapter, validate_branch_name, validate_git_repository_url
@@ -41,6 +47,7 @@ _CLAUDE_PROJECT_ACTIONS = frozenset(
     }
 )
 _ACTIONS = _CODEX_ACTIONS | _CLAUDE_GLOBAL_ACTIONS | _CLAUDE_PROJECT_ACTIONS
+_ACTIONS |= frozenset({RUNTIME_CAPABILITY_ACTION})
 _PROJECT_ACTION_KEYS: dict[str, frozenset[str]] = {
     "project.list": frozenset(),
     "project.create": frozenset({"project_key", "operation_id"}),
@@ -71,13 +78,23 @@ class RuntimeExecutorServer:
         allowed_peer_gids: frozenset[int] | None = None,
         claude_manager: ClaudeSessionManager | None = None,
         project_manager: ProjectWorkspaceManager | None = None,
+        capability_collector: RuntimeCapabilityCollector | None = None,
+        read_timeout_seconds: float = 5.0,
+        write_timeout_seconds: float = 5.0,
+        trailing_timeout_seconds: float = 0.01,
     ) -> None:
+        if read_timeout_seconds <= 0 or write_timeout_seconds <= 0 or trailing_timeout_seconds <= 0:
+            raise ValueError("Runtime socket timeouts must be positive")
         self._socket_path = socket_path
         self._manager = manager
         self._claude_manager = claude_manager
         self._project_manager = project_manager
+        self._capability_collector = capability_collector
         self._allowed_peer_uids = allowed_peer_uids
         self._allowed_peer_gids = allowed_peer_gids or frozenset({os.getegid()})
+        self._read_timeout_seconds = read_timeout_seconds
+        self._write_timeout_seconds = write_timeout_seconds
+        self._trailing_timeout_seconds = trailing_timeout_seconds
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self, *, create_development_parent: bool = False) -> None:
@@ -163,7 +180,7 @@ class RuntimeExecutorServer:
                     writer, "RUNTIME_PEER_FORBIDDEN", "Runtime peer is forbidden"
                 )
                 return
-            raw = await asyncio.wait_for(reader.readline(), timeout=5)
+            raw = await asyncio.wait_for(reader.readline(), timeout=self._read_timeout_seconds)
             if not raw or len(raw) > MAX_RUNTIME_FRAME or not raw.endswith(b"\n"):
                 await self._write_error(
                     writer, "RUNTIME_PROTOCOL_INVALID", "Runtime request is invalid"
@@ -190,7 +207,9 @@ class RuntimeExecutorServer:
                 )
                 return
             try:
-                trailing = await asyncio.wait_for(reader.read(1), timeout=0.01)
+                trailing = await asyncio.wait_for(
+                    reader.read(1), timeout=self._trailing_timeout_seconds
+                )
             except TimeoutError:
                 trailing = b""
             if trailing:
@@ -200,6 +219,8 @@ class RuntimeExecutorServer:
                 return
             action = request["action"]
             expected_keys = {"protocol_version", "action", "request_id"}
+            if action == RUNTIME_CAPABILITY_ACTION:
+                expected_keys = set(RuntimeCapabilityQuery.model_fields)
             if action in _CLAUDE_PROJECT_ACTIONS:
                 expected_keys.add("project_id")
             expected_keys.update(_PROJECT_ACTION_KEYS.get(action, ()))
@@ -279,14 +300,29 @@ class RuntimeExecutorServer:
         transport_socket = writer.get_extra_info("socket")
         if transport_socket is None or not hasattr(socket, "SO_PEERCRED"):
             return False
-        credentials = transport_socket.getsockopt(
-            socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
-        )
-        _pid, uid, gid = struct.unpack("3i", credentials)
+        try:
+            credentials = transport_socket.getsockopt(
+                socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
+            )
+            _pid, uid, gid = struct.unpack("3i", credentials)
+        except (OSError, struct.error):
+            return False
         return uid in self._allowed_peer_uids and gid in self._allowed_peer_gids
 
     async def _dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         action = str(request["action"])
+        if action == RUNTIME_CAPABILITY_ACTION:
+            if self._capability_collector is None:
+                raise RuntimeOperationError(
+                    "RUNTIME_MANAGER_UNAVAILABLE",
+                    "Runtime capability manager is unavailable",
+                    category="unavailable",
+                    retryable=True,
+                )
+            query = RuntimeCapabilityQuery.model_validate_json(
+                json.dumps(request, separators=(",", ":"), ensure_ascii=False)
+            )
+            return (await self._capability_collector.collect(query)).model_dump(mode="json")
         if action == "codex.status":
             return (await self._manager.status()).to_dict()
         if action == "codex.remote.start":
@@ -455,8 +491,7 @@ class RuntimeExecutorServer:
             },
         )
 
-    @staticmethod
-    async def _write(writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
+    async def _write(self, writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
         # UTF-8 avoids the six-byte \uXXXX expansion for bounded Unicode pane
         # output. The payload cap leaves room for worst-case JSON quoting inside
         # the unchanged 64 KiB Runtime frame.
@@ -471,7 +506,7 @@ class RuntimeExecutorServer:
                 b'"retryable":false,"retry_after":null}}\n'
             )
         writer.write(encoded)
-        await writer.drain()
+        await asyncio.wait_for(writer.drain(), timeout=self._write_timeout_seconds)
 
 
 async def _main() -> None:
@@ -516,13 +551,15 @@ async def _main() -> None:
     git = GitAdapter()
     github = GitHubAdapter(git)
     claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
+    codex_manager = CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown)
     server = RuntimeExecutorServer(
         socket_path,
-        CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown),
+        codex_manager,
         allowed_peer_uids=allowed,
         allowed_peer_gids=allowed_gids,
         claude_manager=claude_manager,
         project_manager=ProjectWorkspaceManager(project_registry, git, github),
+        capability_collector=RuntimeCapabilityCollector(codex_manager, claude_manager),
     )
     await server.start(create_development_parent=environment != "production")
     try:

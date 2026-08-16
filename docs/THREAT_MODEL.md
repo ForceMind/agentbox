@@ -48,6 +48,12 @@ TB9 (future): Provider Registry and Runtime Binding to Secret Manager, Config
 Transaction Manager, Runtime Continuity Manager, Runtime configuration/lifecycle,
 and external model/API Provider. No implementation exists yet.
 
+Phase 11 Slice 2 narrows TB4 with `runtime.capabilities.query`: the Control
+Plane supplies only a registered Runtime identity/revision and fixed capability
+set; Runtime returns bounded typed observations over the existing UDS. There is
+no database cache, public endpoint, new transport, Helper path, or mutation
+authority.
+
 ## Threat Register
 
 | ID | STRIDE | Threat | Boundary/assets | Required controls | Verification |
@@ -108,6 +114,12 @@ and external model/API Provider. No implementation exists yet.
 | T-54 | T | npm metadata poisons installation classification | TB6 | fixed npm argv, bounded JSON, known names as hints only, conflict/unknown without mutation | malformed/npm conflict fixtures |
 | T-55 | S/T | Legacy `codex.service` confused with managed daemon | existing host/TB6 | presence is warning only; never adopted, started, stopped, or called authoritative | host read-only check and UI diagnostic review |
 | T-56 | T/D | Third-party CLI changes command/help/output semantics | TB6 | capability detection from current public help, tri-state degradation, exact fixtures, fail-closed mutations | old/malformed/future-help fixtures |
+| T-86 | I | Capability report leaks Runtime paths, raw output, auth or session data | TB4/TB6 | exact report schema, closed codes, bounded reduction, no paths/output/config/private session fields | canary serialization, DB/WAL/SHM, Audit, log and exception scans |
+| T-87 | T/R | Runtime capability evidence is mistaken for permission, adoption, or Provider compatibility | TB3/TB4 | separate evidence domain, no cache/adoption, explicit outcome/lifecycle, internal-only service | repository and reachability tests |
+| T-88 | D/E | Caller turns capability discovery into arbitrary or unbounded execution | TB4/TB6 | one action, two fixed sets, fixed probes/TTL/timeouts/output caps, per-type single flight, no caller command/path/env/parser | protocol fuzz, concurrency and mutation-absence tests |
+| T-89 | S/T | Forged, stale, or mismatched Runtime report crosses a revision boundary | TB3/TB4 | UDS peer credentials, exact contract, ID/type/set/revision echo, post-IPC revision reread, expiry rejection | wrong-peer and mismatch/race fixtures |
+| T-90 | D/E | Outer capability timeout cancels a probe but leaves its child process running | TB6 | external cancellation terminates only the invocation-owned process group, completes I/O/wait tasks, re-raises cancellation, then releases single flight | real child PID cancellation and collector recovery tests |
+| T-91 | I/T | Runtime exfiltrates bounded text through a capability RPC error code or message | TB4 | exact envelope, closed expected-code mapping, fixed unknown-code collapse, discard remote message/category/retry semantics | error-code/message canary, Audit/log/serialized exception tests |
 | T-57 | I | Raw Provider API key enters metadata/output/persistence | TB3/TB9 | opaque Secret reference only; dedicated input/injection channel; field allowlists; no value/suffix/hash in output/audit | schema inspection and cross-store Secret canary scan |
 | T-58 | T/E | Provider config update overwrites unrelated or concurrent Codex settings | TB6/TB9 | parse/preserve, typed managed keys, expected revision/digest, complete validation, stale-plan refusal | golden config and concurrent-edit tests |
 | T-59 | T/E | Symlink/replacement race redirects Provider config or backup write | TB6/TB9 | no-follow/lstat, owner/mode checks, same-directory temp, fingerprint recheck, restrictive atomic replace | symlink/swap/permission race tests |

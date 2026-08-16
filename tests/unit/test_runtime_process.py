@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
@@ -113,6 +114,65 @@ async def test_runner_times_out_and_cleans_up_spawned_process(tmp_path: Path) ->
     spawned_pid = int(pid_file.read_text(encoding="utf-8"))
     with pytest.raises(ProcessLookupError):
         os.kill(spawned_pid, 0)
+
+
+@pytest.mark.anyio
+async def test_runner_external_cancellation_cleans_only_its_spawned_process_group(
+    tmp_path: Path,
+) -> None:
+    runner = ControlledProcessRunner(terminate_grace_seconds=0.1)
+    identity = _trusted_test_python(tmp_path)
+    pid_file = tmp_path / "cancelled.pid"
+    sentinel = await asyncio.create_subprocess_exec(
+        str(identity.path),
+        "-c",
+        "import time; time.sleep(30)",
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    task = asyncio.create_task(
+        runner.run(
+            identity,
+            (
+                "-c",
+                "import os,pathlib,time;"
+                f"pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()));"
+                "time.sleep(30)",
+            ),
+            environment={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+            cwd=tmp_path,
+            timeout_seconds=25,
+            stdout_limit=128,
+            stderr_limit=128,
+        )
+    )
+    try:
+        for _ in range(200):
+            if pid_file.exists():
+                break
+            await asyncio.sleep(0.01)
+        assert pid_file.exists(), "spawned process did not publish its PID"
+        spawned_pid = int(pid_file.read_text(encoding="utf-8"))
+        assert spawned_pid not in {os.getpid(), sentinel.pid}
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        with pytest.raises(ProcessLookupError):
+            os.kill(spawned_pid, 0)
+        assert sentinel.returncode is None
+        os.kill(sentinel.pid, 0)
+    finally:
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        if sentinel.returncode is None:
+            sentinel.terminate()
+        await sentinel.wait()
 
 
 def test_executable_resolution_rejects_broken_and_writable_files(tmp_path: Path) -> None:

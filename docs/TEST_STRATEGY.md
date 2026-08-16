@@ -113,6 +113,45 @@ The branch has 150 backend tests and 22 frontend unit tests. Playwright defines
 screenshots/traces disabled for Pair/output canary safety. CI never invokes real
 Claude or tmux.
 
+## Phase 11 Slice 2 implemented coverage
+
+The read-only Runtime capability suite covers the exact V1 query/report models,
+Codex and Claude fixed capability sets, independent outcome/evidence lifecycle,
+one fixed 60-second UTC TTL, complete deterministic observations, sanitized
+closed finding codes, and no persistent cache. UDS tests cover the new
+`runtime.capabilities.query` action without introducing another socket and
+reject wrong versions/actions/sets/type pairs, missing/extra/duplicate fields,
+wrong scalar types, malformed Unicode/UTF-8, excessive or concatenated frames,
+trailing data, timeouts, and response identity/revision/type/set/capability/time
+drift.
+
+Collector fixtures exercise installed/missing/malformed/conflicting Codex,
+authentication and Remote tri-state behavior, Provider adapter/profile
+validation remaining unavailable, and public-contract unknowns for config
+ownership, writer, resume, and discovery. Claude fixtures cover Runtime-only
+installation/auth/Remote/tmux and exact managed-session count evidence without
+pane capture, private names, or attach commands. A per-type concurrency test
+proves bounded single flight.
+
+Correction coverage keeps supporting-tool evidence independent (including both
+Claude-absent/tmux-present and Claude-present/tmux-absent cases), validates the
+Claude/tmux/managed-session dependency chain at the wire boundary, and rejects
+contradictory counts. A trusted copied executable proves external cancellation
+removes only the runner-owned child process group while an unrelated sentinel
+survives. Fast fake timeouts prove cleanup finishes and the single-flight lock
+is reusable without queue accumulation. Capability RPC fixtures prove expected
+errors map to fixed local codes and arbitrary code/message canaries cannot enter
+exceptions, logs, Audit, diagnostics, or serialized results.
+
+Security tests assert no mutation method, Provider call, Secret access, config
+read/write, private session read, Helper action, `sudo`, `systemctl`, package
+manager, public API/CLI/Web reachability, or migration. Canary data injected
+into fake raw paths/diagnostics/errors must not enter the wire report, internal
+read model, Audit, SQLite/WAL/SHM, logs, diagnostics, or serialized exceptions.
+Control Plane tests require a registered Runtime, enforce exact pre/post IPC
+revision and report membership, audit only allowlisted counts/states, preserve
+synthetic `UNMANAGED`, and create no Provider compatibility evidence.
+
 ## Test layers
 
 | Layer | Primary coverage | Default environment |

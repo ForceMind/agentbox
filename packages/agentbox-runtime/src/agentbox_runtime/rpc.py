@@ -6,8 +6,18 @@ import asyncio
 import contextlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+from agentbox_protocol.runtime_capabilities import (
+    RUNTIME_CAPABILITY_CONTRACT_VERSION,
+    RuntimeCapabilityQuery,
+    RuntimeCapabilityRefreshPolicy,
+    RuntimeCapabilityReport,
+    RuntimeCapabilitySet,
+    RuntimeType,
+)
 
 from agentbox_runtime.models import (
     AuthenticationState,
@@ -75,6 +85,12 @@ DEFAULT_CODEX_STATUS_RPC_TIMEOUT_SECONDS = 70.0
 DEFAULT_CODEX_MUTATION_RPC_TIMEOUT_SECONDS = 100.0
 DEFAULT_CLAUDE_STATUS_RPC_TIMEOUT_SECONDS = 35.0
 DEFAULT_CLAUDE_MUTATION_RPC_TIMEOUT_SECONDS = 35.0
+DEFAULT_RUNTIME_CAPABILITY_RPC_TIMEOUT_SECONDS = 75.0
+_CAPABILITY_REMOTE_ERROR_MAP: dict[str, tuple[str, str, bool]] = {
+    "RUNTIME_PEER_FORBIDDEN": ("RUNTIME_CAPABILITY_PEER_REJECTED", "forbidden", False),
+    "RUNTIME_PROTOCOL_INVALID": ("RUNTIME_CAPABILITY_PROTOCOL_INVALID", "broken", False),
+    "RUNTIME_MANAGER_UNAVAILABLE": ("RUNTIME_CAPABILITY_UNAVAILABLE", "unavailable", True),
+}
 
 
 @runtime_checkable
@@ -103,6 +119,18 @@ class ClaudeRuntimeClient(Protocol):
     async def stop_session(self, request_id: str, project_id: str) -> ClaudeSessionActionResult: ...
 
     async def recent_output(self, request_id: str, project_id: str) -> ClaudeSessionOutput: ...
+
+
+@runtime_checkable
+class RuntimeCapabilityClient(Protocol):
+    async def collect_capabilities(
+        self,
+        request_id: str,
+        runtime_installation_id: str,
+        runtime_installation_revision: int,
+        runtime_type: RuntimeType,
+        capability_set: RuntimeCapabilitySet,
+    ) -> RuntimeCapabilityReport: ...
 
 
 @runtime_checkable
@@ -283,6 +311,14 @@ def _protocol_error() -> RuntimeOperationError:
     )
 
 
+def _capability_protocol_error() -> RuntimeOperationError:
+    return RuntimeOperationError(
+        "RUNTIME_CAPABILITY_PROTOCOL_INVALID",
+        "Runtime capability response is invalid",
+        category="broken",
+    )
+
+
 def _decode_status(data: dict[str, Any]) -> CodexStatus:
     try:
         capabilities_raw = data["capabilities"]
@@ -423,6 +459,172 @@ class UnixClaudeRuntimeClient:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise _protocol_error() from exc
+
+
+class UnixRuntimeCapabilityClient:
+    """Exact-schema read-only capability client over the existing Runtime UDS."""
+
+    def __init__(
+        self,
+        socket_path: Path,
+        *,
+        timeout_seconds: float = DEFAULT_RUNTIME_CAPABILITY_RPC_TIMEOUT_SECONDS,
+    ) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("Runtime capability timeout must be positive")
+        self._socket_path = socket_path
+        self._timeout_seconds = timeout_seconds
+
+    async def collect_capabilities(
+        self,
+        request_id: str,
+        runtime_installation_id: str,
+        runtime_installation_revision: int,
+        runtime_type: RuntimeType,
+        capability_set: RuntimeCapabilitySet,
+    ) -> RuntimeCapabilityReport:
+        query = RuntimeCapabilityQuery(
+            request_id=request_id,
+            capability_contract_version=RUNTIME_CAPABILITY_CONTRACT_VERSION,
+            runtime_installation_id=runtime_installation_id,
+            runtime_installation_revision=runtime_installation_revision,
+            runtime_type=runtime_type,
+            capability_set=capability_set,
+            refresh_policy=RuntimeCapabilityRefreshPolicy.FORCE_FRESH_READ_ONLY,
+        )
+        report = await self._request(query)
+        if (
+            report.runtime_installation_id != query.runtime_installation_id
+            or report.runtime_installation_revision != query.runtime_installation_revision
+            or report.runtime_type is not query.runtime_type
+            or report.capability_set is not query.capability_set
+            or report.capability_contract_version != query.capability_contract_version
+        ):
+            raise _capability_protocol_error()
+        return report
+
+    async def _request(self, query: RuntimeCapabilityQuery) -> RuntimeCapabilityReport:
+        encoded = query.model_dump_json().encode("utf-8") + b"\n"
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(self._socket_path), timeout=2
+            )
+        except (OSError, TimeoutError) as exc:
+            raise RuntimeOperationError(
+                "RUNTIME_CAPABILITY_UNAVAILABLE",
+                "Runtime capability collection is unavailable",
+                category="unavailable",
+                retryable=True,
+            ) from exc
+        try:
+            writer.write(encoded)
+            await asyncio.wait_for(writer.drain(), timeout=2)
+            raw = await asyncio.wait_for(reader.readline(), timeout=self._timeout_seconds)
+            if not raw or len(raw) > MAX_RUNTIME_FRAME or not raw.endswith(b"\n"):
+                raise _capability_protocol_error()
+            try:
+                trailing = await asyncio.wait_for(reader.read(1), timeout=0.01)
+            except TimeoutError:
+                trailing = b""
+            if trailing:
+                raise _capability_protocol_error()
+            payload = strict_json_loads(raw)
+            if not isinstance(payload, dict) or set(payload) != {
+                "protocol_version",
+                "request_id",
+                "data",
+                "error",
+            }:
+                raise _capability_protocol_error()
+            if (
+                type(payload["protocol_version"]) is not int
+                or payload["protocol_version"] != RUNTIME_PROTOCOL_VERSION
+            ):
+                raise _capability_protocol_error()
+            error = payload["error"]
+            data = payload["data"]
+            if error is not None:
+                if payload["request_id"] not in {None, query.request_id}:
+                    raise _capability_protocol_error()
+                self._raise_remote_error(error, data)
+            if payload["request_id"] != query.request_id or not isinstance(data, dict):
+                raise _capability_protocol_error()
+            report = RuntimeCapabilityReport.model_validate_json(
+                json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+            )
+            if datetime.now(UTC) >= report.expires_at:
+                raise _capability_protocol_error()
+            return report
+        except TimeoutError as exc:
+            raise RuntimeOperationError(
+                "RUNTIME_CAPABILITY_TIMEOUT",
+                "Runtime capability collection timed out",
+                category="timeout",
+                retryable=True,
+            ) from exc
+        except OSError as exc:
+            raise RuntimeOperationError(
+                "RUNTIME_CAPABILITY_UNAVAILABLE",
+                "Runtime capability collection is unavailable",
+                category="unavailable",
+                retryable=True,
+            ) from exc
+        except (json.JSONDecodeError, UnicodeError, ValueError, RecursionError) as exc:
+            raise _capability_protocol_error() from exc
+        finally:
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
+
+    @staticmethod
+    def _raise_remote_error(error: object, data: object) -> None:
+        if (
+            not isinstance(error, dict)
+            or data is not None
+            or set(error)
+            != {
+                "code",
+                "category",
+                "message",
+                "retryable",
+                "retry_after",
+            }
+        ):
+            raise _capability_protocol_error()
+        code = error["code"]
+        category = error["category"]
+        message = error["message"]
+        retryable = error["retryable"]
+        retry_after = error["retry_after"]
+        if (
+            not isinstance(code, str)
+            or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,79}", code)
+            or not isinstance(message, str)
+            or len(message) > 256
+            or category
+            not in {
+                "broken",
+                "conflict",
+                "forbidden",
+                "timeout",
+                "unavailable",
+                "unsupported",
+                "validation",
+            }
+            or type(retryable) is not bool
+            or not (retry_after is None or type(retry_after) is int and 1 <= retry_after <= 3600)
+        ):
+            raise _capability_protocol_error()
+        local_code, local_category, local_retryable = _CAPABILITY_REMOTE_ERROR_MAP.get(
+            code,
+            ("RUNTIME_CAPABILITY_REMOTE_ERROR", "broken", False),
+        )
+        raise RuntimeOperationError(
+            local_code,
+            "Runtime capability collection failed",
+            category=local_category,
+            retryable=local_retryable,
+        )
 
 
 class UnixProjectRuntimeClient:

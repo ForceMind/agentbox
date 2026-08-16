@@ -142,6 +142,19 @@ class ClaudeStatus:
 
 
 @dataclass(frozen=True)
+class ClaudeCapabilityStatus:
+    """Read-only Claude facts that exclude session names, paths, and pane content."""
+
+    installed: bool
+    version: str | None
+    authentication: AuthenticationState
+    capabilities: ClaudeCapabilities
+    tmux_installed: bool
+    managed_session_count: int | None
+    managed_session_evidence_available: bool
+
+
+@dataclass(frozen=True)
 class ClaudeSessionActionResult:
     outcome: str
     session: ClaudeSession
