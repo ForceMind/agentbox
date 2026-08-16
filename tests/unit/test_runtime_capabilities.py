@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import agentbox_runtime.capabilities as capability_module
 import pytest
 from agentbox_protocol.runtime_capabilities import (
     CLAUDE_CAPABILITY_NAMES,
@@ -131,6 +132,31 @@ class BlockingCodexSource(CodexSource):
         await self.release.wait()
         assert isinstance(self.value, CodexStatus)
         return self.value
+
+
+class TimeoutThenSuccessCodexSource(CodexSource):
+    def __init__(self, status: CodexStatus, *, timeouts: int) -> None:
+        super().__init__(status)
+        self._timeouts = timeouts
+        self.active = 0
+        self.max_active = 0
+        self.cancellations = 0
+
+    async def status(self) -> CodexStatus:
+        self.calls += 1
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            if self.calls <= self._timeouts:
+                await asyncio.Event().wait()
+            assert isinstance(self.value, CodexStatus)
+            return self.value
+        except asyncio.CancelledError:
+            self.cancellations += 1
+            await asyncio.sleep(0)
+            raise
+        finally:
+            self.active -= 1
 
 
 def codex_status(
@@ -394,6 +420,13 @@ async def test_claude_set_is_runtime_only_and_exposes_only_managed_count() -> No
     assert tuple(item.name for item in report.observations) == CLAUDE_CAPABILITY_NAMES
     assert report.managed_session_count == 3
     assert all("provider" not in item.name.value for item in report.observations)
+    inspection = by_name(report, RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED)
+    assert inspection.outcome is RuntimeCapabilityOutcome.SUPPORTED
+    assert inspection.lifecycle is RuntimeEvidenceLifecycle.VALIDATED
+    assert inspection.dependencies == (
+        RuntimeCapabilityName.CLAUDE_INSTALLED,
+        RuntimeCapabilityName.TMUX_AVAILABLE,
+    )
 
 
 @pytest.mark.anyio
@@ -409,14 +442,27 @@ async def test_claude_tmux_and_managed_evidence_degrade_independently() -> None:
         is RuntimeCapabilityOutcome.UNAVAILABLE
     )
     inspection = by_name(report, RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED)
-    assert inspection.outcome is RuntimeCapabilityOutcome.UNKNOWN
-    assert (
-        inspection.finding_code is RuntimeCapabilityFindingCode.MANAGED_SESSION_EVIDENCE_UNAVAILABLE
-    )
+    assert inspection.outcome is RuntimeCapabilityOutcome.UNAVAILABLE
+    assert inspection.finding_code is RuntimeCapabilityFindingCode.TMUX_UNAVAILABLE
 
 
 @pytest.mark.anyio
-async def test_claude_not_installed_cannot_promote_remote_or_tmux_capabilities() -> None:
+@pytest.mark.parametrize(
+    ("tmux_installed", "tmux_outcome", "tmux_finding"),
+    (
+        (True, RuntimeCapabilityOutcome.SUPPORTED, None),
+        (
+            False,
+            RuntimeCapabilityOutcome.UNAVAILABLE,
+            RuntimeCapabilityFindingCode.TMUX_UNAVAILABLE,
+        ),
+    ),
+)
+async def test_claude_absence_preserves_independent_tmux_evidence(
+    tmux_installed: bool,
+    tmux_outcome: RuntimeCapabilityOutcome,
+    tmux_finding: RuntimeCapabilityFindingCode | None,
+) -> None:
     report = await RuntimeCapabilityCollector(
         CodexSource(codex_status()),
         ClaudeSource(
@@ -425,15 +471,21 @@ async def test_claude_not_installed_cannot_promote_remote_or_tmux_capabilities()
                 version=None,
                 remote_control=CapabilityState.SUPPORTED,
                 remote_start=CapabilityState.SUPPORTED,
-                tmux=True,
+                tmux=tmux_installed,
+                managed_count=None,
+                evidence=False,
             )
         ),
         clock=FixedClock(),
     ).collect(capability_query(RuntimeType.CLAUDE))
-    assert all(
-        observation.outcome is RuntimeCapabilityOutcome.UNAVAILABLE
-        for observation in report.observations
-    )
+    for name in CLAUDE_CAPABILITY_NAMES[:5]:
+        assert by_name(report, name).outcome is RuntimeCapabilityOutcome.UNAVAILABLE
+    tmux = by_name(report, RuntimeCapabilityName.TMUX_AVAILABLE)
+    assert tmux.outcome is tmux_outcome
+    assert tmux.finding_code is tmux_finding
+    inspection = by_name(report, RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED)
+    assert inspection.outcome is RuntimeCapabilityOutcome.UNAVAILABLE
+    assert report.managed_session_count is None
 
 
 @pytest.mark.anyio
@@ -449,6 +501,29 @@ async def test_collector_is_single_flight_without_unbounded_queue() -> None:
     assert source.calls == 1
     source.release.set()
     assert (await first).collection_state is RuntimeCapabilityCollectionState.COMPLETE
+
+
+@pytest.mark.anyio
+async def test_collection_timeout_completes_cancellation_and_releases_single_flight_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(capability_module, "_CODEX_COLLECTION_TIMEOUT_SECONDS", 0.01)
+    source = TimeoutThenSuccessCodexSource(codex_status(), timeouts=2)
+    collector = RuntimeCapabilityCollector(
+        source, ClaudeSource(claude_status()), clock=FixedClock()
+    )
+
+    for _ in range(2):
+        timed_out = await collector.collect(capability_query())
+        assert timed_out.collection_state is RuntimeCapabilityCollectionState.BROKEN
+        assert timed_out.findings == (RuntimeCapabilityFindingCode.PROBE_TIMEOUT,)
+        assert source.active == 0
+
+    recovered = await collector.collect(capability_query())
+    assert recovered.collection_state is RuntimeCapabilityCollectionState.COMPLETE
+    assert source.calls == 3
+    assert source.cancellations == 2
+    assert source.max_active == 1
 
 
 @pytest.mark.anyio

@@ -332,13 +332,14 @@ class ClaudeSessionManager:
         installed, version, authentication, capabilities, _diagnostics = (
             await self._adapter.inspect()
         )
-        if self._tmux.executable() is None:
+        tmux_installed = self._tmux.executable() is not None
+        if not installed or not tmux_installed:
             return ClaudeCapabilityStatus(
                 installed=installed,
                 version=version,
                 authentication=authentication,
                 capabilities=capabilities,
-                tmux_installed=False,
+                tmux_installed=tmux_installed,
                 managed_session_count=None,
                 managed_session_evidence_available=False,
             )

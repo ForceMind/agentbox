@@ -86,6 +86,11 @@ DEFAULT_CODEX_MUTATION_RPC_TIMEOUT_SECONDS = 100.0
 DEFAULT_CLAUDE_STATUS_RPC_TIMEOUT_SECONDS = 35.0
 DEFAULT_CLAUDE_MUTATION_RPC_TIMEOUT_SECONDS = 35.0
 DEFAULT_RUNTIME_CAPABILITY_RPC_TIMEOUT_SECONDS = 75.0
+_CAPABILITY_REMOTE_ERROR_MAP: dict[str, tuple[str, str, bool]] = {
+    "RUNTIME_PEER_FORBIDDEN": ("RUNTIME_CAPABILITY_PEER_REJECTED", "forbidden", False),
+    "RUNTIME_PROTOCOL_INVALID": ("RUNTIME_CAPABILITY_PROTOCOL_INVALID", "broken", False),
+    "RUNTIME_MANAGER_UNAVAILABLE": ("RUNTIME_CAPABILITY_UNAVAILABLE", "unavailable", True),
+}
 
 
 @runtime_checkable
@@ -306,6 +311,14 @@ def _protocol_error() -> RuntimeOperationError:
     )
 
 
+def _capability_protocol_error() -> RuntimeOperationError:
+    return RuntimeOperationError(
+        "RUNTIME_CAPABILITY_PROTOCOL_INVALID",
+        "Runtime capability response is invalid",
+        category="broken",
+    )
+
+
 def _decode_status(data: dict[str, Any]) -> CodexStatus:
     try:
         capabilities_raw = data["capabilities"]
@@ -487,7 +500,7 @@ class UnixRuntimeCapabilityClient:
             or report.capability_set is not query.capability_set
             or report.capability_contract_version != query.capability_contract_version
         ):
-            raise _protocol_error()
+            raise _capability_protocol_error()
         return report
 
     async def _request(self, query: RuntimeCapabilityQuery) -> RuntimeCapabilityReport:
@@ -508,13 +521,13 @@ class UnixRuntimeCapabilityClient:
             await asyncio.wait_for(writer.drain(), timeout=2)
             raw = await asyncio.wait_for(reader.readline(), timeout=self._timeout_seconds)
             if not raw or len(raw) > MAX_RUNTIME_FRAME or not raw.endswith(b"\n"):
-                raise _protocol_error()
+                raise _capability_protocol_error()
             try:
                 trailing = await asyncio.wait_for(reader.read(1), timeout=0.01)
             except TimeoutError:
                 trailing = b""
             if trailing:
-                raise _protocol_error()
+                raise _capability_protocol_error()
             payload = strict_json_loads(raw)
             if not isinstance(payload, dict) or set(payload) != {
                 "protocol_version",
@@ -522,25 +535,25 @@ class UnixRuntimeCapabilityClient:
                 "data",
                 "error",
             }:
-                raise _protocol_error()
+                raise _capability_protocol_error()
             if (
                 type(payload["protocol_version"]) is not int
                 or payload["protocol_version"] != RUNTIME_PROTOCOL_VERSION
             ):
-                raise _protocol_error()
+                raise _capability_protocol_error()
             error = payload["error"]
             data = payload["data"]
             if error is not None:
                 if payload["request_id"] not in {None, query.request_id}:
-                    raise _protocol_error()
+                    raise _capability_protocol_error()
                 self._raise_remote_error(error, data)
             if payload["request_id"] != query.request_id or not isinstance(data, dict):
-                raise _protocol_error()
+                raise _capability_protocol_error()
             report = RuntimeCapabilityReport.model_validate_json(
                 json.dumps(data, separators=(",", ":"), ensure_ascii=False)
             )
             if datetime.now(UTC) >= report.expires_at:
-                raise _protocol_error()
+                raise _capability_protocol_error()
             return report
         except TimeoutError as exc:
             raise RuntimeOperationError(
@@ -557,7 +570,7 @@ class UnixRuntimeCapabilityClient:
                 retryable=True,
             ) from exc
         except (json.JSONDecodeError, UnicodeError, ValueError, RecursionError) as exc:
-            raise _protocol_error() from exc
+            raise _capability_protocol_error() from exc
         finally:
             writer.close()
             with contextlib.suppress(OSError):
@@ -577,7 +590,7 @@ class UnixRuntimeCapabilityClient:
                 "retry_after",
             }
         ):
-            raise _protocol_error()
+            raise _capability_protocol_error()
         code = error["code"]
         category = error["category"]
         message = error["message"]
@@ -599,17 +612,18 @@ class UnixRuntimeCapabilityClient:
                 "validation",
             }
             or type(retryable) is not bool
-            or not (retry_after is None or type(retry_after) is int and retry_after >= 1)
+            or not (retry_after is None or type(retry_after) is int and 1 <= retry_after <= 3600)
         ):
-            raise _protocol_error()
-        if code == "RUNTIME_PEER_FORBIDDEN":
-            code = "RUNTIME_CAPABILITY_PEER_REJECTED"
-        raise RuntimeOperationError(
+            raise _capability_protocol_error()
+        local_code, local_category, local_retryable = _CAPABILITY_REMOTE_ERROR_MAP.get(
             code,
+            ("RUNTIME_CAPABILITY_REMOTE_ERROR", "broken", False),
+        )
+        raise RuntimeOperationError(
+            local_code,
             "Runtime capability collection failed",
-            category=category,
-            retryable=retryable,
-            retry_after=retry_after,
+            category=local_category,
+            retryable=local_retryable,
         )
 
 

@@ -185,20 +185,6 @@ class ControlledProcessRunner:
 
         assert process.stdout is not None
         assert process.stderr is not None
-        if stdin_data is not None:
-            assert process.stdin is not None
-            try:
-                process.stdin.write(stdin_data)
-                await asyncio.wait_for(process.stdin.drain(), timeout=1)
-            except (BrokenPipeError, ConnectionResetError, TimeoutError) as exc:
-                await self._terminate(process)
-                raise RuntimeOperationError(
-                    f"{error_prefix}_STDIN_FAILED",
-                    "Runtime command input could not be delivered",
-                    category="broken",
-                ) from exc
-            finally:
-                process.stdin.close()
         stdout_task = asyncio.create_task(
             self._read_bounded(process.stdout, stdout_limit, error_prefix=error_prefix)
         )
@@ -207,10 +193,26 @@ class ControlledProcessRunner:
         )
         wait_task = asyncio.create_task(process.wait())
         try:
+            if stdin_data is not None:
+                assert process.stdin is not None
+                try:
+                    process.stdin.write(stdin_data)
+                    await asyncio.wait_for(process.stdin.drain(), timeout=1)
+                except (BrokenPipeError, ConnectionResetError, TimeoutError) as exc:
+                    raise RuntimeOperationError(
+                        f"{error_prefix}_STDIN_FAILED",
+                        "Runtime command input could not be delivered",
+                        category="broken",
+                    ) from exc
+                process.stdin.close()
             stdout, stderr, exit_code = await asyncio.wait_for(
                 asyncio.gather(stdout_task, stderr_task, wait_task),
                 timeout=timeout_seconds,
             )
+        except asyncio.CancelledError:
+            await self._terminate(process)
+            await self._finish_tasks(stdout_task, stderr_task, wait_task)
+            raise
         except TimeoutError as exc:
             await self._terminate(process)
             await self._finish_tasks(stdout_task, stderr_task, wait_task)
@@ -224,6 +226,9 @@ class ControlledProcessRunner:
             await self._terminate(process)
             await self._finish_tasks(stdout_task, stderr_task, wait_task)
             raise
+        finally:
+            if process.stdin is not None and not process.stdin.is_closing():
+                process.stdin.close()
         return ProcessResult(argv=argv, exit_code=exit_code, stdout=stdout, stderr=stderr)
 
     async def _read_bounded(

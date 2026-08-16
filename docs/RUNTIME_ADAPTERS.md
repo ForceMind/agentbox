@@ -123,6 +123,18 @@ paths, Runtime HOME, argv/environment, raw stdout/stderr, session names, attach
 commands, pane content, private session data, Pair Codes, credentials, and
 Provider responses. A per-Runtime-type single-flight lock returns bounded
 unavailable evidence rather than queuing an unbounded number of probes.
+Supporting-tool evidence remains independent: for example, missing Claude does
+not erase an independently validated `tmux.available` result. Managed Claude
+session inspection is supported only when Claude and tmux are both available
+and exact AgentBox marker evidence was collected; otherwise its count is null.
+
+The fixed overall collection budgets remain internal and bounded (65 seconds
+for Codex and 30 seconds for Claude). Exceeding one cancels the in-flight
+collector, synchronously terminates only transient probe process groups spawned
+by that invocation, finishes their I/O/wait tasks, and returns `PROBE_TIMEOUT`.
+The single-flight lock is released only after that cleanup completes. Capability
+RPC errors are reduced to a closed Control Plane vocabulary; Runtime-provided
+messages and unrecognized error codes are never propagated.
 
 Codex Provider adapter/profile-validation capabilities remain unavailable with
 `ADAPTER_NOT_IMPLEMENTED`; config ownership remains unknown without reading

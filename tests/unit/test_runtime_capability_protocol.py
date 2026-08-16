@@ -59,6 +59,14 @@ def report(
             lifecycle=RuntimeEvidenceLifecycle.VALIDATED,
             evidence_class=RuntimeEvidenceClass.NO_ACCEPTABLE_EVIDENCE,
             finding_code=RuntimeCapabilityFindingCode.PUBLIC_CONTRACT_UNQUALIFIED,
+            dependencies=(
+                (
+                    RuntimeCapabilityName.CLAUDE_INSTALLED,
+                    RuntimeCapabilityName.TMUX_AVAILABLE,
+                )
+                if name is RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED
+                else ()
+            ),
             observed_at=NOW,
             expires_at=NOW + timedelta(seconds=RUNTIME_CAPABILITY_TTL_SECONDS),
         )
@@ -226,3 +234,71 @@ def test_claude_report_is_runtime_only_and_rejects_config_ownership() -> None:
                 "config_ownership_state": RuntimeConfigOwnershipState.UNKNOWN,
             }
         )
+
+
+def test_claude_managed_session_evidence_requires_exact_supported_dependencies() -> None:
+    value = report(
+        runtime_type=RuntimeType.CLAUDE,
+        capability_set=RuntimeCapabilitySet.CLAUDE_RUNTIME_SESSION_V1,
+    )
+    data = value.model_dump()
+    observations = list(data["observations"])
+    by_name = {item["name"]: item for item in observations}
+    by_name[RuntimeCapabilityName.CLAUDE_INSTALLED]["outcome"] = RuntimeCapabilityOutcome.SUPPORTED
+    by_name[RuntimeCapabilityName.TMUX_AVAILABLE]["outcome"] = RuntimeCapabilityOutcome.SUPPORTED
+    session = by_name[RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED]
+    session.update(
+        outcome=RuntimeCapabilityOutcome.SUPPORTED,
+        lifecycle=RuntimeEvidenceLifecycle.VALIDATED,
+        evidence_class=RuntimeEvidenceClass.AGENTBOX_MANAGED_STATE,
+        finding_code=None,
+    )
+    data.update(
+        observations=tuple(observations),
+        managed_session_count=0,
+        findings=(RuntimeCapabilityFindingCode.PUBLIC_CONTRACT_UNQUALIFIED,),
+    )
+    valid = RuntimeCapabilityReport.model_validate(data)
+    assert valid.managed_session_count == 0
+
+    for name, field, replacement in (
+        (RuntimeCapabilityName.CLAUDE_INSTALLED, "outcome", RuntimeCapabilityOutcome.UNAVAILABLE),
+        (RuntimeCapabilityName.TMUX_AVAILABLE, "outcome", RuntimeCapabilityOutcome.UNAVAILABLE),
+        (
+            RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED,
+            "lifecycle",
+            RuntimeEvidenceLifecycle.DETECTED,
+        ),
+        (
+            RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED,
+            "evidence_class",
+            RuntimeEvidenceClass.NO_ACCEPTABLE_EVIDENCE,
+        ),
+    ):
+        changed = valid.model_dump()
+        changed_observations = list(changed["observations"])
+        changed_by_name = {item["name"]: item for item in changed_observations}
+        changed_by_name[name][field] = replacement
+        changed["observations"] = tuple(changed_observations)
+        with pytest.raises(ValidationError):
+            RuntimeCapabilityReport.model_validate(changed)
+
+
+def test_claude_session_count_and_dependency_contradictions_fail_closed() -> None:
+    value = report(
+        runtime_type=RuntimeType.CLAUDE,
+        capability_set=RuntimeCapabilitySet.CLAUDE_RUNTIME_SESSION_V1,
+    )
+    with pytest.raises(ValidationError):
+        RuntimeCapabilityReport.model_validate({**value.model_dump(), "managed_session_count": 1})
+
+    data = value.model_dump()
+    observations = list(data["observations"])
+    session = next(
+        item
+        for item in observations
+        if item["name"] is RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED
+    )
+    session["dependencies"] = (RuntimeCapabilityName.TMUX_AVAILABLE,)
+    with pytest.raises(ValidationError):
+        RuntimeCapabilityReport.model_validate({**data, "observations": tuple(observations)})

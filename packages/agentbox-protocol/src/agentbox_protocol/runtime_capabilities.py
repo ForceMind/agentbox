@@ -342,4 +342,36 @@ class RuntimeCapabilityReport(StrictRuntimeCapabilityModel):
             and self.config_ownership_state is not RuntimeConfigOwnershipState.NOT_APPLICABLE
         ):
             raise ValueError("Claude config ownership is not a Provider capability")
+        if self.runtime_type is RuntimeType.CLAUDE:
+            observations_by_name = {item.name: item for item in self.observations}
+            installed = observations_by_name[RuntimeCapabilityName.CLAUDE_INSTALLED]
+            tmux = observations_by_name[RuntimeCapabilityName.TMUX_AVAILABLE]
+            session_inspection = observations_by_name[
+                RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED
+            ]
+            required_dependencies = {
+                RuntimeCapabilityName.CLAUDE_INSTALLED,
+                RuntimeCapabilityName.TMUX_AVAILABLE,
+            }
+            if not required_dependencies.issubset(session_inspection.dependencies):
+                raise ValueError("Claude session inspection dependencies are incomplete")
+            session_supported = session_inspection.outcome is RuntimeCapabilityOutcome.SUPPORTED
+            prerequisites_supported = (
+                installed.outcome is RuntimeCapabilityOutcome.SUPPORTED
+                and tmux.outcome is RuntimeCapabilityOutcome.SUPPORTED
+            )
+            evidence_validated = (
+                session_inspection.lifecycle is RuntimeEvidenceLifecycle.VALIDATED
+                and session_inspection.evidence_class is RuntimeEvidenceClass.AGENTBOX_MANAGED_STATE
+            )
+            if session_supported and (
+                not prerequisites_supported
+                or not evidence_validated
+                or self.managed_session_count is None
+            ):
+                raise ValueError("Claude session inspection support is contradictory")
+            if self.managed_session_count is not None and (
+                not session_supported or not prerequisites_supported or not evidence_validated
+            ):
+                raise ValueError("Claude managed session count is contradictory")
         return self

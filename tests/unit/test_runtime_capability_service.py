@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, timedelta
 from pathlib import Path
@@ -24,7 +28,7 @@ from agentbox_core.provider_models import (
     RuntimeSessionProviderBinding,
     RuntimeType,
 )
-from agentbox_core.runtime_capabilities import RuntimeCapabilityService
+from agentbox_core.runtime_capabilities import RuntimeCapabilityClient, RuntimeCapabilityService
 from agentbox_core.services import ControlPlaneServices
 from agentbox_protocol.runtime_capabilities import (
     CLAUDE_CAPABILITY_NAMES,
@@ -33,6 +37,7 @@ from agentbox_protocol.runtime_capabilities import (
     RuntimeAuthenticationState,
     RuntimeCapabilityCollectionState,
     RuntimeCapabilityFindingCode,
+    RuntimeCapabilityName,
     RuntimeCapabilityObservation,
     RuntimeCapabilityOutcome,
     RuntimeCapabilityReport,
@@ -46,6 +51,8 @@ from agentbox_protocol.runtime_capabilities import (
 from agentbox_protocol.runtime_capabilities import (
     RuntimeType as WireRuntimeType,
 )
+from agentbox_runtime.models import RuntimeOperationError
+from agentbox_runtime.rpc import UnixRuntimeCapabilityClient
 from conftest import FakeClock
 from sqlalchemy import func, inspect, select, update
 from sqlalchemy.engine import make_url
@@ -72,6 +79,14 @@ def make_report(
             lifecycle=RuntimeEvidenceLifecycle.VALIDATED,
             evidence_class=RuntimeEvidenceClass.QUALIFIED_PUBLIC_CONTRACT,
             finding_code=RuntimeCapabilityFindingCode.PUBLIC_CONTRACT_UNQUALIFIED,
+            dependencies=(
+                (
+                    RuntimeCapabilityName.CLAUDE_INSTALLED,
+                    RuntimeCapabilityName.TMUX_AVAILABLE,
+                )
+                if name is RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED
+                else ()
+            ),
             observed_at=observed_at,
             expires_at=observed_at + timedelta(seconds=60),
         )
@@ -161,8 +176,8 @@ def runtime(
 def service(
     services: ControlPlaneServices,
     clock: FakeClock,
-    codex: FakeClient,
-    claude: FakeClient | None = None,
+    codex: RuntimeCapabilityClient,
+    claude: RuntimeCapabilityClient | None = None,
 ) -> RuntimeCapabilityService:
     return RuntimeCapabilityService(
         services.database,
@@ -443,3 +458,77 @@ async def test_collection_creates_no_capability_persistence_or_provider_adoption
         file_path = Path(f"{database_path}{suffix}")
         if file_path.exists():
             assert RAW_CANARY.encode() not in file_path.read_bytes()
+
+
+@pytest.mark.anyio
+async def test_remote_error_canary_is_normalized_before_service_audit_or_persistence(
+    services: ControlPlaneServices,
+    clock: FakeClock,
+    settings: Settings,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    code_canary = "SECRET_CANARY_EXFILTRATION_123"
+    message_canary = "REMOTE-SECRET-MESSAGE-CANARY"
+    socket_path = tmp_path / "runtime-error.sock"
+
+    async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        request = json.loads(await reader.readline())
+        writer.write(
+            json.dumps(
+                {
+                    "protocol_version": 1,
+                    "request_id": request["request_id"],
+                    "data": None,
+                    "error": {
+                        "code": code_canary,
+                        "category": "conflict",
+                        "message": message_canary,
+                        "retryable": True,
+                        "retry_after": 5,
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
+        await writer.drain()
+        writer.close()
+        with contextlib.suppress(ConnectionError):
+            await writer.wait_closed()
+
+    server = await asyncio.start_unix_server(handler, path=socket_path)
+    registered = runtime(services)
+    client = UnixRuntimeCapabilityClient(socket_path)
+    try:
+        with caplog.at_level(logging.DEBUG), pytest.raises(RuntimeOperationError) as raised:
+            await service(services, clock, client).collect(
+                request_id="req_remote_error_canary",
+                runtime_installation_id=registered.id,
+                runtime_installation_revision=registered.revision,
+            )
+        assert raised.value.code == "RUNTIME_CAPABILITY_REMOTE_ERROR"
+        serialized = json.dumps(
+            {"code": raised.value.code, "message": raised.value.message},
+            separators=(",", ":"),
+        )
+        with services.database.transaction() as session:
+            events = session.scalars(
+                select(AuditEvent).where(AuditEvent.action == "runtime_capabilities.collected")
+            ).all()
+        assert events == []
+        database_name = make_url(settings.database_url).database
+        assert database_name is not None
+        for suffix in ("", "-wal", "-shm"):
+            file_path = Path(f"{database_name}{suffix}")
+            if file_path.exists():
+                contents = file_path.read_bytes()
+                assert code_canary.encode() not in contents
+                assert message_canary.encode() not in contents
+        for canary in (code_canary, message_canary):
+            assert canary not in raised.value.code
+            assert canary not in raised.value.message
+            assert canary not in serialized
+            assert canary not in caplog.text
+    finally:
+        server.close()
+        await server.wait_closed()

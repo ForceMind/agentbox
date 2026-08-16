@@ -385,84 +385,93 @@ class RuntimeCapabilityCollector:
             None if status.installed else RuntimeCapabilityFindingCode.RUNTIME_NOT_INSTALLED,
         )
         if not status.installed:
-            for name in CLAUDE_CAPABILITY_NAMES[1:]:
+            for name, dependencies in (
+                (
+                    RuntimeCapabilityName.CLAUDE_VERSION_DETECTABLE,
+                    (RuntimeCapabilityName.CLAUDE_INSTALLED,),
+                ),
+                (
+                    RuntimeCapabilityName.CLAUDE_AUTHENTICATION_OBSERVABLE,
+                    (RuntimeCapabilityName.CLAUDE_INSTALLED,),
+                ),
+                (
+                    RuntimeCapabilityName.CLAUDE_REMOTE_CONTROL_AVAILABLE,
+                    (RuntimeCapabilityName.CLAUDE_INSTALLED,),
+                ),
+                (
+                    RuntimeCapabilityName.CLAUDE_REMOTE_START,
+                    (
+                        RuntimeCapabilityName.CLAUDE_INSTALLED,
+                        RuntimeCapabilityName.CLAUDE_REMOTE_CONTROL_AVAILABLE,
+                    ),
+                ),
+            ):
                 add(
                     name,
                     RuntimeCapabilityOutcome.UNAVAILABLE,
                     RuntimeEvidenceLifecycle.VALIDATED,
                     RuntimeEvidenceClass.AGENTBOX_BUILD,
                     RuntimeCapabilityFindingCode.RUNTIME_NOT_INSTALLED,
-                    (RuntimeCapabilityName.CLAUDE_INSTALLED,),
+                    dependencies,
                 )
-            return self._report(
-                query,
-                adapter_id=RuntimeAdapterID.CLAUDE_RUNTIME_ADAPTER_V1,
-                collection_state=RuntimeCapabilityCollectionState.COMPLETE,
-                runtime_version=None,
-                installation_type=RuntimeInstallationType.NOT_APPLICABLE,
-                authentication_state=RuntimeAuthenticationState.UNKNOWN,
-                remote_state=RuntimeRemoteState.UNKNOWN,
-                config_ownership_state=RuntimeConfigOwnershipState.NOT_APPLICABLE,
-                managed_session_count=None,
-                observations=tuple(observations),
-            )
-        add(
-            RuntimeCapabilityName.CLAUDE_VERSION_DETECTABLE,
-            (
-                RuntimeCapabilityOutcome.SUPPORTED
-                if self._safe_version(status.version) is not None
-                else RuntimeCapabilityOutcome.UNKNOWN
-            ),
-            (
-                RuntimeEvidenceLifecycle.VALIDATED
-                if self._safe_version(status.version) is not None
-                else RuntimeEvidenceLifecycle.DETECTED
-            ),
-            RuntimeEvidenceClass.PUBLIC_VERSION,
-            (
-                None
-                if self._safe_version(status.version) is not None
-                else RuntimeCapabilityFindingCode.VERSION_UNAVAILABLE
-            ),
-            (RuntimeCapabilityName.CLAUDE_INSTALLED,),
-        )
-        auth_outcome, auth_finding = self._authentication_observation(status.authentication)
-        add(
-            RuntimeCapabilityName.CLAUDE_AUTHENTICATION_OBSERVABLE,
-            auth_outcome,
-            RuntimeEvidenceLifecycle.VALIDATED,
-            (
-                RuntimeEvidenceClass.PUBLIC_STATUS
-                if status.authentication is not AuthenticationState.UNKNOWN
-                else RuntimeEvidenceClass.NO_ACCEPTABLE_EVIDENCE
-            ),
-            auth_finding,
-            (RuntimeCapabilityName.CLAUDE_INSTALLED,),
-        )
-        for name, state, dependencies in (
-            (
-                RuntimeCapabilityName.CLAUDE_REMOTE_CONTROL_AVAILABLE,
-                status.capabilities.remote_control,
-                (RuntimeCapabilityName.CLAUDE_INSTALLED,),
-            ),
-            (
-                RuntimeCapabilityName.CLAUDE_REMOTE_START,
-                status.capabilities.remote_start,
-                (RuntimeCapabilityName.CLAUDE_REMOTE_CONTROL_AVAILABLE,),
-            ),
-        ):
-            outcome, lifecycle, finding = self._capability_state(
-                state,
-                unknown_finding=RuntimeCapabilityFindingCode.PUBLIC_CONTRACT_UNQUALIFIED,
-            )
+        else:
             add(
-                name,
-                outcome,
-                lifecycle,
-                RuntimeEvidenceClass.PUBLIC_HELP,
-                finding,
-                dependencies,
+                RuntimeCapabilityName.CLAUDE_VERSION_DETECTABLE,
+                (
+                    RuntimeCapabilityOutcome.SUPPORTED
+                    if self._safe_version(status.version) is not None
+                    else RuntimeCapabilityOutcome.UNKNOWN
+                ),
+                (
+                    RuntimeEvidenceLifecycle.VALIDATED
+                    if self._safe_version(status.version) is not None
+                    else RuntimeEvidenceLifecycle.DETECTED
+                ),
+                RuntimeEvidenceClass.PUBLIC_VERSION,
+                (
+                    None
+                    if self._safe_version(status.version) is not None
+                    else RuntimeCapabilityFindingCode.VERSION_UNAVAILABLE
+                ),
+                (RuntimeCapabilityName.CLAUDE_INSTALLED,),
             )
+            auth_outcome, auth_finding = self._authentication_observation(status.authentication)
+            add(
+                RuntimeCapabilityName.CLAUDE_AUTHENTICATION_OBSERVABLE,
+                auth_outcome,
+                RuntimeEvidenceLifecycle.VALIDATED,
+                (
+                    RuntimeEvidenceClass.PUBLIC_STATUS
+                    if status.authentication is not AuthenticationState.UNKNOWN
+                    else RuntimeEvidenceClass.NO_ACCEPTABLE_EVIDENCE
+                ),
+                auth_finding,
+                (RuntimeCapabilityName.CLAUDE_INSTALLED,),
+            )
+            for name, state, dependencies in (
+                (
+                    RuntimeCapabilityName.CLAUDE_REMOTE_CONTROL_AVAILABLE,
+                    status.capabilities.remote_control,
+                    (RuntimeCapabilityName.CLAUDE_INSTALLED,),
+                ),
+                (
+                    RuntimeCapabilityName.CLAUDE_REMOTE_START,
+                    status.capabilities.remote_start,
+                    (RuntimeCapabilityName.CLAUDE_REMOTE_CONTROL_AVAILABLE,),
+                ),
+            ):
+                outcome, lifecycle, finding = self._capability_state(
+                    state,
+                    unknown_finding=RuntimeCapabilityFindingCode.PUBLIC_CONTRACT_UNQUALIFIED,
+                )
+                add(
+                    name,
+                    outcome,
+                    lifecycle,
+                    RuntimeEvidenceClass.PUBLIC_HELP,
+                    finding,
+                    dependencies,
+                )
         add(
             RuntimeCapabilityName.TMUX_AVAILABLE,
             (
@@ -474,33 +483,56 @@ class RuntimeCapabilityCollector:
             RuntimeEvidenceClass.AGENTBOX_BUILD,
             None if status.tmux_installed else RuntimeCapabilityFindingCode.TMUX_UNAVAILABLE,
         )
+        session_supported = (
+            status.installed
+            and status.tmux_installed
+            and status.managed_session_evidence_available
+            and status.managed_session_count is not None
+        )
+        session_unavailable = not status.installed or not status.tmux_installed
         add(
             RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED,
             (
                 RuntimeCapabilityOutcome.SUPPORTED
-                if status.managed_session_evidence_available
-                else RuntimeCapabilityOutcome.UNKNOWN
+                if session_supported
+                else (
+                    RuntimeCapabilityOutcome.UNAVAILABLE
+                    if session_unavailable
+                    else RuntimeCapabilityOutcome.UNKNOWN
+                )
             ),
             (
                 RuntimeEvidenceLifecycle.VALIDATED
-                if status.managed_session_evidence_available
+                if session_supported or session_unavailable
                 else RuntimeEvidenceLifecycle.DETECTED
             ),
             RuntimeEvidenceClass.AGENTBOX_MANAGED_STATE,
             (
                 None
-                if status.managed_session_evidence_available
-                else RuntimeCapabilityFindingCode.MANAGED_SESSION_EVIDENCE_UNAVAILABLE
+                if session_supported
+                else (
+                    RuntimeCapabilityFindingCode.RUNTIME_NOT_INSTALLED
+                    if not status.installed
+                    else (
+                        RuntimeCapabilityFindingCode.TMUX_UNAVAILABLE
+                        if not status.tmux_installed
+                        else RuntimeCapabilityFindingCode.MANAGED_SESSION_EVIDENCE_UNAVAILABLE
+                    )
+                )
             ),
-            (RuntimeCapabilityName.TMUX_AVAILABLE,),
+            (
+                RuntimeCapabilityName.CLAUDE_INSTALLED,
+                RuntimeCapabilityName.TMUX_AVAILABLE,
+            ),
         )
         collection_state = (
             RuntimeCapabilityCollectionState.PARTIAL
             if (
                 status.installed
                 and self._safe_version(status.version) is None
-                or status.tmux_installed
-                and not status.managed_session_evidence_available
+                or status.installed
+                and status.tmux_installed
+                and not session_supported
             )
             else RuntimeCapabilityCollectionState.COMPLETE
         )
@@ -508,14 +540,16 @@ class RuntimeCapabilityCollector:
             query,
             adapter_id=RuntimeAdapterID.CLAUDE_RUNTIME_ADAPTER_V1,
             collection_state=collection_state,
-            runtime_version=self._safe_version(status.version),
+            runtime_version=self._safe_version(status.version) if status.installed else None,
             installation_type=RuntimeInstallationType.NOT_APPLICABLE,
-            authentication_state=RuntimeAuthenticationState(status.authentication.value),
+            authentication_state=(
+                RuntimeAuthenticationState(status.authentication.value)
+                if status.installed
+                else RuntimeAuthenticationState.UNKNOWN
+            ),
             remote_state=RuntimeRemoteState.UNKNOWN,
             config_ownership_state=RuntimeConfigOwnershipState.NOT_APPLICABLE,
-            managed_session_count=(
-                status.managed_session_count if status.managed_session_evidence_available else None
-            ),
+            managed_session_count=(status.managed_session_count if session_supported else None),
             observations=tuple(observations),
         )
 

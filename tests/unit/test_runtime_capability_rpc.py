@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import socket
 import struct
@@ -18,6 +19,7 @@ from agentbox_protocol.runtime_capabilities import (
     RuntimeAuthenticationState,
     RuntimeCapabilityCollectionState,
     RuntimeCapabilityFindingCode,
+    RuntimeCapabilityName,
     RuntimeCapabilityObservation,
     RuntimeCapabilityOutcome,
     RuntimeCapabilityQuery,
@@ -53,6 +55,14 @@ def report_for(
             lifecycle=RuntimeEvidenceLifecycle.VALIDATED,
             evidence_class=RuntimeEvidenceClass.QUALIFIED_PUBLIC_CONTRACT,
             finding_code=RuntimeCapabilityFindingCode.PUBLIC_CONTRACT_UNQUALIFIED,
+            dependencies=(
+                (
+                    RuntimeCapabilityName.CLAUDE_INSTALLED,
+                    RuntimeCapabilityName.TMUX_AVAILABLE,
+                )
+                if name is RuntimeCapabilityName.CLAUDE_SESSION_INSPECT_MANAGED
+                else ()
+            ),
             observed_at=now,
             expires_at=now + timedelta(seconds=60),
         )
@@ -358,7 +368,7 @@ async def test_capability_client_rejects_malformed_or_mismatched_reports(
                 query.runtime_type,
                 query.capability_set,
             )
-        assert raised.value.code == "RUNTIME_PROTOCOL_INVALID"
+        assert raised.value.code == "RUNTIME_CAPABILITY_PROTOCOL_INVALID"
     finally:
         server.close()
         await server.wait_closed()
@@ -479,6 +489,121 @@ async def test_capability_client_normalizes_peer_rejection_without_fallback(
             )
         assert raised.value.code == "RUNTIME_CAPABILITY_PEER_REJECTED"
         assert "CANARY" not in raised.value.message
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("remote_code", "expected_code", "expected_category", "expected_retryable"),
+    (
+        (
+            "RUNTIME_PROTOCOL_INVALID",
+            "RUNTIME_CAPABILITY_PROTOCOL_INVALID",
+            "broken",
+            False,
+        ),
+        (
+            "RUNTIME_MANAGER_UNAVAILABLE",
+            "RUNTIME_CAPABILITY_UNAVAILABLE",
+            "unavailable",
+            True,
+        ),
+    ),
+)
+async def test_capability_client_maps_known_remote_errors_to_fixed_local_semantics(
+    tmp_path: Path,
+    remote_code: str,
+    expected_code: str,
+    expected_category: str,
+    expected_retryable: bool,
+) -> None:
+    query = RuntimeCapabilityQuery.model_validate_json(json.dumps(query_payload()))
+    response = (
+        json.dumps(
+            {
+                "protocol_version": 1,
+                "request_id": query.request_id,
+                "data": None,
+                "error": {
+                    "code": remote_code,
+                    "category": "conflict",
+                    "message": "REMOTE-MESSAGE-CANARY",
+                    "retryable": False,
+                    "retry_after": None,
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
+    socket_path = tmp_path / f"{remote_code}.sock"
+    server = await run_fake_server(socket_path, response)
+    try:
+        with pytest.raises(RuntimeOperationError) as raised:
+            await UnixRuntimeCapabilityClient(socket_path).collect_capabilities(
+                query.request_id,
+                query.runtime_installation_id,
+                query.runtime_installation_revision,
+                query.runtime_type,
+                query.capability_set,
+            )
+        assert raised.value.code == expected_code
+        assert raised.value.category == expected_category
+        assert raised.value.retryable is expected_retryable
+        assert "CANARY" not in raised.value.message
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.anyio
+async def test_capability_client_does_not_propagate_arbitrary_remote_error_canary(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    code_canary = "SECRET_CANARY_EXFILTRATION_123"
+    message_canary = "REMOTE-SECRET-MESSAGE-CANARY"
+    query = RuntimeCapabilityQuery.model_validate_json(json.dumps(query_payload()))
+    response = (
+        json.dumps(
+            {
+                "protocol_version": 1,
+                "request_id": query.request_id,
+                "data": None,
+                "error": {
+                    "code": code_canary,
+                    "category": "conflict",
+                    "message": message_canary,
+                    "retryable": True,
+                    "retry_after": 5,
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
+    socket_path = tmp_path / "unknown-error.sock"
+    server = await run_fake_server(socket_path, response)
+    try:
+        with caplog.at_level(logging.DEBUG), pytest.raises(RuntimeOperationError) as raised:
+            await UnixRuntimeCapabilityClient(socket_path).collect_capabilities(
+                query.request_id,
+                query.runtime_installation_id,
+                query.runtime_installation_revision,
+                query.runtime_type,
+                query.capability_set,
+            )
+        assert raised.value.code == "RUNTIME_CAPABILITY_REMOTE_ERROR"
+        serialized = json.dumps(
+            {"code": raised.value.code, "message": raised.value.message},
+            separators=(",", ":"),
+        )
+        for canary in (code_canary, message_canary):
+            assert canary not in raised.value.code
+            assert canary not in raised.value.message
+            assert canary not in str(raised.value)
+            assert canary not in repr(raised.value)
+            assert canary not in serialized
+            assert canary not in caplog.text
     finally:
         server.close()
         await server.wait_closed()

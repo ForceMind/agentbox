@@ -133,6 +133,16 @@ installation/auth/Remote/tmux and exact managed-session count evidence without
 pane capture, private names, or attach commands. A per-type concurrency test
 proves bounded single flight.
 
+Correction coverage keeps supporting-tool evidence independent (including both
+Claude-absent/tmux-present and Claude-present/tmux-absent cases), validates the
+Claude/tmux/managed-session dependency chain at the wire boundary, and rejects
+contradictory counts. A trusted copied executable proves external cancellation
+removes only the runner-owned child process group while an unrelated sentinel
+survives. Fast fake timeouts prove cleanup finishes and the single-flight lock
+is reusable without queue accumulation. Capability RPC fixtures prove expected
+errors map to fixed local codes and arbitrary code/message canaries cannot enter
+exceptions, logs, Audit, diagnostics, or serialized results.
+
 Security tests assert no mutation method, Provider call, Secret access, config
 read/write, private session read, Helper action, `sudo`, `systemctl`, package
 manager, public API/CLI/Web reachability, or migration. Canary data injected

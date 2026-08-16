@@ -331,6 +331,18 @@ the RuntimeInstallation revision after IPC. Only allowlisted count/state
 metadata is audited. Reports are not cached in SQLite and never manufacture
 Provider compatibility evidence or adoption. The collector has no mutation,
 Provider network, Secret, Helper, `sudo`, `systemctl`, or package-manager path.
+Independent observations cannot erase or promote each other: tmux availability
+is reported even when Claude is absent, while managed-session inspection
+requires validated Claude, tmux, and exact AgentBox marker evidence together.
+
+Fixed overall collection timeouts cancel in-flight read-only probes. The shared
+runner handles external cancellation by synchronously terminating only the
+process group it created, completing/cancelling its stdout, stderr, and wait
+tasks, and re-raising `CancelledError`; pre-existing Runtime services, processes,
+and tmux sessions are outside that authority. The capability client maps the
+small expected Runtime error set to fixed local codes and collapses every other
+valid remote code to `RUNTIME_CAPABILITY_REMOTE_ERROR`, discarding remote
+messages and category/retry claims.
 
 The same-UID Runtime compromise boundary remains: a compromised Runtime identity
 can falsify Runtime-usable observations and compromise Runtime-accessible data.
