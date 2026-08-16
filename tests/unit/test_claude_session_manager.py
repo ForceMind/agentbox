@@ -242,3 +242,27 @@ async def test_recent_output_is_bounded_sanitized_and_ephemeral(tmp_path: Path) 
     assert output.output == "CLAUDE-OUTPUT-CANARY"
     assert output.sensitive is True
     assert "\x1b" not in output.output and "\x00" not in output.output
+
+
+@pytest.mark.anyio
+async def test_capability_status_counts_only_exact_managed_sessions_without_pane_access(
+    tmp_path: Path,
+) -> None:
+    sessions, tmux, _project = manager(tmp_path)
+    name = managed_session_name("project-a")
+    tmux.sessions[name] = managed_session_marker("project-a")
+    tmux.outputs[name] = b"CLAUDE-PANE-SECRET-CANARY"
+
+    async def forbidden_capture(_session_name: str, *, lines: int = 200) -> bytes:
+        del lines
+        raise AssertionError("capability collection must not capture a tmux pane")
+
+    tmux.capture_pane = forbidden_capture  # type: ignore[assignment]
+    status = await sessions.capability_status()
+
+    assert status.installed is True
+    assert status.tmux_installed is True
+    assert status.managed_session_count == 1
+    assert status.managed_session_evidence_available is True
+    assert tmux.killed == []
+    assert tmux.created == []

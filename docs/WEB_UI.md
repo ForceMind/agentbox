@@ -19,6 +19,22 @@ never calls a Runtime binary or socket directly. Project filesystem deletion,
 arbitrary/dangerous Git, the Privileged Helper, installer, systemd, host log
 tools, Provider Manager, and Secret Manager remain absent.
 
+## Interface language contract
+
+The final Web interface defaults to Simplified Chinese (`zh-CN`). This applies
+to all navigation, page and dialog copy, fields, validation, warnings, errors,
+status explanations, empty states, help, tooltips, and accessibility labels,
+including future Provider, Secret, Runtime capability, activation, and rollback
+surfaces. Protocol fields, enum values, stable error/Audit codes, technical
+identifiers, versions, and precise third-party proper names remain English.
+Machine-readable English codes must be mapped to Chinese user-facing text.
+
+Phase 11 Slice 2 adds no route, component, localization framework, or frontend
+string change. The separately reviewed Phase 11 Frontend Slice must audit both
+existing and new visible text so accidental English fallback is not shipped;
+exceptions are limited to proper nouns, technical identifiers, versions,
+deliberately displayed technical paths, and machine-readable codes.
+
 ## Route map
 
 | Route | Authentication | Current behavior |

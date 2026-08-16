@@ -138,6 +138,29 @@ The MVP does not expose arbitrary shell input, full filesystem browsing, unrestr
 9. Fail closed on unknown paths, capabilities, ownership, versions, or confirmation state.
 10. Optimize for a small single server without blocking future multi-user evolution.
 
+## Product Language Contract
+
+The canonical locale for final ordinary-user-facing AgentBox interfaces is
+Simplified Chinese (`zh-CN`). Navigation, titles, buttons, labels, forms,
+validation and confirmation copy, warnings, errors, status explanations, empty
+states, onboarding, help, tooltips, accessibility labels, and future Provider,
+Secret, activation, rollback, and Runtime-capability UX must default to
+Simplified Chinese. Ordinary-user CLI prose should follow the same default
+where practical.
+
+Source identifiers, protocol fields, enum values, database names,
+machine-readable error and Audit codes, branches, commits, technical filenames,
+versions, and external product/protocol proper names remain English where that
+preserves precision. Future UI code must map English machine codes to clear
+Chinese user-facing copy rather than render codes as fallback prose.
+
+Phase 11 Slice 2 records this durable product requirement but does not change
+frontend strings or add an i18n framework. The future Phase 11 Frontend Slice
+must audit existing as well as newly introduced user-visible text. The final
+surface may retain English only for proper nouns, technical identifiers,
+versions, deliberately displayed technical paths, and machine-readable codes;
+accidental English fallback text is a release defect.
+
 ## MVP Success Definition
 
 MVP acceptance requires a single administrator to bootstrap through an isolated
@@ -152,9 +175,11 @@ evidence is stated at its actual Real-host/CI/Fixture/Unsupported level.
 
 Possible post-MVP directions include multiple servers, multiple workspace users, optional Docker development/deployment modes, richer GitHub and PR workflows, bidirectional terminal experiences, hardware/resource scheduling, pluggable Runtime Adapters, enterprise identity, and native mobile clients. These are not commitments and must not distort the MVP architecture.
 
-One explicitly planned post-MVP direction is Phase 11 — Provider, Secret &
-Runtime Continuity Management. It lets administrators select a model/API
-Provider independently of Remote Control while separating a concrete
+Phase 11 — Provider, Secret & Runtime Continuity Management is now proceeding
+as separately reviewed post-MVP slices. Slice 1 provides only non-secret
+Provider metadata, and Slice 2 provides only an internal read-only Runtime
+capability boundary. Later authorized slices may let administrators select a
+model/API Provider independently of Remote Control while separating a concrete
 `ProviderDefinitionID` from stable AgentBox `RuntimeBindingID` intent. It must
 support Official OpenAI, OpenAI-compatible, local, and Runtime-native Providers
 through typed adapters; use platform Secret backends and verified atomic config
@@ -163,8 +188,9 @@ Thread Resume, Context Continuity, and Thread Discovery independently.
 
 Phase 11 does not promise seamless cross-provider history, mutate private
 session DB/JSONL/rollout data, or automatically fail over Providers. It is
-tracked by Issue #23; it is not part of the current MVP or authorization to read
-keys, modify Runtime configuration, restart Runtime, or affect Remote Control.
+tracked by Issue #23 and is not part of the current released MVP. The existence
+of metadata or capability evidence is not authorization to read keys, modify
+Runtime configuration, restart Runtime, or affect Remote Control.
 
 ## Branding and Third Parties
 

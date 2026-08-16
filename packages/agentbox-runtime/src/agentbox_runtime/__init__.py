@@ -1,6 +1,7 @@
 """AgentBox Runtime execution boundary."""
 
 from agentbox_runtime.adapter import CodexRuntime, RuntimeAdapter
+from agentbox_runtime.capabilities import RuntimeCapabilityCollector
 from agentbox_runtime.claude import (
     ClaudeAdapter,
     ClaudeSessionManager,
@@ -16,6 +17,7 @@ from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
     ClaudeCapabilities,
+    ClaudeCapabilityStatus,
     ClaudeSession,
     ClaudeSessionActionResult,
     ClaudeSessionOutput,
@@ -43,9 +45,11 @@ from agentbox_runtime.rpc import (
     ClaudeRuntimeClient,
     CodexRuntimeClient,
     ProjectRuntimeClient,
+    RuntimeCapabilityClient,
     UnixClaudeRuntimeClient,
     UnixCodexRuntimeClient,
     UnixProjectRuntimeClient,
+    UnixRuntimeCapabilityClient,
 )
 from agentbox_runtime.tmux import TmuxAdapter
 
@@ -60,6 +64,7 @@ __all__ = [
     "CodexStatus",
     "ClaudeAdapter",
     "ClaudeCapabilities",
+    "ClaudeCapabilityStatus",
     "ClaudeRuntimeClient",
     "ClaudeSession",
     "ClaudeSessionActionResult",
@@ -85,11 +90,14 @@ __all__ = [
     "RuntimeOperationError",
     "ProjectRegistry",
     "ProjectRuntimeClient",
+    "RuntimeCapabilityClient",
+    "RuntimeCapabilityCollector",
     "ProjectWorkspace",
     "TmuxAdapter",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
+    "UnixRuntimeCapabilityClient",
     "WorkspaceState",
     "attach_command",
     "managed_session_marker",

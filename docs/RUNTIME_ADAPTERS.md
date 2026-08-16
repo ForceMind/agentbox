@@ -97,6 +97,42 @@ Each capability is independently classified:
 
 Capabilities include evidence version and detection age so API/Worker can require refresh before mutation.
 
+## Phase 11 Slice 2 Read-only Capability Contract
+
+Phase 11 Slice 2 adds one observation-only action to the existing
+peer-authenticated Runtime Executor UDS: `runtime.capabilities.query`. It keeps
+`RUNTIME_PROTOCOL_VERSION = 1`, uses capability contract version `1`, and does
+not add another socket or any HTTP/TCP listener. The request accepts one fixed
+`force_fresh_read_only` policy and exactly one server-selected set for the
+registered Runtime type:
+
+- Codex: `codex_provider_runtime_v1`;
+- Claude: `claude_runtime_session_v1`.
+
+Each report contains every capability in its selected set exactly once. Outcome
+(`supported`, `unsupported`, `unavailable`, `unauthenticated`, `broken`, or
+`unknown`) and evidence lifecycle (`unknown`, `detected`, `validated`, or
+`expired`) are independent axes. One collection uses one injected UTC clock
+instant and a fixed, non-configurable 60-second expiry. There is no persistent
+capability cache, and this Runtime evidence is not inserted into Provider
+compatibility evidence tables.
+
+Runtime resolves only fixed public/read-only probes, parses transient bounded
+output, and returns closed finding codes. Reports exclude executable and config
+paths, Runtime HOME, argv/environment, raw stdout/stderr, session names, attach
+commands, pane content, private session data, Pair Codes, credentials, and
+Provider responses. A per-Runtime-type single-flight lock returns bounded
+unavailable evidence rather than queuing an unbounded number of probes.
+
+Codex Provider adapter/profile-validation capabilities remain unavailable with
+`ADAPTER_NOT_IMPLEMENTED`; config ownership remains unknown without reading
+config, and active-writer/resume/discovery remain unknown where the qualified
+public contract is insufficient. Claude reports only Runtime/session
+capabilities and an optional exact AgentBox-managed session count. It does not
+become a Provider type. Capability evidence is evidence, not permission, and
+does not authorize config changes, Provider calls, activation, or any Runtime
+mutation.
+
 ## Detection Pipeline
 
 1. accept an optional administrator-configured stable entrypoint subject to allowed-root policy;

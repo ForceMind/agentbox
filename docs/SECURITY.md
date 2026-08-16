@@ -269,9 +269,11 @@ Capability `unknown` is not authentication success. If a public Codex login
 status is unavailable, AgentBox displays `Unknown`; it never opens Codex auth
 files. An explicit public unauthenticated result blocks Pair.
 
-## Future Provider, Secret, Config, and Continuity Security Boundary
+## Provider, Secret, Config, and Continuity Security Boundary
 
-Phase 11 — Provider, Secret & Runtime Continuity Management is planning only.
+Phase 11 Slice 1 implements non-secret Provider metadata only. Slice 2 adds a
+read-only Runtime capability boundary; Secret custody, configuration mutation,
+Provider validation/activation, and continuity execution remain unimplemented.
 `ProviderDefinitionID` identifies concrete normalized Provider configuration;
 `RuntimeBindingID` expresses stable AgentBox binding intent and is never
 permanently equated with a current Codex provider ID. Ordinary metadata may
@@ -311,6 +313,30 @@ results. Official Provider tests do not run paid full inference by default.
 Active-writer protection uses only public reliable signals; uncertainty requires
 turn-complete confirmation rather than private-state mutation. Automatic
 Provider failover is not planned.
+
+### Phase 11 Slice 2 Runtime capability controls
+
+The existing `runtime.sock` accepts one additional exact action,
+`runtime.capabilities.query`, after filesystem and `SO_PEERCRED` UID/GID checks.
+The protocol carries a registered `RuntimeInstallationID` and revision plus one
+fixed capability-set enum; it has no command, path, environment, parser, TTL,
+or arbitrary capability-list field. Runtime performs a fresh fixed read-only
+collection and returns a strict bounded report with a fixed 60-second expiry.
+
+Raw command output, selected/alternative paths, Runtime HOME, config/auth/tmux
+paths, process/session details, private Codex/Claude state, Pair Codes, and
+credentials are reduced away before the UDS response. The Control Plane
+rechecks identity, revision, complete capability membership, timestamps, and
+the RuntimeInstallation revision after IPC. Only allowlisted count/state
+metadata is audited. Reports are not cached in SQLite and never manufacture
+Provider compatibility evidence or adoption. The collector has no mutation,
+Provider network, Secret, Helper, `sudo`, `systemctl`, or package-manager path.
+
+The same-UID Runtime compromise boundary remains: a compromised Runtime identity
+can falsify Runtime-usable observations and compromise Runtime-accessible data.
+Peer authentication, strict schemas, bounded probing, and Control Plane
+revision checks provide defense in depth and workflow integrity, not isolation
+from a fully compromised Runtime UID.
 
 ## Logs, Recent Output, and Audit
 

@@ -178,3 +178,24 @@ class ProviderInputInvalid(AgentBoxError):
     category = "validation"
     message = "Provider metadata is invalid"
     status_code = 422
+
+
+class RuntimeCapabilityReportInvalid(AgentBoxError):
+    code = "RUNTIME_CAPABILITY_REPORT_INVALID"
+    category = "broken"
+    message = "Runtime capability report is invalid"
+    status_code = 503
+
+
+class RuntimeInstallationRevisionConflict(AgentBoxError):
+    code = "RUNTIME_INSTALLATION_REVISION_CONFLICT"
+    category = "conflict"
+    message = "Runtime installation revision is stale"
+    status_code = 409
+
+
+class RuntimeCapabilityEvidenceExpired(AgentBoxError):
+    code = "RUNTIME_CAPABILITY_EVIDENCE_EXPIRED"
+    category = "conflict"
+    message = "Runtime capability evidence is expired"
+    status_code = 409

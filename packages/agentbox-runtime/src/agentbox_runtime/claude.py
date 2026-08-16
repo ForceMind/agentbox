@@ -16,6 +16,7 @@ from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
     ClaudeCapabilities,
+    ClaudeCapabilityStatus,
     ClaudeSession,
     ClaudeSessionActionResult,
     ClaudeSessionOutput,
@@ -324,6 +325,61 @@ class ClaudeSessionManager:
                 session.state is ClaudeSessionState.NEEDS_INTERACTION for session in sessions
             ),
             diagnostics=diagnostics,
+        )
+
+    async def capability_status(self) -> ClaudeCapabilityStatus:
+        """Collect only bounded public and exact AgentBox-managed session evidence."""
+        installed, version, authentication, capabilities, _diagnostics = (
+            await self._adapter.inspect()
+        )
+        if self._tmux.executable() is None:
+            return ClaudeCapabilityStatus(
+                installed=installed,
+                version=version,
+                authentication=authentication,
+                capabilities=capabilities,
+                tmux_installed=False,
+                managed_session_count=None,
+                managed_session_evidence_available=False,
+            )
+
+        projects = self._projects.list_projects()
+        if len(projects) > 64:
+            return ClaudeCapabilityStatus(
+                installed=installed,
+                version=version,
+                authentication=authentication,
+                capabilities=capabilities,
+                tmux_installed=True,
+                managed_session_count=None,
+                managed_session_evidence_available=False,
+            )
+        managed_session_count = 0
+        try:
+            for project in projects:
+                session_name = managed_session_name(project.project_id)
+                if await self._tmux.has_session(session_name) and await self._tmux.is_managed(
+                    session_name, managed_session_marker(project.project_id)
+                ):
+                    managed_session_count += 1
+        except RuntimeOperationError:
+            return ClaudeCapabilityStatus(
+                installed=installed,
+                version=version,
+                authentication=authentication,
+                capabilities=capabilities,
+                tmux_installed=True,
+                managed_session_count=None,
+                managed_session_evidence_available=False,
+            )
+        return ClaudeCapabilityStatus(
+            installed=installed,
+            version=version,
+            authentication=authentication,
+            capabilities=capabilities,
+            tmux_installed=True,
+            managed_session_count=managed_session_count,
+            managed_session_evidence_available=True,
         )
 
     async def list_sessions(self) -> tuple[ClaudeSession, ...]:
