@@ -607,7 +607,9 @@ def _python_package_inventory(wheelhouse: Path) -> list[dict[str, str]]:
             raise BuildError("Python dependency wheel metadata is invalid") from exc
         name = message.get("Name")
         version = message.get("Version")
-        license_value = message.get("License-Expression") or message.get("License") or "NOASSERTION"
+        license_value = message.get("License-Expression") or message.get("License")
+        if license_value is None:
+            license_value = _license_from_classifiers(message.get_all("Classifier", []))
         homepage = message.get("Home-page") or "NOASSERTION"
         if not name or not version:
             raise BuildError("Python dependency wheel metadata is incomplete")
@@ -704,6 +706,22 @@ def _normalize_license(value: str) -> str:
         "ISC License (ISCL)": "ISC",
     }
     return aliases.get(stripped, stripped if stripped else "NOASSERTION")
+
+
+def _license_from_classifiers(classifiers: list[str]) -> str:
+    license_classifiers = {
+        "License :: OSI Approved :: Apache Software License": "Apache-2.0",
+        "License :: OSI Approved :: BSD License": "BSD-3-Clause",
+        "License :: OSI Approved :: ISC License (ISCL)": "ISC",
+        "License :: OSI Approved :: MIT License": "MIT",
+        "License :: Python Software Foundation License": "PSF-2.0",
+    }
+    observed = {
+        license_classifiers[classifier]
+        for classifier in classifiers
+        if classifier in license_classifiers
+    }
+    return observed.pop() if len(observed) == 1 else "NOASSERTION"
 
 
 def _verify_license_inventory(packages: list[dict[str, str]]) -> None:
