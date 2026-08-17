@@ -26,12 +26,30 @@ system management commands.
 | `/run/agentbox` | `root:agentbox-runtime-ipc` | `3770` | setgid/sticky protected sockets |
 | `/srv/agentbox/projects` | `agentbox-runtime:agentbox-runtime` | `0700` | managed workspaces |
 | `/home/agentbox-runtime` | `agentbox-runtime:agentbox-runtime` | `0700` | independent Runtime config/auth/tmux state |
+| `/home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1` | `agentbox-runtime:agentbox-runtime` | `0700` | Runtime-only Provider Secret Store foundation; absent until explicit initialization |
 | `/opt/agentbox` | `root:root` | `0755` | releases and atomic `current` link |
 
 The database is `/var/lib/agentbox/agentbox.db`; migrations are an installer
 step and never silently run at application startup. The frontend is a prebuilt
 `web/dist` artifact served by the API, so Node and Vite are not production Web
 requirements.
+
+## Runtime Provider Secret Store foundation
+
+Phase 11 Slice 3.1 ships the fixed local maintenance command
+`/opt/agentbox/current/venv/bin/agentbox-runtime-provider-secret initialize`.
+It accepts only the literal `initialize` action, reads no Secret or stdin, and
+creates an empty Runtime-owned Store only when run explicitly as the complete
+`agentbox-runtime:agentbox-runtime` process identity. Runtime startup and health
+inspection never initialize or repair it.
+
+The fixed Store contains `keys/<key-id>.key`, `keyset.json`, and
+`store.sqlite3`. Directories use `0700`; protected files and the bounded SQLite
+rollback journal use `0600`. The implementation rejects links, ownership or
+mode drift, unexpected schema/path objects, and ambiguous partial state. A
+missing or contradictory key after initialization blocks future Secret use; it
+never causes replacement-key generation. Slice 3.1 creates no Credential or
+Secret record and exposes no Web/API/Worker/Runtime-UDS/Helper operation.
 
 ## Services and sockets
 
