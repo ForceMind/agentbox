@@ -50,6 +50,7 @@ SECRET_STORE_MAX_RECORDS = 4096
 SECRET_STORE_BUSY_TIMEOUT_MS = 2_000
 SECRET_STORE_SCHEMA_VERSION = 1
 MAX_SCHEMA_OBJECTS = 32
+MAX_DIRECTORY_ENTRIES = 16
 KEK_WRAP_LIMIT = 2**32
 _STAGING_NAME = re.compile(r"\.v1\.init-[0-9a-f]{32}")
 _KEY_FILE_NAME = re.compile(r"[0-9a-f]{32}\.key")
@@ -137,6 +138,26 @@ CREATE UNIQUE INDEX idx_dek_envelopes_secret_record
     ON dek_envelopes(secret_record_id);
 CREATE UNIQUE INDEX idx_dek_envelopes_wrap_nonce
     ON dek_envelopes(kek_key_id, wrap_nonce);
+CREATE TRIGGER trg_secret_records_no_update
+BEFORE UPDATE ON secret_records
+BEGIN
+    SELECT RAISE(ABORT, 'immutable secret record');
+END;
+CREATE TRIGGER trg_secret_records_no_delete
+BEFORE DELETE ON secret_records
+BEGIN
+    SELECT RAISE(ABORT, 'immutable secret record');
+END;
+CREATE TRIGGER trg_dek_envelopes_no_update
+BEFORE UPDATE ON dek_envelopes
+BEGIN
+    SELECT RAISE(ABORT, 'immutable DEK envelope');
+END;
+CREATE TRIGGER trg_dek_envelopes_no_delete
+BEFORE DELETE ON dek_envelopes
+BEGIN
+    SELECT RAISE(ABORT, 'immutable DEK envelope');
+END;
 """
 
 
@@ -282,14 +303,14 @@ class RuntimeSecretStore:
         try:
             parent_fd = self._ensure_parent_chain(home_fd, layout.identity)
             lock_fd = self._acquire_lock(parent_fd, layout.identity)
-            if "v1" in set(os.listdir(parent_fd)):
+            names = _bounded_directory_names(parent_fd)
+            if "v1" in names:
                 health = self.health()
                 if health.state is SecretStoreHealthState.HEALTHY:
                     return SecretStoreInitializeResult.ALREADY_INITIALIZED
                 if health.state is SecretStoreHealthState.UNAVAILABLE:
                     return SecretStoreInitializeResult.SECRET_STORE_UNAVAILABLE
                 return SecretStoreInitializeResult.SECRET_STORE_NEEDS_ATTENTION
-            names = set(os.listdir(parent_fd))
             if names - {SECRET_STORE_LOCK}:
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
             staging_name = self._new_staging_name()
@@ -301,12 +322,15 @@ class RuntimeSecretStore:
             os.mkdir(SECRET_STORE_KEYS, mode=0o700, dir_fd=stage_fd)
             keys_fd = _open_dir_at(stage_fd, SECRET_STORE_KEYS)
             try:
-                root_key = self._random(ROOT_KEY_BYTES)
-                key_id = derive_key_id(root_key)
-                _write_exclusive_file(keys_fd, f"{key_id}.key", root_key, 0o600)
-                self._fault("after_root_key_write")
-                os.fsync(keys_fd)
-                self._fault("after_key_fsync")
+                root_key = bytearray(self._random(ROOT_KEY_BYTES))
+                try:
+                    key_id = derive_key_id(bytes(root_key))
+                    _write_exclusive_file(keys_fd, f"{key_id}.key", root_key, 0o600)
+                    self._fault("after_root_key_write")
+                    os.fsync(keys_fd)
+                    self._fault("after_key_fsync")
+                finally:
+                    _zero_buffer(root_key)
             finally:
                 os.close(keys_fd)
 
@@ -386,7 +410,7 @@ class RuntimeSecretStore:
                 _validate_directory_fd(next_fd, layout.identity, exact_mode=0o700)
                 os.close(current)
                 current = next_fd
-            names = set(os.listdir(current))
+            names = _bounded_directory_names(current)
             if "v1" in names:
                 return "present"
             return "absent" if not names - {SECRET_STORE_LOCK} else "ambiguous"
@@ -452,17 +476,23 @@ class RuntimeSecretStore:
             connection.execute("PRAGMA synchronous=FULL")
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA trusted_schema=OFF")
-            connection.executescript(_SCHEMA_DDL)
-            connection.execute(
-                "INSERT INTO secret_store_meta VALUES (1, ?, ?, ?, ?)",
-                (STORE_SCHEMA, ENVELOPE_SCHEMA, ALGORITHM_ID, created_at),
-            )
-            connection.execute(
-                "INSERT INTO key_metadata VALUES (?, 1, 'current', 0, ?)",
-                (keyset.current_key_id, created_at),
-            )
-            connection.execute(f"PRAGMA user_version={SECRET_STORE_SCHEMA_VERSION}")
-            connection.commit()
+            connection.executescript("BEGIN IMMEDIATE;\n" + _SCHEMA_DDL)
+            if not connection.in_transaction:
+                raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
+            try:
+                connection.execute(
+                    "INSERT INTO secret_store_meta VALUES (1, ?, ?, ?, ?)",
+                    (STORE_SCHEMA, ENVELOPE_SCHEMA, ALGORITHM_ID, created_at),
+                )
+                connection.execute(
+                    "INSERT INTO key_metadata VALUES (?, 1, 'current', 0, ?)",
+                    (keyset.current_key_id, created_at),
+                )
+                connection.execute(f"PRAGMA user_version={SECRET_STORE_SCHEMA_VERSION}")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
         finally:
             connection.close()
         descriptor = os.open(
@@ -479,7 +509,7 @@ class RuntimeSecretStore:
     def _validate_staging_store(
         self, stage_fd: int, identity: _RuntimeIdentity, keyset: SecretKeyset
     ) -> None:
-        names = set(os.listdir(stage_fd))
+        names = _bounded_directory_names(stage_fd)
         if names != {SECRET_STORE_KEYS, SECRET_STORE_KEYSET, SECRET_STORE_DATABASE}:
             raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
         keyset_fd = _open_regular_at(stage_fd, SECRET_STORE_KEYSET)
@@ -494,14 +524,20 @@ class RuntimeSecretStore:
             if _read_bounded_fd(keyset_fd, KEYSET_MAX_BYTES) != keyset.to_bytes():
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID)
             key_name = f"{keyset.current_key_id}.key"
-            if set(os.listdir(keys_fd)) != {key_name}:
+            if _bounded_directory_names(keys_fd) != {key_name}:
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID)
             key_fd = _open_regular_at(keys_fd, key_name)
             try:
                 _validate_regular_fd(key_fd, identity, exact_mode=0o600)
-                key = _read_bounded_fd(key_fd, ROOT_KEY_BYTES)
-                if len(key) != ROOT_KEY_BYTES or derive_key_id(key) != keyset.current_key_id:
-                    raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID)
+                key = bytearray(_read_bounded_fd(key_fd, ROOT_KEY_BYTES))
+                try:
+                    if (
+                        len(key) != ROOT_KEY_BYTES
+                        or derive_key_id(bytes(key)) != keyset.current_key_id
+                    ):
+                        raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID)
+                finally:
+                    _zero_buffer(key)
                 _verify_name_matches_fd(keys_fd, key_name, key_fd)
             finally:
                 os.close(key_fd)
@@ -517,7 +553,7 @@ class RuntimeSecretStore:
         root_fd = -1
         try:
             parent_fd = self._open_existing_parent(home_fd, layout.identity)
-            parent_names = set(os.listdir(parent_fd))
+            parent_names = _bounded_directory_names(parent_fd)
             if any(_STAGING_NAME.fullmatch(name) for name in parent_names):
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
             if parent_names - {SECRET_STORE_LOCK, "v1"}:
@@ -525,7 +561,7 @@ class RuntimeSecretStore:
             root_fd = _open_dir_at(parent_fd, "v1")
             _validate_directory_fd(root_fd, layout.identity, exact_mode=0o700)
             _verify_name_matches_fd(parent_fd, "v1", root_fd)
-            names = set(os.listdir(root_fd))
+            names = _bounded_directory_names(root_fd)
             allowed = {
                 SECRET_STORE_KEYS,
                 SECRET_STORE_KEYSET,
@@ -564,16 +600,21 @@ class RuntimeSecretStore:
                 key_name = f"{keyset.current_key_id}.key"
                 if _KEY_FILE_NAME.fullmatch(key_name) is None:
                     raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID)
-                if set(os.listdir(keys_fd)) != {key_name}:
+                if _bounded_directory_names(keys_fd) != {key_name}:
                     raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEY_MISSING)
                 key_fd = _open_regular_at(keys_fd, key_name)
                 try:
                     _validate_regular_fd(key_fd, layout.identity, exact_mode=0o600)
-                    root_key = _read_bounded_fd(key_fd, ROOT_KEY_BYTES)
-                    if len(root_key) != ROOT_KEY_BYTES:
-                        raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEY_MISSING)
-                    if derive_key_id(root_key) != keyset.current_key_id:
-                        raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID)
+                    root_key = bytearray(_read_bounded_fd(key_fd, ROOT_KEY_BYTES))
+                    try:
+                        if len(root_key) != ROOT_KEY_BYTES:
+                            raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_KEY_MISSING)
+                        if derive_key_id(bytes(root_key)) != keyset.current_key_id:
+                            raise SecretStoreError(
+                                SecretStoreFindingCode.SECRET_STORE_KEYSET_INVALID
+                            )
+                    finally:
+                        _zero_buffer(root_key)
                     _verify_name_matches_fd(keys_fd, key_name, key_fd)
                 finally:
                     os.close(key_fd)
@@ -634,7 +675,8 @@ class RuntimeSecretStore:
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
             rows = connection.execute(
                 "SELECT type, name, sql FROM sqlite_master "
-                "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+                "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name LIMIT ?",
+                (MAX_SCHEMA_OBJECTS + 1,),
             ).fetchall()
             if len(rows) > MAX_SCHEMA_OBJECTS or tuple(rows) != _expected_schema_inventory():
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
@@ -784,6 +826,16 @@ def _open_regular_at(parent_fd: int, name: str) -> int:
     )
 
 
+def _bounded_directory_names(descriptor: int, *, maximum: int = MAX_DIRECTORY_ENTRIES) -> set[str]:
+    names: set[str] = set()
+    with os.scandir(descriptor) as entries:
+        for entry in entries:
+            if len(names) >= maximum:
+                raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
+            names.add(entry.name)
+    return names
+
+
 def _validate_directory_fd(descriptor: int, identity: _RuntimeIdentity, *, exact_mode: int) -> None:
     details = os.fstat(descriptor)
     if (
@@ -829,7 +881,7 @@ def _verify_name_matches_fd(parent_fd: int, name: str, descriptor: int) -> None:
         raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
 
 
-def _write_exclusive_file(parent_fd: int, name: str, payload: bytes, mode: int) -> None:
+def _write_exclusive_file(parent_fd: int, name: str, payload: bytes | bytearray, mode: int) -> None:
     descriptor = os.open(
         name,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
@@ -837,9 +889,10 @@ def _write_exclusive_file(parent_fd: int, name: str, payload: bytes, mode: int) 
         dir_fd=parent_fd,
     )
     try:
+        view = memoryview(payload)
         written = 0
-        while written < len(payload):
-            count = os.write(descriptor, payload[written:])
+        while written < len(view):
+            count = os.write(descriptor, view[written:])
             if count <= 0:
                 raise OSError(errno.EIO, "short write")
             written += count
@@ -867,6 +920,11 @@ def _read_bounded_fd(descriptor: int, maximum: int) -> bytes:
     if len(value) > maximum:
         raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
     return value
+
+
+def _zero_buffer(value: bytearray) -> None:
+    for index in range(len(value)):
+        value[index] = 0
 
 
 def _rename_noreplace(old_parent_fd: int, old_name: str, new_parent_fd: int, new_name: str) -> None:

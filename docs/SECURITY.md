@@ -298,7 +298,12 @@ RFC 8785 canonical associated data. The foundation exposes only private
 in-memory seal/open verification and a fixed empty-store initialize command;
 it has no provisioning, generic reveal, Runtime UDS action, or Provider call.
 Python memory clearing is best effort and is not claimed as guaranteed
-zeroization. A fully compromised `agentbox-runtime` UID remains capable of
+zeroization. Secret-record and DEK-envelope rows are database-immutable in the
+v1 schema, and initialization creates schema plus metadata in one bounded
+`BEGIN IMMEDIATE` transaction before the staged tree can be committed. Directory
+and SQLite schema inventories are enumerated with fixed upper bounds; excess or
+unexpected objects fail closed.
+A fully compromised `agentbox-runtime` UID remains capable of
 compromising Runtime-usable Provider Secrets.
 
 WSL remains a separate Linux Runtime and must not share a writable Runtime

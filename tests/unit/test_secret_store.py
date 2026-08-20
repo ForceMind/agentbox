@@ -39,6 +39,12 @@ EXPECTED_INDEXES = {
     "idx_dek_envelopes_secret_record",
     "idx_dek_envelopes_wrap_nonce",
 }
+EXPECTED_TRIGGERS = {
+    "trg_secret_records_no_update",
+    "trg_secret_records_no_delete",
+    "trg_dek_envelopes_no_update",
+    "trg_dek_envelopes_no_delete",
+}
 
 
 def _foundation(tmp_path: Path) -> tuple[RuntimeSecretStore, Path]:
@@ -132,6 +138,7 @@ def test_clean_initialization_creates_exact_empty_store(tmp_path: Path) -> None:
         ).fetchall()
         assert {name for kind, name in objects if kind == "table"} == EXPECTED_TABLES
         assert {name for kind, name in objects if kind == "index"} == EXPECTED_INDEXES
+        assert {name for kind, name in objects if kind == "trigger"} == EXPECTED_TRIGGERS
         assert connection.execute("SELECT COUNT(*) FROM secret_records").fetchone() == (0,)
         assert connection.execute("SELECT COUNT(*) FROM dek_envelopes").fetchone() == (0,)
         assert connection.execute("PRAGMA user_version").fetchone() == (1,)
@@ -161,6 +168,37 @@ def test_second_initialization_is_idempotent_and_does_not_generate_another_key(
     assert (
         home / secret_store_module.SECRET_STORE_RELATIVE_ROOT / "keyset.json"
     ).read_bytes() == keyset_before
+
+
+def test_empty_store_schema_and_metadata_use_one_immediate_transaction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    statements: list[str] = []
+    real_connect = sqlite3.connect
+
+    def traced_connect(database: str, timeout: float = 5.0) -> sqlite3.Connection:
+        connection = real_connect(database, timeout=timeout)
+        connection.set_trace_callback(statements.append)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", traced_connect)
+    store, _root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+
+    begin = statements.index("BEGIN IMMEDIATE;")
+    first_schema_write = next(
+        index
+        for index, statement in enumerate(statements)
+        if statement.lstrip().startswith("CREATE TABLE")
+    )
+    first_metadata_write = next(
+        index
+        for index, statement in enumerate(statements)
+        if statement.lstrip().startswith("INSERT INTO secret_store_meta")
+    )
+    commit = statements.index("COMMIT")
+    assert begin < first_schema_write < first_metadata_write < commit
+    assert statements.count("BEGIN IMMEDIATE;") == 1
 
 
 @pytest.mark.parametrize("present", ("key", "keyset", "store", "directory"))
@@ -385,6 +423,35 @@ def test_permission_drift_fails_closed(tmp_path: Path, target: str) -> None:
     assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
 
 
+@pytest.mark.parametrize(("field", "value"), (("st_uid", 9001), ("st_gid", 9002)))
+def test_owner_and_group_drift_fail_closed_without_root(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: int
+) -> None:
+    details = {
+        "st_mode": stat.S_IFREG | 0o600,
+        "st_nlink": 1,
+        "st_uid": 1001,
+        "st_gid": 1002,
+    }
+    details[field] = value
+    monkeypatch.setattr(os, "fstat", lambda _descriptor: SimpleNamespace(**details))
+    with pytest.raises(SecretStoreError, match="SECRET_STORE_PERMISSION_INVALID"):
+        secret_store_module._validate_regular_fd(
+            7,
+            secret_store_module._RuntimeIdentity(1001, 1002),
+            exact_mode=0o600,
+        )
+
+
+def test_directory_inventory_is_bounded_and_fails_closed(tmp_path: Path) -> None:
+    store, root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+    parent = root.parent
+    for index in range(secret_store_module.MAX_DIRECTORY_ENTRIES):
+        (parent / f"unexpected-{index:02d}").mkdir(mode=0o700)
+    assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
+
+
 @pytest.mark.parametrize("kind", ("table", "view", "trigger", "index"))
 def test_unexpected_sqlite_schema_object_fails_health(tmp_path: Path, kind: str) -> None:
     store, root = _foundation(tmp_path)
@@ -441,6 +508,28 @@ def test_unique_secret_identity_version_and_wrap_nonce_constraints(tmp_path: Pat
         connection.rollback()
         with pytest.raises(sqlite3.IntegrityError):
             _insert_pair(connection, suffix="2", version=2, wrap_nonce="N" * 16)
+        connection.rollback()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "UPDATE secret_records SET payload_aad = payload_aad",
+        "DELETE FROM secret_records",
+        "UPDATE dek_envelopes SET wrap_aad = wrap_aad",
+        "DELETE FROM dek_envelopes",
+    ),
+)
+def test_secret_records_and_dek_envelopes_are_database_immutable(
+    tmp_path: Path, statement: str
+) -> None:
+    store, root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+    with _database(root) as connection:
+        _insert_pair(connection, suffix="1", version=1, wrap_nonce="N" * 16)
+        connection.commit()
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            connection.execute(statement)
         connection.rollback()
 
 
@@ -513,13 +602,6 @@ def test_exact_envelope_aad_chain_is_structurally_verified_by_health(tmp_path: P
         )
         connection.execute("UPDATE key_metadata SET successful_wraps = 1")
     assert store.health().state is SecretStoreHealthState.HEALTHY
-
-    with _database(root) as connection:
-        connection.execute(
-            "UPDATE secret_records SET payload_aad = ?",
-            ("A" * len(envelope.payload_aad),),
-        )
-    assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
 
 
 def test_kek_wrap_counter_hard_limit_blocks_without_automatic_rotation(tmp_path: Path) -> None:

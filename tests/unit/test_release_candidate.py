@@ -213,6 +213,27 @@ def test_python_inventory_rejects_ambiguous_license_classifier_fallback(tmp_path
     assert _python_package_inventory(tmp_path)[0]["license"] == "NOASSERTION"
 
 
+@pytest.mark.parametrize(
+    "license_lines",
+    (
+        "Classifier: License :: Other/Proprietary License\n",
+        "Classifier: License :: OSI Approved :: Apache Software License\n"
+        "Classifier: License :: Other/Proprietary License\n",
+    ),
+)
+def test_python_inventory_fails_closed_for_any_unknown_license_classifier(
+    tmp_path: Path, license_lines: str
+) -> None:
+    wheel = tmp_path / "fixture-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "fixture-1.0.dist-info/METADATA",
+            "Metadata-Version: 2.4\nName: fixture\nVersion: 1.0\n" + license_lines,
+        )
+
+    assert _python_package_inventory(tmp_path)[0]["license"] == "NOASSERTION"
+
+
 def test_reviewed_frontend_inventory_matches_normalized_pnpm_shape() -> None:
     root = Path(__file__).resolve().parents[2]
     reviewed = _frontend_package_inventory(root)

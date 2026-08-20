@@ -272,6 +272,11 @@ class _SecretEnvelopeCodec:
         self._kek_key_version = kek_key_version
         self._entropy = entropy
 
+    def _clear_root_key(self) -> None:
+        """Best-effort cleanup for the codec's private mutable key copy."""
+        for index in range(len(self._root_key)):
+            self._root_key[index] = 0
+
     def _random(self, size: int) -> bytes:
         try:
             value = self._entropy(size)
@@ -446,6 +451,7 @@ def run_secret_crypto_self_test() -> bool:
     root = bytearray(os.urandom(ROOT_KEY_BYTES))
     plain = bytearray(base64.urlsafe_b64encode(os.urandom(24)).rstrip(b"="))
     opened = bytearray()
+    codec: _SecretEnvelopeCodec | None = None
     try:
         key_id = derive_key_id(bytes(root))
         codec = _SecretEnvelopeCodec(
@@ -464,6 +470,8 @@ def run_secret_crypto_self_test() -> bool:
     except SecretStoreError:
         return False
     finally:
+        if codec is not None:
+            codec._clear_root_key()
         for buffer in (root, plain, opened):
             for index in range(len(buffer)):
                 buffer[index] = 0

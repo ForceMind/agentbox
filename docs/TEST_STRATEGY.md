@@ -362,6 +362,9 @@ loss, concurrent initialization, and injected interruption at every durability
 boundary. Symlink, hard-link, FIFO, inode-replacement, staging-collision,
 rollback-journal, SQLite corruption/schema-drift, size/count, and keyset
 adversaries fail closed without automatic repair.
+Direct SQLite bypass tests also prove Secret-record and DEK-envelope
+`UPDATE`/`DELETE` rejection, one `BEGIN IMMEDIATE` initialization transaction,
+bounded directory/schema enumeration, and exact immutable trigger inventory.
 
 Cryptographic tests cover the high-level AES-GCM/HKDF envelope, published
 AES-GCM and RFC 8785 vectors, strict unpadded base64url, exact AAD identity
@@ -371,8 +374,9 @@ Material crosses into Control Plane SQLite/WAL/SHM, UDS, Audit, logs,
 diagnostics, backups, release metadata, Web/API/Worker/Helper, or the ordinary
 CLI. Release gates verify exact hashed wheels, supported CPython imports,
 artifact-only offline installation, generated SBOM/licenses/notices, and no
-target PyPI/Rust/source-build requirement. No test initializes the real fixed
-production path.
+target PyPI/Rust/source-build requirement. Unknown or mixed wheel license
+classifiers resolve to `NOASSERTION` and block release inventory verification.
+No test initializes the real fixed production path.
 
 ## Phase 7 coverage
 

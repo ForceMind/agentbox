@@ -716,12 +716,10 @@ def _license_from_classifiers(classifiers: list[str]) -> str:
         "License :: OSI Approved :: MIT License": "MIT",
         "License :: Python Software Foundation License": "PSF-2.0",
     }
-    observed = {
-        license_classifiers[classifier]
-        for classifier in classifiers
-        if classifier in license_classifiers
-    }
-    return observed.pop() if len(observed) == 1 else "NOASSERTION"
+    observed = [classifier for classifier in classifiers if classifier.startswith("License ::")]
+    if len(observed) != 1:
+        return "NOASSERTION"
+    return license_classifiers.get(observed[0], "NOASSERTION")
 
 
 def _verify_license_inventory(packages: list[dict[str, str]]) -> None:

@@ -68,6 +68,7 @@ def test_initialize_cli_accepts_only_fixed_empty_store_action(
         ["initialize", "--secret", "value"],
         ["initialize", "--file", "value"],
         ["initialize", "--key", "value"],
+        ["initialize", "PROVIDER-SECRET-FOUNDATION-CANARY"],
     ),
 )
 def test_initialize_cli_rejects_every_other_operation_and_option(
@@ -203,6 +204,29 @@ def test_ordinary_control_plane_backup_never_copies_runtime_secret_store(
     assert key_canary not in backup_bytes
     assert "provider-secrets" not in manifest
     assert "test-only-canary" not in manifest
+
+
+def test_secret_canary_never_enters_control_plane_sqlite_health_or_temp_names(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    canary = b"PROVIDER-SECRET-FOUNDATION-CANARY"
+    store = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+
+    control_plane_database = tmp_path / "agentbox.db"
+    with sqlite3.connect(control_plane_database) as connection:
+        assert connection.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        connection.execute("CREATE TABLE audit_fixture(result_code TEXT NOT NULL)")
+        connection.execute("INSERT INTO audit_fixture VALUES ('FOUNDATION_HEALTHY')")
+        connection.commit()
+        health_rendering = repr(store.health()).encode("utf-8")
+        control_plane_files = tuple(tmp_path.glob("agentbox.db*"))
+        assert control_plane_files
+        assert all(canary not in path.read_bytes() for path in control_plane_files)
+
+    assert canary not in health_rendering
+    assert canary.decode("ascii") not in caplog.text
+    assert all(canary.decode("ascii") not in path.name for path in tmp_path.rglob("*"))
 
 
 def test_real_production_store_was_not_initialized_by_tests() -> None:

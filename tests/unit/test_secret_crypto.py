@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import traceback
 from dataclasses import replace
 
 import pytest
@@ -81,6 +82,33 @@ def test_envelope_round_trip_uses_independent_material_and_redacts_repr() -> Non
     assert envelope.dek_envelope_id.startswith("dek_")
     assert repr(envelope) == "<_SealedSecretEnvelope redacted>"
     assert "synthetic-provider-value" not in repr(envelope)
+
+
+def test_private_codec_root_copy_has_explicit_best_effort_cleanup() -> None:
+    codec = _codec()
+    codec._clear_root_key()
+    assert bytes(codec._root_key) == bytes(32)
+
+
+def test_secret_canary_is_absent_from_crypto_exception_and_log_rendering(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    canary = b"PROVIDER-SECRET-FOUNDATION-CANARY"
+    codec = _codec()
+    envelope = codec.seal_for_internal_verification(
+        credential_id=CREDENTIAL_ID,
+        credential_kind="api_key",
+        secret_version=1,
+        plaintext=canary,
+    )
+    with pytest.raises(SecretStoreError) as raised:
+        codec.open_for_internal_verification(
+            replace(envelope, payload_ciphertext="A" + envelope.payload_ciphertext[1:])
+        )
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert canary.decode("ascii") not in rendered
+    assert canary.decode("ascii") not in caplog.text
+    assert canary.decode("ascii") not in repr(envelope)
 
 
 @pytest.mark.parametrize(
