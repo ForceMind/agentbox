@@ -37,12 +37,23 @@ AgentBox backups must exclude:
 - raw browser sessions/cookies and recoverable session tokens;
 - administrator plaintext password;
 - OAuth codes, Pair Codes, SSH private keys, complete auth configuration;
+- the complete Runtime Provider Secret Store hierarchy
+  `/home/agentbox-runtime/.local/share/agentbox/provider-secrets`, including
+  root keys, `keyset.json`, `store.sqlite3`, rollback journals, ciphertext,
+  nonces, tags, wrapped DEKs, lock/staging artifacts, Secret IDs, and key IDs;
 - Runtime process memory, environment, tmux pane history by default;
 - caches, temporary downloads, sockets, PID files, lock files;
 - unrelated `/root`, `/home`, `/etc`, system logs, cloudflared, SSH, firewall, x-ui/xray data;
 - userinfo-bearing Git URLs or credential helpers.
 
 Password hashes may be included only in an administrator-approved full state backup protected as sensitive. Session records are revoked/omitted on migration so copied database state cannot replay browser sessions.
+
+An ordinary backup may state only that Provider Secrets are excluded. It must
+not enumerate Secret/key identities or record counts. Host-loss recovery
+restores non-secret AgentBox metadata, explicitly initializes a new empty
+Runtime Secret Store, and re-provisions credentials through a future reviewed
+local ingress flow. Slice 3.1 provides no Secret export, import, recovery bundle,
+or cross-host encrypted migration.
 
 ## SQLite Backup
 

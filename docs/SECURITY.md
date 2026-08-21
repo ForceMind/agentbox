@@ -271,20 +271,44 @@ files. An explicit public unauthenticated result blocks Pair.
 
 ## Provider, Secret, Config, and Continuity Security Boundary
 
-Phase 11 Slice 1 implements non-secret Provider metadata only. Slice 2 adds a
-read-only Runtime capability boundary; Secret custody, configuration mutation,
-Provider validation/activation, and continuity execution remain unimplemented.
+Phase 11 Slice 1 implements non-secret Provider metadata and Slice 2 adds a
+read-only Runtime capability boundary. Slice 3.1 adds only the Runtime-owned
+Secret Store foundation; Secret provisioning, credential reconciliation or
+delivery, configuration mutation, Provider validation/activation, and
+continuity execution remain unimplemented.
 `ProviderDefinitionID` identifies concrete normalized Provider configuration;
 `RuntimeBindingID` expresses stable AgentBox binding intent and is never
 permanently equated with a current Codex provider ID. Ordinary metadata may
 contain name/type, credential-free base URL, model, wire protocol, typed options,
 compatibility evidence, and an opaque Secret reference, but never a raw API key.
 
-Secret values belong to separately approved platform backends: restrictive
-structured files with `0700` directory/`0600` file on Linux, Keychain for the
-ordinary macOS user, and current-user DPAPI on Windows. WSL is a separate Linux
-Runtime and must not share a writable Runtime config directory with Windows
-native. No backend sources a shell environment file. Secret material must not
+On Linux v1, Secret authority belongs only to `agentbox-runtime`; Control Plane,
+Web/API/Worker, Control Plane SQLite, and Root Helper receive neither plaintext
+nor ciphertext. The fixed foundation root is
+`/home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1`, with `0700`
+directories and `0600` protected files. Explicit initialization creates a raw
+32-byte CSPRNG root key, strict bounded non-secret `keyset.json`, and an empty
+dedicated `store.sqlite3`; startup and read-only health never create or replace
+key material. Missing/corrupt custody after initialization fails closed and
+requires operator recovery or future re-provisioning.
+
+The frozen envelope uses per-version 32-byte DEKs, HKDF-SHA-256 purpose-separated
+KEKs, AES-256-GCM payload/wrap encryption with independent 12-byte nonces, and
+RFC 8785 canonical associated data. The foundation exposes only private
+in-memory seal/open verification and a fixed empty-store initialize command;
+it has no provisioning, generic reveal, Runtime UDS action, or Provider call.
+Python memory clearing is best effort and is not claimed as guaranteed
+zeroization. Secret-record and DEK-envelope rows are database-immutable in the
+v1 schema, and initialization creates schema plus metadata in one bounded
+`BEGIN IMMEDIATE` transaction before the staged tree can be committed. Directory
+and SQLite schema inventories are enumerated with fixed upper bounds; excess or
+unexpected objects fail closed.
+A fully compromised `agentbox-runtime` UID remains capable of
+compromising Runtime-usable Provider Secrets.
+
+WSL remains a separate Linux Runtime and must not share a writable Runtime
+config directory with Windows native. No backend sources a shell environment
+file. Secret material must not
 enter argv, URL, process listings, avoidable ordinary TOML, CLI/Web output,
 automatic clipboard, Web Storage, logs, Audit, Git, reports, Jobs, backups,
 diagnostics, exceptions, or fixtures. Provider tests inject Authorization via a

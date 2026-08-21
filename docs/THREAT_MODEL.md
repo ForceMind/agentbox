@@ -244,7 +244,10 @@ Provider/Runtime/Remote/thread/context/discovery evidence. Direct mutation of
 private session DB/JSONL/rollout state and automatic Provider failover are
 prohibited. Phase 11 Slice 3 has now frozen the Runtime-only Secret custody,
 envelope, filesystem, backup, recovery, and first-foundation implementation
-boundary; no Secret Store or Provider mutation is implemented by that review.
+boundary. Slice 3.1 implements only that fixed-path empty-Store, key-custody,
+envelope, integrity, and packaging foundation. It still implements no Secret
+provisioning, credential broker, Provider request, config mutation, or Provider
+activation.
 
 ### Web-to-Root Command Injection
 

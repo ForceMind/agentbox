@@ -176,6 +176,64 @@ def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Pat
     assert _python_package_inventory(tmp_path) == []
 
 
+def test_python_inventory_uses_closed_license_classifier_fallback(tmp_path: Path) -> None:
+    wheel = tmp_path / "rfc8785-0.1.4-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "rfc8785-0.1.4.dist-info/METADATA",
+            "Metadata-Version: 2.4\n"
+            "Name: rfc8785\n"
+            "Version: 0.1.4\n"
+            "Classifier: License :: OSI Approved :: Apache Software License\n",
+        )
+
+    assert _python_package_inventory(tmp_path) == [
+        {
+            "name": "rfc8785",
+            "version": "0.1.4",
+            "license": "Apache-2.0",
+            "download": "NOASSERTION",
+            "manager": "pypi",
+        }
+    ]
+
+
+def test_python_inventory_rejects_ambiguous_license_classifier_fallback(tmp_path: Path) -> None:
+    wheel = tmp_path / "fixture-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "fixture-1.0.dist-info/METADATA",
+            "Metadata-Version: 2.4\n"
+            "Name: fixture\n"
+            "Version: 1.0\n"
+            "Classifier: License :: OSI Approved :: Apache Software License\n"
+            "Classifier: License :: OSI Approved :: MIT License\n",
+        )
+
+    assert _python_package_inventory(tmp_path)[0]["license"] == "NOASSERTION"
+
+
+@pytest.mark.parametrize(
+    "license_lines",
+    (
+        "Classifier: License :: Other/Proprietary License\n",
+        "Classifier: License :: OSI Approved :: Apache Software License\n"
+        "Classifier: License :: Other/Proprietary License\n",
+    ),
+)
+def test_python_inventory_fails_closed_for_any_unknown_license_classifier(
+    tmp_path: Path, license_lines: str
+) -> None:
+    wheel = tmp_path / "fixture-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            "fixture-1.0.dist-info/METADATA",
+            "Metadata-Version: 2.4\nName: fixture\nVersion: 1.0\n" + license_lines,
+        )
+
+    assert _python_package_inventory(tmp_path)[0]["license"] == "NOASSERTION"
+
+
 def test_reviewed_frontend_inventory_matches_normalized_pnpm_shape() -> None:
     root = Path(__file__).resolve().parents[2]
     reviewed = _frontend_package_inventory(root)

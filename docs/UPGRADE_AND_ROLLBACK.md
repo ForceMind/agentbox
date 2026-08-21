@@ -67,7 +67,11 @@ Artifacts download into root-owned staging with strict origin, TLS, timeout, red
 - Defaults are merged only for absent keys; administrator values are not overwritten.
 - Unknown/deprecated keys are reported with migration guidance.
 - Generated replacement is written to staging, validated, permissions checked, then atomically renamed.
-- Secrets are not migrated because AgentBox config does not store third-party credentials.
+- Control Plane configuration and SQLite never store or migrate Provider Secret
+  Material. The independent Runtime-owned Provider Secret Store is preserved in
+  place across upgrade, rollback, and reinstall; lifecycle backups exclude it,
+  and an older release that cannot understand its format must fail Provider
+  operations closed without rewriting Store bytes.
 
 ## Frontend Static Files
 

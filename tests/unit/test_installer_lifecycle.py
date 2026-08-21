@@ -79,6 +79,11 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     config.write_text(config.read_text() + "session_ttl = 7200\n", encoding="utf-8")
     project = layout.map("/srv/agentbox/projects/preserved.txt")
     project.write_text("preserve me", encoding="utf-8")
+    provider_store = layout.map(
+        "/home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1/store.sqlite3"
+    )
+    provider_store.parent.mkdir(parents=True)
+    provider_store.write_bytes(b"synthetic-secret-store-preservation-canary")
     with sqlite3.connect(layout.database) as connection:
         connection.execute("CREATE TABLE admin_fixture(value TEXT)")
         connection.execute("INSERT INTO admin_fixture VALUES ('preserved')")
@@ -101,6 +106,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert secret_value not in layout.receipt.read_text(encoding="utf-8")
     assert "session_ttl = 7200" in config.read_text()
     assert project.read_text() == "preserve me"
+    assert provider_store.read_bytes() == b"synthetic-secret-store-preservation-canary"
     with sqlite3.connect(layout.database) as connection:
         assert connection.execute("SELECT value FROM admin_fixture").fetchone() == ("preserved",)
     assert stat_mode(layout.map("/var/lib/agentbox")) == 0o1770
@@ -285,6 +291,11 @@ def test_uninstall_removes_only_program_files_and_preserves_all_data(tmp_path: P
     runtime_auth = layout.map("/home/agentbox-runtime/.codex")
     runtime_auth.mkdir()
     (runtime_auth / "fixture").write_text("preserved")
+    provider_store = layout.map(
+        "/home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1/store.sqlite3"
+    )
+    provider_store.parent.mkdir(parents=True)
+    provider_store.write_bytes(b"synthetic-secret-store-preservation-canary")
     config_before = layout.map("/etc/agentbox/agentbox.toml").read_bytes()
     database_before = layout.database.read_bytes()
 
@@ -296,6 +307,7 @@ def test_uninstall_removes_only_program_files_and_preserves_all_data(tmp_path: P
     assert list(layout.map("/opt/agentbox/releases").iterdir()) == []
     assert project.read_text() == "preserved"
     assert (runtime_auth / "fixture").read_text() == "preserved"
+    assert provider_store.read_bytes() == b"synthetic-secret-store-preservation-canary"
     assert layout.map("/etc/agentbox/agentbox.toml").read_bytes() == config_before
     assert layout.database.read_bytes() == database_before
     assert not any(

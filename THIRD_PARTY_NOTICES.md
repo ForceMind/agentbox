@@ -19,6 +19,7 @@ does not replace the license text distributed by each upstream project.
 | argon2-cffi-bindings | 25.1.0 | MIT |
 | CFFI | 2.1.1 | MIT-0 |
 | Click | 8.4.2 | BSD-3-Clause |
+| cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause |
 | FastAPI | 0.141.1 | MIT |
 | greenlet | 3.5.5 | MIT AND PSF-2.0 |
 | h11 | 0.16.0 | MIT |
@@ -30,6 +31,7 @@ does not replace the license text distributed by each upstream project.
 | pydantic-core | 2.46.4 | MIT |
 | pydantic-settings | 2.15.0 | MIT |
 | python-dotenv | 1.2.2 | BSD-3-Clause |
+| rfc8785 | 0.1.4 | Apache-2.0 |
 | SQLAlchemy | 2.0.52 | MIT |
 | Starlette | 1.6.0 | BSD-3-Clause |
 | typing-extensions | 4.16.0 | PSF-2.0 |

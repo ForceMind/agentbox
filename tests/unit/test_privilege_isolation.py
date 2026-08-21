@@ -98,6 +98,25 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
     runtime_credential.write_text("runtime-only")
     os.chown(runtime_credential, runtime_uid, runtime_uid)
     runtime_credential.chmod(0o600)
+    secret_root = runtime_home / ".local/share/agentbox/provider-secrets/v1"
+    secret_root.mkdir(parents=True, mode=0o700)
+    for directory in (
+        runtime_home / ".local",
+        runtime_home / ".local/share",
+        runtime_home / ".local/share/agentbox",
+        runtime_home / ".local/share/agentbox/provider-secrets",
+        secret_root,
+    ):
+        os.chown(directory, runtime_uid, runtime_uid)
+        directory.chmod(0o700)
+    secret_key = secret_root / "keys-fixture.key"
+    secret_key.write_bytes(b"synthetic-runtime-only-key-material")
+    os.chown(secret_key, runtime_uid, runtime_uid)
+    secret_key.chmod(0o600)
+    secret_database = secret_root / "store.sqlite3"
+    secret_database.write_bytes(b"synthetic-runtime-only-ciphertext")
+    os.chown(secret_database, runtime_uid, runtime_uid)
+    secret_database.chmod(0o600)
     project_file = projects / "source.py"
     project_file.write_text("fixture")
     os.chown(project_file, runtime_uid, runtime_uid)
@@ -118,6 +137,9 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
             {
                 "read_runtime_credential": runtime_credential,
                 "list_runtime_home": runtime_home,
+                "list_provider_secret_store": secret_root,
+                "read_provider_secret_key": secret_key,
+                "read_provider_secret_database": secret_database,
                 "write_project": project_file,
                 "write_systemd": units,
                 "runtime_socket": runtime_socket,
@@ -130,6 +152,8 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
             {
                 "read_app_secret": app_secret,
                 "read_app_database": app_database,
+                "read_provider_secret_key": secret_key,
+                "read_provider_secret_database": secret_database,
                 "write_systemd": units,
                 "runtime_socket": runtime_socket,
             },
@@ -140,6 +164,9 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
     assert app == {
         "read_runtime_credential": False,
         "list_runtime_home": False,
+        "list_provider_secret_store": False,
+        "read_provider_secret_key": False,
+        "read_provider_secret_database": False,
         "write_project": False,
         "write_systemd": False,
         "runtime_socket": True,
@@ -147,6 +174,8 @@ def test_web_and_runtime_unix_identities_enforce_filesystem_boundary(
     assert runtime == {
         "read_app_secret": False,
         "read_app_database": False,
+        "read_provider_secret_key": True,
+        "read_provider_secret_database": True,
         "write_systemd": False,
         "runtime_socket": True,
     }
