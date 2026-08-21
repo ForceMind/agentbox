@@ -15,7 +15,11 @@ def main(
     _store: RuntimeSecretStore | None = None,
 ) -> int:
     arguments = tuple(sys.argv[1:] if argv is None else argv)
-    if arguments != ("initialize",):
+    try:
+        stdin_is_terminal = sys.stdin.isatty()
+    except (AttributeError, OSError):
+        stdin_is_terminal = False
+    if arguments != ("initialize",) or not stdin_is_terminal:
         # Never echo rejected arguments: an attempted Secret value must not reach stderr.
         sys.stderr.write("SECRET_STORE_INVALID_ARGUMENTS\n")
         raise SystemExit(2)

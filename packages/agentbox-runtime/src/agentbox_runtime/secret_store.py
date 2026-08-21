@@ -158,6 +158,21 @@ BEFORE DELETE ON dek_envelopes
 BEGIN
     SELECT RAISE(ABORT, 'immutable DEK envelope');
 END;
+CREATE TRIGGER trg_key_metadata_monotonic_update
+BEFORE UPDATE ON key_metadata
+WHEN NEW.key_id != OLD.key_id
+  OR NEW.key_version != OLD.key_version
+  OR NEW.key_state != OLD.key_state
+  OR NEW.created_at != OLD.created_at
+  OR NEW.successful_wraps < OLD.successful_wraps
+BEGIN
+    SELECT RAISE(ABORT, 'invalid key metadata update');
+END;
+CREATE TRIGGER trg_key_metadata_no_delete
+BEFORE DELETE ON key_metadata
+BEGIN
+    SELECT RAISE(ABORT, 'immutable key metadata');
+END;
 """
 
 
@@ -404,10 +419,9 @@ class RuntimeSecretStore:
         try:
             for part in _FIXED_PARENT_PARTS:
                 try:
-                    next_fd = _open_dir_at(current, part)
+                    next_fd = _open_validated_dir_at(current, part, layout.identity)
                 except FileNotFoundError:
                     return "absent"
-                _validate_directory_fd(next_fd, layout.identity, exact_mode=0o700)
                 os.close(current)
                 current = next_fd
             names = _bounded_directory_names(current)
@@ -423,12 +437,11 @@ class RuntimeSecretStore:
         try:
             for part in _FIXED_PARENT_PARTS:
                 try:
-                    next_fd = _open_dir_at(current, part)
+                    next_fd = _open_validated_dir_at(current, part, identity)
                 except FileNotFoundError:
                     os.mkdir(part, mode=0o700, dir_fd=current)
                     os.fsync(current)
-                    next_fd = _open_dir_at(current, part)
-                _validate_directory_fd(next_fd, identity, exact_mode=0o700)
+                    next_fd = _open_validated_dir_at(current, part, identity)
                 os.close(current)
                 current = next_fd
             return current
@@ -444,13 +457,18 @@ class RuntimeSecretStore:
                 0o600,
                 dir_fd=parent_fd,
             )
-            _validate_regular_fd(descriptor, identity, exact_mode=0o600)
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return descriptor
-        except BlockingIOError as exc:
-            raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_UNAVAILABLE) from exc
         except OSError as exc:
             raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_PERMISSION_INVALID) from exc
+        try:
+            _validate_regular_fd(descriptor, identity, exact_mode=0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            os.close(descriptor)
+            raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_UNAVAILABLE) from exc
+        except Exception:
+            os.close(descriptor)
+            raise
+        return descriptor
 
     def _new_staging_name(self) -> str:
         value = self._random(16)
@@ -512,10 +530,13 @@ class RuntimeSecretStore:
         names = _bounded_directory_names(stage_fd)
         if names != {SECRET_STORE_KEYS, SECRET_STORE_KEYSET, SECRET_STORE_DATABASE}:
             raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
-        keyset_fd = _open_regular_at(stage_fd, SECRET_STORE_KEYSET)
-        store_fd = _open_regular_at(stage_fd, SECRET_STORE_DATABASE)
-        keys_fd = _open_dir_at(stage_fd, SECRET_STORE_KEYS)
+        keyset_fd = -1
+        store_fd = -1
+        keys_fd = -1
         try:
+            keyset_fd = _open_regular_at(stage_fd, SECRET_STORE_KEYSET)
+            store_fd = _open_regular_at(stage_fd, SECRET_STORE_DATABASE)
+            keys_fd = _open_dir_at(stage_fd, SECRET_STORE_KEYS)
             _validate_regular_fd(keyset_fd, identity, exact_mode=0o600)
             _validate_regular_fd(store_fd, identity, exact_mode=0o600)
             _validate_directory_fd(keys_fd, identity, exact_mode=0o700)
@@ -543,9 +564,9 @@ class RuntimeSecretStore:
                 os.close(key_fd)
             self._validate_database_fd(stage_fd, store_fd, keyset)
         finally:
-            os.close(keys_fd)
-            os.close(store_fd)
-            os.close(keyset_fd)
+            for descriptor in (keys_fd, store_fd, keyset_fd):
+                if descriptor >= 0:
+                    os.close(descriptor)
 
     def _validate_committed_store(self, layout: _SecretStoreLayout) -> None:
         home_fd = self._open_runtime_home(layout)
@@ -556,8 +577,14 @@ class RuntimeSecretStore:
             parent_names = _bounded_directory_names(parent_fd)
             if any(_STAGING_NAME.fullmatch(name) for name in parent_names):
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
-            if parent_names - {SECRET_STORE_LOCK, "v1"}:
+            if parent_names != {SECRET_STORE_LOCK, "v1"}:
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
+            lock_fd = _open_regular_at(parent_fd, SECRET_STORE_LOCK)
+            try:
+                _validate_regular_fd(lock_fd, layout.identity, exact_mode=0o600)
+                _verify_name_matches_fd(parent_fd, SECRET_STORE_LOCK, lock_fd)
+            finally:
+                os.close(lock_fd)
             root_fd = _open_dir_at(parent_fd, "v1")
             _validate_directory_fd(root_fd, layout.identity, exact_mode=0o700)
             _verify_name_matches_fd(parent_fd, "v1", root_fd)
@@ -572,10 +599,13 @@ class RuntimeSecretStore:
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
             if names - allowed:
                 raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_NEEDS_ATTENTION)
-            keyset_fd = _open_regular_at(root_fd, SECRET_STORE_KEYSET)
-            store_fd = _open_regular_at(root_fd, SECRET_STORE_DATABASE)
-            keys_fd = _open_dir_at(root_fd, SECRET_STORE_KEYS)
+            keyset_fd = -1
+            store_fd = -1
+            keys_fd = -1
             try:
+                keyset_fd = _open_regular_at(root_fd, SECRET_STORE_KEYSET)
+                store_fd = _open_regular_at(root_fd, SECRET_STORE_DATABASE)
+                keys_fd = _open_dir_at(root_fd, SECRET_STORE_KEYS)
                 _validate_regular_fd(keyset_fd, layout.identity, exact_mode=0o600)
                 _validate_regular_fd(store_fd, layout.identity, exact_mode=0o600)
                 _validate_directory_fd(keys_fd, layout.identity, exact_mode=0o700)
@@ -625,9 +655,9 @@ class RuntimeSecretStore:
                     raise SecretStoreError(SecretStoreFindingCode.SECRET_STORE_INTEGRITY_FAILED)
                 _verify_name_matches_fd(parent_fd, "v1", root_fd)
             finally:
-                os.close(keys_fd)
-                os.close(store_fd)
-                os.close(keyset_fd)
+                for descriptor in (keys_fd, store_fd, keyset_fd):
+                    if descriptor >= 0:
+                        os.close(descriptor)
         finally:
             for descriptor in (root_fd, parent_fd, home_fd):
                 if descriptor >= 0:
@@ -637,8 +667,7 @@ class RuntimeSecretStore:
         current = os.dup(home_fd)
         try:
             for part in _FIXED_PARENT_PARTS:
-                next_fd = _open_dir_at(current, part)
-                _validate_directory_fd(next_fd, identity, exact_mode=0o700)
+                next_fd = _open_validated_dir_at(current, part, identity)
                 os.close(current)
                 current = next_fd
             return current
@@ -824,6 +853,16 @@ def _open_regular_at(parent_fd: int, name: str) -> int:
         os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
         dir_fd=parent_fd,
     )
+
+
+def _open_validated_dir_at(parent_fd: int, name: str, identity: _RuntimeIdentity) -> int:
+    descriptor = _open_dir_at(parent_fd, name)
+    try:
+        _validate_directory_fd(descriptor, identity, exact_mode=0o700)
+    except Exception:
+        os.close(descriptor)
+        raise
+    return descriptor
 
 
 def _bounded_directory_names(descriptor: int, *, maximum: int = MAX_DIRECTORY_ENTRIES) -> set[str]:

@@ -37,8 +37,8 @@ AgentBox backups must exclude:
 - raw browser sessions/cookies and recoverable session tokens;
 - administrator plaintext password;
 - OAuth codes, Pair Codes, SSH private keys, complete auth configuration;
-- the complete Runtime Provider Secret Store subtree
-  `/home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1`, including
+- the complete Runtime Provider Secret Store hierarchy
+  `/home/agentbox-runtime/.local/share/agentbox/provider-secrets`, including
   root keys, `keyset.json`, `store.sqlite3`, rollback journals, ciphertext,
   nonces, tags, wrapped DEKs, lock/staging artifacts, Secret IDs, and key IDs;
 - Runtime process memory, environment, tmux pane history by default;

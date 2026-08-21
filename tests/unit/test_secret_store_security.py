@@ -36,11 +36,19 @@ def _foundation(tmp_path: Path) -> RuntimeSecretStore:
 
 
 class NoReadStdin:
+    def isatty(self) -> bool:
+        return True
+
     def read(self, *_args: object, **_kwargs: object) -> str:
         raise AssertionError("initialize attempted to read stdin")
 
     def readline(self, *_args: object, **_kwargs: object) -> str:
         raise AssertionError("initialize attempted to read stdin")
+
+
+class PipedNoReadStdin(NoReadStdin):
+    def isatty(self) -> bool:
+        return False
 
 
 def test_initialize_cli_accepts_only_fixed_empty_store_action(
@@ -53,6 +61,22 @@ def test_initialize_cli_accepts_only_fixed_empty_store_action(
     assert capsys.readouterr().out == "INITIALIZED\n"
     assert main(["initialize"], _store=store) == 0
     assert capsys.readouterr().out == "ALREADY_INITIALIZED\n"
+
+
+def test_initialize_cli_rejects_redirected_stdin_without_reading_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = _foundation(tmp_path)
+    monkeypatch.setattr(sys, "stdin", PipedNoReadStdin())
+
+    with pytest.raises(SystemExit) as raised:
+        main(["initialize"], _store=store)
+
+    assert raised.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "SECRET_STORE_INVALID_ARGUMENTS\n"
+    assert store.health().state.value == "UNINITIALIZED"
 
 
 @pytest.mark.parametrize(
@@ -184,6 +208,13 @@ def test_ordinary_control_plane_backup_never_copies_runtime_secret_store(
     fake = runtime_home / ".local/share/agentbox/provider-secrets/v1/test-only-canary"
     fake.write_bytes(secret_canary + key_canary)
     os.chmod(fake, 0o600)
+    secret_parent = fake.parent.parent
+    lock = secret_parent / ".initialize.lock"
+    lock.write_bytes(key_canary)
+    os.chmod(lock, 0o600)
+    staging = secret_parent / ".v1.init-11111111111111111111111111111111"
+    staging.mkdir(mode=0o700)
+    (staging / "test-only-staging-canary").write_bytes(secret_canary)
 
     database = tmp_path / "agentbox.db"
     with sqlite3.connect(database) as connection:

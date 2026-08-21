@@ -44,6 +44,8 @@ EXPECTED_TRIGGERS = {
     "trg_secret_records_no_delete",
     "trg_dek_envelopes_no_update",
     "trg_dek_envelopes_no_delete",
+    "trg_key_metadata_monotonic_update",
+    "trg_key_metadata_no_delete",
 }
 
 
@@ -168,6 +170,45 @@ def test_second_initialization_is_idempotent_and_does_not_generate_another_key(
     assert (
         home / secret_store_module.SECRET_STORE_RELATIVE_ROOT / "keyset.json"
     ).read_bytes() == keyset_before
+
+
+def test_health_rejects_missing_or_unsafe_initialization_lock(tmp_path: Path) -> None:
+    store, root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+    lock = root.parent / secret_store_module.SECRET_STORE_LOCK
+
+    lock.unlink()
+    assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
+
+    lock.symlink_to(root / SECRET_STORE_KEYSET)
+    assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
+
+
+def test_corrupt_store_health_paths_do_not_leak_file_descriptors(tmp_path: Path) -> None:
+    store, root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+    database = root / SECRET_STORE_DATABASE
+    database.unlink()
+    database.symlink_to(root / SECRET_STORE_KEYSET)
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+
+    for _ in range(25):
+        assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
+
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
+
+
+def test_invalid_lock_initialization_does_not_leak_file_descriptors(tmp_path: Path) -> None:
+    store, root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+    lock = root.parent / secret_store_module.SECRET_STORE_LOCK
+    os.chmod(lock, 0o640)
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+
+    for _ in range(25):
+        assert store.initialize() is SecretStoreInitializeResult.SECRET_STORE_NEEDS_ATTENTION
+
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
 
 
 def test_empty_store_schema_and_metadata_use_one_immediate_transaction(
@@ -612,6 +653,25 @@ def test_kek_wrap_counter_hard_limit_blocks_without_automatic_rotation(tmp_path:
     assert store.health().state is SecretStoreHealthState.NEEDS_ATTENTION
     with _database(root) as connection, pytest.raises(sqlite3.IntegrityError):
         connection.execute("UPDATE key_metadata SET successful_wraps = ?", (2**32,))
+
+
+def test_key_metadata_wrap_counter_is_monotonic_and_identity_is_immutable(
+    tmp_path: Path,
+) -> None:
+    store, root = _foundation(tmp_path)
+    assert store.initialize() is SecretStoreInitializeResult.INITIALIZED
+    with _database(root) as connection:
+        connection.execute("UPDATE key_metadata SET successful_wraps = 100")
+        with pytest.raises(sqlite3.IntegrityError, match="invalid key metadata update"):
+            connection.execute("UPDATE key_metadata SET successful_wraps = 99")
+        with pytest.raises(sqlite3.IntegrityError, match="invalid key metadata update"):
+            connection.execute(
+                "UPDATE key_metadata SET created_at = ?",
+                ("2026-08-18T00:00:00Z",),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable key metadata"):
+            connection.execute("DELETE FROM key_metadata")
+        assert connection.execute("SELECT successful_wraps FROM key_metadata").fetchone() == (100,)
 
 
 def test_keyset_rejects_duplicates_unknown_fields_and_nondeterminism() -> None:

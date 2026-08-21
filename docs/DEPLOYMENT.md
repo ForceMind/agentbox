@@ -38,7 +38,8 @@ requirements.
 
 Phase 11 Slice 3.1 ships the fixed local maintenance command
 `/opt/agentbox/current/venv/bin/agentbox-runtime-provider-secret initialize`.
-It accepts only the literal `initialize` action, reads no Secret or stdin, and
+It accepts only the literal `initialize` action from a local terminal, rejects
+redirected or piped stdin without reading it, and
 creates an empty Runtime-owned Store only when run explicitly as the complete
 `agentbox-runtime:agentbox-runtime` process identity. Runtime startup and health
 inspection never initialize or repair it.
