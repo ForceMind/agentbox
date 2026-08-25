@@ -5,7 +5,7 @@ implementation-authorization review
 
 **Authoritative baseline:** `7690a77431693716c12cace9d21304b1016dcbe7`
 
-**Review date:** 2026-08-24
+**Review date:** 2026-08-25
 
 **Prospective implementation decision:** **AUTHORIZED**, subject to the merge
 and human-review gates in §32. This document authorizes no implementation.
@@ -254,39 +254,45 @@ can have made a valid non-`MISSING` row.
 | future implementation support | `migrations/env.py` must implement the exact SQLite runner below; this documentation PR does not change it |
 | untouched data tables | all others, including `audit_events`, `jobs`, Provider/Binding/evidence tables |
 
-The exact online SQLite execution mechanism is a future, reviewed
-`migrations/env.py` change. It replaces the current SQLite
-`context.begin_transaction()` wrapper with this single path for migration
-commands once `0005` is the repository head:
+The exact online SQLite mechanism is a future reviewed `migrations/env.py`
+change plus the deployment/installer admission fence described here. This
+documentation PR changes neither file. The runner owns three distinct phases.
 
-1. construct the SQLAlchemy connection with
-   `isolation_level="AUTOCOMMIT"`; no implicit SQLAlchemy transaction may be
-   active;
-2. execute `PRAGMA foreign_keys=ON`, require `1`, and require an empty
-   `PRAGMA foreign_key_check`, then call `connection.commit()` to clear
-   SQLAlchemy's logical autobegin and require `not connection.in_transaction()`;
-3. execute `PRAGMA foreign_keys=OFF` outside a transaction and require `0`;
-   call `connection.commit()` again to clear the logical autobegin and require
-   `not connection.in_transaction()`;
-4. configure Alembic on that same connection with
-   `transactional_ddl=True`, but do not enter `context.begin_transaction()`;
-   this tells Alembic the externally opened SQLite transaction owns DDL and
-   prevents per-revision auto-commit;
-5. issue driver SQL `BEGIN IMMEDIATE`, call `context.run_migrations()` exactly
-   once, and run all `0005` rebuild/copy/in-transaction schema checks before
-   returning from the revision function; Alembic's normal version-table update
-   therefore executes on the same connection before commit and belongs to the
-   same explicit SQLite transaction;
-6. verify the in-transaction expected schema inventory, copied row counts,
-   `PRAGMA foreign_key_check`, `PRAGMA quick_check='ok'`, and exact
-   `alembic_version='0005_phase11_control_plane_ownership_approval'`;
-7. issue driver SQL `COMMIT` exactly once and `connection.commit()` only to
-   clear SQLAlchemy's logical transaction. On any exception before it, issue
-   driver SQL `ROLLBACK` and `connection.rollback()`; both schema and version
-   row remain at the predecessor;
-8. outside the SQLite transaction execute `PRAGMA foreign_keys=ON`, require `1`, then
-   repeat `foreign_key_check`, `quick_check`, schema inventory, and final
-   Alembic revision verification.
+**Phase A — locked outer preflight with FK ON.** The updater holds its global
+deployment/update lock, stops or fences API/Worker database writers, proves no
+application migration is active, and opens a verified pre-migration SQLite
+backup under the existing backup protocol. On an SQLAlchemy connection created
+with `isolation_level="AUTOCOMMIT"`, it requires
+`PRAGMA foreign_keys` to return `1`, `PRAGMA foreign_key_check` to return zero
+rows, and `PRAGMA quick_check;` to return exactly one row whose value is `ok`.
+It verifies predecessor `0004_phase11_provider_core`, exact source schema,
+zero legacy Credentials, and the complete non-mutating Session preflight. It
+then calls `connection.commit()` solely to clear SQLAlchemy autobegin and
+requires `not connection.in_transaction()`.
+
+**Phase B — FK OFF plus one locked migration transaction.** Outside any SQLite
+transaction it sets `PRAGMA foreign_keys=OFF`, requires the returned value `0`,
+clears SQLAlchemy autobegin, and again proves no transaction is active. Alembic
+is configured on that connection with `transactional_ddl=True` and without
+`context.begin_transaction()`. Driver SQL opens exactly one `BEGIN IMMEDIATE`.
+Inside that lock, the runner/revision rechecks predecessor version, exact source
+schema, legacy Credential count, Session preflight, and every mutable data/schema
+predicate from Phase A. The revision requires `foreign_keys=0`, performs all
+rebuild/copy/index/trigger work, and returns. `context.run_migrations()` performs
+the normal Alembic version update in this same transaction. Before driver
+`COMMIT`, the runner requires copied counts, exact schema/constraint/index/
+trigger inventory, empty `PRAGMA foreign_key_check`, exactly one `ok` row from
+`PRAGMA quick_check;`, and exactly one version row equal to
+`0005_phase11_control_plane_ownership_approval`. Any exception through this
+point executes driver `ROLLBACK`; schema and version both remain `0004`.
+
+**Phase C — post-commit verification and activation gate.** Outside the
+transaction, re-enable FK and require `1`; repeat `foreign_key_check`,
+`quick_check`, schema inventory, trigger inventory, and exact version check.
+Only their success permits service activation. If commit succeeded but any
+post-commit check fails, activation stays stopped; the installer restores the
+verified backup with its WAL/SHM handling, verifies exact predecessor schema,
+version and integrity, and does not blindly rerun `0005`.
 
 The runner rejects offline SQL generation for `0005`; this contract is for the
 online SQLite migration only. A failure after `COMMIT` but before all
@@ -295,23 +301,22 @@ activation and restore its pre-migration verified SQLite backup, including
 WAL/SHM handling, then verify `0004` before restarting the old release. It must
 not run `0005` again blindly.
 
-This mechanism was exercised on 2026-08-24 with Alembic/SQLAlchemy from the
-repository `.venv` using only a temporary `/tmp` migration tree and SQLite
-database. A forced exception after `context.run_migrations()` but before
-`COMMIT` preserved both the `0004` schema and version row. A successful run
-atomically committed the rebuilt parent and `0005` version row; FK re-enable,
-`foreign_key_check`, `quick_check`, a valid untouched two-column Compatibility
-Evidence child insert, and an invalid child rejection all passed. No prototype
-file entered the repository.
+This final mechanism was rerun on 2026-08-25 with repository Alembic/SQLAlchemy
+in a temporary `/tmp` tree. Success committed schema/version together. Injected
+exceptions before the migration body, after DDL, and after version update but
+before commit each restored exact `0004`. A simulated post-commit verification
+failure stopped activation and restored the verified `0004` backup including
+sidecar cleanup. FK re-enable/checks, exact `quick_check` row handling, retained
+Compatibility Evidence valid/invalid child inserts, and trigger inventory all
+passed. No prototype file entered Git.
 
-Revision-level upgrade ordering is exact:
+Revision work inside Phase B is exact:
 
-1. assert `PRAGMA foreign_keys=ON`; run `PRAGMA foreign_key_check` and require no
-   rows; validate the sole Alembic predecessor;
-2. execute the §13 Credential preflight and validate all existing Session IDs,
+1. assert `PRAGMA foreign_keys=OFF`; validate the sole Alembic predecessor;
+2. rerun the §13 Credential preflight and validate all existing Session IDs,
    timestamps, auth ownership, and no unexpected schema objects involved in the
    rebuild;
-3. enter the runner's single SQLite `BEGIN IMMEDIATE` transaction;
+3. require that the runner's single SQLite `BEGIN IMMEDIATE` is active;
 4. create `provider_credentials_new` with §9 constraints and trigger, copy the
    already-proven empty set, drop `provider_credentials`, then rename the new
    table to the canonical name without renaming the old parent (preserving
@@ -392,6 +397,7 @@ requires code, schema, security, and migration review.
 | `consumed_at` | UTC datetime, non-null only when consumed |
 | `consumed_request_id` | `String(72)`, non-null only when consumed |
 | `terminal_result_code` | exact nullable `ChallengeTerminalResultCode` enumerated below |
+| `retention_eligible_at` | nullable immutable UTC6 database timestamp; null while active and exactly `terminal_at + 30 days` for every safe terminal Challenge |
 
 Named constraints include
 `uq_confirmation_challenges_id_intent` over
@@ -441,7 +447,8 @@ Database enforcement is exact:
   Admin/Session/auth tuple, issue request, Runtime tuple, Provider tuple,
   Credential tuple/owner, expected state/reference/version, postcondition,
   confirmation verifier, approval digest, `psi_*`, issue/intent timestamps,
-  initial cancellation epoch, and creation timestamp;
+  initial cancellation epoch, and creation timestamp; it also rejects any
+  `retention_eligible_at` change after the row is terminal;
 - `trg_confirmation_challenges_legal_transition` allows only
   `ISSUED -> CONSUMED|CANCELLED|EXPIRED` and rejects every terminal transition
   or return to `ISSUED`;
@@ -451,11 +458,18 @@ Database enforcement is exact:
   tuple equal the Challenge;
 - `trg_confirmation_challenges_unresolved_attempt_guard` rejects every insert
   when that Credential has an Attempt in `authorized`, `runtime_staged`,
-  `cancel_pending`, `runtime_consuming`, `runtime_verified`, or
-  `needs_attention`;
+  `authorize_pending`, `cancel_pending`, `runtime_consuming`,
+  `runtime_committed_unverified`, `runtime_verified`, or `needs_attention`;
+- `trg_confirmation_challenges_delete_guard` rejects deletion when the state is
+  `ISSUED`, an Attempt references the row, `retention_eligible_at` is null,
+  `agentbox_now_utc6() < retention_eligible_at`, or terminal fields/result/
+  retention boundary are inconsistent. A connection without the registered
+  clock function cannot delete and therefore fails closed;
 - table checks enforce terminal fields/result codes, timestamp equality,
-  `unixepoch(expires_at) = unixepoch(issued_at) + 300` plus exact normalized
-  UTC storage, and cancellation epoch: 0 while
+  `expires_at = datetime(issued_at, '+300 seconds') || substr(issued_at,20,7)`
+  and safe-terminal `retention_eligible_at = datetime(terminal_at,
+  '+30 days') || substr(terminal_at,20,7)` under the exact §18A UTC6 storage,
+  and cancellation epoch: 0 while
   `ISSUED`/`CONSUMED`/`EXPIRED`, exactly 1 for a directly cancelled Challenge.
 
 No arbitrary JSON/metadata, command, path, environment, endpoint, Secret,
@@ -596,6 +610,41 @@ JSON strings. Both challenge ID and issue/expiry times are included. Python
 Infinity, and non-canonical JSON are prohibited. The raw canonical document is
 not persisted outside its typed columns and never enters Audit/logs.
 
+### 18A. SQLite timestamp storage and clock authority
+
+All `Session`, Challenge, and Attempt datetime columns use SQLAlchemy
+`DateTime(timezone=True)` with the repository SQLite convention, but their
+authoritative raw SQLite representation is frozen as 26 ASCII characters:
+`YYYY-MM-DD HH:MM:SS.ffffff`. It is a naive textual representation of UTC,
+never local time and never an offset-bearing string. The application accepts
+only aware UTC input, normalizes with `astimezone(UTC)`, preserves exactly six
+microsecond digits, removes `tzinfo` only at the SQLite bind boundary, and on
+load immediately attaches UTC after validating the exact raw grammar. Existing
+Session values are normalized to this form during the guarded rebuild. Mixed
+offsets, missing/extra fractional digits, terminal `Z` in raw SQLite, leap
+seconds, and non-UTC naive application input are rejected.
+
+Canonical approval JSON is deliberately different: the same instant is
+serialized as `YYYY-MM-DDTHH:MM:SS.ffffffZ` before RFC 8785. Conversion changes
+only the separator and UTC suffix; it does not round or truncate. Equality and
+ordering in SQLite use the fixed-width raw UTC6 text. Five-minute and retention
+checks preserve microseconds exactly with
+`datetime(value, '+300 seconds') || substr(value,20,7)` and
+`datetime(value, '+30 days') || substr(value,20,7)` respectively; neither
+`unixepoch()` nor floating-point `julianday()` is authority.
+
+Every production SQLite connection registers zero-argument
+`agentbox_now_utc6()`, returning one transaction-scoped application-clock value
+in the same raw UTC6 grammar. Challenge/Attempt mutation and delete triggers
+compare only against that function. `BEGIN IMMEDIATE` code captures `now` once
+and pins the function result for the transaction; a connection lacking it, an
+invalid result, or a backward value causes the statement to abort. At exact
+equality, expiry/retention has elapsed. `last_observed_at`, Session bounds,
+Challenge/Attempt deadlines, backward-clock checks, and deletion therefore use
+one representation and one authority. The future tests inspect raw SQLite,
+round-trip `000000`/`999999` microseconds, the exact five-minute boundary,
+offset rejection, backward clock, and canonical JSON conversion.
+
 ## 19. Typed confirmation decision
 
 `PROVIDER_SECRET_PROVISION` requires exact ASCII:
@@ -674,18 +723,28 @@ One `BEGIN IMMEDIATE` transaction performs exactly:
    reference/version;
 8. rebuild and constant-time compare the approval digest;
 9. verify typed confirmation; mismatch cancels as §19;
-10. generate only one `psa_*` attempt ID using independent 128-bit CSPRNG with
+10. validate and copy the consumption request ID as immutable
+    `authorization_request_id String(72) NOT NULL`; its exact accepted grammar
+    is `[A-Za-z0-9][A-Za-z0-9._:-]{0,63}` (1–64 ASCII characters), matching the
+    current API/Runtime request-ID contract;
+11. generate only one `psa_*` attempt ID using independent 128-bit CSPRNG with
     at most three collision retries; a fourth collision rolls back and returns
     `APPROVAL_UNAVAILABLE`. Copy the already approved Challenge `psi_*`, intent
     contract version, issue/expiry times, and initial/current cancellation
     epochs without changing them;
-11. insert the exact `AUTHORIZED` orchestration row, whose composite FK proves
-    `(challenge_id, provisioning_intent_id)` came from that Challenge;
-12. atomically set challenge `CONSUMED`, timestamps/request ID/result; the
-    attempt's unique `challenge_id` is the reverse relationship;
-13. write challenge-consumed and attempt-created Audit events; commit.
+12. insert the exact `AUTHORIZED` orchestration row. The `BEFORE INSERT`
+    validator checks the complete Challenge tuple; the
+    `AFTER INSERT trg_provider_secret_attempts_consume_challenge` performs the
+    only Challenge update and sets `CONSUMED`, `terminal_at=consumed_at=
+    NEW.authorized_at`, `consumed_request_id=NEW.authorization_request_id`, and
+    `terminal_result_code=ATTEMPT_CREATED`;
+13. require that trigger's conditional update matched exactly one row; the
+    Challenge legal-transition and consumed-attempt triggers remain enabled;
+14. write `provider_secret.challenge_consumed` and
+    `provider_secret.attempt_created`; commit.
 
-A second consumer cannot satisfy the conditional state update. Cancellation
+A second consumer cannot satisfy the validator/conditional trigger update.
+The application performs no separate Challenge state update. Cancellation
 and consumption serialize; exactly one terminal transition commits. Any busy
 timeout returns `APPROVAL_UNAVAILABLE`; process crash, exception, or rollback
 leaves both the `ISSUED` challenge and absence of an attempt, or commits both
@@ -765,6 +824,7 @@ generates or replaces an intent.
 | `purpose` | exactly `provider_secret_provision` |
 | `state` | enum below |
 | `challenge_id`, `provisioning_intent_id` | unique pair and composite FK to exact Challenge pair, `RESTRICT` |
+| `authorization_request_id` | immutable `String(72)`, non-null, exact `[A-Za-z0-9][A-Za-z0-9._:-]{0,63}` request ID selected by the consumption request |
 | `admin_user_id`, `control_plane_session_id`, `auth_epoch` | copied exact authorization identity |
 | Runtime ID/revision/type | exact challenge values |
 | Provider ID/revision/state | exact challenge values |
@@ -772,31 +832,46 @@ generates or replaces an intent.
 | expected reference/version | constrained null |
 | `approval_digest` | exact lowercase hex digest |
 | `intent_issued_at`, `authorized_at`, `expires_at`, `created_at`, `updated_at` | UTC; intent issue/expiry equal Challenge; authorized/created equal consumption |
-| `runtime_staged_at`, `runtime_verified_at`, `reconciled_at`, `terminal_at` | nullable typed transition times |
+| `authorize_requested_at` | nullable UTC6; first durable pre-send admission time |
+| `authorize_request_id` | nullable `String(72)`, exact request-ID grammar; current authorize/status recovery request |
+| `authorize_attempt_count` | integer 0–3; total admitted Runtime authorize transmissions |
+| `authorize_last_result_code` | non-null exact `AuthorizeResultCode` |
+| `runtime_staged_at`, `runtime_consuming_at` | nullable UTC6 Control Plane observation times |
+| `runtime_committed_at` | nullable UTC6 only when authenticated Runtime evidence supplies its commit timestamp |
+| `runtime_commit_observed_at` | nullable UTC6 Control Plane observation time, required in `RUNTIME_COMMITTED_UNVERIFIED`; distinct from Runtime commit time |
+| `runtime_verified_at`, `reconciled_at`, `terminal_at` | nullable UTC6 typed transition times |
 | `cancellation_epoch` | integer >=0, initially copied as 0; server increments only |
 | `cancel_requested_at` | nullable UTC; required in `CANCEL_PENDING` |
 | `cancel_request_id` | nullable bounded request ID |
 | `cancellation_result_code` | exact enum below |
 | `runtime_attestation_code` | exact nullable enum reserved for Slice 3.2b |
 | `terminal_result_code` | exact nullable enum below |
+| `retention_eligible_at` | nullable immutable UTC6; null for active/unresolved and exactly `terminal_at + 30 days` for safely prunable terminal rows |
 
 No arbitrary JSON, Job ID/payload, Secret-shaped field, endpoint, command,
 path, environment, Store path, ciphertext, cryptographic material, raw
 attestation, or exception exists.
 
 ```text
-AUTHORIZED -> RUNTIME_STAGED -> RUNTIME_CONSUMING -> RUNTIME_VERIFIED -> RECONCILED
-AUTHORIZED -> CANCELLED | EXPIRED | NEEDS_ATTENTION
-RUNTIME_STAGED -> CANCEL_PENDING | RUNTIME_CONSUMING | RUNTIME_VERIFIED | NEEDS_ATTENTION
-CANCEL_PENDING -> CANCELLED | RUNTIME_CONSUMING | RUNTIME_VERIFIED | NEEDS_ATTENTION
-RUNTIME_CONSUMING -> RUNTIME_VERIFIED | NEEDS_ATTENTION
+AUTHORIZED -> AUTHORIZE_PENDING | CANCELLED | EXPIRED | NEEDS_ATTENTION
+AUTHORIZE_PENDING -> RUNTIME_STAGED | RUNTIME_CONSUMING |
+  RUNTIME_COMMITTED_UNVERIFIED | RUNTIME_VERIFIED | CANCEL_PENDING |
+  EXPIRED | NEEDS_ATTENTION
+RUNTIME_STAGED -> CANCEL_PENDING | RUNTIME_CONSUMING |
+  RUNTIME_COMMITTED_UNVERIFIED | RUNTIME_VERIFIED | EXPIRED | NEEDS_ATTENTION
+CANCEL_PENDING -> CANCELLED | RUNTIME_CONSUMING |
+  RUNTIME_COMMITTED_UNVERIFIED | RUNTIME_VERIFIED | EXPIRED | NEEDS_ATTENTION
+RUNTIME_CONSUMING -> RUNTIME_COMMITTED_UNVERIFIED | RUNTIME_VERIFIED | NEEDS_ATTENTION
+RUNTIME_COMMITTED_UNVERIFIED -> RUNTIME_VERIFIED | NEEDS_ATTENTION
 RUNTIME_VERIFIED -> RECONCILED | NEEDS_ATTENTION
 ```
 
-`RECONCILED`, `CANCELLED`, `EXPIRED`, and `NEEDS_ATTENTION` are terminal in the
-Control Plane. `RUNTIME_*` transitions belong to Slice 3.2b. Slice 3.2a may
-create only `AUTHORIZED`, expire/cancel an unsent `AUTHORIZED`, and never
-contact Runtime. No state regresses or extends expiry.
+`RECONCILED`, `CANCELLED`, `EXPIRED`, and `NEEDS_ATTENTION` are terminal.
+`AUTHORIZE_PENDING` and every subsequent nonterminal state are unresolved and
+belong to Slice 3.2b. Slice 3.2a creates only `AUTHORIZED`, may locally
+cancel/expire only that provably unsent state, and never contacts Runtime. No
+state regresses, returns to `AUTHORIZED`, extends expiry, or creates a new
+`psi_*`.
 
 `AttemptTerminalResultCode` is exactly:
 
@@ -805,15 +880,21 @@ contact Runtime. No state regresses or extends expiry.
 | `LOCAL_CANCELLED` | `CANCELLED` from `AUTHORIZED` |
 | `RUNTIME_CANCELLED_CONFIRMED` | `CANCELLED` from `CANCEL_PENDING` |
 | `INTENT_EXPIRED_UNSENT` | `EXPIRED` from `AUTHORIZED` only |
+| `INTENT_EXPIRED_NOT_FOUND_CONFIRMED` | `EXPIRED` from `AUTHORIZE_PENDING` after authenticated same-`psi_*` `NOT_FOUND` at/after deadline |
+| `RUNTIME_INTENT_EXPIRED_CONFIRMED` | `EXPIRED` from `AUTHORIZE_PENDING`, `RUNTIME_STAGED`, or `CANCEL_PENDING` after same-`psi_*` Runtime `EXPIRED` |
 | `RECONCILIATION_COMPLETE` | `RECONCILED` |
 | `BOUND_ENTITY_STALE` | `NEEDS_ATTENTION` |
 | `RUNTIME_STATUS_CONTRADICTION` | `NEEDS_ATTENTION` |
 | `RUNTIME_OPERATION_UNCERTAIN` | `NEEDS_ATTENTION` |
 | `ATTESTATION_REJECTED` | `NEEDS_ATTENTION` |
+| `RUNTIME_REPORTED_UNEXPECTED_TERMINAL` | `NEEDS_ATTENTION` for `CANCELLED`, `FAILED`, `NEEDS_ATTENTION`, or `EXPIRED_UNRECONCILED` status outside its exact legal path |
+| `AUTHORIZE_TRANSMISSION_LIMIT_EXCEEDED` | `NEEDS_ATTENTION` before a prohibited fourth transmission |
 
 `CancellationResultCode` is exactly `NOT_REQUESTED` (initial),
 `LOCAL_CANCELLED`, `RUNTIME_CANCEL_REQUESTED`,
-`RUNTIME_CANCELLED_CONFIRMED`, `RUNTIME_CANCEL_LOST_TO_CONSUMING`, or
+`RUNTIME_CANCELLED_CONFIRMED`, `RUNTIME_CANCEL_LOST_TO_CONSUMING`,
+`RUNTIME_CANCEL_LOST_TO_COMMITTED_UNVERIFIED`,
+`RUNTIME_CANCEL_LOST_TO_VERIFIED`, `RUNTIME_CANCEL_LOST_TO_EXPIRY`, or
 `RUNTIME_CANCEL_CONTRADICTION`. `RuntimeAttestationResultCode`, reserved for
 Slice 3.2b and null throughout Slice 3.2a, is exactly
 `VERIFIED_LIVE_PLAINTEXT_MATCH` or `VERIFIED_RECOVERED_AEAD_REOPEN`. No raw
@@ -822,23 +903,104 @@ For `CancellationResultCode` and `RuntimeAttestationResultCode`, Python member
 names and database values are the identical uppercase strings shown. Likewise,
 `ProviderSecretProvisioningAttemptState` members and DB values are the exact
 uppercase state labels in the diagram represented in the existing repository
-enum convention as lowercase database values (`authorized`, `runtime_staged`,
-`cancel_pending`, `runtime_consuming`, `runtime_verified`, `reconciled`,
-`cancelled`, `expired`, `needs_attention`).
+enum convention as lowercase database values (`authorized`,
+`authorize_pending`, `runtime_staged`, `cancel_pending`, `runtime_consuming`,
+`runtime_committed_unverified`, `runtime_verified`, `reconciled`, `cancelled`,
+`expired`, `needs_attention`).
+
+`AuthorizeResultCode` Python members and DB values are exactly:
+`NOT_REQUESTED`, `REQUEST_PERSISTED`, `STATUS_NOT_FOUND`, `RESEND_PERSISTED`,
+`STATUS_STAGED`, `STATUS_CONSUMING`, `STATUS_COMMITTED_UNVERIFIED`,
+`STATUS_VERIFIED`, `STATUS_EXPIRED`, `STATUS_CANCELLED_UNEXPECTED`,
+`STATUS_FAILED_UNEXPECTED`, `STATUS_NEEDS_ATTENTION_UNEXPECTED`,
+`STATUS_EXPIRED_UNRECONCILED_UNEXPECTED`, `STATUS_UNAVAILABLE`,
+`STATUS_MALFORMED`, `STATUS_CONTRADICTORY`, and
+`TRANSMISSION_LIMIT_EXCEEDED`. No raw Runtime message or exception is stored.
+The bounded Slice 3.2b wire enum is `RuntimeProviderSecretProvisionStatus` with
+identical Python member/wire values: `NOT_FOUND`, `STAGED`, `CONSUMING`,
+`COMMITTED_UNVERIFIED`, `VERIFIED`, `CANCELLED`, `EXPIRED`, `FAILED`,
+`NEEDS_ATTENTION`, and `EXPIRED_UNRECONCILED`. Transport unavailable is a local
+transport outcome, not a fabricated wire member; malformed/contradictory is a
+local validation outcome. These closed outcomes alone drive the matrix.
 
 Attempt field consistency is exact:
 
 | State | Required fields/codes | Forbidden fields |
 |---|---|---|
-| `AUTHORIZED` | `cancellation_epoch=0`, `cancellation_result_code=NOT_REQUESTED` | all Runtime/cancel/terminal timestamps, attestation, terminal result |
-| `RUNTIME_STAGED` | `runtime_staged_at`, cancellation `NOT_REQUESTED` | cancel/verified/reconciled/terminal fields and terminal result |
-| `CANCEL_PENDING` | staged time, `cancel_requested_at`, `cancel_request_id`, epoch 1, `RUNTIME_CANCEL_REQUESTED` | verified/reconciled/terminal fields and terminal result |
-| `RUNTIME_CONSUMING` | staged time; cancellation is `NOT_REQUESTED` or `RUNTIME_CANCEL_LOST_TO_CONSUMING` with epoch/time/request consistent | verified/reconciled/terminal fields and terminal result |
-| `RUNTIME_VERIFIED` | staged and verified times plus one exact attestation code | reconciled/terminal time and terminal result |
-| `RECONCILED` | staged/verified/reconciled/terminal times, exact attestation, `RECONCILIATION_COMPLETE` | none of the required fields may be null |
-| `CANCELLED` | terminal/cancel request times, epoch 1, matching local or Runtime-confirmed cancellation/terminal codes | attestation/reconciled time |
-| `EXPIRED` | terminal time, epoch 0, `NOT_REQUESTED`, `INTENT_EXPIRED_UNSENT`; predecessor only `AUTHORIZED` | all Runtime/cancel/attestation/reconciled fields |
-| `NEEDS_ATTENTION` | terminal time and exactly one of its four terminal codes; cancellation code reflects the observed path | reconciled time |
+| `AUTHORIZED` | authorization request fields null; count 0; `authorize_last_result_code=NOT_REQUESTED`; epoch 0; cancellation `NOT_REQUESTED` | every Runtime/cancel/terminal/retention timestamp, attestation, terminal result |
+| `AUTHORIZE_PENDING` | authorize request time/ID non-null; count 1–3; authorize result one of `REQUEST_PERSISTED`, `RESEND_PERSISTED`, `STATUS_UNAVAILABLE`; epoch 0 | Runtime observation/commit/verified/reconciled/terminal/retention fields, attestation, terminal result |
+| `RUNTIME_STAGED` | authorize request fields non-null; count 1–3; `STATUS_STAGED`; `runtime_staged_at` non-null | consuming/commit/verified/reconciled/terminal/retention fields, attestation, terminal result |
+| `CANCEL_PENDING` | authorize request and cancel time/ID non-null; epoch 1; `RUNTIME_CANCEL_REQUESTED`; `runtime_staged_at` is non-null iff it was already observed before cancellation | consuming/commit/verified/reconciled/terminal/retention fields, attestation, terminal result |
+| `RUNTIME_CONSUMING` | authorize request fields and `runtime_consuming_at` non-null; `STATUS_CONSUMING`; cancellation exactly `NOT_REQUESTED` or `RUNTIME_CANCEL_LOST_TO_CONSUMING` | commit/verified/reconciled/terminal/retention fields, attestation, terminal result |
+| `RUNTIME_COMMITTED_UNVERIFIED` | authorize request fields and `runtime_commit_observed_at` non-null; `STATUS_COMMITTED_UNVERIFIED`; `runtime_committed_at` non-null only if Runtime supplied it; cancellation exactly `NOT_REQUESTED` or `RUNTIME_CANCEL_LOST_TO_COMMITTED_UNVERIFIED` | verified/reconciled/terminal/retention fields, attestation, terminal result |
+| `RUNTIME_VERIFIED` | authorize request fields, verified time and exact attestation non-null; `STATUS_VERIFIED`; cancellation exactly `NOT_REQUESTED` or `RUNTIME_CANCEL_LOST_TO_VERIFIED` | reconciled/terminal/retention fields and terminal result |
+| `RECONCILED` | verified/reconciled/terminal times, exact attestation, `STATUS_VERIFIED`, `RECONCILIATION_COMPLETE`, retention=`terminal+30d` | no required field is null |
+| `CANCELLED` | terminal/cancel times, epoch 1, exact local or Runtime-confirmed cancellation and matching terminal code; retention=`terminal+30d` | verified attestation/reconciled fields unless Runtime evidence was observed before cancellation |
+| `EXPIRED` | terminal time and exactly one of three expiry terminal codes; retention=`terminal+30d`; `RUNTIME_CANCEL_LOST_TO_EXPIRY` iff predecessor was `CANCEL_PENDING` | verified attestation/reconciled fields |
+| `NEEDS_ATTENTION` | terminal time; one exact `NEEDS_ATTENTION` terminal code; `retention_eligible_at=NULL`; authorize/cancellation codes fixed by the triggering row below | reconciled and retention fields |
+
+The following is the single authoritative transition matrix. `t` is the one
+transaction UTC6 observation. `Runtime(t)` is populated only when the
+authenticated bounded response provides that timestamp; otherwise
+`runtime_committed_at` stays null and `runtime_commit_observed_at=t`. `Base`
+means the immutable authorization tuple and timestamps are non-null.
+`pre-send-null` means all Runtime, cancel, terminal and retention timestamps and
+attestation/result fields are null. Every row preserves fields already required
+by its old state unless the row explicitly sets them.
+
+| Old state | Exact event/evidence | New state | Must be null | Must be non-null / exact timestamps | `authorize_last_result_code` | `cancellation_result_code` | `runtime_attestation_code` | `terminal_result_code` | Terminal / retention / unresolved | Audit action/result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `AUTHORIZED` | Slice 3.2b admits first authorize transmission | `AUTHORIZE_PENDING` | pre-send Runtime/cancel/terminal/retention fields | Base; `authorize_requested_at=t`; request ID; count=1 | `REQUEST_PERSISTED` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.authorize_pending`/`succeeded` |
+| `AUTHORIZED` | issuer local cancel before deadline | `CANCELLED` | all Runtime fields; attestation/reconciled | cancel time/request=`t`/ID; terminal=`t`; retention=`t+30d`; epoch=1 | `NOT_REQUESTED` | `LOCAL_CANCELLED` | null | `LOCAL_CANCELLED` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZED` | local clock reaches deadline | `EXPIRED` | all Runtime/cancel fields; attestation/reconciled | terminal=`t`; retention=`t+30d`; epoch=0 | `NOT_REQUESTED` | `NOT_REQUESTED` | null | `INTENT_EXPIRED_UNSENT` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZED` | bound entity stale before send | `NEEDS_ATTENTION` | all Runtime/cancel fields; attestation/reconciled/retention | terminal=`t` | `NOT_REQUESTED` | `NOT_REQUESTED` | null | `BOUND_ENTITY_STALE` | yes / no / yes | `provider_secret.attempt_transitioned`/`needs_attention` |
+| `AUTHORIZE_PENDING` | authenticated same-`psi_*` `NOT_FOUND`, before deadline, count<3; persist before resend | `AUTHORIZE_PENDING` | Runtime/cancel/terminal/retention fields; attestation | request time=`t`; new request ID; count=`old+1` | `RESEND_PERSISTED` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.authorize_retry_admitted`/`succeeded` |
+| `AUTHORIZE_PENDING` | status transport unavailable | `AUTHORIZE_PENDING` | Runtime/cancel/terminal/retention fields; attestation | existing request tuple; updated=`t` | `STATUS_UNAVAILABLE` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.authorize_status_checked`/`failed` |
+| `AUTHORIZE_PENDING` | authenticated `STAGED` | `RUNTIME_STAGED` | consuming/commit/verified/reconciled/terminal/retention; attestation | staged=`t` | `STATUS_STAGED` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZE_PENDING` | authenticated `CONSUMING` | `RUNTIME_CONSUMING` | commit/verified/reconciled/terminal/retention; attestation | consuming=`t` | `STATUS_CONSUMING` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZE_PENDING` | authenticated `COMMITTED_UNVERIFIED` | `RUNTIME_COMMITTED_UNVERIFIED` | verified/reconciled/terminal/retention; attestation | commit-observed=`t`; Runtime commit time iff supplied | `STATUS_COMMITTED_UNVERIFIED` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZE_PENDING` | authenticated `VERIFIED` plus accepted attestation | `RUNTIME_VERIFIED` | reconciled/terminal/retention | verified=`t`; exact attestation | `STATUS_VERIFIED` | `NOT_REQUESTED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZE_PENDING` | issuer requests cancellation | `CANCEL_PENDING` | Runtime observation/verified/reconciled/terminal/retention; attestation | cancel time=`t`, request ID, epoch=1 | unchanged member of `{REQUEST_PERSISTED, RESEND_PERSISTED, STATUS_UNAVAILABLE}` | `RUNTIME_CANCEL_REQUESTED` | null | null | no / no / yes | `provider_secret.cancel_pending`/`succeeded` |
+| `AUTHORIZE_PENDING` | authenticated `NOT_FOUND` at/after deadline | `EXPIRED` | Runtime/cancel/verified/reconciled; attestation | terminal=`t`; retention=`t+30d` | `STATUS_NOT_FOUND` | `NOT_REQUESTED` | null | `INTENT_EXPIRED_NOT_FOUND_CONFIRMED` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `AUTHORIZE_PENDING` | authenticated `EXPIRED` same `psi_*` | `EXPIRED` | verified/reconciled; attestation | terminal=`t`; retention=`t+30d` | `STATUS_EXPIRED` | `NOT_REQUESTED` | null | `RUNTIME_INTENT_EXPIRED_CONFIRMED` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_STAGED` | authenticated `CONSUMING` | `RUNTIME_CONSUMING` | commit/verified/reconciled/terminal/retention; attestation | staged retained; consuming=`t` | `STATUS_CONSUMING` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_STAGED` | authenticated `COMMITTED_UNVERIFIED` | `RUNTIME_COMMITTED_UNVERIFIED` | verified/reconciled/terminal/retention; attestation | staged retained; commit-observed=`t`; Runtime commit iff supplied | `STATUS_COMMITTED_UNVERIFIED` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_STAGED` | authenticated `VERIFIED` plus accepted attestation | `RUNTIME_VERIFIED` | reconciled/terminal/retention | staged retained; verified=`t`; exact attestation | `STATUS_VERIFIED` | `NOT_REQUESTED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_STAGED` | issuer requests cancellation | `CANCEL_PENDING` | consuming/commit/verified/reconciled/terminal/retention; attestation | staged retained; cancel time=`t`, request ID, epoch=1 | `STATUS_STAGED` | `RUNTIME_CANCEL_REQUESTED` | null | null | no / no / yes | `provider_secret.cancel_pending`/`succeeded` |
+| `RUNTIME_STAGED` | authenticated `EXPIRED` same `psi_*` | `EXPIRED` | verified/reconciled; attestation | staged retained; terminal=`t`; retention=`t+30d` | `STATUS_EXPIRED` | `NOT_REQUESTED` | null | `RUNTIME_INTENT_EXPIRED_CONFIRMED` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `CANCEL_PENDING` | authenticated `CANCELLED` same epoch/`psi_*` | `CANCELLED` | verified/reconciled; attestation | cancel fields retained; terminal=`t`; retention=`t+30d` | unchanged member of `{REQUEST_PERSISTED, RESEND_PERSISTED, STATUS_UNAVAILABLE, STATUS_STAGED}` | `RUNTIME_CANCELLED_CONFIRMED` | null | `RUNTIME_CANCELLED_CONFIRMED` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `CANCEL_PENDING` | authenticated `CONSUMING` | `RUNTIME_CONSUMING` | commit/verified/reconciled/terminal/retention; attestation | cancel fields retained; consuming=`t` | `STATUS_CONSUMING` | `RUNTIME_CANCEL_LOST_TO_CONSUMING` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`failed` |
+| `CANCEL_PENDING` | authenticated `COMMITTED_UNVERIFIED` | `RUNTIME_COMMITTED_UNVERIFIED` | verified/reconciled/terminal/retention; attestation | cancel retained; commit-observed=`t`; Runtime commit iff supplied | `STATUS_COMMITTED_UNVERIFIED` | `RUNTIME_CANCEL_LOST_TO_COMMITTED_UNVERIFIED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`failed` |
+| `CANCEL_PENDING` | authenticated `VERIFIED` plus accepted attestation | `RUNTIME_VERIFIED` | reconciled/terminal/retention | cancel retained; verified=`t`; exact attestation | `STATUS_VERIFIED` | `RUNTIME_CANCEL_LOST_TO_VERIFIED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`failed` |
+| `CANCEL_PENDING` | authenticated `EXPIRED` same `psi_*` | `EXPIRED` | verified/reconciled; attestation | cancel retained; terminal=`t`; retention=`t+30d` | `STATUS_EXPIRED` | `RUNTIME_CANCEL_LOST_TO_EXPIRY` | null | `RUNTIME_INTENT_EXPIRED_CONFIRMED` | yes / yes / no | `provider_secret.attempt_transitioned`/`failed` |
+| `RUNTIME_CONSUMING` | authenticated `COMMITTED_UNVERIFIED`, no cancellation history | `RUNTIME_COMMITTED_UNVERIFIED` | verified/reconciled/terminal/retention; attestation | consuming retained; commit-observed=`t`; Runtime commit iff supplied | `STATUS_COMMITTED_UNVERIFIED` | `NOT_REQUESTED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_CONSUMING` | authenticated `COMMITTED_UNVERIFIED`, cancellation previously lost | `RUNTIME_COMMITTED_UNVERIFIED` | verified/reconciled/terminal/retention; attestation | cancel/consuming retained; commit-observed=`t`; Runtime commit iff supplied | `STATUS_COMMITTED_UNVERIFIED` | `RUNTIME_CANCEL_LOST_TO_COMMITTED_UNVERIFIED` | null | null | no / no / yes | `provider_secret.attempt_transitioned`/`failed` |
+| `RUNTIME_CONSUMING` | authenticated `VERIFIED` plus accepted attestation, no cancellation history | `RUNTIME_VERIFIED` | reconciled/terminal/retention | consuming retained; verified=`t`; exact attestation | `STATUS_VERIFIED` | `NOT_REQUESTED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_CONSUMING` | authenticated `VERIFIED` plus accepted attestation, cancellation previously lost | `RUNTIME_VERIFIED` | reconciled/terminal/retention | cancel/consuming retained; verified=`t`; exact attestation | `STATUS_VERIFIED` | `RUNTIME_CANCEL_LOST_TO_VERIFIED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`failed` |
+| `RUNTIME_COMMITTED_UNVERIFIED` | authenticated `VERIFIED` plus accepted attestation, no cancellation history | `RUNTIME_VERIFIED` | reconciled/terminal/retention | commit observation retained; verified=`t`; exact attestation | `STATUS_VERIFIED` | `NOT_REQUESTED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_COMMITTED_UNVERIFIED` | authenticated `VERIFIED` plus accepted attestation, cancellation previously lost | `RUNTIME_VERIFIED` | reconciled/terminal/retention | cancel/commit observation retained; verified=`t`; exact attestation | `STATUS_VERIFIED` | `RUNTIME_CANCEL_LOST_TO_VERIFIED` | one exact verified code | null | no / no / yes | `provider_secret.attempt_transitioned`/`failed` |
+| `RUNTIME_VERIFIED` | exact Credential reference/version update and same-`psi_*` reconciliation committed; cancellation code `NOT_REQUESTED` | `RECONCILED` | none of its required evidence | verified retained; reconciled=terminal=`t`; retention=`t+30d` | `STATUS_VERIFIED` | `NOT_REQUESTED` | exact verified code | `RECONCILIATION_COMPLETE` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+| `RUNTIME_VERIFIED` | same exact reconciliation; cancellation code `RUNTIME_CANCEL_LOST_TO_VERIFIED` | `RECONCILED` | none of its required evidence | cancel/verified retained; reconciled=terminal=`t`; retention=`t+30d` | `STATUS_VERIFIED` | `RUNTIME_CANCEL_LOST_TO_VERIFIED` | exact verified code | `RECONCILIATION_COMPLETE` | yes / yes / no | `provider_secret.attempt_transitioned`/`succeeded` |
+
+Every transition to `NEEDS_ATTENTION` is exact:
+
+| Evidence | `authorize_last_result_code` | `cancellation_result_code` | `terminal_result_code` |
+|---|---|---|---|
+| authenticated `CANCELLED` outside the exact cancel-confirm path | `STATUS_CANCELLED_UNEXPECTED` | `RUNTIME_CANCEL_CONTRADICTION` if cancel was pending, otherwise `NOT_REQUESTED` | `RUNTIME_REPORTED_UNEXPECTED_TERMINAL` |
+| authenticated `FAILED` | `STATUS_FAILED_UNEXPECTED` | retained exact cancellation code | `RUNTIME_REPORTED_UNEXPECTED_TERMINAL` |
+| authenticated Runtime `NEEDS_ATTENTION` | `STATUS_NEEDS_ATTENTION_UNEXPECTED` | retained exact cancellation code | `RUNTIME_REPORTED_UNEXPECTED_TERMINAL` |
+| authenticated `EXPIRED_UNRECONCILED` | `STATUS_EXPIRED_UNRECONCILED_UNEXPECTED` | retained exact cancellation code | `RUNTIME_REPORTED_UNEXPECTED_TERMINAL` |
+| malformed response | `STATUS_MALFORMED` | `RUNTIME_CANCEL_CONTRADICTION` if cancel was pending, otherwise retained | `RUNTIME_STATUS_CONTRADICTION` |
+| contradictory tuple/state/epoch/timestamp | `STATUS_CONTRADICTORY` | `RUNTIME_CANCEL_CONTRADICTION` if cancel was pending, otherwise retained | `RUNTIME_STATUS_CONTRADICTION` |
+| authenticated `NOT_FOUND` before expiry when count=3 | `TRANSMISSION_LIMIT_EXCEEDED` | retained | `AUTHORIZE_TRANSMISSION_LIMIT_EXCEEDED` |
+| bound entity stale at any unresolved state | retained | retained | `BOUND_ENTITY_STALE` |
+| rejected attestation | `STATUS_VERIFIED` | retained | `ATTESTATION_REJECTED` |
+| status remains unavailable after deadline and separately configured recovery deadline elapses | `STATUS_UNAVAILABLE` | retained | `RUNTIME_OPERATION_UNCERTAIN` |
+
+Each such row sets `terminal_at=t`, leaves `retention_eligible_at=NULL`, is
+terminal and unresolved, and writes `provider_secret.attempt_transitioned` with
+result `needs_attention`. Before that separate recovery deadline, unavailable
+status remains in the same unresolved state and never becomes locally expired.
 
 Named constraints/indexes are:
 
@@ -856,34 +1018,64 @@ Named constraints/indexes are:
 - `ck_provider_secret_attempts_id`, `_intent_id`, `_schema`, `_expected_missing`,
   `_timestamps`, and `_state_timestamps`;
 - partial unique index `uq_provider_secret_attempts_unresolved_credential` on
-  `credential_id WHERE state IN ('authorized','runtime_staged',
-  'cancel_pending','runtime_consuming','runtime_verified','needs_attention')`;
+  `credential_id WHERE state IN ('authorized','authorize_pending',
+  'runtime_staged','cancel_pending','runtime_consuming',
+  'runtime_committed_unverified','runtime_verified','needs_attention')`;
 - indexes `ix_provider_secret_attempts_state_updated` and
   `ix_provider_secret_attempts_terminal_at`.
 
-Database authority is enforced by four triggers:
+Database authority is enforced by six triggers:
 
 1. `trg_provider_secret_attempts_insert_matches_challenge` permits insert only
    in `AUTHORIZED` while the exact Challenge is `ISSUED`, and requires `IS`
    equality for every copied schema/purpose/Admin/Session/auth,
    Runtime/Provider/Credential/owner, expected/postcondition, digest, `psi_*`,
    intent timestamp, expiry, and initial cancellation value;
-2. `trg_provider_secret_attempts_authority_immutable` uses `IS NOT` to reject
+2. `trg_provider_secret_attempts_consume_challenge` is `AFTER INSERT`. It issues
+   exactly one conditional update matching Challenge ID, `psi_*`, digest,
+   schema/purpose, actor/Session/auth tuple, Runtime/Provider/Credential tuple,
+   expected postcondition, and state `ISSUED`; it sets
+   `CONSUMED`, `terminal_at=consumed_at=NEW.authorized_at`,
+   `consumed_request_id=NEW.authorization_request_id`, and
+   `terminal_result_code=ATTEMPT_CREATED`. It then requires `changes()=1` or
+   executes `RAISE(ABORT,'provider secret challenge consume mismatch')`;
+3. `trg_provider_secret_attempts_authority_immutable` uses `IS NOT` to reject
    changes to ID, schema/purpose, Challenge/intent identity, Admin/Session/auth,
    every Runtime/Provider/Credential identity/revision/state/owner,
-   expected/postcondition, digest, intent issue/expiry, authorized/created time;
-3. `trg_provider_secret_attempts_legal_transition` permits only the arrows in
+   expected/postcondition, digest, `authorization_request_id`, intent
+   issue/expiry, authorized/created time, and retention boundary after terminal;
+4. `trg_provider_secret_attempts_legal_transition` permits only the arrows in
    the state diagram and rejects regression/terminal transitions;
-4. `trg_provider_secret_attempts_transition_consistency` requires exact
+5. `trg_provider_secret_attempts_transition_consistency` requires exact
    per-state timestamps, cancellation/attestation/terminal result codes, and
    forbids `RECONCILED` unless prior state is `RUNTIME_VERIFIED` with a valid
-   attestation code and non-null verified time.
+   attestation code and non-null verified time;
+6. `trg_provider_secret_attempts_delete_guard` permits deletion only for
+   `RECONCILED`, safely confirmed `CANCELLED`, or safely confirmed `EXPIRED`,
+   with exact consistent terminal/result fields, non-null
+   `retention_eligible_at = terminal_at + 30 days`, and
+   `agentbox_now_utc6() >= retention_eligible_at`. It always rejects every
+   active/unresolved state and every `NEEDS_ATTENTION`; missing clock function
+   fails closed.
 
-The insert/consume pair is one database-enforced handshake inside the same
-transaction: Attempt insert is allowed only against the still-eligible
-`ISSUED` Challenge; the immediately following Challenge transition is allowed
-only when that exact Attempt exists. No committed Attempt can therefore refer
-to anything except its exact `CONSUMED` Challenge, and rollback removes both.
+The insert/consume pair is one database-enforced trigger handshake inside the
+same statement and transaction. The `BEFORE INSERT` validator admits only the
+exact eligible `ISSUED` Challenge; after the row exists, the `AFTER INSERT`
+trigger consumes it, while the Challenge legal-transition and consumed-attempt
+validation triggers remain active. Any Audit/constraint error or later crash/
+rollback removes both the Attempt and transition. Direct SQL cannot commit an
+Attempt with an `ISSUED` Challenge, consume without the exact Attempt, copy
+another Challenge, or create more than one Attempt per Challenge.
+
+The final trigger shape was exercised on 2026-08-25 in temporary SQLite:
+valid insert produced Attempt plus consumed Challenge; an injected failure
+after insert rolled both back; direct consume and mismatched `psi_*`, digest,
+tuple, or request field failed; active/unresolved deletion failed; safely
+terminal Attempt then Challenge deletion succeeded only after their exact UTC6
+retention boundaries; `NEEDS_ATTENTION` deletion failed after 1, 90, and 9,999
+days. Raw UTC6 `2026-08-25 01:02:03.456789` round-tripped and
+the five-minute value remained `2026-08-25 01:07:03.456789`. No prototype file
+entered Git.
 
 Table checks require exact ID/digest grammar, timestamp ordering, state-field
 consistency, and the enumerated codes. Together with the partial index and
@@ -898,14 +1090,47 @@ to 1, set `cancel_requested_at`, bounded `cancel_request_id`, `terminal_at`,
 `terminal_result_code=LOCAL_CANCELLED`, write Audit, and commit. It invokes no
 Runtime. A repeat is idempotent for the issuer and writes no second Audit.
 
-Slice 3.2b cancellation after `RUNTIME_STAGED` must transition locally to
+The phrase “no Runtime-send marker” is exactly the database invariant
+`state='authorized'`, null `authorize_requested_at`/`authorize_request_id`,
+`authorize_attempt_count=0`, and `authorize_last_result_code=NOT_REQUESTED`.
+Before any future Runtime authorize UDS call, Slice 3.2b must use
+`BEGIN IMMEDIATE`, reload the exact Attempt and bound entities, require
+`AUTHORIZED` and `agentbox_now_utc6() < expires_at`, transition to
+`AUTHORIZE_PENDING`, persist request time/ID, count 1 and `REQUEST_PERSISTED`,
+write `provider_secret.authorize_pending`, and commit. Only then may it send the
+already approved tuple and same `psi_*`. A Runtime call while `AUTHORIZED` is a
+contract violation. A crash before send or after send/response loss remains
+durably `AUTHORIZE_PENDING`.
+
+Recovery from `AUTHORIZE_PENDING` always calls the authenticated bounded
+`runtime.provider_secret.provision.status` for the same `psi_*` before any
+transmission decision. The exact mapping is: `STAGED`, `CONSUMING`,
+`COMMITTED_UNVERIFIED`, `VERIFIED`, and `EXPIRED` follow the corresponding
+matrix rows; unexpected `CANCELLED`, `FAILED`, `NEEDS_ATTENTION`, or
+`EXPIRED_UNRECONCILED`, and malformed/contradictory evidence enter
+`NEEDS_ATTENTION`; transport unavailability remains `AUTHORIZE_PENDING`.
+Authenticated exact `NOT_FOUND` before expiry permits only a byte-identical
+same-intent resend: same `psi_*`, digest, tuple, issue/expiry, and cancellation
+epoch. Its incremented count, new request ID/time and `RESEND_PERSISTED` commit
+before transmission. Counts 1–3 are the only transmissions; an attempted
+fourth is prohibited and terminalizes to `NEEDS_ATTENTION` with the exact codes
+in the matrix. `NOT_FOUND` at/after expiry becomes
+`INTENT_EXPIRED_NOT_FOUND_CONFIRMED`. No recovery returns to `AUTHORIZED`,
+generates a new `psi_*`, or derives authority from Job, lease, Audit, timeout,
+or response absence.
+
+Slice 3.2b cancellation after `AUTHORIZE_PENDING` or `RUNTIME_STAGED` must
+transition locally to
 `CANCEL_PENDING`, increment the server-controlled epoch, and request Runtime
 cancellation for the same `psi_*`. Control Plane cannot set `CANCELLED` until
-exact Runtime status confirms `STAGED -> CANCELLED`. Lost response leaves
+an authenticated exact Runtime response confirms `CANCELLED` for that same
+`psi_*` and cancellation epoch. Lost response leaves
 `CANCEL_PENDING` and status is queried by the same `psi_*`; Runtime already
 `CONSUMING` moves to observed `RUNTIME_CONSUMING` with
 `RUNTIME_CANCEL_LOST_TO_CONSUMING`; verified status moves to
-`RUNTIME_VERIFIED`; contradiction becomes `NEEDS_ATTENTION` with
+`RUNTIME_VERIFIED`; committed-unverified status moves to
+`RUNTIME_COMMITTED_UNVERIFIED`; exact expiry moves to `EXPIRED` with
+`RUNTIME_CANCEL_LOST_TO_EXPIRY`; contradiction becomes `NEEDS_ATTENTION` with
 `RUNTIME_CANCEL_CONTRADICTION`/`RUNTIME_STATUS_CONTRADICTION`. There is no blind
 resend, new intent, caller-selected epoch, or state rollback.
 
@@ -915,10 +1140,14 @@ Crash-window recovery is exact:
 |---|---|
 | issued, not consumed | Challenge already owns the approved `psi_*`; terminalization burns it |
 | consume rolls back | no attempt; challenge remains issued unless mismatch/expiry terminalization committed |
-| consumed before Runtime authorization | `AUTHORIZED` atomically copies the approved `psi_*`; no replacement exists |
-| authorization never sent | later Slice 3.2b reads `AUTHORIZED`; after expiry marks `EXPIRED` without Runtime call |
-| Runtime staged, response lost | later exact status by `psi_*`; never generate a replacement |
+| consumed before Runtime admission | `AUTHORIZED` atomically copies the approved `psi_*` and proves no Runtime request was admitted |
+| pre-send marker commits, process crashes before send | durable `AUTHORIZE_PENDING`; exact same-`psi_*` status first; never local cancel/expire |
+| Runtime receives authorize, response/state update lost | durable `AUTHORIZE_PENDING`; exact status first; bounded byte-identical resend only after authenticated pre-expiry `NOT_FOUND` |
+| three authorize transmissions remain `NOT_FOUND` | prohibit a fourth and enter `NEEDS_ATTENTION` |
+| Runtime staged, response lost | exact status by `psi_*`; never generate a replacement |
 | Runtime consuming across restart | status/reconciliation only; no blind resend or second attempt |
+| Runtime committed but unverified | `RUNTIME_COMMITTED_UNVERIFIED`; encrypted material may exist and state is never retryable/pre-write |
+| Runtime reports exact expiry | terminal code distinguishes unsent, confirmed not-found, and Runtime-confirmed expiry; cancellation loss records its exact code |
 | Runtime verified while Control Plane unavailable | retained `RUNTIME_VERIFIED`/Runtime attestation is reconciled against exact tuple |
 | attestation received, CP crashes | state remains pre-transition or `RUNTIME_VERIFIED`; same attestation is conditionally idempotent |
 | Credential update commits, acknowledgement lost | future exact status observes Credential revision/reference and repeats only acknowledgement |
@@ -932,8 +1161,10 @@ Crash-window recovery is exact:
 ## 25. Retention and pruning
 
 An `ISSUED` challenge is never pruned. Cleanup first materializes expiry.
-Terminal challenges become time-eligible after exactly 30 days from
-`terminal_at`, but deletion additionally requires no retained Attempt FK;
+Legal terminalization sets immutable `retention_eligible_at` to exactly
+`terminal_at + 30 days` for safely prunable rows and permanently null for
+`NEEDS_ATTENTION`. Terminal challenges become eligible only at that stored
+boundary, and deletion additionally requires no retained Attempt FK;
 therefore a consumed Challenge for `NEEDS_ATTENTION` remains retained.
 Only safely terminal `RECONCILED`, locally/Runtime-confirmed `CANCELLED`, and
 safely confirmed `EXPIRED` attempts are eligible for ordinary pruning, exactly
@@ -942,7 +1173,8 @@ safely confirmed `EXPIRED` attempts are eligible for ordinary pruning, exactly
 `NEEDS_ATTENTION` is unresolved and fail-closed, not time-prunable. It remains
 inside `uq_provider_secret_attempts_unresolved_credential`; a Credential with
 such a row can receive neither a new Challenge nor Attempt. Ordinary
-maintenance cannot delete, abandon, resolve, or make it retryable. A future
+maintenance and direct SQL cannot delete, abandon, resolve, or make it
+retryable because both the partial index and delete trigger remain active. A future
 separately authorized lifecycle review/operation is required. At most one
 unresolved row per Credential bounds repeated-attempt growth. Its consumed
 Challenge remains protected by FK, and Runtime orphan material never becomes
@@ -952,7 +1184,10 @@ One maintenance invocation uses one `BEGIN IMMEDIATE` and selects at most 100
 **total** candidate rows across all categories through one deterministic union:
 
 1. priority 1: materialize elapsed `ISSUED -> EXPIRED` Challenges and unsent
-   `AUTHORIZED -> EXPIRED` Attempts, ordered by `(expires_at, id)`;
+   `AUTHORIZED -> EXPIRED/INTENT_EXPIRED_UNSENT` Attempts, ordered by
+   `(expires_at, id)`. `AUTHORIZE_PENDING`, `RUNTIME_STAGED`, and
+   `CANCEL_PENDING` require exact Runtime status and are never expired from the
+   wall clock alone;
 2. priority 2: delete eligible safe terminal Attempts, ordered by
    `(terminal_at, id)`;
 3. priority 3: delete eligible terminal Challenges having no retained Attempt,
@@ -968,7 +1203,11 @@ records exactly the integer keys `approval_expired_count`,
 `attempt_pruned_count`, `challenge_pruned_count`, and
 `auth_context_pruned_count`, each 0–100 and with a sum no greater than 100.
 Busy/rollback performs no partial change and retries next run. FK `RESTRICT`
-remains authoritative.
+remains authoritative. Maintenance deletes through both database delete guards
+with one transaction-pinned `agentbox_now_utc6()`; it cannot bypass the stored
+boundary. Only confirmed-safe `EXPIRED` rows are ordinarily prunable, expiry
+never generates a replacement intent, and Runtime encrypted material never
+becomes reusable.
 
 ## 26. Downgrade contract
 
@@ -1017,7 +1256,11 @@ dedicated column, never duplicated as metadata.
 | `provider_secret.challenge_consumed` | challenge | `succeeded` | `provisioning_attempt_id`, `provisioning_intent_id`, `runtime_installation_id`, `runtime_revision`, `provider_id`, `provider_revision`, `credential_id`, `credential_revision`, `approval_digest`, `auth_context_fingerprint` |
 | `provider_secret.challenge_rejected` | challenge or null | `rejected` | `reason_code` from public closed codes; `id_well_formed` bool; no target tuple for unknown/wrong actor |
 | `provider_secret.attempt_created` | `provider_secret_provisioning_attempt`/`psa_*` | `succeeded` | `challenge_id`, `provisioning_intent_id`, `runtime_installation_id`, `runtime_revision`, `provider_id`, `provider_revision`, `credential_id`, `credential_revision`, `state=authorized`, `approval_digest`, `auth_context_fingerprint` |
-| `provider_secret.attempt_transitioned` | attempt | `succeeded`, `failed`, `needs_attention` | `from_state`, `to_state`, `terminal_result_code`, `cancellation_result_code`, `runtime_installation_id`, `provider_id`, `credential_id`, `provisioning_intent_id`; nullable codes are recorded only when their state permits them |
+| `provider_secret.authorize_pending` | attempt | `succeeded` | `from_state=authorized`, `to_state=authorize_pending`, `attempt_count=1`, `authorize_result_code=REQUEST_PERSISTED`, `runtime_installation_id`, `provider_id`, `credential_id`, `provisioning_intent_id`; request ID uses the dedicated Audit request column |
+| `provider_secret.authorize_status_checked` | attempt | `succeeded`, `failed`, `needs_attention` | `from_state`, `to_state`, `attempt_count`, `authorize_result_code`, `runtime_status`, `runtime_installation_id`, `provider_id`, `credential_id`, `provisioning_intent_id`; `runtime_status` is one closed status label, never raw output |
+| `provider_secret.authorize_retry_admitted` | attempt | `succeeded` | `state=authorize_pending`, `attempt_count`=2 or 3, `authorize_result_code=RESEND_PERSISTED`, `runtime_installation_id`, `provider_id`, `credential_id`, `provisioning_intent_id`; request ID uses the dedicated Audit request column |
+| `provider_secret.cancel_pending` | attempt | `succeeded` | `from_state`, `to_state=cancel_pending`, `cancellation_result_code=RUNTIME_CANCEL_REQUESTED`, `runtime_installation_id`, `provider_id`, `credential_id`, `provisioning_intent_id` |
+| `provider_secret.attempt_transitioned` | attempt | `succeeded`, `failed`, `needs_attention` | `from_state`, `to_state`, `authorize_result_code`, `terminal_result_code`, `cancellation_result_code`, `runtime_attestation_code`, `runtime_installation_id`, `provider_id`, `credential_id`, `provisioning_intent_id`; nullable codes are recorded only in the exact matrix rows |
 | `provider_secret.maintenance_completed` | `provider_secret_maintenance`/null | `succeeded` | `approval_expired_count`, `attempt_pruned_count`, `challenge_pruned_count`, `auth_context_pruned_count`, each int 0–100 and total ≤100 |
 | `phase11_0005.migration_blocked` | `database`/null | `blocked` | `reason_code`, `credential_row_count` nonnegative int; emitted only when application-owned migration Audit is transactionally available, otherwise normalized installer log code only |
 
@@ -1039,12 +1282,15 @@ Audit result values are exactly `succeeded`, `failed`, `rejected`,
 
 ## 28. Threat-model mapping
 
-Threats T-112 through T-136 in `docs/THREAT_MODEL.md` cover ambiguous legacy
+Threats T-112 through T-144 in `docs/THREAT_MODEL.md` cover ambiguous legacy
 adoption, cross-Runtime references, owner mutation, cardinality, challenge
 forgery/replay/digest substitution, Session binding/revocation races,
 cancellation/double consumption, revision TOCTOU, expiry/clock rollback,
 enumeration, retention/pruning, false Audit/Job authority, crash atomicity,
-migration/downgrade, and Secret-shaped generic metadata. The residual
+migration/downgrade, Secret-shaped generic metadata, atomic insert/consume,
+durable pre-send admission, bounded recovery, committed-unverified Runtime
+state, confirmed expiry, deletion guards, migration races, UTC6 storage, and
+the complete state/result cross-product. The residual
 Control Plane and Runtime compromises in §7 remain explicit.
 
 ## 29. Future Slice 3.2a implementation boundary
@@ -1087,17 +1333,36 @@ The implementation gate requires, at minimum:
 - concurrent consume/consume and consume/cancel with exactly one winner;
 - fault injection before/after every consume/attempt/Audit statement and commit;
 - direct-SQL mismatched Challenge/Attempt tuple/digest/intent rejection,
-  Attempt immutability, forward-only transitions, early reconcile rejection,
+  immutable `authorization_request_id`, trigger-driven insert/consume atomicity,
+  forced rollback after insert, consume-without-Attempt rejection, Attempt
+  immutability, forward-only transitions, early reconcile rejection,
   and one-unresolved-attempt guard including `NEEDS_ATTENTION`;
-- local Attempt cancellation, `CANCEL_PENDING`, lost acknowledgement,
-  consume-wins and contradictory Runtime status recovery tests;
+- `AUTHORIZED` null/zero pre-send invariant; Runtime call spy proves every call
+  follows committed `AUTHORIZE_PENDING`; crash before send and after send;
+- every exact status mapping from `AUTHORIZE_PENDING`, byte-identical same-`psi_*`
+  resend, persisted counts 1–3, prohibited fourth transmission, unavailable and
+  malformed status, no new intent, and no return to `AUTHORIZED`;
+- `RUNTIME_COMMITTED_UNVERIFIED` with and without supplied Runtime commit time;
+  local Attempt cancellation, `CANCEL_PENDING`, lost acknowledgement,
+  consume/commit/verify/expiry wins and contradictory status recovery tests;
 - all §24 crash windows and proof that neither Job nor Audit is authority;
 - retention cutoff equality, global 100-row total, deterministic category/order,
-  FK protection, `NEEDS_ATTENTION` non-pruning, selective Session pruning,
+  both database delete guards, issued/active deletion rejection, safe terminal
+  deletion after boundary, Challenge only after Attempt deletion,
+  `NEEDS_ATTENTION` rejection after 1/90/arbitrary days, FK protection,
+  selective Session pruning,
   contention, and safe/unsafe downgrade;
 - temporary/fixture migration tests prove no active transaction before FK off,
-  one explicit `BEGIN IMMEDIATE`, schema plus Alembic version rollback under
-  injected failure, post-commit verification, and backup-restoration gate;
+  FK-ON outer checks, writer fence, FK-OFF locked rechecks, one explicit
+  `BEGIN IMMEDIATE`, schema plus Alembic version rollback under injected failure
+  before body/after DDL/after version, post-commit failure simulation, exact
+  trigger inventory, and verified backup/WAL/SHM restoration gate;
+- raw SQLite UTC6 storage/round-trip, aware-UTC bind and load, offset/grammar
+  rejection, microseconds `000000`/`999999`, exact five-minute and 30-day
+  equality, backward clock, clock-function absence, and RFC3339Z digest vectors;
+- generated coverage proves every state/event row has its exact null/non-null
+  fields, timestamps, four result-code dimensions, terminal/retention/unresolved
+  flags, and Audit action/result; raw Runtime text/exception rejection;
 - every Audit metadata literal passes current `sanitize_metadata`; forbidden
   keys including raw Session correlation fail before reaching an authority
   transaction; re-auth and approval Audit contains only the exact allowlists;
@@ -1125,7 +1390,9 @@ documentation PR passes CI, Architecture Review, Security Review, recorded
 human review, protected Squash Merge, merge read-back, and a new explicit owner
 instruction. Until then:
 
-- Slice 3.2a architecture review: in review;
+- Slice 3.2a Architecture Review: `REQUEST CHANGES` from the second human review;
+  this corrected contract awaits the third human Architecture/Security Review;
+- Slice 3.2a prospective implementation decision: `AUTHORIZED`;
 - Slice 3.2a implementation: not started and not authorized to begin;
 - Slice 3.2b implementation: not authorized;
 - Secret provisioning: blocked.
@@ -1147,7 +1414,18 @@ instruction. Until then:
 | exact Alembic/FK/version transaction | §§14, 26, 30 | Yes |
 | one global 100-row cleanup bound | §§17, 25, 30 | Yes |
 | terminal/result enum closure | §§15, 23–24, 27 | Yes |
-| corrected threats | §28 and T-112–T-136 | Yes |
+| corrected threats | §28 and T-112–T-144 | Yes |
+| atomic Attempt/Challenge trigger handshake | §§15, 22, 24, 30 | Yes |
+| durable `AUTHORIZE_PENDING` pre-send marker | §24 | Yes |
+| exact status-first bounded retransmission | §24 | Yes |
+| `RUNTIME_COMMITTED_UNVERIFIED` | §24 | Yes |
+| Runtime-confirmed expiry and cancellation loss | §§24–25 | Yes |
+| Challenge/Attempt delete guards | §§15, 24–25 | Yes |
+| `NEEDS_ATTENTION` non-deletability | §§24–25 | Yes |
+| complete state/field/code/Audit matrix | §§24, 27, 30 | Yes |
+| corrected Alembic three-phase runner | §§14, 26, 30 | Yes |
+| raw UTC6 versus canonical RFC3339Z | §§18, 18A, 23, 30 | Yes |
+| second-review threat corrections | §28 and T-112–T-144 | Yes |
 
 | Prompt issue | Decision location | Closed |
 |---|---|---|
@@ -1176,5 +1454,5 @@ instruction. Until then:
 
 ## 34. Next authorized action
 
-The only next action is **Second Human Architecture/Security Review of the
+The only next action is **Third Human Architecture/Security Review of the
 corrected Draft PR #39**. Implementation must not start in this execution.
