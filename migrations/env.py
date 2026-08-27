@@ -188,10 +188,23 @@ def _columns(connection: Connection, table: str) -> set[str]:
 
 def _invalid_source_datetime(column: str) -> str:
     normalized = f"strftime('%Y-%m-%d %H:%M:%S',{column})"
-    return (
-        f"strftime('%Y-%m-%d %H:%M:%f',{column}) IS NULL OR "
-        f"datetime({normalized},'+0 seconds') IS NOT {normalized}"
+    year = f"CAST(substr({normalized},1,4) AS INTEGER)"
+    month = f"CAST(substr({normalized},6,2) AS INTEGER)"
+    day = f"CAST(substr({normalized},9,2) AS INTEGER)"
+    max_day = (
+        f"CASE WHEN {month} IN (1,3,5,7,8,10,12) THEN 31 "
+        f"WHEN {month} IN (4,6,9,11) THEN 30 WHEN {month}=2 THEN "
+        f"CASE WHEN ({year}%4=0 AND ({year}%100<>0 OR {year}%400=0)) THEN 29 ELSE 28 END "
+        "ELSE 0 END"
     )
+    valid_calendar = (
+        f"{year} BETWEEN 1 AND 9999 AND {month} BETWEEN 1 AND 12 "
+        f"AND {day} BETWEEN 1 AND ({max_day}) "
+        f"AND CAST(substr({normalized},12,2) AS INTEGER) BETWEEN 0 AND 23 "
+        f"AND CAST(substr({normalized},15,2) AS INTEGER) BETWEEN 0 AND 59 "
+        f"AND CAST(substr({normalized},18,2) AS INTEGER) BETWEEN 0 AND 59"
+    )
+    return f"strftime('%Y-%m-%d %H:%M:%f',{column}) IS NULL OR " f"NOT ({valid_calendar})"
 
 
 def _phase_a_phase11_preflight(connection: Connection) -> None:
