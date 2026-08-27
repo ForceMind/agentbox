@@ -29,22 +29,19 @@ def _scalar(sql: str) -> int:
 
 def _preflight_sessions() -> int:
     count = _scalar("SELECT COUNT(*) FROM sessions")
+    invalid_required_timestamps = " OR ".join(
+        _invalid_source_datetime(f"s.{column}")
+        for column in ("created_at", "last_seen_at", "idle_expires_at", "expires_at")
+    )
+    invalid_revoked_at = _invalid_source_datetime("s.revoked_at")
     invalid = _scalar(
         "SELECT COUNT(*) FROM sessions s WHERE "
         "length(s.id)<>36 OR substr(s.id,1,4)<>'ses_' OR substr(s.id,5) GLOB '*[^0-9a-f]*' "
         "OR length(s.user_id)<>36 OR substr(s.user_id,1,4)<>'adm_' OR substr(s.user_id,5) GLOB '*[^0-9a-f]*' "
         "OR length(s.token_hash)<>64 OR s.token_hash GLOB '*[^0-9a-f]*' "
         "OR length(s.csrf_hash)<>64 OR s.csrf_hash GLOB '*[^0-9a-f]*' "
-        "OR strftime('%Y-%m-%d %H:%M:%f',s.created_at) IS NULL "
-        "OR strftime('%Y-%m-%d %H:%M:%f',s.last_seen_at) IS NULL "
-        "OR strftime('%Y-%m-%d %H:%M:%f',s.idle_expires_at) IS NULL "
-        "OR strftime('%Y-%m-%d %H:%M:%f',s.expires_at) IS NULL "
-        "OR (s.revoked_at IS NOT NULL AND strftime('%Y-%m-%d %H:%M:%f',s.revoked_at) IS NULL) "
-        "OR datetime(strftime('%Y-%m-%d %H:%M:%S',s.created_at),'+0 seconds') IS NOT strftime('%Y-%m-%d %H:%M:%S',s.created_at) "
-        "OR datetime(strftime('%Y-%m-%d %H:%M:%S',s.last_seen_at),'+0 seconds') IS NOT strftime('%Y-%m-%d %H:%M:%S',s.last_seen_at) "
-        "OR datetime(strftime('%Y-%m-%d %H:%M:%S',s.idle_expires_at),'+0 seconds') IS NOT strftime('%Y-%m-%d %H:%M:%S',s.idle_expires_at) "
-        "OR datetime(strftime('%Y-%m-%d %H:%M:%S',s.expires_at),'+0 seconds') IS NOT strftime('%Y-%m-%d %H:%M:%S',s.expires_at) "
-        "OR (s.revoked_at IS NOT NULL AND datetime(strftime('%Y-%m-%d %H:%M:%S',s.revoked_at),'+0 seconds') IS NOT strftime('%Y-%m-%d %H:%M:%S',s.revoked_at)) "
+        f"OR ({invalid_required_timestamps}) "
+        f"OR (s.revoked_at IS NOT NULL AND ({invalid_revoked_at})) "
         "OR s.created_at>s.last_seen_at OR s.created_at>s.idle_expires_at OR s.created_at>s.expires_at "
         "OR NOT EXISTS (SELECT 1 FROM admin_users a WHERE a.id=s.user_id)"
     )
@@ -167,6 +164,16 @@ def _utc6_calendar(column: str) -> str:
         f"AND CAST(substr({column},12,2) AS INTEGER) BETWEEN 0 AND 23 "
         f"AND CAST(substr({column},15,2) AS INTEGER) BETWEEN 0 AND 59 "
         f"AND CAST(substr({column},18,2) AS INTEGER) BETWEEN 0 AND 59"
+    )
+
+
+def _invalid_source_datetime(column: str) -> str:
+    raw_seconds = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]"
+    raw_microseconds = raw_seconds + ".[0-9][0-9][0-9][0-9][0-9][0-9]"
+    return (
+        f"typeof({column})<>'text' OR NOT ((length({column})=19 AND {column} GLOB "
+        f"'{raw_seconds}') OR (length({column})=26 AND {column} GLOB '{raw_microseconds}')) "
+        f"OR NOT ({_utc6_calendar(column)})"
     )
 
 
