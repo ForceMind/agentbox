@@ -31,6 +31,8 @@ PHASE11_TABLES = {
     "runtime_session_provider_bindings",
     "provider_compatibility_evidence_sets",
     "provider_compatibility_observations",
+    "confirmation_challenges",
+    "provider_secret_provisioning_attempts",
 }
 
 PHASE11_TRIGGERS = {
@@ -52,6 +54,20 @@ PHASE11_TRIGGERS = {
     "trg_provider_compatibility_evidence_sets_immutable_delete",
     "trg_provider_compatibility_observations_immutable_update",
     "trg_provider_compatibility_observations_immutable_delete",
+}
+
+APPROVAL_TRIGGERS = {
+    "trg_confirmation_challenges_binding_immutable",
+    "trg_confirmation_challenges_legal_transition",
+    "trg_confirmation_challenges_consumed_attempt",
+    "trg_confirmation_challenges_unresolved_attempt_guard",
+    "trg_confirmation_challenges_delete_guard",
+    "trg_provider_secret_attempts_insert_matches_challenge",
+    "trg_provider_secret_attempts_consume_challenge",
+    "trg_provider_secret_attempts_authority_immutable",
+    "trg_provider_secret_attempts_legal_transition",
+    "trg_provider_secret_attempts_transition_consistency",
+    "trg_provider_secret_attempts_delete_guard",
 }
 
 
@@ -261,7 +277,7 @@ def test_phase11_upgrade_preserves_existing_data_without_automatic_adoption(
                     connection.execute(text(f'SELECT count(*) FROM "{table_name}"')).scalar_one()
                     == 0
                 )
-        assert not any("secret" in name for name in inspect(engine).get_table_names())
+        assert "provider_secret_provisioning_attempts" in inspect(engine).get_table_names()
     finally:
         engine.dispose()
 
@@ -285,6 +301,203 @@ def test_phase11_upgrade_preserves_existing_data_without_automatic_adoption(
         assert unmanaged.runtime_binding_id is None
     finally:
         services.database.close()
+
+
+def test_0005_rejects_every_legacy_credential_before_schema_change(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'legacy-credential.db'}"
+    migrate_database(database_url, "0004_phase11_provider_core")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO provider_definitions "
+                    "(id,identity_schema_version,display_name,provider_type,endpoint,"
+                    "wire_protocol,model,state,revision,created_at,updated_at) VALUES "
+                    "('prv_11111111111111111111111111111111',1,'Legacy','official_openai',"
+                    "'https://api.openai.com/v1','responses','gpt-5','configured',1,"
+                    "'2026-08-25 00:00:00.000000','2026-08-25 00:00:00.000000')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO provider_credentials "
+                    "(id,provider_id,kind,runtime_secret_ref,secret_version,state,revision,"
+                    "created_at,updated_at) VALUES "
+                    "('crd_22222222222222222222222222222222',"
+                    "'prv_11111111111111111111111111111111','api_key',NULL,NULL,'missing',1,"
+                    "'2026-08-25 00:00:00.000000','2026-08-25 00:00:00.000000')"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="PHASE11_0005_LEGACY_CREDENTIALS_PRESENT"):
+        migrate_database(database_url)
+
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == "0004_phase11_provider_core"
+            )
+            assert (
+                connection.execute(text("SELECT COUNT(*) FROM provider_credentials")).scalar_one()
+                == 1
+            )
+            assert "runtime_installation_id" not in {
+                row[1]
+                for row in connection.execute(text("PRAGMA table_info(provider_credentials)"))
+            }
+    finally:
+        engine.dispose()
+
+
+def test_0005_source_schema_preflight_fails_before_any_mutation(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'invalid-source-schema.db'}"
+    migrate_database(database_url, "0004_phase11_provider_core")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DROP TRIGGER trg_runtime_profiles_valid_snapshot"))
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="PHASE11_0005_SOURCE_SCHEMA_INVALID"):
+        migrate_database(database_url)
+
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == "0004_phase11_provider_core"
+            )
+            assert "runtime_installation_id" not in {
+                row[1]
+                for row in connection.execute(text("PRAGMA table_info(provider_credentials)"))
+            }
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                        "AND name IN ('confirmation_challenges',"
+                        "'provider_secret_provisioning_attempts')"
+                    )
+                ).scalar_one()
+                == 0
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0005_invalid_session_preflight_fails_before_any_mutation(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'invalid-source-session.db'}"
+    migrate_database(database_url, "0004_phase11_provider_core")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO admin_users "
+                    "(id,username,username_normalized,password_hash,is_active,created_at,"
+                    "updated_at,last_login_at) VALUES "
+                    "('adm_00000000000000000000000000000000','maintainer','maintainer',"
+                    "'representative-existing-password-hash',1,'2026-02-28 00:00:00',"
+                    "'2026-02-28 00:00:00',NULL)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO sessions "
+                    "(id,user_id,token_hash,csrf_hash,created_at,last_seen_at,idle_expires_at,"
+                    "expires_at,revoked_at,client_label) VALUES "
+                    "('ses_22222222222222222222222222222222',"
+                    "'adm_00000000000000000000000000000000',:token_hash,:csrf_hash,"
+                    "'2026-02-28 00:00:00','2026-02-30 00:00:00',"
+                    "'2026-03-01 00:00:00','2026-03-02 00:00:00',NULL,'invalid-calendar')"
+                ),
+                {"token_hash": "a" * 64, "csrf_hash": "b" * 64},
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="PHASE11_0005_SESSION_PREFLIGHT_FAILED"):
+        migrate_database(database_url)
+
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == "0004_phase11_provider_core"
+            )
+            assert "runtime_installation_id" not in {
+                row[1]
+                for row in connection.execute(text("PRAGMA table_info(provider_credentials)"))
+            }
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                        "AND name IN ('confirmation_challenges',"
+                        "'provider_secret_provisioning_attempts')"
+                    )
+                ).scalar_one()
+                == 0
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0005_unsafe_downgrade_rolls_back_schema_and_version(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'unsafe-downgrade.db'}"
+    migrate_database(database_url)
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO admin_users "
+                    "(id,username,username_normalized,password_hash,is_active,created_at,"
+                    "updated_at,last_login_at) VALUES "
+                    "('adm_11111111111111111111111111111111','owner','owner','hash',1,"
+                    "'2026-08-25 00:00:00.000000','2026-08-25 00:00:00.000000',NULL)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO sessions "
+                    "(id,user_id,token_hash,csrf_hash,created_at,recent_authenticated_at,"
+                    "auth_epoch,last_seen_at,idle_expires_at,expires_at,revoked_at,client_label) "
+                    "VALUES ('ses_22222222222222222222222222222222',"
+                    "'adm_11111111111111111111111111111111',:token,:csrf,"
+                    "'2026-08-25 00:00:00.000000','2026-08-25 00:00:00.000000',2,"
+                    "'2026-08-25 00:00:00.000000','2026-08-25 01:00:00.000000',"
+                    "'2026-08-26 00:00:00.000000',NULL,'fixture')"
+                ),
+                {"token": "a" * 64, "csrf": "b" * 64},
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="PHASE11_0005_DOWNGRADE_UNSAFE"):
+        downgrade_database(database_url, "0004_phase11_provider_core")
+
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == "0005_phase11_control_plane_ownership_approval"
+            )
+            assert "confirmation_challenges" in inspect(engine).get_table_names()
+            assert "auth_epoch" in {
+                row[1] for row in connection.execute(text("PRAGMA table_info(sessions)"))
+            }
+    finally:
+        engine.dispose()
 
 
 def test_phase11_migration_matches_orm_metadata_and_installs_exact_triggers(
@@ -313,6 +526,18 @@ def test_phase11_migration_matches_orm_metadata_and_installs_exact_triggers(
                 )
             }
         assert triggers == PHASE11_TRIGGERS
+        with engine.connect() as connection:
+            approval_triggers = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT name FROM sqlite_master WHERE type='trigger' "
+                        "AND (name LIKE 'trg_confirmation_challenges_%' "
+                        "OR name LIKE 'trg_provider_secret_attempts_%')"
+                    )
+                )
+            }
+        assert approval_triggers == APPROVAL_TRIGGERS
     finally:
         engine.dispose()
 

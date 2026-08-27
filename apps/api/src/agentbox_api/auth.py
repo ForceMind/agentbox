@@ -8,7 +8,7 @@ from typing import cast
 from urllib.parse import urlsplit
 
 from agentbox_core.configuration import Settings
-from agentbox_core.errors import InvalidOrigin
+from agentbox_core.errors import InvalidOrigin, InvalidSession, ReauthenticationInvalidSession
 from agentbox_core.services import (
     AuthenticatedSession,
     AuthService,
@@ -21,6 +21,7 @@ from agentbox_protocol import (
     AuthResponse,
     AuthSessionView,
     LoginRequest,
+    ReauthenticateRequest,
 )
 from fastapi import APIRouter, Cookie, Header, Request, Response
 
@@ -54,6 +55,23 @@ class BoundedLoginExecutor:
                 source_identifier=source_identifier,
                 request_id=request_id,
                 client_label=client_label,
+            )
+
+    async def reauthenticate(
+        self,
+        authenticated: AuthenticatedSession,
+        *,
+        password: str,
+        source_identifier: str,
+        request_id: str | None,
+    ) -> IssuedSession:
+        async with self._semaphore:
+            return await asyncio.to_thread(
+                self._auth_service.reauthenticate,
+                authenticated,
+                password=password,
+                source_identifier=source_identifier,
+                request_id=request_id,
             )
 
 
@@ -166,9 +184,54 @@ async def login(request: Request, response: Response, payload: LoginRequest) -> 
         username=issued.username,
         expires_at=issued.expires_at,
         authenticated_at=issued.authenticated_at,
+        auth_epoch=issued.auth_epoch,
         csrf_token=issued.csrf_token,
     )
     return _auth_response(request, authenticated)
+
+
+@router.post("/reauthenticate", response_model=AuthResponse)
+async def reauthenticate(
+    request: Request,
+    response: Response,
+    payload: ReauthenticateRequest,
+    agentbox_session: str | None = Cookie(default=None),
+    x_csrf_token: str | None = Header(default=None),
+) -> AuthResponse:
+    _validate_origin(request)
+    try:
+        authenticated = authenticate_request(request, agentbox_session)
+    except InvalidSession as exc:
+        raise ReauthenticationInvalidSession() from exc
+    _services(request).sessions.validate_csrf(authenticated, x_csrf_token)
+    issued = await _login_executor(request).reauthenticate(
+        authenticated,
+        password=payload.password,
+        source_identifier=_source_identifier(request),
+        request_id=_request_id(request),
+    )
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=issued.token,
+        max_age=_settings(request).session_ttl,
+        httponly=True,
+        secure=_settings(request).cookie_secure,
+        samesite="strict",
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return _auth_response(
+        request,
+        AuthenticatedSession(
+            session_id=issued.session_id,
+            user_id=issued.user_id,
+            username=issued.username,
+            expires_at=issued.expires_at,
+            authenticated_at=issued.authenticated_at,
+            auth_epoch=issued.auth_epoch,
+            csrf_token=issued.csrf_token,
+        ),
+    )
 
 
 @router.post("/logout", status_code=204)

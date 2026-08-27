@@ -194,7 +194,10 @@ def test_no_secret_store_uds_action_public_api_frontend_or_alembic_migration() -
     assert "provider-secrets" not in frontend_source
     migrations = {path.name for path in (ROOT / "migrations/versions").glob("*.py")}
     assert any(name.startswith("0004_phase11_provider_core") for name in migrations)
-    assert not any(name.startswith("0005") for name in migrations)
+    assert any(
+        name.startswith("0005_phase11_control_plane_ownership_approval") for name in migrations
+    )
+    assert not any(name.startswith("0006") for name in migrations)
 
 
 def test_ordinary_control_plane_backup_never_copies_runtime_secret_store(

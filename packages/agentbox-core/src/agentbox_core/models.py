@@ -5,8 +5,35 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from agentbox_core.utc import UTC6DateTime
+
+_UTC6_GLOB = (
+    "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] "
+    "[0-9][0-9]:[0-9][0-9]:[0-9][0-9]."
+    "[0-9][0-9][0-9][0-9][0-9][0-9]"
+)
+
+
+def _utc6(column: str) -> str:
+    return (
+        f"length({column})=26 AND {column} GLOB '{_UTC6_GLOB}' "
+        f"AND datetime(substr({column},1,19),'+0 seconds') IS substr({column},1,19)"
+    )
 
 
 class Base(DeclarativeBase):
@@ -41,6 +68,30 @@ class AdminUser(Base):
 
 class ControlPlaneSession(Base):
     __tablename__ = "sessions"
+    __table_args__ = (
+        UniqueConstraint("id", "user_id", name="uq_sessions_id_user"),
+        CheckConstraint("auth_epoch >= 1", name="ck_sessions_auth_epoch"),
+        CheckConstraint(
+            "recent_authenticated_at >= created_at AND " "recent_authenticated_at <= last_seen_at",
+            name="ck_sessions_recent_auth_bounds",
+        ),
+        CheckConstraint(
+            " AND ".join(
+                _utc6(column)
+                for column in (
+                    "created_at",
+                    "recent_authenticated_at",
+                    "last_seen_at",
+                    "idle_expires_at",
+                    "expires_at",
+                )
+            )
+            + " AND (revoked_at IS NULL OR ("
+            + _utc6("revoked_at")
+            + "))",
+            name="ck_sessions_utc6",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     user_id: Mapped[str] = mapped_column(
@@ -48,13 +99,13 @@ class ControlPlaneSession(Base):
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
-    )
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTC6DateTime(), nullable=False)
+    recent_authenticated_at: Mapped[datetime] = mapped_column(UTC6DateTime(), nullable=False)
+    auth_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    last_seen_at: Mapped[datetime] = mapped_column(UTC6DateTime(), nullable=False)
+    idle_expires_at: Mapped[datetime] = mapped_column(UTC6DateTime(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTC6DateTime(), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTC6DateTime(), index=True)
     client_label: Mapped[str | None] = mapped_column(String(80))
 
     user: Mapped[AdminUser] = relationship(back_populates="sessions")

@@ -133,12 +133,23 @@ def _activate_binding(
 
 
 def _configured_credential_metadata(
-    services: ControlPlaneServices, provider: Provider
+    services: ControlPlaneServices,
+    provider: Provider,
+    runtime: RuntimeInstallation | None = None,
 ) -> ProviderCredential:
     """Simulate a future Runtime-attested result directly at the persistence boundary."""
 
+    owner = runtime or _runtime(services)
     credential = services.providers.create_credential_metadata(
-        CredentialMetadataCreate(provider_id=provider.id, kind=CredentialKind.API_KEY),
+        CredentialMetadataCreate(
+            provider_id=provider.id,
+            provider_revision=provider.revision,
+            provider_state=provider.state,
+            runtime_installation_id=owner.id,
+            runtime_installation_revision=owner.revision,
+            runtime_type=owner.runtime_type,
+            kind=CredentialKind.API_KEY,
+        ),
         actor_id=ACTOR_ID,
     )
     with services.database.transaction() as session:
@@ -273,7 +284,15 @@ def test_provider_identities_and_relationships_remain_independent(
     runtime = _runtime(services)
     provider = _provider(services)
     credential = services.providers.create_credential_metadata(
-        CredentialMetadataCreate(provider_id=provider.id, kind=CredentialKind.API_KEY),
+        CredentialMetadataCreate(
+            provider_id=provider.id,
+            provider_revision=provider.revision,
+            provider_state=provider.state,
+            runtime_installation_id=runtime.id,
+            runtime_installation_revision=runtime.revision,
+            runtime_type=runtime.runtime_type,
+            kind=CredentialKind.API_KEY,
+        ),
         actor_id=ACTOR_ID,
     )
     profile = _profile(services, runtime.id, provider.id, provider.revision)
@@ -407,13 +426,27 @@ def test_slice_one_credential_creation_is_missing_metadata_only(
     services: ControlPlaneServices,
 ) -> None:
     provider = _provider(services)
+    runtime = _runtime(services)
     assert {field.name for field in fields(CredentialMetadataCreate)} == {
         "provider_id",
+        "provider_revision",
+        "provider_state",
+        "runtime_installation_id",
+        "runtime_installation_revision",
+        "runtime_type",
         "kind",
     }
 
     credential = services.providers.create_credential_metadata(
-        CredentialMetadataCreate(provider_id=provider.id, kind=CredentialKind.API_KEY),
+        CredentialMetadataCreate(
+            provider_id=provider.id,
+            provider_revision=provider.revision,
+            provider_state=provider.state,
+            runtime_installation_id=runtime.id,
+            runtime_installation_revision=runtime.revision,
+            runtime_type=runtime.runtime_type,
+            kind=CredentialKind.API_KEY,
+        ),
         actor_id=ACTOR_ID,
     )
     assert credential.runtime_secret_ref is None
@@ -509,7 +542,7 @@ def test_database_rejects_inexact_or_ineligible_profile_snapshots(
 ) -> None:
     runtime = _runtime(services)
     provider = _provider(services)
-    configured = _configured_credential_metadata(services, provider)
+    configured = _configured_credential_metadata(services, provider, runtime)
 
     stale_provider = services.providers.update_provider_display_name(
         provider.id,
@@ -530,7 +563,7 @@ def test_database_rejects_inexact_or_ineligible_profile_snapshots(
         session.flush()
 
     other_provider = _provider(services, display_name="Other", model="gpt-5-other")
-    other_credential = _configured_credential_metadata(services, other_provider)
+    other_credential = _configured_credential_metadata(services, other_provider, runtime)
     with pytest.raises(IntegrityError), services.database.transaction() as session:
         session.add(
             _profile_row(
@@ -563,7 +596,15 @@ def test_database_rejects_inexact_or_ineligible_profile_snapshots(
 
     missing_provider = _provider(services, display_name="Missing credential", model="gpt-5-missing")
     missing = services.providers.create_credential_metadata(
-        CredentialMetadataCreate(provider_id=missing_provider.id, kind=CredentialKind.API_KEY),
+        CredentialMetadataCreate(
+            provider_id=missing_provider.id,
+            provider_revision=missing_provider.revision,
+            provider_state=missing_provider.state,
+            runtime_installation_id=runtime.id,
+            runtime_installation_revision=runtime.revision,
+            runtime_type=runtime.runtime_type,
+            kind=CredentialKind.API_KEY,
+        ),
         actor_id=ACTOR_ID,
     )
     other_runtime = _runtime(services)
@@ -1144,7 +1185,7 @@ def test_runtime_and_credential_scoped_compatibility_evidence_keeps_exact_revisi
 ) -> None:
     runtime = _runtime(services)
     provider = _provider(services)
-    credential = _configured_credential_metadata(services, provider)
+    credential = _configured_credential_metadata(services, provider, runtime)
     profile = _profile(
         services,
         runtime.id,
@@ -1566,7 +1607,7 @@ def test_profile_scoped_evidence_requires_exact_profile_credential_chain(
 ) -> None:
     runtime = _runtime(services)
     provider = _provider(services)
-    credential = _configured_credential_metadata(services, provider)
+    credential = _configured_credential_metadata(services, provider, runtime)
     credentialless_profile = _profile(services, runtime.id, provider.id, provider.revision)
     with pytest.raises(ProviderMetadataConflict):
         services.providers.record_compatibility_evidence_set(
@@ -1662,15 +1703,24 @@ def test_authentication_evidence_rejects_ineligible_credential_state(
     state: CredentialLifecycleState,
 ) -> None:
     provider = _provider(services)
+    runtime = _runtime(services)
     secret_version: int | None
     if state is CredentialLifecycleState.MISSING:
         credential = services.providers.create_credential_metadata(
-            CredentialMetadataCreate(provider_id=provider.id, kind=CredentialKind.API_KEY),
+            CredentialMetadataCreate(
+                provider_id=provider.id,
+                provider_revision=provider.revision,
+                provider_state=provider.state,
+                runtime_installation_id=runtime.id,
+                runtime_installation_revision=runtime.revision,
+                runtime_type=runtime.runtime_type,
+                kind=CredentialKind.API_KEY,
+            ),
             actor_id=ACTOR_ID,
         )
         secret_version = 1
     else:
-        credential = _configured_credential_metadata(services, provider)
+        credential = _configured_credential_metadata(services, provider, runtime)
         with services.database.transaction() as session:
             session.execute(
                 update(ProviderCredential)
@@ -1700,7 +1750,7 @@ def test_database_rejects_fabricated_compatibility_revision_chains(
 ) -> None:
     runtime = _runtime(services)
     provider = _provider(services)
-    credential = _configured_credential_metadata(services, provider)
+    credential = _configured_credential_metadata(services, provider, runtime)
     profile = _profile(
         services,
         runtime.id,

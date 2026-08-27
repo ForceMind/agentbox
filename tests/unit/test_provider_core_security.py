@@ -52,6 +52,7 @@ NEW_TABLE_COLUMNS = {
     "provider_credentials": {
         "id",
         "provider_id",
+        "runtime_installation_id",
         "kind",
         "runtime_secret_ref",
         "secret_version",
@@ -209,6 +210,11 @@ def test_slice_one_inputs_have_no_generic_or_secret_bearing_field() -> None:
         assert not ({"options", "metadata", "payload", "config", "parameters"} & names)
     assert {field.name for field in fields(CredentialMetadataCreate)} == {
         "provider_id",
+        "provider_revision",
+        "provider_state",
+        "runtime_installation_id",
+        "runtime_installation_revision",
+        "runtime_type",
         "kind",
     }
     assert "id" not in {field.name for field in fields(CompatibilityEvidenceSetCreate)}

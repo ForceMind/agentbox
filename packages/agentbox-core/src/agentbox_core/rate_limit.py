@@ -42,6 +42,7 @@ class LoginRateLimiter:
         window_seconds: int,
         lock_seconds: int,
         max_rows: int,
+        purpose: str = "login",
     ) -> None:
         self._database = database
         self._secret = secret
@@ -50,11 +51,13 @@ class LoginRateLimiter:
         self._window = timedelta(seconds=window_seconds)
         self._lock = timedelta(seconds=lock_seconds)
         self._max_rows = max_rows
+        self._purpose = purpose
 
     def _keys(self, username: str, source: str) -> tuple[str, str, str]:
-        account = keyed_digest(self._secret, "rate-account", username)
-        client = keyed_digest(self._secret, "rate-source", source)
-        combined = keyed_digest(self._secret, "rate-combined", f"{username}\0{source}")
+        prefix = "rate" if self._purpose == "login" else f"{self._purpose}-rate"
+        account = keyed_digest(self._secret, f"{prefix}-account", username)
+        client = keyed_digest(self._secret, f"{prefix}-source", source)
+        combined = keyed_digest(self._secret, f"{prefix}-combined", f"{username}\0{source}")
         return account, client, combined
 
     def check(self, username: str, source: str) -> RateLimitDecision:

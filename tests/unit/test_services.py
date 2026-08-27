@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import UTC, timedelta
 from pathlib import Path
 
 import pytest
@@ -24,9 +24,10 @@ from agentbox_core.models import (
 )
 from agentbox_core.security import PasswordManager, sanitize_metadata
 from agentbox_core.services import ControlPlaneServices, IssuedSession, build_services
+from agentbox_core.utc import aware_utc
 from conftest import FakeClock
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
 
@@ -125,16 +126,19 @@ def test_database_constraints_enforce_single_admin_and_session_foreign_key(
         )
 
     with pytest.raises(IntegrityError), initialized_services.database.transaction() as session:
+        now = aware_utc(clock.now())
         session.add(
             ControlPlaneSession(
                 id="ses_orphan",
                 user_id="adm_missing",
                 token_hash="a" * 64,
                 csrf_hash="b" * 64,
-                created_at=clock.now(),
-                last_seen_at=clock.now(),
-                idle_expires_at=clock.now() + timedelta(minutes=5),
-                expires_at=clock.now() + timedelta(hours=1),
+                created_at=now,
+                recent_authenticated_at=now,
+                auth_epoch=1,
+                last_seen_at=now,
+                idle_expires_at=now + timedelta(minutes=5),
+                expires_at=now + timedelta(hours=1),
             )
         )
 
@@ -171,9 +175,39 @@ def test_expired_session_cleanup_uses_retention(
     with initialized_services.database.transaction() as session:
         stored = session.get(ControlPlaneSession, issued.session_id)
         assert stored is not None
-        stored.expires_at = clock.now() - timedelta(seconds=61)
+        stored.expires_at = aware_utc(clock.now()) - timedelta(seconds=61)
 
     assert initialized_services.sessions.cleanup() == 1
+
+
+def test_session_authority_timestamps_round_trip_as_aware_utc6(
+    initialized_services: ControlPlaneServices,
+    clock: FakeClock,
+) -> None:
+    issued = initialized_services.auth.login(
+        username="maintainer",
+        password="a sufficiently long passphrase",
+        source_identifier="127.0.0.1",
+        request_id="req_login_utc6",
+    )
+    with initialized_services.database.transaction() as session:
+        stored = session.get(ControlPlaneSession, issued.session_id)
+        assert stored is not None
+        assert stored.created_at.tzinfo is UTC
+        assert stored.created_at.utcoffset() == timedelta(0)
+    with initialized_services.database.engine.connect() as connection:
+        raw = connection.exec_driver_sql(
+            "SELECT created_at FROM sessions WHERE id=?", (issued.session_id,)
+        ).scalar_one()
+    assert len(raw) == 26
+    assert raw[4] == raw[7] == "-"
+    assert raw[10] == " " and raw[19] == "."
+    assert "+" not in raw and not raw.endswith("Z")
+
+    with pytest.raises(StatementError), initialized_services.database.transaction() as session:
+        stored = session.get(ControlPlaneSession, issued.session_id)
+        assert stored is not None
+        stored.expires_at = clock.now()
 
 
 def test_session_cleanup_race_preserves_an_active_session(

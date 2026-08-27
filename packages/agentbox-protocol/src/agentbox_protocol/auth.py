@@ -17,6 +17,10 @@ class LoginRequest(StrictModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class ReauthenticateRequest(StrictModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class AdminView(StrictModel):
     id: str
     username: str

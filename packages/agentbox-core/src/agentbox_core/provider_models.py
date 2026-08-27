@@ -247,8 +247,20 @@ class ProviderCredential(Base):
 
     __tablename__ = "provider_credentials"
     __table_args__ = (
-        UniqueConstraint("provider_id", name="uq_provider_credentials_provider"),
         UniqueConstraint("id", "provider_id", name="uq_provider_credentials_id_provider"),
+        UniqueConstraint(
+            "id",
+            "provider_id",
+            "runtime_installation_id",
+            name="uq_provider_credentials_runtime_identity",
+        ),
+        UniqueConstraint(
+            "provider_id",
+            "runtime_installation_id",
+            "kind",
+            name="uq_provider_credentials_provider_runtime_kind",
+        ),
+        Index("ix_provider_credentials_runtime_installation_id", "runtime_installation_id"),
         CheckConstraint("revision >= 1", name="ck_provider_credentials_revision"),
         CheckConstraint(
             "(state = 'missing' AND runtime_secret_ref IS NULL AND secret_version IS NULL) OR "
@@ -268,6 +280,15 @@ class ProviderCredential(Base):
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     provider_id: Mapped[str] = mapped_column(
         String(40), ForeignKey("provider_definitions.id", ondelete="RESTRICT"), nullable=False
+    )
+    runtime_installation_id: Mapped[str] = mapped_column(
+        String(40),
+        ForeignKey(
+            "runtime_installations.id",
+            ondelete="RESTRICT",
+            name="fk_provider_credentials_runtime_installation",
+        ),
+        nullable=False,
     )
     kind: Mapped[CredentialKind] = mapped_column(
         Enum(
@@ -321,10 +342,14 @@ class RuntimeProviderProfile(Base):
             name="fk_runtime_profiles_installation_adapter",
         ),
         ForeignKeyConstraint(
-            ["credential_id", "provider_id"],
-            ["provider_credentials.id", "provider_credentials.provider_id"],
+            ["credential_id", "provider_id", "runtime_installation_id"],
+            [
+                "provider_credentials.id",
+                "provider_credentials.provider_id",
+                "provider_credentials.runtime_installation_id",
+            ],
             ondelete="RESTRICT",
-            name="fk_runtime_profiles_credential_provider",
+            name="fk_runtime_profiles_credential_runtime_identity",
         ),
         CheckConstraint("provider_revision >= 1", name="ck_runtime_profiles_provider_revision"),
         CheckConstraint("adapter_schema_version >= 1", name="ck_runtime_profiles_adapter_schema"),

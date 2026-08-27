@@ -65,6 +65,36 @@ class LoginRateLimited(AgentBoxError):
     retryable = True
 
 
+class ReauthenticationInvalidSession(AgentBoxError):
+    code = "INVALID_SESSION"
+    category = "unauthenticated"
+    message = "Authentication required"
+    status_code = 401
+
+
+class ReauthenticationInvalidCredentials(AgentBoxError):
+    code = "INVALID_CREDENTIALS"
+    category = "unauthenticated"
+    message = "Invalid credentials"
+    status_code = 401
+
+
+class ReauthenticationRateLimited(AgentBoxError):
+    code = "LOGIN_RATE_LIMITED"
+    category = "rate_limited"
+    message = "Too many authentication attempts"
+    status_code = 429
+    retryable = True
+
+
+class ReauthenticationUnavailable(AgentBoxError):
+    code = "REAUTH_UNAVAILABLE"
+    category = "unavailable"
+    message = "Reauthentication is temporarily unavailable"
+    status_code = 503
+    retryable = True
+
+
 class PasswordPolicyViolation(AgentBoxError):
     code = "AUTH_PASSWORD_POLICY"
     category = "validation"
@@ -178,6 +208,56 @@ class ProviderInputInvalid(AgentBoxError):
     category = "validation"
     message = "Provider metadata is invalid"
     status_code = 422
+
+
+class ProviderCredentialRuntimeMismatch(AgentBoxError):
+    code = "PROVIDER_CREDENTIAL_RUNTIME_MISMATCH"
+    category = "conflict"
+    message = "Provider credential does not belong to the requested Runtime"
+    status_code = 409
+
+
+class ApprovalInvalid(AgentBoxError):
+    code = "APPROVAL_INVALID"
+    category = "forbidden"
+    message = "Approval is invalid"
+    status_code = 403
+
+
+class ApprovalExpired(AgentBoxError):
+    code = "APPROVAL_EXPIRED"
+    category = "conflict"
+    message = "Approval has expired"
+    status_code = 409
+
+
+class ApprovalStale(AgentBoxError):
+    code = "APPROVAL_STALE"
+    category = "conflict"
+    message = "Approval is stale"
+    status_code = 409
+
+
+class ApprovalAlreadyFinal(AgentBoxError):
+    code = "APPROVAL_ALREADY_FINAL"
+    category = "conflict"
+    message = "Approval is already final"
+    status_code = 409
+
+
+class ApprovalConflict(AgentBoxError):
+    code = "APPROVAL_CONFLICT"
+    category = "conflict"
+    message = "Approval conflicts with existing authority"
+    status_code = 409
+
+
+class ApprovalUnavailable(AgentBoxError):
+    code = "APPROVAL_UNAVAILABLE"
+    category = "unavailable"
+    message = "Approval is temporarily unavailable"
+    status_code = 503
+    retryable = True
 
 
 class RuntimeCapabilityReportInvalid(AgentBoxError):
