@@ -10,6 +10,7 @@ import shutil
 import socket
 import stat
 import subprocess
+import sys
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -52,6 +53,42 @@ class HostOperations:
             raise HostMutationError("fixed host operation failed to execute") from exc
         if result.returncode != 0:
             raise HostMutationError("fixed host operation returned failure")
+
+    def migrate_fixture(self, release: Path, database: Path, revision: str) -> None:
+        """Run only the two exact Phase 11 fixture revisions without host mutation."""
+        if self.real_host or revision not in {
+            "0004_phase11_provider_core",
+            "0005_phase11_control_plane_ownership_approval",
+        }:
+            raise HostMutationError("unsupported fixture migration")
+        try:
+            result = subprocess.run(
+                (
+                    sys.executable,
+                    "-B",
+                    "-m",
+                    "alembic",
+                    "-c",
+                    str(release / "alembic.ini"),
+                    "upgrade",
+                    revision,
+                ),
+                cwd=release,
+                env={
+                    **os.environ,
+                    "AGENTBOX_ENV": "test",
+                    "AGENTBOX_DATABASE_URL": f"sqlite+pysqlite:///{database}",
+                },
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HostMutationError("fixture database migration failed") from exc
+        if result.returncode != 0:
+            raise HostMutationError("fixture database migration failed")
 
     def require_root(self) -> None:
         if self.real_host and os.geteuid() != 0:

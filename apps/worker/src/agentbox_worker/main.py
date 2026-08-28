@@ -12,6 +12,7 @@ from typing import Any, TypeVar
 
 from agentbox_core import __version__
 from agentbox_core.configuration import Settings
+from agentbox_core.errors import ApprovalUnavailable
 from agentbox_core.models import Job
 from agentbox_core.services import ControlPlaneServices, build_services
 from agentbox_runtime import ProjectRuntimeClient, RuntimeOperationError, UnixProjectRuntimeClient
@@ -334,7 +335,9 @@ async def run_worker(
     while not shutdown_requested.is_set():
         now = loop.time()
         if now >= next_cleanup:
-            services.sessions.cleanup()
+            with contextlib.suppress(ApprovalUnavailable):
+                # Busy/fail-closed maintenance rolls back completely and is retried next cycle.
+                services.approvals.maintenance()
             services.retention.cleanup()
             next_cleanup = now + cleanup_interval
         job = services.jobs.claim_next(worker_id)
@@ -362,7 +365,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not check_worker(services):
                 print("AgentBox Worker: not ready")
                 return 10
-            deleted = services.sessions.cleanup()
+            try:
+                approval_maintenance = services.approvals.maintenance()
+            except ApprovalUnavailable:
+                print("AgentBox Worker: approval maintenance unavailable")
+                return 10
+            deleted = approval_maintenance.auth_context_pruned_count
             retention = services.retention.cleanup()
             services.jobs.recover_expired()
             job = services.jobs.claim_next(f"worker-once-{os.getpid()}")

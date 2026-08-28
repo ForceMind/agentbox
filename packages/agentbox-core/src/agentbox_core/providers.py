@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from agentbox_core.clock import Clock
 from agentbox_core.database import Database
 from agentbox_core.errors import (
+    ProviderCredentialRuntimeMismatch,
     ProviderInputInvalid,
     ProviderMetadataConflict,
     ProviderMetadataNotFound,
@@ -120,6 +121,11 @@ class ProviderCreate:
 @dataclass(frozen=True)
 class CredentialMetadataCreate:
     provider_id: str
+    provider_revision: int
+    provider_state: ProviderLifecycleState
+    runtime_installation_id: str
+    runtime_installation_revision: int
+    runtime_type: RuntimeType
     kind: CredentialKind
 
 
@@ -322,22 +328,45 @@ class ProviderRepository:
         actor_id: str,
         request_id: str | None = None,
     ) -> ProviderCredential:
+        if (
+            values.kind is not CredentialKind.API_KEY
+            or values.runtime_type is not RuntimeType.CODEX
+        ):
+            raise ProviderInputInvalid()
+        provider_id = _require_id(values.provider_id, "prv")
+        runtime_id = _require_id(values.runtime_installation_id, "rti")
+        if values.provider_revision < 1 or values.runtime_installation_revision < 1:
+            raise ProviderInputInvalid()
         now = self._clock.now()
-        credential = ProviderCredential(
-            id=new_identifier("crd"),
-            provider_id=_require_id(values.provider_id, "prv"),
-            kind=values.kind,
-            runtime_secret_ref=None,
-            secret_version=None,
-            state=CredentialLifecycleState.MISSING,
-            revision=1,
-            created_at=now,
-            updated_at=now,
-        )
         try:
             with self._database.transaction() as session:
-                if session.get(Provider, credential.provider_id) is None:
+                session.execute(text("BEGIN IMMEDIATE"))
+                provider = session.get(Provider, provider_id)
+                runtime = session.get(RuntimeInstallation, runtime_id)
+                if provider is None or runtime is None:
                     raise ProviderMetadataNotFound()
+                _require_revision(provider.revision, values.provider_revision)
+                _require_revision(runtime.revision, values.runtime_installation_revision)
+                if (
+                    provider.state is not values.provider_state
+                    or provider.state
+                    not in (ProviderLifecycleState.CONFIGURED, ProviderLifecycleState.VALIDATED)
+                    or runtime.runtime_type is not values.runtime_type
+                    or runtime.runtime_type is not RuntimeType.CODEX
+                ):
+                    raise ProviderMetadataConflict()
+                credential = ProviderCredential(
+                    id=new_identifier("crd"),
+                    provider_id=provider.id,
+                    runtime_installation_id=runtime.id,
+                    kind=values.kind,
+                    runtime_secret_ref=None,
+                    secret_version=None,
+                    state=CredentialLifecycleState.MISSING,
+                    revision=1,
+                    created_at=now,
+                    updated_at=now,
+                )
                 session.add(credential)
                 self._audit.record(
                     session,
@@ -348,7 +377,15 @@ class ProviderRepository:
                     request_id=request_id,
                     target_type="provider_credential",
                     target_id=credential.id,
-                    metadata={"state": CredentialLifecycleState.MISSING.value, "revision": 1},
+                    metadata={
+                        "runtime_installation_id": runtime.id,
+                        "runtime_revision": runtime.revision,
+                        "provider_id": provider.id,
+                        "provider_revision": provider.revision,
+                        "kind": values.kind.value,
+                        "state": CredentialLifecycleState.MISSING.value,
+                        "revision": 1,
+                    },
                 )
                 session.flush()
                 return credential
@@ -793,6 +830,8 @@ class ProviderRepository:
         credential = session.get(ProviderCredential, _require_id(values.credential_id or "", "crd"))
         if credential is None or credential.provider_id != values.provider_id:
             raise ProviderMetadataConflict()
+        if credential.runtime_installation_id != values.runtime_installation_id:
+            raise ProviderCredentialRuntimeMismatch()
         _require_revision(credential.revision, values.credential_revision or 0)
         if credential.secret_version != values.credential_secret_version:
             raise ProviderRevisionConflict()

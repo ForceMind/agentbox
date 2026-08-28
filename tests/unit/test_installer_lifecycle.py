@@ -26,13 +26,18 @@ from agentbox_installer.lifecycle import (
 from support.failure_injection import FailureInjector, InjectedCrash
 
 
-def _artifact(tmp_path: Path, version: str, revision: str) -> tuple[Path, str]:
+def _artifact(
+    tmp_path: Path, version: str, revision: str, *, real_migrations: bool = False
+) -> tuple[Path, str]:
     files = {
         "alembic.ini": b"[alembic]\nscript_location = migrations\n",
         "migrations/README": b"fixture\n",
         "web/dist/index.html": b"<!doctype html><title>AgentBox</title>\n",
         "wheelhouse/agentbox-0.2.0-py3-none-any.whl": b"fixture-wheel\n",
     }
+    if real_migrations:
+        files["alembic.ini"] = Path("alembic.ini").read_bytes()
+        files.update({str(path): path.read_bytes() for path in Path("migrations").rglob("*.py")})
     manifest = {
         "schema_version": 1,
         "version": version,
@@ -931,3 +936,92 @@ def test_release_staging_disk_full_never_replaces_current_release(
 
     assert installer.current_version() == "0.2.0+dev.9"
     assert installer.installation_state() == "unknown"
+
+
+class Phase11MigrationInstaller(AgentBoxInstaller):
+    def _run_migration(self, manifest: ReleaseManifest) -> None:
+        from conftest import migrate_database
+
+        migrate_database(f"sqlite+pysqlite:///{self.layout.database}", manifest.database_revision)
+
+
+@pytest.mark.parametrize("phase", ["before_commit", "after_commit"])
+def test_phase11_exact_inventory_failure_restores_verified_predecessor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    import agentbox_core.migration_inventory as inventory
+    from sqlalchemy.engine import Connection
+
+    base, layout = _installer(tmp_path)
+    installer = Phase11MigrationInstaller(layout, base.host)
+    predecessor = "0004_phase11_provider_core"
+    destination = "0005_phase11_control_plane_ownership_approval"
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.8", predecessor)
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.8", destination)
+    installer.apply(first, first_digest)
+    with sqlite3.connect(layout.database) as connection:
+        before = tuple(connection.iterdump())
+    verify = inventory.verify_phase11_inventory
+    calls = 0
+    failed_revision: str | None = None
+
+    def corrupt(connection: Connection, revision: str, error: str) -> None:
+        nonlocal calls, failed_revision
+        if revision == destination:
+            calls += 1
+            if calls == (1 if phase == "before_commit" else 2):
+                connection.exec_driver_sql("DROP INDEX ix_confirmation_challenges_terminal_at")
+                # An independent connection distinguishes uncommitted from committed DDL/version.
+                with sqlite3.connect(layout.database) as reader:
+                    failed_revision = reader.execute(
+                        "SELECT version_num FROM alembic_version"
+                    ).fetchone()[0]
+        verify(connection, revision, error)
+
+    monkeypatch.setattr(inventory, "verify_phase11_inventory", corrupt)
+    with pytest.raises(RollbackVerifiedError, match="rollback verified"):
+        installer.apply(second, second_digest)
+    assert calls == (1 if phase == "before_commit" else 2)
+    assert failed_revision == (predecessor if phase == "before_commit" else destination)
+    assert installer.current_version() == "0.2.0+dev.8"
+    assert installer._database_integrity_and_revision(predecessor)
+    with sqlite3.connect(layout.database) as connection:
+        assert tuple(connection.iterdump()) == before
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert connection.execute("PRAGMA quick_check").fetchall() == [("ok",)]
+    assert not Path(f"{layout.database}-wal").exists()
+    assert not Path(f"{layout.database}-shm").exists()
+
+
+def test_phase11_restore_gate_rejects_same_version_schema_drift(tmp_path: Path) -> None:
+    from conftest import migrate_database
+
+    installer, layout = _installer(tmp_path)
+    layout.database.parent.mkdir(parents=True)
+    predecessor = "0004_phase11_provider_core"
+    migrate_database(f"sqlite+pysqlite:///{layout.database}", predecessor)
+    assert installer._database_integrity_and_revision(predecessor)
+    with sqlite3.connect(layout.database) as connection:
+        connection.execute("DROP INDEX ix_sessions_expires_at")
+        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    assert not installer._database_integrity_and_revision(predecessor)
+    assert not installer._database_integrity_and_revision(None)
+
+
+def test_phase11_fixture_install_uses_real_migrations_and_exact_gate(tmp_path: Path) -> None:
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(
+        tmp_path,
+        "0.2.1+dev.8",
+        "0005_phase11_control_plane_ownership_approval",
+        real_migrations=True,
+    )
+    installer.apply(artifact, digest)
+    assert installer._database_integrity_and_revision(
+        "0005_phase11_control_plane_ownership_approval"
+    )
+    with sqlite3.connect(layout.database) as connection:
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE name='confirmation_challenges'"
+        ).fetchone() == ("confirmation_challenges",)
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []

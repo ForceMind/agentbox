@@ -69,6 +69,188 @@ async def test_login_me_and_cookie_security(
 
 
 @pytest.mark.anyio
+async def test_reauthenticate_rotates_cookie_and_csrf_on_the_same_session(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+) -> None:
+    logged_in = await login(client, origin_headers)
+    original = logged_in.json()["data"]
+    response = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": PASSWORD},
+        headers={**origin_headers, "X-CSRF-Token": original["csrf_token"]},
+    )
+    assert response.status_code == 200
+    replacement = response.json()["data"]
+    assert replacement["session"]["id"] == original["session"]["id"]
+    assert replacement["csrf_token"] != original["csrf_token"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+    assert response.headers["cache-control"] == "no-store"
+
+    old_csrf = await client.post(
+        "/api/v1/auth/logout",
+        headers={**origin_headers, "X-CSRF-Token": original["csrf_token"]},
+    )
+    assert old_csrf.status_code == 403
+    logout = await client.post(
+        "/api/v1/auth/logout",
+        headers={**origin_headers, "X-CSRF-Token": replacement["csrf_token"]},
+    )
+    assert logout.status_code == 204
+
+
+@pytest.mark.anyio
+async def test_reauthenticate_rejects_old_cookie_and_accepts_only_replacement(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+) -> None:
+    logged_in = await login(client, origin_headers)
+    original_cookie = client.cookies["agentbox_session"]
+    original_csrf = logged_in.json()["data"]["csrf_token"]
+    rotated = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": PASSWORD},
+        headers={**origin_headers, "X-CSRF-Token": original_csrf},
+    )
+    assert rotated.status_code == 200
+    replacement_cookie = client.cookies["agentbox_session"]
+    assert replacement_cookie != original_cookie
+
+    client.cookies.clear()
+    client.cookies.set("agentbox_session", original_cookie)
+    assert (await client.get("/api/v1/auth/me")).status_code == 401
+    client.cookies.clear()
+    client.cookies.set("agentbox_session", replacement_cookie)
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+
+
+@pytest.mark.anyio
+async def test_reauthenticate_wrong_password_preserves_existing_credentials(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    logged_in = await login(client, origin_headers)
+    original_cookie = client.cookies["agentbox_session"]
+    original_csrf = logged_in.json()["data"]["csrf_token"]
+    rejected = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": "a wrong but sufficiently long password"},
+        headers={**origin_headers, "X-CSRF-Token": original_csrf},
+    )
+    assert rejected.status_code == 401
+    assert rejected.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert client.cookies["agentbox_session"] == original_cookie
+    current = await client.get("/api/v1/auth/me")
+    assert current.status_code == 200
+    assert current.json()["data"]["csrf_token"] == original_csrf
+    with initialized_services.database.transaction() as session:
+        failure = session.scalar(
+            select(AuditEvent)
+            .where(AuditEvent.action == "reauth_failed")
+            .order_by(AuditEvent.created_at.desc())
+        )
+        assert failure is not None
+        assert failure.metadata_json["reason"] == "invalid_credentials"
+        assert "password" not in repr(failure.metadata_json).casefold()
+
+
+@pytest.mark.anyio
+async def test_reauthenticate_rate_limit_precedes_argon2_work(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged_in = await login(client, origin_headers)
+    csrf = logged_in.json()["data"]["csrf_token"]
+    password_manager = initialized_services.auth._password_manager
+    original_verify = password_manager.verify
+    verify_count = 0
+
+    def counted_verify(encoded: str, supplied: str) -> bool:
+        nonlocal verify_count
+        verify_count += 1
+        return original_verify(encoded, supplied)
+
+    monkeypatch.setattr(password_manager, "verify", counted_verify)
+    for _attempt in range(5):
+        response = await client.post(
+            "/api/v1/auth/reauthenticate",
+            json={"password": "a wrong but sufficiently long password"},
+            headers={**origin_headers, "X-CSRF-Token": csrf},
+        )
+        assert response.status_code == 401
+    locked = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": "a wrong but sufficiently long password"},
+        headers={**origin_headers, "X-CSRF-Token": csrf},
+    )
+    assert locked.status_code == 429
+    assert locked.json()["error"]["code"] == "LOGIN_RATE_LIMITED"
+    assert verify_count == 5
+
+
+@pytest.mark.anyio
+async def test_reauthenticate_expired_session_performs_no_argon2_work(
+    client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    clock: FakeClock,
+    origin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logged_in = await login(client, origin_headers)
+    csrf = logged_in.json()["data"]["csrf_token"]
+    verify_count = 0
+
+    def forbidden_verify(encoded: str, supplied: str) -> bool:
+        del encoded, supplied
+        nonlocal verify_count
+        verify_count += 1
+        return False
+
+    monkeypatch.setattr(initialized_services.auth._password_manager, "verify", forbidden_verify)
+    clock.advance(seconds=601)
+    expired = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": PASSWORD},
+        headers={**origin_headers, "X-CSRF-Token": csrf},
+    )
+    assert expired.status_code == 401
+    assert expired.json()["error"]["code"] == "INVALID_SESSION"
+    assert verify_count == 0
+
+
+@pytest.mark.anyio
+async def test_reauthenticate_request_rejects_extra_fields(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+) -> None:
+    logged_in = await login(client, origin_headers)
+    csrf = logged_in.json()["data"]["csrf_token"]
+    response = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": PASSWORD, "challenge": "not-allowed"},
+        headers={**origin_headers, "X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_reauthenticate_normalizes_missing_session_error(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+) -> None:
+    response = await client.post(
+        "/api/v1/auth/reauthenticate",
+        json={"password": PASSWORD},
+        headers=origin_headers,
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "INVALID_SESSION"
+
+
+@pytest.mark.anyio
 async def test_invalid_login_errors_do_not_enumerate_users(
     client: httpx.AsyncClient,
     origin_headers: dict[str, str],

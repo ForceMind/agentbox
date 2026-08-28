@@ -9,6 +9,7 @@ from agentbox_protocol.auth import (
     ErrorResponse,
     LoginRequest,
     ReadinessResponse,
+    ReauthenticateRequest,
 )
 from agentbox_protocol.metadata import (
     BranchRequest,
@@ -131,6 +132,7 @@ __all__ = [
     "GitHubProjectData",
     "GitStatusData",
     "LoginRequest",
+    "ReauthenticateRequest",
     "MetaResponse",
     "JobData",
     "JobListData",

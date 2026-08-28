@@ -6,6 +6,7 @@ import os
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from datetime import datetime
 from pathlib import Path
 
 from alembic.config import Config
@@ -15,7 +16,9 @@ from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from agentbox_core.clock import Clock, SystemClock
 from agentbox_core.configuration import Environment, Settings
+from agentbox_core.utc import parse_raw_utc6, raw_utc6
 
 
 def _production_database_directory_is_safe(
@@ -38,8 +41,9 @@ def _production_database_directory_is_safe(
 class Database:
     """Own a SQLite engine and short SQLAlchemy transaction boundaries."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, clock: Clock | None = None) -> None:
         self.settings = settings
+        self._clock = clock or SystemClock()
         self._sqlite_path = self._get_sqlite_path()
         self._prepare_parent_directory()
         self.engine = self._create_engine()
@@ -84,7 +88,19 @@ class Database:
 
         @event.listens_for(engine, "connect")
         def configure_sqlite(dbapi_connection: object, connection_record: object) -> None:
-            del connection_record
+            holder: dict[str, str | None] = {"value": None}
+            connection_record.info["agentbox_clock_holder"] = holder  # type: ignore[attr-defined]
+
+            def transaction_now_utc6() -> str:
+                if holder["value"] is None:
+                    raise RuntimeError("agentbox authority clock is not transaction-pinned")
+                value = holder["value"]
+                assert value is not None
+                return value
+
+            dbapi_connection.create_function(  # type: ignore[attr-defined]
+                "agentbox_now_utc6", 0, transaction_now_utc6
+            )
             cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
             try:
                 cursor.execute("PRAGMA foreign_keys=ON")
@@ -94,7 +110,25 @@ class Database:
                 cursor.close()
             self._restrict_sqlite_files()
 
+        @event.listens_for(engine, "begin")
+        def pin_transaction_clock(connection: object) -> None:
+            holder = connection.info.get("agentbox_clock_holder")  # type: ignore[attr-defined]
+            if holder is not None:
+                holder["value"] = raw_utc6(self._clock.now())
+
+        @event.listens_for(engine, "commit")
+        @event.listens_for(engine, "rollback")
+        def clear_transaction_clock(connection: object) -> None:
+            holder = connection.info.get("agentbox_clock_holder")  # type: ignore[attr-defined]
+            if holder is not None:
+                holder["value"] = None
+
         return engine
+
+    def transaction_now(self, session: Session) -> datetime:
+        """Return the exact UTC6 observation pinned by this transaction's begin event."""
+        raw = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
+        return parse_raw_utc6(raw)
 
     def _get_sqlite_path(self) -> Path | None:
         url = make_url(self.settings.database_url)
