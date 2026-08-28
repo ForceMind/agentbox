@@ -1149,6 +1149,19 @@ class AgentBoxInstaller:
 
     def _run_migration(self, manifest: ReleaseManifest) -> None:
         if not self.host.real_host:
+            if manifest.database_revision in {
+                "0004_phase11_provider_core",
+                "0005_phase11_control_plane_ownership_approval",
+            }:
+                # Phase 11 fixture installs must exercise the real schema: a
+                # fabricated version row cannot pass the exact restore gate.
+                self.host.migrate_fixture(
+                    self.layout.release(manifest.version),
+                    self.layout.database,
+                    manifest.database_revision,
+                )
+                os.chmod(self.layout.database, 0o600)
+                return
             with sqlite3.connect(self.layout.database) as connection:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(80) NOT NULL)"

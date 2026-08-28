@@ -4,6 +4,7 @@ import os
 import sqlite3
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -664,7 +665,7 @@ def test_0005_offline_command_rejected_without_sql_or_mutation(tmp_path: Path, t
     migrate_database(url, "0004_phase11_provider_core")
     before = path.read_bytes()
     result = subprocess.run(
-        [".venv/bin/alembic", "upgrade", target, "--sql"],
+        [sys.executable, "-m", "alembic", "upgrade", target, "--sql"],
         env={**os.environ, "AGENTBOX_DATABASE_URL": url},
         capture_output=True,
         text=True,
@@ -826,7 +827,7 @@ def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> Non
     url = f"sqlite+pysqlite:///{path}"
     migrate_database(url, "0004_phase11_provider_core")
     result = subprocess.run(
-        [".venv/bin/alembic", "upgrade", target],
+        [sys.executable, "-m", "alembic", "upgrade", target],
         env={**os.environ, "AGENTBOX_DATABASE_URL": url},
         capture_output=True,
         text=True,
@@ -848,7 +849,9 @@ def test_online_range_is_rejected_by_alembic_without_mutation(tmp_path: Path) ->
     before = path.read_bytes()
     result = subprocess.run(
         [
-            ".venv/bin/alembic",
+            sys.executable,
+            "-m",
+            "alembic",
             "upgrade",
             "0004_phase11_provider_core:0005_phase11_control_plane_ownership_approval",
         ],
@@ -865,7 +868,7 @@ def test_online_range_is_rejected_by_alembic_without_mutation(tmp_path: Path) ->
 def test_historical_offline_sql_still_supported(tmp_path: Path) -> None:
     path = tmp_path / "historical.db"
     result = subprocess.run(
-        [".venv/bin/alembic", "upgrade", "0004_phase11_provider_core", "--sql"],
+        [sys.executable, "-m", "alembic", "upgrade", "0004_phase11_provider_core", "--sql"],
         env={**os.environ, "AGENTBOX_DATABASE_URL": f"sqlite:///{path}"},
         capture_output=True,
         text=True,

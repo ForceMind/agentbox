@@ -26,13 +26,18 @@ from agentbox_installer.lifecycle import (
 from support.failure_injection import FailureInjector, InjectedCrash
 
 
-def _artifact(tmp_path: Path, version: str, revision: str) -> tuple[Path, str]:
+def _artifact(
+    tmp_path: Path, version: str, revision: str, *, real_migrations: bool = False
+) -> tuple[Path, str]:
     files = {
         "alembic.ini": b"[alembic]\nscript_location = migrations\n",
         "migrations/README": b"fixture\n",
         "web/dist/index.html": b"<!doctype html><title>AgentBox</title>\n",
         "wheelhouse/agentbox-0.2.0-py3-none-any.whl": b"fixture-wheel\n",
     }
+    if real_migrations:
+        files["alembic.ini"] = Path("alembic.ini").read_bytes()
+        files.update({str(path): path.read_bytes() for path in Path("migrations").rglob("*.py")})
     manifest = {
         "schema_version": 1,
         "version": version,
@@ -1001,3 +1006,22 @@ def test_phase11_restore_gate_rejects_same_version_schema_drift(tmp_path: Path) 
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
     assert not installer._database_integrity_and_revision(predecessor)
     assert not installer._database_integrity_and_revision(None)
+
+
+def test_phase11_fixture_install_uses_real_migrations_and_exact_gate(tmp_path: Path) -> None:
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(
+        tmp_path,
+        "0.2.1+dev.8",
+        "0005_phase11_control_plane_ownership_approval",
+        real_migrations=True,
+    )
+    installer.apply(artifact, digest)
+    assert installer._database_integrity_and_revision(
+        "0005_phase11_control_plane_ownership_approval"
+    )
+    with sqlite3.connect(layout.database) as connection:
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE name='confirmation_challenges'"
+        ).fetchone() == ("confirmation_challenges",)
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
