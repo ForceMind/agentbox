@@ -5,18 +5,25 @@ import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timedelta
-from typing import Protocol
+from datetime import UTC, datetime, timedelta
+from typing import Any, Protocol, cast
 
 import pytest
+import rfc8785
 from agentbox_core.approval_models import (
     ChallengeTerminalResultCode,
     ConfirmationChallenge,
     ConfirmationChallengeState,
+    ConfirmationPurpose,
     ProviderSecretProvisioningAttempt,
     ProviderSecretProvisioningAttemptState,
 )
-from agentbox_core.approvals import ChallengeIssue, approval_digest
+from agentbox_core.approvals import (
+    ApprovalService,
+    ChallengeIssue,
+    approval_digest,
+    approval_document,
+)
 from agentbox_core.errors import (
     ApprovalAlreadyFinal,
     ApprovalExpired,
@@ -823,3 +830,408 @@ def test_missing_clock_function_fails_closed_at_retention_delete(
 
     with initialized_services.database.transaction() as session:
         assert session.get(ProviderSecretProvisioningAttempt, attempt.id) is not None
+
+
+def _cancel_rollback_combination(
+    services: ControlPlaneServices, clock: AdvancingClock, invalidation: str
+) -> None:
+    authenticated, values = _authority(services)
+    challenge = services.approvals.issue(authenticated, values, request_id="req_rollback_issue")
+    with services.database.transaction() as session:
+        if invalidation == "admin":
+            session.execute(
+                text("UPDATE admin_users SET is_active=0 WHERE id=:id"),
+                {"id": authenticated.user_id},
+            )
+        else:
+            session.execute(
+                text("UPDATE sessions SET revoked_at=created_at WHERE id=:id"),
+                {"id": authenticated.session_id},
+            )
+    clock.current -= timedelta(microseconds=1)
+    with pytest.raises(ApprovalUnavailable) as caught:
+        services.approvals.cancel_challenge(authenticated, challenge.id, request_id="req_cancel")
+    assert caught.value.code == "APPROVAL_UNAVAILABLE"
+    # A new driver connection proves committed state, not an ORM identity-map view.
+    with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+        row = connection.execute(
+            "SELECT state,terminal_result_code,cancellation_epoch,terminal_at,"
+            "retention_eligible_at,consumed_at,consumed_request_id,last_observed_at,"
+            "provisioning_intent_id FROM confirmation_challenges WHERE id=?",
+            (challenge.id,),
+        ).fetchone()
+        terminal = challenge.issued_at.strftime("%Y-%m-%d %H:%M:%S.%f")
+        retention = (challenge.issued_at + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S.%f")
+        assert row == (
+            "cancelled",
+            "CLOCK_ROLLBACK_DETECTED",
+            1,
+            terminal,
+            retention,
+            None,
+            None,
+            terminal,
+            challenge.provisioning_intent_id,
+        )
+        assert connection.execute(
+            "SELECT count(*) FROM provider_secret_provisioning_attempts"
+        ).fetchone() == (0,)
+        dump = "\n".join(connection.iterdump())
+        assert f"PROVISION {values.credential_id}" not in dump
+        assert PASSWORD not in dump
+        assert services.approvals._secret not in dump
+    with pytest.raises(ApprovalAlreadyFinal):
+        services.approvals.consume(
+            authenticated,
+            challenge.id,
+            confirmation=f"PROVISION {values.credential_id}",
+            authorization_request_id="req_burned_intent",
+        )
+
+
+def test_cancel_challenge_clock_rollback_precedes_admin_deactivation(
+    initialized_services: ControlPlaneServices, clock: AdvancingClock
+) -> None:
+    _cancel_rollback_combination(initialized_services, clock, "admin")
+
+
+def test_cancel_challenge_clock_rollback_precedes_session_revocation(
+    initialized_services: ControlPlaneServices, clock: AdvancingClock
+) -> None:
+    _cancel_rollback_combination(initialized_services, clock, "session")
+
+
+@pytest.mark.parametrize("iteration", range(5))
+def test_consume_cancel_concurrency_has_one_durable_winner(
+    initialized_services: ControlPlaneServices, iteration: int
+) -> None:
+    services = initialized_services
+    authenticated, values = _authority(services)
+    challenge = services.approvals.issue(authenticated, values, request_id="req_race_issue")
+    barrier = threading.Barrier(2)
+
+    def race(consume: bool) -> str:
+        barrier.wait(timeout=10)
+        try:
+            if consume:
+                services.approvals.consume(
+                    authenticated,
+                    challenge.id,
+                    confirmation=f"PROVISION {values.credential_id}",
+                    authorization_request_id="req_race_consume",
+                )
+                return "consumed"
+            services.approvals.cancel_challenge(
+                authenticated, challenge.id, request_id="req_race_cancel"
+            )
+            return "cancelled"
+        except ApprovalAlreadyFinal as exc:
+            assert exc.code == "APPROVAL_ALREADY_FINAL"
+            return "final"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(race, [True, False]))
+    assert outcomes in (["consumed", "final"], ["final", "cancelled"])
+    with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+        state, code = connection.execute(
+            "SELECT state,terminal_result_code FROM confirmation_challenges WHERE id=?",
+            (challenge.id,),
+        ).fetchone()
+        attempts = connection.execute(
+            "SELECT state,challenge_id FROM provider_secret_provisioning_attempts"
+        ).fetchall()
+        if state == "consumed":
+            assert code == "ATTEMPT_CREATED"
+            assert attempts == [("authorized", challenge.id)]
+        else:
+            assert (state, code, attempts) == ("cancelled", "CANCELLED_BY_ISSUER", [])
+
+
+@pytest.mark.parametrize(
+    "checkpoint",
+    [
+        "after_validation",
+        "before_attempt_construct",
+        "before_attempt_insert",
+        "after_attempt_insert",
+        "before_challenge_audit",
+        "after_challenge_audit",
+        "before_attempt_audit",
+        "after_attempt_audit",
+        "before_final_flush",
+        "after_final_flush",
+        "before_commit",
+        "after_commit",
+    ],
+)
+def test_consume_statement_fault_matrix_is_durable(
+    initialized_services: ControlPlaneServices, monkeypatch: pytest.MonkeyPatch, checkpoint: str
+) -> None:
+    services = initialized_services
+    authenticated, values = _authority(services)
+    challenge = services.approvals.issue(authenticated, values, request_id="req_fault_issue")
+    reached: list[str] = []
+
+    def fail(self: ApprovalService, stage: str) -> None:
+        reached.append(stage)
+        if stage == checkpoint:
+            raise ValueError(
+                "injected response loss" if stage == "after_commit" else "injected fault"
+            )
+
+    monkeypatch.setattr(ApprovalService, "_consume_checkpoint", fail)
+    with pytest.raises(ApprovalUnavailable):
+        services.approvals.consume(
+            authenticated,
+            challenge.id,
+            confirmation=f"PROVISION {values.credential_id}",
+            authorization_request_id="req_fault_consume",
+        )
+    assert checkpoint in reached
+    with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+        state = connection.execute(
+            "SELECT state FROM confirmation_challenges WHERE id=?", (challenge.id,)
+        ).fetchone()[0]
+        attempts = connection.execute(
+            "SELECT "
+            "id,state,challenge_id,provisioning_intent_id,authorization_request_id,"
+            "authorize_attempt_count,authorize_requested_at "
+            "FROM provider_secret_provisioning_attempts"
+        ).fetchall()
+        audits = connection.execute(
+            "SELECT action FROM audit_events WHERE action IN "
+            "('provider_secret.challenge_consumed','provider_secret.attempt_created')"
+        ).fetchall()
+        if checkpoint == "after_commit":
+            assert state == "consumed"
+            assert len(attempts) == 1
+            assert attempts[0][1:] == (
+                "authorized",
+                challenge.id,
+                challenge.provisioning_intent_id,
+                "req_fault_consume",
+                0,
+                None,
+            )
+            assert sorted(audits) == [
+                ("provider_secret.attempt_created",),
+                ("provider_secret.challenge_consumed",),
+            ]
+        else:
+            assert (state, attempts, audits) == ("issued", [], [])
+    if checkpoint == "after_commit":
+        monkeypatch.undo()
+        with pytest.raises(ApprovalAlreadyFinal):
+            services.approvals.consume(
+                authenticated,
+                challenge.id,
+                confirmation=f"PROVISION {values.credential_id}",
+                authorization_request_id="req_fault_consume",
+            )
+        with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+            assert connection.execute(
+                "SELECT id FROM provider_secret_provisioning_attempts"
+            ).fetchall() == [(attempts[0][0],)]
+
+
+# Section 18 literals transcribed independently; for this no-float, ASCII-key
+# document json.dumps(sort_keys=True,separators=(",",":"),ensure_ascii=False)
+# is equivalent to RFC8785. One-time hashlib result was independently checked
+# with `openssl dgst -sha256` over domain NUL bytes + the literal UTF-8 bytes.
+_GOLDEN_CANONICAL = (
+    b'{"admin_user_id":"adm_22222222222222222222222222222222",'
+    b'"auth_epoch":3,'
+    b'"cancellation_epoch":0,'
+    b'"challenge_id":"cch_11111111111111111111111111111111",'
+    b'"confirmation_verifier":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
+    b'"control_plane_session_id":"ses_33333333333333333333333333333333",'
+    b'"credential_id":"crd_77777777777777777777777777777777",'
+    b'"credential_kind":"api_key",'
+    b'"credential_revision":13,'
+    b'"credential_runtime_installation_id":"rti_55555555555555555555555555555555",'
+    b'"credential_state":"missing",'
+    b'"expected_runtime_secret_ref":null,'
+    b'"expected_secret_version":null,'
+    b'"expires_at":"2026-08-24T00:05:01.999999Z",'
+    b'"initial_cancellation_epoch":0,'
+    b'"intended_secret_version":1,'
+    b'"intended_state":"configured",'
+    b'"intent_contract_version":1,'
+    b'"intent_expires_at":"2026-08-24T00:05:01.999999Z",'
+    b'"intent_issued_at":"2026-08-24T00:00:01.999999Z",'
+    b'"issue_request_id":"req_golden",'
+    b'"issued_at":"2026-08-24T00:00:01.999999Z",'
+    b'"provider_id":"prv_66666666666666666666666666666666",'
+    b'"provider_revision":11,'
+    b'"provider_state":"configured",'
+    b'"provisioning_intent_id":"psi_44444444444444444444444444444444",'
+    b'"purpose":"provider_secret_provision",'
+    b'"recent_authenticated_at":"2026-08-24T00:00:00.000000Z",'
+    b'"runtime_installation_id":"rti_55555555555555555555555555555555",'
+    b'"runtime_installation_revision":7,'
+    b'"runtime_type":"codex",'
+    b'"schema":"agentbox.provider-secret-provision-approval.v1"}'
+)
+_GOLDEN_DIGEST = "32d35b12f4d8adf824f711b7ad3726e3adeab5ac8ce5bdb482830ae98ad92613"
+
+
+def test_approval_digest_fixed_rfc8785_golden_vector() -> None:
+    issued = datetime(2026, 8, 24, 0, 0, 1, 999999, tzinfo=UTC)
+    challenge = ConfirmationChallenge(
+        id="cch_" + "1" * 32,
+        schema_version=1,
+        intent_contract_version=1,
+        purpose=ConfirmationPurpose.PROVIDER_SECRET_PROVISION,
+        state=ConfirmationChallengeState.ISSUED,
+        admin_user_id="adm_" + "2" * 32,
+        control_plane_session_id="ses_" + "3" * 32,
+        auth_epoch=3,
+        recent_authenticated_at=datetime(2026, 8, 24, tzinfo=UTC),
+        issue_request_id="req_golden",
+        provisioning_intent_id="psi_" + "4" * 32,
+        runtime_installation_id="rti_" + "5" * 32,
+        runtime_installation_revision=7,
+        runtime_type=RuntimeType.CODEX,
+        provider_id="prv_" + "6" * 32,
+        provider_revision=11,
+        provider_state=ProviderLifecycleState.CONFIGURED,
+        credential_id="crd_" + "7" * 32,
+        credential_revision=13,
+        credential_kind=CredentialKind.API_KEY,
+        credential_state=CredentialLifecycleState.MISSING,
+        expected_runtime_secret_ref=None,
+        expected_secret_version=None,
+        credential_runtime_installation_id="rti_" + "5" * 32,
+        intended_state=CredentialLifecycleState.CONFIGURED,
+        intended_secret_version=1,
+        confirmation_verifier="a" * 64,
+        approval_digest=_GOLDEN_DIGEST,
+        issued_at=issued,
+        created_at=issued,
+        expires_at=issued + timedelta(seconds=300),
+        intent_issued_at=issued,
+        intent_expires_at=issued + timedelta(seconds=300),
+        initial_cancellation_epoch=0,
+        cancellation_epoch=0,
+        last_observed_at=issued,
+        terminal_at=None,
+        consumed_at=None,
+        consumed_request_id=None,
+        terminal_result_code=None,
+        retention_eligible_at=None,
+    )
+    document = approval_document(challenge)
+    assert rfc8785.dumps(cast(Any, document)) == _GOLDEN_CANONICAL
+    assert rfc8785.dumps(cast(Any, dict(reversed(list(document.items()))))) == _GOLDEN_CANONICAL
+    assert approval_digest(challenge) == _GOLDEN_DIGEST
+    # Display-only Unicode cannot enter the closed authority document.
+    challenge.__dict__["display_name"] = "审批 café 😀"
+    assert approval_document(challenge) == document
+    assert approval_digest(challenge) == _GOLDEN_DIGEST
+    challenge.cancellation_epoch = 1
+    assert approval_digest(challenge) != _GOLDEN_DIGEST
+    challenge.cancellation_epoch = 0
+    challenge.provisioning_intent_id = "psi_" + "8" * 32
+    assert approval_digest(challenge) != _GOLDEN_DIGEST
+
+
+def test_rfc8785_unicode_golden_bytes() -> None:
+    # UTF-16 key ordering, literal UTF-8 (not ASCII escaping), no normalization.
+    assert rfc8785.dumps({"\ue000": "café", "😀": "审批", "null": None, "integer": 7}) == (
+        '{"integer":7,"null":null,"😀":"审批","\ue000":"café"}'.encode("utf-8")
+    )
+
+
+@pytest.mark.parametrize("operation", ["logout", "revoke", "password"])
+def test_session_invalidation_clock_rollback_is_durable(
+    initialized_services: ControlPlaneServices, clock: AdvancingClock, operation: str
+) -> None:
+    services = initialized_services
+    authenticated, values = _authority(services)
+    challenge = services.approvals.issue(authenticated, values, request_id="req_invalidation")
+    clock.current -= timedelta(microseconds=1)
+    if operation == "logout":
+        services.sessions.revoke(authenticated, request_id="req_logout")
+    elif operation == "revoke":
+        services.admin.revoke_sessions(PASSWORD, request_id="req_revoke")
+    else:
+        services.admin.change_password(
+            PASSWORD, "a different long test passphrase", request_id="req_password"
+        )
+    with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+        assert connection.execute(
+            "SELECT state,terminal_result_code,cancellation_epoch "
+            "FROM confirmation_challenges WHERE id=?",
+            (challenge.id,),
+        ).fetchone() == ("cancelled", "CLOCK_ROLLBACK_DETECTED", 1)
+        assert connection.execute(
+            "SELECT count(*) FROM provider_secret_provisioning_attempts"
+        ).fetchone() == (0,)
+
+
+@pytest.mark.parametrize("expiry_column", ["expires_at", "idle_expires_at"])
+def test_cancel_rollback_precedes_expired_session(
+    initialized_services: ControlPlaneServices, clock: AdvancingClock, expiry_column: str
+) -> None:
+    services = initialized_services
+    authenticated, values = _authority(services)
+    clock.advance(seconds=10)
+    challenge = services.approvals.issue(authenticated, values, request_id="req_expired_session")
+    with services.database.transaction() as session:
+        session.execute(
+            text(f"UPDATE sessions SET {expiry_column}=created_at WHERE id=:id"),
+            {"id": authenticated.session_id},
+        )
+    clock.current -= timedelta(microseconds=1)
+    with pytest.raises(ApprovalUnavailable):
+        services.approvals.cancel_challenge(
+            authenticated, challenge.id, request_id="req_cancel_expired"
+        )
+    with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+        assert connection.execute(
+            "SELECT state,terminal_result_code,cancellation_epoch "
+            "FROM confirmation_challenges WHERE id=?",
+            (challenge.id,),
+        ).fetchone() == ("cancelled", "CLOCK_ROLLBACK_DETECTED", 1)
+        assert connection.execute(
+            "SELECT count(*) FROM provider_secret_provisioning_attempts"
+        ).fetchone() == (0,)
+
+
+def test_maintenance_clock_rollback_precedes_expiry(
+    initialized_services: ControlPlaneServices,
+    clock: AdvancingClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    services = initialized_services
+    authenticated, values = _authority(services)
+    original = services.audit.record
+
+    def insert_future_observation(*args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("action") == "provider_secret.challenge_issued":
+            for pending in args[0].new:
+                if isinstance(pending, ConfirmationChallenge):
+                    # Adversarial initial row, admitted by unchanged SQL constraints.
+                    pending.last_observed_at = pending.expires_at + timedelta(microseconds=1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(services.audit, "record", insert_future_observation)
+    challenge = services.approvals.issue(authenticated, values, request_id="req_maintenance_clock")
+    monkeypatch.undo()
+    clock.advance(seconds=300)
+    result = services.approvals.maintenance()
+    assert result.approval_expired_count == 0
+    with sqlite3.connect(str(services.database.engine.url.database)) as connection:
+        assert connection.execute(
+            "SELECT state,terminal_result_code,cancellation_epoch,terminal_at "
+            "FROM confirmation_challenges WHERE id=?",
+            (challenge.id,),
+        ).fetchone() == (
+            "cancelled",
+            "CLOCK_ROLLBACK_DETECTED",
+            1,
+            challenge.last_observed_at.strftime("%Y-%m-%d %H:%M:%S.%f"),
+        )
+        assert connection.execute(
+            "SELECT count(*) FROM provider_secret_provisioning_attempts"
+        ).fetchone() == (0,)

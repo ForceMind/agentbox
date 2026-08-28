@@ -9,6 +9,7 @@ from pathlib import Path
 
 import agentbox_core.approval_models  # noqa: F401 -- registers Slice 3.2a metadata
 import agentbox_core.provider_models  # noqa: F401 -- registers Phase 11 metadata
+from agentbox_core.migration_inventory import verify_phase11_inventory
 from agentbox_core.models import Base
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -21,169 +22,18 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 _PHASE11_HEAD = "0005_phase11_control_plane_ownership_approval"
-_PHASE11_TABLES = {"confirmation_challenges", "provider_secret_provisioning_attempts"}
-_PHASE11_TRIGGERS = {
-    "trg_confirmation_challenges_binding_immutable",
-    "trg_confirmation_challenges_legal_transition",
-    "trg_confirmation_challenges_consumed_attempt",
-    "trg_confirmation_challenges_unresolved_attempt_guard",
-    "trg_confirmation_challenges_delete_guard",
-    "trg_provider_secret_attempts_insert_matches_challenge",
-    "trg_provider_secret_attempts_consume_challenge",
-    "trg_provider_secret_attempts_authority_immutable",
-    "trg_provider_secret_attempts_legal_transition",
-    "trg_provider_secret_attempts_transition_consistency",
-    "trg_provider_secret_attempts_delete_guard",
-}
-_PHASE11_SOURCE_TRIGGERS = {
-    "trg_runtime_profiles_valid_snapshot",
-    "trg_runtime_profiles_immutable_snapshot",
-    "trg_compatibility_evidence_valid_scope",
-    "trg_runtime_bindings_valid_snapshot",
-}
-_PHASE11_COLUMNS = {
-    "provider_credentials": {
-        "id",
-        "provider_id",
-        "runtime_installation_id",
-        "kind",
-        "runtime_secret_ref",
-        "secret_version",
-        "state",
-        "revision",
-        "created_at",
-        "updated_at",
-    },
-    "runtime_provider_profiles": {
-        "id",
-        "runtime_installation_id",
-        "provider_id",
-        "provider_revision",
-        "credential_id",
-        "credential_revision",
-        "credential_secret_version",
-        "adapter_type",
-        "adapter_schema_version",
-        "state",
-        "revision",
-        "created_at",
-        "updated_at",
-    },
-    "sessions": {
-        "id",
-        "user_id",
-        "token_hash",
-        "csrf_hash",
-        "created_at",
-        "recent_authenticated_at",
-        "auth_epoch",
-        "last_seen_at",
-        "idle_expires_at",
-        "expires_at",
-        "revoked_at",
-        "client_label",
-    },
-    "confirmation_challenges": {
-        "id",
-        "schema_version",
-        "intent_contract_version",
-        "purpose",
-        "state",
-        "admin_user_id",
-        "control_plane_session_id",
-        "auth_epoch",
-        "recent_authenticated_at",
-        "issue_request_id",
-        "runtime_installation_id",
-        "runtime_installation_revision",
-        "runtime_type",
-        "provider_id",
-        "provider_revision",
-        "provider_state",
-        "credential_id",
-        "credential_revision",
-        "credential_kind",
-        "credential_state",
-        "expected_runtime_secret_ref",
-        "expected_secret_version",
-        "credential_runtime_installation_id",
-        "intended_state",
-        "intended_secret_version",
-        "confirmation_verifier",
-        "approval_digest",
-        "provisioning_intent_id",
-        "issued_at",
-        "created_at",
-        "expires_at",
-        "intent_issued_at",
-        "intent_expires_at",
-        "initial_cancellation_epoch",
-        "last_observed_at",
-        "cancellation_epoch",
-        "terminal_at",
-        "consumed_at",
-        "consumed_request_id",
-        "terminal_result_code",
-        "retention_eligible_at",
-    },
-    "provider_secret_provisioning_attempts": {
-        "id",
-        "schema_version",
-        "intent_contract_version",
-        "purpose",
-        "state",
-        "challenge_id",
-        "provisioning_intent_id",
-        "authorization_request_id",
-        "admin_user_id",
-        "control_plane_session_id",
-        "auth_epoch",
-        "runtime_installation_id",
-        "runtime_installation_revision",
-        "runtime_type",
-        "provider_id",
-        "provider_revision",
-        "provider_state",
-        "credential_id",
-        "credential_revision",
-        "credential_kind",
-        "credential_state",
-        "credential_runtime_installation_id",
-        "expected_runtime_secret_ref",
-        "expected_secret_version",
-        "intended_state",
-        "intended_secret_version",
-        "approval_digest",
-        "intent_issued_at",
-        "authorized_at",
-        "expires_at",
-        "created_at",
-        "updated_at",
-        "authorize_requested_at",
-        "authorize_request_id",
-        "authorize_attempt_count",
-        "authorize_last_result_code",
-        "runtime_staged_at",
-        "runtime_consuming_at",
-        "runtime_committed_at",
-        "runtime_commit_observed_at",
-        "runtime_verified_at",
-        "reconciled_at",
-        "terminal_at",
-        "initial_cancellation_epoch",
-        "cancellation_epoch",
-        "cancel_requested_at",
-        "cancel_request_id",
-        "cancellation_result_code",
-        "runtime_attestation_code",
-        "terminal_result_code",
-        "retention_eligible_at",
-    },
-}
 
 
-def _columns(connection: Connection, table: str) -> set[str]:
-    return {str(row[1]) for row in connection.exec_driver_sql(f"PRAGMA table_info({table})")}
+def _plan_enters_phase11() -> bool:
+    """Resolve the same Alembic revision steps that run_migrations will execute.
+
+    The configured command's fn handles aliases, relative targets and offline
+    ranges. Inspecting its steps is read-only and cannot create a version table.
+    """
+    migration_context = context.get_context()
+    heads = migration_context.get_current_heads()
+    steps = migration_context.opts["fn"](heads, migration_context)
+    return any(step.is_upgrade and step.revision.revision == _PHASE11_HEAD for step in steps)
 
 
 def _invalid_source_datetime(column: str) -> str:
@@ -214,9 +64,7 @@ def _invalid_source_datetime(column: str) -> str:
 
 def _phase_a_phase11_preflight(connection: Connection) -> None:
     """Fail before FK disable when an existing 0004 database cannot enter 0005."""
-    destination = context.get_revision_argument()
-    destinations = {destination} if isinstance(destination, str) else set(destination or ())
-    if not destinations.intersection({"head", _PHASE11_HEAD}):
+    if not _plan_enters_phase11():
         return
     has_version_table = connection.exec_driver_sql(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='alembic_version'"
@@ -228,36 +76,9 @@ def _phase_a_phase11_preflight(connection: Connection) -> None:
     )
     if versions != ("0004_phase11_provider_core",):
         return
-    required_tables = {
-        "provider_credentials",
-        "runtime_provider_profiles",
-        "sessions",
-        "runtime_installations",
-        "provider_definitions",
-        "provider_compatibility_evidence_sets",
-        "provider_compatibility_observations",
-        "runtime_provider_bindings",
-    }
-    tables = {
-        row[0]
-        for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    if not required_tables.issubset(tables):
-        raise RuntimeError("PHASE11_0005_SOURCE_SCHEMA_INVALID")
-    source_columns = {
-        "provider_credentials": _PHASE11_COLUMNS["provider_credentials"]
-        - {"runtime_installation_id"},
-        "runtime_provider_profiles": _PHASE11_COLUMNS["runtime_provider_profiles"],
-        "sessions": _PHASE11_COLUMNS["sessions"] - {"recent_authenticated_at", "auth_epoch"},
-    }
-    if any(_columns(connection, table) != columns for table, columns in source_columns.items()):
-        raise RuntimeError("PHASE11_0005_SOURCE_SCHEMA_INVALID")
-    triggers = {
-        row[0]
-        for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='trigger'")
-    }
-    if not _PHASE11_SOURCE_TRIGGERS.issubset(triggers):
-        raise RuntimeError("PHASE11_0005_SOURCE_SCHEMA_INVALID")
+    verify_phase11_inventory(
+        connection, "0004_phase11_provider_core", "PHASE11_0005_SOURCE_SCHEMA_INVALID"
+    )
     credential_count = connection.exec_driver_sql(
         "SELECT COUNT(*) FROM provider_credentials"
     ).scalar_one()
@@ -285,7 +106,9 @@ def _phase_a_phase11_preflight(connection: Connection) -> None:
         raise RuntimeError("PHASE11_0005_SESSION_PREFLIGHT_FAILED")
 
 
-def _verify_version_and_phase11_inventory(connection: Connection) -> None:
+def _verify_version_and_phase11_inventory(
+    connection: Connection, expected_versions: tuple[str, ...]
+) -> None:
     version_table = connection.exec_driver_sql(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='alembic_version'"
     ).scalar_one()
@@ -294,36 +117,16 @@ def _verify_version_and_phase11_inventory(connection: Connection) -> None:
     versions = tuple(
         row[0] for row in connection.exec_driver_sql("SELECT version_num FROM alembic_version")
     )
+    if versions != expected_versions:
+        raise RuntimeError("PHASE11_0005_VERSION_ROW_INVALID")
     if not versions:
         return
     if len(versions) != 1:
         raise RuntimeError("PHASE11_0005_VERSION_ROW_INVALID")
-    tables = {
-        row[0]
-        for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    triggers = {
-        row[0]
-        for row in connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='trigger'")
-    }
     if versions[0] == "0004_phase11_provider_core":
-        if _PHASE11_TABLES.intersection(tables) or _PHASE11_TRIGGERS.intersection(triggers):
-            raise RuntimeError("PHASE11_0005_DOWNGRADE_INVENTORY_FAILED")
-        expected = {
-            "provider_credentials": _PHASE11_COLUMNS["provider_credentials"]
-            - {"runtime_installation_id"},
-            "runtime_provider_profiles": _PHASE11_COLUMNS["runtime_provider_profiles"],
-            "sessions": _PHASE11_COLUMNS["sessions"] - {"recent_authenticated_at", "auth_epoch"},
-        }
-        if any(_columns(connection, table) != columns for table, columns in expected.items()):
-            raise RuntimeError("PHASE11_0005_DOWNGRADE_INVENTORY_FAILED")
-        return
-    if versions[0] != _PHASE11_HEAD:
-        return
-    if not _PHASE11_TABLES.issubset(tables) or not _PHASE11_TRIGGERS.issubset(triggers):
-        raise RuntimeError("PHASE11_0005_SCHEMA_INVENTORY_FAILED")
-    if any(_columns(connection, table) != columns for table, columns in _PHASE11_COLUMNS.items()):
-        raise RuntimeError("PHASE11_0005_SCHEMA_INVENTORY_FAILED")
+        verify_phase11_inventory(connection, versions[0], "PHASE11_0005_DOWNGRADE_INVENTORY_FAILED")
+    elif versions[0] == _PHASE11_HEAD:
+        verify_phase11_inventory(connection, versions[0], "PHASE11_0005_SCHEMA_INVENTORY_FAILED")
 
 
 def configured_database_url() -> str:
@@ -350,6 +153,8 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
     )
+    if _plan_enters_phase11():
+        raise RuntimeError("PHASE11_0005_OFFLINE_UNSUPPORTED")
     with context.begin_transaction():
         context.run_migrations()
 
@@ -378,11 +183,17 @@ def run_migrations_online() -> None:
         connection.commit()
         if connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() != 1:
             raise RuntimeError("PHASE11_0005_FOREIGN_KEYS_REQUIRED")
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            transactional_ddl=True,
+        )
+        _phase_a_phase11_preflight(connection)
         if connection.exec_driver_sql("PRAGMA foreign_key_check").all():
             raise RuntimeError("PHASE11_0005_FOREIGN_KEY_CHECK_FAILED")
         if connection.exec_driver_sql("PRAGMA quick_check").all() != [("ok",)]:
             raise RuntimeError("PHASE11_0005_QUICK_CHECK_FAILED")
-        _phase_a_phase11_preflight(connection)
         connection.commit()
         if connection.in_transaction():
             raise RuntimeError("PHASE11_0005_ACTIVE_TRANSACTION_BEFORE_FK_OFF")
@@ -392,17 +203,20 @@ def run_migrations_online() -> None:
         connection.commit()
         if connection.in_transaction():
             raise RuntimeError("PHASE11_0005_ACTIVE_TRANSACTION_BEFORE_LOCK")
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-            transactional_ddl=True,
-        )
         clock_holder["value"] = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         try:
+            _phase_a_phase11_preflight(connection)
+            if connection.exec_driver_sql("PRAGMA foreign_key_check").all():
+                raise RuntimeError("PHASE11_0005_FOREIGN_KEY_CHECK_FAILED")
+            if connection.exec_driver_sql("PRAGMA quick_check").all() != [("ok",)]:
+                raise RuntimeError("PHASE11_0005_QUICK_CHECK_FAILED")
+            migration_context = context.get_context()
+            current_heads = migration_context.get_current_heads()
+            steps = list(migration_context.opts["fn"](current_heads, migration_context))
+            expected_versions = tuple(steps[-1].to_revisions) if steps else current_heads
             context.run_migrations()
-            _verify_version_and_phase11_inventory(connection)
+            _verify_version_and_phase11_inventory(connection, expected_versions)
             if connection.exec_driver_sql("PRAGMA foreign_key_check").all():
                 raise RuntimeError("PHASE11_0005_FOREIGN_KEY_CHECK_FAILED")
             if connection.exec_driver_sql("PRAGMA quick_check").all() != [("ok",)]:
@@ -423,7 +237,7 @@ def run_migrations_online() -> None:
             raise RuntimeError("PHASE11_0005_FOREIGN_KEY_CHECK_FAILED")
         if connection.exec_driver_sql("PRAGMA quick_check").all() != [("ok",)]:
             raise RuntimeError("PHASE11_0005_QUICK_CHECK_FAILED")
-        _verify_version_and_phase11_inventory(connection)
+        _verify_version_and_phase11_inventory(connection, expected_versions)
 
 
 if context.is_offline_mode():

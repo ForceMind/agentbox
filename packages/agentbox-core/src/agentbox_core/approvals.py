@@ -175,7 +175,7 @@ def approval_document(challenge: ConfirmationChallenge) -> dict[str, object]:
         "intended_secret_version": challenge.intended_secret_version,
         "issued_at": _utc6(challenge.issued_at),
         "expires_at": _utc6(challenge.expires_at),
-        "cancellation_epoch": challenge.initial_cancellation_epoch,
+        "cancellation_epoch": challenge.cancellation_epoch,
         "confirmation_verifier": challenge.confirmation_verifier,
     }
 
@@ -315,6 +315,9 @@ class ApprovalService:
         except (DatabaseNotReady, IntegrityError, OperationalError, ValueError) as exc:
             raise ApprovalUnavailable() from exc
 
+    def _consume_checkpoint(self, stage: str) -> None:
+        """No-op failure seam; tests raise here without replacing DB triggers."""
+
     def consume(
         self,
         authenticated: AuthenticatedSession,
@@ -441,12 +444,17 @@ class ApprovalService:
                     deferred_error = ApprovalInvalid()
 
                 if deferred_error is None:
+                    self._consume_checkpoint("after_validation")
                     challenge.last_observed_at = now
+                    self._consume_checkpoint("before_attempt_construct")
                     attempt = self._attempt_from_challenge(
                         session, challenge, authorization_request_id, now
                     )
+                    self._consume_checkpoint("before_attempt_insert")
                     session.add(attempt)
                     session.flush()
+                    self._consume_checkpoint("after_attempt_insert")
+                    self._consume_checkpoint("before_challenge_audit")
                     self._audit.record(
                         session,
                         actor_type="admin_user",
@@ -471,6 +479,9 @@ class ApprovalService:
                             ),
                         },
                     )
+                    session.flush()
+                    self._consume_checkpoint("after_challenge_audit")
+                    self._consume_checkpoint("before_attempt_audit")
                     self._audit.record(
                         session,
                         actor_type="admin_user",
@@ -497,6 +508,12 @@ class ApprovalService:
                         },
                     )
                     session.flush()
+                    self._consume_checkpoint("after_attempt_audit")
+                    self._consume_checkpoint("before_final_flush")
+                    session.flush()
+                    self._consume_checkpoint("after_final_flush")
+                    self._consume_checkpoint("before_commit")
+            self._consume_checkpoint("after_commit")
         except (DatabaseNotReady, IntegrityError, OperationalError, ValueError) as exc:
             raise ApprovalUnavailable() from exc
         except (
@@ -551,7 +568,12 @@ class ApprovalService:
                     raise ApprovalAlreadyFinal()
                 stored = session.get(ControlPlaneSession, authenticated.session_id)
                 admin = session.get(AdminUser, authenticated.user_id)
-                if admin is None or not admin.is_active:
+                if now < challenge.issued_at or now < challenge.last_observed_at:
+                    self._terminalize_challenge(
+                        challenge, now, ChallengeTerminalResultCode.CLOCK_ROLLBACK_DETECTED
+                    )
+                    deferred_error = ApprovalUnavailable()
+                elif admin is None or not admin.is_active:
                     self._terminalize_challenge(
                         challenge, now, ChallengeTerminalResultCode.ADMIN_DEACTIVATED
                     )
@@ -567,11 +589,6 @@ class ApprovalService:
                         challenge, now, ChallengeTerminalResultCode.SESSION_REVOKED
                     )
                     deferred_error = ApprovalInvalid()
-                elif now < challenge.issued_at or now < challenge.last_observed_at:
-                    self._terminalize_challenge(
-                        challenge, now, ChallengeTerminalResultCode.CLOCK_ROLLBACK_DETECTED
-                    )
-                    deferred_error = ApprovalUnavailable()
                 elif now >= challenge.expires_at:
                     self._expire_challenge(challenge, now)
                     expired = True
@@ -753,7 +770,11 @@ class ApprovalService:
                             and challenge.state is ConfirmationChallengeState.ISSUED
                         ):
                             self._expire_challenge(challenge, now)
-                            counts[0] += 1
+                            if (
+                                cast(ConfirmationChallengeState, challenge.state)
+                                is ConfirmationChallengeState.EXPIRED
+                            ):
+                                counts[0] += 1
                     elif priority == 1:
                         attempt = session.get(ProviderSecretProvisioningAttempt, row_id)
                         if (
@@ -989,6 +1010,11 @@ class ApprovalService:
 
     @staticmethod
     def _expire_challenge(challenge: ConfirmationChallenge, now: datetime) -> None:
+        if now < challenge.issued_at or now < challenge.last_observed_at:
+            ApprovalService._terminalize_challenge(
+                challenge, now, ChallengeTerminalResultCode.CLOCK_ROLLBACK_DETECTED
+            )
+            return
         challenge.state = ConfirmationChallengeState.EXPIRED
         challenge.last_observed_at = now
         challenge.terminal_at = now

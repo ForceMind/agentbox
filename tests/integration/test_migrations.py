@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import sqlite3
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -17,6 +20,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     UniqueConstraint,
     create_engine,
+    event,
     inspect,
     text,
 )
@@ -593,3 +597,363 @@ def test_sqlite_security_pragmas(
     assert state["busy_timeout"] == settings.database_busy_timeout_ms
     database_path = Path(database.engine.url.database or "")
     assert stat.S_IMODE(database_path.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "head",
+        "0005_phase11_control_plane_ownership_approval",
+        "+1",
+        "heads",
+        "0004_phase11_provider_core+1",
+    ],
+)
+def test_0005_target_plan_preflight_before_fk_off(tmp_path: Path, target: str) -> None:
+    path = tmp_path / "target.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TRIGGER trg_runtime_profiles_valid_snapshot")
+        before = tuple(connection.iterdump())
+    statements: list[str] = []
+
+    def trace(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", trace)
+    try:
+        with pytest.raises(RuntimeError, match="^PHASE11_0005_SOURCE_SCHEMA_INVALID$"):
+            migrate_database(url, target)
+    finally:
+        event.remove(Engine, "before_cursor_execute", trace)
+    assert "PRAGMA foreign_keys=OFF" not in statements
+    assert "BEGIN IMMEDIATE" not in statements
+    with sqlite3.connect(path) as connection:
+        assert tuple(connection.iterdump()) == before
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0004_phase11_provider_core",
+        )
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name IN "
+                "('confirmation_challenges','provider_secret_provisioning_attempts')"
+            ).fetchall()
+            == []
+        )
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "head",
+        "0005_phase11_control_plane_ownership_approval",
+        "0004_phase11_provider_core:0005_phase11_control_plane_ownership_approval",
+    ],
+)
+def test_0005_offline_command_rejected_without_sql_or_mutation(tmp_path: Path, target: str) -> None:
+    path = tmp_path / "offline.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    before = path.read_bytes()
+    result = subprocess.run(
+        [".venv/bin/alembic", "upgrade", target, "--sql"],
+        env={**os.environ, "AGENTBOX_DATABASE_URL": url},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "RuntimeError: PHASE11_0005_OFFLINE_UNSUPPORTED" in result.stderr
+    assert result.stdout == ""
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "trigger_body",
+        "missing_trigger",
+        "fk_target",
+        "fk_columns",
+        "fk_ondelete",
+        "unique",
+        "check",
+        "index_missing",
+        "index_altered",
+        "index_desc",
+        "index_collation",
+        "column",
+        "default",
+        "nullable",
+        "evidence_fk",
+    ],
+)
+def test_0005_canonical_source_drift_is_zero_mutation(tmp_path: Path, drift: str) -> None:
+    path = tmp_path / "drift.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    with sqlite3.connect(path) as connection:
+        if drift in {"trigger_body", "missing_trigger"}:
+            name = "trg_runtime_profiles_valid_snapshot"
+            original = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE name=?", (name,)
+            ).fetchone()[0]
+            connection.execute(f"DROP TRIGGER {name}")
+            if drift == "trigger_body":
+                connection.execute(original.replace("RAISE(ABORT,", "RAISE(FAIL,"))
+        elif drift == "unique":
+            original = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE name='provider_credentials'"
+            ).fetchone()[0]
+            triggers = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND "
+                "tbl_name='provider_credentials'"
+            ).fetchall()
+            # Rebuild in this fixture so the removed UNIQUE has no orphan autoindex.
+            connection.execute("PRAGMA legacy_alter_table=ON")
+            connection.execute("DROP TABLE provider_credentials")
+            connection.execute(
+                original.replace(
+                    "CONSTRAINT uq_provider_credentials_provider UNIQUE (provider_id),", ""
+                )
+            )
+            for (trigger,) in triggers:
+                connection.execute(trigger)
+        elif drift.startswith("index_"):
+            connection.execute("DROP INDEX ix_sessions_expires_at")
+            if drift == "index_altered":
+                connection.execute("CREATE INDEX ix_sessions_expires_at ON sessions(last_seen_at)")
+            elif drift == "index_desc":
+                connection.execute(
+                    "CREATE INDEX ix_sessions_expires_at ON sessions(expires_at DESC)"
+                )
+            elif drift == "index_collation":
+                connection.execute(
+                    "CREATE INDEX ix_sessions_expires_at ON sessions(expires_at COLLATE NOCASE)"
+                )
+        elif drift == "column":
+            connection.execute("ALTER TABLE sessions ADD COLUMN unexpected INTEGER")
+        else:
+            table = "provider_credentials"
+            if drift in {"default", "nullable"}:
+                table = "sessions"
+            elif drift == "evidence_fk":
+                table = "provider_compatibility_evidence_sets"
+            original = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE name=?", (table,)
+            ).fetchone()[0]
+            replacements = {
+                "fk_target": (
+                    "REFERENCES provider_definitions (id)",
+                    "REFERENCES runtime_installations (id)",
+                ),
+                "fk_columns": ("FOREIGN KEY(provider_id)", "FOREIGN KEY(id)"),
+                "fk_ondelete": ("ON DELETE RESTRICT", "ON DELETE CASCADE"),
+                "unique": ("CONSTRAINT uq_provider_credentials_provider UNIQUE (provider_id),", ""),
+                "check": ("revision >= 1", "revision >= 0"),
+                "default": ("client_label VARCHAR(80)", "client_label VARCHAR(80) DEFAULT 'drift'"),
+                "nullable": ("csrf_hash VARCHAR(64) NOT NULL", "csrf_hash VARCHAR(64)"),
+                "evidence_fk": (
+                    "REFERENCES provider_credentials (id, provider_id)",
+                    "REFERENCES provider_credentials (provider_id, id)",
+                ),
+            }
+            old, new = replacements[drift]
+            assert old in original
+            changed = original.replace(old, new, 1)
+            connection.execute("PRAGMA writable_schema=ON")
+            connection.execute(
+                "UPDATE sqlite_master SET sql=? WHERE name=? AND type='table'", (changed, table)
+            )
+            connection.execute("PRAGMA writable_schema=OFF")
+    before_bytes = path.read_bytes()
+    with sqlite3.connect(path) as connection:
+        before = tuple(connection.iterdump())
+    statements: list[str] = []
+
+    def trace(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", trace)
+    try:
+        with pytest.raises(RuntimeError, match="^PHASE11_0005_SOURCE_SCHEMA_INVALID$"):
+            migrate_database(url)
+    finally:
+        event.remove(Engine, "before_cursor_execute", trace)
+    assert "PRAGMA foreign_keys=OFF" not in statements
+    assert "BEGIN IMMEDIATE" not in statements
+    assert path.read_bytes() == before_bytes
+    with sqlite3.connect(path) as connection:
+        assert tuple(connection.iterdump()) == before
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0004_phase11_provider_core",
+        )
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name LIKE "
+                "'%confirmation_challenges%' OR name LIKE '%provider_secret%'"
+            ).fetchall()
+            == []
+        )
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "+1",
+        "0005_phase11_control_plane_ownership_approval",
+        "0004_phase11_provider_core+1",
+        "heads",
+    ],
+)
+def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> None:
+    path = tmp_path / "success.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    result = subprocess.run(
+        [".venv/bin/alembic", "upgrade", target],
+        env={**os.environ, "AGENTBOX_DATABASE_URL": url},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0005_phase11_control_plane_ownership_approval",
+        )
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert connection.execute("PRAGMA quick_check").fetchall() == [("ok",)]
+
+
+def test_online_range_is_rejected_by_alembic_without_mutation(tmp_path: Path) -> None:
+    path = tmp_path / "range.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    before = path.read_bytes()
+    result = subprocess.run(
+        [
+            ".venv/bin/alembic",
+            "upgrade",
+            "0004_phase11_provider_core:0005_phase11_control_plane_ownership_approval",
+        ],
+        env={**os.environ, "AGENTBOX_DATABASE_URL": url},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Range revision not allowed" in result.stdout + result.stderr
+    assert path.read_bytes() == before
+
+
+def test_historical_offline_sql_still_supported(tmp_path: Path) -> None:
+    path = tmp_path / "historical.db"
+    result = subprocess.run(
+        [".venv/bin/alembic", "upgrade", "0004_phase11_provider_core", "--sql"],
+        env={**os.environ, "AGENTBOX_DATABASE_URL": f"sqlite:///{path}"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CREATE TABLE provider_credentials" in result.stdout
+    assert not path.exists()
+
+
+def test_phase_b_rechecks_source_after_outer_preflight(tmp_path: Path) -> None:
+    path = tmp_path / "phase_b.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    changed = False
+
+    def mutate(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal changed
+        if statement == "PRAGMA foreign_keys=OFF":
+            with sqlite3.connect(path) as writer:
+                writer.execute("DROP INDEX ix_sessions_expires_at")
+            changed = True
+
+    event.listen(Engine, "after_cursor_execute", mutate)
+    try:
+        with pytest.raises(RuntimeError, match="^PHASE11_0005_SOURCE_SCHEMA_INVALID$"):
+            migrate_database(url)
+    finally:
+        event.remove(Engine, "after_cursor_execute", mutate)
+    assert changed
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0004_phase11_provider_core",
+        )
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name='confirmation_challenges'"
+            ).fetchall()
+            == []
+        )
+
+
+def test_source_inventory_accepts_sqlite_internal_statistics(tmp_path: Path) -> None:
+    path = tmp_path / "statistics.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    with sqlite3.connect(path) as connection:
+        connection.execute("ANALYZE")
+        connection.execute("CREATE TABLE unrelated_extension(value TEXT)")
+    migrate_database(url)
+
+
+def test_phase_b_rejects_wrong_exact_version_before_commit(tmp_path: Path) -> None:
+    from sqlalchemy.engine import Connection
+
+    path = tmp_path / "wrong-version.db"
+    url = f"sqlite+pysqlite:///{path}"
+    migrate_database(url, "0004_phase11_provider_core")
+    before = path.read_bytes()
+    changed = False
+
+    def corrupt(
+        connection: Connection,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        nonlocal changed
+        if not changed and statement.startswith("UPDATE alembic_version"):
+            changed = True
+            connection.exec_driver_sql(
+                "UPDATE alembic_version SET version_num='unexpected_revision'"
+            )
+
+    event.listen(Engine, "after_cursor_execute", corrupt)
+    try:
+        with pytest.raises(RuntimeError, match="^PHASE11_0005_VERSION_ROW_INVALID$"):
+            migrate_database(url)
+    finally:
+        event.remove(Engine, "after_cursor_execute", corrupt)
+    assert changed
+    assert path.read_bytes() == before

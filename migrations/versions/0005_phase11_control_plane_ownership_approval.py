@@ -13,6 +13,7 @@ from agentbox_core.approval_schema_v1 import (
     ProviderSecretProvisioningAttempt,
     attempt_state_consistency_sql,
 )
+from agentbox_core.migration_inventory import verify_phase11_inventory
 from alembic import context, op
 from sqlalchemy import text
 from sqlalchemy.schema import CreateIndex, CreateTable
@@ -331,6 +332,10 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind.exec_driver_sql("PRAGMA foreign_keys").scalar_one() != 0 or not bind.in_transaction():
         raise RuntimeError("PHASE11_0005_RUNNER_CONTRACT_REQUIRED")
+    versions = tuple(bind.exec_driver_sql("SELECT version_num FROM alembic_version").scalars())
+    if versions != (down_revision,):
+        raise RuntimeError("PHASE11_0005_VERSION_ROW_INVALID")
+    verify_phase11_inventory(bind, down_revision, "PHASE11_0005_SOURCE_SCHEMA_INVALID")
     legacy_count = _scalar("SELECT COUNT(*) FROM provider_credentials")
     if legacy_count:
         raise RuntimeError("PHASE11_0005_LEGACY_CREDENTIALS_PRESENT")
@@ -381,6 +386,7 @@ def downgrade() -> None:
     bind = op.get_bind()
     if bind.exec_driver_sql("PRAGMA foreign_keys").scalar_one() != 0 or not bind.in_transaction():
         raise RuntimeError("PHASE11_0005_RUNNER_CONTRACT_REQUIRED")
+    verify_phase11_inventory(bind, revision, "PHASE11_0005_SCHEMA_INVENTORY_FAILED")
     if _unsafe_downgrade():
         raise RuntimeError("PHASE11_0005_DOWNGRADE_UNSAFE")
     session_count = _scalar("SELECT COUNT(*) FROM sessions")
