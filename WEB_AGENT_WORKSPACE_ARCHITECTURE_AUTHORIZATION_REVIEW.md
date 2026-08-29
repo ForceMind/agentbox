@@ -758,6 +758,8 @@ For a pin, `revoked_at` is `null` when active and otherwise satisfies `valid_fro
 
 The canonical IPv6 validator implements RFC 5952 exactly: lowercase hexadecimal, no leading zeroes in a hextet, one longest zero run compressed with `::` (leftmost on ties), no dotted embedded form except canonical IPv4 in the final 32 bits, no zone identifier, and no alternate mapped/compatible spelling. The DNS A-label form is limited to 253 ASCII bytes after joining labels; each label is 1–63 bytes and obeys the grammar above. These checks run before origin comparison and are covered by invalid-octet, leading-zero, compression, DNS-length, and loopback-confusion vectors.
 
+Any all-numeric dotted host is classified as an IPv4 literal and is rejected unless every octet passes the canonical `0`–`255`/no-leading-zero rule; it is never reinterpreted as a DNS name. Production pins reject `localhost`, single-label names, and any hostname that resolves to loopback/link-local/private space; only the separately provisioned loopback-development pin may use a loopback literal.
+
 The bootstrap fixture's complete canonical record is `{"key_id":"bootstrap-2029","public_key":"A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg","schema_version":"waw-runtime-bootstrap-v1"}` with policy digest `87e70aac507cf4a4a230d4910cc8c864a0d585974ad71949fcdbc6754cc8cb72`; it is unsigned because authenticity is supplied by the immutable Owner/deployment channel, not by runtime data.
 
 ### Published profile, implementation gate, and exact encodings
