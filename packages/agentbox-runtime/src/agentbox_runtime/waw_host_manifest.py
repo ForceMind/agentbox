@@ -238,7 +238,7 @@ def _directory_provenance(
     # Ancestors must never be group/other writable, even when synthetic tests
     # use a platform-specific mode.  An exact mode can additionally be
     # requested for a test or a tightly controlled host installation.
-    if mode & 0o022:
+    if mode & ~0o777 or mode & 0o022:
         raise WAWRuntimeHostManifestError("WAW manifest ancestor mode is unsafe")
     if expected_mode is not None and mode != expected_mode:
         raise WAWRuntimeHostManifestError("WAW manifest ancestor mode is invalid")
@@ -296,6 +296,12 @@ def _open_ancestor_chain(
                 expected_mode=expected_ancestor_mode,
             )
             current_fd = os.open(trusted_root, _DIRECTORY_FLAGS | os.O_NOFOLLOW)
+            opened_root = os.fstat(current_fd)
+            if any(
+                getattr(root_details, field) != getattr(opened_root, field)
+                for field in ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid")
+            ):
+                raise WAWRuntimeHostManifestError("WAW manifest root changed during open")
     except OSError as exc:
         raise WAWRuntimeHostManifestError("WAW manifest root is unavailable") from exc
     try:
@@ -304,6 +310,17 @@ def _open_ancestor_chain(
         # normal 0755 mode.  Every opened component is still O_NOFOLLOW.
         start = 1 if trusted_root is None else 0
         directory_components = components[start:-1]
+        if not directory_components and trusted_root is not None:
+            # A trusted root may itself be the manifest's parent.  It still
+            # requires the exact final-parent owner/mode pin; otherwise a
+            # caller could provide a merely safe but unintended directory.
+            _directory_provenance(
+                os.fstat(current_fd),
+                expected_uid=expected_uid,
+                expected_gid=expected_gid,
+                expected_mode=expected_parent_mode,
+                require_expected_owner=True,
+            )
         for index, component in enumerate(directory_components):
             if component in {"", ".", ".."}:
                 raise WAWRuntimeHostManifestError("WAW manifest path is invalid")
@@ -378,6 +395,12 @@ def load_canonical_waw_runtime_host_manifest(
             _validate_loader_argument(expected_ancestor_mode, "expected_ancestor_mode")
             if expected_ancestor_mode & ~0o777:
                 raise WAWRuntimeHostManifestError("expected_ancestor_mode is invalid")
+            if expected_ancestor_mode & 0o022:
+                raise WAWRuntimeHostManifestError("expected_ancestor_mode is unsafe")
+        if expected_parent_mode & ~0o777 or expected_parent_mode & 0o022:
+            raise WAWRuntimeHostManifestError("expected_parent_mode is unsafe")
+        if expected_file_mode & ~0o777 or expected_file_mode & 0o222:
+            raise WAWRuntimeHostManifestError("expected_file_mode is unsafe")
         if (
             not isinstance(expected_host_manifest_digest, str)
             or _DIGEST.fullmatch(expected_host_manifest_digest) is None

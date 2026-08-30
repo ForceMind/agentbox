@@ -332,12 +332,14 @@ def test_strict_loader_rejects_metadata_mutation_between_fstats(
 ) -> None:
     path, raw = _write_strict_manifest(tmp_path)
     original = cast(Callable[[int], os.stat_result], os.fstat)
-    calls: dict[int, int] = {}
+    regular_calls = 0
 
     def mutate_after_first(fd: int) -> os.stat_result:
+        nonlocal regular_calls
         result = original(fd)
-        calls[fd] = calls.get(fd, 0) + 1
-        if stat.S_ISREG(result.st_mode) and calls[fd] == 2:
+        if stat.S_ISREG(result.st_mode):
+            regular_calls += 1
+        if stat.S_ISREG(result.st_mode) and regular_calls == 2:
             return os.stat_result(
                 tuple(result[index] + (1 if index == 8 else 0) for index in range(len(result)))
             )
@@ -346,3 +348,50 @@ def test_strict_loader_rejects_metadata_mutation_between_fstats(
     monkeypatch.setattr(os, "fstat", mutate_after_first)
     with pytest.raises(WAWRuntimeHostManifestError, match="changed during read"):
         _load_strict(path, raw)
+
+
+def test_strict_loader_pins_trusted_root_when_manifest_is_direct_child(tmp_path: Path) -> None:
+    raw = _strict_runtime_bytes()
+    tmp_path.chmod(0o750)
+    path = tmp_path / "runtime-host-installation.json"
+    path.write_bytes(raw)
+    path.chmod(0o440)
+    value = load_canonical_waw_runtime_host_manifest(
+        path,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+        expected_parent_mode=0o750,
+        expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
+        trusted_root=tmp_path,
+    )
+    assert value.runtime_host_installation_id == "wri_" + "1" * 32
+    tmp_path.chmod(0o700)
+    with pytest.raises(WAWRuntimeHostManifestError, match="ancestor mode"):
+        load_canonical_waw_runtime_host_manifest(
+            path,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            expected_parent_mode=0o750,
+            expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
+            trusted_root=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    ("expected_parent_mode", "expected_file_mode"),
+    [(0o770, 0o440), (0o750, 0o640), (0o1750, 0o440)],
+)
+def test_strict_loader_rejects_weak_mode_policy(
+    tmp_path: Path, expected_parent_mode: int, expected_file_mode: int
+) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    with pytest.raises(WAWRuntimeHostManifestError, match="unsafe|invalid"):
+        load_canonical_waw_runtime_host_manifest(
+            path,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            expected_parent_mode=expected_parent_mode,
+            expected_file_mode=expected_file_mode,
+            expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
+            trusted_root=tmp_path,
+        )
