@@ -116,6 +116,25 @@ async def test_normalizes_collision_and_login_errors() -> None:
 
 
 @pytest.mark.anyio
+async def test_does_not_claim_broken_for_retryable_runtime_failure() -> None:
+    class UnavailableManager(FakeManager):
+        async def start(self, _project: str) -> ClaudeSessionActionResult:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "temporarily unavailable",
+                category="unavailable",
+                retryable=True,
+            )
+
+    executor = WAWClaudeLifecycleExecutor(
+        UnavailableManager(), lambda _id: "project-a", runtime_epoch="1"
+    )
+    observation = await executor.start(IDENTITY)
+    assert observation.state == "UNKNOWN"
+    assert observation.reconciliation_state == "reconciliation_required"
+
+
+@pytest.mark.anyio
 async def test_invalid_resolver_result_is_bounded_error() -> None:
     executor = WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "", runtime_epoch="1")
     with pytest.raises(RuntimeOperationError, match="Formal Project"):

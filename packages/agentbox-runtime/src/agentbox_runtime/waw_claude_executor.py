@@ -155,6 +155,13 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
                 process_state="NOT_STARTED",
                 runtime_epoch=self._runtime_epoch,
             )
+        if error.retryable or error.category == "unavailable":
+            return WAWLifecycleObservation(
+                state="UNKNOWN",
+                reconciliation_state="reconciliation_required",
+                process_state="UNKNOWN",
+                runtime_epoch=self._runtime_epoch,
+            )
         return WAWLifecycleObservation(
             state="BROKEN",
             reconciliation_state="reconciliation_required",
