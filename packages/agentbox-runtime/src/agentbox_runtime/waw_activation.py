@@ -100,6 +100,14 @@ def _validate_socket(
     if (
         not stat.S_ISSOCK(details.st_mode)
         or not stat.S_ISSOCK(descriptor.st_mode)
+        # Linux exposes a filesystem socket pathname and the live socket
+        # descriptor through different pseudo-filesystems, so their device
+        # numbers legitimately differ.  Where the platform reports the same
+        # device namespace, an inode mismatch is a definitive replacement.
+        or (
+            details.st_dev == descriptor.st_dev
+            and details.st_ino != descriptor.st_ino
+        )
         or (details.st_dev, details.st_ino) != (descriptor.st_dev, descriptor.st_ino)
         or details.st_uid != expected_uid
         or details.st_gid != expected_gid

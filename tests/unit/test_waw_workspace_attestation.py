@@ -32,7 +32,9 @@ def _kwargs(generation: int) -> dict[str, Any]:
 
 
 def test_generation_accepts_uint64_max(tmp_path: Path) -> None:
-    record = _store(tmp_path).advance(**_kwargs(2**64 - 1))
+    store = _store(tmp_path)
+    store.advance(**_kwargs(1))
+    record = store.advance(**_kwargs(2**64 - 1))
     assert record.min_generation == 2**64 - 1
 
 

@@ -215,7 +215,8 @@ def test_tmux_transport_rejects_wrong_pane_process(tmp_path: Path) -> None:
         transport.start(command, PtyGeometry(80, 24))
 
 
-def test_resolve_timeout_cancels_worker_without_late_mutation(
+@pytest.mark.anyio
+async def test_resolve_timeout_cancels_worker_without_late_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import agentbox_runtime.waw_transport as waw_transport
