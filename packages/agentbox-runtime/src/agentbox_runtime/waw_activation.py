@@ -62,11 +62,14 @@ def load_waw_activated_sockets(
     sockets: list[socket.socket] = []
     try:
         for fd, expected_path in ((3, control_path), (4, stream_path)):
+            sock: socket.socket | None = None
             try:
                 sock = socket.socket(fileno=fd)
                 sock.set_inheritable(False)
                 _validate_socket(sock, expected_path, expected_uid, expected_gid)
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError, WAWActivationError) as exc:
+                if sock is not None:
+                    sock.close()
                 raise WAWActivationError("WAW socket descriptor provenance is invalid") from exc
             sockets.append(sock)
         first = os.stat(control_path, follow_symlinks=False)

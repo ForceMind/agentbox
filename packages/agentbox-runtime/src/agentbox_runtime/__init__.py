@@ -68,6 +68,11 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
 )
+from agentbox_runtime.waw_host_manifest import (
+    WAWRuntimeHostManifest,
+    WAWRuntimeHostManifestError,
+    load_waw_runtime_host_manifest,
+)
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
     RuntimeStartEvidence,
@@ -148,6 +153,9 @@ __all__ = [
     "WAWLifecycleIdentity",
     "WAWLifecycleObservation",
     "WAWLifecycleRegistry",
+    "WAWRuntimeHostManifest",
+    "WAWRuntimeHostManifestError",
+    "load_waw_runtime_host_manifest",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
