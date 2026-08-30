@@ -358,3 +358,24 @@ def test_attachment_tuple_rejects_cross_project_or_agent_identity() -> None:
             binding_digest=BINDING_DIGEST,
         )
     assert mismatch.value.code is TicketErrorCode.STALE
+
+
+def test_issue_rejects_origin_drift_from_context() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    with pytest.raises(TicketAuthorityError) as mismatch:
+        authority.issue(
+            workspace_id=WORKSPACE_ID,
+            project_id=PROJECT_ID,
+            agent_type=AgentType.CLAUDE,
+            attachment_id="att_" + "7" * 32,
+            generation=1,
+            auth_epoch=4,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision=3,
+            binding_revision=2,
+            binding_digest=BINDING_DIGEST,
+            origin="https://evil.invalid",
+            context=_context(),
+        )
+    assert mismatch.value.code is TicketErrorCode.INVALID

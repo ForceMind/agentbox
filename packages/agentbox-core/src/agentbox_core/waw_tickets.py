@@ -283,6 +283,10 @@ class AttachmentAuthority:
                 )
             if not isinstance(origin, str) or not origin or len(origin) > 256:
                 raise TicketAuthorityError(TicketErrorCode.INVALID, "origin is invalid")
+            if context is not None and not hmac.compare_digest(context.origin, origin):
+                raise TicketAuthorityError(
+                    TicketErrorCode.INVALID, "origin does not match attachment context"
+                )
             lease_number = self._allocate_lease_number()
             claims = AttachmentTuple(
                 workspace_id=workspace_id,
