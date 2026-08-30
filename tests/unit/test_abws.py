@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Callable
 
 import pytest
 from agentbox_protocol.abws import (
@@ -66,7 +67,9 @@ def test_input_and_output_are_opaque_bytes_only() -> None:
         lambda header: header[:5] + b"\xff" + header[6:],
     ],
 )
-def test_header_magic_version_flags_reserved_and_unknown_type_are_rejected(header_change) -> None:
+def test_header_magic_version_flags_reserved_and_unknown_type_are_rejected(
+    header_change: Callable[[bytes], bytes],
+) -> None:
     valid = encode_frame(ABWSFrameType.PING, _control(nonce="0123456789abcdef"), 1)
     with pytest.raises(ABWSError):
         decode_frame(header_change(valid[:HEADER_SIZE]) + valid[HEADER_SIZE:])
