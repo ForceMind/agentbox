@@ -621,3 +621,106 @@ async def test_external_dispatch_cancellation_is_quarantined_and_cleanup_is_deta
             with contextlib.suppress(asyncio.CancelledError):
                 await dispatch_call
         await server.close()
+
+
+@pytest.mark.parametrize("repeat_action", ["observer_cancel", "server_close"])
+@pytest.mark.anyio
+async def test_repeated_cancellation_observer_keeps_pending_dispatch_quarantined(
+    repeat_action: str,
+) -> None:
+    """Repeated cancellation cannot detach or reuse a late dispatch task."""
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    late_failure = asyncio.Event()
+    loop_errors: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+
+    def exception_handler(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
+        loop_errors.append(context)
+
+    loop.set_exception_handler(exception_handler)
+
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            # Ignore repeated cancellation to model a cancellation-resistant
+            # adapter.  The eventual exception must still be consumed by the
+            # dispatch task's done callback.
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+            late_failure.set()
+            raise RuntimeError("late repeated-cancellation failure") from None
+        raise AssertionError("unreachable")
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        dispatch,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=0.01,
+    )
+    dispatch_call = asyncio.create_task(
+        server._dispatch_with_deadline(_request(), server._monotonic() + 1)
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        dispatch_call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(dispatch_call, timeout=1)
+
+        # The outer owner is already cancelled.  Its child remains tracked,
+        # and the independent observer is the only cleanup owner left.
+        assert len(server._dispatch_tasks) == 1
+        assert len(server._cleanup_tasks) == 1
+        cleanup = next(iter(server._cleanup_tasks))
+
+        if repeat_action == "observer_cancel":
+            cleanup.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait_for(cleanup, timeout=1)
+        else:
+            close_task = asyncio.create_task(server.close())
+            await asyncio.wait_for(close_task, timeout=1)
+
+        # Repeated cancellation or close must not claim that the resistant
+        # child has terminated.  The poisoned listener is never reusable.
+        assert server._poisoned is True
+        assert len(server._dispatch_tasks) == 1
+
+        release.set()
+        await asyncio.wait_for(late_failure.wait(), timeout=1)
+
+        async def wait_for_registries_to_empty() -> None:
+            while server._dispatch_tasks or server._cleanup_tasks:
+                await asyncio.sleep(0)
+
+        await asyncio.wait_for(wait_for_registries_to_empty(), timeout=1)
+        assert not server._dispatch_tasks
+        assert not server._cleanup_tasks
+        assert not any("late repeated-cancellation failure" in str(item) for item in loop_errors)
+    finally:
+        release.set()
+        if not dispatch_call.done():
+            dispatch_call.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await dispatch_call
+        loop.set_exception_handler(previous_handler)
+        await server.close()
