@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import socket
+import stat
 import struct
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -34,6 +37,43 @@ class WAWControlClientError(RuntimeError):
         self.retryable = retryable
 
 
+@dataclass(frozen=True)
+class WAWSocketPathIdentity:
+    """Stable identity observed for a root-owned Unix socket path."""
+
+    device: int
+    inode: int
+
+
+def _check_socket_path(
+    path: Path, *, expected_uid: int, expected_gid: int, expected_mode: int
+) -> WAWSocketPathIdentity:
+    """Reject symlink/socket replacement and unexpected DAC ownership before I/O."""
+
+    try:
+        parent = path.parent
+        parent_stat = os.lstat(parent)
+        details = os.lstat(path)
+    except OSError as exc:
+        raise WAWControlClientError(
+            "RUNTIME_UNAVAILABLE",
+            "WAW Runtime control socket provenance is unavailable",
+            retryable=True,
+        ) from exc
+    if (
+        not stat.S_ISDIR(parent_stat.st_mode)
+        or stat.S_ISLNK(parent_stat.st_mode)
+        or not stat.S_ISSOCK(details.st_mode)
+        or details.st_uid != expected_uid
+        or details.st_gid != expected_gid
+        or stat.S_IMODE(details.st_mode) != expected_mode
+    ):
+        raise WAWControlClientError(
+            "WAW_SOCKET_PROVENANCE_INVALID", "WAW Runtime control socket provenance is invalid"
+        )
+    return WAWSocketPathIdentity(details.st_dev, details.st_ino)
+
+
 class WAWControlClient:
     """Issue one strict control request on a dedicated Unix socket."""
 
@@ -43,6 +83,9 @@ class WAWControlClient:
         *,
         expected_peer_uid: int,
         expected_peer_gid: int,
+        expected_socket_uid: int,
+        expected_socket_gid: int,
+        expected_socket_mode: int = 0o660,
         timeout_seconds: float = 2.0,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -54,9 +97,18 @@ class WAWControlClient:
             raise ValueError("expected_peer_uid must be a non-negative integer")
         if type(expected_peer_gid) is not int or expected_peer_gid < 0:
             raise ValueError("expected_peer_gid must be a non-negative integer")
+        if type(expected_socket_uid) is not int or expected_socket_uid < 0:
+            raise ValueError("expected_socket_uid must be a non-negative integer")
+        if type(expected_socket_gid) is not int or expected_socket_gid < 0:
+            raise ValueError("expected_socket_gid must be a non-negative integer")
+        if type(expected_socket_mode) is not int or not 0 <= expected_socket_mode <= 0o7777:
+            raise ValueError("expected_socket_mode must be an octal file mode")
         self._socket_path = socket_path
         self._expected_peer_uid = expected_peer_uid
         self._expected_peer_gid = expected_peer_gid
+        self._expected_socket_uid = expected_socket_uid
+        self._expected_socket_gid = expected_socket_gid
+        self._expected_socket_mode = expected_socket_mode
         self._timeout_seconds = timeout_seconds
         self._monotonic = monotonic
 
@@ -82,6 +134,12 @@ class WAWControlClient:
             raise WAWControlClientError("PROTOCOL_INVALID", "WAW control request is oversized")
 
         deadline = self._monotonic() + self._timeout_seconds
+        before_path = _check_socket_path(
+            self._socket_path,
+            expected_uid=self._expected_socket_uid,
+            expected_gid=self._expected_socket_gid,
+            expected_mode=self._expected_socket_mode,
+        )
         reader: asyncio.StreamReader
         writer: asyncio.StreamWriter
         try:
@@ -94,6 +152,16 @@ class WAWControlClient:
                 "RUNTIME_UNAVAILABLE", "WAW Runtime control endpoint is unavailable", retryable=True
             ) from exc
         try:
+            after_path = _check_socket_path(
+                self._socket_path,
+                expected_uid=self._expected_socket_uid,
+                expected_gid=self._expected_socket_gid,
+                expected_mode=self._expected_socket_mode,
+            )
+            if after_path != before_path:
+                raise WAWControlClientError(
+                    "WAW_SOCKET_PROVENANCE_INVALID", "WAW Runtime socket changed during connect"
+                )
             if not self._peer_is_expected(writer):
                 raise WAWControlClientError(
                     "RUNTIME_PEER_FORBIDDEN", "WAW Runtime peer credentials are not trusted"
@@ -158,4 +226,4 @@ class WAWControlClient:
         return await asyncio.wait_for(awaitable, timeout=remaining)
 
 
-__all__ = ["WAWControlClient", "WAWControlClientError"]
+__all__ = ["WAWControlClient", "WAWControlClientError", "WAWSocketPathIdentity"]

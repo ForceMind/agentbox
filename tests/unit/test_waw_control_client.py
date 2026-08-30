@@ -45,6 +45,8 @@ def _client(path: Path, *, timeout_seconds: float = 2.0) -> WAWControlClient:
         path,
         expected_peer_uid=os.geteuid(),
         expected_peer_gid=os.getegid(),
+        expected_socket_uid=os.geteuid(),
+        expected_socket_gid=os.getegid(),
         timeout_seconds=timeout_seconds,
     )
 
@@ -62,7 +64,9 @@ async def _serve_once(path: Path, payload: bytes, *, delay: float = 0) -> asynci
         writer.close()
         await writer.wait_closed()
 
-    return await asyncio.start_unix_server(handler, path=path)
+    server = await asyncio.start_unix_server(handler, path=path)
+    path.chmod(0o660)
+    return server
 
 
 @pytest.mark.anyio
@@ -127,3 +131,26 @@ async def test_client_rejects_invalid_request_before_connect(tmp_path: Path) -> 
     with pytest.raises(WAWControlClientError) as raised:
         await client.request("workspace.workspace.start", {"protocol_version": 1})
     assert raised.value.code == "PROTOCOL_INVALID"
+
+
+@pytest.mark.anyio
+async def test_client_rejects_untrusted_socket_mode_before_connect(tmp_path: Path) -> None:
+    path = tmp_path / "workspace-control.sock"
+    server = await _serve_once(
+        path, encode_control_response(_response(), "workspace.workspace.start")
+    )
+    try:
+        client = WAWControlClient(
+            path,
+            expected_peer_uid=os.geteuid(),
+            expected_peer_gid=os.getegid(),
+            expected_socket_uid=os.geteuid(),
+            expected_socket_gid=os.getegid(),
+            expected_socket_mode=0o600,
+        )
+        with pytest.raises(WAWControlClientError) as raised:
+            await client.request("workspace.workspace.start", _request())
+        assert raised.value.code == "WAW_SOCKET_PROVENANCE_INVALID"
+    finally:
+        server.close()
+        await server.wait_closed()
