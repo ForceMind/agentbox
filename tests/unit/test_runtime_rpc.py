@@ -145,6 +145,18 @@ class FakeProjectManager:
         return GitActionResult("pulled", "main")
 
 
+class FakeWAWControlServer:
+    def __init__(self) -> None:
+        self.started = 0
+        self.closed = 0
+
+    async def start(self) -> None:
+        self.started += 1
+
+    async def close(self) -> None:
+        self.closed += 1
+
+
 def _runtime_epoch_store(tmp_path: Path) -> WAWRuntimeEpochStore:
     directory = tmp_path / "runtime-epoch"
     directory.mkdir(mode=0o700)
@@ -196,6 +208,22 @@ async def test_runtime_server_does_not_reconsume_epoch_on_restart(tmp_path: Path
         assert json.loads((tmp_path / "runtime-epoch" / "epoch.json").read_text())["epoch"] == "2"
     finally:
         await server.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_server_wires_optional_waw_control_lifecycle(tmp_path: Path) -> None:
+    control = FakeWAWControlServer()
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        waw_control_server=control,  # type: ignore[arg-type]
+    )
+
+    await server.start()
+    assert control.started == 1
+    await server.close()
+    assert control.closed == 1
 
 
 @pytest.mark.anyio

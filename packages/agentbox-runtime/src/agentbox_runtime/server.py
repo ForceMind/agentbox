@@ -32,6 +32,7 @@ from agentbox_runtime.rpc import (
     validate_request_id,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
@@ -84,6 +85,7 @@ class RuntimeExecutorServer:
         write_timeout_seconds: float = 5.0,
         trailing_timeout_seconds: float = 0.01,
         waw_epoch_store: WAWRuntimeEpochStore | None = None,
+        waw_control_server: WAWControlServer | None = None,
     ) -> None:
         if read_timeout_seconds <= 0 or write_timeout_seconds <= 0 or trailing_timeout_seconds <= 0:
             raise ValueError("Runtime socket timeouts must be positive")
@@ -98,6 +100,7 @@ class RuntimeExecutorServer:
         self._write_timeout_seconds = write_timeout_seconds
         self._trailing_timeout_seconds = trailing_timeout_seconds
         self._waw_epoch_store = waw_epoch_store
+        self._waw_control_server = waw_control_server
         self._waw_runtime_epoch: int | None = None
         self._server: asyncio.AbstractServer | None = None
 
@@ -165,11 +168,15 @@ class RuntimeExecutorServer:
                 os.chown(self._socket_path, -1, socket_gid)
             self._socket_path.chmod(0o660)
             await self._server.start_serving()
+            if self._waw_control_server is not None:
+                await self._waw_control_server.start()
         except Exception:
             await self.close()
             raise
 
     async def close(self) -> None:
+        if self._waw_control_server is not None:
+            await self._waw_control_server.close()
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
