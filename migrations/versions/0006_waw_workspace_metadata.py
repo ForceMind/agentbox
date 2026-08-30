@@ -107,7 +107,7 @@ def upgrade() -> None:
             "exit_code IS NULL OR exit_code BETWEEN -128 AND 255", name="ck_waw_sessions_exit_code"
         ),
         sa.CheckConstraint(
-            "failure_code IS NULL OR (length(failure_code) BETWEEN 1 AND 64)",
+            "failure_code IS NULL OR (length(failure_code) BETWEEN 1 AND 64 AND failure_code NOT GLOB '*[^[:cntrl:]]*')",
             name="ck_waw_sessions_failure_code",
         ),
         sa.CheckConstraint(
