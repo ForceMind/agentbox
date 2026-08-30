@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import Any, cast
 
 import pytest
@@ -113,7 +114,10 @@ def _runtime() -> dict[str, object]:
 def test_codec_round_trip_is_canonical(encode: Encoder, decode: Decoder, factory: Factory) -> None:
     payload = encode(factory())
     assert payload == encode(json.loads(payload))
-    assert decode(payload) == decode(payload)
+    expected = factory()
+    if "controllers" in expected:
+        expected["controllers"] = tuple(cast(list[str], expected["controllers"]))
+    assert asdict(cast(Any, decode(payload))) == expected
 
 
 def test_deterministic_project_root_vector() -> None:
@@ -128,6 +132,74 @@ def test_deterministic_project_root_vector() -> None:
         b'"root_mode":"755","root_mount_id":"42","root_uid":"0","schema_version":"waw-project-root-v1"}'
     )
     assert manifest_sha256(payload) == hashlib.sha256(payload).hexdigest()
+
+
+def test_deterministic_manifest_vectors() -> None:
+    vectors = (
+        (
+            encode_cgroup_delegation_manifest,
+            _cgroup,
+            b'{"cgroup_mount_device":"0:31","cgroup_mount_filesystem_id":"host-cgroup2-1",'
+            b'"cgroup_mount_type":"cgroup2","cgroup_schema_identity":"cgroup-v2",'
+            b'"controllers":["cpu","memory","pids"],"cpu_quota_percent":400,'
+            b'"cpu_quota_period_usec":100000,"delegate":true,'
+            b'"delegate_subgroup":"agentbox-runtime-supervisor","kill_mode":"process",'
+            b'"memory_max":536870912,"memory_swap_max":0,"policy_template_digest":"'
+            + _HEX_A.encode()
+            + b'","protect_control_groups":"private","schema_version":"waw-cgroup-delegation-v1",'
+            b'"service_unit":"agentbox-runtime.service","tasks_max":256}',
+            "bf51d4a1a2af8420a65e4403bedd9864c00ee566eeda1da34af84652aa7a56f7",
+        ),
+        (
+            encode_api_host_anchor,
+            _anchor,
+            b'{"enrollment_epoch":"7","enrollment_state":"steady","host_manifest_digest":"'
+            + _HEX_B.encode()
+            + b'","project_root_manifest_digest":"'
+            + _HEX_A.encode()
+            + b'","runtime_attestation_x25519_fingerprint":"'
+            + _HEX_A.encode()
+            + b'","runtime_host_installation_id":"wri_'
+            + b"1" * 32
+            + b'","runtime_host_installation_revision":"3","schema_version":"'
+            b'waw-api-host-anchor-v1"}',
+            "90255756640b41ff6ff9093b8858fc35c007b85f7e6b776ef35de8c34df5ad0b",
+        ),
+        (
+            encode_runtime_host_manifest,
+            _runtime,
+            b'{"attach_supervisor_fingerprint":"'
+            + _HEX_A.encode()
+            + b'","bridge_fingerprint":"'
+            + _HEX_B.encode()
+            + b'","claude_fingerprint":"'
+            + _HEX_A.encode()
+            + b'","codex_fingerprint":"'
+            + _HEX_B.encode()
+            + b'","config_digest":"'
+            + _HEX_B.encode()
+            + b'","enrollment_epoch":"7","enrollment_state":"steady",'
+            b'"project_root_manifest_digest":"'
+            + _HEX_B.encode()
+            + b'","project_root_manifest_path":"/usr/share/agentbox/waw/project-root.v1",'
+            b'"runtime_attestation_x25519_fingerprint":"'
+            + _HEX_A.encode()
+            + b'","runtime_host_installation_id":"wri_'
+            + b"1" * 32
+            + b'","runtime_host_installation_revision":"3","schema_version":"'
+            b'waw-runtime-host-installation-v1",'
+            b'"socket_digest":"'
+            + _HEX_A.encode()
+            + b'","tmux_fingerprint":"'
+            + _HEX_A.encode()
+            + b'"}',
+            "2e937068d18af15aa5072d88771a57355e2d03386bcf5f5139518c8adf9abd96",
+        ),
+    )
+    for encoder, factory, expected, expected_digest in vectors:
+        payload = encoder(factory())
+        assert payload == expected
+        assert manifest_sha256(payload) == expected_digest
 
 
 @pytest.mark.parametrize(
