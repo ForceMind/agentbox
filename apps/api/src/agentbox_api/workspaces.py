@@ -149,6 +149,21 @@ def _validate_runtime_status_identity(
         )
 
 
+def _validate_runtime_status_epoch(
+    status: WorkspaceRuntimeStatus, coordinator: _WAWLifecycleRequester
+) -> None:
+    """Reject observations from a Runtime epoch other than the bound peer."""
+
+    attestation = getattr(coordinator, "attestation", None)
+    if not isinstance(attestation, dict):
+        return
+    expected_epoch = attestation.get("runtime_epoch")
+    if isinstance(expected_epoch, str) and status.runtime_epoch != expected_epoch:
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH", "WAW Runtime status epoch is stale"
+        )
+
+
 def _metadata(row: AgentWorkspaceSessionRecord) -> WorkspaceMetadata:
     return WorkspaceMetadata(
         id=row.id,
@@ -227,6 +242,7 @@ async def get_runtime_status(
             status_code=502, detail="WAW Runtime status response is invalid"
         ) from exc
     try:
+        _validate_runtime_status_epoch(status, coordinator)
         _validate_runtime_status_identity(status, row)
     except WAWControlClientError as exc:
         raise HTTPException(status_code=502, detail="WAW Runtime status identity mismatch") from exc

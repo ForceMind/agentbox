@@ -8,6 +8,7 @@ command, PID, tmux target, or credential from the WAW request.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol, TypeAlias
@@ -35,6 +36,25 @@ class ClaudeProjectBinding:
 
     project_id: str
     project_key: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.project_id, str) or not self.project_id:
+            raise ValueError("project_id must be non-empty")
+        if (
+            not isinstance(self.project_key, str)
+            or not 1 <= len(self.project_key) <= 80
+            or self.project_key != self.project_key.strip()
+            or self.project_key in {".", ".."}
+            or self.project_key.startswith(".")
+            or "/" in self.project_key
+            or "\\" in self.project_key
+            or any(unicodedata.category(char).startswith("C") for char in self.project_key)
+            or any(
+                not (char.isalnum() or char in {"-", "_", ".", " "})
+                for char in self.project_key
+            )
+        ):
+            raise ValueError("project_key is invalid")
 
 
 ProjectResolver: TypeAlias = Callable[[str], ClaudeProjectBinding | Awaitable[ClaudeProjectBinding]]

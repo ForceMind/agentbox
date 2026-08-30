@@ -145,7 +145,7 @@ async def test_does_not_claim_broken_for_retryable_runtime_failure() -> None:
 @pytest.mark.anyio
 async def test_invalid_resolver_result_is_bounded_error() -> None:
     executor = WAWClaudeLifecycleExecutor(
-        FakeManager(), lambda _id: "", runtime_epoch="1"  # type: ignore[return-value]
+        FakeManager(), lambda _id: "", runtime_epoch="1"  # type: ignore[arg-type,return-value]
     )
     with pytest.raises(RuntimeOperationError, match="Formal Project"):
         await executor.start(IDENTITY)
@@ -156,6 +156,12 @@ def test_rejects_invalid_runtime_epoch() -> None:
         WAWClaudeLifecycleExecutor(
             FakeManager(), lambda project_id: _binding(project_id), runtime_epoch="01"
         )
+
+
+@pytest.mark.parametrize("project_key", ["", ".", "../escape", "project/key", "project\nkey"])
+def test_rejects_unbounded_project_key(project_key: str) -> None:
+    with pytest.raises(ValueError, match="project_key"):
+        ClaudeProjectBinding(PROJECT, project_key)
 
 
 @pytest.mark.anyio

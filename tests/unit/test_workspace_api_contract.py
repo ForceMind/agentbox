@@ -9,6 +9,7 @@ from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_api.workspaces import (
     WorkspaceMetadata,
     WorkspaceRuntimeStatus,
+    _validate_runtime_status_epoch,
     _validate_runtime_status_identity,
 )
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
@@ -115,3 +116,25 @@ def test_runtime_status_identity_is_fenced_to_database_row() -> None:
     row.project_id = "prj_" + "9" * 32
     with pytest.raises(WAWControlClientError, match="identity"):
         _validate_runtime_status_identity(status, row)
+
+
+def test_runtime_status_epoch_is_fenced_to_bound_attestation() -> None:
+    status = WorkspaceRuntimeStatus.model_validate(
+        {
+            "workspace_id": "aws_" + "1" * 32,
+            "project_id": "prj_" + "2" * 32,
+            "agent_type": "claude",
+            "generation": "1",
+            "binding_revision": "1",
+            "binding_digest": "a" * 64,
+            "state": "RUNNING",
+            "reconciliation_state": "authoritative",
+            "runtime_epoch": "2",
+            "process_state": "RUNNING",
+            "exit_code": None,
+            "attachment_capacity": {"admitted": "0", "pending": "0", "limit": "32"},
+        }
+    )
+    coordinator = SimpleNamespace(attestation={"runtime_epoch": "1"})
+    with pytest.raises(WAWControlClientError, match="epoch"):
+        _validate_runtime_status_epoch(status, coordinator)
