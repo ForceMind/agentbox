@@ -57,6 +57,7 @@ from agentbox_runtime.waw_activation import (
     WAWActivationError,
     load_waw_activated_sockets,
 )
+from agentbox_runtime.waw_claude_executor import ProjectResolver, WAWClaudeLifecycleExecutor
 from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
     WAWControlServer,
@@ -156,6 +157,8 @@ __all__ = [
     "WAWRuntimeHostManifest",
     "WAWRuntimeHostManifestError",
     "load_waw_runtime_host_manifest",
+    "ProjectResolver",
+    "WAWClaudeLifecycleExecutor",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
