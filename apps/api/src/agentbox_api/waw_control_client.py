@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hmac
+import inspect
 import os
 import socket
 import stat
@@ -36,6 +37,9 @@ class WAWControlClientError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+
+
+_MAX_CANCELLATION_GRACE_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -133,8 +137,8 @@ class WAWControlClient:
             raise TypeError("socket_path must be a Path")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        if cancellation_grace_seconds <= 0:
-            raise ValueError("cancellation_grace_seconds must be positive")
+        if not 0 < cancellation_grace_seconds <= _MAX_CANCELLATION_GRACE_SECONDS:
+            raise ValueError("cancellation_grace_seconds must be in (0, 1]")
         if type(expected_peer_uid) is not int or expected_peer_uid < 0:
             raise ValueError("expected_peer_uid must be a non-negative integer")
         if type(expected_peer_gid) is not int or expected_peer_gid < 0:
@@ -307,7 +311,10 @@ class WAWControlClient:
             close_wait = writer.wait_closed()
         except (OSError, RuntimeError):
             return
-        task = asyncio.ensure_future(close_wait)
+        close_wait_any: Any = close_wait
+        if not inspect.isawaitable(close_wait_any):
+            return
+        task = asyncio.ensure_future(close_wait_any)
         try:
             _done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
         except asyncio.CancelledError:
@@ -374,7 +381,10 @@ class WAWControlClient:
     async def _finish_cancel(self, task: asyncio.Future[Any]) -> None:
         """Give cancellation a small grace window, never joining indefinitely."""
 
-        _done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+        done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+        for completed in done:
+            with contextlib.suppress(BaseException):
+                completed.result()
         if pending:
             task.add_done_callback(self._consume_late_task)
 
