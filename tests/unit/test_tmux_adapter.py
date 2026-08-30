@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -281,6 +282,138 @@ async def test_tmux_write_input_deletes_buffer_when_paste_fails(tmp_path: Path) 
 
     buffer_name = f"agentbox-waw-input-{name}"
     assert runner.calls[-1] == ("delete-buffer", "-b", buffer_name)
+
+
+@pytest.mark.anyio
+async def test_tmux_write_input_cleans_buffer_when_load_fails(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = RecordingRunner()
+    runner.responses = [
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 1, b"", b"load failed"),
+        ProcessResult(("tmux",), 0, b"", b""),
+    ]
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(RuntimeOperationError, match="could not be loaded"):
+        await adapter.write_input("agentbox-waw-claude-load-failure", b"opaque input")
+
+    assert runner.calls[-1] == (
+        "delete-buffer",
+        "-b",
+        "agentbox-waw-input-agentbox-waw-claude-load-failure",
+    )
+
+
+@pytest.mark.anyio
+async def test_tmux_write_input_treats_paste_delete_race_as_success(tmp_path: Path) -> None:
+    """The -d paste can remove the buffer before explicit cleanup runs."""
+
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = RecordingRunner()
+    runner.responses = [
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 1, b"", b"buffer not found"),
+    ]
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+
+    await adapter.write_input("agentbox-waw-claude-paste-canary", b"opaque input")
+    assert runner.calls[-1][0] == "delete-buffer"
+
+
+class OverlapDetectingRunner(RecordingRunner):
+    def __init__(self) -> None:
+        super().__init__()
+        self._active_buffer_ops = 0
+        self.max_active_buffer_ops = 0
+
+    async def run(
+        self,
+        executable: ExecutableIdentity,
+        arguments: Sequence[str],
+        *,
+        environment: Mapping[str, str],
+        cwd: Path,
+        timeout_seconds: float,
+        stdout_limit: int,
+        stderr_limit: int,
+        sensitive_output: bool = False,
+        stdin_data: bytes | None = None,
+        error_prefix: str = "CODEX",
+    ) -> ProcessResult:
+        if arguments[0] not in {"load-buffer", "paste-buffer", "delete-buffer"}:
+            return await super().run(
+                executable,
+                arguments,
+                environment=environment,
+                cwd=cwd,
+                timeout_seconds=timeout_seconds,
+                stdout_limit=stdout_limit,
+                stderr_limit=stderr_limit,
+                sensitive_output=sensitive_output,
+                stdin_data=stdin_data,
+                error_prefix=error_prefix,
+            )
+        self._active_buffer_ops += 1
+        self.max_active_buffer_ops = max(self.max_active_buffer_ops, self._active_buffer_ops)
+        try:
+            await asyncio.sleep(0)
+            return await super().run(
+                executable,
+                arguments,
+                environment=environment,
+                cwd=cwd,
+                timeout_seconds=timeout_seconds,
+                stdout_limit=stdout_limit,
+                stderr_limit=stderr_limit,
+                sensitive_output=sensitive_output,
+                stdin_data=stdin_data,
+                error_prefix=error_prefix,
+            )
+        finally:
+            self._active_buffer_ops -= 1
+
+
+@pytest.mark.anyio
+async def test_tmux_write_input_serializes_fixed_buffer_per_session(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = OverlapDetectingRunner()
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+
+    await asyncio.gather(
+        adapter.write_input("agentbox-waw-claude-concurrent", b"first"),
+        adapter.write_input("agentbox-waw-claude-concurrent", b"second"),
+    )
+
+    assert runner.max_active_buffer_ops == 1
+    buffer_calls = [
+        (call[0], stdin)
+        for call, stdin in zip(runner.calls, runner.stdin, strict=True)
+        if call[0] in {"load-buffer", "paste-buffer", "delete-buffer"}
+    ]
+    assert [call[0] for call in buffer_calls] == [
+        "load-buffer",
+        "paste-buffer",
+        "delete-buffer",
+        "load-buffer",
+        "paste-buffer",
+        "delete-buffer",
+    ]
+    assert [stdin for call, stdin in buffer_calls if call[0] == "load-buffer"] == [
+        b"first",
+        b"second",
+    ]
 
 
 class RaisingRunner(RecordingRunner):

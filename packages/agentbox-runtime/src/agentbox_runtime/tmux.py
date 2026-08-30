@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import re
@@ -33,6 +34,10 @@ class TmuxAdapter:
     ) -> None:
         self._environment = minimal_runtime_environment(environment or os.environ)
         self._runner = runner or ControlledProcessRunner()
+        # ``write_input`` uses one fixed buffer per session.  Serialize the
+        # complete load/paste/delete sequence so concurrent callers cannot
+        # overwrite a buffer while another caller is pasting it.
+        self._input_locks: dict[str, asyncio.Lock] = {}
 
     def executable(self) -> ExecutableIdentity | None:
         selected = shutil.which("tmux", path=self._environment.get("PATH", ""))
@@ -305,70 +310,81 @@ class TmuxAdapter:
                 "tmux input is outside the fixed byte limit",
                 category="validation",
             )
-        if not await self.has_session(session_name):
-            raise RuntimeOperationError(
-                "TMUX_SESSION_UNAVAILABLE", "tmux session is unavailable", category="unavailable"
-            )
-        buffer_name = self._input_buffer_name(session_name)
-        loaded = await self._run(
-            self._require_executable(),
-            ("load-buffer", "-b", buffer_name, "-"),
-            allow_nonzero=True,
-            timeout=5,
-            stdin_data=data,
-        )
-        if loaded.exit_code != 0:
-            raise RuntimeOperationError(
-                "TMUX_INPUT_FAILED", "tmux input buffer could not be loaded", category="broken"
-            )
-        operation_error: BaseException | None = None
-        cleanup_error: BaseException | None = None
-        deleted: ProcessResult | None = None
-        try:
-            pasted = await self._run(
-                self._require_executable(),
-                (
-                    "paste-buffer",
-                    "-d",
-                    "-b",
-                    buffer_name,
-                    "-t",
-                    f"={session_name}:0.0",
-                ),
-                allow_nonzero=True,
-                timeout=5,
-            )
-            if pasted.exit_code != 0:
+        lock = self._input_locks.setdefault(session_name, asyncio.Lock())
+        async with lock:
+            if not await self.has_session(session_name):
                 raise RuntimeOperationError(
-                    "TMUX_INPUT_FAILED",
-                    "tmux input buffer could not be pasted",
-                    category="broken",
+                    "TMUX_SESSION_UNAVAILABLE",
+                    "tmux session is unavailable",
+                    category="unavailable",
                 )
-        except BaseException as exc:
-            operation_error = exc
-        finally:
-            # ``paste-buffer -d`` deletes only after a successful paste.  Keep
-            # an explicit fixed-name cleanup as the final fence for failed,
-            # timed-out, or exception paths so opaque input is not retained in
-            # tmux's server-side buffer namespace.
+            buffer_name = self._input_buffer_name(session_name)
+            operation_error: BaseException | None = None
+            cleanup_error: BaseException | None = None
+            paste_succeeded = False
             try:
-                deleted = await self._run(
+                loaded = await self._run(
                     self._require_executable(),
-                    ("delete-buffer", "-b", buffer_name),
+                    ("load-buffer", "-b", buffer_name, "-"),
+                    allow_nonzero=True,
+                    timeout=5,
+                    stdin_data=data,
+                )
+                if loaded.exit_code != 0:
+                    raise RuntimeOperationError(
+                        "TMUX_INPUT_FAILED",
+                        "tmux input buffer could not be loaded",
+                        category="broken",
+                    )
+                pasted = await self._run(
+                    self._require_executable(),
+                    (
+                        "paste-buffer",
+                        "-d",
+                        "-b",
+                        buffer_name,
+                        "-t",
+                        f"={session_name}:0.0",
+                    ),
                     allow_nonzero=True,
                     timeout=5,
                 )
+                if pasted.exit_code != 0:
+                    raise RuntimeOperationError(
+                        "TMUX_INPUT_FAILED",
+                        "tmux input buffer could not be pasted",
+                        category="broken",
+                    )
+                paste_succeeded = True
             except BaseException as exc:
-                cleanup_error = exc
-        if operation_error is not None:
-            raise operation_error
-        if cleanup_error is not None:
-            raise cleanup_error
-        assert deleted is not None
-        if deleted.exit_code != 0:
-            raise RuntimeOperationError(
-                "TMUX_INPUT_FAILED", "tmux input buffer could not be deleted", category="broken"
-            )
+                operation_error = exc
+            finally:
+                # ``paste-buffer -d`` removes the buffer only after a
+                # successful paste.  Always attempt explicit cleanup,
+                # including load failures, timeouts, and exceptions.
+                try:
+                    deleted = await self._run(
+                        self._require_executable(),
+                        ("delete-buffer", "-b", buffer_name),
+                        allow_nonzero=True,
+                        timeout=5,
+                    )
+                except BaseException as exc:
+                    cleanup_error = exc
+            if operation_error is not None:
+                raise operation_error
+            # A successful ``paste-buffer -d`` has already deleted the fixed
+            # buffer.  tmux may therefore report delete-buffer as missing;
+            # that is a successful input delivery, not a false failure.
+            if paste_succeeded:
+                return
+            if cleanup_error is not None:
+                raise cleanup_error
+            assert deleted is not None
+            if deleted.exit_code != 0:
+                raise RuntimeOperationError(
+                    "TMUX_INPUT_FAILED", "tmux input buffer could not be deleted", category="broken"
+                )
 
     async def resize_window(self, session_name: str, *, columns: int, rows: int) -> None:
         """Resize only the exact managed pane using bounded geometry."""
