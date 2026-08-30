@@ -485,6 +485,16 @@ def test_ticket_randomness_failure_is_normalized(monkeypatch: pytest.MonkeyPatch
     assert unavailable.value.code is TicketErrorCode.RANDOMNESS_UNAVAILABLE
 
 
+def test_authority_seed_randomness_failure_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(_upper: int) -> int:
+        raise RuntimeError("entropy unavailable")
+
+    monkeypatch.setattr("agentbox_core.waw_tickets.secrets.randbelow", fail)
+    with pytest.raises(TicketAuthorityError) as unavailable:
+        AttachmentAuthority(clock=lambda: 1.0)
+    assert unavailable.value.code is TicketErrorCode.RANDOMNESS_UNAVAILABLE
+
+
 def test_contextless_ticket_cannot_be_consumed_with_authenticated_context() -> None:
     clock = FakeMonotonic()
     authority = _authority(clock)

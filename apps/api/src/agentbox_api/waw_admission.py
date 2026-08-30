@@ -16,7 +16,11 @@ from typing import Literal, Protocol, cast
 from urllib.parse import urlsplit
 
 from agentbox_core.services import AuthenticatedSession
-from agentbox_core.waw import validate_positive_u64, validate_runtime_host_installation_id
+from agentbox_core.waw import (
+    validate_binding_digest,
+    validate_positive_u64,
+    validate_runtime_host_installation_id,
+)
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
@@ -74,7 +78,10 @@ class WAWRuntimeReadiness:
             raise ValueError("Runtime host identity is invalid") from exc
         if not isinstance(self.ready, bool):
             raise ValueError("ready must be a boolean")
-        if _POSITIVE_DECIMAL.fullmatch(self.runtime_epoch) is None:
+        if (
+            _POSITIVE_DECIMAL.fullmatch(self.runtime_epoch) is None
+            or int(self.runtime_epoch) > 2**64 - 1
+        ):
             raise ValueError("runtime_epoch is invalid")
 
 
@@ -139,7 +146,27 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
     def _positive_decimal(cls, value: str) -> str:
         if _POSITIVE_DECIMAL.fullmatch(value) is None:
             raise ValueError("value must be a positive decimal string")
+        try:
+            validate_positive_u64(int(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("value must fit uint64") from exc
         return value
+
+    @field_validator("runtime_host_installation_id")
+    @classmethod
+    def _host_id(cls, value: str) -> str:
+        try:
+            return validate_runtime_host_installation_id(value)
+        except ValueError as exc:
+            raise ValueError("runtime_host_installation_id is invalid") from exc
+
+    @field_validator("binding_digest")
+    @classmethod
+    def _binding_digest(cls, value: str) -> str:
+        try:
+            return validate_binding_digest(value)
+        except ValueError as exc:
+            raise ValueError("binding_digest is invalid") from exc
 
     @field_serializer("expires_at")
     def _serialize_expiry(self, value: datetime) -> str:

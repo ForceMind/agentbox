@@ -76,6 +76,11 @@ from agentbox_runtime.waw_host_manifest import (
     WAWRuntimeHostManifestError,
     load_waw_runtime_host_manifest,
 )
+from agentbox_runtime.waw_auth_probe import (
+    WAWPublicAuthEvidence,
+    WAWPublicAuthProbeCache,
+    WAWPublicAuthResult,
+)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
     WAWLifecycleIdentity,
@@ -167,6 +172,9 @@ __all__ = [
     "WAWRuntimeHostManifest",
     "WAWRuntimeHostManifestError",
     "load_waw_runtime_host_manifest",
+    "WAWPublicAuthEvidence",
+    "WAWPublicAuthProbeCache",
+    "WAWPublicAuthResult",
     "ProjectResolver",
     "ClaudeProjectBinding",
     "WAWClaudeLifecycleExecutor",

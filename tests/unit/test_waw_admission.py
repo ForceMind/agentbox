@@ -139,6 +139,36 @@ def test_attachment_ticket_response_rejects_zero_or_extra_fields() -> None:
         )
 
 
+def test_attachment_ticket_response_rejects_uint64_overflow_and_bad_identity() -> None:
+    values = {
+        "protocol_version": 1,
+        "request_id": "wreq_" + "1" * 32,
+        "ticket": "wat_" + "2" * 32,
+        "workspace_id": WORKSPACE_ID,
+        "project_id": PROJECT_ID,
+        "agent_type": "claude",
+        "attachment_id": "att_" + "3" * 32,
+        "mode": "writer",
+        "lease_number": "1",
+        "generation": "1",
+        "binding_revision": "1",
+        "binding_digest": BINDING_DIGEST,
+        "auth_epoch": "1",
+        "api_authority_epoch": "1",
+        "runtime_host_installation_id": HOST_ID,
+        "runtime_host_installation_revision": "1",
+        "runtime_epoch": "1",
+        "expires_at": datetime.now(UTC),
+    }
+    values["generation"] = str(2**64)
+    with pytest.raises(ValueError):
+        WAWAttachmentTicketResponse.model_validate(values)
+    values["generation"] = "1"
+    values["runtime_host_installation_id"] = "host-invalid"
+    with pytest.raises(ValueError):
+        WAWAttachmentTicketResponse.model_validate(values)
+
+
 @pytest.mark.parametrize(
     "origin",
     ["https://evil.invalid", "http://agentbox.invalid", "https://agentbox.invalid/path"],

@@ -565,7 +565,13 @@ class AttachmentAuthority:
 
 def _u64_or_random(value: int | None) -> int:
     if value is None:
-        return secrets.randbelow(_MAX_U64) + 1
+        try:
+            return secrets.randbelow(_MAX_U64) + 1
+        except Exception as exc:
+            raise TicketAuthorityError(
+                TicketErrorCode.RANDOMNESS_UNAVAILABLE,
+                "secure authority randomness is unavailable",
+            ) from exc
     validate_positive_u64(value)
     return value
 

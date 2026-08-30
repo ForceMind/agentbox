@@ -8,10 +8,12 @@ import pytest
 from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
 from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_api.workspaces import (
+    WAWRequestIdError,
     WorkspaceMetadata,
     WorkspaceRuntimeStatus,
     _validate_runtime_status_epoch,
     _validate_runtime_status_identity,
+    _waw_request_id,
     _workspace_id_or_404,
 )
 from agentbox_core.services import AuthenticatedSession
@@ -44,6 +46,15 @@ def test_workspace_metadata_is_non_secret_and_terminal_free() -> None:
     assert "terminal" not in value.model_dump()
     assert "ticket" not in value.model_dump()
     assert "secret" not in value.model_dump()
+
+
+def test_waw_request_id_randomness_failure_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(_count: int) -> str:
+        raise RuntimeError("entropy unavailable")
+
+    monkeypatch.setattr("agentbox_api.workspaces.secrets.token_hex", fail)
+    with pytest.raises(WAWRequestIdError):
+        _waw_request_id()
 
 
 def test_workspace_metadata_rejects_unknown_fields() -> None:

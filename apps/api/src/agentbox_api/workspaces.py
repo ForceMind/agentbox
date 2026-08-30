@@ -31,6 +31,10 @@ class _WAWLifecycleRequester(Protocol):
     ) -> dict[str, object]: ...
 
 
+class WAWRequestIdError(RuntimeError):
+    """Secure WAW correlation-ID generation failed."""
+
+
 class _WorkspaceIdentityRow(Protocol):
     id: str
     project_id: str
@@ -115,7 +119,10 @@ def _request_id(request: Request) -> str:
 def _waw_request_id() -> str:
     """Generate a private WAW correlation ID unrelated to client headers."""
 
-    return f"wreq_{secrets.token_hex(16)}"
+    try:
+        return f"wreq_{secrets.token_hex(16)}"
+    except Exception as exc:
+        raise WAWRequestIdError("secure WAW request-id randomness is unavailable") from exc
 
 
 def _workspace_policy(request: Request) -> WorkspaceAuthorizationPolicy:
@@ -258,9 +265,13 @@ async def get_runtime_status(
     except WorkspaceSessionNotFound as exc:
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
     _authorize_workspace(request, authenticated, row)
+    try:
+        waw_request_id = _waw_request_id()
+    except WAWRequestIdError as exc:
+        raise HTTPException(status_code=503, detail="WAW Runtime status unavailable") from exc
     payload = {
         "protocol_version": 1,
-        "request_id": _waw_request_id(),
+        "request_id": waw_request_id,
         "action": "workspace.workspace.status",
         "workspace_id": row.id,
         "project_id": row.project_id,
