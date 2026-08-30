@@ -127,9 +127,10 @@ def test_lifecycle_fences_input_resize_replay_detach_and_stop(tmp_path: Path) ->
     assert supervisor.state is SupervisorState.ADMITTED
     supervisor.start()
     supervisor.attach(attachment)
+    output_source = supervisor.output_source()
     supervisor.write_input(attachment, b"hello\r")
     supervisor.resize(attachment, PtyGeometry(100, 30))
-    supervisor.append_output(b"ok")
+    supervisor.append_output(output_source, b"ok")
     replay = supervisor.replay_output(0)
     assert replay.kind == "frames"
     assert replay.frames[0].payload == b"ok"
@@ -189,10 +190,19 @@ def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
     attachment = _attachment(workspace)
     supervisor.start()
     supervisor.attach(attachment)
-    supervisor.append_output(b"x")
+    output_source = supervisor.output_source()
+    supervisor.append_output(output_source, b"x")
     supervisor.stop(attachment)
     with pytest.raises(RuntimeOperationError, match="unavailable"):
         supervisor.replay_output(0)
+
+
+def test_output_requires_runtime_admission(tmp_path: Path) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    forged_source = object()
+    with pytest.raises(RuntimeOperationError, match="source"):
+        supervisor.append_output(forged_source, b"x")  # type: ignore[arg-type]
 
 
 def test_exact_stop_does_not_require_browser_attachment(tmp_path: Path) -> None:

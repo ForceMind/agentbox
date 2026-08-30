@@ -53,6 +53,7 @@ from agentbox_runtime.rpc import (
 )
 from agentbox_runtime.tmux import TmuxAdapter
 from agentbox_runtime.waw_supervisor import (
+    OutputSource,
     RuntimeStartEvidence,
     RuntimeStopEvidence,
     SupervisorSnapshot,
@@ -104,6 +105,7 @@ __all__ = [
     "ProjectWorkspace",
     "TmuxAdapter",
     "SupervisorSnapshot",
+    "OutputSource",
     "SupervisorState",
     "RuntimeStartEvidence",
     "RuntimeStopEvidence",

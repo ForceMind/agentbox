@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from threading import RLock
 from typing import Protocol
 
 from agentbox_core.waw import (
@@ -72,6 +73,17 @@ class WAWTransport(Protocol):
     def stop(self) -> RuntimeStopEvidence: ...
 
 
+class OutputSource:
+    """Opaque Runtime-owned admission for PTY output.
+
+    The object is intentionally identity-only: callers cannot forge a source
+    by reproducing workspace metadata, and a source is invalidated when the
+    supervisor generation stops.
+    """
+
+    __slots__ = ()
+
+
 @dataclass(frozen=True)
 class SupervisorSnapshot:
     workspace_id: str
@@ -116,175 +128,213 @@ class WAWSupervisor:
         self._ring = OutputRing(capacity_bytes=output_capacity_bytes)
         self._state = SupervisorState.ADMITTED
         self._attachment: ActiveAttachment | None = None
+        self._output_source: OutputSource | None = None
+        self._lock = RLock()
 
     @property
     def state(self) -> SupervisorState:
-        return self._state
+        with self._lock:
+            return self._state
 
     def snapshot(self) -> SupervisorSnapshot:
-        return SupervisorSnapshot(
-            workspace_id=self._workspace_id,
-            generation=self._generation,
-            state=self._state,
-            geometry=self._geometry,
-            next_cursor=self._ring.next_cursor,
-            buffered_bytes=self._ring.buffered_bytes,
-            attachment_id=(self._attachment.attachment_id if self._attachment else None),
-        )
+        with self._lock:
+            return SupervisorSnapshot(
+                workspace_id=self._workspace_id,
+                generation=self._generation,
+                state=self._state,
+                geometry=self._geometry,
+                next_cursor=self._ring.next_cursor,
+                buffered_bytes=self._ring.buffered_bytes,
+                attachment_id=(self._attachment.attachment_id if self._attachment else None),
+            )
 
     def start(self) -> SupervisorSnapshot:
-        if self._state is not SupervisorState.ADMITTED:
-            raise RuntimeOperationError(
-                "WAW_START_INVALID", "Workspace is not admitted for start", category="conflict"
-            )
-        try:
-            evidence = self._transport.start(self._command, self._geometry)
-            if (
-                evidence.workspace_id != self._workspace_id
-                or evidence.generation != self._generation
-                or evidence.managed_marker != self._command.managed_marker
-                or not evidence.ready
-                or evidence.state
-                not in {
-                    SupervisorState.RUNNING,
-                    SupervisorState.NEEDS_INTERACTION,
-                    SupervisorState.TRUST_REQUIRED,
-                    SupervisorState.LOGIN_REQUIRED,
-                }
-            ):
+        with self._lock:
+            if self._state is not SupervisorState.ADMITTED:
                 raise RuntimeOperationError(
-                    "WAW_START_UNCONFIRMED",
-                    "Runtime start evidence is not admissible",
-                    category="conflict",
+                    "WAW_START_INVALID", "Workspace is not admitted for start", category="conflict"
                 )
-        except Exception as exc:
-            self._state = SupervisorState.BROKEN
-            raise RuntimeOperationError(
-                "WAW_START_FAILED", "Runtime transport could not start", category="unavailable"
-            ) from exc
-        self._state = evidence.state
-        return self.snapshot()
+            try:
+                evidence = self._transport.start(self._command, self._geometry)
+                if (
+                    evidence.workspace_id != self._workspace_id
+                    or evidence.generation != self._generation
+                    or evidence.managed_marker != self._command.managed_marker
+                    or not evidence.ready
+                    or evidence.state
+                    not in {
+                        SupervisorState.RUNNING,
+                        SupervisorState.NEEDS_INTERACTION,
+                        SupervisorState.TRUST_REQUIRED,
+                        SupervisorState.LOGIN_REQUIRED,
+                    }
+                ):
+                    raise RuntimeOperationError(
+                        "WAW_START_UNCONFIRMED",
+                        "Runtime start evidence is not admissible",
+                        category="conflict",
+                    )
+            except Exception as exc:
+                self._state = SupervisorState.BROKEN
+                raise RuntimeOperationError(
+                    "WAW_START_FAILED", "Runtime transport could not start", category="unavailable"
+                ) from exc
+            self._output_source = OutputSource()
+            self._state = evidence.state
+            return self.snapshot()
 
     def attach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
-        self._check_attachment(attachment)
-        if self._state not in {SupervisorState.RUNNING, SupervisorState.DETACHED}:
-            raise RuntimeOperationError(
-                "WAW_ATTACH_INVALID", "Workspace is not attachable", category="conflict"
-            )
-        if self._attachment is not None and self._attachment.claims != attachment.claims:
-            raise RuntimeOperationError(
-                "WAW_WRITER_BUSY", "Workspace already has a writer attachment", category="conflict"
-            )
-        if (
-            self._attachment is None
-            and getattr(self, "_last_attachment_id", None) == attachment.attachment_id
-        ):
-            raise RuntimeOperationError(
-                "WAW_ATTACHMENT_REPLAYED",
-                "Reconnect requires a fresh attachment",
-                category="conflict",
-            )
-        self._attachment = attachment
-        self._state = SupervisorState.RUNNING
-        return self.snapshot()
+        with self._lock:
+            self._check_attachment(attachment)
+            if self._state not in {SupervisorState.RUNNING, SupervisorState.DETACHED}:
+                raise RuntimeOperationError(
+                    "WAW_ATTACH_INVALID", "Workspace is not attachable", category="conflict"
+                )
+            if self._attachment is not None and self._attachment.claims != attachment.claims:
+                raise RuntimeOperationError(
+                    "WAW_WRITER_BUSY",
+                    "Workspace already has a writer attachment",
+                    category="conflict",
+                )
+            if (
+                self._attachment is None
+                and getattr(self, "_last_attachment_id", None) == attachment.attachment_id
+            ):
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_REPLAYED",
+                    "Reconnect requires a fresh attachment",
+                    category="conflict",
+                )
+            self._attachment = attachment
+            self._state = SupervisorState.RUNNING
+            return self.snapshot()
 
     def detach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
-        self._require_attachment(attachment)
-        try:
-            detached = self._transport.detach()
-        except Exception as exc:
-            self._state = SupervisorState.BROKEN
-            raise RuntimeOperationError(
-                "WAW_DETACH_FAILED", "Runtime could not close the PTY attachment", category="broken"
-            ) from exc
-        if not detached:
-            raise RuntimeOperationError(
-                "WAW_DETACH_UNCONFIRMED", "Runtime did not confirm PTY closure", category="conflict"
-            )
-        self._last_attachment_id = attachment.attachment_id
-        self._attachment = None
-        self._state = SupervisorState.DETACHED
-        return self.snapshot()
+        with self._lock:
+            self._require_attachment(attachment)
+            try:
+                detached = self._transport.detach()
+            except Exception as exc:
+                self._state = SupervisorState.BROKEN
+                raise RuntimeOperationError(
+                    "WAW_DETACH_FAILED",
+                    "Runtime could not close the PTY attachment",
+                    category="broken",
+                ) from exc
+            if not detached:
+                raise RuntimeOperationError(
+                    "WAW_DETACH_UNCONFIRMED",
+                    "Runtime did not confirm PTY closure",
+                    category="conflict",
+                )
+            self._last_attachment_id = attachment.attachment_id
+            self._attachment = None
+            self._state = SupervisorState.DETACHED
+            return self.snapshot()
 
     def write_input(self, attachment: ActiveAttachment, data: bytes) -> None:
-        self._require_attachment(attachment)
-        if self._state is SupervisorState.INPUT_UNCERTAIN:
-            raise RuntimeOperationError(
-                "WAW_INPUT_RECONCILIATION_REQUIRED",
-                "Input is paused pending explicit reconciliation",
-                category="conflict",
-            )
-        payload = validate_input(data)
-        try:
-            self._transport.write(payload)
-        except Exception as exc:
-            # PTY delivery is not replay-safe: callers must decide whether to
-            # retry after this explicit uncertain outcome.
-            self._state = SupervisorState.INPUT_UNCERTAIN
-            raise RuntimeOperationError(
-                "WAW_INPUT_UNCERTAIN",
-                "Runtime could not confirm PTY input delivery",
-                category="broken",
-            ) from exc
+        with self._lock:
+            self._require_attachment(attachment)
+            if self._state is SupervisorState.INPUT_UNCERTAIN:
+                raise RuntimeOperationError(
+                    "WAW_INPUT_RECONCILIATION_REQUIRED",
+                    "Input is paused pending explicit reconciliation",
+                    category="conflict",
+                )
+            payload = validate_input(data)
+            try:
+                self._transport.write(payload)
+            except Exception as exc:
+                # PTY delivery is not replay-safe: callers must decide whether to
+                # retry after this explicit uncertain outcome.
+                self._state = SupervisorState.INPUT_UNCERTAIN
+                raise RuntimeOperationError(
+                    "WAW_INPUT_UNCERTAIN",
+                    "Runtime could not confirm PTY input delivery",
+                    category="broken",
+                ) from exc
 
     def resize(self, attachment: ActiveAttachment, geometry: PtyGeometry) -> SupervisorSnapshot:
-        self._require_attachment(attachment)
-        if self._state is SupervisorState.INPUT_UNCERTAIN:
-            raise RuntimeOperationError(
-                "WAW_INPUT_RECONCILIATION_REQUIRED",
-                "Resize is paused pending input reconciliation",
-                category="conflict",
-            )
-        try:
-            self._transport.resize(geometry)
-        except Exception as exc:
-            self._state = SupervisorState.BROKEN
-            raise RuntimeOperationError(
-                "WAW_RESIZE_FAILED", "Runtime could not resize the PTY", category="broken"
-            ) from exc
-        self._geometry = geometry
-        return self.snapshot()
+        with self._lock:
+            self._require_attachment(attachment)
+            if self._state is SupervisorState.INPUT_UNCERTAIN:
+                raise RuntimeOperationError(
+                    "WAW_INPUT_RECONCILIATION_REQUIRED",
+                    "Resize is paused pending input reconciliation",
+                    category="conflict",
+                )
+            try:
+                self._transport.resize(geometry)
+            except Exception as exc:
+                self._state = SupervisorState.BROKEN
+                raise RuntimeOperationError(
+                    "WAW_RESIZE_FAILED", "Runtime could not resize the PTY", category="broken"
+                ) from exc
+            self._geometry = geometry
+            return self.snapshot()
 
-    def append_output(self, payload: bytes) -> int:
-        if self._state not in {
-            SupervisorState.RUNNING,
-            SupervisorState.DETACHED,
-            SupervisorState.INPUT_UNCERTAIN,
-        }:
-            raise RuntimeOperationError(
-                "WAW_OUTPUT_INVALID", "Workspace is not producing output", category="conflict"
-            )
-        return self._ring.append(payload).end_cursor
+    def output_source(self) -> OutputSource:
+        """Return the current Runtime-only output admission handle."""
+        with self._lock:
+            if self._output_source is None:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_INVALID", "Workspace output is not admitted", category="conflict"
+                )
+            return self._output_source
+
+    def append_output(self, source: OutputSource, payload: bytes) -> int:
+        with self._lock:
+            if source is not self._output_source:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_SOURCE_INVALID",
+                    "Output source is not admitted for this generation",
+                    category="conflict",
+                )
+            if self._state not in {
+                SupervisorState.RUNNING,
+                SupervisorState.DETACHED,
+                SupervisorState.INPUT_UNCERTAIN,
+            }:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_INVALID", "Workspace is not producing output", category="conflict"
+                )
+            return self._ring.append(payload).end_cursor
 
     def replay_output(self, after_cursor: int) -> OutputReplay:
-        if self._state is SupervisorState.STOPPED:
-            raise RuntimeOperationError(
-                "WAW_OUTPUT_STOPPED", "Stopped workspace output is unavailable", category="conflict"
-            )
-        return self._ring.replay(after_cursor)
+        with self._lock:
+            if self._state is SupervisorState.STOPPED:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_STOPPED",
+                    "Stopped workspace output is unavailable",
+                    category="conflict",
+                )
+            return self._ring.replay(after_cursor)
 
     def stop(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
-        self._require_attachment(attachment)
-        return self._stop_transport()
+        with self._lock:
+            self._require_attachment(attachment)
+            return self._stop_transport()
 
     def exact_stop(self, operation: WorkspaceStopOperation) -> SupervisorSnapshot:
         """Execute a durable generation-bound Stop without trusting a browser lease."""
-
-        if (
-            operation.workspace_id != self._workspace_id
-            or operation.generation != self._generation
-            or str(operation.agent_type) != "claude"
-        ):
-            raise RuntimeOperationError(
-                "WAW_STOP_STALE",
-                "Stop operation does not match this workspace",
-                category="conflict",
-            )
-        if self._state in {SupervisorState.STOPPING, SupervisorState.STOPPED}:
-            raise RuntimeOperationError(
-                "WAW_STOP_INVALID", "Workspace is already stopping or stopped", category="conflict"
-            )
-        return self._stop_transport()
+        with self._lock:
+            if (
+                operation.workspace_id != self._workspace_id
+                or operation.generation != self._generation
+                or str(operation.agent_type) != "claude"
+            ):
+                raise RuntimeOperationError(
+                    "WAW_STOP_STALE",
+                    "Stop operation does not match this workspace",
+                    category="conflict",
+                )
+            if self._state in {SupervisorState.STOPPING, SupervisorState.STOPPED}:
+                raise RuntimeOperationError(
+                    "WAW_STOP_INVALID",
+                    "Workspace is already stopping or stopped",
+                    category="conflict",
+                )
+            return self._stop_transport()
 
     def _stop_transport(self) -> SupervisorSnapshot:
         if self._state in {SupervisorState.STOPPING, SupervisorState.STOPPED}:
@@ -313,6 +363,7 @@ class WAWSupervisor:
                 "WAW_STOP_FAILED", "Runtime transport could not stop", category="broken"
             ) from exc
         self._attachment = None
+        self._output_source = None
         self._state = SupervisorState.STOPPED
         return self.snapshot()
 
@@ -348,6 +399,7 @@ class WAWSupervisor:
 __all__ = [
     "RuntimeStartEvidence",
     "RuntimeStopEvidence",
+    "OutputSource",
     "SupervisorSnapshot",
     "SupervisorState",
     "WAWSupervisor",
