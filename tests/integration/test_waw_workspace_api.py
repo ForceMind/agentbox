@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
 from agentbox_api.main import create_app
+from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType
@@ -231,7 +232,7 @@ async def test_runtime_status_maps_unavailable_and_epoch_mismatch(
         codex_runtime,
         claude_runtime,
         project_runtime,
-        waw_bind_coordinator=mismatch,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, mismatch),
     )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
