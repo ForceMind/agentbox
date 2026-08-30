@@ -91,6 +91,14 @@ def test_register_requires_null_predecessor_for_first_revision() -> None:
     assert decode_control_request(encode_control_request(request)) == request
     with pytest.raises(WAWControlError):
         encode_control_request({**request, "previous_binding_revision": 0})
+    successor = {
+        **request,
+        "binding_revision": "2",
+        "previous_binding_revision": "2",
+        "previous_binding_digest": "b" * 64,
+    }
+    with pytest.raises(WAWControlError, match="predecessor"):
+        encode_control_request(successor)
 
 
 def test_decoder_rejects_duplicate_keys_constants_and_trailing_data() -> None:
@@ -211,6 +219,12 @@ def test_attach_prepare_response_capability_and_error_shape() -> None:
         )
         == error
     )
+    with pytest.raises(WAWControlError):
+        decode_control_response(
+            encode_control_response(error, "workspace.attach.prepare"),
+            "workspace.attach.prepare",
+            expected_request_id="wreq_" + "2" * 32,
+        )
     for value in (True, 1.0):
         with pytest.raises(WAWControlError):
             encode_control_response(

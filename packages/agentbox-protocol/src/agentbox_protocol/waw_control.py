@@ -9,6 +9,7 @@ layers are admitted.
 
 from __future__ import annotations
 
+import hmac
 import json
 import re
 import unicodedata
@@ -326,6 +327,8 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         else:
             _u64(previous, name="previous_binding_revision")
             _string(previous_digest, name="previous_binding_digest", pattern=_DIGEST)
+            if int(previous) >= int(value["binding_revision"]):
+                raise WAWControlError("binding predecessor must be older than current revision")
         if value["schema_version"] != "waw-project-binding-v1":
             raise WAWControlError("schema_version is invalid")
         _string(
@@ -501,11 +504,20 @@ def _response_identity(value: dict[str, Any], *, attachment: bool = False) -> No
         _decimal_u64(value["runtime_epoch"], name="runtime_epoch")
 
 
-def _validate_response(value: dict[str, Any], action: str) -> dict[str, Any]:
+def _validate_response(
+    value: dict[str, Any], action: str, expected_request_id: str | None = None
+) -> dict[str, Any]:
     if not isinstance(action, str):
         raise WAWControlError("response action is invalid")
     if not isinstance(value, dict):
         raise WAWControlError("control response must be an object")
+    if expected_request_id is not None:
+        _string(expected_request_id, name="expected_request_id", pattern=_REQUEST_ID)
+        request_id = value.get("request_id")
+        if not isinstance(request_id, str) or not hmac.compare_digest(
+            request_id, expected_request_id
+        ):
+            raise WAWControlError("response request_id does not match request")
     supported_actions = {
         "workspace.api_authority.bind",
         "workspace.project_binding.register",
@@ -732,10 +744,15 @@ def _validate_response(value: dict[str, Any], action: str) -> dict[str, Any]:
     return value
 
 
-def decode_control_response(raw: bytes | bytearray | memoryview, action: str) -> dict[str, Any]:
+def decode_control_response(
+    raw: bytes | bytearray | memoryview,
+    action: str,
+    *,
+    expected_request_id: str | None = None,
+) -> dict[str, Any]:
     """Decode and validate one action-bound WAW control response line."""
 
-    return _validate_response(_load_line(raw), action)
+    return _validate_response(_load_line(raw), action, expected_request_id)
 
 
 def encode_control_response(response: dict[str, Any], action: str) -> bytes:
