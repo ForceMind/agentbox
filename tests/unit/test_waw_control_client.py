@@ -252,6 +252,32 @@ async def test_cancellation_resistant_wait_closed_is_bounded_and_poisoned(tmp_pa
     assert client.poisoned is True
 
 
+@pytest.mark.anyio
+async def test_reconnect_refuses_while_detached_operation_is_pending(tmp_path: Path) -> None:
+    release = asyncio.Event()
+
+    async def stuck() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    client = _client(tmp_path / "unused.sock", timeout_seconds=0.001)
+    with pytest.raises(TimeoutError):
+        await client._with_deadline(stuck(), time.monotonic() + 0.001)
+    assert client.pending_operations == 1
+    with pytest.raises(WAWControlClientError) as raised:
+        await client.reconnect()
+    assert raised.value.code == "RUNTIME_UNAVAILABLE"
+    assert client.poisoned is True
+    release.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert client.pending_operations == 0
+    await client.reconnect()
+    assert client.poisoned is False
+
+
 def test_bind_attestation_is_pinned_to_expected_anchor() -> None:
     response = _bind_response()
     assert (

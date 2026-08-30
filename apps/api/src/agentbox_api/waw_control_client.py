@@ -40,6 +40,7 @@ class WAWControlClientError(RuntimeError):
 
 
 _MAX_CANCELLATION_GRACE_SECONDS = 1.0
+_MAX_DETACHED_TASKS = 32
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,8 @@ class WAWControlClient:
         # a client must not be used again until its owner has explicitly
         # re-established the Runtime connection/epoch.
         self._poisoned = False
+        self._request_lock = asyncio.Lock()
+        self._detached_tasks: set[asyncio.Future[Any]] = set()
 
     @property
     def socket_path(self) -> Path:
@@ -173,12 +176,36 @@ class WAWControlClient:
 
         return self._poisoned
 
-    async def reconnect(self) -> None:
-        """Clear the fail-closed transport fence after external reconnect."""
+    @property
+    def pending_operations(self) -> int:
+        """Number of cancellation-resistant operations still owned by client."""
 
-        self._poisoned = False
+        return len(self._detached_tasks)
+
+    async def reconnect(self) -> None:
+        """Clear the transport fence only after all old work is terminal.
+
+        This is a local fence reset, not a Runtime rebind or epoch change.  A
+        caller must perform the normal coordinator bind again before issuing
+        lifecycle requests.
+        """
+
+        async with self._request_lock:
+            if self._detached_tasks:
+                raise WAWControlClientError(
+                    "RUNTIME_UNAVAILABLE",
+                    "WAW Runtime control transport still has pending operations",
+                    retryable=True,
+                )
+            self._poisoned = False
 
     async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        """Serialize one request so reconnect cannot race transport cleanup."""
+
+        async with self._request_lock:
+            return await self._request(action, request)
+
+    async def _request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
         """Send one validated request and decode its matching response."""
 
         if self._poisoned:
@@ -302,6 +329,24 @@ class WAWControlClient:
     def _poison(self) -> None:
         self._poisoned = True
 
+    def _track_task(self, task: asyncio.Future[Any]) -> None:
+        """Track detached work and consume its eventual result."""
+
+        if len(self._detached_tasks) >= _MAX_DETACHED_TASKS:
+            self._poison()
+            task.cancel()
+            task.add_done_callback(self._consume_late_task)
+            raise WAWControlClientError(
+                "RUNTIME_UNAVAILABLE",
+                "WAW Runtime control transport exceeded pending operation limit",
+                retryable=True,
+            )
+        self._detached_tasks.add(task)
+        task.add_done_callback(self._consume_task)
+
+    def _forget_task(self, task: asyncio.Future[Any]) -> None:
+        self._detached_tasks.discard(task)
+
     async def _close_writer(self, writer: asyncio.StreamWriter) -> None:
         """Close without allowing a broken wait_closed() to hold the request."""
 
@@ -315,6 +360,7 @@ class WAWControlClient:
         if not inspect.isawaitable(close_wait_any):
             return
         task = asyncio.ensure_future(close_wait_any)
+        self._track_task(task)
         try:
             _done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
         except asyncio.CancelledError:
@@ -326,15 +372,21 @@ class WAWControlClient:
         if pending:
             self._poison()
             task.cancel()
-            task.add_done_callback(self._consume_late_task)
         else:
+            self._forget_task(task)
             with contextlib.suppress(BaseException):
                 task.result()
 
     @staticmethod
     def _consume_late_task(task: asyncio.Future[Any]) -> None:
+        # The callback is rebound per instance below; this static method is
+        # retained for compatibility with existing tests/callers.
         with contextlib.suppress(BaseException):
             task.result()
+
+    def _consume_task(self, task: asyncio.Future[Any]) -> None:
+        self._forget_task(task)
+        self._consume_late_task(task)
 
     async def _with_deadline(self, awaitable: Any, deadline: float) -> Any:
         """Await with a hard deadline and bounded cancellation cleanup.
@@ -352,6 +404,7 @@ class WAWControlClient:
                 awaitable.close()
             raise TimeoutError("WAW control deadline exceeded")
         task = asyncio.ensure_future(awaitable)
+        self._track_task(task)
         try:
             done, _pending = await asyncio.wait({task}, timeout=remaining)
         except asyncio.CancelledError:
@@ -361,6 +414,7 @@ class WAWControlClient:
                 await asyncio.shield(self._finish_cancel(task))
             raise
         if done:
+            self._forget_task(task)
             return task.result()
 
         self._poison()
@@ -372,8 +426,9 @@ class WAWControlClient:
             self._poison()
             # The task owns the operation and may finish later.  Consume its
             # eventual exception without keeping the request alive.
-            task.add_done_callback(self._consume_late_task)
+            task.add_done_callback(self._consume_task)
         else:
+            self._forget_task(task)
             with contextlib.suppress(BaseException):
                 task.result()
         raise TimeoutError("WAW control deadline exceeded")
@@ -382,11 +437,15 @@ class WAWControlClient:
         """Give cancellation a small grace window, never joining indefinitely."""
 
         done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+        if not pending:
+            self._forget_task(task)
         for completed in done:
             with contextlib.suppress(BaseException):
                 completed.result()
         if pending:
-            task.add_done_callback(self._consume_late_task)
+            # Keep it registered until the callback below observes terminal
+            # completion; reconnect remains fail-closed in the meantime.
+            task.add_done_callback(self._consume_task)
 
 
 __all__ = [

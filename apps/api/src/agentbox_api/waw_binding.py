@@ -86,7 +86,15 @@ class WAWRuntimeBindCoordinator:
             "api_authority_epoch": self._epoch,
             "authority_nonce": self._nonce,
         }
-        response = await self._client.request("workspace.api_authority.bind", request)
+        try:
+            response = await self._client.request("workspace.api_authority.bind", request)
+        except WAWControlClientError as exc:
+            if exc.code == "RUNTIME_UNAVAILABLE":
+                # Never retain an attestation across a transport poison or
+                # reconnect attempt.  The next call must bind afresh.
+                self._invalidate()
+                await self._reconnect()
+            raise
         if response.get("status") == "ERROR":
             code = response.get("error_code")
             if code in {"BINDING_BOOTSTRAP_REQUIRED", "RUNTIME_INSTALLATION_MISMATCH"}:
@@ -135,7 +143,13 @@ class WAWRuntimeBindCoordinator:
             raise WAWControlClientError("PROTOCOL_INVALID", "WAW lifecycle action is not enabled")
         async with self._lock:
             await self._bind_locked()
-            response = await self._client.request(action, request)
+            try:
+                response = await self._client.request(action, request)
+            except WAWControlClientError as exc:
+                if exc.code == "RUNTIME_UNAVAILABLE":
+                    self._invalidate()
+                    await self._reconnect()
+                raise
             if response.get("status") == "ERROR":
                 code = response.get("error_code")
                 if code in {"BINDING_BOOTSTRAP_REQUIRED", "RUNTIME_INSTALLATION_MISMATCH"}:

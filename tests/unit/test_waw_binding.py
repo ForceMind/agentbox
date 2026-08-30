@@ -51,6 +51,24 @@ class RestartingClient(FakeClient):
         self.reconnects += 1
 
 
+class TransportFailureClient(FakeClient):
+    def __init__(self) -> None:
+        super().__init__(_response())
+        self.fail_lifecycle = True
+        self.reconnects = 0
+
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append({"action": action, **request})
+        if action == "workspace.workspace.status" and self.fail_lifecycle:
+            self.fail_lifecycle = False
+            raise WAWControlClientError("RUNTIME_UNAVAILABLE", "transport lost", retryable=True)
+        await asyncio.sleep(0)
+        return dict(self.response)
+
+    async def reconnect(self) -> None:
+        self.reconnects += 1
+
+
 def _coordinator(client: FakeClient) -> WAWRuntimeBindCoordinator:
     return WAWRuntimeBindCoordinator(
         client,
@@ -146,3 +164,41 @@ async def test_runtime_only_restart_invalidates_binding_and_allows_rebind() -> N
     assert client.reconnects == 1
     assert await coordinator.bind() == _response()
     assert coordinator.bound is True
+
+
+@pytest.mark.anyio
+async def test_transport_failure_invalidates_binding_before_safe_rebind() -> None:
+    client = TransportFailureClient()
+    coordinator = _coordinator(client)
+    request = {
+        "protocol_version": 1,
+        "request_id": "wreq_" + "2" * 32,
+        "action": "workspace.workspace.status",
+    }
+    with pytest.raises(WAWControlClientError) as raised:
+        await coordinator.request_lifecycle("workspace.workspace.status", request)
+    assert raised.value.code == "RUNTIME_UNAVAILABLE"
+    assert coordinator.bound is False
+    assert client.reconnects == 1
+    assert await coordinator.bind() == _response()
+    assert coordinator.bound is True
+
+
+@pytest.mark.anyio
+async def test_lifecycle_requests_are_serialized_across_rebind() -> None:
+    client = FakeClient(_response())
+    coordinator = _coordinator(client)
+    request = {
+        "protocol_version": 1,
+        "request_id": "wreq_" + "2" * 32,
+        "action": "workspace.workspace.status",
+    }
+    await asyncio.gather(
+        coordinator.request_lifecycle("workspace.workspace.status", request),
+        coordinator.request_lifecycle("workspace.workspace.status", request),
+    )
+    assert [call["action"] for call in client.calls] == [
+        "workspace.api_authority.bind",
+        "workspace.workspace.status",
+        "workspace.workspace.status",
+    ]
