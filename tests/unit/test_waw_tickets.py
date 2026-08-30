@@ -320,6 +320,61 @@ def test_cleanup_pending_lease_counts_toward_authority_capacity() -> None:
     assert full.value.code is TicketErrorCode.CAPACITY
 
 
+def test_session_epoch_revocation_burns_pending_and_fences_active_lease() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    active_ticket = authority.issue(
+        workspace_id=WORKSPACE_ID,
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "8" * 32,
+        generation=1,
+        auth_epoch=4,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        binding_revision=2,
+        binding_digest=BINDING_DIGEST,
+        context=_context(),
+    )
+    active = authority.consume(active_ticket.ticket, active_ticket.claims, context=_context())
+    pending = authority.issue(
+        workspace_id=WORKSPACE_ID,
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "9" * 32,
+        generation=1,
+        auth_epoch=4,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        binding_revision=2,
+        binding_digest=BINDING_DIGEST,
+        context=_context(),
+    )
+    assert authority.revoke_session(session_id="ses_1", auth_epoch=4) == (
+        pending.claims.attachment_id,
+        active.claims.attachment_id,
+    )
+    with pytest.raises(TicketAuthorityError) as replay:
+        authority.consume(pending.ticket, pending.claims, context=_context())
+    assert replay.value.code is TicketErrorCode.REPLAYED
+    assert authority.is_active(active.claims, context=_context()) is False
+    with pytest.raises(TicketAuthorityError) as busy:
+        authority.issue(
+            workspace_id=WORKSPACE_ID,
+            project_id=PROJECT_ID,
+            agent_type=AgentType.CLAUDE,
+            attachment_id="att_" + "a" * 32,
+            generation=1,
+            auth_epoch=4,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision=3,
+            binding_revision=2,
+            binding_digest=BINDING_DIGEST,
+            context=_context(),
+        )
+    assert busy.value.code is TicketErrorCode.CAPACITY
+
+
 def test_capacity_counts_pending_and_active_records_and_sweeps_expired_entries() -> None:
     clock = FakeMonotonic()
     authority = _authority(clock, max_records=2, ticket_ttl_seconds=2)

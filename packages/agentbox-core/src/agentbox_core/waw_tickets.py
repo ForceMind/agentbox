@@ -484,6 +484,40 @@ class AttachmentAuthority:
                 )
             del self._cleanup_pending[expected.workspace_id]
 
+    def revoke_session(self, *, session_id: str, auth_epoch: int) -> tuple[str, ...]:
+        """Fence tickets and leases for one authenticated session epoch.
+
+        Pending tickets are burned immediately. Active leases become cleanup-
+        pending so revocation cannot release a writer slot without Runtime
+        cleanup proof.
+        """
+
+        if not isinstance(session_id, str) or not session_id:
+            raise TicketAuthorityError(TicketErrorCode.INVALID, "session_id is invalid")
+        try:
+            validate_positive_u64(auth_epoch, field="auth_epoch")
+        except (TypeError, ValueError) as exc:
+            raise TicketAuthorityError(TicketErrorCode.INVALID, "auth_epoch is invalid") from exc
+        revoked: list[str] = []
+        with self._lock:
+            for digest, pending in tuple(self._pending.items()):
+                context = pending.context
+                if context is None:
+                    continue
+                if context.session_id == session_id and context.auth_epoch == auth_epoch:
+                    del self._pending[digest]
+                    self._replayed.append(digest)
+                    revoked.append(pending.claims.attachment_id)
+            for workspace, active in tuple(self._active.items()):
+                context = active.context
+                if context is None:
+                    continue
+                if context.session_id == session_id and context.auth_epoch == auth_epoch:
+                    del self._active[workspace]
+                    self._cleanup_pending[workspace] = active.claims
+                    revoked.append(active.attachment_id)
+        return tuple(revoked)
+
     def invalidate_all(self) -> None:
         """Invalidate all volatile authority state on API restart/shutdown."""
 
