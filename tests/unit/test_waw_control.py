@@ -23,7 +23,7 @@ def test_authority_bind_round_trips_strict_single_lf() -> None:
     request = _request(
         "workspace.api_authority.bind",
         api_authority_epoch=7,
-        authority_nonce="a" * 64,
+        authority_nonce="a" * 32,
     )
     encoded = encode_control_request(request)
     assert encoded.endswith(b"\n")
@@ -100,8 +100,8 @@ def test_decoder_rejects_duplicate_keys_constants_and_trailing_data() -> None:
             json.dumps(
                 _request(
                     "workspace.api_authority.bind",
-                    api_authority_epoch=1,
-                    authority_nonce="a" * 64,
+        api_authority_epoch=1,
+                    authority_nonce="a" * 32,
                 )
             ).encode()
         )
@@ -111,7 +111,7 @@ def test_decoder_rejects_duplicate_keys_constants_and_trailing_data() -> None:
                 _request(
                     "workspace.api_authority.bind",
                     api_authority_epoch=1,
-                    authority_nonce="a" * 64,
+                    authority_nonce="a" * 32,
                 )
             )
             + b"x"

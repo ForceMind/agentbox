@@ -26,7 +26,7 @@ _WORKSPACE_ID = re.compile(r"\Aaws_[0-9a-f]{32}\Z")
 _ATTACHMENT_ID = re.compile(r"\Aatt_[0-9a-f]{32}\Z")
 _HOST_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
-_NONCE = re.compile(r"\A[0-9a-f]{64}\Z")
+_NONCE = re.compile(r"\A[0-9a-f]{32}\Z")
 _DECIMAL = re.compile(r"\A(?:0|[1-9][0-9]*)\Z")
 _RELATIVE_KEY = re.compile(r"\A[^/\\.][^/\\]*\Z")
 
