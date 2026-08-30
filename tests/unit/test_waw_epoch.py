@@ -60,6 +60,18 @@ def test_rejects_noncanonical_epoch(tmp_path: Path, value: str) -> None:
         store.consume()
 
 
+def test_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    directory = tmp_path / "epoch"
+    directory.mkdir(mode=0o700)
+    (directory / "epoch.json").write_text(
+        '{"epoch":"1","epoch":"2","schema_version":"waw-runtime-epoch-v1"}'
+    )
+    os.chmod(directory / "epoch.json", 0o600)
+    store = WAWRuntimeEpochStore(directory, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeEpochError):
+        store.consume()
+
+
 def test_rejects_unsafe_directory_mode(tmp_path: Path) -> None:
     store = _store(tmp_path)
     (tmp_path / "epoch").chmod(0o755)

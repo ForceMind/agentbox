@@ -138,6 +138,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
         '{"epoch":"01","schema_version":"waw-runtime-epoch-v1"}',
         '{"epoch":"1","schema_version":"wrong"}',
         '{"epoch":"1","schema_version":"waw-runtime-epoch-v1","extra":true}',
+        '{"epoch":"1","epoch":"2","schema_version":"waw-runtime-epoch-v1"}',
     ),
 )
 def test_waw_epoch_provisioning_rejects_malformed_existing_counter(

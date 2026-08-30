@@ -18,6 +18,15 @@ _MAX_BYTES = 4096
 _DECIMAL = re.compile(r"\A(?:[1-9][0-9]{0,19})\Z")
 
 
+def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
 class WAWRuntimeEpochError(RuntimeError):
     """The Runtime epoch trust root is missing, malformed, or unsafe."""
 
@@ -149,7 +158,7 @@ class WAWRuntimeEpochStore:
         finally:
             os.close(fd)
         try:
-            value = json.loads(payload)
+            value = json.loads(payload, object_pairs_hook=_strict_object)
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             raise WAWRuntimeEpochError("epoch file JSON is invalid") from exc
         if (

@@ -52,6 +52,15 @@ UNIT_NAMES = (
 HARDENED_DATA_LAYOUT_MIN_VERSION = "0.2.5"
 
 
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
 def _compare_versions(candidate: str, current: str) -> int:
     """Compare release precedence; build metadata never authorizes downgrade."""
     try:
@@ -921,7 +930,9 @@ class AgentBoxInstaller:
             ):
                 raise InstallError("WAW Runtime epoch file is unsafe")
             try:
-                value = json.loads(path.read_text(encoding="utf-8"))
+                value = json.loads(
+                    path.read_text(encoding="utf-8"), object_pairs_hook=_strict_json_object
+                )
             except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise InstallError("WAW Runtime epoch file is invalid") from exc
             if (
