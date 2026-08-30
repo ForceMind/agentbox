@@ -117,12 +117,11 @@ def test_duplicate_and_non_ready_project_are_rejected(settings: Any, clock: Any)
 def test_host_revision_cannot_change_while_workspace_is_bound(settings: Any, clock: Any) -> None:
     database, service, project_id, host_id = _seed(settings, clock)
     _create(service, project_id, host_id)
-    with pytest.raises(IntegrityError):
-        with database.transaction() as session:
-            host = session.get(RuntimeHostInstallation, host_id)
-            assert host is not None
-            host.revision = 2
-            session.flush()
+    with pytest.raises(IntegrityError), database.transaction() as session:
+        host = session.get(RuntimeHostInstallation, host_id)
+        assert host is not None
+        host.revision = 2
+        session.flush()
 
 
 def test_transition_uses_domain_and_compare_and_swap(settings: Any, clock: Any) -> None:
