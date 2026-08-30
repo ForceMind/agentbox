@@ -41,6 +41,10 @@ class WAWControlDispatchError(RuntimeError):
 Dispatch = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
+class _WAWControlDispatchPoisoned(TimeoutError):
+    """The dispatcher did not stop within the bounded cancellation grace."""
+
+
 class WAWControlServer:
     """One-request/one-response WAW control listener over an existing socket."""
 
@@ -52,6 +56,7 @@ class WAWControlServer:
         expected_peer_uid: int,
         expected_peer_gid: int,
         timeout_seconds: float = 2.0,
+        cancellation_grace_seconds: float = 0.05,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if sock.family != socket.AF_UNIX or sock.type != socket.SOCK_STREAM:
@@ -62,6 +67,8 @@ class WAWControlServer:
             raise ValueError("WAW control socket must be close-on-exec")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if cancellation_grace_seconds <= 0:
+            raise ValueError("cancellation_grace_seconds must be positive")
         if type(expected_peer_uid) is not int or expected_peer_uid < 0:
             raise ValueError("expected_peer_uid must be a non-negative integer")
         if type(expected_peer_gid) is not int or expected_peer_gid < 0:
@@ -69,14 +76,19 @@ class WAWControlServer:
         self._sock = sock
         self._dispatch = dispatch
         self._timeout_seconds = timeout_seconds
+        self._cancellation_grace_seconds = cancellation_grace_seconds
         self._expected_peer_uid = expected_peer_uid
         self._expected_peer_gid = expected_peer_gid
         self._monotonic = monotonic
         self._server: asyncio.AbstractServer | None = None
+        self._poisoned = False
+        self._dispatch_tasks: set[asyncio.Task[Any]] = set()
 
     async def start(self) -> None:
         if self._server is not None:
             raise RuntimeError("WAW control server is already started")
+        if self._poisoned:
+            raise RuntimeError("WAW control server is poisoned")
         self._sock.setblocking(False)
         self._server = await asyncio.start_unix_server(
             self._handle,
@@ -92,6 +104,11 @@ class WAWControlServer:
             self._server = None
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        if self._poisoned:
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
+            return
         deadline = self._monotonic() + self._timeout_seconds
         peer_pidfd: int | None = None
         try:
@@ -126,7 +143,12 @@ class WAWControlServer:
                 )
                 return
             try:
-                response = await self._with_deadline(self._dispatch(request), deadline)
+                response = await self._dispatch_with_deadline(request, deadline)
+            except _WAWControlDispatchPoisoned:
+                # The dispatcher may still be executing after cancellation.  A
+                # late mutation is unsafe to expose through this server, so
+                # close this connection and refuse all subsequent requests.
+                return
             except WAWControlDispatchError as exc:
                 response = self._error(request["request_id"], exc.code, exc.retryable)
             except TimeoutError:
@@ -219,6 +241,47 @@ class WAWControlServer:
                 awaitable.close()
             raise TimeoutError("WAW control deadline exceeded")
         return await asyncio.wait_for(awaitable, timeout=remaining)
+
+    async def _dispatch_with_deadline(
+        self, request: dict[str, Any], deadline: float
+    ) -> dict[str, Any]:
+        """Run dispatch with a hard observation deadline.
+
+        ``asyncio.wait_for`` waits for a cancellation-resistant coroutine to
+        finish its cancellation handler.  That makes the control connection's
+        deadline unbounded and can allow a late workspace mutation to race a
+        newer request.  Observe an independent task instead, cancel it at the
+        deadline, and wait only a small bounded grace.  If it is still live,
+        poison the listener so no later request can reuse the potentially
+        unsafe dispatcher.
+        """
+        task = asyncio.create_task(self._dispatch(request))
+        self._dispatch_tasks.add(task)
+        task.add_done_callback(self._dispatch_tasks.discard)
+        remaining = deadline - self._monotonic()
+        if remaining > 0:
+            done, _ = await asyncio.wait({task}, timeout=remaining)
+        else:
+            done = set()
+        if task in done:
+            return task.result()
+
+        task.cancel()
+        done, _ = await asyncio.wait(
+            {task}, timeout=min(self._cancellation_grace_seconds, self._timeout_seconds)
+        )
+        if task in done:
+            # Consume cancellation/errors before translating the timeout.  A
+            # normal coroutine finishes promptly after cancellation and is
+            # safe to report as a bounded request failure.
+            with contextlib.suppress(BaseException):
+                task.result()
+            raise TimeoutError("WAW control dispatch deadline exceeded")
+
+        self._poisoned = True
+        if self._server is not None:
+            self._server.close()
+        raise _WAWControlDispatchPoisoned("WAW control dispatcher did not cancel")
 
 
 __all__ = ["Dispatch", "WAWControlDispatchError", "WAWControlServer"]

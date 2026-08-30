@@ -165,6 +165,53 @@ async def test_dispatch_timeout_and_typed_error_response(tmp_path: Path) -> None
 
 
 @pytest.mark.anyio
+async def test_cancellation_resistant_dispatch_poison_listener_and_closes_connection(
+    tmp_path: Path,
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    late_effects: list[str] = []
+
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            # Model an adapter that cannot stop immediately.  It performs a
+            # late side effect only after the test explicitly releases it.
+            await release.wait()
+            late_effects.append("late")
+            return _response(cast(str, _request["request_id"]))
+        raise AssertionError("unreachable")
+
+    path = tmp_path / "control.sock"
+    server, sock = await _running_server(path, dispatch)
+    try:
+        import json
+
+        request = json.dumps(_request(), separators=(",", ":")).encode() + b"\n"
+        call = asyncio.create_task(_call(path, request))
+        await asyncio.wait_for(started.wait(), timeout=1)
+        raw = await asyncio.wait_for(call, timeout=1)
+        assert raw == b""
+        assert server._poisoned is True
+
+        release.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert late_effects == ["late"]
+
+        # The listener is closed after poisoning; no later request can reuse
+        # the still-running dispatcher or observe its late response.
+        with pytest.raises((ConnectionRefusedError, ConnectionResetError, BrokenPipeError)):
+            await _call(path, request)
+    finally:
+        release.set()
+        await server.close()
+        sock.close()
+
+
+@pytest.mark.anyio
 async def test_server_fences_dispatch_response_with_wrong_request_id(tmp_path: Path) -> None:
     async def dispatch(_request: dict[str, object]) -> dict[str, object]:
         return _response("wreq_" + "9" * 32)
