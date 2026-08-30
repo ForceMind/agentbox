@@ -38,7 +38,9 @@ def _valid() -> dict[str, object]:
 
 def test_reads_canonical_installer_manifest(tmp_path: Path) -> None:
     path = _write_manifest(tmp_path, _valid())
-    value = load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+    value = load_waw_runtime_host_manifest(
+        path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
     assert value.runtime_host_installation_id == "wri_" + "c" * 32
     assert value.enrollment_state == "steady"
 
@@ -59,7 +61,7 @@ def test_rejects_invalid_manifest_values(tmp_path: Path, field: str, value: obje
     data[field] = value
     path = _write_manifest(tmp_path, data)
     with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
 
 
 def test_rejects_extra_key_and_noncanonical_bytes(tmp_path: Path) -> None:
@@ -67,14 +69,14 @@ def test_rejects_extra_key_and_noncanonical_bytes(tmp_path: Path) -> None:
     data["extra"] = "forbidden"
     path = _write_manifest(tmp_path, data)
     with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
     path = _write_manifest(tmp_path / "second", _valid())
     payload = path.read_bytes() + b"\n"
     os.chmod(path, 0o600)
     path.write_bytes(payload)
     os.chmod(path, 0o440)
     with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
 
 
 def test_rejects_symlink_manifest(tmp_path: Path) -> None:
@@ -85,15 +87,15 @@ def test_rejects_symlink_manifest(tmp_path: Path) -> None:
     path.unlink()
     path.symlink_to(target)
     with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
 
 
 def test_rejects_wrong_parent_or_file_mode(tmp_path: Path) -> None:
     path = _write_manifest(tmp_path, _valid())
     os.chmod(path.parent, stat.S_IRWXU)
     with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
     os.chmod(path.parent, 0o750)
     os.chmod(path, 0o640)
     with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_gid=os.getegid())
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())

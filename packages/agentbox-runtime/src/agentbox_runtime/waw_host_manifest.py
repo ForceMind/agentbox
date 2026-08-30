@@ -39,12 +39,14 @@ class WAWRuntimeHostManifest:
 
 
 def load_waw_runtime_host_manifest(
-    path: Path = _DEFAULT_PATH, *, expected_gid: int
+    path: Path = _DEFAULT_PATH, *, expected_uid: int = 0, expected_gid: int
 ) -> WAWRuntimeHostManifest:
     """Read and validate one installer-owned manifest without following links."""
 
     if not isinstance(path, Path) or not path.is_absolute():
         raise ValueError("WAW host manifest path must be absolute")
+    if type(expected_uid) is not int or expected_uid < 0:
+        raise ValueError("expected_uid must be a non-negative integer")
     if type(expected_gid) is not int or expected_gid < 0:
         raise ValueError("expected_gid must be a non-negative integer")
     try:
@@ -52,7 +54,7 @@ def load_waw_runtime_host_manifest(
         parent_details = os.lstat(parent)
         if (
             not stat.S_ISDIR(parent_details.st_mode)
-            or parent_details.st_uid != 0
+            or parent_details.st_uid != expected_uid
             or parent_details.st_gid != expected_gid
             or stat.S_IMODE(parent_details.st_mode) != 0o750
         ):
@@ -64,7 +66,7 @@ def load_waw_runtime_host_manifest(
         first = os.fstat(fd)
         if (
             not stat.S_ISREG(first.st_mode)
-            or first.st_uid != 0
+            or first.st_uid != expected_uid
             or first.st_gid != expected_gid
             or stat.S_IMODE(first.st_mode) != 0o440
             or first.st_size > _MAX_BYTES
