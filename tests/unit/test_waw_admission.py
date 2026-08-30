@@ -167,6 +167,10 @@ def test_attachment_ticket_response_rejects_uint64_overflow_and_bad_identity() -
     values["runtime_host_installation_id"] = "host-invalid"
     with pytest.raises(ValueError):
         WAWAttachmentTicketResponse.model_validate(values)
+    values["runtime_host_installation_id"] = HOST_ID
+    values["agent_type"] = "unsupported"
+    with pytest.raises(ValueError):
+        WAWAttachmentTicketResponse.model_validate(values)
 
 
 @pytest.mark.parametrize(

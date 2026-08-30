@@ -103,7 +103,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
     ticket: str = Field(repr=False)
     workspace_id: str
     project_id: str
-    agent_type: str
+    agent_type: Literal["claude", "codex"]
     attachment_id: str
     mode: Literal["writer"]
     lease_number: str
@@ -188,7 +188,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
             ticket=issued.ticket,
             workspace_id=claims.workspace_id,
             project_id=claims.project_id,
-            agent_type=str(claims.agent_type),
+            agent_type=cast(Literal["claude", "codex"], str(claims.agent_type)),
             attachment_id=claims.attachment_id,
             mode="writer",
             lease_number=str(claims.lease_number),
