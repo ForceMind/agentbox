@@ -342,16 +342,17 @@ class WAWControlServer:
             if task not in done:
                 self._poison_listener(exclude={task})
             else:
-                with contextlib.suppress(BaseException):
-                    task.result()
+                self._consume_io_task(task)
             raise
         if task in done:
-            return task.result()
+            try:
+                return task.result()
+            finally:
+                self._consume_io_task(task)
         task.cancel()
         done, _ = await asyncio.wait({task}, timeout=min(self._cancellation_grace_seconds, timeout))
         if task in done:
-            with contextlib.suppress(BaseException):
-                task.result()
+            self._consume_io_task(task)
             raise TimeoutError("WAW control I/O deadline exceeded")
         self._poison_listener(exclude={task})
         raise _WAWControlDispatchPoisoned("WAW control I/O did not cancel")
