@@ -152,42 +152,95 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         "workspace.api_authority.bind": common | {"api_authority_epoch", "authority_nonce"},
         "workspace.project_binding.register": common
         | {
-            "project_id", "relative_key", "project_revision", "binding_revision",
-            "previous_binding_revision", "previous_binding_digest", "schema_version",
-            "runtime_host_installation_id", "runtime_host_installation_revision",
+            "project_id",
+            "relative_key",
+            "project_revision",
+            "binding_revision",
+            "previous_binding_revision",
+            "previous_binding_digest",
+            "schema_version",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
         },
         "workspace.workspace.start": common
         | {
-            "workspace_id", "project_id", "agent_type", "generation", "binding_revision",
-            "binding_digest", "runtime_host_installation_id", "runtime_host_installation_revision",
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
         },
         "workspace.workspace.stop": common
         | {
-            "workspace_id", "project_id", "agent_type", "generation", "binding_revision",
-            "binding_digest", "runtime_host_installation_id", "runtime_host_installation_revision",
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
         },
         "workspace.workspace.status": common
         | {
-            "workspace_id", "project_id", "agent_type", "generation", "binding_revision",
-            "binding_digest", "runtime_host_installation_id", "runtime_host_installation_revision",
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
         },
         "workspace.workspace.reconcile": common
         | {
-            "workspace_id", "project_id", "agent_type", "generation", "binding_revision",
-            "binding_digest", "runtime_host_installation_id", "runtime_host_installation_revision",
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
         },
         "workspace.attach.prepare": common
         | {
-            "workspace_id", "project_id", "agent_type", "attachment_id", "mode", "lease_number",
-            "generation", "binding_revision", "binding_digest", "auth_epoch", "api_authority_epoch",
-            "runtime_host_installation_id", "runtime_host_installation_revision", "runtime_epoch",
-            "resume_cursor", "previous_runtime_epoch",
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "attachment_id",
+            "mode",
+            "lease_number",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "auth_epoch",
+            "api_authority_epoch",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+            "resume_cursor",
+            "previous_runtime_epoch",
         },
         "workspace.attach.detach": common
         | {
-            "workspace_id", "project_id", "agent_type", "attachment_id", "mode", "lease_number",
-            "generation", "binding_revision", "binding_digest", "auth_epoch", "api_authority_epoch",
-            "runtime_host_installation_id", "runtime_host_installation_revision", "runtime_epoch",
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "attachment_id",
+            "mode",
+            "lease_number",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "auth_epoch",
+            "api_authority_epoch",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
         },
     }
     expected = schemas.get(action)
@@ -259,9 +312,12 @@ def encode_control_request(request: dict[str, Any]) -> bytes:
 
     _validate_request(request)
     try:
-        encoded = json.dumps(
-            request, ensure_ascii=False, allow_nan=False, separators=(",", ":")
-        ).encode("utf-8") + b"\n"
+        encoded = (
+            json.dumps(request, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode(
+                "utf-8"
+            )
+            + b"\n"
+        )
     except (TypeError, UnicodeEncodeError, ValueError) as exc:
         raise WAWControlError("control request is not strict JSON") from exc
     if len(encoded) > MAX_CONTROL_ENVELOPE:

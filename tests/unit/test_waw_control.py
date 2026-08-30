@@ -100,7 +100,7 @@ def test_decoder_rejects_duplicate_keys_constants_and_trailing_data() -> None:
             json.dumps(
                 _request(
                     "workspace.api_authority.bind",
-        api_authority_epoch=1,
+                    api_authority_epoch=1,
                     authority_nonce="a" * 32,
                 )
             ).encode()
