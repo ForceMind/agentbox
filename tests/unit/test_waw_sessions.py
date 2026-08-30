@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from agentbox_core.database import Database
 from agentbox_core.models import Project
 from agentbox_core.waw import AgentType, WAWDomainError, WorkspaceState, workspace_id
-from agentbox_core.waw_models import RuntimeHostInstallation
+from agentbox_core.waw_models import AgentWorkspaceSessionRecord, RuntimeHostInstallation
 from agentbox_core.waw_sessions import (
     WorkspaceSessionConflict,
     WorkspaceSessionNotReady,
@@ -13,7 +15,7 @@ from agentbox_core.waw_sessions import (
 
 
 def _seed(
-    settings, clock, *, project_state: str = "ready"
+    settings: Any, clock: Any, *, project_state: str = "ready"
 ) -> tuple[Database, WorkspaceSessionService, str, str]:
     database = Database(settings, clock)
     database.engine.dispose()
@@ -51,7 +53,9 @@ def _seed(
     return database, WorkspaceSessionService(database, clock), project_id, host_id
 
 
-def _create(service: WorkspaceSessionService, project_id: str, host_id: str):
+def _create(
+    service: WorkspaceSessionService, project_id: str, host_id: str
+) -> AgentWorkspaceSessionRecord:
     return service.create(
         project_id=project_id,
         agent_type=AgentType.CLAUDE,
@@ -64,7 +68,7 @@ def _create(service: WorkspaceSessionService, project_id: str, host_id: str):
     )
 
 
-def test_create_is_deterministic_and_metadata_only(settings, clock) -> None:
+def test_create_is_deterministic_and_metadata_only(settings: Any, clock: Any) -> None:
     database, service, project_id, host_id = _seed(settings, clock)
     row = _create(service, project_id, host_id)
     assert row.id == workspace_id(project_id, AgentType.CLAUDE)
@@ -74,7 +78,7 @@ def test_create_is_deterministic_and_metadata_only(settings, clock) -> None:
     assert not hasattr(row, "terminal")
 
 
-def test_duplicate_and_non_ready_project_are_rejected(settings, clock) -> None:
+def test_duplicate_and_non_ready_project_are_rejected(settings: Any, clock: Any) -> None:
     database, service, project_id, host_id = _seed(settings, clock)
     _create(service, project_id, host_id)
     with pytest.raises(WorkspaceSessionConflict):
@@ -108,7 +112,7 @@ def test_duplicate_and_non_ready_project_are_rejected(settings, clock) -> None:
         _create(service, project_id2, host_id2)
 
 
-def test_transition_uses_domain_and_compare_and_swap(settings, clock) -> None:
+def test_transition_uses_domain_and_compare_and_swap(settings: Any, clock: Any) -> None:
     database, service, project_id, host_id = _seed(settings, clock)
     row = _create(service, project_id, host_id)
     updated = service.transition(row.id, expected_revision=1, state=WorkspaceState.RUNNING)
@@ -119,7 +123,7 @@ def test_transition_uses_domain_and_compare_and_swap(settings, clock) -> None:
         service.transition(row.id, expected_revision=2, state=WorkspaceState.STOPPED)
 
 
-def test_begin_start_fences_generation_and_marker(settings, clock) -> None:
+def test_begin_start_fences_generation_and_marker(settings: Any, clock: Any) -> None:
     database, service, project_id, host_id = _seed(settings, clock)
     row = _create(service, project_id, host_id)
     row = service.transition(row.id, expected_revision=1, state=WorkspaceState.RUNNING)

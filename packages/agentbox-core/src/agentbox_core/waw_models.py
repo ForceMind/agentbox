@@ -124,7 +124,7 @@ class AgentWorkspaceSessionRecord(Base):
     runtime_host_installation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     runtime_type: Mapped[str] = mapped_column(String(32), nullable=False)
     agent_type: Mapped[str] = mapped_column(String(8), nullable=False)
-    state: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String(24), nullable=False)
     runtime_session_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     runtime_marker: Mapped[str] = mapped_column(String(192), nullable=False)
     executable_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)

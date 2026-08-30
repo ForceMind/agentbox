@@ -4,6 +4,8 @@ Revision ID: 0006_waw_workspace_metadata
 Revises: 0005_phase11_control_plane_ownership_approval
 """
 
+# ruff: noqa: E501 -- SQL check expressions remain auditable literals.
+
 from __future__ import annotations
 
 import sqlalchemy as sa
