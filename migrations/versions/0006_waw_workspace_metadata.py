@@ -75,7 +75,9 @@ def upgrade() -> None:
             "length(runtime_host_installation_id)=36 AND substr(runtime_host_installation_id,1,4)='wri_' AND substr(runtime_host_installation_id,5) NOT GLOB '*[^0-9a-f]*'",
             name="ck_waw_sessions_host_id",
         ),
-        sa.CheckConstraint("runtime_host_installation_revision >= 1", name="ck_waw_sessions_host_revision"),
+        sa.CheckConstraint(
+            "runtime_host_installation_revision >= 1", name="ck_waw_sessions_host_revision"
+        ),
         sa.CheckConstraint(
             "runtime_type = 'agentbox-runtime-linux-v1'", name="ck_waw_sessions_runtime_type"
         ),
@@ -94,7 +96,9 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "length(runtime_session_name) BETWEEN 1 AND 80", name="ck_waw_sessions_session_name"
         ),
-        sa.CheckConstraint("length(runtime_marker) BETWEEN 1 AND 192", name="ck_waw_sessions_marker"),
+        sa.CheckConstraint(
+            "length(runtime_marker) BETWEEN 1 AND 192", name="ck_waw_sessions_marker"
+        ),
         sa.CheckConstraint(
             "length(executable_fingerprint)=64 AND executable_fingerprint NOT GLOB '*[^0-9a-f]*'",
             name="ck_waw_sessions_executable_fingerprint",
@@ -121,9 +125,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("project_id", "agent_type", name="uq_waw_sessions_project_agent"),
-        sa.UniqueConstraint(
-            "runtime_session_name", name="uq_waw_sessions_runtime_session_name"
-        ),
+        sa.UniqueConstraint("runtime_session_name", name="uq_waw_sessions_runtime_session_name"),
     )
     op.create_index("ix_waw_sessions_state", "waw_agent_workspace_sessions", ["state"])
 
