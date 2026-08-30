@@ -185,7 +185,14 @@ async def test_cancellation_resistant_dispatch_poison_listener_and_closes_connec
         except asyncio.CancelledError:
             # Model an adapter that cannot stop immediately.  It performs a
             # late side effect only after the test explicitly releases it.
-            await release.wait()
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    # Ignore repeated cancellation to model a truly
+                    # cancellation-resistant dispatcher; the server must
+                    # still isolate it and never reuse the listener.
+                    continue
             late_effects.append("late")
             return _response(cast(str, _request["request_id"]))
         raise AssertionError("unreachable")
