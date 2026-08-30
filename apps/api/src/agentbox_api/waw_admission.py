@@ -25,7 +25,7 @@ from agentbox_core.waw_tickets import (
     TicketAuthorityError,
 )
 from agentbox_protocol.metadata import StrictMetadataModel
-from pydantic import ConfigDict, Field, field_serializer, field_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_serializer, field_validator
 
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 
@@ -45,7 +45,7 @@ class WorkspaceAdmissionRow(Protocol):
     id: str
     project_id: str
     authorization_scope: str
-    agent_type: str
+    agent_type: Literal["claude", "codex"]
     generation: int
     binding_revision: int
     binding_digest: str
@@ -91,6 +91,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
+    protocol_version: Literal[1]
     request_id: str
     ticket: str = Field(repr=False)
     workspace_id: str
@@ -108,6 +109,21 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
     runtime_host_installation_revision: str
     runtime_epoch: str
     expires_at: datetime
+
+    @field_validator("request_id", "ticket", "workspace_id", "project_id", "attachment_id")
+    @classmethod
+    def _validate_identifiers(cls, value: str, info: ValidationInfo) -> str:
+        patterns = {
+            "request_id": r"\Awreq_[a-f0-9]{32}\Z",
+            "ticket": r"\Awat_[a-f0-9]{32}\Z",
+            "workspace_id": r"\Aaws_[a-f0-9]{32}\Z",
+            "project_id": r"\Aprj_[a-f0-9]{32}\Z",
+            "attachment_id": r"\Aatt_[a-f0-9]{32}\Z",
+        }
+        field_name = info.field_name
+        if not isinstance(value, str) or re.fullmatch(patterns[field_name], value) is None:
+            raise ValueError(f"{field_name} has an invalid identifier")
+        return value
 
     @field_validator(
         "lease_number",
@@ -139,6 +155,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
     ) -> WAWAttachmentTicketResponse:
         claims = issued.claims
         return cls(
+            protocol_version=1,
             request_id=request_id,
             ticket=issued.ticket,
             workspace_id=claims.workspace_id,
@@ -203,11 +220,17 @@ def prepare_attachment(
             runtime_epoch=runtime.runtime_epoch,
             auth_epoch=authenticated.auth_epoch,
         )
+        try:
+            attachment_id = f"att_{secrets.token_hex(16)}"
+        except Exception as exc:
+            raise WAWAdmissionError(
+                "RANDOMNESS_UNAVAILABLE", "secure attachment randomness is unavailable"
+            ) from exc
         return authority.issue(
             workspace_id=row.id,
             project_id=row.project_id,
             agent_type=row.agent_type,
-            attachment_id=f"att_{secrets.token_hex(16)}",
+            attachment_id=attachment_id,
             generation=row.generation,
             auth_epoch=authenticated.auth_epoch,
             runtime_host_installation_id=row.runtime_host_installation_id,

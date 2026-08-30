@@ -100,7 +100,9 @@ def test_prepare_attachment_issues_transient_bearer_with_exact_tuple() -> None:
         "wreq_" + "1" * 32, issued, runtime_epoch="12"
     )
     assert response.model_dump(mode="json")["lease_number"] == "9"
+    assert response.model_dump(mode="json")["protocol_version"] == 1
     assert response.model_dump(mode="json")["expires_at"].endswith("Z")
+    assert response.expires_at > datetime.now(UTC)
 
 
 def test_attachment_ticket_request_is_closed_to_writer_mode() -> None:
@@ -169,6 +171,24 @@ def test_prepare_attachment_rejects_noncanonical_or_unallowlisted_origin(origin:
 def test_runtime_readiness_rejects_untrusted_identity_values(changes: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         _runtime(**changes)
+
+
+def test_attachment_randomness_failure_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(_count: int) -> str:
+        raise RuntimeError("entropy unavailable")
+
+    monkeypatch.setattr("agentbox_api.waw_admission.secrets.token_hex", fail)
+    with pytest.raises(WAWAdmissionError) as unavailable:
+        prepare_attachment(
+            authenticated=_auth(),
+            row=cast(AgentWorkspaceSessionRecord, _row()),
+            policy=SingleAdminWorkspacePolicy(),
+            recent_authenticator=RecentAuth(),
+            runtime=_runtime(),
+            bound_runtime_epoch="12",
+            authority=_authority(),
+        )
+    assert unavailable.value.code == "RANDOMNESS_UNAVAILABLE"
 
 
 @pytest.mark.parametrize(

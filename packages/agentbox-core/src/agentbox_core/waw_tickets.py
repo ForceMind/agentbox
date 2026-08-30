@@ -15,7 +15,7 @@ import secrets
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from threading import RLock
 
@@ -49,6 +49,7 @@ class TicketErrorCode(StrEnum):
     SEQUENCE_EXHAUSTED = "SEQUENCE_EXHAUSTED"
     LEASE_EXPIRED = "ATTACHMENT_LEASE_EXPIRED"
     LEASE_MISMATCH = "ATTACHMENT_LEASE_MISMATCH"
+    RANDOMNESS_UNAVAILABLE = "RANDOMNESS_UNAVAILABLE"
 
 
 class TicketAuthorityError(WAWDomainError):
@@ -308,15 +309,19 @@ class AttachmentAuthority:
             )
             # Origin is validated by the API boundary and is not needed here.
             del origin
-            issued = IssuedAttachmentTicket(
-                ticket=_new_ticket(),
-                claims=claims,
-                issued_at_monotonic=now,
-                expires_at_monotonic=now + self._ticket_ttl,
-                expires_at=expires_at or datetime.fromtimestamp(0),
-            )
-            digest = _ticket_digest(issued.ticket)
-            if digest in self._pending or digest in self._replayed:
+            for _ in range(3):
+                issued = IssuedAttachmentTicket(
+                    ticket=_new_ticket(),
+                    claims=claims,
+                    issued_at_monotonic=now,
+                    expires_at_monotonic=now + self._ticket_ttl,
+                    expires_at=expires_at
+                    or datetime.now(UTC) + timedelta(seconds=self._ticket_ttl),
+                )
+                digest = _ticket_digest(issued.ticket)
+                if digest not in self._pending and digest not in self._replayed:
+                    break
+            else:
                 raise TicketAuthorityError(TicketErrorCode.CAPACITY, "ticket collision")
             self._pending[digest] = _PendingTicket(
                 digest,
@@ -352,7 +357,9 @@ class AttachmentAuthority:
                 raise TicketAuthorityError(TicketErrorCode.EXPIRED, "ticket has expired")
             if not _same_tuple(pending.claims, expected):
                 raise TicketAuthorityError(TicketErrorCode.STALE, "ticket tuple does not match")
-            if pending.context is not None and not _same_context(pending.context, context):
+            if (pending.context is None) != (context is None) or (
+                pending.context is not None and not _same_context(pending.context, context)
+            ):
                 raise TicketAuthorityError(TicketErrorCode.STALE, "ticket context does not match")
             if expected.workspace_id in self._active:
                 active = self._active[expected.workspace_id]
@@ -564,7 +571,14 @@ def _u64_or_random(value: int | None) -> int:
 
 
 def _new_ticket() -> str:
-    return f"{_TICKET_PREFIX}{secrets.token_hex(16)}"
+    try:
+        token = secrets.token_hex(16)
+    except Exception as exc:
+        raise TicketAuthorityError(
+            TicketErrorCode.RANDOMNESS_UNAVAILABLE,
+            "secure ticket randomness is unavailable",
+        ) from exc
+    return f"{_TICKET_PREFIX}{token}"
 
 
 def _ticket_digest(ticket: str) -> bytes:

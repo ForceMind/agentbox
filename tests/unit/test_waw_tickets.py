@@ -471,3 +471,35 @@ def test_issue_rejects_origin_drift_from_context() -> None:
             context=_context(),
         )
     assert mismatch.value.code is TicketErrorCode.INVALID
+
+
+def test_ticket_randomness_failure_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = FakeMonotonic()
+
+    def fail(_count: int) -> str:
+        raise RuntimeError("entropy unavailable")
+
+    monkeypatch.setattr("agentbox_core.waw_tickets.secrets.token_hex", fail)
+    with pytest.raises(TicketAuthorityError) as unavailable:
+        _issue(_authority(clock))
+    assert unavailable.value.code is TicketErrorCode.RANDOMNESS_UNAVAILABLE
+
+
+def test_contextless_ticket_cannot_be_consumed_with_authenticated_context() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    issued = authority.issue(
+        workspace_id=WORKSPACE_ID,
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "8" * 32,
+        generation=1,
+        auth_epoch=4,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        binding_revision=2,
+        binding_digest=BINDING_DIGEST,
+    )
+    with pytest.raises(TicketAuthorityError) as mismatch:
+        authority.consume(issued.ticket, issued.claims, context=_context())
+    assert mismatch.value.code is TicketErrorCode.STALE
