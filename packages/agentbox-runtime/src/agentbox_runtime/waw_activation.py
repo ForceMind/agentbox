@@ -102,6 +102,8 @@ def _validate_socket(
         or not stat.S_ISSOCK(descriptor.st_mode)
         or details.st_uid != expected_uid
         or details.st_gid != expected_gid
+        or descriptor.st_uid != expected_uid
+        or descriptor.st_gid != expected_gid
         or stat.S_IMODE(details.st_mode) != 0o660
     ):
         raise WAWActivationError("WAW socket pathname provenance is invalid")

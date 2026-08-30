@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import socket
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from agentbox_runtime.waw_activation import (
@@ -58,6 +59,29 @@ def test_listener_descriptor_rejects_non_listening_socket(tmp_path: Path) -> Non
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(path))
     path.chmod(0o660)
+    try:
+        with pytest.raises(WAWActivationError):
+            _validate_socket(listener, str(path), os.geteuid(), os.getegid())
+    finally:
+        listener.close()
+
+
+def test_listener_descriptor_checks_descriptor_owner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "control.sock"
+    listener = _listener(path)
+    original_fstat = os.fstat
+
+    def forged_fstat(fd: int) -> object:
+        details = original_fstat(fd)
+        return SimpleNamespace(
+            st_mode=details.st_mode,
+            st_uid=details.st_uid + 1,
+            st_gid=details.st_gid,
+        )
+
+    monkeypatch.setattr(os, "fstat", forged_fstat)
     try:
         with pytest.raises(WAWActivationError):
             _validate_socket(listener, str(path), os.geteuid(), os.getegid())
