@@ -276,6 +276,24 @@ def test_exact_stop_rejects_stale_binding(tmp_path: Path) -> None:
         supervisor.exact_stop(operation)
 
 
+def test_exact_stop_rejects_terminal_operation_replay(tmp_path: Path) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    operation = WorkspaceStopOperation(
+        workspace_id=workspace,
+        project_id="prj_" + "1" * 32,
+        agent_type=AgentType.CLAUDE,
+        generation=1,
+        binding_revision=1,
+        binding_digest="a" * 64,
+        runtime_host_installation_id="wri_" + "3" * 32,
+        runtime_host_installation_revision=1,
+        result="STOPPED",
+    )
+    with pytest.raises(RuntimeOperationError, match="pending"):
+        supervisor.exact_stop(operation)
+
+
 def test_unconfirmed_stop_preserves_reconciliation_state(tmp_path: Path) -> None:
     supervisor, transport, workspace = _supervisor(tmp_path)
     supervisor.start()

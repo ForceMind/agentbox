@@ -17,6 +17,7 @@ from typing import Protocol
 
 from agentbox_core.waw import (
     AgentType,
+    StopResult,
     WorkspaceStopOperation,
     managed_marker,
     validate_positive_u64,
@@ -369,6 +370,12 @@ class WAWSupervisor:
                 raise RuntimeOperationError(
                     "WAW_STOP_STALE",
                     "Stop operation does not match this workspace",
+                    category="conflict",
+                )
+            if operation.result is not StopResult.PENDING:
+                raise RuntimeOperationError(
+                    "WAW_STOP_INVALID",
+                    "Only a pending Stop operation may initiate Runtime stop",
                     category="conflict",
                 )
             if self._state in {SupervisorState.STOPPING, SupervisorState.STOPPED}:
