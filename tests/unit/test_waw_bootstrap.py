@@ -11,7 +11,11 @@ from agentbox_runtime.waw_bootstrap import (
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import WAWRuntimeHostManifest
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity, WAWLifecycleObservation
-from agentbox_runtime.waw_manifest_codecs import RuntimeHostManifest, encode_runtime_host_manifest
+from agentbox_runtime.waw_manifest_codecs import (
+    RuntimeHostManifest,
+    encode_runtime_host_manifest,
+    manifest_sha256,
+)
 
 HOST = "wri_" + "1" * 32
 PROJECT = "prj_" + "2" * 32
@@ -148,8 +152,10 @@ def test_bootstrap_advances_epoch_counter_without_reuse(tmp_path: Path) -> None:
 async def test_production_bootstrap_decodes_strict_manifest_bytes(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
+    raw_manifest = _strict_manifest_bytes()
     registry, epoch = create_waw_lifecycle_registry_from_manifest_bytes(
-        raw_manifest=_strict_manifest_bytes(),
+        raw_manifest=raw_manifest,
+        expected_host_manifest_digest=manifest_sha256(raw_manifest),
         epoch_store=store,
         executor=FakeExecutor(),
         binding_digest_factory=lambda _request: "a" * 64,
@@ -177,7 +183,70 @@ def test_production_bootstrap_rejects_unverified_manifest_bytes(tmp_path: Path, 
     with pytest.raises(WAWRuntimeHostManifestError):
         create_waw_lifecycle_registry_from_manifest_bytes(
             raw_manifest=raw,
+            expected_host_manifest_digest="a" * 64,
             epoch_store=store,
             executor=FakeExecutor(),
             binding_digest_factory=lambda _request: "a" * 64,
         )
+
+
+def test_production_bootstrap_rejects_digest_mismatch_without_consuming_epoch(
+    tmp_path: Path,
+) -> None:
+    from agentbox_runtime.waw_manifest_codecs import WAWManifestCodecError
+
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    raw_manifest = _strict_manifest_bytes()
+    with pytest.raises(WAWManifestCodecError, match="digest mismatch"):
+        create_waw_lifecycle_registry_from_manifest_bytes(
+            raw_manifest=raw_manifest,
+            expected_host_manifest_digest="a" * 64,
+            epoch_store=store,
+            executor=FakeExecutor(),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    # The failed attempt must not consume the first Runtime epoch.
+    assert store.consume() == 2
+
+
+def test_production_bootstrap_rejects_replayed_manifest_against_new_anchor(
+    tmp_path: Path,
+) -> None:
+    from agentbox_runtime.waw_manifest_codecs import WAWManifestCodecError
+
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    raw_manifest = _strict_manifest_bytes()
+    expected_digest = manifest_sha256(raw_manifest)
+    # A later anchor is intentionally different: replaying the old bytes is
+    # rejected before the epoch trust root is touched.
+    with pytest.raises(WAWManifestCodecError, match="digest mismatch"):
+        create_waw_lifecycle_registry_from_manifest_bytes(
+            raw_manifest=raw_manifest,
+            expected_host_manifest_digest="b" * 64,
+            epoch_store=store,
+            executor=FakeExecutor(),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    assert expected_digest != "b" * 64
+    assert store.consume() == 2
+
+
+def test_production_bootstrap_rejects_invalid_expected_digest_without_consuming_epoch(
+    tmp_path: Path,
+) -> None:
+    from agentbox_runtime.waw_manifest_codecs import WAWManifestCodecError
+
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    raw_manifest = _strict_manifest_bytes()
+    with pytest.raises(WAWManifestCodecError, match="expected host manifest digest"):
+        create_waw_lifecycle_registry_from_manifest_bytes(
+            raw_manifest=raw_manifest,
+            expected_host_manifest_digest="A" * 64,
+            epoch_store=store,
+            executor=FakeExecutor(),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    assert store.consume() == 2

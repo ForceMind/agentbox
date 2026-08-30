@@ -10,6 +10,8 @@ default in a Runtime process.
 
 from __future__ import annotations
 
+import hmac
+import re
 from collections.abc import Callable
 
 from agentbox_runtime.waw_activation import WAWActivatedSockets
@@ -24,7 +26,11 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
     WAWLifecycleRegistry,
 )
-from agentbox_runtime.waw_manifest_codecs import RuntimeHostManifest, manifest_sha256
+from agentbox_runtime.waw_manifest_codecs import (
+    RuntimeHostManifest,
+    WAWManifestCodecError,
+    manifest_sha256,
+)
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
 
@@ -77,6 +83,7 @@ def create_waw_lifecycle_registry(
 def create_waw_lifecycle_registry_from_manifest_bytes(
     *,
     raw_manifest: bytes,
+    expected_host_manifest_digest: str,
     epoch_store: WAWRuntimeEpochStore,
     executor: WAWLifecycleExecutor | None = None,
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
@@ -87,18 +94,30 @@ def create_waw_lifecycle_registry_from_manifest_bytes(
 
     This is the production-facing data boundary.  Raw bytes are decoded and
     codec-validated before any Runtime registry is created; malformed,
-    noncanonical, or legacy seven-field records are rejected closed.  Codec
-    validation alone is not host provenance/attestation and does not authorize
-    a real host; those gates remain the caller's responsibility.  The record
-    is then reduced to the lifecycle identity fields consumed by the current
+    noncanonical, or legacy seven-field records are rejected closed.  The
+    caller must supply the expected digest from an external, already-validated
+    host anchor.  The digest is checked against the canonical bytes before the
+    epoch is consumed, so malformed input, stale/replayed input, and digest
+    mismatch cannot advance the Runtime trust root.  Codec validation and this
+    comparison alone are not host provenance/attestation and do not authorize
+    a real host; those gates remain the caller's responsibility.  The record is
+    then reduced to the lifecycle identity fields consumed by the current
     registry.  Host file discovery, sockets, and credentials remain outside
     this pure wiring function.
     """
 
     manifest = decode_canonical_waw_runtime_host_manifest(raw_manifest)
+    if (
+        not isinstance(expected_host_manifest_digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_host_manifest_digest) is None
+    ):
+        raise WAWManifestCodecError("expected host manifest digest is invalid")
+    actual_digest = manifest_sha256(raw_manifest)
+    if not hmac.compare_digest(actual_digest, expected_host_manifest_digest):
+        raise WAWManifestCodecError("host manifest digest mismatch")
     return _create_registry_from_verified_manifest(
         manifest=manifest,
-        host_manifest_digest=manifest_sha256(raw_manifest),
+        host_manifest_digest=actual_digest,
         epoch_store=epoch_store,
         executor=executor,
         executor_factory=executor_factory,
