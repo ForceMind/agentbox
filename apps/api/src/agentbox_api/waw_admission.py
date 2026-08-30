@@ -15,7 +15,6 @@ from datetime import UTC, datetime
 from typing import Literal, Protocol, cast
 from urllib.parse import urlsplit
 
-from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 from agentbox_core.services import AuthenticatedSession
 from agentbox_core.waw import validate_positive_u64, validate_runtime_host_installation_id
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
@@ -27,6 +26,8 @@ from agentbox_core.waw_tickets import (
 )
 from agentbox_protocol.metadata import StrictMetadataModel
 from pydantic import ConfigDict, Field, field_serializer, field_validator
+
+from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 
 _POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 _DEFAULT_ALLOWED_ORIGINS = frozenset({"https://agentbox.invalid"})
