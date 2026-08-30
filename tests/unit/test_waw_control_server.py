@@ -555,3 +555,69 @@ async def test_external_cancellation_cancels_child_io_and_poison_consumes_late_e
                 await io_task
         loop.set_exception_handler(previous_handler)
         await server.close()
+
+
+@pytest.mark.anyio
+async def test_external_dispatch_cancellation_is_quarantined_and_cleanup_is_detached() -> None:
+    """Outer cancellation must not abandon a cancellation-resistant dispatch."""
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    late_effects: list[str] = []
+
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+            late_effects.append("late")
+            raise RuntimeError("late dispatch failure") from None
+        raise AssertionError("unreachable")
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        dispatch,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=0.01,
+    )
+    dispatch_call = asyncio.create_task(
+        server._dispatch_with_deadline(_request(), server._monotonic() + 1)
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        dispatch_call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(dispatch_call, timeout=1)
+        # A second cancellation of the already-cancelled outer task must not
+        # affect the detached observer or the tracked child dispatch.
+        dispatch_call.cancel()
+        assert server._poisoned is True
+        assert server._closing is True
+        assert len(server._dispatch_tasks) == 1
+
+        release.set()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert late_effects == ["late"]
+        assert not server._dispatch_tasks
+        assert not server._cleanup_tasks
+    finally:
+        release.set()
+        if not dispatch_call.done():
+            dispatch_call.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await dispatch_call
+        await server.close()

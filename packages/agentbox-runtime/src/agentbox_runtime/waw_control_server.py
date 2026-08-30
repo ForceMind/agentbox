@@ -95,6 +95,9 @@ class WAWControlServer:
         self._writers: set[asyncio.StreamWriter] = set()
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
         self._io_tasks: set[asyncio.Task[Any]] = set()
+        # Detached cleanup observers cannot be interrupted by a second
+        # cancellation of the connection/close task.
+        self._cleanup_tasks: set[asyncio.Task[Any]] = set()
 
     async def start(self) -> None:
         if self._server is not None:
@@ -121,13 +124,18 @@ class WAWControlServer:
         current = asyncio.current_task()
         dispatch_tasks = set(self._dispatch_tasks)
         io_tasks = set(self._io_tasks)
+        cleanup_tasks = {task for task in self._cleanup_tasks if task is not current}
         for task in dispatch_tasks | io_tasks:
             if task is not current:
                 task.cancel()
         connection_tasks = {task for task in self._connection_tasks if task is not current}
         for task in connection_tasks:
             task.cancel()
-        pending = dispatch_tasks | io_tasks | connection_tasks
+        # Cleanup observers are intentionally not cancelled here: they are
+        # the independent quarantine path for child tasks whose owners may
+        # have received repeated cancellation.  Include them in the bounded
+        # wait so close does not return while an observer is still running.
+        pending = dispatch_tasks | io_tasks | connection_tasks | cleanup_tasks
         if pending:
             done, _ = await asyncio.wait(pending, timeout=self._cancellation_grace_seconds)
             for task in done:
@@ -338,11 +346,8 @@ class WAWControlServer:
             # caller's cancellation; the done callback remains responsible
             # for consuming any eventual late exception.
             task.cancel()
-            done, _ = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
-            if task not in done:
-                self._poison_listener(exclude={task})
-            else:
-                self._consume_io_task(task)
+            self._poison_listener(exclude={task})
+            self._schedule_cancel_cleanup(task)
             raise
         if task in done:
             try:
@@ -356,6 +361,29 @@ class WAWControlServer:
             raise TimeoutError("WAW control I/O deadline exceeded")
         self._poison_listener(exclude={task})
         raise _WAWControlDispatchPoisoned("WAW control I/O did not cancel")
+
+    def _schedule_cancel_cleanup(self, task: asyncio.Task[Any]) -> None:
+        cleanup = asyncio.create_task(self._observe_cancelled_task(task))
+        self._cleanup_tasks.add(cleanup)
+        cleanup.add_done_callback(self._consume_cleanup_task)
+
+    async def _observe_cancelled_task(self, task: asyncio.Task[Any]) -> None:
+        """Observe child cancellation independently of its cancelled caller."""
+        try:
+            done, _ = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+        except asyncio.CancelledError:
+            # Even cancellation of the observer (for example during loop
+            # teardown) must leave the listener fail-closed.  The child's done
+            # callback still consumes any eventual late result.
+            self._poison_listener(exclude={task})
+            raise
+        if task not in done:
+            self._poison_listener(exclude={task})
+
+    def _consume_cleanup_task(self, task: asyncio.Task[Any]) -> None:
+        self._cleanup_tasks.discard(task)
+        with contextlib.suppress(BaseException):
+            task.result()
 
     def _consume_io_task(self, task: asyncio.Task[Any]) -> None:
         self._io_tasks.discard(task)
@@ -388,10 +416,19 @@ class WAWControlServer:
         self._dispatch_tasks.add(task)
         task.add_done_callback(self._consume_dispatch_task)
         remaining = deadline - self._monotonic()
-        if remaining > 0:
-            done, _ = await asyncio.wait({task}, timeout=remaining)
-        else:
-            done = set()
+        try:
+            if remaining > 0:
+                done, _ = await asyncio.wait({task}, timeout=remaining)
+            else:
+                done = set()
+        except asyncio.CancelledError:
+            # The outer connection task may receive repeated cancellation.
+            # Quarantine immediately and let an independent bounded observer
+            # consume the child result, rather than awaiting in this path.
+            task.cancel()
+            self._poison_listener(exclude={task})
+            self._schedule_cancel_cleanup(task)
+            raise
         if task in done:
             return task.result()
 
