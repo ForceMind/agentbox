@@ -62,16 +62,16 @@ from agentbox_runtime.waw_control_server import (
     WAWControlServer,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
+from agentbox_runtime.waw_host_manifest import (
+    WAWRuntimeHostManifest,
+    WAWRuntimeHostManifestError,
+    load_waw_runtime_host_manifest,
+)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
     WAWLifecycleIdentity,
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
-)
-from agentbox_runtime.waw_host_manifest import (
-    WAWRuntimeHostManifest,
-    WAWRuntimeHostManifestError,
-    load_waw_runtime_host_manifest,
 )
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
