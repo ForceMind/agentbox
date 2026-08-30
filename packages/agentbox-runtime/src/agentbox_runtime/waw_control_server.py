@@ -134,10 +134,38 @@ class WAWControlServer:
             # Cancellation is a fail-closed event.  Do not claim that close
             # completed: the independent operation continues and will mark
             # the listener poisoned if any bounded cleanup remains pending.
-            self._poison_listener()
+            # Keep the close operation and any I/O child it currently owns
+            # out of the poison cancellation set.  Cancelling those tasks
+            # here would defeat the shield and turn caller cancellation into
+            # cancellation of the cleanup operation itself.
+            self._poison_listener(exclude={operation, *self._io_tasks})
             raise
 
     async def _perform_close(self) -> None:
+        """Run close in an independently owned cancellation quarantine.
+
+        ``shield`` protects the worker from the normal caller cancellation,
+        but a direct task cancellation (loop teardown or an accidental owner
+        reference) can still reach the worker.  Consume that cancellation,
+        clear the worker's cancellation state, and make one more bounded
+        cleanup pass.  The worker then returns a poisoned/incomplete state
+        rather than exposing a cancelled cleanup task to ``close`` callers.
+        """
+        for attempt in range(2):
+            try:
+                await self._perform_close_body()
+                return
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                self._poison_listener(exclude={current} if current is not None else set())
+                if current is not None:
+                    while current.cancelling():
+                        current.uncancel()
+                if attempt == 1:
+                    self._closing = True
+                    return
+
+    async def _perform_close_body(self) -> None:
         self._closing = True
         if self._server is not None:
             self._server.close()
@@ -450,6 +478,8 @@ class WAWControlServer:
 
     def _consume_cleanup_task(self, task: asyncio.Task[Any]) -> None:
         self._cleanup_tasks.discard(task)
+        if task is self._close_operation:
+            self._close_operation = None
         with contextlib.suppress(BaseException):
             task.result()
 
