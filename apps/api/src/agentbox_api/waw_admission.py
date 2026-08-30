@@ -95,9 +95,7 @@ def prepare_attachment(
         runtime.runtime_host_installation_id != row.runtime_host_installation_id
         or runtime.runtime_host_installation_revision != row.runtime_host_installation_revision
     ):
-        raise WAWAdmissionError(
-            "RUNTIME_INSTALLATION_MISMATCH", "Runtime host identity is stale"
-        )
+        raise WAWAdmissionError("RUNTIME_INSTALLATION_MISMATCH", "Runtime host identity is stale")
     try:
         return authority.issue(
             workspace_id=row.id,
