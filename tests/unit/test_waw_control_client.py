@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,15 @@ def _response() -> dict[str, object]:
     }
 
 
+def _client(path: Path, *, timeout_seconds: float = 2.0) -> WAWControlClient:
+    return WAWControlClient(
+        path,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        timeout_seconds=timeout_seconds,
+    )
+
+
 async def _serve_once(path: Path, payload: bytes, *, delay: float = 0) -> asyncio.AbstractServer:
     async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await reader.readline()
@@ -61,7 +71,7 @@ async def test_client_uses_dedicated_socket_and_round_trips(tmp_path: Path) -> N
     payload = encode_control_response(_response(), "workspace.workspace.start")
     server = await _serve_once(path, payload)
     try:
-        client = WAWControlClient(path)
+        client = _client(path)
         assert await client.request("workspace.workspace.start", _request()) == _response()
     finally:
         server.close()
@@ -75,7 +85,7 @@ async def test_client_rejects_trailing_bytes_and_request_id_mismatch(tmp_path: P
     server = await _serve_once(path, payload)
     try:
         with pytest.raises(WAWControlClientError, match="trailing"):
-            await WAWControlClient(path).request("workspace.workspace.start", _request())
+            await _client(path).request("workspace.workspace.start", _request())
     finally:
         server.close()
         await server.wait_closed()
@@ -87,7 +97,7 @@ async def test_client_rejects_trailing_bytes_and_request_id_mismatch(tmp_path: P
     )
     try:
         with pytest.raises(WAWControlClientError, match="invalid"):
-            await WAWControlClient(path2).request("workspace.workspace.start", _request())
+            await _client(path2).request("workspace.workspace.start", _request())
     finally:
         server.close()
         await server.wait_closed()
@@ -101,7 +111,7 @@ async def test_client_applies_two_second_monotonic_deadline(tmp_path: Path) -> N
     )
     try:
         with pytest.raises(WAWControlClientError) as raised:
-            await WAWControlClient(path, timeout_seconds=0.05).request(
+            await _client(path, timeout_seconds=0.05).request(
                 "workspace.workspace.start", _request()
             )
         assert raised.value.code == "RUNTIME_UNAVAILABLE"
@@ -113,7 +123,7 @@ async def test_client_applies_two_second_monotonic_deadline(tmp_path: Path) -> N
 
 @pytest.mark.anyio
 async def test_client_rejects_invalid_request_before_connect(tmp_path: Path) -> None:
-    client = WAWControlClient(tmp_path / "missing.sock")
+    client = _client(tmp_path / "missing.sock")
     with pytest.raises(WAWControlClientError) as raised:
         await client.request("workspace.workspace.start", {"protocol_version": 1})
     assert raised.value.code == "PROTOCOL_INVALID"

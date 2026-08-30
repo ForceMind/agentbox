@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import socket
+import struct
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agentbox_protocol.waw_control import (
     MAX_CONTROL_ENVELOPE,
@@ -39,6 +41,8 @@ class WAWControlClient:
         self,
         socket_path: Path,
         *,
+        expected_peer_uid: int,
+        expected_peer_gid: int,
         timeout_seconds: float = 2.0,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -46,7 +50,13 @@ class WAWControlClient:
             raise TypeError("socket_path must be a Path")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if type(expected_peer_uid) is not int or expected_peer_uid < 0:
+            raise ValueError("expected_peer_uid must be a non-negative integer")
+        if type(expected_peer_gid) is not int or expected_peer_gid < 0:
+            raise ValueError("expected_peer_gid must be a non-negative integer")
         self._socket_path = socket_path
+        self._expected_peer_uid = expected_peer_uid
+        self._expected_peer_gid = expected_peer_gid
         self._timeout_seconds = timeout_seconds
         self._monotonic = monotonic
 
@@ -84,6 +94,10 @@ class WAWControlClient:
                 "RUNTIME_UNAVAILABLE", "WAW Runtime control endpoint is unavailable", retryable=True
             ) from exc
         try:
+            if not self._peer_is_expected(writer):
+                raise WAWControlClientError(
+                    "RUNTIME_PEER_FORBIDDEN", "WAW Runtime peer credentials are not trusted"
+                )
             writer.write(encoded)
             await self._with_deadline(writer.drain(), deadline)
             raw = await self._with_deadline(reader.readline(), deadline)
@@ -118,6 +132,22 @@ class WAWControlClient:
             writer.close()
             with contextlib.suppress(OSError):
                 await writer.wait_closed()
+
+    def _peer_is_expected(self, writer: asyncio.StreamWriter) -> bool:
+        peer_socket = writer.get_extra_info("socket")
+        if peer_socket is None or not hasattr(peer_socket, "getsockopt"):
+            return False
+        try:
+            raw = cast(
+                bytes,
+                peer_socket.getsockopt(
+                    socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
+                ),
+            )
+            _pid, uid, gid = cast(tuple[int, int, int], struct.unpack("3i", raw))
+        except (AttributeError, OSError, struct.error):
+            return False
+        return bool(uid == self._expected_peer_uid and gid == self._expected_peer_gid)
 
     async def _with_deadline(self, awaitable: Any, deadline: float) -> Any:
         remaining = deadline - self._monotonic()
