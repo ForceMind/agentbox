@@ -203,7 +203,9 @@ async def test_cancellation_resistant_dispatch_poison_listener_and_closes_connec
 
         # The listener is closed after poisoning; no later request can reuse
         # the still-running dispatcher or observe its late response.
-        with pytest.raises((ConnectionRefusedError, ConnectionResetError, BrokenPipeError)):
+        with pytest.raises(
+            (ConnectionRefusedError, ConnectionResetError, BrokenPipeError, FileNotFoundError)
+        ):
             await _call(path, request)
     finally:
         release.set()
