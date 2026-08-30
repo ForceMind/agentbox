@@ -217,26 +217,23 @@ def test_legacy_manifest_helpers_are_not_package_exports() -> None:
 
 
 def _strict_runtime_bytes() -> bytes:
-    return cast(
-        bytes,
-        encode_runtime_host_manifest(
-            RuntimeHostManifest(
-                runtime_host_installation_id="wri_" + "1" * 32,
-                runtime_host_installation_revision="1",
-                runtime_attestation_x25519_fingerprint="a" * 64,
-                tmux_fingerprint="b" * 64,
-                bridge_fingerprint="c" * 64,
-                claude_fingerprint="d" * 64,
-                codex_fingerprint="e" * 64,
-                attach_supervisor_fingerprint="f" * 64,
-                project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
-                project_root_manifest_digest="a" * 64,
-                socket_digest="1" * 64,
-                config_digest="2" * 64,
-                enrollment_epoch="1",
-                enrollment_state="steady",
-            )
-        ),
+    return encode_runtime_host_manifest(
+        RuntimeHostManifest(
+            runtime_host_installation_id="wri_" + "1" * 32,
+            runtime_host_installation_revision="1",
+            runtime_attestation_x25519_fingerprint="a" * 64,
+            tmux_fingerprint="b" * 64,
+            bridge_fingerprint="c" * 64,
+            claude_fingerprint="d" * 64,
+            codex_fingerprint="e" * 64,
+            attach_supervisor_fingerprint="f" * 64,
+            project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
+            project_root_manifest_digest="a" * 64,
+            socket_digest="1" * 64,
+            config_digest="2" * 64,
+            enrollment_epoch="1",
+            enrollment_state="steady",
+        )
     )
 
 
