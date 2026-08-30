@@ -117,6 +117,20 @@ def test_prepare_attachment_rejects_noncanonical_or_unallowlisted_origin(origin:
 
 
 @pytest.mark.parametrize(
+    "changes",
+    [
+        {"runtime_host_installation_id": "host-invalid"},
+        {"runtime_host_installation_revision": 0},
+        {"runtime_host_installation_revision": 2**64},
+        {"ready": 1},
+    ],
+)
+def test_runtime_readiness_rejects_untrusted_identity_values(changes: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        _runtime(**changes)
+
+
+@pytest.mark.parametrize(
     "changes, recent, runtime, code",
     [
         ({"authorization_scope": "other"}, True, _runtime(), "WORKSPACE_NOT_FOUND"),

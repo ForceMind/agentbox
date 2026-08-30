@@ -16,6 +16,7 @@ from typing import Protocol, cast
 from urllib.parse import urlsplit
 
 from agentbox_core.services import AuthenticatedSession
+from agentbox_core.waw import validate_positive_u64, validate_runtime_host_installation_id
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
@@ -61,8 +62,16 @@ class WAWRuntimeReadiness:
     ready: bool = True
 
     def __post_init__(self) -> None:
-        if not self.runtime_host_installation_id or self.runtime_host_installation_revision < 1:
-            raise ValueError("Runtime host identity is invalid")
+        try:
+            validate_runtime_host_installation_id(self.runtime_host_installation_id)
+            validate_positive_u64(
+                self.runtime_host_installation_revision,
+                field="runtime_host_installation_revision",
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Runtime host identity is invalid") from exc
+        if not isinstance(self.ready, bool):
+            raise ValueError("ready must be a boolean")
         if _POSITIVE_DECIMAL.fullmatch(self.runtime_epoch) is None:
             raise ValueError("runtime_epoch is invalid")
 
