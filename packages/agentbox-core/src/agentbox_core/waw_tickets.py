@@ -278,7 +278,10 @@ class AttachmentAuthority:
         with self._lock:
             now = self._clock()
             self.sweep(now=now)
-            if len(self._pending) + len(self._active) >= self._max_records:
+            if (
+                len(self._pending) + len(self._active) + len(self._cleanup_pending)
+                >= self._max_records
+            ):
                 raise TicketAuthorityError(
                     TicketErrorCode.CAPACITY, "attachment capacity is exhausted"
                 )

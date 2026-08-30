@@ -307,6 +307,19 @@ def test_cleanup_ack_requires_exact_tuple_and_positive_state() -> None:
     assert mismatch.value.code is TicketErrorCode.LEASE_MISMATCH
 
 
+def test_cleanup_pending_lease_counts_toward_authority_capacity() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock, max_records=1, lease_ttl_seconds=2, absolute_lease_seconds=5)
+    issued = _issue(authority)
+    authority.consume(issued.ticket, _tuple(issued))
+    clock.advance(2)
+    authority.sweep()
+    assert authority.record_count == 1
+    with pytest.raises(TicketAuthorityError) as full:
+        _issue(authority, attachment_id="att_" + "3" * 32)
+    assert full.value.code is TicketErrorCode.CAPACITY
+
+
 def test_capacity_counts_pending_and_active_records_and_sweeps_expired_entries() -> None:
     clock = FakeMonotonic()
     authority = _authority(clock, max_records=2, ticket_ttl_seconds=2)
