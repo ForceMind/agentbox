@@ -42,6 +42,7 @@ from agentbox_api.jobs import router as jobs_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
+from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_api.workspaces import router as workspaces_router
 
 logger = logging.getLogger("agentbox.api")
@@ -95,6 +96,8 @@ def create_app(
     codex_runtime: CodexRuntimeClient | None = None,
     claude_runtime: ClaudeRuntimeClient | None = None,
     project_runtime: ProjectRuntimeClient | None = None,
+    *,
+    waw_bind_coordinator: WAWRuntimeBindCoordinator | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
@@ -110,6 +113,8 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         del application
+        if waw_bind_coordinator is not None:
+            await waw_bind_coordinator.bind()
         log_event(logger, logging.INFO, "api_started", "Control plane API started")
         try:
             yield
@@ -129,6 +134,7 @@ def create_app(
     application.state.codex_runtime = actual_codex_runtime
     application.state.claude_runtime = actual_claude_runtime
     application.state.project_runtime = actual_project_runtime
+    application.state.waw_bind_coordinator = waw_bind_coordinator
     application.state.login_executor = BoundedLoginExecutor(
         actual_services.auth,
         max_concurrency=actual_settings.argon2_max_concurrency,
