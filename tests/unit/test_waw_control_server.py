@@ -52,7 +52,9 @@ async def _running_server(
     *,
     expected_peer_uid: int | None = None,
     expected_peer_gid: int | None = None,
-    **server_kwargs: object,
+    cancellation_grace_seconds: float = 0.05,
+    max_active_connections: int = 64,
+    max_active_dispatches: int = 16,
 ) -> tuple[WAWControlServer, socket.socket]:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(str(path))
@@ -63,7 +65,9 @@ async def _running_server(
         expected_peer_uid=os.geteuid() if expected_peer_uid is None else expected_peer_uid,
         expected_peer_gid=os.getegid() if expected_peer_gid is None else expected_peer_gid,
         timeout_seconds=0.2,
-        **server_kwargs,
+        cancellation_grace_seconds=cancellation_grace_seconds,
+        max_active_connections=max_active_connections,
+        max_active_dispatches=max_active_dispatches,
     )
     await server.start()
     return server, sock
