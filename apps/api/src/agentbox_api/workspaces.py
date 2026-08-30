@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import datetime
 from typing import Protocol, cast
 
-from agentbox_core.services import ControlPlaneServices
+from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_sessions import WorkspaceSessionNotFound
 from agentbox_protocol.metadata import StrictMetadataModel
@@ -14,9 +15,14 @@ from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 from pydantic import ConfigDict, ValidationError
 
 from agentbox_api.auth import SESSION_COOKIE, authenticate_request
+from agentbox_api.waw_authorization import (
+    SingleAdminWorkspacePolicy,
+    WorkspaceAuthorizationPolicy,
+)
 from agentbox_api.waw_control_client import WAWControlClientError
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
+_WORKSPACE_ID = re.compile(r"\Aaws_[0-9a-f]{32}\Z")
 
 
 class _WAWLifecycleRequester(Protocol):
@@ -111,6 +117,31 @@ def _waw_request_id() -> str:
     return f"wreq_{secrets.token_hex(16)}"
 
 
+def _workspace_policy(request: Request) -> WorkspaceAuthorizationPolicy:
+    configured = getattr(request.app.state, "waw_authorization_policy", None)
+    if configured is None:
+        return SingleAdminWorkspacePolicy()
+    if not callable(getattr(configured, "allows", None)):
+        raise RuntimeError("invalid WAW authorization policy")
+    return cast(WorkspaceAuthorizationPolicy, configured)
+
+
+def _workspace_id_or_404(workspace_id: str) -> None:
+    if not _WORKSPACE_ID.fullmatch(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+
+def _authorize_workspace(
+    request: Request,
+    authenticated: AuthenticatedSession,
+    row: _WorkspaceIdentityRow,
+) -> None:
+    # Unknown and unauthorized workspace identities deliberately collapse to
+    # the same 404 response to prevent metadata enumeration.
+    if not _workspace_policy(request).allows(authenticated, cast(AgentWorkspaceSessionRecord, row)):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+
 def _waw_coordinator(request: Request) -> _WAWLifecycleRequester:
     coordinator = getattr(request.app.state, "waw_bind_coordinator", None)
     if coordinator is None or not callable(getattr(coordinator, "request_lifecycle", None)):
@@ -187,14 +218,16 @@ async def list_workspaces(
     response: Response,
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> WorkspaceListResponse:
-    authenticate_request(request, agentbox_session)
+    authenticated = authenticate_request(request, agentbox_session)
+    policy = _workspace_policy(request)
     with _services(request).database.transaction() as session:
-        rows = tuple(
+        candidates = tuple(
             session.query(AgentWorkspaceSessionRecord)
             .order_by(AgentWorkspaceSessionRecord.created_at, AgentWorkspaceSessionRecord.id)
             .limit(32)
             .all()
         )
+    rows = tuple(row for row in candidates if policy.allows(authenticated, row))
     response.headers["Cache-Control"] = "no-store"
     return WorkspaceListResponse(
         request_id=_request_id(request),
@@ -209,11 +242,13 @@ async def get_runtime_status(
     response: Response,
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> WorkspaceRuntimeStatusResponse:
-    authenticate_request(request, agentbox_session)
+    _workspace_id_or_404(workspace_id)
+    authenticated = authenticate_request(request, agentbox_session)
     try:
         row = _services(request).workspaces.get(workspace_id)
     except WorkspaceSessionNotFound as exc:
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
+    _authorize_workspace(request, authenticated, row)
     payload = {
         "protocol_version": 1,
         "request_id": _waw_request_id(),
@@ -257,10 +292,12 @@ async def get_workspace(
     response: Response,
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> WorkspaceResponse:
-    authenticate_request(request, agentbox_session)
+    _workspace_id_or_404(workspace_id)
+    authenticated = authenticate_request(request, agentbox_session)
     try:
         row = _services(request).workspaces.get(workspace_id)
     except WorkspaceSessionNotFound as exc:
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
+    _authorize_workspace(request, authenticated, row)
     response.headers["Cache-Control"] = "no-store"
     return WorkspaceResponse(request_id=_request_id(request), data=_metadata(row))

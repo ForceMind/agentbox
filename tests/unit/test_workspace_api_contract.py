@@ -5,14 +5,18 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
 from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_api.workspaces import (
     WorkspaceMetadata,
     WorkspaceRuntimeStatus,
     _validate_runtime_status_epoch,
     _validate_runtime_status_identity,
+    _workspace_id_or_404,
 )
+from agentbox_core.services import AuthenticatedSession
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 
@@ -138,3 +142,24 @@ def test_runtime_status_epoch_is_fenced_to_bound_attestation() -> None:
     coordinator = SimpleNamespace(attestation={"runtime_epoch": "1"})
     with pytest.raises(WAWControlClientError, match="epoch"):
         _validate_runtime_status_epoch(status, coordinator)
+
+
+def test_workspace_id_is_bounded_before_persistence_lookup() -> None:
+    _workspace_id_or_404("aws_" + "1" * 32)
+    with pytest.raises(HTTPException, match="Workspace not found"):
+        _workspace_id_or_404("not-a-workspace")
+
+
+def test_default_workspace_policy_fails_closed_for_unknown_scope() -> None:
+    policy = SingleAdminWorkspacePolicy()
+    authenticated = cast(
+        AuthenticatedSession,
+        SimpleNamespace(user_id="adm_" + "1" * 32),
+    )
+    workspace = cast(
+        AgentWorkspaceSessionRecord,
+        SimpleNamespace(authorization_scope="unknown"),
+    )
+    assert not policy.allows(authenticated, workspace)
+    workspace.authorization_scope = "admin"
+    assert policy.allows(authenticated, workspace)
