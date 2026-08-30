@@ -52,6 +52,12 @@ from agentbox_runtime.rpc import (
     UnixRuntimeCapabilityClient,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_supervisor import (
+    SupervisorSnapshot,
+    SupervisorState,
+    WAWSupervisor,
+    WAWTransport,
+)
 
 __all__ = [
     "AuthenticationState",
@@ -94,6 +100,10 @@ __all__ = [
     "RuntimeCapabilityCollector",
     "ProjectWorkspace",
     "TmuxAdapter",
+    "SupervisorSnapshot",
+    "SupervisorState",
+    "WAWSupervisor",
+    "WAWTransport",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
