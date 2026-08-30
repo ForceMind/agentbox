@@ -567,6 +567,15 @@ async def _main() -> None:
     github = GitHubAdapter(git)
     claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
     codex_manager = CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown)
+    waw_epoch_store = (
+        WAWRuntimeEpochStore(
+            Path("/var/lib/agentbox-waw/runtime-epoch-v1"),
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+        )
+        if environment == "production"
+        else None
+    )
     server = RuntimeExecutorServer(
         socket_path,
         codex_manager,
@@ -575,6 +584,7 @@ async def _main() -> None:
         claude_manager=claude_manager,
         project_manager=ProjectWorkspaceManager(project_registry, git, github),
         capability_collector=RuntimeCapabilityCollector(codex_manager, claude_manager),
+        waw_epoch_store=waw_epoch_store,
     )
     await server.start(create_development_parent=environment != "production")
     try:

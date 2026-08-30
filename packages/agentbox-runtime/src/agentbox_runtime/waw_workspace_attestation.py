@@ -131,7 +131,7 @@ class WAWWorkspaceAttestationStore:
             ):
                 raise WAWWorkspaceAttestationError("attestation directory changed during open")
             fcntl.flock(fd, fcntl.LOCK_EX)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, WAWWorkspaceAttestationError) as exc:
             with suppress(OSError):
                 if fd >= 0:
                     os.close(fd)
