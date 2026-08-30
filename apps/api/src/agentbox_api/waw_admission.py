@@ -11,13 +11,15 @@ import re
 import secrets
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Protocol, cast
+from datetime import UTC, datetime
+from typing import Literal, Protocol, cast
 from urllib.parse import urlsplit
 
 from agentbox_core.services import AuthenticatedSession
 from agentbox_core.waw import validate_positive_u64, validate_runtime_host_installation_id
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
+from agentbox_protocol.metadata import StrictMetadataModel
+from pydantic import ConfigDict, Field, field_serializer, field_validator
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
     AuthenticatedAttachmentContext,
@@ -74,6 +76,87 @@ class WAWRuntimeReadiness:
             raise ValueError("ready must be a boolean")
         if _POSITIVE_DECIMAL.fullmatch(self.runtime_epoch) is None:
             raise ValueError("runtime_epoch is invalid")
+
+
+class WAWAttachmentTicketRequest(StrictMetadataModel):
+    """Closed HTTP request body for issuing one writer ticket."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    mode: Literal["writer"]
+
+
+class WAWAttachmentTicketResponse(StrictMetadataModel):
+    """Exact transient ticket response; no paths, commands, or payload bytes."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    request_id: str
+    ticket: str = Field(repr=False)
+    workspace_id: str
+    project_id: str
+    agent_type: str
+    attachment_id: str
+    mode: Literal["writer"]
+    lease_number: str
+    generation: str
+    binding_revision: str
+    binding_digest: str
+    auth_epoch: str
+    api_authority_epoch: str
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+    runtime_epoch: str
+    expires_at: datetime
+
+    @field_validator(
+        "lease_number",
+        "generation",
+        "binding_revision",
+        "auth_epoch",
+        "api_authority_epoch",
+        "runtime_host_installation_revision",
+        "runtime_epoch",
+    )
+    @classmethod
+    def _positive_decimal(cls, value: str) -> str:
+        if _POSITIVE_DECIMAL.fullmatch(value) is None:
+            raise ValueError("value must be a positive decimal string")
+        return value
+
+    @field_serializer("expires_at")
+    def _serialize_expiry(self, value: datetime) -> str:
+        normalized = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+        return normalized.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    @classmethod
+    def from_issued(
+        cls,
+        request_id: str,
+        issued: IssuedAttachmentTicket,
+        *,
+        runtime_epoch: str,
+    ) -> "WAWAttachmentTicketResponse":
+        claims = issued.claims
+        return cls(
+            request_id=request_id,
+            ticket=issued.ticket,
+            workspace_id=claims.workspace_id,
+            project_id=claims.project_id,
+            agent_type=str(claims.agent_type),
+            attachment_id=claims.attachment_id,
+            mode=claims.mode,
+            lease_number=str(claims.lease_number),
+            generation=str(claims.generation),
+            binding_revision=str(claims.binding_revision),
+            binding_digest=claims.binding_digest,
+            auth_epoch=str(claims.auth_epoch),
+            api_authority_epoch=str(claims.api_authority_epoch),
+            runtime_host_installation_id=claims.runtime_host_installation_id,
+            runtime_host_installation_revision=str(claims.runtime_host_installation_revision),
+            runtime_epoch=runtime_epoch,
+            expires_at=issued.expires_at,
+        )
 
 
 def prepare_attachment(

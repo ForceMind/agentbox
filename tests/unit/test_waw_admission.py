@@ -7,6 +7,8 @@ from typing import cast
 import pytest
 from agentbox_api.waw_admission import (
     WAWAdmissionError,
+    WAWAttachmentTicketRequest,
+    WAWAttachmentTicketResponse,
     WAWRuntimeReadiness,
     prepare_attachment,
 )
@@ -94,6 +96,45 @@ def test_prepare_attachment_issues_transient_bearer_with_exact_tuple() -> None:
     assert issued.claims.generation == 2
     assert issued.claims.auth_epoch == 4
     assert issued.claims.runtime_host_installation_revision == 5
+    response = WAWAttachmentTicketResponse.from_issued(
+        "wreq_" + "1" * 32, issued, runtime_epoch="12"
+    )
+    assert response.model_dump(mode="json")["lease_number"] == "9"
+    assert response.model_dump(mode="json")["expires_at"].endswith("Z")
+
+
+def test_attachment_ticket_request_is_closed_to_writer_mode() -> None:
+    assert WAWAttachmentTicketRequest(mode="writer").mode == "writer"
+    with pytest.raises(ValueError):
+        WAWAttachmentTicketRequest.model_validate({"mode": "reader"})
+    with pytest.raises(ValueError):
+        WAWAttachmentTicketRequest.model_validate({"mode": "writer", "path": "/tmp"})
+
+
+def test_attachment_ticket_response_rejects_zero_or_extra_fields() -> None:
+    with pytest.raises(ValueError):
+        WAWAttachmentTicketResponse.model_validate(
+            {
+                "request_id": "wreq_" + "1" * 32,
+                "ticket": "wat_" + "2" * 32,
+                "workspace_id": WORKSPACE_ID,
+                "project_id": PROJECT_ID,
+                "agent_type": "claude",
+                "attachment_id": "att_" + "3" * 32,
+                "mode": "writer",
+                "lease_number": "0",
+                "generation": "1",
+                "binding_revision": "1",
+                "binding_digest": BINDING_DIGEST,
+                "auth_epoch": "1",
+                "api_authority_epoch": "1",
+                "runtime_host_installation_id": HOST_ID,
+                "runtime_host_installation_revision": "1",
+                "runtime_epoch": "1",
+                "expires_at": datetime.now(UTC),
+                "terminal": "forbidden",
+            }
+        )
 
 
 @pytest.mark.parametrize(
