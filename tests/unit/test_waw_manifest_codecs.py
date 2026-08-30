@@ -101,7 +101,7 @@ def _runtime() -> dict[str, object]:
     }
 
 
-@pytest.mark.parametrize(  # type: ignore[misc]
+@pytest.mark.parametrize(
     ("encode", "decode", "factory"),
     [
         (encode_project_root_manifest, decode_project_root_manifest, _project),
@@ -130,7 +130,7 @@ def test_deterministic_project_root_vector() -> None:
     assert manifest_sha256(payload) == hashlib.sha256(payload).hexdigest()
 
 
-@pytest.mark.parametrize(  # type: ignore[misc]
+@pytest.mark.parametrize(
     "mutator",
     [
         lambda raw: raw.replace(
@@ -150,7 +150,7 @@ def test_decoder_rejects_unknown_duplicate_and_noncanonical(mutator: Mutator) ->
         decode_project_root_manifest(raw)
 
 
-@pytest.mark.parametrize(  # type: ignore[misc]
+@pytest.mark.parametrize(
     "field,value",
     [
         ("manifest_revision", "0"),
@@ -176,9 +176,7 @@ def test_closed_schema_does_not_accept_secret_or_terminal_fields() -> None:
         encode_runtime_host_manifest(data)
 
 
-@pytest.mark.parametrize(  # type: ignore[misc]
-    "encoder", [encode_api_host_anchor, encode_runtime_host_manifest]
-)
+@pytest.mark.parametrize("encoder", [encode_api_host_anchor, encode_runtime_host_manifest])
 def test_runtime_host_identity_cannot_use_project_id_namespace(encoder: Encoder) -> None:
     data = _anchor() if encoder is encode_api_host_anchor else _runtime()
     data["runtime_host_installation_id"] = "prj_" + "1" * 32

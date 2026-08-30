@@ -14,7 +14,7 @@ import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 
 import rfc8785
 
@@ -256,9 +256,9 @@ def _canonical(value: Mapping[str, Any]) -> bytes:
         encoded = rfc8785.dumps(dict(value))
     except (TypeError, ValueError, rfc8785.CanonicalizationError) as exc:
         raise WAWManifestCodecError("manifest cannot be canonicalized") from exc
-    if not encoded or len(encoded) > _MAX_BYTES:
+    if not isinstance(encoded, bytes) or not encoded or len(encoded) > _MAX_BYTES:
         raise WAWManifestCodecError("manifest is oversized")
-    return cast(bytes, encoded)
+    return encoded
 
 
 def _encode(value: object, cls: type[_T], validate: Any) -> bytes:
