@@ -45,6 +45,8 @@ class _TmuxOperations(Protocol):
 
     async def is_managed(self, session_name: str, managed_marker: str) -> bool: ...
 
+    async def pane_dead(self, session_name: str) -> bool: ...
+
     async def create_session(
         self,
         session_name: str,
@@ -159,6 +161,12 @@ class WAWTmuxTransport:
                         category="conflict",
                     )
                 self._require_managed(binding)
+            if _resolve(self._tmux.pane_dead(session_name)):
+                raise RuntimeOperationError(
+                    "WAW_START_UNCONFIRMED",
+                    "Managed Runtime pane exited before readiness was observed",
+                    category="conflict",
+                )
             _resolve(
                 self._tmux.resize_window(session_name, columns=geometry.columns, rows=geometry.rows)
             )

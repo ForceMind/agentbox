@@ -27,6 +27,10 @@ class FakeTmux:
         self.calls.append(("managed", (session_name, managed_marker)))
         return self.sessions.get(session_name) == managed_marker
 
+    async def pane_dead(self, session_name: str) -> bool:
+        self.calls.append(("dead", session_name))
+        return False
+
     async def create_session(
         self,
         session_name: str,
