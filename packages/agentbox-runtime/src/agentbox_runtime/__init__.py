@@ -79,6 +79,7 @@ from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStor
 from agentbox_runtime.waw_host_manifest import (
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
+    load_canonical_waw_runtime_host_manifest,
 )
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
@@ -186,6 +187,7 @@ __all__ = [
     "WAWLifecycleObservation",
     "WAWLifecycleRegistry",
     "decode_canonical_waw_runtime_host_manifest",
+    "load_canonical_waw_runtime_host_manifest",
     "WAWPublicAuthEvidence",
     "WAWPublicAuthProbeCache",
     "WAWPublicAuthResult",
