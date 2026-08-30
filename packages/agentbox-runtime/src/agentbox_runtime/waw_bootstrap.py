@@ -29,8 +29,20 @@ from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationSt
 def _default_binding_digest(request: dict[str, Any]) -> str:
     """Return a deterministic digest for the closed binding request fields."""
 
+    binding_fields = (
+        "project_id",
+        "relative_key",
+        "project_revision",
+        "binding_revision",
+        "previous_binding_revision",
+        "previous_binding_digest",
+        "schema_version",
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+    )
+    canonical_request = {field: request[field] for field in binding_fields}
     payload = json.dumps(
-        request,
+        canonical_request,
         ensure_ascii=False,
         allow_nan=False,
         sort_keys=True,
