@@ -10,8 +10,8 @@ from agentbox_runtime.process import ExecutableIdentity
 from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.waw_command import build_claude_command
 
-PROJECT_ID = "demo"
-WORKSPACE_ID = workspace_id("prj_" + "1" * 32, "claude")
+PROJECT_ID = "prj_" + "1" * 32
+WORKSPACE_ID = workspace_id(PROJECT_ID, "claude")
 
 
 def _executable(tmp_path: Path) -> ExecutableIdentity:
@@ -39,14 +39,14 @@ def test_builds_exact_fixed_claude_command(tmp_path: Path) -> None:
         project_id=PROJECT_ID,
         workspace_id=WORKSPACE_ID,
         executable=_executable(tmp_path),
-        managed_marker="waw-v1:marker",
+        managed_marker="waw-v1:wri_" + "2" * 32 + ":" + "3" * 32,
     )
     assert command.cwd == project
     assert command.argv == ("remote-control",)
     assert command.workspace_id == WORKSPACE_ID
 
 
-@pytest.mark.parametrize("project_id", ["../escape", "/tmp/escape", "demo/child", ""])
+@pytest.mark.parametrize("project_id", ["../escape", "/tmp/escape", "prj_1/child", ""])
 def test_project_identity_cannot_escape_registry(tmp_path: Path, project_id: str) -> None:
     root = tmp_path / "projects"
     (root / PROJECT_ID).mkdir(parents=True)
@@ -56,7 +56,7 @@ def test_project_identity_cannot_escape_registry(tmp_path: Path, project_id: str
             project_id=project_id,
             workspace_id=WORKSPACE_ID,
             executable=_executable(tmp_path),
-            managed_marker="waw-v1:marker",
+            managed_marker="waw-v1:wri_" + "2" * 32 + ":" + "3" * 32,
         )
 
 
@@ -72,5 +72,5 @@ def test_symlink_project_is_rejected(tmp_path: Path) -> None:
             project_id=PROJECT_ID,
             workspace_id=WORKSPACE_ID,
             executable=_executable(tmp_path),
-            managed_marker="waw-v1:marker",
+            managed_marker="waw-v1:wri_" + "2" * 32 + ":" + "3" * 32,
         )

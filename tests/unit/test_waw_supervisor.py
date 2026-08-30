@@ -79,7 +79,7 @@ def _supervisor(tmp_path: Path) -> tuple[WAWSupervisor, FakeTransport, str]:
             details.st_mtime_ns,
         ),
         argv=("remote-control",),
-        managed_marker="waw-v1:test",
+        managed_marker="waw-v1:wri_" + "2" * 32 + ":" + "3" * 32,
     )
     transport = FakeTransport()
     return (
