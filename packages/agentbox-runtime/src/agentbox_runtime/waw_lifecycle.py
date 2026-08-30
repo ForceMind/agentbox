@@ -206,7 +206,10 @@ class WAWLifecycleRegistry:
         if (
             previous is not None
             and request["binding_revision"] != previous.binding_revision
-            and request["previous_binding_revision"] != previous.binding_revision
+            and (
+                request["previous_binding_revision"] != previous.binding_revision
+                or request["previous_binding_digest"] != previous.binding_digest
+            )
         ):
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
         if self._binding_digest_factory is None:
@@ -246,7 +249,7 @@ class WAWLifecycleRegistry:
         return {
             "protocol_version": 1,
             "request_id": request["request_id"],
-            "status": "REGISTERED" if previous is None else "ALREADY_CURRENT",
+            "status": "REGISTERED",
             "project_id": project_id,
             "binding_revision": binding.binding_revision,
             "binding_digest": digest,

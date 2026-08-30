@@ -129,6 +129,20 @@ async def test_binding_gate_and_idempotent_bind_and_register() -> None:
 
 
 @pytest.mark.anyio
+async def test_binding_revision_requires_exact_predecessor_digest() -> None:
+    runtime = registry()
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    stale = register_request(revision="2", previous="1", request_id="wreq_" + "8" * 32)
+    stale["previous_binding_digest"] = "f" * 64
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(stale)
+    assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
+    current = register_request(revision="2", previous="1", request_id="wreq_" + "9" * 32)
+    assert (await runtime.dispatch(current))["status"] == "REGISTERED"
+
+
+@pytest.mark.anyio
 async def test_lifecycle_fences_identity_before_executor() -> None:
     executor = FakeExecutor()
     runtime = registry(executor)
