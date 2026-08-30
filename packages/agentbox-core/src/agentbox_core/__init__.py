@@ -24,6 +24,12 @@ from agentbox_core.waw import (
     validate_workspace_id,
     workspace_id,
 )
+from agentbox_core.waw_lease import (
+    LeaseCleanupError,
+    LeaseCleanupFence,
+    LeaseCleanupSnapshot,
+    LeaseCleanupState,
+)
 from agentbox_core.waw_tickets import (
     ActiveAttachment,
     AttachmentAuthority,
@@ -43,6 +49,10 @@ __all__ = [
     "AttachmentTuple",
     "GenerationCounter",
     "IssuedAttachmentTicket",
+    "LeaseCleanupError",
+    "LeaseCleanupFence",
+    "LeaseCleanupSnapshot",
+    "LeaseCleanupState",
     "ReconciliationState",
     "StopResult",
     "TicketAuthorityError",
