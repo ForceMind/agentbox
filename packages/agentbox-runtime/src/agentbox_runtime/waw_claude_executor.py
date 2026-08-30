@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Protocol, TypeAlias
 
 from agentbox_core.waw import AgentType, workspace_id
@@ -27,7 +28,16 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleObservation,
 )
 
-ProjectResolver: TypeAlias = Callable[[str], str | Awaitable[str]]
+
+@dataclass(frozen=True)
+class ClaudeProjectBinding:
+    """Resolver output binding a formal Project ID to its manager key."""
+
+    project_id: str
+    project_key: str
+
+
+ProjectResolver: TypeAlias = Callable[[str], ClaudeProjectBinding | Awaitable[ClaudeProjectBinding]]
 _POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 
 
@@ -61,7 +71,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         self._require_claude(identity)
         project = await self._project(identity.project_id)
         try:
-            result = await self._manager.start(project)
+            result = await self._manager.start(project.project_key)
         except RuntimeOperationError as exc:
             return self._error_observation(exc)
         return self._observation(result.session, identity.project_id)
@@ -70,7 +80,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         self._require_claude(identity)
         project = await self._project(identity.project_id)
         try:
-            result = await self._manager.stop(project)
+            result = await self._manager.stop(project.project_key)
         except RuntimeOperationError as exc:
             return self._error_observation(exc)
         return self._observation(result.session, identity.project_id)
@@ -79,7 +89,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         self._require_claude(identity)
         project = await self._project(identity.project_id)
         try:
-            session = await self._manager.session(project)
+            session = await self._manager.session(project.project_key)
         except RuntimeOperationError as exc:
             return self._error_observation(exc)
         return self._observation(session, identity.project_id)
@@ -94,11 +104,13 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         if workspace_id(identity.project_id, AgentType.CLAUDE) != identity.workspace_id:
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
 
-    async def _project(self, project_id: str) -> str:
+    async def _project(self, project_id: str) -> ClaudeProjectBinding:
         project = self._project_resolver(project_id)
         if isinstance(project, Awaitable):
             project = await project
-        if not isinstance(project, str) or not project:
+        if not isinstance(project, ClaudeProjectBinding) or project.project_id != project_id:
+            if isinstance(project, ClaudeProjectBinding):
+                raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
             raise RuntimeOperationError(
                 "WAW_PROJECT_UNAVAILABLE",
                 "Formal Project is unavailable",
@@ -170,4 +182,9 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         )
 
 
-__all__ = ["ClaudeSessionOperations", "ProjectResolver", "WAWClaudeLifecycleExecutor"]
+__all__ = [
+    "ClaudeProjectBinding",
+    "ClaudeSessionOperations",
+    "ProjectResolver",
+    "WAWClaudeLifecycleExecutor",
+]

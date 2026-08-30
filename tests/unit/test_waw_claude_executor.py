@@ -11,7 +11,7 @@ from agentbox_runtime.models import (
     ClaudeSessionState,
     RuntimeOperationError,
 )
-from agentbox_runtime.waw_claude_executor import WAWClaudeLifecycleExecutor
+from agentbox_runtime.waw_claude_executor import ClaudeProjectBinding, WAWClaudeLifecycleExecutor
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity
 
@@ -41,6 +41,10 @@ def _session(state: ClaudeSessionState, *, tmux_running: bool = True) -> ClaudeS
     )
 
 
+def _binding(project_id: str = PROJECT, project_key: str = "project-a") -> ClaudeProjectBinding:
+    return ClaudeProjectBinding(project_id=project_id, project_key=project_key)
+
+
 class FakeManager:
     def __init__(self, state: ClaudeSessionState = ClaudeSessionState.RUNNING) -> None:
         self.state = state
@@ -65,7 +69,7 @@ class FakeManager:
 async def test_maps_start_and_resolves_formal_project() -> None:
     manager = FakeManager(ClaudeSessionState.RUNNING)
     executor = WAWClaudeLifecycleExecutor(
-        manager, lambda project_id: "project-a", runtime_epoch="7"
+        manager, lambda project_id: _binding(project_id), runtime_epoch="7"
     )
     observation = await executor.start(IDENTITY)
     assert observation.state == "RUNNING"
@@ -88,7 +92,7 @@ async def test_maps_status_state_machine(
     state: ClaudeSessionState, expected: str, reconciliation: str
 ) -> None:
     executor = WAWClaudeLifecycleExecutor(
-        FakeManager(state), lambda _project_id: "project-a", runtime_epoch="1"
+        FakeManager(state), lambda project_id: _binding(project_id), runtime_epoch="1"
     )
     observation = await executor.status(IDENTITY)
     assert observation.state == expected
@@ -106,11 +110,15 @@ async def test_normalizes_collision_and_login_errors() -> None:
             raise RuntimeOperationError(self.code, "bounded")
 
     collision = WAWClaudeLifecycleExecutor(
-        ErrorManager("CLAUDE_SESSION_COLLISION"), lambda _id: "project-a", runtime_epoch="1"
+        ErrorManager("CLAUDE_SESSION_COLLISION"),
+        lambda project_id: _binding(project_id),
+        runtime_epoch="1",
     )
     assert (await collision.start(IDENTITY)).state == "COLLISION"
     login = WAWClaudeLifecycleExecutor(
-        ErrorManager("CLAUDE_UNAUTHENTICATED"), lambda _id: "project-a", runtime_epoch="1"
+        ErrorManager("CLAUDE_UNAUTHENTICATED"),
+        lambda project_id: _binding(project_id),
+        runtime_epoch="1",
     )
     assert (await login.start(IDENTITY)).state == "LOGIN_REQUIRED"
 
@@ -127,7 +135,7 @@ async def test_does_not_claim_broken_for_retryable_runtime_failure() -> None:
             )
 
     executor = WAWClaudeLifecycleExecutor(
-        UnavailableManager(), lambda _id: "project-a", runtime_epoch="1"
+        UnavailableManager(), lambda project_id: _binding(project_id), runtime_epoch="1"
     )
     observation = await executor.start(IDENTITY)
     assert observation.state == "UNKNOWN"
@@ -136,20 +144,26 @@ async def test_does_not_claim_broken_for_retryable_runtime_failure() -> None:
 
 @pytest.mark.anyio
 async def test_invalid_resolver_result_is_bounded_error() -> None:
-    executor = WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "", runtime_epoch="1")
+    executor = WAWClaudeLifecycleExecutor(
+        FakeManager(), lambda _id: "", runtime_epoch="1"  # type: ignore[return-value]
+    )
     with pytest.raises(RuntimeOperationError, match="Formal Project"):
         await executor.start(IDENTITY)
 
 
 def test_rejects_invalid_runtime_epoch() -> None:
     with pytest.raises(ValueError):
-        WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "project-a", runtime_epoch="01")
+        WAWClaudeLifecycleExecutor(
+            FakeManager(), lambda project_id: _binding(project_id), runtime_epoch="01"
+        )
 
 
 @pytest.mark.anyio
 async def test_never_executes_claude_manager_for_codex_identity() -> None:
     identity = replace(IDENTITY, agent_type="codex")
-    executor = WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "project-a", runtime_epoch="1")
+    executor = WAWClaudeLifecycleExecutor(
+        FakeManager(), lambda project_id: _binding(project_id), runtime_epoch="1"
+    )
     with pytest.raises(WAWControlDispatchError, match="WAW_AGENT_UNSUPPORTED"):
         await executor.start(identity)
 
@@ -158,7 +172,22 @@ async def test_never_executes_claude_manager_for_codex_identity() -> None:
 async def test_rejects_workspace_identity_mismatch_before_manager_call() -> None:
     identity = replace(IDENTITY, workspace_id="aws_" + "9" * 32)
     manager = FakeManager()
-    executor = WAWClaudeLifecycleExecutor(manager, lambda _id: "project-a", runtime_epoch="1")
+    executor = WAWClaudeLifecycleExecutor(
+        manager, lambda project_id: _binding(project_id), runtime_epoch="1"
+    )
     with pytest.raises(WAWControlDispatchError, match="PROJECT_IDENTITY_CHANGED"):
         await executor.start(identity)
+    assert manager.calls == []
+
+
+@pytest.mark.anyio
+async def test_rejects_resolver_project_mismatch_before_manager_side_effect() -> None:
+    manager = FakeManager()
+    executor = WAWClaudeLifecycleExecutor(
+        manager,
+        lambda _project_id: _binding("prj_" + "9" * 32),
+        runtime_epoch="1",
+    )
+    with pytest.raises(WAWControlDispatchError, match="PROJECT_IDENTITY_CHANGED"):
+        await executor.start(IDENTITY)
     assert manager.calls == []
