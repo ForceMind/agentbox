@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from agentbox_core.database import Database
 from agentbox_core.models import Project
 from agentbox_core.waw import AgentType, WAWDomainError, WorkspaceState, workspace_id
