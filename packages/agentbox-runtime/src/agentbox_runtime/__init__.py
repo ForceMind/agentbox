@@ -61,7 +61,11 @@ from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
     create_waw_lifecycle_registry,
 )
-from agentbox_runtime.waw_claude_executor import ProjectResolver, WAWClaudeLifecycleExecutor
+from agentbox_runtime.waw_claude_executor import (
+    ClaudeProjectBinding,
+    ProjectResolver,
+    WAWClaudeLifecycleExecutor,
+)
 from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
     WAWControlServer,
@@ -164,6 +168,7 @@ __all__ = [
     "WAWRuntimeHostManifestError",
     "load_waw_runtime_host_manifest",
     "ProjectResolver",
+    "ClaudeProjectBinding",
     "WAWClaudeLifecycleExecutor",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
