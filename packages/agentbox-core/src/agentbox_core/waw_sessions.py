@@ -325,8 +325,7 @@ class WorkspaceSessionService:
                 or row.generation != record.generation
                 or row.binding_revision != record.binding_revision
                 or row.binding_digest != record.binding_digest
-                or row.runtime_host_installation_id
-                != record.runtime_host_installation_id
+                or row.runtime_host_installation_id != record.runtime_host_installation_id
                 or row.runtime_host_installation_revision
                 != record.runtime_host_installation_revision
             ):
