@@ -115,6 +115,7 @@ class WAWWorkspaceAttestationStore:
             or stat.S_IMODE(details.st_mode) != 0o700
         ):
             raise WAWWorkspaceAttestationError("attestation directory provenance is invalid")
+        fd = -1
         try:
             fd = os.open(
                 self._directory,
@@ -132,7 +133,8 @@ class WAWWorkspaceAttestationStore:
             fcntl.flock(fd, fcntl.LOCK_EX)
         except (OSError, ValueError) as exc:
             with suppress(OSError):
-                os.close(fd)
+                if fd >= 0:
+                    os.close(fd)
             raise WAWWorkspaceAttestationError("attestation directory cannot be locked") from exc
         try:
             yield fd
@@ -159,7 +161,7 @@ class WAWWorkspaceAttestationStore:
                 or details.st_size > _MAX_BYTES
             ):
                 raise WAWWorkspaceAttestationError("attestation file provenance is invalid")
-            raw = os.read(fd, _MAX_BYTES + 1)
+            raw = _read_bounded(fd)
         except OSError as exc:
             raise WAWWorkspaceAttestationError("attestation file cannot be read") from exc
         finally:
@@ -265,6 +267,21 @@ def _validate_digest(value: object, field: str) -> None:
 def _validate_decimal(value: object, field: str) -> None:
     if not isinstance(value, str) or not _DECIMAL.fullmatch(value) or int(value) > 2**64 - 1:
         raise WAWWorkspaceAttestationError(f"{field} is invalid")
+
+
+def _read_bounded(fd: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = _MAX_BYTES + 1
+    while remaining:
+        block = os.read(fd, min(1024, remaining))
+        if not block:
+            break
+        chunks.append(block)
+        remaining -= len(block)
+    raw = b"".join(chunks)
+    if len(raw) > _MAX_BYTES:
+        raise WAWWorkspaceAttestationError("attestation file is oversized")
+    return raw
 
 
 __all__ = [

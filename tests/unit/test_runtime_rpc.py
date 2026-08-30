@@ -35,6 +35,7 @@ from agentbox_runtime.rpc import (
     UnixProjectRuntimeClient,
 )
 from agentbox_runtime.server import RuntimeExecutorServer
+from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 
 CANARY = "PAIR-SECRET-CANARY-RPC-4D8P"
 
@@ -144,6 +145,59 @@ class FakeProjectManager:
         return GitActionResult("pulled", "main")
 
 
+def _runtime_epoch_store(tmp_path: Path) -> WAWRuntimeEpochStore:
+    directory = tmp_path / "runtime-epoch"
+    directory.mkdir(mode=0o700)
+    path = directory / "epoch.json"
+    path.write_text('{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}')
+    path.chmod(0o600)
+    return WAWRuntimeEpochStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+
+
+@pytest.mark.anyio
+async def test_runtime_server_consumes_epoch_before_serving(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    store = _runtime_epoch_store(tmp_path)
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        waw_epoch_store=store,
+    )
+
+    await server.start()
+    try:
+        assert server.waw_runtime_epoch == 2
+        assert json.loads((tmp_path / "runtime-epoch" / "epoch.json").read_text())["epoch"] == "2"
+    finally:
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_server_does_not_reconsume_epoch_on_restart(tmp_path: Path) -> None:
+    socket_path = tmp_path / "runtime.sock"
+    store = _runtime_epoch_store(tmp_path)
+    server = RuntimeExecutorServer(
+        socket_path,
+        FakeManager(),  # type: ignore[arg-type]
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        waw_epoch_store=store,
+    )
+
+    await server.start()
+    await server.close()
+    await server.start()
+    try:
+        assert server.waw_runtime_epoch == 2
+        assert json.loads((tmp_path / "runtime-epoch" / "epoch.json").read_text())["epoch"] == "2"
+    finally:
+        await server.close()
+
+
 @pytest.mark.anyio
 async def test_runtime_socket_accepts_only_typed_actions(tmp_path: Path) -> None:
     socket_path = tmp_path / "runtime.sock"
@@ -238,9 +292,9 @@ async def test_runtime_protocol_fuzz_cases_fail_closed_before_dispatch(tmp_path:
     payloads = (
         b'{"protocol_version":1,"protocol_version":1,'
         b'"action":"codex.status","request_id":"req_duplicate"}\n',
-        b'{"protocol_version":true,"action":"codex.status",' b'"request_id":"req_boolean"}\n',
+        b'{"protocol_version":true,"action":"codex.status","request_id":"req_boolean"}\n',
         b'{"protocol_version":1,"action":"codex.status","request_id":null}\n',
-        b'{"protocol_version":1,"action":"codex.status",' b'"request_id":"bad\\ncorrelation"}\n',
+        b'{"protocol_version":1,"action":"codex.status","request_id":"bad\\ncorrelation"}\n',
         b"\xff\n",
         (b"[" * 1100) + (b"]" * 1100) + b"\n",
         (
@@ -277,7 +331,7 @@ async def test_runtime_socket_rejects_unapproved_peer_gid(tmp_path: Path) -> Non
     try:
         reader, writer = await asyncio.open_unix_connection(socket_path)
         writer.write(
-            b'{"protocol_version":1,"action":"codex.status",' b'"request_id":"req_peer_gid"}\n'
+            b'{"protocol_version":1,"action":"codex.status","request_id":"req_peer_gid"}\n'
         )
         await writer.drain()
         response = json.loads(await reader.readline())
