@@ -273,9 +273,7 @@ class WAWControlServer:
         if exclude:
             excluded.update(exclude)
         for task in (
-            tuple(self._dispatch_tasks)
-            + tuple(self._io_tasks)
-            + tuple(self._connection_tasks)
+            tuple(self._dispatch_tasks) + tuple(self._io_tasks) + tuple(self._connection_tasks)
         ):
             if task not in excluded:
                 task.cancel()
@@ -334,9 +332,7 @@ class WAWControlServer:
         if task in done:
             return task.result()
         task.cancel()
-        done, _ = await asyncio.wait(
-            {task}, timeout=min(self._cancellation_grace_seconds, timeout)
-        )
+        done, _ = await asyncio.wait({task}, timeout=min(self._cancellation_grace_seconds, timeout))
         if task in done:
             with contextlib.suppress(BaseException):
                 task.result()
