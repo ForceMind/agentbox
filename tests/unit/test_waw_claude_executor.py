@@ -4,7 +4,12 @@ from dataclasses import replace
 
 import pytest
 from agentbox_core.waw import AgentType, workspace_id
-from agentbox_runtime.models import ClaudeSession, ClaudeSessionState, RuntimeOperationError
+from agentbox_runtime.models import (
+    ClaudeSession,
+    ClaudeSessionActionResult,
+    ClaudeSessionState,
+    RuntimeOperationError,
+)
 from agentbox_runtime.waw_claude_executor import WAWClaudeLifecycleExecutor
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity
@@ -40,17 +45,17 @@ class FakeManager:
         self.state = state
         self.calls: list[tuple[str, str]] = []
 
-    async def start(self, project: str):
+    async def start(self, project: str) -> ClaudeSessionActionResult:
         self.calls.append(("start", project))
-        return type("Result", (), {"session": _session(self.state)})()
+        return ClaudeSessionActionResult("started", _session(self.state))
 
-    async def stop(self, project: str):
+    async def stop(self, project: str) -> ClaudeSessionActionResult:
         self.calls.append(("stop", project))
-        return type(
-            "Result", (), {"session": _session(ClaudeSessionState.STOPPED, tmux_running=False)}
-        )()
+        return ClaudeSessionActionResult(
+            "stopped", _session(ClaudeSessionState.STOPPED, tmux_running=False)
+        )
 
-    async def session(self, project: str):
+    async def session(self, project: str) -> ClaudeSession:
         self.calls.append(("session", project))
         return _session(self.state, tmux_running=self.state is not ClaudeSessionState.STOPPED)
 
@@ -96,7 +101,7 @@ async def test_normalizes_collision_and_login_errors() -> None:
             super().__init__()
             self.code = code
 
-        async def start(self, _project: str):
+        async def start(self, _project: str) -> ClaudeSessionActionResult:
             raise RuntimeOperationError(self.code, "bounded")
 
     collision = WAWClaudeLifecycleExecutor(

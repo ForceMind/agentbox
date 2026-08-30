@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
-from typing import TypeAlias
+from typing import Protocol, TypeAlias
 
 from agentbox_core.waw import AgentType, workspace_id
 
-from agentbox_runtime.claude import ClaudeSessionManager
-from agentbox_runtime.models import ClaudeSession, ClaudeSessionState, RuntimeOperationError
+from agentbox_runtime.models import (
+    ClaudeSession,
+    ClaudeSessionActionResult,
+    ClaudeSessionState,
+    RuntimeOperationError,
+)
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
@@ -26,12 +30,20 @@ ProjectResolver: TypeAlias = Callable[[str], str | Awaitable[str]]
 _POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 
 
+class ClaudeSessionOperations(Protocol):
+    async def start(self, project_id: str) -> ClaudeSessionActionResult: ...
+
+    async def stop(self, project_id: str) -> ClaudeSessionActionResult: ...
+
+    async def session(self, project_id: str) -> ClaudeSession: ...
+
+
 class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
     """Translate one Claude manager into the WAW lifecycle contract."""
 
     def __init__(
         self,
-        manager: ClaudeSessionManager,
+        manager: ClaudeSessionOperations,
         project_resolver: ProjectResolver,
         *,
         runtime_epoch: str,
@@ -144,4 +156,4 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         )
 
 
-__all__ = ["ProjectResolver", "WAWClaudeLifecycleExecutor"]
+__all__ = ["ClaudeSessionOperations", "ProjectResolver", "WAWClaudeLifecycleExecutor"]
