@@ -818,3 +818,100 @@ def test_external_close_cancellation_finishes_independent_cleanup_fail_closed() 
     # Run this cancellation-specific scenario under a plain asyncio runner;
     # anyio's task runner intentionally propagates child cancellation scopes.
     asyncio.run(_scenario_external_close_cancellation_finishes_independent_cleanup_fail_closed())
+
+
+async def _scenario_concurrent_close_callers_share_operation() -> None:
+    """Concurrent close callers share one worker across caller cancellation."""
+
+    release = asyncio.Event()
+    wait_closed_entered = asyncio.Event()
+    worker_calls = 0
+
+    class ResistantAsyncServer:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        async def wait_closed(self) -> None:
+            wait_closed_entered.set()
+            await release.wait()
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=1.0,
+    )
+    resistant = ResistantAsyncServer()
+    server._server = cast(Any, resistant)
+
+    original_perform_close = server._perform_close
+
+    async def counted_perform_close() -> None:
+        nonlocal worker_calls
+        worker_calls += 1
+        await original_perform_close()
+
+    # Keep the production implementation unchanged while observing whether
+    # two callers accidentally create two independent close workers.
+    cast(Any, server)._perform_close = counted_perform_close
+
+    first = asyncio.create_task(server.close())
+    second = asyncio.create_task(server.close())
+    try:
+        await asyncio.wait_for(wait_closed_entered.wait(), timeout=1)
+        operation = server._close_operation
+        assert operation is not None
+        assert worker_calls == 1
+
+        # The first caller is cancelled while the shared operation remains in
+        # wait_closed.  The second caller must continue waiting on that same
+        # operation rather than starting a replacement worker.
+        first.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await first
+        assert first.cancelled() is True
+        assert second.done() is False
+        assert server._close_operation is operation
+
+        release.set()
+        await asyncio.wait_for(second, timeout=1)
+        assert worker_calls == 1
+
+        # Let the operation's completion callback run.  It may clear only its
+        # own operation reference and must leave no stale cleanup registration.
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert operation.done() is True
+        if cast(Any, server)._cleanup_tasks:
+            pytest.fail("close completion left a stale cleanup task")
+        if server._close_operation is not None:
+            pytest.fail("close completion left a stale operation reference")
+    finally:
+        release.set()
+        for task in (first, second):
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        await server.close()
+
+
+def test_concurrent_close_callers_share_operation() -> None:
+    # Use a plain asyncio runner because anyio cancellation scopes propagate
+    # cancellation into the caller that is intentionally being cancelled.
+    asyncio.run(_scenario_concurrent_close_callers_share_operation())
