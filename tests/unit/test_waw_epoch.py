@@ -33,6 +33,26 @@ def test_consume_is_monotonic_and_durable(tmp_path: Path) -> None:
     )
 
 
+def test_fenced_bootstrap_writes_first_epoch_once(tmp_path: Path) -> None:
+    directory = tmp_path / "epoch"
+    directory.mkdir(mode=0o700)
+    store = WAWRuntimeEpochStore(directory, expected_uid=os.geteuid(), expected_gid=os.getegid())
+
+    assert store.bootstrap() == 1
+    assert (directory / "epoch.json").read_text() == (
+        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}'
+    )
+    assert store.consume() == 2
+    with pytest.raises(WAWRuntimeEpochError):
+        store.bootstrap()
+
+
+def test_bootstrap_does_not_accept_zero_counter(tmp_path: Path) -> None:
+    store = _store(tmp_path, "0")
+    with pytest.raises(WAWRuntimeEpochError):
+        store.bootstrap()
+
+
 @pytest.mark.parametrize("value", ["0", "01", "١", "not-a-number"])
 def test_rejects_noncanonical_epoch(tmp_path: Path, value: str) -> None:
     store = _store(tmp_path, value)

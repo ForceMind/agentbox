@@ -36,6 +36,40 @@ class WAWRuntimeEpochStore:
         self._expected_uid = expected_uid
         self._expected_gid = expected_gid
 
+    def bootstrap(self) -> int:
+        """Create the first positive epoch after an external enrollment fence.
+
+        The root installer must hold the WAW-row/bootstrap fence before calling
+        this one-time operation.  This store verifies that no counter exists,
+        writes the first consumed value (``1``) durably, and never overwrites an
+        existing counter.  Normal Runtime startup must use :meth:`consume`.
+        """
+
+        directory_fd = self._open_directory()
+        try:
+            try:
+                fcntl.flock(directory_fd, fcntl.LOCK_EX)
+            except OSError as exc:
+                raise WAWRuntimeEpochError("epoch directory cannot be locked") from exc
+            try:
+                fd = os.open(
+                    "epoch.json",
+                    os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                    dir_fd=directory_fd,
+                )
+            except FileNotFoundError:
+                self._replace_epoch(directory_fd, 1)
+                return 1
+            except OSError as exc:
+                raise WAWRuntimeEpochError("epoch file cannot be inspected") from exc
+            else:
+                os.close(fd)
+                raise WAWRuntimeEpochError("Runtime epoch counter is already initialized")
+        finally:
+            with suppress(OSError):
+                fcntl.flock(directory_fd, fcntl.LOCK_UN)
+            os.close(directory_fd)
+
     def consume(self) -> int:
         directory_fd = self._open_directory()
         try:
