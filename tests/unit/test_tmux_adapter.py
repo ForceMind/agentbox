@@ -416,6 +416,22 @@ async def test_tmux_write_input_serializes_fixed_buffer_per_session(tmp_path: Pa
     ]
 
 
+@pytest.mark.anyio
+async def test_tmux_write_input_serializes_across_adapter_instances(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = OverlapDetectingRunner()
+    environment = {"HOME": str(tmp_path), "PATH": str(identity.path.parent)}
+    first = TmuxAdapter(environment=environment, runner=runner)  # type: ignore[arg-type]
+    second = TmuxAdapter(environment=environment, runner=runner)  # type: ignore[arg-type]
+
+    await asyncio.gather(
+        first.write_input("agentbox-waw-claude-cross-instance", b"first"),
+        second.write_input("agentbox-waw-claude-cross-instance", b"second"),
+    )
+
+    assert runner.max_active_buffer_ops == 1
+
+
 class RaisingRunner(RecordingRunner):
     def __init__(self, error: BaseException) -> None:
         super().__init__()

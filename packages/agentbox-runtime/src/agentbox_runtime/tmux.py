@@ -7,6 +7,7 @@ import contextlib
 import os
 import re
 import shutil
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -21,6 +22,8 @@ from agentbox_runtime.process import (
 
 SAFE_SESSION_NAME = re.compile(r"\A[A-Za-z0-9_-]{1,80}\Z")
 _VERSION = re.compile(r"\btmux\s+([^\s]+)", re.IGNORECASE)
+_INPUT_LOCKS: dict[str, asyncio.Lock] = {}
+_INPUT_LOCKS_GUARD = threading.Lock()
 
 
 class TmuxAdapter:
@@ -34,10 +37,6 @@ class TmuxAdapter:
     ) -> None:
         self._environment = minimal_runtime_environment(environment or os.environ)
         self._runner = runner or ControlledProcessRunner()
-        # ``write_input`` uses one fixed buffer per session.  Serialize the
-        # complete load/paste/delete sequence so concurrent callers cannot
-        # overwrite a buffer while another caller is pasting it.
-        self._input_locks: dict[str, asyncio.Lock] = {}
 
     def executable(self) -> ExecutableIdentity | None:
         selected = shutil.which("tmux", path=self._environment.get("PATH", ""))
@@ -310,7 +309,11 @@ class TmuxAdapter:
                 "tmux input is outside the fixed byte limit",
                 category="validation",
             )
-        lock = self._input_locks.setdefault(session_name, asyncio.Lock())
+        # The buffer namespace belongs to the tmux server, not this adapter
+        # instance.  Share the lock across all Runtime adapter instances so
+        # legacy and WAW callers cannot overwrite the same fixed buffer.
+        with _INPUT_LOCKS_GUARD:
+            lock = _INPUT_LOCKS.setdefault(session_name, asyncio.Lock())
         async with lock:
             if not await self.has_session(session_name):
                 raise RuntimeOperationError(
