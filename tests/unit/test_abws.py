@@ -59,7 +59,7 @@ def test_input_and_output_are_opaque_bytes_only() -> None:
         encode_frame(ABWSFrameType.INPUT, b"x" * 49_213, 1)
 
 
-@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+@pytest.mark.parametrize(
     "header_change",
     [
         lambda header: b"NOPE" + header[4:],
@@ -82,6 +82,8 @@ def test_unknown_type_is_rejected() -> None:
     valid[5] = 255
     with pytest.raises(ABWSError):
         decode_frame(valid)
+    with pytest.raises(ABWSError):
+        encode_frame(True, _control(), 1)
 
 
 def test_length_bounds_and_truncation_are_rejected() -> None:
@@ -110,7 +112,7 @@ def test_single_frame_decode_rejects_trailing_and_stream_decode_allows_concatena
     ]
 
 
-@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+@pytest.mark.parametrize(
     "payload",
     [
         b"not-json",

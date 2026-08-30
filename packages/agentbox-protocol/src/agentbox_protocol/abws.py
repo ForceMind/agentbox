@@ -167,6 +167,8 @@ class ABWSFrame:
 
 
 def _coerce_type(frame_type: FrameType | int) -> FrameType:
+    if isinstance(frame_type, bool):
+        raise ABWSError("unknown ABWS frame type")
     try:
         return frame_type if isinstance(frame_type, FrameType) else FrameType(frame_type)
     except (TypeError, ValueError) as exc:
