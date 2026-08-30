@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Awaitable, Callable, cast
+from typing import cast
 
 import pytest
 from agentbox_protocol.waw_control import decode_control_response
