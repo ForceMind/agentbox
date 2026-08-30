@@ -34,7 +34,7 @@ from agentbox_runtime.rpc import (
     UnixCodexRuntimeClient,
     UnixProjectRuntimeClient,
 )
-from agentbox_runtime.server import RuntimeExecutorServer
+from agentbox_runtime.server import RuntimeExecutorServer, _main
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 
 CANARY = "PAIR-SECRET-CANARY-RPC-4D8P"
@@ -224,6 +224,13 @@ async def test_runtime_server_wires_optional_waw_control_lifecycle(tmp_path: Pat
     assert control.started == 1
     await server.close()
     assert control.closed == 1
+
+
+@pytest.mark.anyio
+async def test_runtime_main_rejects_unknown_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTBOX_ENV", "prodution")
+    with pytest.raises(RuntimeError, match="AGENTBOX_ENV"):
+        await _main()
 
 
 @pytest.mark.anyio

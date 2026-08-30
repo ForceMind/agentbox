@@ -533,6 +533,8 @@ class RuntimeExecutorServer:
 
 async def _main() -> None:
     environment = os.environ.get("AGENTBOX_ENV", "development")
+    if environment not in {"development", "test", "production"}:
+        raise RuntimeError("AGENTBOX_ENV must be development, test, or production")
     socket_path = Path(os.environ.get("AGENTBOX_RUNTIME_SOCKET", ".agentbox-dev/runtime.sock"))
     if environment == "production" and (
         not socket_path.is_absolute() or socket_path.parent != Path("/run/agentbox")
