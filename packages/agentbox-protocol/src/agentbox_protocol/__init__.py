@@ -1,5 +1,18 @@
 """Minimal versioned public protocol types for the control plane."""
 
+from agentbox_protocol.abws import (
+    ABWSError,
+    ABWSFrame,
+    ABWSFrameType,
+    ABWSParser,
+    ABWSProtocolError,
+    FrameType,
+    IncompleteFrame,
+    TrailingBytes,
+    decode_frame,
+    encode_frame,
+    iter_frames,
+)
 from agentbox_protocol.auth import (
     AdminView,
     AuthData,
@@ -89,6 +102,11 @@ from agentbox_protocol.runtime_capabilities import (
 )
 
 __all__ = [
+    "ABWSFrame",
+    "ABWSFrameType",
+    "ABWSParser",
+    "ABWSError",
+    "ABWSProtocolError",
     "AdminView",
     "AuthData",
     "AuthResponse",
@@ -170,4 +188,10 @@ __all__ = [
     "RuntimeInstallationType",
     "RuntimeRemoteState",
     "RuntimeType",
+    "FrameType",
+    "IncompleteFrame",
+    "TrailingBytes",
+    "decode_frame",
+    "encode_frame",
+    "iter_frames",
 ]
