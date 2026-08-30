@@ -12,7 +12,10 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
 )
-from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
+from agentbox_runtime.waw_workspace_attestation import (
+    WAWWorkspaceAttestationError,
+    WAWWorkspaceAttestationStore,
+)
 
 HOST = "wri_" + "4" * 32
 PROJECT = "prj_" + "3" * 32
