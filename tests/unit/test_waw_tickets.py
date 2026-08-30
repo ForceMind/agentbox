@@ -358,21 +358,22 @@ def test_session_epoch_revocation_burns_pending_and_fences_active_lease() -> Non
         authority.consume(pending.ticket, pending.claims, context=_context())
     assert replay.value.code is TicketErrorCode.REPLAYED
     assert authority.is_active(active.claims, context=_context()) is False
+    blocked_ticket = authority.issue(
+        workspace_id=WORKSPACE_ID,
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "a" * 32,
+        generation=1,
+        auth_epoch=4,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        binding_revision=2,
+        binding_digest=BINDING_DIGEST,
+        context=_context(),
+    )
     with pytest.raises(TicketAuthorityError) as busy:
-        authority.issue(
-            workspace_id=WORKSPACE_ID,
-            project_id=PROJECT_ID,
-            agent_type=AgentType.CLAUDE,
-            attachment_id="att_" + "a" * 32,
-            generation=1,
-            auth_epoch=4,
-            runtime_host_installation_id=HOST_ID,
-            runtime_host_installation_revision=3,
-            binding_revision=2,
-            binding_digest=BINDING_DIGEST,
-            context=_context(),
-        )
-    assert busy.value.code is TicketErrorCode.CAPACITY
+        authority.consume(blocked_ticket.ticket, blocked_ticket.claims, context=_context())
+    assert busy.value.code is TicketErrorCode.WRITER_BUSY
 
 
 def test_capacity_counts_pending_and_active_records_and_sweeps_expired_entries() -> None:
