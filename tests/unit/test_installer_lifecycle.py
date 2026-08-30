@@ -134,6 +134,45 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
 
 
 @pytest.mark.parametrize(
+    "content",
+    (
+        '{"epoch":"0","schema_version":"waw-runtime-epoch-v1"}',
+        '{"epoch":"01","schema_version":"waw-runtime-epoch-v1"}',
+        '{"epoch":"1","schema_version":"wrong"}',
+        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1","extra":true}',
+    ),
+)
+def test_waw_epoch_provisioning_rejects_malformed_existing_counter(
+    tmp_path: Path, content: str
+) -> None:
+    installer, layout = _installer(tmp_path)
+    installer._ensure_directories()
+    path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o600)
+    with pytest.raises(InstallError, match="epoch file is invalid"):
+        installer._ensure_waw_epoch(allow_bootstrap=False)
+
+
+def test_waw_epoch_provisioning_rejects_missing_counter_after_enrollment(tmp_path: Path) -> None:
+    installer, _layout = _installer(tmp_path)
+    installer._ensure_directories()
+    with pytest.raises(InstallError, match="missing after enrollment"):
+        installer._ensure_waw_epoch(allow_bootstrap=False)
+
+
+def test_waw_epoch_provisioning_rejects_symlink_counter(tmp_path: Path) -> None:
+    installer, layout = _installer(tmp_path)
+    installer._ensure_directories()
+    path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
+    target = path.parent / "other.json"
+    target.write_text('{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}')
+    path.symlink_to(target.name)
+    with pytest.raises(InstallError, match="epoch file is unsafe"):
+        installer._ensure_waw_epoch(allow_bootstrap=True)
+
+
+@pytest.mark.parametrize(
     ("older", "newer"),
     (
         ("0.3.0-alpha.9", "0.3.0-alpha.10"),
