@@ -255,7 +255,11 @@ class WAWControlServer:
         poison the listener so no later request can reuse the potentially
         unsafe dispatcher.
         """
-        task = asyncio.create_task(self._dispatch(request))
+
+        async def invoke() -> dict[str, Any]:
+            return await self._dispatch(request)
+
+        task: asyncio.Task[dict[str, Any]] = asyncio.create_task(invoke())
         self._dispatch_tasks.add(task)
         task.add_done_callback(self._dispatch_tasks.discard)
         remaining = deadline - self._monotonic()
