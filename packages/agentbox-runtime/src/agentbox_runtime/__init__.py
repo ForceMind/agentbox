@@ -57,11 +57,6 @@ from agentbox_runtime.waw_control_server import (
     WAWControlServer,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
-from agentbox_runtime.waw_workspace_attestation import (
-    WAWWorkspaceAttestation,
-    WAWWorkspaceAttestationError,
-    WAWWorkspaceAttestationStore,
-)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
     WAWLifecycleIdentity,
@@ -78,6 +73,11 @@ from agentbox_runtime.waw_supervisor import (
     WAWTransport,
 )
 from agentbox_runtime.waw_transport import TmuxWAWTransport, WAWTmuxTransport
+from agentbox_runtime.waw_workspace_attestation import (
+    WAWWorkspaceAttestation,
+    WAWWorkspaceAttestationError,
+    WAWWorkspaceAttestationStore,
+)
 
 __all__ = [
     "AuthenticationState",
