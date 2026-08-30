@@ -10,6 +10,8 @@ default in a Runtime process.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
@@ -26,7 +28,8 @@ def create_waw_lifecycle_registry(
     *,
     manifest: WAWRuntimeHostManifest,
     epoch_store: WAWRuntimeEpochStore,
-    executor: WAWLifecycleExecutor,
+    executor: WAWLifecycleExecutor | None = None,
+    executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
@@ -35,10 +38,17 @@ def create_waw_lifecycle_registry(
     ``manifest`` and ``epoch_store`` must already have passed their respective
     descriptor/provenance checks.  This helper is intentionally explicit about
     the side effect of consuming the epoch and returns the consumed value for
-    startup logging/diagnostics without re-reading mutable state.
+    startup logging/diagnostics without re-reading mutable state.  When using
+    ``executor_factory``, the factory receives that consumed epoch so its
+    observations can be bound to the same Runtime trust root.
     """
 
+    if (executor is None) == (executor_factory is None):
+        raise ValueError("provide exactly one of executor or executor_factory")
     consumed_epoch = str(epoch_store.consume())
+    actual_executor = executor_factory(consumed_epoch) if executor_factory is not None else executor
+    if actual_executor is None:  # pragma: no cover - guarded by the exclusivity check
+        raise RuntimeError("WAW executor factory returned no executor")
     registry = WAWLifecycleRegistry(
         runtime_host_installation_id=manifest.runtime_host_installation_id,
         runtime_host_installation_revision=manifest.runtime_host_installation_revision,
@@ -46,7 +56,7 @@ def create_waw_lifecycle_registry(
         project_root_manifest_digest=manifest.project_root_manifest_digest,
         enrollment_epoch=manifest.enrollment_epoch,
         enrollment_state=manifest.enrollment_state,
-        executor=executor,
+        executor=actual_executor,
         binding_digest_factory=binding_digest_factory,
         runtime_epoch=consumed_epoch,
         attestation_store=attestation_store,

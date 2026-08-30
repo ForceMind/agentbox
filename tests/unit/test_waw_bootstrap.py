@@ -80,6 +80,26 @@ async def test_bootstrap_consumes_epoch_and_binds_manifest(tmp_path: Path) -> No
     assert response["enrollment_state"] == "steady"
 
 
+@pytest.mark.anyio
+async def test_bootstrap_factory_receives_consumed_epoch(tmp_path: Path) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    observed: list[str] = []
+
+    def factory(epoch: str) -> FakeExecutor:
+        observed.append(epoch)
+        return FakeExecutor()
+
+    _registry, epoch = create_waw_lifecycle_registry(
+        manifest=_manifest(),
+        epoch_store=store,
+        executor_factory=factory,
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    assert epoch == "2"
+    assert observed == ["2"]
+
+
 def test_bootstrap_advances_epoch_counter_without_reuse(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
