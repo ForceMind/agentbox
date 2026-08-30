@@ -10,10 +10,6 @@ default in a Runtime process.
 
 from __future__ import annotations
 
-import hashlib
-import json
-from typing import Any
-
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
@@ -26,37 +22,12 @@ from agentbox_runtime.waw_lifecycle import (
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
 
-def _default_binding_digest(request: dict[str, Any]) -> str:
-    """Return a deterministic digest for the closed binding request fields."""
-
-    binding_fields = (
-        "project_id",
-        "relative_key",
-        "project_revision",
-        "binding_revision",
-        "previous_binding_revision",
-        "previous_binding_digest",
-        "schema_version",
-        "runtime_host_installation_id",
-        "runtime_host_installation_revision",
-    )
-    canonical_request = {field: request[field] for field in binding_fields}
-    payload = json.dumps(
-        canonical_request,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
 def create_waw_lifecycle_registry(
     *,
     manifest: WAWRuntimeHostManifest,
     epoch_store: WAWRuntimeEpochStore,
     executor: WAWLifecycleExecutor,
-    binding_digest_factory: BindingDigestFactory | None = None,
+    binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Consume the Runtime epoch and construct a host-manifest-bound registry.
@@ -76,7 +47,7 @@ def create_waw_lifecycle_registry(
         enrollment_epoch=manifest.enrollment_epoch,
         enrollment_state=manifest.enrollment_state,
         executor=executor,
-        binding_digest_factory=binding_digest_factory or _default_binding_digest,
+        binding_digest_factory=binding_digest_factory,
         runtime_epoch=consumed_epoch,
         attestation_store=attestation_store,
     )

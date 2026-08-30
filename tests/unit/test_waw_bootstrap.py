@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
-from agentbox_runtime.waw_bootstrap import _default_binding_digest, create_waw_lifecycle_registry
+from agentbox_runtime.waw_bootstrap import create_waw_lifecycle_registry
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import WAWRuntimeHostManifest
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity, WAWLifecycleObservation
@@ -57,6 +57,7 @@ async def test_bootstrap_consumes_epoch_and_binds_manifest(tmp_path: Path) -> No
         manifest=_manifest(),
         epoch_store=store,
         executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
     )
     assert epoch == "2"
     # A bind response proves the registry received every manifest field and
@@ -83,29 +84,16 @@ def test_bootstrap_advances_epoch_counter_without_reuse(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
     _registry, first_epoch = create_waw_lifecycle_registry(
-        manifest=_manifest(), epoch_store=store, executor=FakeExecutor()
+        manifest=_manifest(),
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
     )
     _registry, second_epoch = create_waw_lifecycle_registry(
-        manifest=_manifest(), epoch_store=store, executor=FakeExecutor()
+        manifest=_manifest(),
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
     )
     assert first_epoch == "2"
     assert second_epoch == "3"
-
-
-def test_default_binding_digest_excludes_request_framing() -> None:
-    request = {
-        "protocol_version": 1,
-        "request_id": "wreq_" + "1" * 32,
-        "action": "workspace.project_binding.register",
-        "project_id": PROJECT,
-        "relative_key": "project-a",
-        "project_revision": "1",
-        "binding_revision": "1",
-        "previous_binding_revision": None,
-        "previous_binding_digest": None,
-        "schema_version": "waw-project-binding-v1",
-        "runtime_host_installation_id": HOST,
-        "runtime_host_installation_revision": "3",
-    }
-    changed_framing = {**request, "request_id": "wreq_" + "2" * 32}
-    assert _default_binding_digest(request) == _default_binding_digest(changed_framing)
