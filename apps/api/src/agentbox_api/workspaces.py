@@ -188,9 +188,17 @@ def _validate_runtime_status_epoch(
 
     attestation = getattr(coordinator, "attestation", None)
     if not isinstance(attestation, dict):
-        return
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_UNTRUSTED",
+            "WAW Runtime status requires a verified bind attestation",
+        )
     expected_epoch = attestation.get("runtime_epoch")
-    if isinstance(expected_epoch, str) and status.runtime_epoch != expected_epoch:
+    if not isinstance(expected_epoch, str) or not expected_epoch:
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_UNTRUSTED",
+            "WAW Runtime bind attestation has no valid epoch",
+        )
+    if status.runtime_epoch != expected_epoch:
         raise WAWControlClientError(
             "RUNTIME_INSTALLATION_MISMATCH", "WAW Runtime status epoch is stale"
         )

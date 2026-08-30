@@ -144,6 +144,27 @@ def test_runtime_status_epoch_is_fenced_to_bound_attestation() -> None:
         _validate_runtime_status_epoch(status, coordinator)
 
 
+def test_runtime_status_epoch_requires_verified_bind_attestation() -> None:
+    status = WorkspaceRuntimeStatus.model_validate(
+        {
+            "workspace_id": "aws_" + "1" * 32,
+            "project_id": "prj_" + "2" * 32,
+            "agent_type": "claude",
+            "generation": "1",
+            "binding_revision": "1",
+            "binding_digest": "a" * 64,
+            "state": "RUNNING",
+            "reconciliation_state": "authoritative",
+            "runtime_epoch": "2",
+            "process_state": "RUNNING",
+            "exit_code": None,
+            "attachment_capacity": {"admitted": "0", "pending": "0", "limit": "32"},
+        }
+    )
+    with pytest.raises(WAWControlClientError, match="attestation"):
+        _validate_runtime_status_epoch(status, SimpleNamespace())
+
+
 def test_workspace_id_is_bounded_before_persistence_lookup() -> None:
     _workspace_id_or_404("aws_" + "1" * 32)
     with pytest.raises(HTTPException, match="Workspace not found"):
