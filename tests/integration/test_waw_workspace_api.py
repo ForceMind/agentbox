@@ -12,14 +12,14 @@ from agentbox_api.main import create_app
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
-from agentbox_core.waw import AgentType
+from agentbox_core.waw import AgentType, workspace_id
 from agentbox_core.waw_models import RuntimeHostInstallation
 from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
 
 PASSWORD = "a sufficiently long passphrase"
 HOST_ID = "wri_" + "a" * 32
 PROJECT_ID = "prj_" + "b" * 32
-WORKSPACE_ID = "aws_" + "c" * 32
+WORKSPACE_ID = workspace_id(PROJECT_ID, AgentType.CLAUDE)
 DIGEST = "d" * 64
 FINGERPRINT = "e" * 64
 
