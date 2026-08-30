@@ -34,6 +34,7 @@ class _WAWLifecycleRequester(Protocol):
 class _WorkspaceIdentityRow(Protocol):
     id: str
     project_id: str
+    authorization_scope: str
     agent_type: str
     generation: int
     binding_revision: int
@@ -138,7 +139,9 @@ def _authorize_workspace(
 ) -> None:
     # Unknown and unauthorized workspace identities deliberately collapse to
     # the same 404 response to prevent metadata enumeration.
-    if not _workspace_policy(request).allows(authenticated, cast(AgentWorkspaceSessionRecord, row)):
+    if not _workspace_policy(request).allows(
+        authenticated, cast(AgentWorkspaceSessionRecord, row)
+    ):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 
