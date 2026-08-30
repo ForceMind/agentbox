@@ -188,6 +188,12 @@ async def test_lifecycle_registry_is_claude_only() -> None:
         WAWLifecycleObservation(state="STOPPED", process_state="STOPPED", exit_code=0),
         WAWLifecycleObservation(state="EXITED", process_state="STOPPED"),
         WAWLifecycleObservation(state="RUNNING", process_state="RUNNING", exit_code=0),
+        WAWLifecycleObservation(
+            state="RUNNING", process_state="RUNNING", reconciliation_state="missing"
+        ),
+        WAWLifecycleObservation(
+            state="STOPPED", process_state="STOPPED", reconciliation_state="reconciliation_required"
+        ),
     ),
 )
 async def test_lifecycle_rejects_contradictory_observations(

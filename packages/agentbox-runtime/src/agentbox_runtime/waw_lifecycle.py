@@ -76,6 +76,20 @@ _OBSERVATION_PROCESS_STATES: dict[str, frozenset[str]] = {
     "BROKEN": frozenset({"UNKNOWN"}),
     "UNKNOWN": frozenset({"UNKNOWN"}),
 }
+_OBSERVATION_RECONCILIATION_STATES: dict[str, frozenset[str]] = {
+    "STARTING": frozenset({"authoritative", "stopping"}),
+    "RUNNING": frozenset({"authoritative"}),
+    "NEEDS_INTERACTION": frozenset({"authoritative"}),
+    "TRUST_REQUIRED": frozenset({"authoritative"}),
+    "LOGIN_REQUIRED": frozenset({"authoritative"}),
+    "STOPPING": frozenset({"stopping", "authoritative"}),
+    "EXITED": frozenset({"exited", "authoritative"}),
+    "STOPPED": frozenset({"authoritative"}),
+    "MISSING": frozenset({"missing"}),
+    "COLLISION": frozenset({"collision"}),
+    "BROKEN": frozenset({"reconciliation_required", "unknown"}),
+    "UNKNOWN": frozenset({"reconciliation_required", "unknown"}),
+}
 
 
 @dataclass(frozen=True)
@@ -385,6 +399,11 @@ class WAWLifecycleRegistry:
         if observation.state not in _STATES:
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
         if observation.reconciliation_state not in _RECONCILIATION_STATES:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if (
+            observation.reconciliation_state
+            not in _OBSERVATION_RECONCILIATION_STATES[observation.state]
+        ):
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
         if observation.process_state not in _PROCESS_STATES:
             raise WAWControlDispatchError("INTERNAL_BOUNDED")

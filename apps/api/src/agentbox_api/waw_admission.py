@@ -103,7 +103,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
     ticket: str = Field(repr=False)
     workspace_id: str
     project_id: str
-    agent_type: Literal["claude", "codex"]
+    agent_type: Literal["claude"]
     attachment_id: str
     mode: Literal["writer"]
     lease_number: str
@@ -188,7 +188,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
             ticket=issued.ticket,
             workspace_id=claims.workspace_id,
             project_id=claims.project_id,
-            agent_type=cast(Literal["claude", "codex"], str(claims.agent_type)),
+            agent_type=cast(Literal["claude"], str(claims.agent_type)),
             attachment_id=claims.attachment_id,
             mode="writer",
             lease_number=str(claims.lease_number),
@@ -226,6 +226,8 @@ def prepare_attachment(
     _validate_origin(origin, allowed_origins)
     if not policy.allows(authenticated, cast(AgentWorkspaceSessionRecord, row)):
         raise WAWAdmissionError("WORKSPACE_NOT_FOUND", "Workspace is not available")
+    if row.agent_type != "claude":
+        raise WAWAdmissionError("WAW_AGENT_UNSUPPORTED", "Only Claude WAW attachments are enabled")
     if not recent_authenticator.is_recently_authenticated(authenticated):
         raise WAWAdmissionError("RECENT_AUTH_REQUIRED", "Recent authentication is required")
     if row.state != "RUNNING":

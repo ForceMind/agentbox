@@ -105,6 +105,20 @@ def test_prepare_attachment_issues_transient_bearer_with_exact_tuple() -> None:
     assert response.expires_at > datetime.now(UTC)
 
 
+def test_prepare_attachment_rejects_codex_until_waw2() -> None:
+    with pytest.raises(WAWAdmissionError) as exc_info:
+        prepare_attachment(
+            authenticated=_auth(),
+            row=cast(AgentWorkspaceSessionRecord, _row(agent_type="codex")),
+            policy=SingleAdminWorkspacePolicy(),
+            recent_authenticator=RecentAuth(),
+            runtime=_runtime(),
+            bound_runtime_epoch="12",
+            authority=_authority(),
+        )
+    assert exc_info.value.code == "WAW_AGENT_UNSUPPORTED"
+
+
 def test_attachment_ticket_request_is_closed_to_writer_mode() -> None:
     assert WAWAttachmentTicketRequest(mode="writer").mode == "writer"
     with pytest.raises(ValueError):
