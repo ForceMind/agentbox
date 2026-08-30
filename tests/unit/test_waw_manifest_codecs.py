@@ -22,6 +22,7 @@ from agentbox_runtime.waw_manifest_codecs import (
     encode_project_root_manifest,
     encode_runtime_host_manifest,
     manifest_sha256,
+    verify_api_host_anchor_cross_manifest,
 )
 
 _HEX_A = "a" * 64
@@ -323,3 +324,99 @@ def test_dataclass_values_are_supported() -> None:
         ),
         RuntimeHostManifest,
     )
+
+
+def _cross_pin_inputs() -> tuple[bytes, bytes, bytes]:
+    project_raw = encode_project_root_manifest(_project())
+    runtime_data = _runtime()
+    runtime_data["project_root_manifest_digest"] = manifest_sha256(project_raw)
+    runtime_raw = encode_runtime_host_manifest(runtime_data)
+    anchor_data = _anchor()
+    anchor_data["host_manifest_digest"] = manifest_sha256(runtime_raw)
+    anchor_data["project_root_manifest_digest"] = manifest_sha256(project_raw)
+    anchor_raw = encode_api_host_anchor(anchor_data)
+    return anchor_raw, runtime_raw, project_raw
+
+
+def test_cross_manifest_pin_accepts_exact_bytes_and_typed_records() -> None:
+    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    result = verify_api_host_anchor_cross_manifest(anchor_raw, runtime_raw, project_raw)
+    assert result.anchor == decode_api_host_anchor(anchor_raw)
+    assert result.runtime == decode_runtime_host_manifest(runtime_raw)
+    assert result.project_root == decode_project_root_manifest(project_raw)
+    assert result.runtime_manifest_digest == manifest_sha256(runtime_raw)
+    assert result.project_root_manifest_digest == manifest_sha256(project_raw)
+
+    typed_result = verify_api_host_anchor_cross_manifest(
+        result.anchor, result.runtime, result.project_root
+    )
+    assert typed_result == result
+
+
+@pytest.mark.parametrize("field", ["host_manifest_digest", "project_root_manifest_digest"])
+def test_cross_manifest_pin_rejects_digest_mismatch(field: str) -> None:
+    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_data = asdict(decode_api_host_anchor(anchor_raw))
+    anchor_data[field] = _HEX_A if anchor_data[field] != _HEX_A else _HEX_B
+    with pytest.raises(WAWManifestCodecError, match="does not pin"):
+        verify_api_host_anchor_cross_manifest(
+            encode_api_host_anchor(anchor_data), runtime_raw, project_raw
+        )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "enrollment_epoch",
+        "enrollment_state",
+    ],
+)
+def test_cross_manifest_pin_rejects_replayed_identity_context(field: str) -> None:
+    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    runtime_data = asdict(decode_runtime_host_manifest(runtime_raw))
+    if field == "runtime_host_installation_id":
+        runtime_data[field] = "wri_" + "2" * 32
+    elif field == "runtime_host_installation_revision":
+        runtime_data[field] = "4"
+    elif field == "runtime_attestation_x25519_fingerprint":
+        runtime_data[field] = _HEX_B
+    elif field == "enrollment_epoch":
+        runtime_data[field] = "8"
+    else:
+        runtime_data[field] = "rotation"
+    changed_runtime_raw = encode_runtime_host_manifest(runtime_data)
+    anchor_data = asdict(decode_api_host_anchor(anchor_raw))
+    anchor_data["host_manifest_digest"] = manifest_sha256(changed_runtime_raw)
+    with pytest.raises(WAWManifestCodecError, match="identity mismatch"):
+        verify_api_host_anchor_cross_manifest(
+            encode_api_host_anchor(anchor_data), changed_runtime_raw, project_raw
+        )
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda raw: raw + b"\n",
+        lambda raw: raw.replace(
+            b'"schema_version":"waw-runtime-host-installation-v1"',
+            b'"schema_version":"legacy"',
+        ),
+    ],
+)
+def test_cross_manifest_pin_rejects_noncanonical_or_legacy_runtime(mutator: Mutator) -> None:
+    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    with pytest.raises(WAWManifestCodecError):
+        verify_api_host_anchor_cross_manifest(anchor_raw, mutator(runtime_raw), project_raw)
+
+
+def test_cross_manifest_pin_rejects_zero_project_digest_before_epoch_use() -> None:
+    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_data = asdict(decode_api_host_anchor(anchor_raw))
+    anchor_data["project_root_manifest_digest"] = "0" * 64
+    with pytest.raises(WAWManifestCodecError):
+        verify_api_host_anchor_cross_manifest(
+            encode_api_host_anchor(anchor_data), runtime_raw, project_raw
+        )

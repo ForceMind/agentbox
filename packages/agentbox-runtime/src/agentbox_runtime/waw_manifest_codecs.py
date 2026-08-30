@@ -9,6 +9,7 @@ non-canonical RFC 8785 JSON.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import unicodedata
@@ -100,6 +101,22 @@ class RuntimeHostManifest:
     config_digest: str
     enrollment_epoch: str
     enrollment_state: str
+
+
+@dataclass(frozen=True)
+class CrossManifestPin:
+    """The strictly decoded records validated by a cross-manifest pin.
+
+    The records are returned so callers cannot accidentally continue with a
+    different, independently decoded view of the bytes that were checked.
+    This is still a data-only value; it performs no host discovery or I/O.
+    """
+
+    anchor: APIHostAnchor
+    runtime: RuntimeHostManifest
+    project_root: ProjectRootManifest
+    runtime_manifest_digest: str
+    project_root_manifest_digest: str
 
 
 _T = TypeVar("_T")
@@ -450,6 +467,87 @@ def decode_runtime_host_manifest(raw: bytes) -> RuntimeHostManifest:
     return _decode(raw, RuntimeHostManifest, _validate_runtime)
 
 
+def _strict_record_bytes(
+    value: object,
+    record_type: type[_T],
+    encoder: Any,
+    decoder: Any,
+) -> tuple[_T, bytes]:
+    """Normalize a typed record or bytes through the strict decoder.
+
+    Typed records are re-encoded and decoded as well, so this verifier has a
+    single canonical representation and never validates a looser mapping or
+    an independently constructed object.  Raw bytes are always decoded first
+    and therefore inherit duplicate-key, schema, canonicalization, and
+    identity validation from the record decoder.
+    """
+
+    if isinstance(value, bytes):
+        record = decoder(value)
+        return record, value
+    if isinstance(value, record_type):
+        raw = encoder(value)
+        return decoder(raw), raw
+    raise WAWManifestCodecError("cross-manifest pin requires typed records or bytes")
+
+
+def verify_api_host_anchor_cross_manifest(
+    anchor: APIHostAnchor | bytes,
+    runtime: RuntimeHostManifest | bytes,
+    project_root: ProjectRootManifest | bytes,
+) -> CrossManifestPin:
+    """Verify the complete non-secret API/Runtime/ProjectRoot cross-pin.
+
+    Every input is routed through its strict canonical decoder.  The API
+    anchor must pin the exact SHA-256 bytes of both the Runtime and Project
+    Root records; the Runtime record must independently pin the exact Project
+    Root bytes.  Runtime identity and enrollment context must match the API
+    anchor exactly.  Any mismatch, replayed enrollment context, legacy
+    schema, non-canonical bytes, or sentinel digest raises
+    :class:`WAWManifestCodecError` before a result is returned.
+    """
+
+    anchor_record, _anchor_raw = _strict_record_bytes(
+        anchor, APIHostAnchor, encode_api_host_anchor, decode_api_host_anchor
+    )
+    runtime_record, runtime_raw = _strict_record_bytes(
+        runtime, RuntimeHostManifest, encode_runtime_host_manifest, decode_runtime_host_manifest
+    )
+    project_record, project_raw = _strict_record_bytes(
+        project_root,
+        ProjectRootManifest,
+        encode_project_root_manifest,
+        decode_project_root_manifest,
+    )
+
+    runtime_digest = manifest_sha256(runtime_raw)
+    project_digest = manifest_sha256(project_raw)
+    if not hmac.compare_digest(anchor_record.host_manifest_digest, runtime_digest):
+        raise WAWManifestCodecError("API anchor does not pin Runtime manifest bytes")
+    if not hmac.compare_digest(anchor_record.project_root_manifest_digest, project_digest):
+        raise WAWManifestCodecError("API anchor does not pin ProjectRoot manifest bytes")
+    if not hmac.compare_digest(runtime_record.project_root_manifest_digest, project_digest):
+        raise WAWManifestCodecError("Runtime does not pin ProjectRoot manifest bytes")
+
+    for field in (
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "enrollment_epoch",
+        "enrollment_state",
+    ):
+        if getattr(anchor_record, field) != getattr(runtime_record, field):
+            raise WAWManifestCodecError(f"cross-manifest identity mismatch: {field}")
+
+    return CrossManifestPin(
+        anchor=anchor_record,
+        runtime=runtime_record,
+        project_root=project_record,
+        runtime_manifest_digest=runtime_digest,
+        project_root_manifest_digest=project_digest,
+    )
+
+
 def manifest_sha256(raw: bytes) -> str:
     """Return the digest of already-canonical manifest bytes."""
 
@@ -461,6 +559,7 @@ def manifest_sha256(raw: bytes) -> str:
 __all__ = [
     "APIHostAnchor",
     "CgroupDelegationManifest",
+    "CrossManifestPin",
     "ProjectRootManifest",
     "RuntimeHostManifest",
     "WAWManifestCodecError",
@@ -473,4 +572,5 @@ __all__ = [
     "encode_project_root_manifest",
     "encode_runtime_host_manifest",
     "manifest_sha256",
+    "verify_api_host_anchor_cross_manifest",
 ]
