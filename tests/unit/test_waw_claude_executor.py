@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from agentbox_runtime.models import ClaudeSession, ClaudeSessionState, RuntimeOperationError
 from agentbox_runtime.waw_claude_executor import WAWClaudeLifecycleExecutor
+from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity
 
 PROJECT = "prj_" + "1" * 32
@@ -115,3 +118,11 @@ async def test_invalid_resolver_result_is_bounded_error() -> None:
 def test_rejects_invalid_runtime_epoch() -> None:
     with pytest.raises(ValueError):
         WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "project-a", runtime_epoch="01")
+
+
+@pytest.mark.anyio
+async def test_never_executes_claude_manager_for_codex_identity() -> None:
+    identity = replace(IDENTITY, agent_type="codex")
+    executor = WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "project-a", runtime_epoch="1")
+    with pytest.raises(WAWControlDispatchError, match="WAW_AGENT_UNSUPPORTED"):
+        await executor.start(identity)

@@ -13,6 +13,7 @@ from typing import TypeAlias
 
 from agentbox_runtime.claude import ClaudeSessionManager
 from agentbox_runtime.models import ClaudeSession, ClaudeSessionState, RuntimeOperationError
+from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
     WAWLifecycleIdentity,
@@ -42,6 +43,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         self._runtime_epoch = runtime_epoch
 
     async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self._require_claude(identity)
         project = await self._project(identity.project_id)
         try:
             result = await self._manager.start(project)
@@ -50,6 +52,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         return self._observation(result.session)
 
     async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self._require_claude(identity)
         project = await self._project(identity.project_id)
         try:
             result = await self._manager.stop(project)
@@ -58,6 +61,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
         return self._observation(result.session)
 
     async def status(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self._require_claude(identity)
         project = await self._project(identity.project_id)
         try:
             session = await self._manager.session(project)
@@ -67,6 +71,11 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
 
     async def reconcile(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         return await self.status(identity)
+
+    @staticmethod
+    def _require_claude(identity: WAWLifecycleIdentity) -> None:
+        if identity.agent_type != "claude":
+            raise WAWControlDispatchError("WAW_AGENT_UNSUPPORTED")
 
     async def _project(self, project_id: str) -> str:
         project = self._project_resolver(project_id)
