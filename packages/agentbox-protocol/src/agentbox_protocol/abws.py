@@ -20,6 +20,8 @@ HEADER_SIZE = 24
 MAX_PAYLOAD = 65_512
 MAX_WAW_PAYLOAD = 49_212
 MAX_JSON_PAYLOAD = 4_096
+MAX_JSON_DEPTH = 16
+MAX_JSON_KEYS = 64
 MAX_FRAME = HEADER_SIZE + MAX_PAYLOAD
 MAX_WAW_FRAME = HEADER_SIZE + MAX_WAW_PAYLOAD
 _HEADER = struct.Struct("!4sBBHIQI")
@@ -84,7 +86,9 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _reject_surrogates(value: Any) -> None:
+def _validate_json_value(value: Any, *, depth: int = 0, key_count: int = 0) -> int:
+    if depth > MAX_JSON_DEPTH:
+        raise ABWSError("JSON nesting exceeds ABWS control limit")
     if isinstance(value, str):
         if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
             raise ABWSError("unpaired UTF-16 surrogate is not permitted")
@@ -92,11 +96,15 @@ def _reject_surrogates(value: Any) -> None:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ABWSError("JSON object keys must be strings")
-            _reject_surrogates(key)
-            _reject_surrogates(item)
+            key_count += 1
+            if key_count > MAX_JSON_KEYS:
+                raise ABWSError("JSON object key count exceeds ABWS control limit")
+            _validate_json_value(key, depth=depth + 1, key_count=key_count)
+            key_count = _validate_json_value(item, depth=depth + 1, key_count=key_count)
     elif isinstance(value, list):
         for item in value:
-            _reject_surrogates(item)
+            key_count = _validate_json_value(item, depth=depth + 1, key_count=key_count)
+    return key_count
 
 
 def _decode_json(payload: bytes) -> dict[str, Any]:
@@ -116,7 +124,7 @@ def _decode_json(payload: bytes) -> dict[str, Any]:
         raise ABWSError("JSON payload is malformed") from exc
     if not isinstance(value, dict):
         raise ABWSError("ABWS control payload must be a JSON object")
-    _reject_surrogates(value)
+    _validate_json_value(value)
     if type(value.get("protocol_version")) is not int or value["protocol_version"] != 1:
         raise ABWSError("ABWS control payload requires protocol_version=1")
     return value
@@ -127,7 +135,7 @@ def _encode_json(payload: dict[str, Any]) -> bytes:
         raise TypeError("ABWS control payload must be a dictionary")
     if type(payload.get("protocol_version")) is not int or payload["protocol_version"] != 1:
         raise ABWSError("ABWS control payload requires protocol_version=1")
-    _reject_surrogates(payload)
+    _validate_json_value(payload)
     try:
         data = json.dumps(
             payload,
@@ -356,6 +364,8 @@ __all__ = [
     "MAGIC",
     "MAX_FRAME",
     "MAX_JSON_PAYLOAD",
+    "MAX_JSON_DEPTH",
+    "MAX_JSON_KEYS",
     "MAX_PAYLOAD",
     "MAX_WAW_FRAME",
     "MAX_WAW_PAYLOAD",

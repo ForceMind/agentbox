@@ -141,6 +141,19 @@ def test_json_payload_limit_is_independent_of_outer_parser_limit() -> None:
         encode_frame(ABWSFrameType.PING, payload, 1)
 
 
+def test_control_json_depth_and_key_count_are_bounded() -> None:
+    too_many_keys = {"protocol_version": 1}
+    too_many_keys.update({f"k{index}": index for index in range(64)})
+    with pytest.raises(ABWSError):
+        encode_frame(ABWSFrameType.PING, too_many_keys, 1)
+
+    nested: object = {"leaf": "x"}
+    for _ in range(17):
+        nested = {"value": nested}
+    with pytest.raises(ABWSError):
+        encode_frame(ABWSFrameType.PING, {"protocol_version": 1, "value": nested}, 1)
+
+
 def test_incremental_parser_enforces_contiguous_sequences_and_bounds_buffer() -> None:
     first = encode_frame(ABWSFrameType.PING, _control(), 1)
     second = encode_frame(ABWSFrameType.PONG, _control(), 2)
