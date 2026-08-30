@@ -259,9 +259,7 @@ def test_transport_is_poisoned_after_cancellation_resistant_timeout(
 
     command = _command(tmp_path)
     tmux = CancellationResistantTmux()
-    transport = WAWTmuxTransport(
-        workspace_id=command.workspace_id, generation=1, tmux=tmux
-    )
+    transport = WAWTmuxTransport(workspace_id=command.workspace_id, generation=1, tmux=tmux)
     monkeypatch.setattr(waw_transport, "_RESOLVE_TIMEOUT_SECONDS", 0.01)
     with pytest.raises(RuntimeOperationError, match="timed out"):
         transport.start(command, PtyGeometry(80, 24))

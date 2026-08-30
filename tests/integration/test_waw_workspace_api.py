@@ -25,8 +25,7 @@ FINGERPRINT = "e" * 64
 
 class FakeStatusCoordinator:
     def __init__(
-        self, *, epoch: str = "7", observed_epoch: str | None = None,
-        error: Exception | None = None
+        self, *, epoch: str = "7", observed_epoch: str | None = None, error: Exception | None = None
     ) -> None:
         self.attestation = {"runtime_epoch": epoch}
         self.observed_epoch = observed_epoch or epoch
@@ -165,9 +164,18 @@ async def test_list_and_get_workspace_metadata_are_authenticated_and_no_store(
     assert detail.status_code == 200
     assert detail.headers["cache-control"] == "no-store"
     assert set(detail.json()["data"]) == {
-        "id", "project_id", "agent_type", "state", "reconciliation_state",
-        "generation", "revision", "created_at", "updated_at", "last_seen_at",
-        "exit_code", "failure_code",
+        "id",
+        "project_id",
+        "agent_type",
+        "state",
+        "reconciliation_state",
+        "generation",
+        "revision",
+        "created_at",
+        "updated_at",
+        "last_seen_at",
+        "exit_code",
+        "failure_code",
     }
 
 
@@ -218,11 +226,16 @@ async def test_runtime_status_maps_unavailable_and_epoch_mismatch(
 
     mismatch = FakeStatusCoordinator(epoch="7", observed_epoch="wrong")
     app = create_app(
-        settings, initialized_services, codex_runtime, claude_runtime, project_runtime,
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
         waw_bind_coordinator=mismatch,
     )
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://testserver",
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
         cookies=waw_client.cookies,
     ) as second:
         response = await second.get(f"/api/v1/workspaces/{WORKSPACE_ID}/status")
