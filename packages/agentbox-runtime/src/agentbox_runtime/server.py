@@ -32,6 +32,7 @@ from agentbox_runtime.rpc import (
     validate_request_id,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
 _CODEX_ACTIONS = frozenset(
@@ -82,6 +83,7 @@ class RuntimeExecutorServer:
         read_timeout_seconds: float = 5.0,
         write_timeout_seconds: float = 5.0,
         trailing_timeout_seconds: float = 0.01,
+        waw_epoch_store: WAWRuntimeEpochStore | None = None,
     ) -> None:
         if read_timeout_seconds <= 0 or write_timeout_seconds <= 0 or trailing_timeout_seconds <= 0:
             raise ValueError("Runtime socket timeouts must be positive")
@@ -95,9 +97,22 @@ class RuntimeExecutorServer:
         self._read_timeout_seconds = read_timeout_seconds
         self._write_timeout_seconds = write_timeout_seconds
         self._trailing_timeout_seconds = trailing_timeout_seconds
+        self._waw_epoch_store = waw_epoch_store
+        self._waw_runtime_epoch: int | None = None
         self._server: asyncio.AbstractServer | None = None
 
+    @property
+    def waw_runtime_epoch(self) -> int | None:
+        """The immutable epoch consumed before WAW traffic can be served."""
+
+        return self._waw_runtime_epoch
+
     async def start(self, *, create_development_parent: bool = False) -> None:
+        if self._waw_epoch_store is not None and self._waw_runtime_epoch is None:
+            try:
+                self._waw_runtime_epoch = self._waw_epoch_store.consume()
+            except WAWRuntimeEpochError as exc:
+                raise RuntimeError("WAW Runtime epoch trust root is unavailable") from exc
         parent = self._socket_path.parent
         if create_development_parent:
             parent.mkdir(mode=0o700, parents=True, exist_ok=True)
