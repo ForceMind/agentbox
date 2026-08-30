@@ -97,6 +97,26 @@ def test_prepare_attachment_issues_transient_bearer_with_exact_tuple() -> None:
 
 
 @pytest.mark.parametrize(
+    "origin",
+    ["https://evil.invalid", "http://agentbox.invalid", "https://agentbox.invalid/path"],
+)
+def test_prepare_attachment_rejects_noncanonical_or_unallowlisted_origin(origin: str) -> None:
+    with pytest.raises(WAWAdmissionError) as rejected:
+        prepare_attachment(
+            authenticated=_auth(),
+            row=cast(AgentWorkspaceSessionRecord, _row()),
+            policy=SingleAdminWorkspacePolicy(),
+            recent_authenticator=RecentAuth(),
+            runtime=_runtime(),
+            bound_runtime_epoch="12",
+            authority=_authority(),
+            origin=origin,
+            allowed_origins={"https://agentbox.invalid"},
+        )
+    assert rejected.value.code == "ORIGIN_INVALID"
+
+
+@pytest.mark.parametrize(
     "changes, recent, runtime, code",
     [
         ({"authorization_scope": "other"}, True, _runtime(), "WORKSPACE_NOT_FOUND"),

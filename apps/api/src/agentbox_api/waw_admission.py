@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import re
 import secrets
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, cast
+from urllib.parse import urlsplit
 
 from agentbox_core.services import AuthenticatedSession
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
@@ -25,6 +27,7 @@ from agentbox_core.waw_tickets import (
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 
 _POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
+_DEFAULT_ALLOWED_ORIGINS = frozenset({"https://agentbox.invalid"})
 
 
 class WAWAdmissionError(RuntimeError):
@@ -74,6 +77,7 @@ def prepare_attachment(
     bound_runtime_epoch: str | None,
     authority: AttachmentAuthority,
     origin: str = "https://agentbox.invalid",
+    allowed_origins: Collection[str] | None = None,
     expires_at: datetime | None = None,
 ) -> IssuedAttachmentTicket:
     """Run ordered admission checks and issue one transient attachment ticket.
@@ -82,6 +86,7 @@ def prepare_attachment(
     helper performs no database, Runtime, WebSocket, or Audit writes.
     """
 
+    _validate_origin(origin, allowed_origins)
     if not policy.allows(authenticated, cast(AgentWorkspaceSessionRecord, row)):
         raise WAWAdmissionError("WORKSPACE_NOT_FOUND", "Workspace is not available")
     if not recent_authenticator.is_recently_authenticated(authenticated):
@@ -127,6 +132,23 @@ def prepare_attachment(
 
 class ProtocolRecentAuth(Protocol):
     def is_recently_authenticated(self, authenticated: AuthenticatedSession) -> bool: ...
+
+
+def _validate_origin(origin: str, allowed_origins: Collection[str] | None) -> None:
+    allowed = _DEFAULT_ALLOWED_ORIGINS if allowed_origins is None else frozenset(allowed_origins)
+    if not isinstance(origin, str) or len(origin) > 256 or origin not in allowed:
+        raise WAWAdmissionError("ORIGIN_INVALID", "Origin is not allowlisted")
+    parsed = urlsplit(origin)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise WAWAdmissionError("ORIGIN_INVALID", "Origin is not canonical")
 
 
 __all__ = [
