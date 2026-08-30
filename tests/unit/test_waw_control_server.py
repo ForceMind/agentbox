@@ -45,9 +45,7 @@ def _response(request_id: str) -> dict[str, object]:
 Dispatch = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
 
 
-async def _running_server(
-    path: Path, dispatch: Dispatch
-) -> tuple[WAWControlServer, socket.socket]:
+async def _running_server(path: Path, dispatch: Dispatch) -> tuple[WAWControlServer, socket.socket]:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(str(path))
     sock.listen(16)
