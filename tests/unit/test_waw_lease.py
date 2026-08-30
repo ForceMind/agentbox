@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from threading import Barrier, Thread
+
 import pytest
 from agentbox_core.waw_lease import (
     LeaseCleanupError,
@@ -98,3 +100,30 @@ def test_new_attachment_is_blocked_until_positive_detach_ack() -> None:
     assert fence.begin(attachment_id="att_2", generation=2, lease_number=3).state == (
         LeaseCleanupState.ADMITTING
     )
+
+
+def test_concurrent_begin_serializes_writer_slot_reservation() -> None:
+    clock = Clock()
+    fence = _fence(clock)
+    barrier = Barrier(2)
+    outcomes: list[str] = []
+
+    def attempt(attachment_id: str) -> None:
+        barrier.wait()
+        try:
+            fence.begin(attachment_id=attachment_id, generation=1, lease_number=1)
+        except LeaseCleanupError as error:
+            outcomes.append(error.code)
+        else:
+            outcomes.append("ADMITTED")
+
+    first = Thread(target=attempt, args=("att_1",))
+    second = Thread(target=attempt, args=("att_2",))
+    first.start()
+    second.start()
+    first.join()
+    second.join()
+
+    assert sorted(outcomes) == ["ADMITTED", "ATTACHMENT_BUSY"]
+    assert fence.snapshot is not None
+    assert fence.snapshot.state is LeaseCleanupState.ADMITTING

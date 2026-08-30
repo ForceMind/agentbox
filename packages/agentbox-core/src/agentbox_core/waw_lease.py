@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from threading import RLock
 
 
 class LeaseCleanupState(StrEnum):
@@ -71,98 +72,108 @@ class LeaseCleanupFence:
         self._detach_timeout = detach_timeout_seconds
         self._snapshot: LeaseCleanupSnapshot | None = None
         self._last_observed: float | None = None
+        self._lock = RLock()
 
     @property
     def snapshot(self) -> LeaseCleanupSnapshot | None:
-        return self._snapshot
+        with self._lock:
+            return self._snapshot
 
     def begin(
         self, *, attachment_id: str, generation: int, lease_number: int
     ) -> LeaseCleanupSnapshot:
-        if self._snapshot is not None and self._snapshot.writer_slot_reserved:
-            raise LeaseCleanupError("ATTACHMENT_BUSY", "attachment cleanup is already reserved")
-        now = self._observe_now(None)
-        self._snapshot = LeaseCleanupSnapshot(
-            attachment_id=attachment_id,
-            generation=generation,
-            lease_number=lease_number,
-            state=LeaseCleanupState.ADMITTING,
-            last_heartbeat=now,
-            stale_at=now + self._stale_after,
-            grace_until=now + self._stale_after + self._grace,
-            detach_deadline=None,
-            cleanup_state=None,
-        )
-        return self._snapshot
+        with self._lock:
+            if self._snapshot is not None and self._snapshot.writer_slot_reserved:
+                raise LeaseCleanupError("ATTACHMENT_BUSY", "attachment cleanup is already reserved")
+            now = self._observe_now(None)
+            self._snapshot = LeaseCleanupSnapshot(
+                attachment_id=attachment_id,
+                generation=generation,
+                lease_number=lease_number,
+                state=LeaseCleanupState.ADMITTING,
+                last_heartbeat=now,
+                stale_at=now + self._stale_after,
+                grace_until=now + self._stale_after + self._grace,
+                detach_deadline=None,
+                cleanup_state=None,
+            )
+            return self._snapshot
 
     def commit_admission(self) -> LeaseCleanupSnapshot:
-        snapshot = self._require()
-        if snapshot.state is not LeaseCleanupState.ADMITTING:
-            raise LeaseCleanupError("ATTACHMENT_STATE_INVALID", "attachment is not admitting")
-        self._snapshot = replace(snapshot, state=LeaseCleanupState.ACTIVE)
-        return self._snapshot
+        with self._lock:
+            snapshot = self._require()
+            if snapshot.state is not LeaseCleanupState.ADMITTING:
+                raise LeaseCleanupError("ATTACHMENT_STATE_INVALID", "attachment is not admitting")
+            self._snapshot = replace(snapshot, state=LeaseCleanupState.ACTIVE)
+            return self._snapshot
 
     def heartbeat(self, *, now: float | None = None) -> LeaseCleanupSnapshot:
-        snapshot = self._advance(now)
-        if snapshot.state is not LeaseCleanupState.ACTIVE:
-            raise LeaseCleanupError("ATTACHMENT_STALE", "stale attachment cannot renew")
-        current = self._last_observed
-        assert current is not None
-        self._snapshot = replace(
-            snapshot,
-            last_heartbeat=current,
-            stale_at=current + self._stale_after,
-            grace_until=current + self._stale_after + self._grace,
-        )
-        return self._snapshot
+        with self._lock:
+            snapshot = self._advance(now)
+            if snapshot.state is not LeaseCleanupState.ACTIVE:
+                raise LeaseCleanupError("ATTACHMENT_STALE", "stale attachment cannot renew")
+            current = self._last_observed
+            assert current is not None
+            self._snapshot = replace(
+                snapshot,
+                last_heartbeat=current,
+                stale_at=current + self._stale_after,
+                grace_until=current + self._stale_after + self._grace,
+            )
+            return self._snapshot
 
     def request_detach(self, *, now: float | None = None) -> LeaseCleanupSnapshot:
-        snapshot = self._advance(now)
-        if snapshot.state in {
-            LeaseCleanupState.DETACHING,
-            LeaseCleanupState.DETACHED,
-            LeaseCleanupState.CLOSED,
-            LeaseCleanupState.RECONCILIATION_REQUIRED,
-        }:
-            return snapshot
-        if snapshot.state not in {
-            LeaseCleanupState.ACTIVE,
-            LeaseCleanupState.STALE,
-            LeaseCleanupState.EXPIRED,
-        }:
-            raise LeaseCleanupError("ATTACHMENT_STATE_INVALID", "attachment cannot detach")
-        current = self._last_observed
-        assert current is not None
-        self._snapshot = replace(
-            snapshot,
-            state=LeaseCleanupState.DETACHING,
-            detach_deadline=current + self._detach_timeout,
-        )
-        return self._snapshot
+        with self._lock:
+            snapshot = self._advance(now)
+            if snapshot.state in {
+                LeaseCleanupState.DETACHING,
+                LeaseCleanupState.DETACHED,
+                LeaseCleanupState.CLOSED,
+                LeaseCleanupState.RECONCILIATION_REQUIRED,
+            }:
+                return snapshot
+            if snapshot.state not in {
+                LeaseCleanupState.ACTIVE,
+                LeaseCleanupState.STALE,
+                LeaseCleanupState.EXPIRED,
+            }:
+                raise LeaseCleanupError("ATTACHMENT_STATE_INVALID", "attachment cannot detach")
+            current = self._last_observed
+            assert current is not None
+            self._snapshot = replace(
+                snapshot,
+                state=LeaseCleanupState.DETACHING,
+                detach_deadline=current + self._detach_timeout,
+            )
+            return self._snapshot
 
     def acknowledge_cleanup(
         self, *, cleanup_state: str, now: float | None = None
     ) -> LeaseCleanupSnapshot:
-        snapshot = self._advance(now)
-        if snapshot.state not in {
-            LeaseCleanupState.DETACHING,
-            LeaseCleanupState.RECONCILIATION_REQUIRED,
-        }:
-            raise LeaseCleanupError(
-                "DETACH_ACK_UNEXPECTED", "cleanup acknowledgement is unexpected"
+        with self._lock:
+            snapshot = self._advance(now)
+            if snapshot.state not in {
+                LeaseCleanupState.DETACHING,
+                LeaseCleanupState.RECONCILIATION_REQUIRED,
+            }:
+                raise LeaseCleanupError(
+                    "DETACH_ACK_UNEXPECTED", "cleanup acknowledgement is unexpected"
+                )
+            if cleanup_state != "ATTACH_PTY_CLOSED":
+                raise LeaseCleanupError(
+                    "DETACH_ACK_INVALID", "positive PTY cleanup proof is required"
+                )
+            self._snapshot = replace(
+                snapshot,
+                state=LeaseCleanupState.DETACHED,
+                cleanup_state=cleanup_state,
+                detach_deadline=None,
             )
-        if cleanup_state != "ATTACH_PTY_CLOSED":
-            raise LeaseCleanupError("DETACH_ACK_INVALID", "positive PTY cleanup proof is required")
-        self._snapshot = replace(
-            snapshot,
-            state=LeaseCleanupState.DETACHED,
-            cleanup_state=cleanup_state,
-            detach_deadline=None,
-        )
-        return self._snapshot
+            return self._snapshot
 
     def tick(self, *, now: float | None = None) -> LeaseCleanupSnapshot:
-        return self._advance(now)
+        with self._lock:
+            return self._advance(now)
 
     def _advance(self, now: float | None) -> LeaseCleanupSnapshot:
         snapshot = self._require()
