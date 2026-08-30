@@ -199,6 +199,7 @@ class WAWTmuxTransport:
         payload = validate_input(data)
         binding = self._require_binding()
         try:
+            self._require_managed(binding)
             _resolve(self._tmux.write_input(binding.session_name, payload))
         except RuntimeOperationError:
             raise
@@ -233,6 +234,7 @@ class WAWTmuxTransport:
         self._require_started()
         binding = self._require_binding()
         try:
+            self._require_managed(binding)
             _resolve(
                 self._tmux.resize_window(
                     binding.session_name, columns=geometry.columns, rows=geometry.rows
@@ -267,9 +269,10 @@ class WAWTmuxTransport:
             raise RuntimeOperationError(
                 "WAW_STOP_FAILED", "Runtime tmux transport could not stop", category="broken"
             ) from exc
-        self._attached = False
-        self._closed = True
-        self._started = False
+        if closed:
+            self._attached = False
+            self._closed = True
+            self._started = False
         return RuntimeStopEvidence(
             workspace_id=binding.workspace_id,
             generation=binding.generation,

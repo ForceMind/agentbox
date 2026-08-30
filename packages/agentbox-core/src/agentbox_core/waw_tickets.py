@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
+from threading import RLock
 
 from agentbox_core.waw import (
     AgentType,
@@ -189,6 +190,7 @@ class AttachmentAuthority:
         self._pending: dict[bytes, _PendingTicket] = {}
         self._active: dict[str, ActiveAttachment] = {}
         self._replayed: deque[bytes] = deque(maxlen=replay_cache_size)
+        self._lock = RLock()
 
     @property
     def authority_epoch(self) -> int:
@@ -196,15 +198,18 @@ class AttachmentAuthority:
 
     @property
     def pending_count(self) -> int:
-        return len(self._pending)
+        with self._lock:
+            return len(self._pending)
 
     @property
     def active_count(self) -> int:
-        return len(self._active)
+        with self._lock:
+            return len(self._active)
 
     @property
     def record_count(self) -> int:
-        return len(self._pending) + len(self._active)
+        with self._lock:
+            return len(self._pending) + len(self._active)
 
     def issue(
         self,
@@ -224,45 +229,49 @@ class AttachmentAuthority:
     ) -> IssuedAttachmentTicket:
         """Reserve one pending ticket without acquiring the writer slot."""
 
-        now = self._clock()
-        self.sweep(now=now)
-        if self.record_count >= self._max_records:
-            raise TicketAuthorityError(TicketErrorCode.CAPACITY, "attachment capacity is exhausted")
-        if not isinstance(origin, str) or not origin or len(origin) > 256:
-            raise TicketAuthorityError(TicketErrorCode.INVALID, "origin is invalid")
-        lease_number = self._allocate_lease_number()
-        claims = AttachmentTuple(
-            workspace_id=workspace_id,
-            project_id=project_id,
-            agent_type=agent_type,
-            attachment_id=attachment_id,
-            lease_number=lease_number,
-            generation=generation,
-            auth_epoch=auth_epoch,
-            api_authority_epoch=self._authority_epoch,
-            runtime_host_installation_id=runtime_host_installation_id,
-            runtime_host_installation_revision=runtime_host_installation_revision,
-            binding_revision=binding_revision,
-            binding_digest=binding_digest,
-        )
-        del origin  # Origin is validated by the API boundary and is not needed for this pure core.
-        issued = IssuedAttachmentTicket(
-            ticket=_new_ticket(),
-            claims=claims,
-            issued_at_monotonic=now,
-            expires_at_monotonic=now + self._ticket_ttl,
-            expires_at=expires_at or datetime.fromtimestamp(0),
-        )
-        digest = _ticket_digest(issued.ticket)
-        if digest in self._pending or digest in self._replayed:
-            raise TicketAuthorityError(TicketErrorCode.CAPACITY, "ticket collision")
-        self._pending[digest] = _PendingTicket(
-            digest,
-            claims,
-            issued.issued_at_monotonic,
-            issued.expires_at_monotonic,
-        )
-        return issued
+        with self._lock:
+            now = self._clock()
+            self.sweep(now=now)
+            if len(self._pending) + len(self._active) >= self._max_records:
+                raise TicketAuthorityError(
+                    TicketErrorCode.CAPACITY, "attachment capacity is exhausted"
+                )
+            if not isinstance(origin, str) or not origin or len(origin) > 256:
+                raise TicketAuthorityError(TicketErrorCode.INVALID, "origin is invalid")
+            lease_number = self._allocate_lease_number()
+            claims = AttachmentTuple(
+                workspace_id=workspace_id,
+                project_id=project_id,
+                agent_type=agent_type,
+                attachment_id=attachment_id,
+                lease_number=lease_number,
+                generation=generation,
+                auth_epoch=auth_epoch,
+                api_authority_epoch=self._authority_epoch,
+                runtime_host_installation_id=runtime_host_installation_id,
+                runtime_host_installation_revision=runtime_host_installation_revision,
+                binding_revision=binding_revision,
+                binding_digest=binding_digest,
+            )
+            # Origin is validated by the API boundary and is not needed here.
+            del origin
+            issued = IssuedAttachmentTicket(
+                ticket=_new_ticket(),
+                claims=claims,
+                issued_at_monotonic=now,
+                expires_at_monotonic=now + self._ticket_ttl,
+                expires_at=expires_at or datetime.fromtimestamp(0),
+            )
+            digest = _ticket_digest(issued.ticket)
+            if digest in self._pending or digest in self._replayed:
+                raise TicketAuthorityError(TicketErrorCode.CAPACITY, "ticket collision")
+            self._pending[digest] = _PendingTicket(
+                digest,
+                claims,
+                issued.issued_at_monotonic,
+                issued.expires_at_monotonic,
+            )
+            return issued
 
     def consume(
         self,
@@ -273,32 +282,37 @@ class AttachmentAuthority:
     ) -> ActiveAttachment:
         """Atomically consume a ticket and acquire the workspace writer slot."""
 
-        current = self._clock() if now is None else now
-        digest = _ticket_digest(ticket)
-        pending = self._pending.pop(digest, None)
-        if pending is None:
-            if digest in self._replayed:
-                raise TicketAuthorityError(TicketErrorCode.REPLAYED, "ticket was already consumed")
-            raise TicketAuthorityError(TicketErrorCode.INVALID, "ticket is unknown")
-        self._replayed.append(digest)
-        if current >= pending.expires_at_monotonic:
-            raise TicketAuthorityError(TicketErrorCode.EXPIRED, "ticket has expired")
-        if not _same_tuple(pending.claims, expected):
-            raise TicketAuthorityError(TicketErrorCode.STALE, "ticket tuple does not match")
-        if expected.workspace_id in self._active:
-            active = self._active[expected.workspace_id]
-            if active.active_at(current):
-                raise TicketAuthorityError(TicketErrorCode.WRITER_BUSY, "workspace writer is busy")
-            del self._active[expected.workspace_id]
-        lease = ActiveAttachment(
-            claims=expected,
-            opened_at_monotonic=current,
-            last_heartbeat_monotonic=current,
-            lease_expires_at_monotonic=current + self._lease_ttl,
-            absolute_expires_at_monotonic=current + self._absolute_lease,
-        )
-        self._active[expected.workspace_id] = lease
-        return lease
+        with self._lock:
+            current = self._clock() if now is None else now
+            digest = _ticket_digest(ticket)
+            pending = self._pending.pop(digest, None)
+            if pending is None:
+                if digest in self._replayed:
+                    raise TicketAuthorityError(
+                        TicketErrorCode.REPLAYED, "ticket was already consumed"
+                    )
+                raise TicketAuthorityError(TicketErrorCode.INVALID, "ticket is unknown")
+            self._replayed.append(digest)
+            if current >= pending.expires_at_monotonic:
+                raise TicketAuthorityError(TicketErrorCode.EXPIRED, "ticket has expired")
+            if not _same_tuple(pending.claims, expected):
+                raise TicketAuthorityError(TicketErrorCode.STALE, "ticket tuple does not match")
+            if expected.workspace_id in self._active:
+                active = self._active[expected.workspace_id]
+                if active.active_at(current):
+                    raise TicketAuthorityError(
+                        TicketErrorCode.WRITER_BUSY, "workspace writer is busy"
+                    )
+                del self._active[expected.workspace_id]
+            lease = ActiveAttachment(
+                claims=expected,
+                opened_at_monotonic=current,
+                last_heartbeat_monotonic=current,
+                lease_expires_at_monotonic=current + self._lease_ttl,
+                absolute_expires_at_monotonic=current + self._absolute_lease,
+            )
+            self._active[expected.workspace_id] = lease
+            return lease
 
     def heartbeat(
         self,
@@ -308,70 +322,75 @@ class AttachmentAuthority:
     ) -> ActiveAttachment:
         """Renew an exact active lease without changing its lease number."""
 
-        current = self._clock() if now is None else now
-        active = self._active.get(expected.workspace_id)
-        if active is None or not _same_tuple(active.claims, expected):
-            raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
-        if not active.active_at(current):
-            del self._active[expected.workspace_id]
-            raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
-        renewed_until = min(current + self._lease_ttl, active.absolute_expires_at_monotonic)
-        updated = replace(
-            active,
-            last_heartbeat_monotonic=current,
-            lease_expires_at_monotonic=renewed_until,
-        )
-        self._active[expected.workspace_id] = updated
-        return updated
+        with self._lock:
+            current = self._clock() if now is None else now
+            active = self._active.get(expected.workspace_id)
+            if active is None or not _same_tuple(active.claims, expected):
+                raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
+            if not active.active_at(current):
+                del self._active[expected.workspace_id]
+                raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
+            renewed_until = min(current + self._lease_ttl, active.absolute_expires_at_monotonic)
+            updated = replace(
+                active,
+                last_heartbeat_monotonic=current,
+                lease_expires_at_monotonic=renewed_until,
+            )
+            self._active[expected.workspace_id] = updated
+            return updated
 
     def is_active(self, expected: AttachmentTuple, *, now: float | None = None) -> bool:
         """Return whether the exact authority-held lease is still current."""
 
-        current = self._clock() if now is None else now
-        active = self._active.get(expected.workspace_id)
-        if active is None or not _same_tuple(active.claims, expected):
-            return False
-        if not active.active_at(current):
-            del self._active[expected.workspace_id]
-            return False
-        return True
+        with self._lock:
+            current = self._clock() if now is None else now
+            active = self._active.get(expected.workspace_id)
+            if active is None or not _same_tuple(active.claims, expected):
+                return False
+            if not active.active_at(current):
+                del self._active[expected.workspace_id]
+                return False
+            return True
 
     def detach(self, expected: AttachmentTuple, *, now: float | None = None) -> ActiveAttachment:
         """Release only the exact active lease; stale callers cannot free a new writer."""
 
-        current = self._clock() if now is None else now
-        active = self._active.get(expected.workspace_id)
-        if active is None or not _same_tuple(active.claims, expected):
-            raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
-        if not active.active_at(current):
+        with self._lock:
+            current = self._clock() if now is None else now
+            active = self._active.get(expected.workspace_id)
+            if active is None or not _same_tuple(active.claims, expected):
+                raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
+            if not active.active_at(current):
+                del self._active[expected.workspace_id]
+                raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
             del self._active[expected.workspace_id]
-            raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
-        del self._active[expected.workspace_id]
-        return active
+            return active
 
     def invalidate_all(self) -> None:
         """Invalidate all volatile authority state on API restart/shutdown."""
 
-        for digest in self._pending:
-            self._replayed.append(digest)
-        self._pending.clear()
-        self._active.clear()
+        with self._lock:
+            for digest in self._pending:
+                self._replayed.append(digest)
+            self._pending.clear()
+            self._active.clear()
 
     def sweep(self, *, now: float | None = None) -> tuple[str, ...]:
         """Remove expired pending tickets and leases without evicting live records."""
 
-        current = self._clock() if now is None else now
-        expired: list[str] = []
-        for digest, pending in tuple(self._pending.items()):
-            if current >= pending.expires_at_monotonic:
-                del self._pending[digest]
-                self._replayed.append(digest)
-                expired.append(pending.claims.attachment_id)
-        for workspace, active in tuple(self._active.items()):
-            if not active.active_at(current):
-                del self._active[workspace]
-                expired.append(active.attachment_id)
-        return tuple(expired)
+        with self._lock:
+            current = self._clock() if now is None else now
+            expired: list[str] = []
+            for digest, pending in tuple(self._pending.items()):
+                if current >= pending.expires_at_monotonic:
+                    del self._pending[digest]
+                    self._replayed.append(digest)
+                    expired.append(pending.claims.attachment_id)
+            for workspace, active in tuple(self._active.items()):
+                if not active.active_at(current):
+                    del self._active[workspace]
+                    expired.append(active.attachment_id)
+            return tuple(expired)
 
     def _allocate_lease_number(self) -> int:
         number = self._next_lease_number

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from threading import Barrier
 from typing import Any
 
 import pytest
@@ -127,6 +129,28 @@ def test_single_writer_admission_rejects_second_live_writer_but_allows_after_det
     authority.detach(first.claims)
     third = _issue(authority, attachment_id="att_" + "4" * 32)
     assert authority.consume(third.ticket, _tuple(third)).claims.attachment_id == "att_" + "4" * 32
+
+
+def test_concurrent_consumers_linearize_one_writer() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    first = _issue(authority)
+    second = _issue(authority, attachment_id="att_" + "3" * 32)
+    gate = Barrier(2)
+
+    def consume(ticket: IssuedAttachmentTicket) -> str:
+        gate.wait()
+        try:
+            return authority.consume(ticket.ticket, ticket.claims).attachment_id
+        except TicketAuthorityError as exc:
+            return exc.code.value
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(executor.map(consume, (first, second)))
+
+    assert sum(result.startswith("att_") for result in results) == 1
+    assert TicketErrorCode.WRITER_BUSY.value in results
+    assert authority.active_count == 1
 
 
 def test_heartbeat_renews_idle_expiry_without_changing_lease_number() -> None:

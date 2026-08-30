@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from agentbox_core.waw import AgentType, WorkspaceStopOperation, workspace_id
+from agentbox_core.waw import AgentType, WorkspaceStopOperation, managed_marker, workspace_id
 from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
@@ -26,6 +26,7 @@ class FakeTransport:
         self.stopped = False
         self.fail_writes = False
         self.detach_confirmed = True
+        self.stop_closed = True
         self.workspace_id = ""
         self.generation = 1
         self.marker = ""
@@ -61,8 +62,8 @@ class FakeTransport:
             self.workspace_id,
             self.generation,
             self.marker,
-            True,
-            0,
+            self.stop_closed,
+            0 if self.stop_closed else 1,
         )
 
 
@@ -86,6 +87,16 @@ def _attachment(workspace: str, *, attachment_id: str = "att_" + "2" * 32) -> Ac
 
 def _supervisor(tmp_path: Path) -> tuple[WAWSupervisor, FakeTransport, str]:
     workspace = workspace_id("prj_" + "1" * 32, AgentType.CLAUDE)
+    stop_binding = WorkspaceStopOperation(
+        workspace_id=workspace,
+        project_id="prj_" + "1" * 32,
+        agent_type=AgentType.CLAUDE,
+        generation=1,
+        binding_revision=1,
+        binding_digest="a" * 64,
+        runtime_host_installation_id="wri_" + "3" * 32,
+        runtime_host_installation_revision=1,
+    )
     executable_path = tmp_path / "claude"
     executable_path.write_text("#!/bin/sh\n", encoding="utf-8")
     executable_path.chmod(0o755)
@@ -103,7 +114,16 @@ def _supervisor(tmp_path: Path) -> tuple[WAWSupervisor, FakeTransport, str]:
             details.st_mtime_ns,
         ),
         argv=("remote-control",),
-        managed_marker="waw-v1:wri_" + "2" * 32 + ":" + "3" * 32,
+        managed_marker=managed_marker(
+            runtime_host_installation_id=stop_binding.runtime_host_installation_id,
+            runtime_host_installation_revision=stop_binding.runtime_host_installation_revision,
+            project_id=stop_binding.project_id,
+            agent_type=stop_binding.agent_type,
+            workspace_id_value=stop_binding.workspace_id,
+            generation=stop_binding.generation,
+            binding_revision=stop_binding.binding_revision,
+            binding_digest=stop_binding.binding_digest,
+        ),
     )
     transport = FakeTransport()
     return (
@@ -115,6 +135,7 @@ def _supervisor(tmp_path: Path) -> tuple[WAWSupervisor, FakeTransport, str]:
             geometry=PtyGeometry(80, 24),
             clock=lambda: 1.0,
             attachment_validator=lambda _: True,
+            stop_binding=stop_binding,
         ),
         transport,
         workspace,
@@ -167,7 +188,7 @@ def test_forged_same_id_claims_and_reconnect_are_rejected(tmp_path: Path) -> Non
         attachment,
         claims=replace(attachment.claims, binding_digest="b" * 64),
     )
-    with pytest.raises(RuntimeOperationError, match="writer attachment"):
+    with pytest.raises(RuntimeOperationError, match="binding"):
         supervisor.write_input(forged, b"x")
     supervisor.detach(attachment)
     with pytest.raises(RuntimeOperationError, match="fresh attachment"):
@@ -183,6 +204,22 @@ def test_detach_requires_positive_runtime_ack(tmp_path: Path) -> None:
     with pytest.raises(RuntimeOperationError, match="confirm"):
         supervisor.detach(attachment)
     assert supervisor.state is SupervisorState.RUNNING
+
+
+def test_heartbeat_replaces_immutable_authority_lease(tmp_path: Path) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    attachment = _attachment(workspace)
+    supervisor.attach(attachment)
+    renewed = replace(
+        attachment,
+        last_heartbeat_monotonic=2.0,
+        lease_expires_at_monotonic=150.0,
+    )
+    supervisor.heartbeat(attachment, renewed)
+    with pytest.raises(RuntimeOperationError, match="writer attachment"):
+        supervisor.write_input(attachment, b"old")
+    supervisor.write_input(renewed, b"new")
 
 
 def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
@@ -220,3 +257,39 @@ def test_exact_stop_does_not_require_browser_attachment(tmp_path: Path) -> None:
     )
     supervisor.exact_stop(operation)
     assert transport.stopped is True
+
+
+def test_exact_stop_rejects_stale_binding(tmp_path: Path) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    operation = WorkspaceStopOperation(
+        workspace_id=workspace,
+        project_id="prj_" + "1" * 32,
+        agent_type=AgentType.CLAUDE,
+        generation=1,
+        binding_revision=1,
+        binding_digest="b" * 64,
+        runtime_host_installation_id="wri_" + "3" * 32,
+        runtime_host_installation_revision=1,
+    )
+    with pytest.raises(RuntimeOperationError, match="does not match"):
+        supervisor.exact_stop(operation)
+
+
+def test_unconfirmed_stop_preserves_reconciliation_state(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    transport.stop_closed = False
+    operation = WorkspaceStopOperation(
+        workspace_id=workspace,
+        project_id="prj_" + "1" * 32,
+        agent_type=AgentType.CLAUDE,
+        generation=1,
+        binding_revision=1,
+        binding_digest="a" * 64,
+        runtime_host_installation_id="wri_" + "3" * 32,
+        runtime_host_installation_revision=1,
+    )
+    with pytest.raises(RuntimeOperationError, match="exact close"):
+        supervisor.exact_stop(operation)
+    assert supervisor.state is SupervisorState.RECONCILIATION_REQUIRED

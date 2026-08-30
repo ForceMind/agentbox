@@ -16,7 +16,9 @@ from threading import RLock
 from typing import Protocol
 
 from agentbox_core.waw import (
+    AgentType,
     WorkspaceStopOperation,
+    managed_marker,
     validate_positive_u64,
     validate_workspace_id,
 )
@@ -108,6 +110,7 @@ class WAWSupervisor:
         geometry: PtyGeometry,
         clock: Callable[[], float],
         attachment_validator: Callable[[ActiveAttachment], bool],
+        stop_binding: WorkspaceStopOperation,
         output_capacity_bytes: int = 256 * 1024,
     ) -> None:
         validate_workspace_id(workspace_id)
@@ -118,6 +121,28 @@ class WAWSupervisor:
                 "Runtime command workspace does not match",
                 category="validation",
             )
+        if (
+            stop_binding.workspace_id != workspace_id
+            or stop_binding.project_id != command.project_id
+            or stop_binding.agent_type is not AgentType.CLAUDE
+            or stop_binding.generation != generation
+            or managed_marker(
+                runtime_host_installation_id=stop_binding.runtime_host_installation_id,
+                runtime_host_installation_revision=stop_binding.runtime_host_installation_revision,
+                project_id=stop_binding.project_id,
+                agent_type=stop_binding.agent_type,
+                workspace_id_value=stop_binding.workspace_id,
+                generation=stop_binding.generation,
+                binding_revision=stop_binding.binding_revision,
+                binding_digest=stop_binding.binding_digest,
+            )
+            != command.managed_marker
+        ):
+            raise RuntimeOperationError(
+                "WAW_BINDING_MISMATCH",
+                "Runtime command does not match the durable workspace binding",
+                category="validation",
+            )
         self._workspace_id = workspace_id
         self._generation = generation
         self._command = command
@@ -125,6 +150,7 @@ class WAWSupervisor:
         self._geometry = geometry
         self._clock = clock
         self._attachment_validator = attachment_validator
+        self._stop_binding = stop_binding
         self._ring = OutputRing(capacity_bytes=output_capacity_bytes)
         self._state = SupervisorState.ADMITTED
         self._attachment: ActiveAttachment | None = None
@@ -254,6 +280,27 @@ class WAWSupervisor:
                     category="broken",
                 ) from exc
 
+    def heartbeat(self, current: ActiveAttachment, renewed: ActiveAttachment) -> SupervisorSnapshot:
+        """Replace the immutable authority lease after an exact heartbeat."""
+
+        with self._lock:
+            self._require_attachment(current)
+            self._check_attachment(renewed)
+            if renewed.claims != current.claims:
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_STALE",
+                    "Heartbeat changed immutable attachment claims",
+                    category="conflict",
+                )
+            if renewed.last_heartbeat_monotonic <= current.last_heartbeat_monotonic:
+                raise RuntimeOperationError(
+                    "WAW_HEARTBEAT_STALE",
+                    "Heartbeat did not advance the attachment lease",
+                    category="conflict",
+                )
+            self._attachment = renewed
+            return self.snapshot()
+
     def resize(self, attachment: ActiveAttachment, geometry: PtyGeometry) -> SupervisorSnapshot:
         with self._lock:
             self._require_attachment(attachment)
@@ -318,11 +365,7 @@ class WAWSupervisor:
     def exact_stop(self, operation: WorkspaceStopOperation) -> SupervisorSnapshot:
         """Execute a durable generation-bound Stop without trusting a browser lease."""
         with self._lock:
-            if (
-                operation.workspace_id != self._workspace_id
-                or operation.generation != self._generation
-                or str(operation.agent_type) != "claude"
-            ):
+            if not _same_stop_binding(operation, self._stop_binding):
                 raise RuntimeOperationError(
                     "WAW_STOP_STALE",
                     "Stop operation does not match this workspace",
@@ -357,6 +400,13 @@ class WAWSupervisor:
                     "Runtime did not provide exact close evidence",
                     category="conflict",
                 )
+        except RuntimeOperationError as exc:
+            if self._state is SupervisorState.RECONCILIATION_REQUIRED:
+                raise
+            self._state = SupervisorState.BROKEN
+            raise RuntimeOperationError(
+                "WAW_STOP_FAILED", "Runtime transport could not stop", category="broken"
+            ) from exc
         except Exception as exc:
             self._state = SupervisorState.BROKEN
             raise RuntimeOperationError(
@@ -369,10 +419,21 @@ class WAWSupervisor:
 
     def _check_attachment(self, attachment: ActiveAttachment) -> None:
         claims = attachment.claims
-        if claims.workspace_id != self._workspace_id or claims.generation != self._generation:
+        if (
+            claims.workspace_id != self._workspace_id
+            or claims.project_id != self._stop_binding.project_id
+            or claims.agent_type is not self._stop_binding.agent_type
+            or claims.generation != self._generation
+            or claims.runtime_host_installation_id
+            != self._stop_binding.runtime_host_installation_id
+            or claims.runtime_host_installation_revision
+            != self._stop_binding.runtime_host_installation_revision
+            or claims.binding_revision != self._stop_binding.binding_revision
+            or claims.binding_digest != self._stop_binding.binding_digest
+        ):
             raise RuntimeOperationError(
                 "WAW_ATTACHMENT_STALE",
-                "Attachment does not match this workspace generation",
+                "Attachment does not match this workspace binding",
                 category="conflict",
             )
         if not attachment.active_at(self._clock()):
@@ -394,6 +455,19 @@ class WAWSupervisor:
                 "An active writer attachment is required",
                 category="conflict",
             )
+
+
+def _same_stop_binding(left: WorkspaceStopOperation, right: WorkspaceStopOperation) -> bool:
+    return (
+        left.workspace_id == right.workspace_id
+        and left.project_id == right.project_id
+        and left.agent_type is right.agent_type
+        and left.generation == right.generation
+        and left.binding_revision == right.binding_revision
+        and left.binding_digest == right.binding_digest
+        and left.runtime_host_installation_id == right.runtime_host_installation_id
+        and left.runtime_host_installation_revision == right.runtime_host_installation_revision
+    )
 
 
 __all__ = [

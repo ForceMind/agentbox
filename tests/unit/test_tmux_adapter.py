@@ -13,6 +13,7 @@ FIXTURES = Path(__file__).parents[1] / "fixtures" / "tmux"
 class RecordingRunner:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
+        self.stdin: list[bytes | None] = []
         self.responses: list[ProcessResult] = []
 
     async def run(
@@ -26,12 +27,14 @@ class RecordingRunner:
         stdout_limit: int,
         stderr_limit: int,
         sensitive_output: bool = False,
+        stdin_data: bytes | None = None,
         error_prefix: str = "CODEX",
     ) -> ProcessResult:
         del executable, environment, cwd, timeout_seconds, stdout_limit, stderr_limit
         del sensitive_output, error_prefix
         argv = tuple(arguments)
         self.calls.append(argv)
+        self.stdin.append(stdin_data)
         return self.responses.pop(0) if self.responses else ProcessResult(argv, 0, b"", b"")
 
 
@@ -205,3 +208,30 @@ async def test_tmux_rejects_raw_session_name_injection(tmp_path: Path) -> None:
     for name in ("../escape", "name; kill-server", "similar:1", "name with spaces"):
         with pytest.raises(RuntimeOperationError):
             await adapter.has_session(name)
+
+
+@pytest.mark.anyio
+async def test_tmux_write_input_uses_stdin_buffer_and_exact_pane(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = RecordingRunner()
+    runner.responses = [
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 0, b"", b""),
+    ]
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+    name = "agentbox-waw-claude-123"
+    payload = b"opaque\x00input\r"
+
+    await adapter.write_input(name, payload)
+
+    buffer_name = f"agentbox-waw-input-{name}"
+    assert runner.calls == [
+        ("has-session", "-t", f"={name}"),
+        ("load-buffer", "-b", buffer_name, "-"),
+        ("paste-buffer", "-d", "-b", buffer_name, "-t", f"={name}:0.0"),
+    ]
+    assert runner.stdin == [None, payload, None]

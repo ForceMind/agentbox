@@ -301,6 +301,8 @@ class WorkspaceSessionService:
         """Record exact-stop evidence outcome and reconcile the session."""
 
         outcome = StopResult(result)
+        if outcome is StopResult.PENDING:
+            raise WorkspaceSessionConflict("stop completion result must be terminal")
         now = self._clock.now()
         with self._database.transaction() as session:
             record = session.get(WorkspaceStopOperationRecord, stop_operation_id)
@@ -317,8 +319,18 @@ class WorkspaceSessionService:
             ):
                 raise WorkspaceSessionConflict("stop failure code is invalid")
             row = session.get(AgentWorkspaceSessionRecord, record.workspace_id)
-            if row is None or row.generation != record.generation:
-                raise WorkspaceSessionConflict("stop operation generation is stale")
+            if row is None or (
+                row.project_id != record.project_id
+                or row.agent_type != record.agent_type
+                or row.generation != record.generation
+                or row.binding_revision != record.binding_revision
+                or row.binding_digest != record.binding_digest
+                or row.runtime_host_installation_id
+                != record.runtime_host_installation_id
+                or row.runtime_host_installation_revision
+                != record.runtime_host_installation_revision
+            ):
+                raise WorkspaceSessionConflict("stop operation binding is stale")
             record.result = outcome.value
             record.failure_code = failure_code
             record.updated_at = now

@@ -18,6 +18,7 @@ class FakeTmux:
         self.calls: list[tuple[str, object]] = []
         self.writes: list[bytes] = []
         self.resizes: list[tuple[str, int, int]] = []
+        self.pane_is_dead = False
 
     async def has_session(self, session_name: str) -> bool:
         self.calls.append(("has", session_name))
@@ -29,7 +30,7 @@ class FakeTmux:
 
     async def pane_dead(self, session_name: str) -> bool:
         self.calls.append(("dead", session_name))
-        return False
+        return self.pane_is_dead
 
     async def create_session(
         self,
@@ -159,3 +160,36 @@ def test_tmux_transport_adopts_only_exact_marked_session(tmp_path: Path) -> None
     with pytest.raises(RuntimeOperationError, match="marker"):
         transport.start(command, PtyGeometry(80, 24))
     assert not any(kind == "kill" for kind, _ in tmux.calls)
+
+
+def test_tmux_transport_revalidates_marker_before_input_and_resize(tmp_path: Path) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    transport.start(command, PtyGeometry(80, 24))
+    session_name = transport.session_name
+    assert session_name is not None
+    tmux.sessions[session_name] = "waw-v1:wri_" + "9" * 32 + ":" + "8" * 32
+    with pytest.raises(RuntimeOperationError, match="marker"):
+        transport.write(b"x")
+    with pytest.raises(RuntimeOperationError, match="marker"):
+        transport.resize(PtyGeometry(100, 30))
+
+
+def test_tmux_transport_rejects_dead_pane_readiness(tmp_path: Path) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    tmux.pane_is_dead = True
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    with pytest.raises(RuntimeOperationError, match="exited"):
+        transport.start(command, PtyGeometry(80, 24))
