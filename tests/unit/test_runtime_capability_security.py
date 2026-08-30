@@ -137,10 +137,10 @@ def test_wire_contract_contains_no_generic_privileged_payload_field() -> None:
     )
 
 
-def test_slice_32a_migration_is_present_without_a_later_runtime_slice() -> None:
+def test_slice_32a_migration_and_waw_metadata_migration_are_present() -> None:
     migration_names = {path.name for path in (ROOT / "migrations/versions").glob("*.py")}
     assert any(name.startswith("0004_phase11_provider_core") for name in migration_names)
     assert any(
         name.startswith("0005_phase11_control_plane_ownership_approval") for name in migration_names
     )
-    assert not any(name.startswith("0006") for name in migration_names)
+    assert any(name.startswith("0006_waw_workspace_metadata") for name in migration_names)

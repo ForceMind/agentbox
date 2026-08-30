@@ -495,7 +495,7 @@ def test_0005_unsafe_downgrade_rolls_back_schema_and_version(tmp_path: Path) -> 
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0005_phase11_control_plane_ownership_approval"
+                == "0006_waw_workspace_metadata"
             )
             assert "confirmation_challenges" in inspect(engine).get_table_names()
             assert "auth_epoch" in {
@@ -835,8 +835,13 @@ def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> Non
     )
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(path) as connection:
+        expected_revision = (
+            "0006_waw_workspace_metadata"
+            if target == "heads"
+            else "0005_phase11_control_plane_ownership_approval"
+        )
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0005_phase11_control_plane_ownership_approval",
+            expected_revision,
         )
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA quick_check").fetchall() == [("ok",)]
@@ -955,7 +960,7 @@ def test_phase_b_rejects_wrong_exact_version_before_commit(tmp_path: Path) -> No
     event.listen(Engine, "after_cursor_execute", corrupt)
     try:
         with pytest.raises(RuntimeError, match="^PHASE11_0005_VERSION_ROW_INVALID$"):
-            migrate_database(url)
+            migrate_database(url, "0005_phase11_control_plane_ownership_approval")
     finally:
         event.remove(Engine, "after_cursor_execute", corrupt)
     assert changed
