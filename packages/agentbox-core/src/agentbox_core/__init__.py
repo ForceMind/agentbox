@@ -1,6 +1,14 @@
 """Shared AgentBox application foundations."""
 
 from agentbox_core.version import __version__
+from agentbox_core.waw_tickets import (
+    ActiveAttachment,
+    AttachmentAuthority,
+    AttachmentTuple,
+    IssuedAttachmentTicket,
+    TicketAuthorityError,
+    TicketErrorCode,
+)
 from agentbox_core.waw import (
     AgentType,
     AgentWorkspaceSession,
@@ -28,9 +36,15 @@ from agentbox_core.waw import (
 __all__ = [
     "AgentType",
     "AgentWorkspaceSession",
+    "ActiveAttachment",
+    "AttachmentAuthority",
+    "AttachmentTuple",
     "GenerationCounter",
+    "IssuedAttachmentTicket",
     "ReconciliationState",
     "StopResult",
+    "TicketAuthorityError",
+    "TicketErrorCode",
     "WAWDomainError",
     "WorkspaceState",
     "WorkspaceStopOperation",
