@@ -18,10 +18,17 @@ from pathlib import Path
 _DEFAULT_PATH = Path("/var/lib/agentbox-waw/runtime-host-installation.json")
 _SCHEMA = "waw-runtime-host-installation-v1"
 _MAX_BYTES = 64 * 1024
+_MAX_U64 = 2**64 - 1
 _ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
 _DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _STATES = frozenset({"bootstrap", "steady", "rotation"})
+
+
+def _is_uint64_decimal(value: str) -> bool:
+    """Return whether value is a canonical positive uint64 decimal string."""
+
+    return _DECIMAL.fullmatch(value) is not None and int(value) <= _MAX_U64
 
 
 def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -129,10 +136,10 @@ def load_waw_runtime_host_manifest(
             raise WAWRuntimeHostManifestError("WAW host manifest value is invalid")
     if (
         not _ID.fullmatch(value["runtime_host_installation_id"])
-        or not _DECIMAL.fullmatch(value["runtime_host_installation_revision"])
+        or not _is_uint64_decimal(value["runtime_host_installation_revision"])
         or not _DIGEST.fullmatch(value["host_manifest_digest"])
         or not _DIGEST.fullmatch(value["project_root_manifest_digest"])
-        or not _DECIMAL.fullmatch(value["enrollment_epoch"])
+        or not _is_uint64_decimal(value["enrollment_epoch"])
         or value["enrollment_state"] not in _STATES
         or value["runtime_host_installation_id"] == "wri_" + "0" * 32
     ):

@@ -52,6 +52,7 @@ async def _running_server(
     *,
     expected_peer_uid: int | None = None,
     expected_peer_gid: int | None = None,
+    **server_kwargs: object,
 ) -> tuple[WAWControlServer, socket.socket]:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(str(path))
@@ -62,6 +63,7 @@ async def _running_server(
         expected_peer_uid=os.geteuid() if expected_peer_uid is None else expected_peer_uid,
         expected_peer_gid=os.getegid() if expected_peer_gid is None else expected_peer_gid,
         timeout_seconds=0.2,
+        **server_kwargs,
     )
     await server.start()
     return server, sock
@@ -227,5 +229,116 @@ async def test_server_fences_dispatch_response_with_wrong_request_id(tmp_path: P
         assert b'"error_code":"INTERNAL_BOUNDED"' in raw
         assert b'"request_id":"wreq_' + b"1" * 32 in raw
     finally:
+        await server.close()
+        sock.close()
+
+
+@pytest.mark.anyio
+async def test_poison_cancels_active_dispatches_on_two_connections(tmp_path: Path) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cancelled: list[str] = []
+
+    async def dispatch(request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.append(cast(str, request["request_id"]))
+            await release.wait()
+            raise
+        raise AssertionError("unreachable")
+
+    path = tmp_path / "control.sock"
+    server, sock = await _running_server(
+        path, dispatch, max_active_connections=4, max_active_dispatches=2
+    )
+    try:
+        import json
+
+        first = _request()
+        second = _request() | {"request_id": "wreq_" + "4" * 32}
+        calls = [
+            asyncio.create_task(
+                _call(path, json.dumps(request, separators=(",", ":")).encode() + b"\n")
+            )
+            for request in (first, second)
+        ]
+        await asyncio.wait_for(started.wait(), timeout=1)
+        # Allow the second handler to enter dispatch before poisoning.
+        while len(server._dispatch_tasks) < 2:
+            await asyncio.sleep(0)
+        server._poison_listener()
+        release.set()
+        assert await asyncio.wait_for(calls[0], timeout=1) == b""
+        assert await asyncio.wait_for(calls[1], timeout=1) == b""
+        assert set(cancelled) == {first["request_id"], second["request_id"]}
+    finally:
+        release.set()
+        await server.close()
+        sock.close()
+
+
+@pytest.mark.anyio
+async def test_close_while_dispatching_is_bounded_and_poisoned(tmp_path: Path) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await release.wait()
+            raise
+        raise AssertionError("unreachable")
+
+    path = tmp_path / "control.sock"
+    server, sock = await _running_server(path, dispatch)
+    try:
+        import json
+
+        call = asyncio.create_task(
+            _call(path, json.dumps(_request(), separators=(",", ":")).encode() + b"\n")
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        close_task = asyncio.create_task(server.close())
+        await asyncio.wait_for(close_task, timeout=1)
+        assert server._poisoned is True
+        release.set()
+        assert await asyncio.wait_for(call, timeout=1) == b""
+    finally:
+        release.set()
+        await server.close()
+        sock.close()
+
+
+@pytest.mark.anyio
+async def test_dispatch_limit_fails_closed_for_second_connection(tmp_path: Path) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def dispatch(request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        await release.wait()
+        return _response(cast(str, request["request_id"]))
+
+    path = tmp_path / "control.sock"
+    server, sock = await _running_server(path, dispatch, max_active_dispatches=1)
+    try:
+        import json
+
+        first = _request()
+        second = _request() | {"request_id": "wreq_" + "5" * 32}
+        first_call = asyncio.create_task(
+            _call(path, json.dumps(first, separators=(",", ":")).encode() + b"\n")
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        second_raw = await _call(path, json.dumps(second, separators=(",", ":")).encode() + b"\n")
+        assert b'"error_code":"CONTROL_BUSY"' in second_raw
+        release.set()
+        assert await asyncio.wait_for(first_call, timeout=1)
+    finally:
+        release.set()
         await server.close()
         sock.close()

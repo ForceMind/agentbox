@@ -45,6 +45,26 @@ def test_reads_canonical_installer_manifest(tmp_path: Path) -> None:
     assert value.enrollment_state == "steady"
 
 
+@pytest.mark.parametrize("field", ["runtime_host_installation_revision", "enrollment_epoch"])
+def test_accepts_maximum_uint64_decimal_values(tmp_path: Path, field: str) -> None:
+    data = _valid()
+    data[field] = str(2**64 - 1)
+    path = _write_manifest(tmp_path, data)
+    value = load_waw_runtime_host_manifest(
+        path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    assert getattr(value, field) == str(2**64 - 1)
+
+
+@pytest.mark.parametrize("field", ["runtime_host_installation_revision", "enrollment_epoch"])
+def test_rejects_uint64_overflow_decimal_values(tmp_path: Path, field: str) -> None:
+    data = _valid()
+    data[field] = str(2**64)
+    path = _write_manifest(tmp_path, data)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

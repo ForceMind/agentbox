@@ -57,6 +57,8 @@ class WAWControlServer:
         expected_peer_gid: int,
         timeout_seconds: float = 2.0,
         cancellation_grace_seconds: float = 0.05,
+        max_active_connections: int = 64,
+        max_active_dispatches: int = 16,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if sock.family != socket.AF_UNIX or sock.type != socket.SOCK_STREAM:
@@ -69,6 +71,10 @@ class WAWControlServer:
             raise ValueError("timeout_seconds must be positive")
         if cancellation_grace_seconds <= 0:
             raise ValueError("cancellation_grace_seconds must be positive")
+        if type(max_active_connections) is not int or max_active_connections <= 0:
+            raise ValueError("max_active_connections must be a positive integer")
+        if type(max_active_dispatches) is not int or max_active_dispatches <= 0:
+            raise ValueError("max_active_dispatches must be a positive integer")
         if type(expected_peer_uid) is not int or expected_peer_uid < 0:
             raise ValueError("expected_peer_uid must be a non-negative integer")
         if type(expected_peer_gid) is not int or expected_peer_gid < 0:
@@ -77,11 +83,16 @@ class WAWControlServer:
         self._dispatch = dispatch
         self._timeout_seconds = timeout_seconds
         self._cancellation_grace_seconds = cancellation_grace_seconds
+        self._max_active_connections = max_active_connections
+        self._max_active_dispatches = max_active_dispatches
         self._expected_peer_uid = expected_peer_uid
         self._expected_peer_gid = expected_peer_gid
         self._monotonic = monotonic
         self._server: asyncio.AbstractServer | None = None
         self._poisoned = False
+        self._closing = False
+        self._connection_tasks: set[asyncio.Task[Any]] = set()
+        self._writers: set[asyncio.StreamWriter] = set()
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
 
     async def start(self) -> None:
@@ -89,6 +100,7 @@ class WAWControlServer:
             raise RuntimeError("WAW control server is already started")
         if self._poisoned:
             raise RuntimeError("WAW control server is poisoned")
+        self._closing = False
         self._sock.setblocking(False)
         self._server = await asyncio.start_unix_server(
             self._handle,
@@ -98,17 +110,47 @@ class WAWControlServer:
         )
 
     async def close(self) -> None:
+        self._closing = True
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
             self._server = None
+        # Close and cancellation are deliberately bounded.  A dispatcher
+        # which refuses cancellation is poisoned and is never admitted again.
+        current = asyncio.current_task()
+        dispatch_tasks = set(self._dispatch_tasks)
+        for task in dispatch_tasks:
+            if task is not current:
+                task.cancel()
+        connection_tasks = {task for task in self._connection_tasks if task is not current}
+        for task in connection_tasks:
+            task.cancel()
+        pending = dispatch_tasks | connection_tasks
+        if pending:
+            done, _ = await asyncio.wait(pending, timeout=self._cancellation_grace_seconds)
+            for task in done:
+                with contextlib.suppress(BaseException):
+                    task.result()
+            if any(not task.done() for task in pending):
+                self._poison_listener()
+        for writer in tuple(self._writers):
+            await self._close_writer(writer)
+        self._closing = False
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        if self._poisoned:
-            writer.close()
-            with contextlib.suppress(OSError):
-                await writer.wait_closed()
+        current = asyncio.current_task()
+        if current is None:
+            await self._close_writer(writer)
             return
+        if (
+            self._poisoned
+            or self._closing
+            or len(self._connection_tasks) >= self._max_active_connections
+        ):
+            await self._close_writer(writer)
+            return
+        self._connection_tasks.add(current)
+        self._writers.add(writer)
         deadline = self._monotonic() + self._timeout_seconds
         peer_pidfd: int | None = None
         try:
@@ -173,9 +215,9 @@ class WAWControlServer:
             # no retry or side effect is attempted by this transport layer.
             return
         finally:
-            writer.close()
-            with contextlib.suppress(OSError):
-                await writer.wait_closed()
+            self._connection_tasks.discard(current)
+            self._writers.discard(writer)
+            await self._close_writer(writer)
             if peer_pidfd is not None:
                 with contextlib.suppress(OSError):
                     os.close(peer_pidfd)
@@ -209,6 +251,23 @@ class WAWControlServer:
         writer.write(self._error_bytes(request_id, code, False))
         with contextlib.suppress(OSError, TimeoutError, asyncio.TimeoutError):
             await self._with_deadline(writer.drain(), deadline)
+
+    async def _close_writer(self, writer: asyncio.StreamWriter) -> None:
+        writer.close()
+        with contextlib.suppress(OSError, TimeoutError, asyncio.TimeoutError):
+            await asyncio.wait_for(writer.wait_closed(), timeout=self._cancellation_grace_seconds)
+
+    def _poison_listener(self) -> None:
+        self._poisoned = True
+        self._closing = True
+        if self._server is not None:
+            self._server.close()
+        current = asyncio.current_task()
+        for task in tuple(self._dispatch_tasks) + tuple(self._connection_tasks):
+            if task is not current:
+                task.cancel()
+        for writer in tuple(self._writers):
+            writer.close()
 
     @staticmethod
     def _error(request_id: str, code: str, retryable: bool) -> dict[str, Any]:
@@ -256,6 +315,11 @@ class WAWControlServer:
         unsafe dispatcher.
         """
 
+        if self._poisoned or self._closing:
+            raise WAWControlDispatchError("CONTROL_UNAVAILABLE", retryable=True)
+        if len(self._dispatch_tasks) >= self._max_active_dispatches:
+            raise WAWControlDispatchError("CONTROL_BUSY", retryable=True)
+
         async def invoke() -> dict[str, Any]:
             return await self._dispatch(request)
 
@@ -282,9 +346,7 @@ class WAWControlServer:
                 task.result()
             raise TimeoutError("WAW control dispatch deadline exceeded")
 
-        self._poisoned = True
-        if self._server is not None:
-            self._server.close()
+        self._poison_listener()
         raise _WAWControlDispatchPoisoned("WAW control dispatcher did not cancel")
 
 
