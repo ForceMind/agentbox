@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import cast
 
@@ -30,7 +30,7 @@ class RecentAuth:
 
 
 def _auth(*, epoch: int = 4) -> AuthenticatedSession:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return AuthenticatedSession(
         session_id="ses_" + "3" * 32,
         user_id="adm_" + "4" * 32,

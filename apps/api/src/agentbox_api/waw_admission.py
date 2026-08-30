@@ -15,7 +15,12 @@ from typing import Protocol, cast
 
 from agentbox_core.services import AuthenticatedSession
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
-from agentbox_core.waw_tickets import AttachmentAuthority, IssuedAttachmentTicket, TicketAuthorityError
+from agentbox_core.waw_tickets import (
+    AttachmentAuthority,
+    IssuedAttachmentTicket,
+    TicketAuthorityError,
+)
+
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 
 _POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
