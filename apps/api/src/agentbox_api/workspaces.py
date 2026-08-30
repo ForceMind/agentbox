@@ -29,13 +29,6 @@ class WorkspaceMetadata(StrictMetadataModel):
     reconciliation_state: str
     generation: int
     revision: int
-    runtime_host_installation_id: str
-    runtime_host_installation_revision: int
-    runtime_type: str
-    binding_revision: int
-    binding_digest: str
-    runtime_session_name: str
-    executable_fingerprint: str
     created_at: datetime
     updated_at: datetime
     last_seen_at: datetime
@@ -74,13 +67,6 @@ def _metadata(row: AgentWorkspaceSessionRecord) -> WorkspaceMetadata:
         reconciliation_state=row.reconciliation_state,
         generation=row.generation,
         revision=row.revision,
-        runtime_host_installation_id=row.runtime_host_installation_id,
-        runtime_host_installation_revision=row.runtime_host_installation_revision,
-        runtime_type=row.runtime_type,
-        binding_revision=row.binding_revision,
-        binding_digest=row.binding_digest,
-        runtime_session_name=row.runtime_session_name,
-        executable_fingerprint=row.executable_fingerprint,
         created_at=row.created_at,
         updated_at=row.updated_at,
         last_seen_at=row.last_seen_at,
@@ -100,6 +86,7 @@ async def list_workspaces(
         rows = tuple(
             session.query(AgentWorkspaceSessionRecord)
             .order_by(AgentWorkspaceSessionRecord.created_at, AgentWorkspaceSessionRecord.id)
+            .limit(32)
             .all()
         )
     response.headers["Cache-Control"] = "no-store"
