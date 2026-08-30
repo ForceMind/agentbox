@@ -3,7 +3,13 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from agentbox_protocol import ABWSError, ABWSFramedStreamPump, ABWSFrameType, encode_frame
+from agentbox_protocol import (
+    ABWSError,
+    ABWSFramedStreamPump,
+    ABWSFrame,
+    ABWSFrameType,
+    encode_frame,
+)
 
 
 class FakeReader:
@@ -12,7 +18,7 @@ class FakeReader:
         self.error = error
         self.read_sizes: list[int] = []
 
-    async def read(self, size: int) -> bytes:
+    async def read(self, size: int = -1) -> bytes:
         self.read_sizes.append(size)
         if self.error is not None:
             raise self.error
@@ -44,7 +50,7 @@ def _control(request_id: str) -> dict[str, object]:
     return {"protocol_version": 1, "request_id": request_id}
 
 
-async def _collect(pump: ABWSFramedStreamPump) -> list[object]:
+async def _collect(pump: ABWSFramedStreamPump) -> list[ABWSFrame]:
     return [frame async for frame in pump.receive()]
 
 
@@ -91,7 +97,7 @@ def test_partial_eof_fails_closed() -> None:
 
 def test_read_timeout_fails_closed() -> None:
     class SlowReader:
-        async def read(self, size: int) -> bytes:
+        async def read(self, size: int = -1) -> bytes:
             await asyncio.sleep(0.05)
             return b""
 
@@ -107,8 +113,9 @@ def test_read_timeout_fails_closed() -> None:
 def test_receive_cancellation_fails_closed() -> None:
     async def scenario() -> None:
         class BlockingReader:
-            async def read(self, size: int) -> bytes:
+            async def read(self, size: int = -1) -> bytes:
                 await asyncio.Future()
+                raise AssertionError("unreachable")
 
         writer = FakeWriter()
         pump = ABWSFramedStreamPump(BlockingReader(), writer)
