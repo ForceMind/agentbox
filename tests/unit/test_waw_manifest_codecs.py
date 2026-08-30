@@ -7,6 +7,7 @@ from dataclasses import asdict
 from typing import Any, cast
 
 import pytest
+import rfc8785
 from agentbox_runtime.waw_manifest_codecs import (
     APIHostAnchor,
     CgroupDelegationManifest,
@@ -351,6 +352,83 @@ def test_cross_manifest_pin_accepts_exact_bytes_and_typed_records() -> None:
         result.anchor, result.runtime, result.project_root
     )
     assert typed_result == result
+
+
+@pytest.mark.parametrize("anchor_typed", [False, True])
+@pytest.mark.parametrize("runtime_typed", [False, True])
+@pytest.mark.parametrize("project_typed", [False, True])
+def test_cross_manifest_pin_accepts_mixed_wire_and_typed_inputs(
+    anchor_typed: bool, runtime_typed: bool, project_typed: bool
+) -> None:
+    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_record = decode_api_host_anchor(anchor_raw)
+    runtime_record = decode_runtime_host_manifest(runtime_raw)
+    project_record = decode_project_root_manifest(project_raw)
+    anchor: APIHostAnchor | bytes = anchor_record if anchor_typed else anchor_raw
+    runtime: RuntimeHostManifest | bytes = runtime_record if runtime_typed else runtime_raw
+    project: ProjectRootManifest | bytes = project_record if project_typed else project_raw
+
+    result = verify_api_host_anchor_cross_manifest(anchor, runtime, project)
+    assert result.anchor == anchor_record
+    assert result.runtime == runtime_record
+    assert result.project_root == project_record
+    assert result.runtime_manifest_digest == manifest_sha256(runtime_raw)
+    assert result.project_root_manifest_digest == manifest_sha256(project_raw)
+
+
+@pytest.mark.parametrize(
+    ("decoder", "raw", "needle", "replacement"),
+    [
+        (
+            decode_project_root_manifest,
+            encode_project_root_manifest(_project()),
+            b'"root_mode":"755"',
+            b'"root_mode":"644"',
+        ),
+        (
+            decode_cgroup_delegation_manifest,
+            encode_cgroup_delegation_manifest(_cgroup()),
+            b'"delegate_subgroup":"agentbox-runtime-supervisor"',
+            b'"delegate_subgroup":"agentbox-runtime/subgroup"',
+        ),
+        (
+            decode_project_root_manifest,
+            encode_project_root_manifest(_project()),
+            b'"no_shell_executable_digest":"' + _HEX_A.encode() + b'"',
+            b'"no_shell_executable_digest":"' + b"0" * 64 + b'"',
+        ),
+        (
+            decode_cgroup_delegation_manifest,
+            encode_cgroup_delegation_manifest(_cgroup()),
+            b'"policy_template_digest":"' + _HEX_A.encode() + b'"',
+            b'"policy_template_digest":"' + b"0" * 64 + b'"',
+        ),
+        (
+            decode_api_host_anchor,
+            encode_api_host_anchor(_anchor()),
+            b'"host_manifest_digest":"' + _HEX_B.encode() + b'"',
+            b'"host_manifest_digest":"' + b"0" * 64 + b'"',
+        ),
+        (
+            decode_runtime_host_manifest,
+            encode_runtime_host_manifest(_runtime()),
+            b'"codex_fingerprint":"' + _HEX_B.encode() + b'"',
+            b'"codex_fingerprint":"' + b"0" * 64 + b'"',
+        ),
+    ],
+)
+def test_decoders_reject_canonical_wire_values_for_unsafe_fields(
+    decoder: Decoder, raw: bytes, needle: bytes, replacement: bytes
+) -> None:
+    # The substitutions preserve the canonical object ordering and JSON
+    # grammar, proving rejection comes from field validation rather than the
+    # non-canonical-wire guard.
+    assert raw.count(needle) == 1
+    malformed = raw.replace(needle, replacement)
+    assert malformed != raw
+    assert rfc8785.dumps(json.loads(malformed)) == malformed
+    with pytest.raises(WAWManifestCodecError):
+        decoder(malformed)
 
 
 @pytest.mark.parametrize("field", ["host_manifest_digest", "project_root_manifest_digest"])
