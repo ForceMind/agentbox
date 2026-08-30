@@ -327,8 +327,8 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         else:
             _u64(previous, name="previous_binding_revision")
             _string(previous_digest, name="previous_binding_digest", pattern=_DIGEST)
-            if int(previous) >= int(value["binding_revision"]):
-                raise WAWControlError("binding predecessor must be older than current revision")
+            if int(previous) + 1 != int(value["binding_revision"]):
+                raise WAWControlError("binding predecessor must be the exact prior revision")
         if value["schema_version"] != "waw-project-binding-v1":
             raise WAWControlError("schema_version is invalid")
         _string(

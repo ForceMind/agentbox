@@ -99,6 +99,14 @@ def test_register_requires_null_predecessor_for_first_revision() -> None:
     }
     with pytest.raises(WAWControlError, match="predecessor"):
         encode_control_request(successor)
+    skipped = {
+        **request,
+        "binding_revision": "3",
+        "previous_binding_revision": "1",
+        "previous_binding_digest": "b" * 64,
+    }
+    with pytest.raises(WAWControlError, match="exact prior"):
+        encode_control_request(skipped)
 
 
 def test_decoder_rejects_duplicate_keys_constants_and_trailing_data() -> None:
