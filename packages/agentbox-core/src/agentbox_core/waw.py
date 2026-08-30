@@ -263,6 +263,27 @@ def _agent_type(value: AgentType | str) -> AgentType:
         raise WAWDomainError("agent_type must be claude or codex") from exc
 
 
+def _workspace_state(value: WorkspaceState | str) -> WorkspaceState:
+    try:
+        return value if isinstance(value, WorkspaceState) else WorkspaceState(value)
+    except (TypeError, ValueError) as exc:
+        raise WAWDomainError("workspace state is invalid") from exc
+
+
+def _reconciliation_state(value: ReconciliationState | str) -> ReconciliationState:
+    try:
+        return value if isinstance(value, ReconciliationState) else ReconciliationState(value)
+    except (TypeError, ValueError) as exc:
+        raise WAWDomainError("reconciliation state is invalid") from exc
+
+
+def _stop_result(value: StopResult | str) -> StopResult:
+    try:
+        return value if isinstance(value, StopResult) else StopResult(value)
+    except (TypeError, ValueError) as exc:
+        raise WAWDomainError("stop result is invalid") from exc
+
+
 @dataclass(frozen=True)
 class AgentWorkspaceSession:
     """Non-secret durable identity and lifecycle metadata for one WAW workspace."""
@@ -289,9 +310,9 @@ class AgentWorkspaceSession:
         validate_positive_u64(self.binding_revision, field="binding_revision")
         validate_binding_digest(self.binding_digest)
         validate_positive_u64(self.generation, field="generation")
-        object.__setattr__(self, "state", WorkspaceState(self.state))
+        object.__setattr__(self, "state", _workspace_state(self.state))
         object.__setattr__(
-            self, "reconciliation_state", ReconciliationState(self.reconciliation_state)
+            self, "reconciliation_state", _reconciliation_state(self.reconciliation_state)
         )
         expected_id = workspace_id(self.project_id, self.agent_type)
         if self.id is None:
@@ -327,8 +348,8 @@ class AgentWorkspaceSession:
         *,
         reconciliation_state: ReconciliationState | str | None = None,
     ) -> AgentWorkspaceSession:
-        target = state if isinstance(state, WorkspaceState) else WorkspaceState(state)
-        current = WorkspaceState(self.state)
+        target = _workspace_state(state)
+        current = _workspace_state(self.state)
         if target is current:
             return self
         if target not in _TRANSITIONS[current]:
@@ -338,7 +359,7 @@ class AgentWorkspaceSession:
             next_reconciliation = (
                 reconciliation_state
                 if isinstance(reconciliation_state, ReconciliationState)
-                else ReconciliationState(reconciliation_state)
+                else _reconciliation_state(reconciliation_state)
             )
         return replace(self, state=target, reconciliation_state=next_reconciliation)
 
@@ -433,14 +454,14 @@ class WorkspaceStopOperation:
             self.runtime_host_installation_revision,
             field="runtime_host_installation_revision",
         )
-        object.__setattr__(self, "result", StopResult(self.result))
+        object.__setattr__(self, "result", _stop_result(self.result))
         if self.stop_operation_id is None:
             object.__setattr__(self, "stop_operation_id", f"wso_{secrets.token_hex(16)}")
         else:
             validate_stop_operation_id(self.stop_operation_id)
 
     def complete(self, result: StopResult | str) -> WorkspaceStopOperation:
-        outcome = result if isinstance(result, StopResult) else StopResult(result)
+        outcome = _stop_result(result)
         if self.result is not StopResult.PENDING:
             if outcome is self.result:
                 return self
