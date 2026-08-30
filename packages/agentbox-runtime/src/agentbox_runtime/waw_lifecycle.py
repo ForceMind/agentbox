@@ -1,0 +1,352 @@
+"""Bounded Runtime lifecycle registry for Web Agent Workspace control actions.
+
+This module is the typed seam between the WAW control socket and a future
+Runtime adapter.  It owns binding/generation fencing and lifecycle metadata;
+it never accepts a path, command, argv, PID, signal, tmux target, or secret.
+The side-effecting adapter is injected and receives only an immutable identity.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from agentbox_runtime.waw_control_server import WAWControlDispatchError
+
+_BIND = "workspace.api_authority.bind"
+_REGISTER = "workspace.project_binding.register"
+_START = "workspace.workspace.start"
+_STOP = "workspace.workspace.stop"
+_STATUS = "workspace.workspace.status"
+_RECONCILE = "workspace.workspace.reconcile"
+_DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True)
+class WAWLifecycleIdentity:
+    workspace_id: str
+    project_id: str
+    agent_type: str
+    generation: str
+    binding_revision: str
+    binding_digest: str
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+
+
+@dataclass(frozen=True)
+class WAWLifecycleObservation:
+    """Runtime evidence returned by an injected, already-fenced adapter."""
+
+    state: str
+    reconciliation_state: str = "authoritative"
+    process_state: str = "RUNNING"
+    exit_code: int | None = None
+    runtime_epoch: str = "1"
+
+
+class WAWLifecycleExecutor(Protocol):
+    async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation: ...
+
+    async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation: ...
+
+    async def status(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation: ...
+
+    async def reconcile(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation: ...
+
+
+BindingDigestFactory = Callable[[dict[str, Any]], str | Awaitable[str]]
+
+
+@dataclass(frozen=True)
+class _ProjectBinding:
+    project_id: str
+    relative_key: str
+    project_revision: str
+    binding_revision: str
+    binding_digest: str
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+
+
+class WAWLifecycleRegistry:
+    """Serialize and fence Runtime lifecycle dispatch for one host instance."""
+
+    def __init__(
+        self,
+        *,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        host_manifest_digest: str,
+        project_root_manifest_digest: str,
+        enrollment_epoch: str = "1",
+        enrollment_state: str = "steady",
+        executor: WAWLifecycleExecutor | None = None,
+        binding_digest_factory: BindingDigestFactory | None = None,
+        runtime_epoch: str = "1",
+    ) -> None:
+        self._host_id = runtime_host_installation_id
+        self._host_revision = runtime_host_installation_revision
+        self._host_manifest_digest = host_manifest_digest
+        self._project_root_manifest_digest = project_root_manifest_digest
+        self._enrollment_epoch = enrollment_epoch
+        self._enrollment_state = enrollment_state
+        self._runtime_epoch = runtime_epoch
+        self._executor = executor
+        self._binding_digest_factory = binding_digest_factory
+        self._authority: tuple[str, str] | None = None
+        self._bindings: dict[str, _ProjectBinding] = {}
+        self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
+        self._lock = asyncio.Lock()
+
+    async def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Dispatch one decoded control request; all mutations are serialized."""
+
+        action = request.get("action")
+        if not isinstance(action, str):
+            raise WAWControlDispatchError("PROTOCOL_INVALID")
+        async with self._lock:
+            if action == _BIND:
+                return self._bind(request)
+            if action == _REGISTER:
+                return await self._register(request)
+            if action in {_START, _STOP, _STATUS, _RECONCILE}:
+                return await self._lifecycle(request, action)
+        raise WAWControlDispatchError("PROTOCOL_INVALID")
+
+    def _bind(self, request: dict[str, Any]) -> dict[str, Any]:
+        epoch = request["api_authority_epoch"]
+        nonce = request["authority_nonce"]
+        current = self._authority
+        if current is not None and current != (epoch, nonce):
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        self._authority = (epoch, nonce)
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "ALREADY_BOUND" if current is not None else "BOUND",
+            "api_authority_epoch": epoch,
+            "runtime_epoch": self._runtime_epoch,
+            "runtime_host_installation_id": self._host_id,
+            "runtime_host_installation_revision": self._host_revision,
+            "host_manifest_digest": self._host_manifest_digest,
+            "project_root_manifest_digest": self._project_root_manifest_digest,
+            "enrollment_epoch": self._enrollment_epoch,
+            "enrollment_state": self._enrollment_state,
+        }
+
+    async def _register(self, request: dict[str, Any]) -> dict[str, Any]:
+        self._require_authority()
+        if (
+            request["runtime_host_installation_id"] != self._host_id
+            or request["runtime_host_installation_revision"] != self._host_revision
+        ):
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        project_id = request["project_id"]
+        previous = self._bindings.get(project_id)
+        if (
+            previous is not None
+            and request["binding_revision"] != previous.binding_revision
+            and request["previous_binding_revision"] != previous.binding_revision
+        ):
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+        if self._binding_digest_factory is None:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        digest = self._binding_digest_factory(request)
+        if isinstance(digest, Awaitable):
+            digest = await digest
+        if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if previous is not None and request["binding_revision"] == previous.binding_revision:
+            if (
+                request["relative_key"] == previous.relative_key
+                and request["project_revision"] == previous.project_revision
+                and digest == previous.binding_digest
+            ):
+                return {
+                    "protocol_version": 1,
+                    "request_id": request["request_id"],
+                    "status": "ALREADY_CURRENT",
+                    "project_id": project_id,
+                    "binding_revision": previous.binding_revision,
+                    "binding_digest": previous.binding_digest,
+                    "runtime_host_installation_id": self._host_id,
+                    "runtime_host_installation_revision": self._host_revision,
+                }
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+        binding = _ProjectBinding(
+            project_id=project_id,
+            relative_key=request["relative_key"],
+            project_revision=request["project_revision"],
+            binding_revision=request["binding_revision"],
+            binding_digest=digest,
+            runtime_host_installation_id=self._host_id,
+            runtime_host_installation_revision=self._host_revision,
+        )
+        self._bindings[project_id] = binding
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "REGISTERED" if previous is None else "ALREADY_CURRENT",
+            "project_id": project_id,
+            "binding_revision": binding.binding_revision,
+            "binding_digest": digest,
+            "runtime_host_installation_id": self._host_id,
+            "runtime_host_installation_revision": self._host_revision,
+        }
+
+    async def _lifecycle(self, request: dict[str, Any], action: str) -> dict[str, Any]:
+        self._require_authority()
+        identity = WAWLifecycleIdentity(
+            workspace_id=request["workspace_id"],
+            project_id=request["project_id"],
+            agent_type=request["agent_type"],
+            generation=request["generation"],
+            binding_revision=request["binding_revision"],
+            binding_digest=request["binding_digest"],
+            runtime_host_installation_id=request["runtime_host_installation_id"],
+            runtime_host_installation_revision=request["runtime_host_installation_revision"],
+        )
+        self._check_identity(identity)
+        current = self._workspaces.get(identity.workspace_id)
+        if action == _START and current is not None:
+            if current[0] != identity:
+                raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+            if current[1].state in {
+                "RUNNING",
+                "NEEDS_INTERACTION",
+                "TRUST_REQUIRED",
+                "LOGIN_REQUIRED",
+            }:
+                return self._start_response(request, current[1], "ALREADY_RUNNING")
+        if action == _STOP and current is None:
+            raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
+        if action in {_STATUS, _RECONCILE} and current is None:
+            raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
+        if self._executor is None:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        method = {
+            _START: self._executor.start,
+            _STOP: self._executor.stop,
+            _STATUS: self._executor.status,
+            _RECONCILE: self._executor.reconcile,
+        }[action]
+        observation = await method(identity)
+        self._workspaces[identity.workspace_id] = (identity, observation)
+        if action == _START:
+            return self._start_response(request, observation, "STARTED")
+        if action == _STOP:
+            status = "STOPPED" if observation.state == "STOPPED" else "STOP_IN_PROGRESS"
+            return self._stop_response(request, observation, status)
+        if action == _STATUS:
+            return self._status_response(request, observation)
+        return self._reconcile_response(request, observation)
+
+    def _require_authority(self) -> None:
+        if self._authority is None:
+            raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
+
+    def _check_identity(self, identity: WAWLifecycleIdentity) -> None:
+        if (
+            identity.runtime_host_installation_id != self._host_id
+            or identity.runtime_host_installation_revision != self._host_revision
+        ):
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        binding = self._bindings.get(identity.project_id)
+        if binding is None:
+            raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
+        if (
+            identity.binding_revision != binding.binding_revision
+            or identity.binding_digest != binding.binding_digest
+        ):
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+
+    @staticmethod
+    def _start_response(
+        request: dict[str, Any], observation: WAWLifecycleObservation, status: str
+    ) -> dict[str, Any]:
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status,
+            "workspace_id": request["workspace_id"],
+            "project_id": request["project_id"],
+            "agent_type": request["agent_type"],
+            "generation": request["generation"],
+            "state": observation.state,
+            "runtime_host_installation_id": request["runtime_host_installation_id"],
+            "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+        }
+
+    @staticmethod
+    def _stop_response(
+        request: dict[str, Any], observation: WAWLifecycleObservation, status: str
+    ) -> dict[str, Any]:
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status,
+            "workspace_id": request["workspace_id"],
+            "project_id": request["project_id"],
+            "agent_type": request["agent_type"],
+            "generation": request["generation"],
+            "state": observation.state,
+        }
+
+    @staticmethod
+    def _status_response(
+        request: dict[str, Any], observation: WAWLifecycleObservation
+    ) -> dict[str, Any]:
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "STATUS",
+            "workspace_id": request["workspace_id"],
+            "project_id": request["project_id"],
+            "agent_type": request["agent_type"],
+            "generation": request["generation"],
+            "binding_revision": request["binding_revision"],
+            "binding_digest": request["binding_digest"],
+            "state": observation.state,
+            "reconciliation_state": observation.reconciliation_state,
+            "runtime_epoch": observation.runtime_epoch,
+            "process_state": observation.process_state,
+            "exit_code": observation.exit_code,
+            "attachment_capacity": {"admitted": "0", "pending": "0", "limit": "32"},
+        }
+
+    @staticmethod
+    def _reconcile_response(
+        request: dict[str, Any], observation: WAWLifecycleObservation
+    ) -> dict[str, Any]:
+        status = {
+            "MISSING": "MISSING",
+            "COLLISION": "COLLISION",
+            "UNKNOWN": "UNKNOWN",
+        }.get(observation.state, "RECONCILED")
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status,
+            "workspace_id": request["workspace_id"],
+            "project_id": request["project_id"],
+            "agent_type": request["agent_type"],
+            "generation": request["generation"],
+            "binding_revision": request["binding_revision"],
+            "binding_digest": request["binding_digest"],
+            "runtime_epoch": observation.runtime_epoch,
+            "state": observation.state,
+            "reconciliation_state": observation.reconciliation_state,
+        }
+
+
+__all__ = [
+    "BindingDigestFactory",
+    "WAWLifecycleExecutor",
+    "WAWLifecycleIdentity",
+    "WAWLifecycleObservation",
+    "WAWLifecycleRegistry",
+]

@@ -56,6 +56,12 @@ from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
     WAWControlServer,
 )
+from agentbox_runtime.waw_lifecycle import (
+    WAWLifecycleExecutor,
+    WAWLifecycleIdentity,
+    WAWLifecycleObservation,
+    WAWLifecycleRegistry,
+)
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
     RuntimeStartEvidence,
@@ -119,6 +125,10 @@ __all__ = [
     "WAWTmuxTransport",
     "WAWControlDispatchError",
     "WAWControlServer",
+    "WAWLifecycleExecutor",
+    "WAWLifecycleIdentity",
+    "WAWLifecycleObservation",
+    "WAWLifecycleRegistry",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
