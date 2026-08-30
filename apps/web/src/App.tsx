@@ -14,6 +14,7 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { WorkspacePage } from './pages/WorkspacePage'
 
 function RootRedirect() {
   const { status } = useAuth()
@@ -47,6 +48,11 @@ export function App() {
               <Route element={<DashboardPage />} path="/dashboard" />
               <Route element={<CodexPage />} path="/codex" />
               <Route element={<ClaudePage />} path="/claude" />
+              <Route element={<WorkspacePage />} path="/workspace" />
+              <Route
+                element={<WorkspacePage />}
+                path="/workspace/:workspaceId"
+              />
               <Route element={<ProjectsPage />} path="/projects" />
               <Route
                 element={<ProjectDetailPage />}
