@@ -205,8 +205,6 @@ async def _cancellation_resistant_operation() -> None:
 async def test_cancellation_resistant_transport_is_bounded_and_poisoned(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
 ) -> None:
-    import agentbox_api.waw_control_client as waw_control_client_module
-
     client = _client(tmp_path / "workspace-control.sock", timeout_seconds=0.01)
     if operation == "connect":
         path = tmp_path / "workspace-control.sock"
@@ -214,7 +212,7 @@ async def test_cancellation_resistant_transport_is_bounded_and_poisoned(
             path, encode_control_response(_response(), "workspace.workspace.start")
         )
         monkeypatch.setattr(
-            waw_control_client_module.asyncio,
+            asyncio,
             "open_unix_connection",
             lambda *args, **kwargs: _cancellation_resistant_operation(),
         )

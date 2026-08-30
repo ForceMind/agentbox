@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hmac
-import inspect
 import os
 import socket
 import stat
@@ -308,8 +307,6 @@ class WAWControlClient:
             close_wait = writer.wait_closed()
         except (OSError, RuntimeError):
             return
-        if not inspect.isawaitable(close_wait):
-            return
         task = asyncio.ensure_future(close_wait)
         try:
             _done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
@@ -341,12 +338,10 @@ class WAWControlClient:
         period and poison this client so no later request can reuse it.
         """
 
-        if not inspect.isawaitable(awaitable):
-            raise TypeError("awaitable required")
         remaining = deadline - self._monotonic()
         if remaining <= 0:
             self._poison()
-            if inspect.iscoroutine(awaitable):
+            if hasattr(awaitable, "close"):
                 awaitable.close()
             raise TimeoutError("WAW control deadline exceeded")
         task = asyncio.ensure_future(awaitable)
