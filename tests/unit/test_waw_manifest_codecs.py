@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
+from typing import Any, cast
 
 import pytest
 from agentbox_runtime.waw_manifest_codecs import (
@@ -23,6 +25,11 @@ from agentbox_runtime.waw_manifest_codecs import (
 
 _HEX_A = "a" * 64
 _HEX_B = "b" * 64
+
+Encoder = Callable[[object], bytes]
+Decoder = Callable[[bytes], object]
+Factory = Callable[[], dict[str, object]]
+Mutator = Callable[[bytes], bytes]
 
 
 def _project() -> dict[str, object]:
@@ -94,7 +101,7 @@ def _runtime() -> dict[str, object]:
     }
 
 
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # type: ignore[misc]
     ("encode", "decode", "factory"),
     [
         (encode_project_root_manifest, decode_project_root_manifest, _project),
@@ -103,7 +110,7 @@ def _runtime() -> dict[str, object]:
         (encode_runtime_host_manifest, decode_runtime_host_manifest, _runtime),
     ],
 )
-def test_codec_round_trip_is_canonical(encode, decode, factory) -> None:
+def test_codec_round_trip_is_canonical(encode: Encoder, decode: Decoder, factory: Factory) -> None:
     payload = encode(factory())
     assert payload == encode(json.loads(payload))
     assert decode(payload) == decode(payload)
@@ -123,7 +130,7 @@ def test_deterministic_project_root_vector() -> None:
     assert manifest_sha256(payload) == hashlib.sha256(payload).hexdigest()
 
 
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # type: ignore[misc]
     "mutator",
     [
         lambda raw: raw.replace(
@@ -137,13 +144,13 @@ def test_deterministic_project_root_vector() -> None:
         lambda raw: raw + b"\n",
     ],
 )
-def test_decoder_rejects_unknown_duplicate_and_noncanonical(mutator) -> None:
+def test_decoder_rejects_unknown_duplicate_and_noncanonical(mutator: Mutator) -> None:
     raw = mutator(encode_project_root_manifest(_project()))
     with pytest.raises(WAWManifestCodecError):
         decode_project_root_manifest(raw)
 
 
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # type: ignore[misc]
     "field,value",
     [
         ("manifest_revision", "0"),
@@ -169,8 +176,10 @@ def test_closed_schema_does_not_accept_secret_or_terminal_fields() -> None:
         encode_runtime_host_manifest(data)
 
 
-@pytest.mark.parametrize("encoder", [encode_api_host_anchor, encode_runtime_host_manifest])
-def test_runtime_host_identity_cannot_use_project_id_namespace(encoder) -> None:
+@pytest.mark.parametrize(  # type: ignore[misc]
+    "encoder", [encode_api_host_anchor, encode_runtime_host_manifest]
+)
+def test_runtime_host_identity_cannot_use_project_id_namespace(encoder: Encoder) -> None:
     data = _anchor() if encoder is encode_api_host_anchor else _runtime()
     data["runtime_host_installation_id"] = "prj_" + "1" * 32
     with pytest.raises(WAWManifestCodecError):
@@ -178,20 +187,25 @@ def test_runtime_host_identity_cannot_use_project_id_namespace(encoder) -> None:
 
 
 def test_dataclass_values_are_supported() -> None:
-    value = ProjectRootManifest(**_project())
+    value = ProjectRootManifest(**cast(dict[str, Any], _project()))
     assert decode_project_root_manifest(encode_project_root_manifest(value)) == value
     assert isinstance(
         decode_cgroup_delegation_manifest(
-            encode_cgroup_delegation_manifest(CgroupDelegationManifest(**_cgroup()))
+            encode_cgroup_delegation_manifest(
+                CgroupDelegationManifest(**cast(dict[str, Any], _cgroup()))
+            )
         ),
         CgroupDelegationManifest,
     )
     assert isinstance(
-        decode_api_host_anchor(encode_api_host_anchor(APIHostAnchor(**_anchor()))), APIHostAnchor
+        decode_api_host_anchor(
+            encode_api_host_anchor(APIHostAnchor(**cast(dict[str, Any], _anchor())))
+        ),
+        APIHostAnchor,
     )
     assert isinstance(
         decode_runtime_host_manifest(
-            encode_runtime_host_manifest(RuntimeHostManifest(**_runtime()))
+            encode_runtime_host_manifest(RuntimeHostManifest(**cast(dict[str, Any], _runtime())))
         ),
         RuntimeHostManifest,
     )

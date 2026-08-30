@@ -13,8 +13,8 @@ import json
 import re
 import unicodedata
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
-from typing import Any, TypeVar
+from dataclasses import dataclass
+from typing import Any, TypeVar, cast
 
 import rfc8785
 
@@ -108,6 +108,66 @@ _SCHEMAS: dict[type[Any], str] = {
     RuntimeHostManifest: "waw-runtime-host-installation-v1",
 }
 
+_FIELD_NAMES: dict[type[Any], tuple[str, ...]] = {
+    ProjectRootManifest: (
+        "manifest_revision",
+        "configured_root",
+        "root_device",
+        "root_mount_id",
+        "root_filesystem_id",
+        "root_uid",
+        "root_gid",
+        "root_mode",
+        "relative_key_grammar_version",
+        "binding_digest_algorithm",
+        "no_shell_executable_path",
+        "no_shell_executable_digest",
+    ),
+    CgroupDelegationManifest: (
+        "service_unit",
+        "cgroup_mount_type",
+        "cgroup_mount_device",
+        "cgroup_mount_filesystem_id",
+        "cgroup_schema_identity",
+        "delegate",
+        "delegate_subgroup",
+        "protect_control_groups",
+        "kill_mode",
+        "controllers",
+        "tasks_max",
+        "memory_max",
+        "memory_swap_max",
+        "cpu_quota_percent",
+        "cpu_quota_period_usec",
+        "policy_template_digest",
+    ),
+    APIHostAnchor: (
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "host_manifest_digest",
+        "project_root_manifest_digest",
+        "enrollment_epoch",
+        "enrollment_state",
+    ),
+    RuntimeHostManifest: (
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "tmux_fingerprint",
+        "bridge_fingerprint",
+        "claude_fingerprint",
+        "codex_fingerprint",
+        "attach_supervisor_fingerprint",
+        "project_root_manifest_path",
+        "project_root_manifest_digest",
+        "socket_digest",
+        "config_digest",
+        "enrollment_epoch",
+        "enrollment_state",
+    ),
+}
+
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
@@ -177,12 +237,12 @@ def _positive_int(value: object, field: str) -> int:
 
 def _mapping(value: object, cls: type[_T]) -> dict[str, Any]:
     if isinstance(value, cls):
-        data = {field.name: getattr(value, field.name) for field in fields(value)}
+        data = {name: getattr(value, name) for name in _FIELD_NAMES[cls]}
     elif isinstance(value, Mapping):
         data = dict(value)
     else:
         raise WAWManifestCodecError("manifest must be a mapping or typed record")
-    expected = {field.name for field in fields(cls)}
+    expected = set(_FIELD_NAMES[cls])
     if "schema_version" in data and data.pop("schema_version") != _SCHEMAS[cls]:
         raise WAWManifestCodecError("manifest schema is invalid")
     if set(data) != expected:
@@ -198,7 +258,7 @@ def _canonical(value: Mapping[str, Any]) -> bytes:
         raise WAWManifestCodecError("manifest cannot be canonicalized") from exc
     if not encoded or len(encoded) > _MAX_BYTES:
         raise WAWManifestCodecError("manifest is oversized")
-    return encoded
+    return cast(bytes, encoded)
 
 
 def _encode(value: object, cls: type[_T], validate: Any) -> bytes:
@@ -216,13 +276,13 @@ def _decode(raw: bytes, cls: type[_T], validate: Any) -> _T:
         raise WAWManifestCodecError("manifest JSON is invalid") from exc
     if not isinstance(value, dict):
         raise WAWManifestCodecError("manifest must be an object")
-    expected = {"schema_version", *(field.name for field in fields(cls))}
+    expected = {"schema_version", *_FIELD_NAMES[cls]}
     if set(value) != expected or value.get("schema_version") != _SCHEMAS[cls]:
         raise WAWManifestCodecError("manifest fields or schema are invalid")
     validate(value)
     if _canonical(value) != raw:
         raise WAWManifestCodecError("manifest is not canonical RFC 8785 JSON")
-    kwargs = {field.name: value[field.name] for field in fields(cls)}
+    kwargs = {name: value[name] for name in _FIELD_NAMES[cls]}
     if cls is CgroupDelegationManifest:
         kwargs["controllers"] = tuple(kwargs["controllers"])
     return cls(**kwargs)
