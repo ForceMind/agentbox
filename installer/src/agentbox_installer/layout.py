@@ -21,6 +21,16 @@ DIRECTORIES = (
     # must not be able to replace root-owned backup, receipt, or journal names.
     DirectorySpec("/var/lib/agentbox", "root", "agentbox", 0o1770),
     DirectorySpec("/var/lib/agentbox/backups", "root", "root", 0o700),
+    # WAW Runtime trust-root state is Runtime-owned and never readable by the
+    # API/Worker identities.  The epoch file itself is created atomically by
+    # the installer only during a fresh enrollment.
+    DirectorySpec("/var/lib/agentbox-waw", "root", "agentbox-runtime", 0o750),
+    DirectorySpec(
+        "/var/lib/agentbox-waw/runtime-epoch-v1",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+    ),
     DirectorySpec("/var/log/agentbox", "agentbox", "agentbox", 0o750),
     # setgid keeps socket group ownership stable; sticky prevents either IPC
     # peer from unlinking a socket owned by the other identity.

@@ -79,6 +79,11 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
         "etc/os-release",
     ]
     first = installer.apply(artifact, digest)
+    assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
+    assert layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json").read_text() == (
+        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}\n'
+    )
     secret_before = layout.map("/etc/agentbox/environment").read_bytes()
     config = layout.map("/etc/agentbox/agentbox.toml")
     config.write_text(config.read_text() + "session_ttl = 7200\n", encoding="utf-8")
@@ -92,6 +97,10 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     with sqlite3.connect(layout.database) as connection:
         connection.execute("CREATE TABLE admin_fixture(value TEXT)")
         connection.execute("INSERT INTO admin_fixture VALUES ('preserved')")
+
+    epoch_path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
+    epoch_path.write_text('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}\n')
+    epoch_path.chmod(0o600)
 
     second = installer.apply(artifact, digest)
     third = installer.apply(artifact, digest)
@@ -117,6 +126,11 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox")) == 0o1770
     assert stat_mode(layout.map("/srv/agentbox/projects")) == 0o700
     assert stat_mode(layout.map("/run/agentbox")) == 0o3770
+    assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
+    assert epoch_path.read_text() == (
+        '{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}\n'
+    )
 
 
 @pytest.mark.parametrize(
