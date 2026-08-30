@@ -45,7 +45,7 @@ class WorkspaceAdmissionRow(Protocol):
     id: str
     project_id: str
     authorization_scope: str
-    agent_type: Literal["claude", "codex"]
+    agent_type: str
     generation: int
     binding_revision: int
     binding_digest: str
@@ -121,7 +121,8 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
             "attachment_id": r"\Aatt_[a-f0-9]{32}\Z",
         }
         field_name = info.field_name
-        if not isinstance(value, str) or re.fullmatch(patterns[field_name], value) is None:
+        pattern = patterns.get(field_name or "")
+        if not isinstance(value, str) or pattern is None or re.fullmatch(pattern, value) is None:
             raise ValueError(f"{field_name} has an invalid identifier")
         return value
 
