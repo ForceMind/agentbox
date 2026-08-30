@@ -5,11 +5,15 @@ import os
 import socket
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from agentbox_protocol.waw_control import decode_control_response
-from agentbox_runtime.waw_control_server import WAWControlDispatchError, WAWControlServer
+from agentbox_runtime.waw_control_server import (
+    WAWControlDispatchError,
+    WAWControlServer,
+    _WAWControlDispatchPoisoned,
+)
 
 
 def _request() -> dict[str, object]:
@@ -41,6 +45,10 @@ def _response(request_id: str) -> dict[str, object]:
         "runtime_host_installation_id": "wri_" + "4" * 32,
         "runtime_host_installation_revision": "1",
     }
+
+
+async def _empty_response() -> dict[str, object]:
+    return {}
 
 
 Dispatch = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
@@ -353,3 +361,120 @@ async def test_dispatch_limit_fails_closed_for_second_connection(tmp_path: Path)
         release.set()
         await server.close()
         sock.close()
+
+
+@pytest.mark.anyio
+async def test_late_dispatch_exception_is_consumed_after_listener_poison(
+    tmp_path: Path,
+) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    loop_errors: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+
+    def exception_handler(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
+        loop_errors.append(context)
+
+    loop.set_exception_handler(exception_handler)
+
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+            raise RuntimeError("late dispatch failure") from None
+        raise AssertionError("unreachable")
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        dispatch,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        timeout_seconds=0.2,
+        cancellation_grace_seconds=0.01,
+    )
+    try:
+        dispatch_call = asyncio.create_task(
+            server._dispatch_with_deadline(_request(), server._monotonic() + 0.01)
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        with pytest.raises(_WAWControlDispatchPoisoned):
+            await asyncio.wait_for(dispatch_call, timeout=1)
+        assert server._poisoned is True
+
+        release.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not any("late dispatch failure" in str(item) for item in loop_errors)
+    finally:
+        release.set()
+        loop.set_exception_handler(previous_handler)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_cancellation_resistant_writer_close_poison_is_not_reused() -> None:
+    release = asyncio.Event()
+
+    class ResistantWriter:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        async def wait_closed(self) -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await release.wait()
+                raise RuntimeError("late writer close failure") from None
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=0.01,
+    )
+    writer = ResistantWriter()
+    try:
+        await server._close_writer(cast(Any, writer))
+        assert writer.closed is True
+        assert server._poisoned is True
+        assert server._closing is True
+        release.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not server._io_tasks
+    finally:
+        release.set()
+        await server.close()

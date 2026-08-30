@@ -94,6 +94,7 @@ class WAWControlServer:
         self._connection_tasks: set[asyncio.Task[Any]] = set()
         self._writers: set[asyncio.StreamWriter] = set()
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
+        self._io_tasks: set[asyncio.Task[Any]] = set()
 
     async def start(self) -> None:
         if self._server is not None:
@@ -119,13 +120,14 @@ class WAWControlServer:
         # which refuses cancellation is poisoned and is never admitted again.
         current = asyncio.current_task()
         dispatch_tasks = set(self._dispatch_tasks)
-        for task in dispatch_tasks:
+        io_tasks = set(self._io_tasks)
+        for task in dispatch_tasks | io_tasks:
             if task is not current:
                 task.cancel()
         connection_tasks = {task for task in self._connection_tasks if task is not current}
         for task in connection_tasks:
             task.cancel()
-        pending = dispatch_tasks | connection_tasks
+        pending = dispatch_tasks | io_tasks | connection_tasks
         if pending:
             done, _ = await asyncio.wait(pending, timeout=self._cancellation_grace_seconds)
             for task in done:
@@ -210,7 +212,7 @@ class WAWControlServer:
                 encoded = self._error_bytes(request["request_id"], "INTERNAL_BOUNDED", False)
             writer.write(encoded)
             await self._with_deadline(writer.drain(), deadline)
-        except (OSError, TimeoutError):
+        except (OSError, TimeoutError, _WAWControlDispatchPoisoned):
             # The peer may have disappeared or the bounded deadline expired;
             # no retry or side effect is attempted by this transport layer.
             return
@@ -249,22 +251,33 @@ class WAWControlServer:
         if request_id is None:
             return
         writer.write(self._error_bytes(request_id, code, False))
-        with contextlib.suppress(OSError, TimeoutError, asyncio.TimeoutError):
+        with contextlib.suppress(
+            OSError, TimeoutError, asyncio.TimeoutError, _WAWControlDispatchPoisoned
+        ):
             await self._with_deadline(writer.drain(), deadline)
 
     async def _close_writer(self, writer: asyncio.StreamWriter) -> None:
         writer.close()
-        with contextlib.suppress(OSError, TimeoutError, asyncio.TimeoutError):
-            await asyncio.wait_for(writer.wait_closed(), timeout=self._cancellation_grace_seconds)
+        with contextlib.suppress(
+            OSError, TimeoutError, asyncio.TimeoutError, _WAWControlDispatchPoisoned
+        ):
+            await self._bounded_io(writer.wait_closed(), self._cancellation_grace_seconds)
 
-    def _poison_listener(self) -> None:
+    def _poison_listener(self, *, exclude: set[asyncio.Task[Any]] | None = None) -> None:
         self._poisoned = True
         self._closing = True
         if self._server is not None:
             self._server.close()
         current = asyncio.current_task()
-        for task in tuple(self._dispatch_tasks) + tuple(self._connection_tasks):
-            if task is not current:
+        excluded = {current} if current is not None else set()
+        if exclude:
+            excluded.update(exclude)
+        for task in (
+            tuple(self._dispatch_tasks)
+            + tuple(self._io_tasks)
+            + tuple(self._connection_tasks)
+        ):
+            if task not in excluded:
                 task.cancel()
         for writer in tuple(self._writers):
             writer.close()
@@ -299,7 +312,42 @@ class WAWControlServer:
             if hasattr(awaitable, "close"):
                 awaitable.close()
             raise TimeoutError("WAW control deadline exceeded")
-        return await asyncio.wait_for(awaitable, timeout=remaining)
+        return await self._bounded_io(awaitable, remaining)
+
+    async def _bounded_io(self, awaitable: Any, timeout: float) -> Any:
+        """Observe an I/O awaitable with a hard timeout and bounded cancel grace.
+
+        ``wait_for`` waits for cancellation-resistant transports to finish
+        their cancellation handler.  Keep the listener fail-closed when an
+        I/O task does not terminate within the configured grace, while the
+        done callback consumes any late exception from the detached task.
+        """
+
+        if timeout <= 0:
+            if hasattr(awaitable, "close"):
+                awaitable.close()
+            raise TimeoutError("WAW control I/O deadline exceeded")
+        task = asyncio.ensure_future(awaitable)
+        self._io_tasks.add(task)
+        task.add_done_callback(self._consume_io_task)
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        if task in done:
+            return task.result()
+        task.cancel()
+        done, _ = await asyncio.wait(
+            {task}, timeout=min(self._cancellation_grace_seconds, timeout)
+        )
+        if task in done:
+            with contextlib.suppress(BaseException):
+                task.result()
+            raise TimeoutError("WAW control I/O deadline exceeded")
+        self._poison_listener(exclude={task})
+        raise _WAWControlDispatchPoisoned("WAW control I/O did not cancel")
+
+    def _consume_io_task(self, task: asyncio.Task[Any]) -> None:
+        self._io_tasks.discard(task)
+        with contextlib.suppress(BaseException):
+            task.result()
 
     async def _dispatch_with_deadline(
         self, request: dict[str, Any], deadline: float
@@ -325,7 +373,7 @@ class WAWControlServer:
 
         task: asyncio.Task[dict[str, Any]] = asyncio.create_task(invoke())
         self._dispatch_tasks.add(task)
-        task.add_done_callback(self._dispatch_tasks.discard)
+        task.add_done_callback(self._consume_dispatch_task)
         remaining = deadline - self._monotonic()
         if remaining > 0:
             done, _ = await asyncio.wait({task}, timeout=remaining)
@@ -348,6 +396,11 @@ class WAWControlServer:
 
         self._poison_listener()
         raise _WAWControlDispatchPoisoned("WAW control dispatcher did not cancel")
+
+    def _consume_dispatch_task(self, task: asyncio.Task[Any]) -> None:
+        self._dispatch_tasks.discard(task)
+        with contextlib.suppress(BaseException):
+            task.result()
 
 
 __all__ = ["Dispatch", "WAWControlDispatchError", "WAWControlServer"]
