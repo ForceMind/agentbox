@@ -79,9 +79,11 @@ def load_waw_runtime_host_manifest(
         if len(payload) > _MAX_BYTES:
             raise WAWRuntimeHostManifestError("WAW host manifest is too large")
         second = os.fstat(fd)
-        if (
-            (first.st_dev, first.st_ino, first.st_size, first.st_mtime_ns)
-            != (second.st_dev, second.st_ino, second.st_size, second.st_mtime_ns)
+        if (first.st_dev, first.st_ino, first.st_size, first.st_mtime_ns) != (
+            second.st_dev,
+            second.st_ino,
+            second.st_size,
+            second.st_mtime_ns,
         ):
             raise WAWRuntimeHostManifestError("WAW host manifest changed during read")
     except OSError as exc:
