@@ -57,6 +57,10 @@ from agentbox_runtime.waw_activation import (
     WAWActivationError,
     load_waw_activated_sockets,
 )
+from agentbox_runtime.waw_bootstrap import (
+    build_waw_control_server,
+    create_waw_lifecycle_registry,
+)
 from agentbox_runtime.waw_claude_executor import ProjectResolver, WAWClaudeLifecycleExecutor
 from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
@@ -145,6 +149,8 @@ __all__ = [
     "WAWActivatedSockets",
     "WAWActivationError",
     "load_waw_activated_sockets",
+    "build_waw_control_server",
+    "create_waw_lifecycle_registry",
     "WAWRuntimeEpochError",
     "WAWRuntimeEpochStore",
     "WAWWorkspaceAttestation",
