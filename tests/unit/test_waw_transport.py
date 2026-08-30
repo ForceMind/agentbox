@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,21 @@ class FakeTmux:
         if session_name not in self.sessions:
             raise RuntimeError("missing session")
         self.resizes.append((session_name, columns, rows))
+
+
+class CancellationResistantTmux(FakeTmux):
+    """Adapter that ignores cancellation long enough to expose unbounded joins."""
+
+    async def has_session(self, session_name: str) -> bool:
+        self.calls.append(("has", session_name))
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            # Simulate an adapter stuck in cancellation-resistant I/O.  It
+            # eventually exits so the test process does not retain a worker.
+            await asyncio.sleep(0.2)
+            return False
+        return session_name in self.sessions
 
 
 def _command(tmp_path: Path, *, project_id: str = "prj_" + "1" * 32) -> WAWClaudeCommand:
@@ -212,6 +228,45 @@ def test_tmux_transport_rejects_wrong_pane_process(tmp_path: Path) -> None:
         managed_marker=command.managed_marker,
     )
     with pytest.raises(RuntimeOperationError, match="Claude"):
+        transport.start(command, PtyGeometry(80, 24))
+
+
+def test_resolve_timeout_is_bounded_for_cancellation_resistant_awaitable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agentbox_runtime.waw_transport as waw_transport
+
+    async def cancellation_resistant() -> bool:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            await asyncio.sleep(0.2)
+        return True
+
+    monkeypatch.setattr(waw_transport, "_RESOLVE_TIMEOUT_SECONDS", 0.01)
+    started = time.monotonic()
+    with pytest.raises(RuntimeOperationError, match="timed out"):
+        waw_transport._resolve(cancellation_resistant())
+    # The cancellation grace is bounded; _resolve must not join until the
+    # resistant awaitable's eventual completion.
+    assert time.monotonic() - started < 0.15
+
+
+def test_transport_is_poisoned_after_cancellation_resistant_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import agentbox_runtime.waw_transport as waw_transport
+
+    command = _command(tmp_path)
+    tmux = CancellationResistantTmux()
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id, generation=1, tmux=tmux
+    )
+    monkeypatch.setattr(waw_transport, "_RESOLVE_TIMEOUT_SECONDS", 0.01)
+    with pytest.raises(RuntimeOperationError, match="timed out"):
+        transport.start(command, PtyGeometry(80, 24))
+    # A late completion must not make this adapter eligible for reuse.
+    with pytest.raises(RuntimeOperationError, match="unusable"):
         transport.start(command, PtyGeometry(80, 24))
 
 

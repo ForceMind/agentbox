@@ -37,6 +37,7 @@ from agentbox_runtime.waw_supervisor import (
 
 _T = TypeVar("_T")
 _RESOLVE_TIMEOUT_SECONDS = 15.0
+_RESOLVE_CANCEL_GRACE_SECONDS = 0.05
 
 
 class _TmuxOperations(Protocol):
@@ -108,6 +109,10 @@ class WAWTmuxTransport:
         self._started = False
         self._attached = False
         self._closed = False
+        # A cancellation-resistant adapter operation may remain live after
+        # the bounded resolve window.  Such a transport is permanently
+        # poisoned: reusing the adapter could race a late tmux mutation.
+        self._poisoned = False
 
     @property
     def session_name(self) -> str | None:
@@ -122,6 +127,12 @@ class WAWTmuxTransport:
     def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
         """Create/adopt the exact marked tmux session and return evidence."""
 
+        if self._poisoned:
+            raise RuntimeOperationError(
+                "WAW_TRANSPORT_INVALID",
+                "Runtime transport is unusable after an incomplete operation cancellation",
+                category="broken",
+            )
         if self._started or self._closed:
             raise RuntimeOperationError(
                 "WAW_START_INVALID",
@@ -145,11 +156,11 @@ class WAWTmuxTransport:
             session_name=session_name,
         )
         try:
-            exists = _resolve(self._tmux.has_session(session_name))
+            exists = self._resolve(self._tmux.has_session(session_name))
             if exists:
                 self._require_managed(binding)
             else:
-                _resolve(
+                self._resolve(
                     self._tmux.create_session(
                         session_name,
                         cwd=command.cwd,
@@ -157,26 +168,26 @@ class WAWTmuxTransport:
                         managed_marker=marker,
                     )
                 )
-                if not _resolve(self._tmux.has_session(session_name)):
+                if not self._resolve(self._tmux.has_session(session_name)):
                     raise RuntimeOperationError(
                         "WAW_START_UNCONFIRMED",
                         "Runtime session was not observable after creation",
                         category="conflict",
                     )
                 self._require_managed(binding)
-            if _resolve(self._tmux.pane_dead(session_name)):
+            if self._resolve(self._tmux.pane_dead(session_name)):
                 raise RuntimeOperationError(
                     "WAW_START_UNCONFIRMED",
                     "Managed Runtime pane exited before readiness was observed",
                     category="conflict",
                 )
-            if _resolve(self._tmux.pane_command(session_name)) != "claude":
+            if self._resolve(self._tmux.pane_command(session_name)) != "claude":
                 raise RuntimeOperationError(
                     "WAW_PROCESS_IDENTITY_UNCONFIRMED",
                     "Managed Runtime pane is not running Claude",
                     category="conflict",
                 )
-            _resolve(
+            self._resolve(
                 self._tmux.resize_window(session_name, columns=geometry.columns, rows=geometry.rows)
             )
         except RuntimeOperationError:
@@ -209,7 +220,7 @@ class WAWTmuxTransport:
         binding = self._require_binding()
         try:
             self._require_managed(binding)
-            _resolve(self._tmux.write_input(binding.session_name, payload))
+            self._resolve(self._tmux.write_input(binding.session_name, payload))
         except RuntimeOperationError:
             raise
         except Exception as exc:
@@ -227,9 +238,9 @@ class WAWTmuxTransport:
             return False
         binding = self._require_binding()
         try:
-            if not _resolve(self._tmux.has_session(binding.session_name)):
+            if not self._resolve(self._tmux.has_session(binding.session_name)):
                 return False
-            if not _resolve(self._tmux.is_managed(binding.session_name, binding.managed_marker)):
+            if not self._resolve(self._tmux.is_managed(binding.session_name, binding.managed_marker)):
                 return False
         except Exception:
             return False
@@ -244,7 +255,7 @@ class WAWTmuxTransport:
         binding = self._require_binding()
         try:
             self._require_managed(binding)
-            _resolve(
+            self._resolve(
                 self._tmux.resize_window(
                     binding.session_name, columns=geometry.columns, rows=geometry.rows
                 )
@@ -263,15 +274,15 @@ class WAWTmuxTransport:
         self._require_started()
         binding = self._require_binding()
         try:
-            if not _resolve(self._tmux.has_session(binding.session_name)):
+            if not self._resolve(self._tmux.has_session(binding.session_name)):
                 raise RuntimeOperationError(
                     "WAW_STOP_UNCONFIRMED",
                     "Managed Runtime session disappeared before stop",
                     category="conflict",
                 )
             self._require_managed(binding)
-            killed = _resolve(self._tmux.kill_session(binding.session_name))
-            closed = bool(killed) and not _resolve(self._tmux.has_session(binding.session_name))
+            killed = self._resolve(self._tmux.kill_session(binding.session_name))
+            closed = bool(killed) and not self._resolve(self._tmux.has_session(binding.session_name))
         except RuntimeOperationError:
             raise
         except Exception as exc:
@@ -311,7 +322,7 @@ class WAWTmuxTransport:
             )
 
     def _require_managed(self, binding: _TransportBinding) -> None:
-        if not _resolve(self._tmux.is_managed(binding.session_name, binding.managed_marker)):
+        if not self._resolve(self._tmux.is_managed(binding.session_name, binding.managed_marker)):
             raise RuntimeOperationError(
                 "WAW_SESSION_UNMANAGED",
                 "Runtime session marker does not match",
@@ -319,6 +330,12 @@ class WAWTmuxTransport:
             )
 
     def _require_started(self) -> None:
+        if self._poisoned:
+            raise RuntimeOperationError(
+                "WAW_TRANSPORT_INVALID",
+                "Runtime transport is unusable after an incomplete operation cancellation",
+                category="broken",
+            )
         if not self._started or self._closed or self._binding is None:
             raise RuntimeOperationError(
                 "WAW_TRANSPORT_INVALID", "Runtime transport is not running", category="conflict"
@@ -331,6 +348,14 @@ class WAWTmuxTransport:
                 "WAW_TRANSPORT_INVALID", "Runtime transport has no binding", category="conflict"
             )
         return binding
+
+    def _resolve(self, value: Awaitable[_T]) -> _T:
+        try:
+            return _resolve(value)
+        except RuntimeOperationError as exc:
+            if exc.code == "WAW_TRANSPORT_TIMEOUT":
+                self._poisoned = True
+            raise
 
 
 def _managed_session_name(project_id: str) -> str:
@@ -355,16 +380,6 @@ async def _await(value: Awaitable[_T]) -> _T:
 
 def _resolve(value: Awaitable[_T]) -> _T:
     """Resolve an async TmuxAdapter method for the sync supervisor boundary."""
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        try:
-            return asyncio.run(asyncio.wait_for(_await(value), _RESOLVE_TIMEOUT_SECONDS))
-        except TimeoutError as exc:
-            raise RuntimeOperationError(
-                "WAW_TRANSPORT_TIMEOUT", "Runtime tmux operation timed out", category="timeout"
-            ) from exc
 
     result: list[_T] = []
     failure: list[BaseException] = []
@@ -394,16 +409,20 @@ def _resolve(value: Awaitable[_T]) -> _T:
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
 
-    thread = threading.Thread(target=run, name="agentbox-waw-tmux", daemon=False)
+    # Always isolate the awaitable in a worker.  asyncio.run() cannot enforce
+    # a hard timeout for cancellation-resistant coroutines because shutdown
+    # waits for the task to finish.
+    thread = threading.Thread(target=run, name="agentbox-waw-tmux", daemon=True)
     thread.start()
     loop_ready.wait()
     if not completed.wait(timeout=_RESOLVE_TIMEOUT_SECONDS):
-        # Cancellation is issued in the worker's own loop.  Do not return
-        # until that loop has observed cancellation and shut down: otherwise
-        # a late tmux mutation could race the next supervisor operation.
+        # Cancellation is issued in the worker's own loop.  Give cooperative
+        # adapters a short grace period, but never wait indefinitely.  The
+        # owning transport is poisoned on timeout, so a still-running adapter
+        # cannot be reused for a later operation.
         if worker_loop is not None and worker_task is not None:
             worker_loop.call_soon_threadsafe(worker_task.cancel)
-        thread.join()
+        thread.join(timeout=_RESOLVE_CANCEL_GRACE_SECONDS)
         raise RuntimeOperationError(
             "WAW_TRANSPORT_TIMEOUT", "Runtime tmux operation timed out", category="timeout"
         )
