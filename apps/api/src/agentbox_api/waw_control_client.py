@@ -170,7 +170,12 @@ class WAWControlClient:
                 )
             writer.write(encoded)
             await self._with_deadline(writer.drain(), deadline)
-            raw = await self._with_deadline(reader.readline(), deadline)
+            try:
+                raw = await self._with_deadline(reader.readline(), deadline)
+            except (asyncio.LimitOverrunError, ValueError) as exc:
+                raise WAWControlClientError(
+                    "PROTOCOL_INVALID", "WAW control response exceeds its bounded line limit"
+                ) from exc
             if not raw or len(raw) > MAX_CONTROL_LINE or not raw.endswith(b"\n"):
                 raise WAWControlClientError(
                     "PROTOCOL_INVALID", "WAW control response framing is invalid"

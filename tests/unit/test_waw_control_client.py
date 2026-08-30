@@ -154,3 +154,17 @@ async def test_client_rejects_untrusted_socket_mode_before_connect(tmp_path: Pat
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.anyio
+async def test_client_normalizes_oversized_response(tmp_path: Path) -> None:
+    path = tmp_path / "workspace-control.sock"
+    oversized = b"{" + b"x" * (16 * 1024) + b"}\n"
+    server = await _serve_once(path, oversized)
+    try:
+        with pytest.raises(WAWControlClientError) as raised:
+            await _client(path).request("workspace.workspace.start", _request())
+        assert raised.value.code == "PROTOCOL_INVALID"
+    finally:
+        server.close()
+        await server.wait_closed()
