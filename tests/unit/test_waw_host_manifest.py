@@ -166,7 +166,7 @@ def test_strict_decoder_returns_typed_verified_record() -> None:
             codex_fingerprint="e" * 64,
             attach_supervisor_fingerprint="f" * 64,
             project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
-            project_root_manifest_digest="0" * 64,
+            project_root_manifest_digest="a" * 64,
             socket_digest="1" * 64,
             config_digest="2" * 64,
             enrollment_epoch="1",
