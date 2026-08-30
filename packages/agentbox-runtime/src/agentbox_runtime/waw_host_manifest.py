@@ -15,6 +15,14 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentbox_runtime.waw_manifest_codecs import (
+    RuntimeHostManifest as StrictRuntimeHostManifest,
+)
+from agentbox_runtime.waw_manifest_codecs import (
+    WAWManifestCodecError,
+    decode_runtime_host_manifest,
+)
+
 _DEFAULT_PATH = Path("/var/lib/agentbox-waw/runtime-host-installation.json")
 _SCHEMA = "waw-runtime-host-installation-v1"
 _MAX_BYTES = 64 * 1024
@@ -57,7 +65,13 @@ class WAWRuntimeHostManifest:
 def load_waw_runtime_host_manifest(
     path: Path = _DEFAULT_PATH, *, expected_uid: int = 0, expected_gid: int
 ) -> WAWRuntimeHostManifest:
-    """Read and validate one installer-owned manifest without following links."""
+    """Read the legacy synthetic manifest without following links.
+
+    This compatibility reader is retained for existing development fixtures.
+    It is not a production bootstrap trust boundary: production callers must
+    use :func:`decode_canonical_waw_runtime_host_manifest` on the complete
+    ``runtime-host-installation.v1`` bytes before constructing Runtime state.
+    """
 
     if not isinstance(path, Path) or not path.is_absolute():
         raise ValueError("WAW host manifest path must be absolute")
@@ -159,8 +173,27 @@ def load_waw_runtime_host_manifest(
     )
 
 
+def decode_canonical_waw_runtime_host_manifest(raw: bytes) -> StrictRuntimeHostManifest:
+    """Decode the complete canonical Runtime host manifest data record.
+
+    The returned dataclass is produced only after the strict codec has checked
+    the closed schema, value grammar, and canonical RFC 8785 representation.
+    This is data validation only, not host provenance or attestation; the
+    caller must establish those gates separately.  No file discovery or
+    secrets are involved.
+    """
+
+    try:
+        return decode_runtime_host_manifest(raw)
+    except WAWManifestCodecError as exc:
+        raise WAWRuntimeHostManifestError(
+            "WAW Runtime host manifest codec validation failed"
+        ) from exc
+
+
 __all__ = [
     "WAWRuntimeHostManifest",
     "WAWRuntimeHostManifestError",
+    "decode_canonical_waw_runtime_host_manifest",
     "load_waw_runtime_host_manifest",
 ]

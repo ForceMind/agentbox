@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 from agentbox_runtime.waw_host_manifest import (
     WAWRuntimeHostManifestError,
+    decode_canonical_waw_runtime_host_manifest,
     load_waw_runtime_host_manifest,
 )
+from agentbox_runtime.waw_manifest_codecs import RuntimeHostManifest, encode_runtime_host_manifest
 
 
 def _write_manifest(root: Path, value: dict[str, object]) -> Path:
@@ -133,3 +135,34 @@ def test_rejects_wrong_parent_or_file_mode(tmp_path: Path) -> None:
     os.chmod(path, 0o640)
     with pytest.raises(WAWRuntimeHostManifestError):
         load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+
+
+def test_strict_decoder_returns_typed_verified_record() -> None:
+    raw = encode_runtime_host_manifest(
+        RuntimeHostManifest(
+            runtime_host_installation_id="wri_" + "1" * 32,
+            runtime_host_installation_revision="1",
+            runtime_attestation_x25519_fingerprint="a" * 64,
+            tmux_fingerprint="b" * 64,
+            bridge_fingerprint="c" * 64,
+            claude_fingerprint="d" * 64,
+            codex_fingerprint="e" * 64,
+            attach_supervisor_fingerprint="f" * 64,
+            project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
+            project_root_manifest_digest="0" * 64,
+            socket_digest="1" * 64,
+            config_digest="2" * 64,
+            enrollment_epoch="1",
+            enrollment_state="steady",
+        )
+    )
+    value = decode_canonical_waw_runtime_host_manifest(raw)
+    assert isinstance(value, RuntimeHostManifest)
+    assert value.runtime_host_installation_revision == "1"
+
+
+def test_strict_decoder_rejects_legacy_seven_field_record() -> None:
+    with pytest.raises(WAWRuntimeHostManifestError):
+        decode_canonical_waw_runtime_host_manifest(
+            json.dumps(_valid(), ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode()
+        )
