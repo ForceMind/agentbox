@@ -98,6 +98,11 @@ class WAWControlServer:
         # Detached cleanup observers cannot be interrupted by a second
         # cancellation of the connection/close task.
         self._cleanup_tasks: set[asyncio.Task[Any]] = set()
+        # ``close`` is itself a bounded, independently owned operation.  A
+        # caller cancelling its await must not cancel the cleanup operation
+        # half way through (or make a later close report a false clean
+        # state).
+        self._close_operation: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         if self._server is not None:
@@ -114,10 +119,42 @@ class WAWControlServer:
         )
 
     async def close(self) -> None:
+        operation = self._close_operation
+        if operation is None or operation.done():
+            operation = asyncio.create_task(self._perform_close())
+            self._close_operation = operation
+            self._cleanup_tasks.add(operation)
+            operation.add_done_callback(self._consume_cleanup_task)
+        try:
+            # Shield the operation from cancellation of this caller.  The
+            # operation owns all cleanup and remains observable through the
+            # registries until every child reaches a terminal state.
+            await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            # Cancellation is a fail-closed event.  Do not claim that close
+            # completed: the independent operation continues and will mark
+            # the listener poisoned if any bounded cleanup remains pending.
+            self._poison_listener()
+            raise
+
+    async def _perform_close(self) -> None:
         self._closing = True
         if self._server is not None:
             self._server.close()
-            await self._server.wait_closed()
+            try:
+                await self._bounded_io(self._server.wait_closed(), self._cancellation_grace_seconds)
+            except (TimeoutError, _WAWControlDispatchPoisoned):
+                # ``wait_closed`` is transport-owned and may resist
+                # cancellation.  Keep cleanup bounded and quarantine the
+                # listener; the tracked I/O task will consume any late
+                # exception when it eventually terminates.
+                self._poison_listener()
+            except asyncio.CancelledError:
+                # The close operation should only be cancelled during loop
+                # teardown.  Preserve fail-closed state and let the caller's
+                # cancellation path report the incomplete cleanup.
+                self._poison_listener()
+                raise
             self._server = None
         # Close and cancellation are deliberately bounded.  A dispatcher
         # which refuses cancellation is poisoned and is never admitted again.
@@ -145,7 +182,38 @@ class WAWControlServer:
                 self._poison_listener()
         for writer in tuple(self._writers):
             await self._close_writer(writer)
-        self._closing = False
+            self._writers.discard(writer)
+        # A task's done callback runs on the next loop turn.  Retire tasks
+        # that became terminal while the bounded wait was yielding so the
+        # final state check reflects the actual registries, not callback
+        # scheduling order.
+        current = asyncio.current_task()
+        for task in tuple(self._connection_tasks):
+            if task.done():
+                self._connection_tasks.discard(task)
+        for task in tuple(self._dispatch_tasks):
+            if task.done():
+                self._consume_dispatch_task(task)
+        for task in tuple(self._io_tasks):
+            if task.done():
+                self._consume_io_task(task)
+        for task in tuple(self._cleanup_tasks):
+            if task is not current and task.done():
+                self._consume_cleanup_task(task)
+        # A poisoned or incomplete close remains visibly closed.  In
+        # particular, never clear ``_closing`` merely because this bounded
+        # observer returned while a detached child is still alive.
+        if (
+            self._poisoned
+            or self._connection_tasks
+            or self._dispatch_tasks
+            or self._io_tasks
+            or any(task is not current for task in self._cleanup_tasks)
+            or self._writers
+        ):
+            self._poison_listener()
+        else:
+            self._closing = False
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         current = asyncio.current_task()

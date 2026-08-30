@@ -724,3 +724,97 @@ async def test_repeated_cancellation_observer_keeps_pending_dispatch_quarantined
                 await dispatch_call
         loop.set_exception_handler(previous_handler)
         await server.close()
+
+
+async def _scenario_external_close_cancellation_finishes_independent_cleanup_fail_closed() -> None:
+    """Cancelling close cannot interrupt cleanup or report a clean restartable state."""
+
+    release = asyncio.Event()
+
+    class ResistantAsyncServer:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        async def wait_closed(self) -> None:
+            await release.wait()
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=1.0,
+    )
+    resistant = ResistantAsyncServer()
+    server._server = cast(Any, resistant)
+    close_call = asyncio.create_task(server.close())
+    try:
+        # Let the independent close operation enter wait_closed before
+        # cancelling its caller.  A repeated cancellation is intentionally
+        # applied to the already-cancelled owner as a regression guard.
+        while not resistant.closed:
+            await asyncio.sleep(0)
+        close_call.cancel()
+        # Do not await the cancelled owner through ``wait_for``: on newer
+        # asyncio versions that wrapper can propagate the owner's cancellation
+        # into the test runner.  One loop turn is sufficient to make the
+        # cancellation terminal while the shielded operation continues.
+        with contextlib.suppress(asyncio.CancelledError):
+            await close_call
+        assert close_call.cancelled() is True
+        assert server._poisoned is True
+        assert server._closing is True
+        assert server._server is not None
+
+        release.set()
+        operation = server._close_operation
+        assert operation is not None
+        for _ in range(1000):
+            if operation.done():
+                break
+            await asyncio.sleep(0)
+        assert operation.done() is True
+        assert operation.cancelled() is False
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+        # Cleanup completed, but cancellation remains a terminal poisoned
+        # state: no subsequent start may reuse this listener.
+        assert resistant.closed is True
+        assert server._server is None
+        assert server._connection_tasks == set()
+        assert server._dispatch_tasks == set()
+        assert server._io_tasks == set()
+        assert server._cleanup_tasks == set()
+        assert server._writers == set()
+        assert server._poisoned is True
+        assert server._closing is True
+        with pytest.raises(RuntimeError, match="poisoned"):
+            await server.start()
+    finally:
+        release.set()
+        if not close_call.done():
+            close_call.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await close_call
+        await server.close()
+
+
+def test_external_close_cancellation_finishes_independent_cleanup_fail_closed() -> None:
+    # Run this cancellation-specific scenario under a plain asyncio runner;
+    # anyio's task runner intentionally propagates child cancellation scopes.
+    asyncio.run(_scenario_external_close_cancellation_finishes_independent_cleanup_fail_closed())
