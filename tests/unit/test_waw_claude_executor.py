@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 from agentbox_core.waw import AgentType, workspace_id
+from agentbox_runtime.claude import managed_session_name
 from agentbox_runtime.models import (
     ClaudeSession,
     ClaudeSessionActionResult,
@@ -30,12 +31,12 @@ IDENTITY = WAWLifecycleIdentity(
 
 def _session(state: ClaudeSessionState, *, tmux_running: bool = True) -> ClaudeSession:
     return ClaudeSession(
-        project_id="project-a",
+        project_id=PROJECT,
         display_name="Project A",
         state=state,
         managed=True,
-        session_name="agentbox-claude-project-a-123456789abc",
-        attach_command="tmux attach-session -t =agentbox-claude-project-a-123456789abc",
+        session_name=managed_session_name(PROJECT),
+        attach_command=f"tmux attach-session -t ={managed_session_name(PROJECT)}",
         tmux_running=tmux_running,
     )
 

@@ -13,6 +13,7 @@ from typing import Protocol, TypeAlias
 
 from agentbox_core.waw import AgentType, workspace_id
 
+from agentbox_runtime.claude import managed_session_name
 from agentbox_runtime.models import (
     ClaudeSession,
     ClaudeSessionActionResult,
@@ -63,7 +64,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
             result = await self._manager.start(project)
         except RuntimeOperationError as exc:
             return self._error_observation(exc)
-        return self._observation(result.session)
+        return self._observation(result.session, identity.project_id)
 
     async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         self._require_claude(identity)
@@ -72,7 +73,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
             result = await self._manager.stop(project)
         except RuntimeOperationError as exc:
             return self._error_observation(exc)
-        return self._observation(result.session)
+        return self._observation(result.session, identity.project_id)
 
     async def status(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         self._require_claude(identity)
@@ -81,7 +82,7 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
             session = await self._manager.session(project)
         except RuntimeOperationError as exc:
             return self._error_observation(exc)
-        return self._observation(session)
+        return self._observation(session, identity.project_id)
 
     async def reconcile(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         return await self.status(identity)
@@ -105,7 +106,13 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
             )
         return project
 
-    def _observation(self, session: ClaudeSession) -> WAWLifecycleObservation:
+    def _observation(self, session: ClaudeSession, project_id: str) -> WAWLifecycleObservation:
+        if (
+            session.project_id != project_id
+            or not session.managed
+            or session.session_name != managed_session_name(project_id)
+        ):
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
         state = {
             ClaudeSessionState.RUNNING: "RUNNING",
             ClaudeSessionState.STOPPED: "STOPPED",
