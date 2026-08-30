@@ -39,6 +39,8 @@ class WAWTransport(Protocol):
 
     def write(self, data: bytes) -> None: ...
 
+    def detach(self) -> bool: ...
+
     def resize(self, geometry: PtyGeometry) -> None: ...
 
     def stop(self) -> None: ...
@@ -67,6 +69,7 @@ class WAWSupervisor:
         transport: WAWTransport,
         geometry: PtyGeometry,
         clock: Callable[[], float],
+        attachment_validator: Callable[[ActiveAttachment], bool],
         output_capacity_bytes: int = 256 * 1024,
     ) -> None:
         validate_workspace_id(workspace_id)
@@ -83,6 +86,7 @@ class WAWSupervisor:
         self._transport = transport
         self._geometry = geometry
         self._clock = clock
+        self._attachment_validator = attachment_validator
         self._ring = OutputRing(capacity_bytes=output_capacity_bytes)
         self._state = SupervisorState.ADMITTED
         self._attachment: ActiveAttachment | None = None
@@ -123,12 +127,18 @@ class WAWSupervisor:
             raise RuntimeOperationError(
                 "WAW_ATTACH_INVALID", "Workspace is not attachable", category="conflict"
             )
-        if (
-            self._attachment is not None
-            and self._attachment.attachment_id != attachment.attachment_id
-        ):
+        if self._attachment is not None and self._attachment.claims != attachment.claims:
             raise RuntimeOperationError(
                 "WAW_WRITER_BUSY", "Workspace already has a writer attachment", category="conflict"
+            )
+        if (
+            self._attachment is None
+            and getattr(self, "_last_attachment_id", None) == attachment.attachment_id
+        ):
+            raise RuntimeOperationError(
+                "WAW_ATTACHMENT_REPLAYED",
+                "Reconnect requires a fresh attachment",
+                category="conflict",
             )
         self._attachment = attachment
         self._state = SupervisorState.RUNNING
@@ -136,12 +146,30 @@ class WAWSupervisor:
 
     def detach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
         self._require_attachment(attachment)
+        try:
+            detached = self._transport.detach()
+        except Exception as exc:
+            self._state = SupervisorState.BROKEN
+            raise RuntimeOperationError(
+                "WAW_DETACH_FAILED", "Runtime could not close the PTY attachment", category="broken"
+            ) from exc
+        if not detached:
+            raise RuntimeOperationError(
+                "WAW_DETACH_UNCONFIRMED", "Runtime did not confirm PTY closure", category="conflict"
+            )
+        self._last_attachment_id = attachment.attachment_id
         self._attachment = None
         self._state = SupervisorState.DETACHED
         return self.snapshot()
 
     def write_input(self, attachment: ActiveAttachment, data: bytes) -> None:
         self._require_attachment(attachment)
+        if self._state is SupervisorState.INPUT_UNCERTAIN:
+            raise RuntimeOperationError(
+                "WAW_INPUT_RECONCILIATION_REQUIRED",
+                "Input is paused pending explicit reconciliation",
+                category="conflict",
+            )
         payload = validate_input(data)
         try:
             self._transport.write(payload)
@@ -157,6 +185,12 @@ class WAWSupervisor:
 
     def resize(self, attachment: ActiveAttachment, geometry: PtyGeometry) -> SupervisorSnapshot:
         self._require_attachment(attachment)
+        if self._state is SupervisorState.INPUT_UNCERTAIN:
+            raise RuntimeOperationError(
+                "WAW_INPUT_RECONCILIATION_REQUIRED",
+                "Resize is paused pending input reconciliation",
+                category="conflict",
+            )
         try:
             self._transport.resize(geometry)
         except Exception as exc:
@@ -215,10 +249,16 @@ class WAWSupervisor:
             raise RuntimeOperationError(
                 "WAW_ATTACHMENT_EXPIRED", "Attachment lease is expired", category="conflict"
             )
+        if not self._attachment_validator(attachment):
+            raise RuntimeOperationError(
+                "WAW_ATTACHMENT_REVOKED",
+                "Attachment is no longer current at the authority",
+                category="conflict",
+            )
 
     def _require_attachment(self, attachment: ActiveAttachment) -> None:
         self._check_attachment(attachment)
-        if self._attachment is None or self._attachment.attachment_id != attachment.attachment_id:
+        if self._attachment is None or self._attachment is not attachment:
             raise RuntimeOperationError(
                 "WAW_ATTACHMENT_REQUIRED",
                 "An active writer attachment is required",

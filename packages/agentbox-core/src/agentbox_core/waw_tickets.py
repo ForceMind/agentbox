@@ -324,6 +324,18 @@ class AttachmentAuthority:
         self._active[expected.workspace_id] = updated
         return updated
 
+    def is_active(self, expected: AttachmentTuple, *, now: float | None = None) -> bool:
+        """Return whether the exact authority-held lease is still current."""
+
+        current = self._clock() if now is None else now
+        active = self._active.get(expected.workspace_id)
+        if active is None or not _same_tuple(active.claims, expected):
+            return False
+        if not active.active_at(current):
+            del self._active[expected.workspace_id]
+            return False
+        return True
+
     def detach(self, expected: AttachmentTuple, *, now: float | None = None) -> ActiveAttachment:
         """Release only the exact active lease; stale callers cannot free a new writer."""
 

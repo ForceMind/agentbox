@@ -84,6 +84,7 @@ class OutputRing:
         self._frames: deque[OutputFrame] = deque()
         self._bytes = 0
         self._next_cursor = 1
+        self._dropped_until = 0
 
     @property
     def next_cursor(self) -> int:
@@ -108,16 +109,23 @@ class OutputRing:
         while self._bytes > self._capacity:
             removed = self._frames.popleft()
             self._bytes -= len(removed.payload)
+            self._dropped_until = removed.end_cursor
         return frame
 
     def replay(self, after_cursor: int) -> OutputReplay:
         if type(after_cursor) is not int or not 0 <= after_cursor <= MAX_OUTPUT_CURSOR:
             raise WAWPTYError("after_cursor must be zero or a usable output cursor")
+        if after_cursor < self._dropped_until:
+            return OutputReplay(
+                "gap", (), self._next_cursor - 1, after_cursor + 1, self._dropped_until
+            )
         if not self._frames:
             return OutputReplay("frames", (), after_cursor)
         oldest = self._frames[0].start_cursor
         if after_cursor < oldest - 1:
-            return OutputReplay("gap", (), self._next_cursor - 1, oldest, self._next_cursor - 1)
+            return OutputReplay(
+                "gap", (), self._next_cursor - 1, after_cursor + 1, oldest - 1
+            )
         frames = tuple(frame for frame in self._frames if frame.end_cursor > after_cursor)
         return OutputReplay("frames", frames, self._next_cursor - 1)
 

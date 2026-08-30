@@ -43,7 +43,8 @@ def test_output_ring_replays_and_reports_gap_after_eviction() -> None:
     assert b"".join(frame.payload for frame in replay.frames) == b"efghij"
     gap = ring.replay(1)
     assert gap.kind == "gap"
-    assert gap.gap_start == 5
+    assert gap.gap_start == 2
+    assert gap.gap_end == 4
     baseline = ring.replay(0)
     assert baseline.kind == "gap"
 
