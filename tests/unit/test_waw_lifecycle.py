@@ -116,6 +116,12 @@ class FailingAttestationStore:
         raise WAWWorkspaceAttestationError("synthetic attestation failure")
 
 
+class RunningCleanupExecutor(FakeExecutor):
+    async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self.calls.append(("stop", identity))
+        return WAWLifecycleObservation(state="RUNNING")
+
+
 def registry(
     executor: FakeExecutor | None = None,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
@@ -180,6 +186,17 @@ async def test_start_attestation_failure_attempts_exact_cleanup() -> None:
         await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
     assert exc_info.value.code == "RECONCILIATION_REQUIRED"
     assert [kind for kind, _identity in executor.calls] == ["start", "stop"]
+
+
+@pytest.mark.anyio
+async def test_start_attestation_cleanup_requires_positive_stopped_evidence() -> None:
+    executor = RunningCleanupExecutor()
+    runtime = registry(executor, cast(WAWWorkspaceAttestationStore, FailingAttestationStore()))
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
 
 
 @pytest.mark.anyio

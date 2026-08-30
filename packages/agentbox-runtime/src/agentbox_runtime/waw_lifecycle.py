@@ -373,6 +373,13 @@ class WAWLifecycleRegistry:
                 try:
                     cleanup = await self._executor.stop(identity)
                     self._validate_observation(cleanup)
+                    if not (
+                        cleanup.state == "STOPPED"
+                        and cleanup.process_state == "STOPPED"
+                        and cleanup.reconciliation_state == "authoritative"
+                        and cleanup.runtime_epoch == self._runtime_epoch
+                    ):
+                        raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
                 except Exception as cleanup_exc:
                     raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_exc
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
