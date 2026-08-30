@@ -109,7 +109,9 @@ from agentbox_protocol.waw_control import (
     WAW_CONTROL_PROTOCOL_VERSION,
     WAWControlError,
     decode_control_request,
+    decode_control_response,
     encode_control_request,
+    encode_control_response,
 )
 
 __all__ = [
@@ -207,7 +209,9 @@ __all__ = [
     "WAW_CONTROL_PROTOCOL_VERSION",
     "WAWControlError",
     "decode_control_request",
+    "decode_control_response",
     "encode_control_request",
+    "encode_control_response",
     "FrameType",
     "IncompleteFrame",
     "TrailingBytes",
