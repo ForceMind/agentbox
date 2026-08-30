@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import socket
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -45,11 +46,23 @@ def _response(request_id: str) -> dict[str, object]:
 Dispatch = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
 
 
-async def _running_server(path: Path, dispatch: Dispatch) -> tuple[WAWControlServer, socket.socket]:
+async def _running_server(
+    path: Path,
+    dispatch: Dispatch,
+    *,
+    expected_peer_uid: int | None = None,
+    expected_peer_gid: int | None = None,
+) -> tuple[WAWControlServer, socket.socket]:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(str(path))
     sock.listen(16)
-    server = WAWControlServer(sock, dispatch, timeout_seconds=0.2)
+    server = WAWControlServer(
+        sock,
+        dispatch,
+        expected_peer_uid=os.geteuid() if expected_peer_uid is None else expected_peer_uid,
+        expected_peer_gid=os.getegid() if expected_peer_gid is None else expected_peer_gid,
+        timeout_seconds=0.2,
+    )
     await server.start()
     return server, sock
 
@@ -83,6 +96,23 @@ async def test_dispatches_valid_request_and_closes_connection(tmp_path: Path) ->
             expected_request_id=cast(str, _request()["request_id"]),
         ) == _response(cast(str, _request()["request_id"]))
         assert seen == [_request()]
+    finally:
+        await server.close()
+        sock.close()
+
+
+@pytest.mark.anyio
+async def test_server_rejects_unexpected_peer_credentials(tmp_path: Path) -> None:
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        raise AssertionError("unexpected peer must not dispatch")
+
+    path = tmp_path / "control.sock"
+    server, sock = await _running_server(path, dispatch, expected_peer_gid=os.getegid() + 1)
+    try:
+        import json
+
+        with pytest.raises(ConnectionResetError):
+            await _call(path, json.dumps(_request()).encode() + b"\n")
     finally:
         await server.close()
         sock.close()
