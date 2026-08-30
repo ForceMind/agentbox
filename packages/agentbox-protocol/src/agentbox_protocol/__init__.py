@@ -100,6 +100,17 @@ from agentbox_protocol.runtime_capabilities import (
     RuntimeRemoteState,
     RuntimeType,
 )
+from agentbox_protocol.waw_control import (
+    MAX_CONTROL_DEPTH,
+    MAX_CONTROL_ENVELOPE,
+    MAX_CONTROL_KEYS,
+    MAX_CONTROL_LINE,
+    MAX_U64,
+    WAW_CONTROL_PROTOCOL_VERSION,
+    WAWControlError,
+    decode_control_request,
+    encode_control_request,
+)
 
 __all__ = [
     "ABWSFrame",
@@ -188,6 +199,15 @@ __all__ = [
     "RuntimeInstallationType",
     "RuntimeRemoteState",
     "RuntimeType",
+    "MAX_CONTROL_DEPTH",
+    "MAX_CONTROL_ENVELOPE",
+    "MAX_CONTROL_KEYS",
+    "MAX_CONTROL_LINE",
+    "MAX_U64",
+    "WAW_CONTROL_PROTOCOL_VERSION",
+    "WAWControlError",
+    "decode_control_request",
+    "encode_control_request",
     "FrameType",
     "IncompleteFrame",
     "TrailingBytes",
