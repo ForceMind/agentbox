@@ -320,3 +320,22 @@ def test_invalid_ticket_and_invalid_tuple_fail_closed() -> None:
     assert invalid.value.code is TicketErrorCode.INVALID
     with pytest.raises((TicketAuthorityError, WAWDomainError)):
         _issue(authority, attachment_id="not-an-attachment")
+
+
+def test_attachment_tuple_rejects_cross_project_or_agent_identity() -> None:
+    with pytest.raises(TicketAuthorityError) as mismatch:
+        AttachmentTuple(
+            workspace_id="aws_" + "9" * 32,
+            project_id=PROJECT_ID,
+            agent_type=AgentType.CLAUDE,
+            attachment_id="att_" + "2" * 32,
+            lease_number=1,
+            generation=1,
+            auth_epoch=1,
+            api_authority_epoch=11,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision=1,
+            binding_revision=1,
+            binding_digest=BINDING_DIGEST,
+        )
+    assert mismatch.value.code is TicketErrorCode.STALE

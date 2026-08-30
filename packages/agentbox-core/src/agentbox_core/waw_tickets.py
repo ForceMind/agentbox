@@ -28,6 +28,7 @@ from agentbox_core.waw import (
     validate_project_id,
     validate_runtime_host_installation_id,
     validate_workspace_id,
+    workspace_id,
 )
 
 _MAX_U64 = 2**64 - 1
@@ -121,6 +122,8 @@ class AttachmentTuple:
             raise TicketAuthorityError(TicketErrorCode.INVALID, "agent_type is invalid") from exc
         object.__setattr__(self, "agent_type", agent)
         validate_attachment_id(self.attachment_id)
+        if self.workspace_id != workspace_id(self.project_id, agent):
+            raise TicketAuthorityError(TicketErrorCode.STALE, "workspace identity does not match")
         validate_positive_u64(self.lease_number, field="lease_number")
         validate_positive_u64(self.generation, field="generation")
         validate_positive_u64(self.auth_epoch, field="auth_epoch")

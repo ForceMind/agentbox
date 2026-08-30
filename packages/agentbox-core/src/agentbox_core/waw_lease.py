@@ -20,6 +20,7 @@ class LeaseCleanupState(StrEnum):
     STALE = "STALE"
     EXPIRED = "EXPIRED"
     DETACHING = "DETACHING"
+    RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
     DETACHED = "DETACHED"
     CLOSED = "CLOSED"
 
@@ -69,6 +70,7 @@ class LeaseCleanupFence:
         self._grace = grace_seconds
         self._detach_timeout = detach_timeout_seconds
         self._snapshot: LeaseCleanupSnapshot | None = None
+        self._last_observed: float | None = None
 
     @property
     def snapshot(self) -> LeaseCleanupSnapshot | None:
@@ -79,7 +81,7 @@ class LeaseCleanupFence:
     ) -> LeaseCleanupSnapshot:
         if self._snapshot is not None and self._snapshot.writer_slot_reserved:
             raise LeaseCleanupError("ATTACHMENT_BUSY", "attachment cleanup is already reserved")
-        now = self._clock()
+        now = self._observe_now(None)
         self._snapshot = LeaseCleanupSnapshot(
             attachment_id=attachment_id,
             generation=generation,
@@ -104,7 +106,8 @@ class LeaseCleanupFence:
         snapshot = self._advance(now)
         if snapshot.state is not LeaseCleanupState.ACTIVE:
             raise LeaseCleanupError("ATTACHMENT_STALE", "stale attachment cannot renew")
-        current = self._clock() if now is None else now
+        current = self._last_observed
+        assert current is not None
         self._snapshot = replace(
             snapshot,
             last_heartbeat=current,
@@ -119,6 +122,7 @@ class LeaseCleanupFence:
             LeaseCleanupState.DETACHING,
             LeaseCleanupState.DETACHED,
             LeaseCleanupState.CLOSED,
+            LeaseCleanupState.RECONCILIATION_REQUIRED,
         }:
             return snapshot
         if snapshot.state not in {
@@ -127,7 +131,8 @@ class LeaseCleanupFence:
             LeaseCleanupState.EXPIRED,
         }:
             raise LeaseCleanupError("ATTACHMENT_STATE_INVALID", "attachment cannot detach")
-        current = self._clock() if now is None else now
+        current = self._last_observed
+        assert current is not None
         self._snapshot = replace(
             snapshot,
             state=LeaseCleanupState.DETACHING,
@@ -139,7 +144,10 @@ class LeaseCleanupFence:
         self, *, cleanup_state: str, now: float | None = None
     ) -> LeaseCleanupSnapshot:
         snapshot = self._advance(now)
-        if snapshot.state is not LeaseCleanupState.DETACHING:
+        if snapshot.state not in {
+            LeaseCleanupState.DETACHING,
+            LeaseCleanupState.RECONCILIATION_REQUIRED,
+        }:
             raise LeaseCleanupError(
                 "DETACH_ACK_UNEXPECTED", "cleanup acknowledgement is unexpected"
             )
@@ -158,7 +166,7 @@ class LeaseCleanupFence:
 
     def _advance(self, now: float | None) -> LeaseCleanupSnapshot:
         snapshot = self._require()
-        current = self._clock() if now is None else now
+        current = self._observe_now(now)
         if snapshot.state is LeaseCleanupState.ACTIVE and current >= snapshot.stale_at:
             snapshot = replace(snapshot, state=LeaseCleanupState.STALE)
         if snapshot.state is LeaseCleanupState.STALE and current >= snapshot.grace_until:
@@ -168,9 +176,16 @@ class LeaseCleanupFence:
             and snapshot.detach_deadline is not None
             and current >= snapshot.detach_deadline
         ):
-            snapshot = replace(snapshot, state=LeaseCleanupState.CLOSED)
+            snapshot = replace(snapshot, state=LeaseCleanupState.RECONCILIATION_REQUIRED)
         self._snapshot = snapshot
         return snapshot
+
+    def _observe_now(self, requested: float | None) -> float:
+        current = self._clock() if requested is None else requested
+        if self._last_observed is not None and current < self._last_observed:
+            raise LeaseCleanupError("CLOCK_ROLLBACK", "lease cleanup clock moved backwards")
+        self._last_observed = current
+        return current
 
     def _require(self) -> LeaseCleanupSnapshot:
         if self._snapshot is None:

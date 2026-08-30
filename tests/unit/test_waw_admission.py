@@ -12,11 +12,12 @@ from agentbox_api.waw_admission import (
 )
 from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
 from agentbox_core.services import AuthenticatedSession
+from agentbox_core.waw import AgentType, workspace_id
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_tickets import AttachmentAuthority
 
 PROJECT_ID = "prj_" + "0" * 32
-WORKSPACE_ID = "aws_" + "1" * 32
+WORKSPACE_ID = workspace_id(PROJECT_ID, AgentType.CLAUDE)
 HOST_ID = "wri_" + "2" * 32
 BINDING_DIGEST = "a" * 64
 
