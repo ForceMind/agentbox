@@ -123,9 +123,7 @@ class OutputRing:
             return OutputReplay("frames", (), after_cursor)
         oldest = self._frames[0].start_cursor
         if after_cursor < oldest - 1:
-            return OutputReplay(
-                "gap", (), self._next_cursor - 1, after_cursor + 1, oldest - 1
-            )
+            return OutputReplay("gap", (), self._next_cursor - 1, after_cursor + 1, oldest - 1)
         frames = tuple(frame for frame in self._frames if frame.end_cursor > after_cursor)
         return OutputReplay("frames", frames, self._next_cursor - 1)
 
