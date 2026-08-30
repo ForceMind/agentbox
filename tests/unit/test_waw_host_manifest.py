@@ -4,7 +4,9 @@ import hashlib
 import json
 import os
 import stat
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from agentbox_runtime.waw_host_manifest import (
@@ -215,23 +217,26 @@ def test_legacy_manifest_helpers_are_not_package_exports() -> None:
 
 
 def _strict_runtime_bytes() -> bytes:
-    return encode_runtime_host_manifest(
-        RuntimeHostManifest(
-            runtime_host_installation_id="wri_" + "1" * 32,
-            runtime_host_installation_revision="1",
-            runtime_attestation_x25519_fingerprint="a" * 64,
-            tmux_fingerprint="b" * 64,
-            bridge_fingerprint="c" * 64,
-            claude_fingerprint="d" * 64,
-            codex_fingerprint="e" * 64,
-            attach_supervisor_fingerprint="f" * 64,
-            project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
-            project_root_manifest_digest="a" * 64,
-            socket_digest="1" * 64,
-            config_digest="2" * 64,
-            enrollment_epoch="1",
-            enrollment_state="steady",
-        )
+    return cast(
+        bytes,
+        encode_runtime_host_manifest(
+            RuntimeHostManifest(
+                runtime_host_installation_id="wri_" + "1" * 32,
+                runtime_host_installation_revision="1",
+                runtime_attestation_x25519_fingerprint="a" * 64,
+                tmux_fingerprint="b" * 64,
+                bridge_fingerprint="c" * 64,
+                claude_fingerprint="d" * 64,
+                codex_fingerprint="e" * 64,
+                attach_supervisor_fingerprint="f" * 64,
+                project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
+                project_root_manifest_digest="a" * 64,
+                socket_digest="1" * 64,
+                config_digest="2" * 64,
+                enrollment_epoch="1",
+                enrollment_state="steady",
+            )
+        ),
     )
 
 
@@ -246,14 +251,21 @@ def _write_strict_manifest(root: Path, raw: bytes | None = None) -> tuple[Path, 
     return path, payload
 
 
-def _load_strict(path: Path, raw: bytes, **kwargs: object) -> RuntimeHostManifest:
+def _load_strict(
+    path: Path,
+    raw: bytes,
+    *,
+    expected_ancestor_mode: int | None = None,
+    expected_parent_mode: int = 0o750,
+) -> RuntimeHostManifest:
     return load_canonical_waw_runtime_host_manifest(
         path,
         expected_uid=os.geteuid(),
         expected_gid=os.getegid(),
         expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
         trusted_root=path.parents[3],
-        **kwargs,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_parent_mode=expected_parent_mode,
     )
 
 
@@ -322,9 +334,7 @@ def test_strict_loader_rejects_metadata_mutation_between_fstats(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path, raw = _write_strict_manifest(tmp_path)
-    import agentbox_runtime.waw_host_manifest as module
-
-    original = module.os.fstat
+    original = cast(Callable[[int], os.stat_result], os.fstat)
     calls: dict[int, int] = {}
 
     def mutate_after_first(fd: int) -> os.stat_result:
@@ -336,6 +346,6 @@ def test_strict_loader_rejects_metadata_mutation_between_fstats(
             )
         return result
 
-    monkeypatch.setattr(module.os, "fstat", mutate_after_first)
+    monkeypatch.setattr(os, "fstat", mutate_after_first)
     with pytest.raises(WAWRuntimeHostManifestError, match="changed during read"):
         _load_strict(path, raw)
