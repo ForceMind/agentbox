@@ -58,6 +58,14 @@ class WorkspaceResponse(StrictMetadataModel):
     data: WorkspaceMetadata
 
 
+class WorkspaceAttachmentCapacity(StrictMetadataModel):
+    """Bounded attachment counters; no ticket or bearer material crosses API."""
+
+    admitted: str
+    pending: str
+    limit: str
+
+
 class WorkspaceRuntimeStatus(StrictMetadataModel):
     """Runtime evidence for one workspace; no terminal bytes or tickets."""
 
@@ -72,7 +80,7 @@ class WorkspaceRuntimeStatus(StrictMetadataModel):
     runtime_epoch: str
     process_state: str
     exit_code: int | None
-    attachment_capacity: dict[str, str]
+    attachment_capacity: WorkspaceAttachmentCapacity
 
 
 class WorkspaceRuntimeStatusResponse(StrictMetadataModel):

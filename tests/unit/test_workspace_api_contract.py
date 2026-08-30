@@ -61,3 +61,15 @@ def test_runtime_status_is_metadata_only() -> None:
     assert "ticket" not in value.model_dump()
     with pytest.raises(ValidationError):
         WorkspaceRuntimeStatus.model_validate({**value.model_dump(), "terminal": "forbidden"})
+    with pytest.raises(ValidationError):
+        WorkspaceRuntimeStatus.model_validate(
+            {
+                **value.model_dump(),
+                "attachment_capacity": {
+                    "admitted": "0",
+                    "pending": "0",
+                    "limit": "32",
+                    "ticket": "forbidden",
+                },
+            }
+        )
