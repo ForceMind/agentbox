@@ -69,7 +69,7 @@ def _strict_manifest_bytes() -> bytes:
             tmux_fingerprint="d" * 64,
             bridge_fingerprint="e" * 64,
             claude_fingerprint="f" * 64,
-            codex_fingerprint="0" * 64,
+            codex_fingerprint="9" * 64,
             attach_supervisor_fingerprint="1" * 64,
             project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
             project_root_manifest_digest="b" * 64,

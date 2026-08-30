@@ -248,6 +248,42 @@ def test_project_rejects_unsafe_values(field: str, value: object) -> None:
         encode_project_root_manifest(data)
 
 
+@pytest.mark.parametrize("mode", ["000", "644", "777", "888", "0755", "70"])
+def test_project_root_mode_requires_safe_canonical_octal(mode: str) -> None:
+    data = _project()
+    data["root_mode"] = mode
+    with pytest.raises(WAWManifestCodecError):
+        encode_project_root_manifest(data)
+
+
+@pytest.mark.parametrize(
+    "subgroup", ["", ".", "..", "/waw", "waw/child", "waw child", "waw\tchild"]
+)
+def test_cgroup_subgroup_is_one_safe_component(subgroup: str) -> None:
+    data = _cgroup()
+    data["delegate_subgroup"] = subgroup
+    with pytest.raises(WAWManifestCodecError):
+        encode_cgroup_delegation_manifest(data)
+
+
+@pytest.mark.parametrize(
+    ("encoder", "factory", "field"),
+    [
+        (encode_project_root_manifest, _project, "no_shell_executable_digest"),
+        (encode_cgroup_delegation_manifest, _cgroup, "policy_template_digest"),
+        (encode_api_host_anchor, _anchor, "host_manifest_digest"),
+        (encode_runtime_host_manifest, _runtime, "codex_fingerprint"),
+    ],
+)
+def test_identity_digests_reject_zero_sentinel(
+    encoder: Encoder, factory: Factory, field: str
+) -> None:
+    data = factory()
+    data[field] = "0" * 64
+    with pytest.raises(WAWManifestCodecError):
+        encoder(data)
+
+
 def test_closed_schema_does_not_accept_secret_or_terminal_fields() -> None:
     data = _runtime()
     data["api_key"] = "synthetic-only-and-rejected"

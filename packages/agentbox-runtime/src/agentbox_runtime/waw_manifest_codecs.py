@@ -28,6 +28,8 @@ _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _ID = re.compile(r"\A(?:wri|prj)_[0-9a-f]{32}\Z")
 _RUNTIME_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
 _HEX_FINGERPRINT = _DIGEST
+_PROJECT_ROOT_MODE = re.compile(r"\A[0-7]{3}\Z")
+_CGROUP_SUBGROUP = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _STATES = frozenset({"bootstrap", "steady", "rotation"})
 
 
@@ -210,8 +212,38 @@ def _absolute_path(value: object) -> str:
 
 def _digest(value: object, field: str) -> str:
     value = _string(value)
-    if _DIGEST.fullmatch(value) is None:
+    # A zero digest is a sentinel used by incomplete/unknown evidence and
+    # must never be accepted as an identity or trust anchor.
+    if _DIGEST.fullmatch(value) is None or value == "0" * 64:
         raise WAWManifestCodecError(f"invalid {field}")
+    return value
+
+
+def _project_root_mode(value: object) -> str:
+    """Validate the canonical three-digit octal project-root mode.
+
+    The wire representation intentionally omits a leading ``0`` (as in the
+    existing manifest vectors), while each digit is still octal.  The root
+    must be searchable/readable/writable by its owner, and group/other write
+    or special bits are not permitted.  The latter prevents a manifest from
+    authorizing a world/group-writable or set-id project root.
+    """
+
+    if not isinstance(value, str) or _PROJECT_ROOT_MODE.fullmatch(value) is None:
+        raise WAWManifestCodecError("invalid root_mode")
+    mode = int(value, 8)
+    if mode & 0o700 != 0o700 or mode & 0o022:
+        raise WAWManifestCodecError("unsafe root_mode")
+    return value
+
+
+def _cgroup_subgroup(value: object) -> str:
+    """Validate a single safe systemd cgroup subgroup component."""
+
+    if not isinstance(value, str) or _CGROUP_SUBGROUP.fullmatch(value) is None:
+        raise WAWManifestCodecError("invalid delegate_subgroup")
+    if value in {".", ".."}:
+        raise WAWManifestCodecError("invalid delegate_subgroup")
     return value
 
 
@@ -298,9 +330,9 @@ def _validate_project(value: Mapping[str, Any]) -> None:
         "root_mount_id",
         "root_uid",
         "root_gid",
-        "root_mode",
     ):
         _u64(value[field])
+    _project_root_mode(value["root_mode"])
     _string(value["root_filesystem_id"])
     if value["relative_key_grammar_version"] != "one-component-v1":
         raise WAWManifestCodecError("unsupported relative key grammar")
@@ -318,11 +350,11 @@ def _validate_cgroup(value: Mapping[str, Any]) -> None:
         "cgroup_mount_device",
         "cgroup_mount_filesystem_id",
         "cgroup_schema_identity",
-        "delegate_subgroup",
         "protect_control_groups",
         "kill_mode",
     ):
         _string(value[field])
+    _cgroup_subgroup(value["delegate_subgroup"])
     if (
         value["service_unit"] != "agentbox-runtime.service"
         or value["cgroup_mount_type"] != "cgroup2"
