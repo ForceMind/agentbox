@@ -68,6 +68,7 @@ class AuthenticatedAttachmentContext:
     authorization_scope: str
     origin: str
     runtime_epoch: str
+    auth_epoch: int
 
     def __post_init__(self) -> None:
         for name, value, maximum in (
@@ -89,6 +90,10 @@ class AuthenticatedAttachmentContext:
             or int(self.runtime_epoch) > _MAX_U64
         ):
             raise TicketAuthorityError(TicketErrorCode.INVALID, "runtime_epoch is invalid")
+        try:
+            validate_positive_u64(self.auth_epoch, field="auth_epoch")
+        except (TypeError, ValueError) as exc:
+            raise TicketAuthorityError(TicketErrorCode.INVALID, "auth_epoch is invalid") from exc
 
 
 @dataclass(frozen=True)
@@ -526,8 +531,18 @@ def _same_context(
 
     if left is None or right is None:
         return left is None and right is None
-    fields = ("session_id", "user_id", "authorization_scope", "origin", "runtime_epoch")
-    return all(hmac.compare_digest(getattr(left, field), getattr(right, field)) for field in fields)
+    fields = (
+        "session_id",
+        "user_id",
+        "authorization_scope",
+        "origin",
+        "runtime_epoch",
+        "auth_epoch",
+    )
+    return all(
+        hmac.compare_digest(str(getattr(left, field)), str(getattr(right, field)))
+        for field in fields
+    )
 
 
 __all__ = [

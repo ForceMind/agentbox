@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from threading import Barrier
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import AgentType, WAWDomainError, workspace_id
@@ -22,16 +22,24 @@ HOST_ID = "wri_" + "1" * 32
 BINDING_DIGEST = "a" * 64
 
 
-def _context(**overrides: str) -> AuthenticatedAttachmentContext:
-    values = {
+def _context(**overrides: object) -> AuthenticatedAttachmentContext:
+    values: dict[str, object] = {
         "session_id": "ses_1",
         "user_id": "usr_1",
         "authorization_scope": "admin",
         "origin": "https://agentbox.invalid",
         "runtime_epoch": "7",
+        "auth_epoch": 4,
     }
     values.update(overrides)
-    return AuthenticatedAttachmentContext(**values)
+    return AuthenticatedAttachmentContext(
+        session_id=cast(str, values["session_id"]),
+        user_id=cast(str, values["user_id"]),
+        authorization_scope=cast(str, values["authorization_scope"]),
+        origin=cast(str, values["origin"]),
+        runtime_epoch=cast(str, values["runtime_epoch"]),
+        auth_epoch=cast(int, values["auth_epoch"]),
+    )
 
 
 class FakeMonotonic:
@@ -113,7 +121,18 @@ def test_consume_is_single_use_and_binds_every_tuple_field() -> None:
     assert authority.pending_count == 0
 
 
-def test_context_fence_burns_ticket_on_session_origin_or_epoch_mismatch() -> None:
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("session_id", "ses_2"),
+        ("user_id", "usr_2"),
+        ("authorization_scope", "other"),
+        ("origin", "https://evil.invalid"),
+        ("runtime_epoch", "8"),
+        ("auth_epoch", 5),
+    ),
+)
+def test_context_fence_burns_ticket_on_identity_mismatch(field: str, value: object) -> None:
     clock = FakeMonotonic()
     authority = _authority(clock)
     issued = authority.issue(
@@ -130,7 +149,7 @@ def test_context_fence_burns_ticket_on_session_origin_or_epoch_mismatch() -> Non
         context=_context(),
     )
     with pytest.raises(TicketAuthorityError) as mismatch:
-        authority.consume(issued.ticket, issued.claims, context=_context(session_id="ses_2"))
+        authority.consume(issued.ticket, issued.claims, context=_context(**{field: value}))
     assert mismatch.value.code is TicketErrorCode.STALE
     assert authority.pending_count == 0
     with pytest.raises(TicketAuthorityError) as replay:

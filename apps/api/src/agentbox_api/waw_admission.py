@@ -104,6 +104,7 @@ def prepare_attachment(
             authorization_scope=row.authorization_scope,
             origin=origin,
             runtime_epoch=runtime.runtime_epoch,
+            auth_epoch=authenticated.auth_epoch,
         )
         return authority.issue(
             workspace_id=row.id,
