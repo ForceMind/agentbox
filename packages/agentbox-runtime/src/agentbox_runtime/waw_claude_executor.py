@@ -50,8 +50,7 @@ class ClaudeProjectBinding:
             or "\\" in self.project_key
             or any(unicodedata.category(char).startswith("C") for char in self.project_key)
             or any(
-                not (char.isalnum() or char in {"-", "_", ".", " "})
-                for char in self.project_key
+                not (char.isalnum() or char in {"-", "_", ".", " "}) for char in self.project_key
             )
         ):
             raise ValueError("project_key is invalid")
