@@ -128,9 +128,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/run/agentbox")) == 0o3770
     assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
     assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
-    assert epoch_path.read_text() == (
-        '{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}'
-    )
+    assert epoch_path.read_text() == ('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}')
 
 
 @pytest.mark.parametrize(
