@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 
 from agentbox_core.database import Database
 from agentbox_core.models import Project
@@ -115,6 +114,8 @@ def test_duplicate_and_non_ready_project_are_rejected(settings: Any, clock: Any)
 
 
 def test_host_revision_cannot_change_while_workspace_is_bound(settings: Any, clock: Any) -> None:
+    from sqlalchemy.exc import IntegrityError
+
     database, service, project_id, host_id = _seed(settings, clock)
     _create(service, project_id, host_id)
     with pytest.raises(IntegrityError), database.transaction() as session:

@@ -12,7 +12,6 @@ from agentbox_runtime.waw_command import WAWClaudeCommand
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_supervisor import SupervisorState
 from agentbox_runtime.waw_transport import WAWTmuxTransport
-import agentbox_runtime.waw_transport as waw_transport
 
 
 class FakeTmux:
@@ -220,6 +219,8 @@ def test_tmux_transport_rejects_wrong_pane_process(tmp_path: Path) -> None:
 def test_resolve_timeout_cancels_worker_without_late_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import agentbox_runtime.waw_transport as waw_transport
+
     mutated = False
 
     async def delayed_mutation() -> None:
