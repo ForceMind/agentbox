@@ -263,6 +263,96 @@ class TmuxAdapter:
             )
         return True
 
+    async def write_input(self, session_name: str, data: bytes) -> None:
+        """Deliver bounded opaque bytes through a fixed tmux buffer path.
+
+        ``send-keys`` treats its arguments as key names and therefore cannot
+        safely carry arbitrary terminal bytes.  Loading a bounded stdin buffer
+        and pasting it to the exact managed pane keeps the caller payload out
+        of argv and out of shell parsing.  The buffer name is derived solely
+        from the already validated session name and is deleted by paste.
+        """
+
+        self._validate_name(session_name)
+        if not isinstance(data, bytes) or not data or len(data) > 16 * 1024:
+            raise RuntimeOperationError(
+                "TMUX_INPUT_INVALID",
+                "tmux input is outside the fixed byte limit",
+                category="validation",
+            )
+        if not await self.has_session(session_name):
+            raise RuntimeOperationError(
+                "TMUX_SESSION_UNAVAILABLE", "tmux session is unavailable", category="unavailable"
+            )
+        buffer_name = self._input_buffer_name(session_name)
+        loaded = await self._run(
+            self._require_executable(),
+            ("load-buffer", "-b", buffer_name, "-"),
+            allow_nonzero=True,
+            timeout=5,
+            stdin_data=data,
+        )
+        if loaded.exit_code != 0:
+            raise RuntimeOperationError(
+                "TMUX_INPUT_FAILED", "tmux input buffer could not be loaded", category="broken"
+            )
+        pasted = await self._run(
+            self._require_executable(),
+            (
+                "paste-buffer",
+                "-d",
+                "-b",
+                buffer_name,
+                "-t",
+                f"={session_name}:0.0",
+            ),
+            allow_nonzero=True,
+            timeout=5,
+        )
+        if pasted.exit_code != 0:
+            raise RuntimeOperationError(
+                "TMUX_INPUT_FAILED", "tmux input buffer could not be pasted", category="broken"
+            )
+
+    async def resize_window(self, session_name: str, *, columns: int, rows: int) -> None:
+        """Resize only the exact managed pane using bounded geometry."""
+
+        self._validate_name(session_name)
+        if type(columns) is not int or not 8 <= columns <= 240:
+            raise RuntimeOperationError(
+                "TMUX_GEOMETRY_INVALID",
+                "tmux columns are outside the fixed limit",
+                category="validation",
+            )
+        if type(rows) is not int or not 1 <= rows <= 200:
+            raise RuntimeOperationError(
+                "TMUX_GEOMETRY_INVALID",
+                "tmux rows are outside the fixed limit",
+                category="validation",
+            )
+        if not await self.has_session(session_name):
+            raise RuntimeOperationError(
+                "TMUX_SESSION_UNAVAILABLE", "tmux session is unavailable", category="unavailable"
+            )
+        result = await self._run(
+            self._require_executable(),
+            (
+                "resize-window",
+                "-t",
+                f"={session_name}:0",
+                "-x",
+                str(columns),
+                "-y",
+                str(rows),
+            ),
+            allow_nonzero=True,
+            timeout=5,
+        )
+        if result.exit_code != 0:
+            raise RuntimeOperationError(
+                "TMUX_RESIZE_FAILED", "tmux window could not be resized", category="broken"
+            )
+
     def _require_executable(self) -> ExecutableIdentity:
         identity = self.executable()
         if identity is None:
@@ -312,18 +402,33 @@ class TmuxAdapter:
         timeout: float = 5,
         stdout_limit: int = 16 * 1024,
         sensitive_output: bool = False,
+        stdin_data: bytes | None = None,
     ) -> ProcessResult:
-        result = await self._runner.run(
-            identity,
-            arguments,
-            environment=self._environment,
-            cwd=Path(self._environment.get("HOME", "/")),
-            timeout_seconds=timeout,
-            stdout_limit=stdout_limit,
-            stderr_limit=8192,
-            sensitive_output=sensitive_output,
-            error_prefix="TMUX",
-        )
+        if stdin_data is None:
+            result = await self._runner.run(
+                identity,
+                arguments,
+                environment=self._environment,
+                cwd=Path(self._environment.get("HOME", "/")),
+                timeout_seconds=timeout,
+                stdout_limit=stdout_limit,
+                stderr_limit=8192,
+                sensitive_output=sensitive_output,
+                error_prefix="TMUX",
+            )
+        else:
+            result = await self._runner.run(
+                identity,
+                arguments,
+                environment=self._environment,
+                cwd=Path(self._environment.get("HOME", "/")),
+                timeout_seconds=timeout,
+                stdout_limit=stdout_limit,
+                stderr_limit=8192,
+                sensitive_output=sensitive_output,
+                stdin_data=stdin_data,
+                error_prefix="TMUX",
+            )
         if result.exit_code != 0 and not allow_nonzero:
             raise RuntimeOperationError("TMUX_COMMAND_FAILED", "tmux command failed")
         return result
@@ -337,12 +442,20 @@ class TmuxAdapter:
 
     @staticmethod
     def _validate_marker(marker: str) -> None:
-        if not re.fullmatch(r"v1:[a-f0-9]{16}", marker):
+        if not re.fullmatch(r"(?:v1:[a-f0-9]{16}|waw-v1:wri_[0-9a-f]{32}:[0-9a-f]{32})", marker):
             raise RuntimeOperationError(
                 "TMUX_SESSION_MARKER_INVALID",
                 "tmux session marker is invalid",
                 category="validation",
             )
+
+    @staticmethod
+    def _input_buffer_name(session_name: str) -> str:
+        """Derive a bounded tmux buffer name without exposing caller text."""
+
+        # Session names are already closed to ASCII ``[A-Za-z0-9_-]``.  Keep
+        # the prefix fixed and bound the result for tmux's buffer namespace.
+        return f"agentbox-waw-input-{session_name}"[:120]
 
     @staticmethod
     def _text(result: ProcessResult) -> str:

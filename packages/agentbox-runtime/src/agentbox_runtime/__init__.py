@@ -60,6 +60,7 @@ from agentbox_runtime.waw_supervisor import (
     WAWSupervisor,
     WAWTransport,
 )
+from agentbox_runtime.waw_transport import TmuxWAWTransport, WAWTmuxTransport
 
 __all__ = [
     "AuthenticationState",
@@ -108,6 +109,8 @@ __all__ = [
     "RuntimeStopEvidence",
     "WAWSupervisor",
     "WAWTransport",
+    "TmuxWAWTransport",
+    "WAWTmuxTransport",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
