@@ -9,6 +9,7 @@ from pathlib import Path
 
 import agentbox_core.approval_models  # noqa: F401 -- registers Slice 3.2a metadata
 import agentbox_core.provider_models  # noqa: F401 -- registers Phase 11 metadata
+import agentbox_core.waw_models  # noqa: F401 -- registers WAW metadata
 from agentbox_core.migration_inventory import verify_phase11_inventory
 from agentbox_core.models import Base
 from alembic import context
