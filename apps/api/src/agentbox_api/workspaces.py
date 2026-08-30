@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
+import secrets
 from datetime import datetime
 from typing import Protocol, cast
 
@@ -11,7 +11,7 @@ from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_sessions import WorkspaceSessionNotFound
 from agentbox_protocol.metadata import StrictMetadataModel
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response
-from pydantic import ConfigDict
+from pydantic import ConfigDict, ValidationError
 
 from agentbox_api.auth import SESSION_COOKIE, authenticate_request
 from agentbox_api.waw_control_client import WAWControlClientError
@@ -23,6 +23,15 @@ class _WAWLifecycleRequester(Protocol):
     async def request_lifecycle(
         self, action: str, request: dict[str, object]
     ) -> dict[str, object]: ...
+
+
+class _WorkspaceIdentityRow(Protocol):
+    id: str
+    project_id: str
+    agent_type: str
+    generation: int
+    binding_revision: int
+    binding_digest: str
 
 
 class WorkspaceMetadata(StrictMetadataModel):
@@ -96,9 +105,10 @@ def _request_id(request: Request) -> str:
     return str(getattr(request.state, "request_id", "req_unknown"))
 
 
-def _waw_request_id(request: Request) -> str:
-    digest = hashlib.sha256(_request_id(request).encode("utf-8")).hexdigest()[:32]
-    return f"wreq_{digest}"
+def _waw_request_id() -> str:
+    """Generate a private WAW correlation ID unrelated to client headers."""
+
+    return f"wreq_{secrets.token_hex(16)}"
 
 
 def _waw_coordinator(request: Request) -> _WAWLifecycleRequester:
@@ -110,6 +120,33 @@ def _waw_coordinator(request: Request) -> _WAWLifecycleRequester:
             retryable=True,
         )
     return cast(_WAWLifecycleRequester, coordinator)
+
+
+def _validate_runtime_status_identity(
+    status: WorkspaceRuntimeStatus, row: _WorkspaceIdentityRow
+) -> None:
+    """Fence Runtime metadata to the exact URL/DB workspace tuple."""
+
+    expected = (
+        row.id,
+        row.project_id,
+        row.agent_type,
+        str(row.generation),
+        str(row.binding_revision),
+        row.binding_digest,
+    )
+    observed = (
+        status.workspace_id,
+        status.project_id,
+        status.agent_type,
+        status.generation,
+        status.binding_revision,
+        status.binding_digest,
+    )
+    if observed != expected:
+        raise WAWControlClientError(
+            "PROJECT_IDENTITY_CHANGED", "WAW Runtime status identity does not match workspace"
+        )
 
 
 def _metadata(row: AgentWorkspaceSessionRecord) -> WorkspaceMetadata:
@@ -164,7 +201,7 @@ async def get_runtime_status(
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
     payload = {
         "protocol_version": 1,
-        "request_id": _waw_request_id(request),
+        "request_id": _waw_request_id(),
         "action": "workspace.workspace.status",
         "workspace_id": row.id,
         "project_id": row.project_id,
@@ -183,10 +220,18 @@ async def get_runtime_status(
         raise HTTPException(
             status_code=status_code, detail="WAW Runtime status unavailable"
         ) from exc
+    try:
+        status = WorkspaceRuntimeStatus.model_validate(runtime)
+    except ValidationError as exc:
+        raise WAWControlClientError(
+            "PROTOCOL_INVALID", "WAW Runtime status response is invalid"
+        ) from exc
+    try:
+        _validate_runtime_status_identity(status, row)
+    except WAWControlClientError as exc:
+        raise HTTPException(status_code=502, detail="WAW Runtime status identity mismatch") from exc
     response.headers["Cache-Control"] = "no-store"
-    return WorkspaceRuntimeStatusResponse(
-        request_id=_request_id(request), data=WorkspaceRuntimeStatus.model_validate(runtime)
-    )
+    return WorkspaceRuntimeStatusResponse(request_id=_request_id(request), data=status)
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
