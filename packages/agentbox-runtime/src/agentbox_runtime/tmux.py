@@ -169,6 +169,31 @@ class TmuxAdapter:
             )
         return value == "1"
 
+    async def pane_command(self, session_name: str) -> str:
+        """Read the bounded foreground command identity for a managed pane."""
+
+        self._validate_name(session_name)
+        result = await self._run(
+            self._require_executable(),
+            ("display-message", "-p", "-t", f"={session_name}:0.0", "#{pane_current_command}"),
+            allow_nonzero=True,
+            stdout_limit=128,
+        )
+        if result.exit_code != 0:
+            raise RuntimeOperationError(
+                "CLAUDE_SESSION_STATE_UNAVAILABLE",
+                "Claude pane command identity is unavailable",
+                category="unavailable",
+            )
+        value = result.stdout.decode("utf-8", errors="strict").strip()
+        if value != "claude":
+            raise RuntimeOperationError(
+                "WAW_PROCESS_IDENTITY_UNCONFIRMED",
+                "Managed pane is not running the fixed Claude executable",
+                category="conflict",
+            )
+        return value
+
     async def prepare_workspace_interaction(
         self,
         session_name: str,

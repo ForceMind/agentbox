@@ -47,6 +47,8 @@ class _TmuxOperations(Protocol):
 
     async def pane_dead(self, session_name: str) -> bool: ...
 
+    async def pane_command(self, session_name: str) -> str: ...
+
     async def create_session(
         self,
         session_name: str,
@@ -165,6 +167,12 @@ class WAWTmuxTransport:
                 raise RuntimeOperationError(
                     "WAW_START_UNCONFIRMED",
                     "Managed Runtime pane exited before readiness was observed",
+                    category="conflict",
+                )
+            if _resolve(self._tmux.pane_command(session_name)) != "claude":
+                raise RuntimeOperationError(
+                    "WAW_PROCESS_IDENTITY_UNCONFIRMED",
+                    "Managed Runtime pane is not running Claude",
                     category="conflict",
                 )
             _resolve(

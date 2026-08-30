@@ -202,6 +202,27 @@ async def test_tmux_prepares_fixed_direct_workspace_interaction(tmp_path: Path) 
 
 
 @pytest.mark.anyio
+async def test_tmux_pane_command_requires_claude_identity(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = RecordingRunner()
+    runner.responses = [ProcessResult(("tmux",), 0, b"claude\n", b"")]
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+    assert await adapter.pane_command("agentbox-claude-project-123") == "claude"
+    assert runner.calls == [
+        (
+            "display-message",
+            "-p",
+            "-t",
+            "=agentbox-claude-project-123:0.0",
+            "#{pane_current_command}",
+        )
+    ]
+
+
+@pytest.mark.anyio
 async def test_tmux_rejects_raw_session_name_injection(tmp_path: Path) -> None:
     identity = make_executable(tmp_path / "bin" / "tmux")
     adapter = TmuxAdapter(environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)})

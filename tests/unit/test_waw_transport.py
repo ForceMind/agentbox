@@ -19,6 +19,7 @@ class FakeTmux:
         self.writes: list[bytes] = []
         self.resizes: list[tuple[str, int, int]] = []
         self.pane_is_dead = False
+        self.pane_process = "claude"
 
     async def has_session(self, session_name: str) -> bool:
         self.calls.append(("has", session_name))
@@ -31,6 +32,10 @@ class FakeTmux:
     async def pane_dead(self, session_name: str) -> bool:
         self.calls.append(("dead", session_name))
         return self.pane_is_dead
+
+    async def pane_command(self, session_name: str) -> str:
+        self.calls.append(("command", session_name))
+        return self.pane_process
 
     async def create_session(
         self,
@@ -192,4 +197,18 @@ def test_tmux_transport_rejects_dead_pane_readiness(tmp_path: Path) -> None:
         managed_marker=command.managed_marker,
     )
     with pytest.raises(RuntimeOperationError, match="exited"):
+        transport.start(command, PtyGeometry(80, 24))
+
+
+def test_tmux_transport_rejects_wrong_pane_process(tmp_path: Path) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    tmux.pane_process = "bash"
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    with pytest.raises(RuntimeOperationError, match="Claude"):
         transport.start(command, PtyGeometry(80, 24))
