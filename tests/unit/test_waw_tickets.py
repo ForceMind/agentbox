@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime
 from threading import Barrier
 from typing import Any, cast
@@ -268,7 +269,7 @@ def test_heartbeat_renews_idle_expiry_without_changing_lease_number() -> None:
     assert authority.active_count == 0
 
 
-def test_expired_lease_is_removed_and_stale_detach_cannot_release_replacement() -> None:
+def test_expired_lease_requires_cleanup_proof_before_replacement() -> None:
     clock = FakeMonotonic()
     authority = _authority(clock, lease_ttl_seconds=2, absolute_lease_seconds=5)
     issued = _issue(authority)
@@ -278,10 +279,32 @@ def test_expired_lease_is_removed_and_stale_detach_cannot_release_replacement() 
         authority.detach(issued.claims)
     assert expired.value.code is TicketErrorCode.LEASE_EXPIRED
     replacement = _issue(authority, attachment_id="att_" + "3" * 32)
+    with pytest.raises(TicketAuthorityError) as blocked:
+        authority.consume(replacement.ticket, _tuple(replacement))
+    assert blocked.value.code is TicketErrorCode.WRITER_BUSY
+    authority.acknowledge_cleanup(issued.claims, cleanup_state="ATTACH_PTY_CLOSED")
+    replacement = _issue(authority, attachment_id="att_" + "4" * 32)
     authority.consume(replacement.ticket, _tuple(replacement))
     with pytest.raises(TicketAuthorityError) as stale:
         authority.detach(issued.claims)
     assert stale.value.code is TicketErrorCode.LEASE_MISMATCH
+
+
+def test_cleanup_ack_requires_exact_tuple_and_positive_state() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock, lease_ttl_seconds=2, absolute_lease_seconds=5)
+    issued = _issue(authority)
+    authority.consume(issued.ticket, _tuple(issued))
+    clock.advance(2)
+    with pytest.raises(TicketAuthorityError):
+        authority.detach(issued.claims)
+    with pytest.raises(TicketAuthorityError) as wrong_state:
+        authority.acknowledge_cleanup(issued.claims, cleanup_state="PTY_CLOSED")
+    assert wrong_state.value.code is TicketErrorCode.LEASE_MISMATCH
+    altered = replace(issued.claims, lease_number=issued.claims.lease_number + 1)
+    with pytest.raises(TicketAuthorityError) as mismatch:
+        authority.acknowledge_cleanup(altered, cleanup_state="ATTACH_PTY_CLOSED")
+    assert mismatch.value.code is TicketErrorCode.LEASE_MISMATCH
 
 
 def test_capacity_counts_pending_and_active_records_and_sweeps_expired_entries() -> None:

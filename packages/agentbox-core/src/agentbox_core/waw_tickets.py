@@ -233,6 +233,7 @@ class AttachmentAuthority:
         self._max_records = max_records
         self._pending: dict[bytes, _PendingTicket] = {}
         self._active: dict[str, ActiveAttachment] = {}
+        self._cleanup_pending: dict[str, AttachmentTuple] = {}
         self._replayed: deque[bytes] = deque(maxlen=replay_cache_size)
         self._lock = RLock()
 
@@ -253,7 +254,7 @@ class AttachmentAuthority:
     @property
     def record_count(self) -> int:
         with self._lock:
-            return len(self._pending) + len(self._active)
+            return len(self._pending) + len(self._active) + len(self._cleanup_pending)
 
     def issue(
         self,
@@ -357,6 +358,16 @@ class AttachmentAuthority:
                         TicketErrorCode.WRITER_BUSY, "workspace writer is busy"
                     )
                 del self._active[expected.workspace_id]
+                self._cleanup_pending[expected.workspace_id] = active.claims
+                raise TicketAuthorityError(
+                    TicketErrorCode.WRITER_BUSY,
+                    "workspace writer cleanup proof is pending",
+                )
+            if expected.workspace_id in self._cleanup_pending:
+                raise TicketAuthorityError(
+                    TicketErrorCode.WRITER_BUSY,
+                    "workspace writer cleanup proof is pending",
+                )
             lease = ActiveAttachment(
                 claims=expected,
                 opened_at_monotonic=current,
@@ -388,6 +399,7 @@ class AttachmentAuthority:
                 raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
+                self._cleanup_pending[expected.workspace_id] = active.claims
                 raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
             renewed_until = min(current + self._lease_ttl, active.absolute_expires_at_monotonic)
             updated = replace(
@@ -418,6 +430,7 @@ class AttachmentAuthority:
                 return False
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
+                self._cleanup_pending[expected.workspace_id] = active.claims
                 return False
             return True
 
@@ -441,9 +454,32 @@ class AttachmentAuthority:
                 raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
+                self._cleanup_pending[expected.workspace_id] = active.claims
                 raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
             del self._active[expected.workspace_id]
             return active
+
+    def acknowledge_cleanup(
+        self,
+        expected: AttachmentTuple,
+        *,
+        cleanup_state: str,
+    ) -> None:
+        """Release an expired writer slot only after exact positive cleanup proof."""
+
+        with self._lock:
+            claims = self._cleanup_pending.get(expected.workspace_id)
+            if claims is None or not _same_tuple(claims, expected):
+                raise TicketAuthorityError(
+                    TicketErrorCode.LEASE_MISMATCH,
+                    "cleanup acknowledgement does not match expired lease",
+                )
+            if cleanup_state != "ATTACH_PTY_CLOSED":
+                raise TicketAuthorityError(
+                    TicketErrorCode.LEASE_MISMATCH,
+                    "positive PTY cleanup proof is required",
+                )
+            del self._cleanup_pending[expected.workspace_id]
 
     def invalidate_all(self) -> None:
         """Invalidate all volatile authority state on API restart/shutdown."""
@@ -453,6 +489,7 @@ class AttachmentAuthority:
                 self._replayed.append(digest)
             self._pending.clear()
             self._active.clear()
+            self._cleanup_pending.clear()
 
     def sweep(self, *, now: float | None = None) -> tuple[str, ...]:
         """Remove expired pending tickets and leases without evicting live records."""
@@ -468,6 +505,7 @@ class AttachmentAuthority:
             for workspace, active in tuple(self._active.items()):
                 if not active.active_at(current):
                     del self._active[workspace]
+                    self._cleanup_pending[workspace] = active.claims
                     expired.append(active.attachment_id)
             return tuple(expired)
 
