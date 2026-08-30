@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { WorkspacePage } from './WorkspacePage'
 import { WorkspaceState } from '../features/workspace/workspaceState'
+import { WorkspaceStatusView } from '../features/workspace/useWorkspaceStatus'
 
 const workspaceId = 'aws_0123456789abcdef0123456789abcdef'
 
@@ -18,6 +19,39 @@ function state(status: WorkspaceState['status']): WorkspaceState {
 }
 
 describe('WorkspacePage security UI skeleton', () => {
+  it('renders read-only Runtime metadata without granting admission', () => {
+    const runtimeView: WorkspaceStatusView = {
+      status: 'loaded',
+      response: {
+        request_id: 'req_runtime_status',
+        data: {
+          workspace_id: workspaceId,
+          project_id: 'prj_0123456789abcdef0123456789abcdef',
+          agent_type: 'claude',
+          generation: '1',
+          binding_revision: '1',
+          binding_digest: 'a'.repeat(64),
+          state: 'RUNNING',
+          reconciliation_state: 'authoritative',
+          runtime_epoch: '2',
+          process_state: 'RUNNING',
+          exit_code: null,
+          attachment_capacity: { admitted: '1', pending: '0', limit: '32' },
+        },
+      },
+    }
+    render(
+      <WorkspacePage runtimeView={runtimeView} workspaceId={workspaceId} />,
+    )
+
+    expect(screen.getAllByText('RUNNING')).toHaveLength(2)
+    expect(screen.getByText('1/32')).toBeInTheDocument()
+    expect(screen.getByText('NOT ADMITTED')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Start / Connect' }),
+    ).toBeDisabled()
+  })
+
   it('starts unadmitted and keeps actions disabled until transport exists', () => {
     render(<WorkspacePage />)
 

@@ -1,4 +1,10 @@
-import { AlertTriangle, Keyboard, MonitorUp, ShieldAlert } from 'lucide-react'
+import {
+  AlertTriangle,
+  Keyboard,
+  MonitorUp,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react'
 
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
@@ -7,6 +13,7 @@ import {
   initialWorkspaceState,
   WorkspaceState,
 } from '../features/workspace/workspaceState'
+import { WorkspaceStatusView } from '../features/workspace/useWorkspaceStatus'
 
 const statusLabels: Record<WorkspaceState['status'], string> = {
   checking: '检查中',
@@ -36,11 +43,15 @@ function statusTone(status: WorkspaceState['status']) {
 
 export function WorkspacePage({
   initialState = initialWorkspaceState,
+  refreshStatus,
+  runtimeView = { status: 'idle' },
+  workspaceId,
 }: {
   initialState?: WorkspaceState
+  refreshStatus?: () => Promise<void>
+  runtimeView?: WorkspaceStatusView
+  workspaceId?: string
 }) {
-  // The transport hook will own this state in the implementation slice.  The
-  // current PR intentionally remains a static, injectable presentation shell.
   const state = initialState
   usePageTitle('Workspace')
 
@@ -84,6 +95,17 @@ export function WorkspacePage({
           Start 不会自动执行。此安全 UI 骨架尚未连接 WAW API 或
           WebSocket，因而不会伪造 workspace、ticket 或运行状态。
         </p>
+        {workspaceId && runtimeView.status === 'loading' && (
+          <p className="loading-panel" role="status">
+            正在读取 Runtime metadata…
+          </p>
+        )}
+        {workspaceId && runtimeView.status === 'error' && (
+          <p className="error-panel" role="alert">
+            <AlertTriangle aria-hidden="true" /> Runtime metadata 暂不可用：
+            {runtimeView.error.code}
+          </p>
+        )}
       </section>
 
       <section className="runtime-card" aria-labelledby="workspace-status">
@@ -101,6 +123,40 @@ export function WorkspacePage({
           {state.workspaceId && <code>{state.workspaceId}</code>}
           {state.errorCode && <code>{state.errorCode}</code>}
         </p>
+        {runtimeView.status === 'loaded' && (
+          <dl className="runtime-details" aria-label="Runtime metadata">
+            <div>
+              <dt>Runtime state</dt>
+              <dd>{runtimeView.response.data.state}</dd>
+            </div>
+            <div>
+              <dt>Process state</dt>
+              <dd>{runtimeView.response.data.process_state}</dd>
+            </div>
+            <div>
+              <dt>Generation</dt>
+              <dd>{runtimeView.response.data.generation}</dd>
+            </div>
+            <div>
+              <dt>Attachment capacity</dt>
+              <dd>
+                {runtimeView.response.data.attachment_capacity.admitted}/
+                {runtimeView.response.data.attachment_capacity.limit}
+              </dd>
+            </div>
+          </dl>
+        )}
+        {workspaceId && refreshStatus && (
+          <button
+            aria-label="Refresh workspace status"
+            className="icon-button"
+            disabled={runtimeView.status === 'loading'}
+            onClick={() => void refreshStatus()}
+            type="button"
+          >
+            <RefreshCw size={18} />
+          </button>
+        )}
         {state.message && <p className="workspace-notice">{state.message}</p>}
         {state.status === 'error' && (
           <p className="error-panel" role="alert">
