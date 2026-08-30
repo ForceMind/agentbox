@@ -52,6 +52,10 @@ from agentbox_runtime.rpc import (
     UnixRuntimeCapabilityClient,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_control_server import (
+    WAWControlDispatchError,
+    WAWControlServer,
+)
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
     RuntimeStartEvidence,
@@ -113,6 +117,8 @@ __all__ = [
     "WAWTransport",
     "TmuxWAWTransport",
     "WAWTmuxTransport",
+    "WAWControlDispatchError",
+    "WAWControlServer",
     "UnixClaudeRuntimeClient",
     "UnixCodexRuntimeClient",
     "UnixProjectRuntimeClient",
