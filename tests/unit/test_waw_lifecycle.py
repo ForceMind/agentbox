@@ -108,6 +108,11 @@ class ObservationExecutor(FakeExecutor):
         return self.observation
 
 
+class FailingAttestationStore:
+    def advance(self, **_kwargs: Any) -> None:
+        raise WAWWorkspaceAttestationError("synthetic attestation failure")
+
+
 def registry(
     executor: FakeExecutor | None = None,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
@@ -150,6 +155,28 @@ async def test_binding_revision_requires_exact_predecessor_digest() -> None:
     assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
     current = register_request(revision="2", previous="1", request_id="wreq_" + "9" * 32)
     assert (await runtime.dispatch(current))["status"] == "REGISTERED"
+
+
+@pytest.mark.anyio
+async def test_missing_binding_registry_rejects_revision_jump() -> None:
+    runtime = registry()
+    await runtime.dispatch(bind_request())
+    jumped = register_request(revision="2", previous="1")
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(jumped)
+    assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
+
+
+@pytest.mark.anyio
+async def test_start_attestation_failure_attempts_exact_cleanup() -> None:
+    executor = FakeExecutor()
+    runtime = registry(executor, cast(WAWWorkspaceAttestationStore, FailingAttestationStore()))
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    assert [kind for kind, _identity in executor.calls] == ["start", "stop"]
 
 
 @pytest.mark.anyio

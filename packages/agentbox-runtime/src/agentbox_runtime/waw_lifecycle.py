@@ -235,6 +235,12 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         project_id = request["project_id"]
         previous = self._bindings.get(project_id)
+        if previous is None and (
+            request["binding_revision"] != "1"
+            or request["previous_binding_revision"] is not None
+            or request["previous_binding_digest"] is not None
+        ):
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
         if (
             previous is not None
             and request["binding_revision"] != previous.binding_revision
@@ -340,6 +346,14 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
         if self._executor is None:
             raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        method = {
+            _START: self._executor.start,
+            _STOP: self._executor.stop,
+            _STATUS: self._executor.status,
+            _RECONCILE: self._executor.reconcile,
+        }[action]
+        observation = await method(identity)
+        self._validate_observation(observation)
         if action == _START and self._attestation_store is not None:
             try:
                 self._attestation_store.advance(
@@ -352,15 +366,16 @@ class WAWLifecycleRegistry:
                     runtime_epoch=self._runtime_epoch,
                 )
             except WAWWorkspaceAttestationError as exc:
+                # A successful provider start without a committed generation
+                # floor is unsafe to retain.  Attempt exact identity cleanup;
+                # if cleanup cannot be proven, the workspace remains fenced
+                # for explicit reconciliation.
+                try:
+                    cleanup = await self._executor.stop(identity)
+                    self._validate_observation(cleanup)
+                except Exception as cleanup_exc:
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_exc
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
-        method = {
-            _START: self._executor.start,
-            _STOP: self._executor.stop,
-            _STATUS: self._executor.status,
-            _RECONCILE: self._executor.reconcile,
-        }[action]
-        observation = await method(identity)
-        self._validate_observation(observation)
         self._workspaces[identity.workspace_id] = (identity, observation)
         if action == _START:
             self._generation_floor[identity.workspace_id] = max(
