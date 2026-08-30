@@ -35,6 +35,22 @@ class FakeClient:
         return dict(self.response)
 
 
+class RestartingClient(FakeClient):
+    def __init__(self, responses: list[dict[str, Any]]) -> None:
+        super().__init__(responses[0])
+        self.responses = responses
+        self.reconnects = 0
+
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append({"action": action, **request})
+        response = self.responses.pop(0)
+        await asyncio.sleep(0)
+        return dict(response)
+
+    async def reconnect(self) -> None:
+        self.reconnects += 1
+
+
 def _coordinator(client: FakeClient) -> WAWRuntimeBindCoordinator:
     return WAWRuntimeBindCoordinator(
         client,
@@ -108,3 +124,25 @@ async def test_lifecycle_request_rejects_a_new_runtime_epoch() -> None:
             },
         )
     assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
+
+
+@pytest.mark.anyio
+async def test_runtime_only_restart_invalidates_binding_and_allows_rebind() -> None:
+    stale = _response()
+    stale["runtime_epoch"] = "8"
+    client = RestartingClient([stale, _response(), _response()])
+    coordinator = _coordinator(client)
+    with pytest.raises(WAWControlClientError) as raised:
+        await coordinator.request_lifecycle(
+            "workspace.workspace.status",
+            {
+                "protocol_version": 1,
+                "request_id": "wreq_" + "2" * 32,
+                "action": "workspace.workspace.status",
+            },
+        )
+    assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
+    assert coordinator.bound is False
+    assert client.reconnects == 1
+    assert await coordinator.bind() == _response()
+    assert coordinator.bound is True

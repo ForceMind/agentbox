@@ -109,6 +109,15 @@ class AgentWorkspaceSessionRecord(Base):
             name="ck_waw_sessions_reconciliation_state",
         ),
         UniqueConstraint("project_id", "agent_type", name="uq_waw_sessions_project_agent"),
+        ForeignKeyConstraint(
+            ["runtime_host_installation_id", "runtime_host_installation_revision"],
+            [
+                "waw_runtime_host_installations.id",
+                "waw_runtime_host_installations.revision",
+            ],
+            ondelete="RESTRICT",
+            name="fk_waw_sessions_runtime_host_identity",
+        ),
         Index("ix_waw_sessions_state", "state"),
     )
 
@@ -119,7 +128,6 @@ class AgentWorkspaceSessionRecord(Base):
     authorization_scope: Mapped[str] = mapped_column(String(128), nullable=False)
     runtime_host_installation_id: Mapped[str] = mapped_column(
         String(40),
-        ForeignKey("waw_runtime_host_installations.id", ondelete="RESTRICT"),
         nullable=False,
     )
     runtime_host_installation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -170,6 +178,15 @@ class WorkspaceStopOperationRecord(Base):
             ["waw_agent_workspace_sessions.id"],
             ondelete="RESTRICT",
             name="fk_waw_stops_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["runtime_host_installation_id", "runtime_host_installation_revision"],
+            [
+                "waw_runtime_host_installations.id",
+                "waw_runtime_host_installations.revision",
+            ],
+            ondelete="RESTRICT",
+            name="fk_waw_stops_runtime_host_identity",
         ),
         UniqueConstraint(
             "workspace_id", "generation", "binding_revision", name="uq_waw_stops_generation"

@@ -227,6 +227,14 @@ def test_attach_prepare_response_capability_and_error_shape() -> None:
         )
         == error
     )
+    unsupported = {**error, "error_code": "WAW_AGENT_UNSUPPORTED", "retryable": False}
+    assert (
+        decode_control_response(
+            encode_control_response(unsupported, "workspace.attach.prepare"),
+            "workspace.attach.prepare",
+        )
+        == unsupported
+    )
     with pytest.raises(WAWControlError):
         decode_control_response(
             encode_control_response(error, "workspace.attach.prepare"),

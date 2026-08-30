@@ -58,6 +58,24 @@ _RECONCILIATION_STATES = frozenset(
     }
 )
 _PROCESS_STATES = _STATES | {"NOT_STARTED"}
+_MAX_U64 = 2**64 - 1
+
+# Runtime observations are deliberately stricter than the underlying provider
+# API.  An ambiguous process/lifecycle pair must never be exposed as healthy.
+_OBSERVATION_PROCESS_STATES: dict[str, frozenset[str]] = {
+    "STARTING": frozenset({"RUNNING", "NOT_STARTED"}),
+    "RUNNING": frozenset({"RUNNING"}),
+    "NEEDS_INTERACTION": frozenset({"RUNNING"}),
+    "TRUST_REQUIRED": frozenset({"RUNNING"}),
+    "LOGIN_REQUIRED": frozenset({"NOT_STARTED"}),
+    "STOPPING": frozenset({"RUNNING", "STOPPED"}),
+    "EXITED": frozenset({"STOPPED"}),
+    "STOPPED": frozenset({"STOPPED"}),
+    "MISSING": frozenset({"NOT_STARTED"}),
+    "COLLISION": frozenset({"UNKNOWN"}),
+    "BROKEN": frozenset({"UNKNOWN"}),
+    "UNKNOWN": frozenset({"UNKNOWN"}),
+}
 
 
 @dataclass(frozen=True)
@@ -259,6 +277,8 @@ class WAWLifecycleRegistry:
 
     async def _lifecycle(self, request: dict[str, Any], action: str) -> dict[str, Any]:
         self._require_authority()
+        if request.get("agent_type") != "claude":
+            raise WAWControlDispatchError("WAW_AGENT_UNSUPPORTED")
         identity = WAWLifecycleIdentity(
             workspace_id=request["workspace_id"],
             project_id=request["project_id"],
@@ -346,6 +366,7 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
 
     def _check_identity(self, identity: WAWLifecycleIdentity) -> None:
+        self._validate_generation(identity.generation)
         if (
             identity.runtime_host_installation_id != self._host_id
             or identity.runtime_host_installation_revision != self._host_revision
@@ -367,6 +388,13 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
         if observation.process_state not in _PROCESS_STATES:
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if observation.process_state not in _OBSERVATION_PROCESS_STATES[observation.state]:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if observation.state == "EXITED":
+            if observation.exit_code is None:
+                raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        elif observation.exit_code is not None:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
         if (
             not isinstance(observation.runtime_epoch, str)
             or not _DECIMAL.fullmatch(observation.runtime_epoch)
@@ -379,6 +407,16 @@ class WAWLifecycleRegistry:
             type(observation.exit_code) is not int or not -128 <= observation.exit_code <= 255
         ):
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
+
+    @staticmethod
+    def _validate_generation(generation: object) -> None:
+        if (
+            not isinstance(generation, str)
+            or not _DECIMAL.fullmatch(generation)
+            or int(generation) < 1
+            or int(generation) > _MAX_U64
+        ):
+            raise WAWControlDispatchError("PROTOCOL_INVALID")
 
     @staticmethod
     def _start_response(

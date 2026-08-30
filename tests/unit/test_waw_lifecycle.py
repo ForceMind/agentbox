@@ -98,6 +98,16 @@ class InvalidExecutor(FakeExecutor):
         return WAWLifecycleObservation(state="NOT_A_STATE")
 
 
+class ObservationExecutor(FakeExecutor):
+    def __init__(self, observation: WAWLifecycleObservation) -> None:
+        super().__init__()
+        self.observation = observation
+
+    async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self.calls.append(("start", identity))
+        return self.observation
+
+
 def registry(
     executor: FakeExecutor | None = None,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
@@ -153,6 +163,42 @@ async def test_lifecycle_fences_identity_before_executor() -> None:
         await runtime.dispatch(lifecycle_request("workspace.workspace.start", digest="e" * 64))
     assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
     assert executor.calls == []
+
+
+@pytest.mark.anyio
+async def test_lifecycle_registry_is_claude_only() -> None:
+    executor = FakeExecutor()
+    runtime = registry(executor)
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    request = lifecycle_request("workspace.workspace.start")
+    request["agent_type"] = "codex"
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(request)
+    assert exc_info.value.code == "WAW_AGENT_UNSUPPORTED"
+    assert executor.calls == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "observation",
+    (
+        WAWLifecycleObservation(state="RUNNING", process_state="STOPPED"),
+        WAWLifecycleObservation(state="STOPPED", process_state="RUNNING"),
+        WAWLifecycleObservation(state="STOPPED", process_state="STOPPED", exit_code=0),
+        WAWLifecycleObservation(state="EXITED", process_state="STOPPED"),
+        WAWLifecycleObservation(state="RUNNING", process_state="RUNNING", exit_code=0),
+    ),
+)
+async def test_lifecycle_rejects_contradictory_observations(
+    observation: WAWLifecycleObservation,
+) -> None:
+    runtime = registry(ObservationExecutor(observation))
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "INTERNAL_BOUNDED"
 
 
 @pytest.mark.anyio
@@ -233,6 +279,21 @@ async def test_generation_floor_and_stop_are_idempotent() -> None:
         )
     )
     assert restarted["status"] == "STARTED"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("generation", ("18446744073709551615", "18446744073709551616"))
+async def test_lifecycle_generation_enforces_uint64_upper_bound(generation: str) -> None:
+    runtime = registry(FakeExecutor())
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    request = lifecycle_request("workspace.workspace.start", generation=generation)
+    if generation == "18446744073709551615":
+        assert (await runtime.dispatch(request))["status"] == "STARTED"
+    else:
+        with pytest.raises(WAWControlDispatchError) as exc_info:
+            await runtime.dispatch(request)
+        assert exc_info.value.code == "PROTOCOL_INVALID"
 
 
 @pytest.mark.anyio

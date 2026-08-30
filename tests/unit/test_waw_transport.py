@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
+import agentbox_runtime.waw_transport as waw_transport
+
 from agentbox_core.waw import AgentType, workspace_id
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
@@ -212,3 +215,20 @@ def test_tmux_transport_rejects_wrong_pane_process(tmp_path: Path) -> None:
     )
     with pytest.raises(RuntimeOperationError, match="Claude"):
         transport.start(command, PtyGeometry(80, 24))
+
+
+def test_resolve_timeout_cancels_worker_without_late_mutation(monkeypatch: pytest.MonkeyPatch) -> None:
+    mutated = False
+
+    async def delayed_mutation() -> None:
+        nonlocal mutated
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            return
+        mutated = True
+
+    monkeypatch.setattr(waw_transport, "_RESOLVE_TIMEOUT_SECONDS", 0.01)
+    with pytest.raises(RuntimeOperationError, match="timed out"):
+        waw_transport._resolve(delayed_mutation())
+    assert mutated is False

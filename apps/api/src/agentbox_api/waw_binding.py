@@ -59,6 +59,57 @@ class WAWRuntimeBindCoordinator:
         self._bound_response: dict[str, Any] | None = None
         self._lock = asyncio.Lock()
 
+    def _invalidate(self) -> None:
+        """Forget Runtime state after a restart or lost bootstrap."""
+
+        self._bound_response = None
+
+    async def _reconnect(self) -> None:
+        reconnect = getattr(self._client, "reconnect", None)
+        if callable(reconnect):
+            result = reconnect()
+            if isinstance(result, Awaitable):
+                await result
+
+    async def _bind_locked(self) -> dict[str, Any]:
+        if self._bound_response is not None:
+            return dict(self._bound_response)
+        request_id = self._request_id_factory()
+        if isinstance(request_id, Awaitable):
+            request_id = await request_id
+        if not isinstance(request_id, str):
+            raise WAWControlClientError("PROTOCOL_INVALID", "bind request ID is invalid")
+        request = {
+            "protocol_version": 1,
+            "request_id": request_id,
+            "action": "workspace.api_authority.bind",
+            "api_authority_epoch": self._epoch,
+            "authority_nonce": self._nonce,
+        }
+        response = await self._client.request("workspace.api_authority.bind", request)
+        if response.get("status") == "ERROR":
+            code = response.get("error_code")
+            if code in {"BINDING_BOOTSTRAP_REQUIRED", "RUNTIME_INSTALLATION_MISMATCH"}:
+                self._invalidate()
+                await self._reconnect()
+            raise WAWControlClientError(code or "PROTOCOL_INVALID", "Runtime bind failed")
+        try:
+            verified = validate_runtime_bind_attestation(
+                response,
+                expected_runtime_host_installation_id=self._expected_host_id,
+                expected_runtime_host_installation_revision=self._expected_host_revision,
+                expected_host_manifest_digest=self._expected_host_manifest,
+                expected_project_root_manifest_digest=self._expected_project_root_manifest,
+                expected_runtime_epoch=self._expected_runtime_epoch,
+            )
+        except WAWControlClientError as exc:
+            if exc.code == "RUNTIME_INSTALLATION_MISMATCH":
+                self._invalidate()
+                await self._reconnect()
+            raise
+        self._bound_response = dict(verified)
+        return dict(verified)
+
     @property
     def bound(self) -> bool:
         return self._bound_response is not None
@@ -71,31 +122,7 @@ class WAWRuntimeBindCoordinator:
         """Bind the current API epoch, returning the verified Runtime attestation."""
 
         async with self._lock:
-            if self._bound_response is not None:
-                return dict(self._bound_response)
-            request_id = self._request_id_factory()
-            if isinstance(request_id, Awaitable):
-                request_id = await request_id
-            if not isinstance(request_id, str):
-                raise WAWControlClientError("PROTOCOL_INVALID", "bind request ID is invalid")
-            request = {
-                "protocol_version": 1,
-                "request_id": request_id,
-                "action": "workspace.api_authority.bind",
-                "api_authority_epoch": self._epoch,
-                "authority_nonce": self._nonce,
-            }
-            response = await self._client.request("workspace.api_authority.bind", request)
-            verified = validate_runtime_bind_attestation(
-                response,
-                expected_runtime_host_installation_id=self._expected_host_id,
-                expected_runtime_host_installation_revision=self._expected_host_revision,
-                expected_host_manifest_digest=self._expected_host_manifest,
-                expected_project_root_manifest_digest=self._expected_project_root_manifest,
-                expected_runtime_epoch=self._expected_runtime_epoch,
-            )
-            self._bound_response = dict(verified)
-            return dict(verified)
+            return await self._bind_locked()
 
     async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
         """Issue one bound, read-only lifecycle request through the closed client.
@@ -106,14 +133,27 @@ class WAWRuntimeBindCoordinator:
 
         if action not in _ALLOWED_LIFECYCLE_REQUESTS:
             raise WAWControlClientError("PROTOCOL_INVALID", "WAW lifecycle action is not enabled")
-        await self.bind()
-        response = await self._client.request(action, request)
-        expected_epoch = self._bound_response.get("runtime_epoch") if self._bound_response else None
-        if isinstance(expected_epoch, str) and response.get("runtime_epoch") != expected_epoch:
-            raise WAWControlClientError(
-                "RUNTIME_INSTALLATION_MISMATCH", "WAW lifecycle response epoch is stale"
+        async with self._lock:
+            await self._bind_locked()
+            response = await self._client.request(action, request)
+            if response.get("status") == "ERROR":
+                code = response.get("error_code")
+                if code in {"BINDING_BOOTSTRAP_REQUIRED", "RUNTIME_INSTALLATION_MISMATCH"}:
+                    self._invalidate()
+                    await self._reconnect()
+                raise WAWControlClientError(
+                    code or "PROTOCOL_INVALID", "Runtime lifecycle request failed"
+                )
+            expected_epoch = (
+                self._bound_response.get("runtime_epoch") if self._bound_response else None
             )
-        return response
+            if isinstance(expected_epoch, str) and response.get("runtime_epoch") != expected_epoch:
+                self._invalidate()
+                await self._reconnect()
+                raise WAWControlClientError(
+                    "RUNTIME_INSTALLATION_MISMATCH", "WAW lifecycle response epoch is stale"
+                )
+            return response
 
 
 __all__ = ["WAWBindTransport", "WAWRuntimeBindCoordinator"]

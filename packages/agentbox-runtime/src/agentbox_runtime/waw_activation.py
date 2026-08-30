@@ -100,6 +100,7 @@ def _validate_socket(
     if (
         not stat.S_ISSOCK(details.st_mode)
         or not stat.S_ISSOCK(descriptor.st_mode)
+        or (details.st_dev, details.st_ino) != (descriptor.st_dev, descriptor.st_ino)
         or details.st_uid != expected_uid
         or details.st_gid != expected_gid
         or descriptor.st_uid != expected_uid

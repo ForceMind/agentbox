@@ -36,6 +36,7 @@ from agentbox_runtime.waw_supervisor import (
 )
 
 _T = TypeVar("_T")
+_RESOLVE_TIMEOUT_SECONDS = 15.0
 
 
 class _TmuxOperations(Protocol):
@@ -358,24 +359,55 @@ def _resolve(value: Awaitable[_T]) -> _T:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(_await(value))
+        try:
+            return asyncio.run(asyncio.wait_for(_await(value), _RESOLVE_TIMEOUT_SECONDS))
+        except TimeoutError as exc:
+            raise RuntimeOperationError(
+                "WAW_TRANSPORT_TIMEOUT", "Runtime tmux operation timed out", category="timeout"
+            ) from exc
 
     result: list[_T] = []
     failure: list[BaseException] = []
+    completed = threading.Event()
+    loop_ready = threading.Event()
+    worker_loop: asyncio.AbstractEventLoop | None = None
+    worker_task: asyncio.Task[_T] | None = None
 
     def run() -> None:
+        nonlocal worker_loop, worker_task
+        loop = asyncio.new_event_loop()
+        worker_loop = loop
+        asyncio.set_event_loop(loop)
+
+        async def operation() -> _T:
+            return await value
+
+        worker_task = loop.create_task(operation())
+        loop_ready.set()
         try:
-            result.append(asyncio.run(_await(value)))
+            loop.run_until_complete(worker_task)
+            result.append(worker_task.result())
         except BaseException as exc:  # re-raise on the caller thread
             failure.append(exc)
+        finally:
+            completed.set()
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
 
-    thread = threading.Thread(target=run, name="agentbox-waw-tmux", daemon=True)
+    thread = threading.Thread(target=run, name="agentbox-waw-tmux", daemon=False)
     thread.start()
-    thread.join(timeout=15)
-    if thread.is_alive():
+    loop_ready.wait()
+    if not completed.wait(timeout=_RESOLVE_TIMEOUT_SECONDS):
+        # Cancellation is issued in the worker's own loop.  Do not return
+        # until that loop has observed cancellation and shut down: otherwise
+        # a late tmux mutation could race the next supervisor operation.
+        if worker_loop is not None and worker_task is not None:
+            worker_loop.call_soon_threadsafe(worker_task.cancel)
+        thread.join()
         raise RuntimeOperationError(
             "WAW_TRANSPORT_TIMEOUT", "Runtime tmux operation timed out", category="timeout"
         )
+    thread.join()
     if failure:
         raise failure[0]
     if not result:

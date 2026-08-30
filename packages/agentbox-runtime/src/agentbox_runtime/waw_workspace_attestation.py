@@ -18,6 +18,7 @@ _MAX_BYTES = 4096
 _ID = re.compile(r"\A(?:aws|wri)_[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
+_MAX_U64 = 2**64 - 1
 
 
 class WAWWorkspaceAttestationError(RuntimeError):
@@ -66,7 +67,7 @@ class WAWWorkspaceAttestationStore:
         runtime_epoch: str,
     ) -> WAWWorkspaceAttestation:
         _validate_id(workspace_id, "workspace_id")
-        if type(generation) is not int or generation < 1:
+        if type(generation) is not int or not 1 <= generation <= _MAX_U64:
             raise WAWWorkspaceAttestationError("generation is invalid")
         _validate_decimal(binding_revision, "binding_revision")
         _validate_digest(binding_digest, "binding_digest")
@@ -187,7 +188,7 @@ class WAWWorkspaceAttestationStore:
         if value["schema_version"] != _SCHEMA or value["workspace_id"] != workspace_id:
             raise WAWWorkspaceAttestationError("attestation identity is invalid")
         generation = value["min_generation"]
-        if type(generation) is not int or generation < 1:
+        if type(generation) is not int or not 1 <= generation <= _MAX_U64:
             raise WAWWorkspaceAttestationError("attestation generation is invalid")
         _validate_decimal(value["binding_revision"], "binding_revision")
         _validate_digest(value["binding_digest"], "binding_digest")

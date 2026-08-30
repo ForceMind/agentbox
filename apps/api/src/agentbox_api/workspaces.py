@@ -237,13 +237,21 @@ async def list_workspaces(
     authenticated = authenticate_request(request, agentbox_session)
     policy = _workspace_policy(request)
     with _services(request).database.transaction() as session:
-        candidates = tuple(
-            session.query(AgentWorkspaceSessionRecord)
-            .order_by(AgentWorkspaceSessionRecord.created_at, AgentWorkspaceSessionRecord.id)
-            .limit(32)
-            .all()
+        # Apply the authorization policy before the bounded response cap.  A
+        # policy may depend on more than a single SQL column, so filtering is
+        # deliberately performed on hydrated rows while ``yield_per`` keeps
+        # the scan bounded in memory.  This avoids hiding authorized rows
+        # behind the first 32 unauthorized records.
+        rows_list: list[AgentWorkspaceSessionRecord] = []
+        query = session.query(AgentWorkspaceSessionRecord).order_by(
+            AgentWorkspaceSessionRecord.created_at, AgentWorkspaceSessionRecord.id
         )
-    rows = tuple(row for row in candidates if policy.allows(authenticated, row))
+        for row in query.yield_per(64):
+            if policy.allows(authenticated, row):
+                rows_list.append(row)
+                if len(rows_list) == 32:
+                    break
+        rows = tuple(rows_list)
     response.headers["Cache-Control"] = "no-store"
     return WorkspaceListResponse(
         request_id=_request_id(request),
