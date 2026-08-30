@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import re
 import socket
 import struct
@@ -92,8 +93,10 @@ class WAWControlServer:
 
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         deadline = self._monotonic() + self._timeout_seconds
+        peer_pidfd: int | None = None
         try:
-            if not self._peer_is_expected(writer):
+            peer_pidfd = self._peer_pidfd(writer)
+            if peer_pidfd is None:
                 return
             try:
                 raw = await self._with_deadline(reader.readline(), deadline)
@@ -151,8 +154,11 @@ class WAWControlServer:
             writer.close()
             with contextlib.suppress(OSError):
                 await writer.wait_closed()
+            if peer_pidfd is not None:
+                with contextlib.suppress(OSError):
+                    os.close(peer_pidfd)
 
-    def _peer_is_expected(self, writer: asyncio.StreamWriter) -> bool:
+    def _peer_pidfd(self, writer: asyncio.StreamWriter) -> int | None:
         peer_socket = writer.get_extra_info("socket")
         if peer_socket is None or not hasattr(peer_socket, "getsockopt"):
             return False
@@ -163,10 +169,15 @@ class WAWControlServer:
                     socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
                 ),
             )
-            _pid, uid, gid = cast(tuple[int, int, int], struct.unpack("3i", raw))
+            pid, uid, gid = cast(tuple[int, int, int], struct.unpack("3i", raw))
         except (AttributeError, OSError, struct.error):
-            return False
-        return bool(uid == self._expected_peer_uid and gid == self._expected_peer_gid)
+            return None
+        if uid != self._expected_peer_uid or gid != self._expected_peer_gid:
+            return None
+        try:
+            return os.pidfd_open(pid, 0)
+        except (OSError, OverflowError, ValueError):
+            return None
 
     async def _send_error(
         self, writer: asyncio.StreamWriter, request_id: str | None, code: str, *, deadline: float
