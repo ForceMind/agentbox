@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import os
 import socket
 import stat
@@ -43,6 +44,44 @@ class WAWSocketPathIdentity:
 
     device: int
     inode: int
+
+
+def validate_runtime_bind_attestation(
+    response: dict[str, Any],
+    *,
+    expected_runtime_host_installation_id: str,
+    expected_runtime_host_installation_revision: str,
+    expected_host_manifest_digest: str,
+    expected_project_root_manifest_digest: str,
+    expected_runtime_epoch: str | None = None,
+) -> dict[str, Any]:
+    """Require a bind response to match the locally trusted host anchor."""
+
+    if response.get("status") not in {"BOUND", "ALREADY_BOUND"}:
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH", "Runtime did not provide a bound attestation"
+        )
+    checks = (
+        ("runtime_host_installation_id", expected_runtime_host_installation_id),
+        ("runtime_host_installation_revision", expected_runtime_host_installation_revision),
+        ("host_manifest_digest", expected_host_manifest_digest),
+        ("project_root_manifest_digest", expected_project_root_manifest_digest),
+    )
+    for field, expected in checks:
+        actual = response.get(field)
+        if not isinstance(actual, str) or not hmac.compare_digest(actual, expected):
+            raise WAWControlClientError(
+                "RUNTIME_INSTALLATION_MISMATCH", "Runtime bind attestation does not match anchor"
+            )
+    if expected_runtime_epoch is not None:
+        actual_epoch = response.get("runtime_epoch")
+        if not isinstance(actual_epoch, str) or not hmac.compare_digest(
+            actual_epoch, expected_runtime_epoch
+        ):
+            raise WAWControlClientError(
+                "RUNTIME_INSTALLATION_MISMATCH", "Runtime epoch does not match anchor"
+            )
+    return response
 
 
 def _check_socket_path(
@@ -241,4 +280,9 @@ class WAWControlClient:
         return await asyncio.wait_for(awaitable, timeout=remaining)
 
 
-__all__ = ["WAWControlClient", "WAWControlClientError", "WAWSocketPathIdentity"]
+__all__ = [
+    "WAWControlClient",
+    "WAWControlClientError",
+    "WAWSocketPathIdentity",
+    "validate_runtime_bind_attestation",
+]

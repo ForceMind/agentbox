@@ -5,7 +5,11 @@ import os
 from pathlib import Path
 
 import pytest
-from agentbox_api.waw_control_client import WAWControlClient, WAWControlClientError
+from agentbox_api.waw_control_client import (
+    WAWControlClient,
+    WAWControlClientError,
+    validate_runtime_bind_attestation,
+)
 from agentbox_protocol.waw_control import encode_control_response
 
 
@@ -37,6 +41,22 @@ def _response() -> dict[str, object]:
         "state": "RUNNING",
         "runtime_host_installation_id": "wri_" + "4" * 32,
         "runtime_host_installation_revision": "1",
+    }
+
+
+def _bind_response() -> dict[str, object]:
+    return {
+        "protocol_version": 1,
+        "request_id": "wreq_" + "1" * 32,
+        "status": "BOUND",
+        "api_authority_epoch": "1",
+        "runtime_epoch": "2",
+        "runtime_host_installation_id": "wri_" + "4" * 32,
+        "runtime_host_installation_revision": "1",
+        "host_manifest_digest": "a" * 64,
+        "project_root_manifest_digest": "b" * 64,
+        "enrollment_epoch": "1",
+        "enrollment_state": "steady",
     }
 
 
@@ -168,3 +188,28 @@ async def test_client_normalizes_oversized_response(tmp_path: Path) -> None:
     finally:
         server.close()
         await server.wait_closed()
+
+
+def test_bind_attestation_is_pinned_to_expected_anchor() -> None:
+    response = _bind_response()
+    assert (
+        validate_runtime_bind_attestation(
+            response,
+            expected_runtime_host_installation_id="wri_" + "4" * 32,
+            expected_runtime_host_installation_revision="1",
+            expected_host_manifest_digest="a" * 64,
+            expected_project_root_manifest_digest="b" * 64,
+            expected_runtime_epoch="2",
+        )
+        == response
+    )
+    response["host_manifest_digest"] = "c" * 64
+    with pytest.raises(WAWControlClientError) as raised:
+        validate_runtime_bind_attestation(
+            response,
+            expected_runtime_host_installation_id="wri_" + "4" * 32,
+            expected_runtime_host_installation_revision="1",
+            expected_host_manifest_digest="a" * 64,
+            expected_project_root_manifest_digest="b" * 64,
+        )
+    assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
