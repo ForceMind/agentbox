@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from agentbox_protocol.abws import (
@@ -11,6 +12,7 @@ from agentbox_protocol.abws import (
     MAX_JSON_PAYLOAD,
     MAX_PAYLOAD,
     ABWSError,
+    ABWSFrame,
     ABWSFrameType,
     ABWSParser,
     IncompleteFrame,
@@ -52,12 +54,12 @@ def test_input_and_output_are_opaque_bytes_only() -> None:
         assert frame.json_payload is None
 
     with pytest.raises(TypeError):
-        encode_frame(ABWSFrameType.INPUT, "text", 1)
+        encode_frame(ABWSFrameType.INPUT, "text", 1)  # type: ignore[arg-type]
     with pytest.raises(ABWSError):
         encode_frame(ABWSFrameType.INPUT, b"x" * 49_213, 1)
 
 
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
     "header_change",
     [
         lambda header: b"NOPE" + header[4:],
@@ -108,7 +110,7 @@ def test_single_frame_decode_rejects_trailing_and_stream_decode_allows_concatena
     ]
 
 
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
     "payload",
     [
         b"not-json",
@@ -135,7 +137,8 @@ def test_control_encode_rejects_missing_or_boolean_protocol_version_and_nan() ->
     with pytest.raises(ABWSError):
         encode_frame(ABWSFrameType.PING, {"protocol_version": 1, "value": float("nan")}, 1)
     with pytest.raises(ABWSError):
-        encode_frame(ABWSFrameType.PING, {"protocol_version": 1, 7: "key"}, 1)
+        invalid_keys: Any = {"protocol_version": 1, 7: "key"}
+        encode_frame(ABWSFrameType.PING, invalid_keys, 1)
 
 
 def test_json_payload_limit_is_independent_of_outer_parser_limit() -> None:
@@ -161,7 +164,7 @@ def test_incremental_parser_enforces_contiguous_sequences_and_bounds_buffer() ->
     first = encode_frame(ABWSFrameType.PING, _control(), 1)
     second = encode_frame(ABWSFrameType.PONG, _control(), 2)
     parser = ABWSParser()
-    output = []
+    output: list[ABWSFrame] = []
     for byte in first + second:
         output.extend(parser.feed(bytes([byte])))
     assert [item.hop_sequence for item in output] == [1, 2]
