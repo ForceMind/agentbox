@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
+
+
+def _store(tmp_path: Path, value: str = "1") -> WAWRuntimeEpochStore:
+    directory = tmp_path / "epoch"
+    directory.mkdir(mode=0o700)
+    path = directory / "epoch.json"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(
+            fd, json.dumps({"epoch": value, "schema_version": "waw-runtime-epoch-v1"}).encode()
+        )
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    return WAWRuntimeEpochStore(directory, expected_uid=os.geteuid(), expected_gid=os.getegid())
+
+
+def test_consume_is_monotonic_and_durable(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert store.consume() == 2
+    assert store.consume() == 3
+    assert (tmp_path / "epoch" / "epoch.json").read_text() == (
+        '{"epoch":"3","schema_version":"waw-runtime-epoch-v1"}'
+    )
+
+
+@pytest.mark.parametrize("value", ["0", "01", "١", "not-a-number"])
+def test_rejects_noncanonical_epoch(tmp_path: Path, value: str) -> None:
+    store = _store(tmp_path, value)
+    with pytest.raises(WAWRuntimeEpochError):
+        store.consume()
+
+
+def test_rejects_unsafe_directory_mode(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    (tmp_path / "epoch").chmod(0o755)
+    with pytest.raises(WAWRuntimeEpochError):
+        store.consume()
+
+
+def test_rejects_missing_epoch_file(tmp_path: Path) -> None:
+    directory = tmp_path / "epoch"
+    directory.mkdir(mode=0o700)
+    store = WAWRuntimeEpochStore(directory, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeEpochError):
+        store.consume()

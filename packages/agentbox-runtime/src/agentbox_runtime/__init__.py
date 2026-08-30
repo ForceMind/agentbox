@@ -56,6 +56,7 @@ from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
     WAWControlServer,
 )
+from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
     WAWLifecycleIdentity,
@@ -125,6 +126,8 @@ __all__ = [
     "WAWTmuxTransport",
     "WAWControlDispatchError",
     "WAWControlServer",
+    "WAWRuntimeEpochError",
+    "WAWRuntimeEpochStore",
     "WAWLifecycleExecutor",
     "WAWLifecycleIdentity",
     "WAWLifecycleObservation",
