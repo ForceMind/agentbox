@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from agentbox_protocol.waw_control import decode_control_response, encode_control_response
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
@@ -141,6 +142,14 @@ async def test_lifecycle_dispatches_typed_start_status_stop_and_reconcile() -> N
     await runtime.dispatch(register_request())
 
     start = await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert (
+        decode_control_response(
+            encode_control_response(start, "workspace.workspace.start"),
+            "workspace.workspace.start",
+            expected_request_id=cast(str, start["request_id"]),
+        )
+        == start
+    )
     assert start["status"] == "STARTED"
     assert start["state"] == "RUNNING"
     again = await runtime.dispatch(
