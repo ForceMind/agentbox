@@ -1,0 +1,94 @@
+"""Single-authority API bootstrap for the WAW Runtime control endpoint."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
+
+from agentbox_api.waw_control_client import (
+    WAWControlClient,
+    WAWControlClientError,
+    validate_runtime_bind_attestation,
+)
+
+
+class WAWBindTransport(Protocol):
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]: ...
+
+
+RequestIdFactory = Callable[[], str | Awaitable[str]]
+
+
+class WAWRuntimeBindCoordinator:
+    """Perform exactly one serialized API-authority bind per process epoch."""
+
+    def __init__(
+        self,
+        client: WAWBindTransport | WAWControlClient,
+        *,
+        api_authority_epoch: str,
+        authority_nonce: str,
+        expected_runtime_host_installation_id: str,
+        expected_runtime_host_installation_revision: str,
+        expected_host_manifest_digest: str,
+        expected_project_root_manifest_digest: str,
+        request_id_factory: RequestIdFactory,
+        expected_runtime_epoch: str | None = None,
+    ) -> None:
+        if not isinstance(api_authority_epoch, str) or not api_authority_epoch:
+            raise ValueError("api_authority_epoch must be non-empty")
+        if not isinstance(authority_nonce, str) or not authority_nonce:
+            raise ValueError("authority_nonce must be non-empty")
+        self._client = client
+        self._epoch = api_authority_epoch
+        self._nonce = authority_nonce
+        self._expected_host_id = expected_runtime_host_installation_id
+        self._expected_host_revision = expected_runtime_host_installation_revision
+        self._expected_host_manifest = expected_host_manifest_digest
+        self._expected_project_root_manifest = expected_project_root_manifest_digest
+        self._expected_runtime_epoch = expected_runtime_epoch
+        self._request_id_factory = request_id_factory
+        self._bound_response: dict[str, Any] | None = None
+        self._lock = asyncio.Lock()
+
+    @property
+    def bound(self) -> bool:
+        return self._bound_response is not None
+
+    @property
+    def attestation(self) -> dict[str, Any] | None:
+        return None if self._bound_response is None else dict(self._bound_response)
+
+    async def bind(self) -> dict[str, Any]:
+        """Bind the current API epoch, returning the verified Runtime attestation."""
+
+        async with self._lock:
+            if self._bound_response is not None:
+                return dict(self._bound_response)
+            request_id = self._request_id_factory()
+            if isinstance(request_id, Awaitable):
+                request_id = await request_id
+            if not isinstance(request_id, str):
+                raise WAWControlClientError("PROTOCOL_INVALID", "bind request ID is invalid")
+            request = {
+                "protocol_version": 1,
+                "request_id": request_id,
+                "action": "workspace.api_authority.bind",
+                "api_authority_epoch": self._epoch,
+                "authority_nonce": self._nonce,
+            }
+            response = await self._client.request("workspace.api_authority.bind", request)
+            verified = validate_runtime_bind_attestation(
+                response,
+                expected_runtime_host_installation_id=self._expected_host_id,
+                expected_runtime_host_installation_revision=self._expected_host_revision,
+                expected_host_manifest_digest=self._expected_host_manifest,
+                expected_project_root_manifest_digest=self._expected_project_root_manifest,
+                expected_runtime_epoch=self._expected_runtime_epoch,
+            )
+            self._bound_response = dict(verified)
+            return dict(verified)
+
+
+__all__ = ["WAWBindTransport", "WAWRuntimeBindCoordinator"]
