@@ -95,9 +95,11 @@ def _validate_socket(
         actual = actual.decode("utf-8")
     if actual != expected_path:
         raise WAWActivationError("WAW descriptor pathname does not match activation map")
-    details = os.stat(Path(expected_path), follow_symlinks=False)
+    details = os.lstat(Path(expected_path))
+    descriptor = os.fstat(sock.fileno())
     if (
         not stat.S_ISSOCK(details.st_mode)
+        or not stat.S_ISSOCK(descriptor.st_mode)
         or details.st_uid != expected_uid
         or details.st_gid != expected_gid
         or stat.S_IMODE(details.st_mode) != 0o660
