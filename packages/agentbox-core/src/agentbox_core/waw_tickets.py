@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 from threading import RLock
@@ -32,6 +33,7 @@ from agentbox_core.waw import (
 _MAX_U64 = 2**64 - 1
 _TICKET_PREFIX = "wat_"
 _TOKEN_LENGTH = 32
+_DECIMAL_U64 = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 
 
 class TicketErrorCode(StrEnum):
@@ -54,6 +56,38 @@ class TicketAuthorityError(WAWDomainError):
     def __init__(self, code: TicketErrorCode, message: str | None = None) -> None:
         self.code = code
         super().__init__(message or code.value)
+
+
+@dataclass(frozen=True)
+class AuthenticatedAttachmentContext:
+    """API-only identity bound to a ticket/lease, never sent to Runtime."""
+
+    session_id: str
+    user_id: str
+    authorization_scope: str
+    origin: str
+    runtime_epoch: str
+
+    def __post_init__(self) -> None:
+        for name, value, maximum in (
+            ("session_id", self.session_id, 128),
+            ("user_id", self.user_id, 128),
+            ("authorization_scope", self.authorization_scope, 128),
+            ("origin", self.origin, 256),
+        ):
+            if (
+                not isinstance(value, str)
+                or not value
+                or len(value) > maximum
+                or any(ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F for char in value)
+            ):
+                raise TicketAuthorityError(TicketErrorCode.INVALID, f"{name} is invalid")
+        if (
+            not isinstance(self.runtime_epoch, str)
+            or _DECIMAL_U64.fullmatch(self.runtime_epoch) is None
+            or int(self.runtime_epoch) > _MAX_U64
+        ):
+            raise TicketAuthorityError(TicketErrorCode.INVALID, "runtime_epoch is invalid")
 
 
 @dataclass(frozen=True)
@@ -134,6 +168,7 @@ class ActiveAttachment:
     last_heartbeat_monotonic: float
     lease_expires_at_monotonic: float
     absolute_expires_at_monotonic: float
+    context: AuthenticatedAttachmentContext | None = field(default=None, repr=False, compare=False)
 
     @property
     def workspace_id(self) -> str:
@@ -153,6 +188,7 @@ class _PendingTicket:
     claims: AttachmentTuple
     issued_at_monotonic: float
     expires_at_monotonic: float
+    context: AuthenticatedAttachmentContext | None = field(default=None, repr=False)
 
 
 class AttachmentAuthority:
@@ -226,6 +262,7 @@ class AttachmentAuthority:
         binding_digest: str,
         origin: str = "https://agentbox.invalid",
         expires_at: datetime | None = None,
+        context: AuthenticatedAttachmentContext | None = None,
     ) -> IssuedAttachmentTicket:
         """Reserve one pending ticket without acquiring the writer slot."""
 
@@ -270,6 +307,7 @@ class AttachmentAuthority:
                 claims,
                 issued.issued_at_monotonic,
                 issued.expires_at_monotonic,
+                context,
             )
             return issued
 
@@ -279,6 +317,7 @@ class AttachmentAuthority:
         expected: AttachmentTuple,
         *,
         now: float | None = None,
+        context: AuthenticatedAttachmentContext | None = None,
     ) -> ActiveAttachment:
         """Atomically consume a ticket and acquire the workspace writer slot."""
 
@@ -297,6 +336,8 @@ class AttachmentAuthority:
                 raise TicketAuthorityError(TicketErrorCode.EXPIRED, "ticket has expired")
             if not _same_tuple(pending.claims, expected):
                 raise TicketAuthorityError(TicketErrorCode.STALE, "ticket tuple does not match")
+            if pending.context is not None and not _same_context(pending.context, context):
+                raise TicketAuthorityError(TicketErrorCode.STALE, "ticket context does not match")
             if expected.workspace_id in self._active:
                 active = self._active[expected.workspace_id]
                 if active.active_at(current):
@@ -310,6 +351,7 @@ class AttachmentAuthority:
                 last_heartbeat_monotonic=current,
                 lease_expires_at_monotonic=current + self._lease_ttl,
                 absolute_expires_at_monotonic=current + self._absolute_lease,
+                context=pending.context,
             )
             self._active[expected.workspace_id] = lease
             return lease
@@ -319,13 +361,18 @@ class AttachmentAuthority:
         expected: AttachmentTuple,
         *,
         now: float | None = None,
+        context: AuthenticatedAttachmentContext | None = None,
     ) -> ActiveAttachment:
         """Renew an exact active lease without changing its lease number."""
 
         with self._lock:
             current = self._clock() if now is None else now
             active = self._active.get(expected.workspace_id)
-            if active is None or not _same_tuple(active.claims, expected):
+            if (
+                active is None
+                or not _same_tuple(active.claims, expected)
+                or not _same_context(active.context, context)
+            ):
                 raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
@@ -339,26 +386,46 @@ class AttachmentAuthority:
             self._active[expected.workspace_id] = updated
             return updated
 
-    def is_active(self, expected: AttachmentTuple, *, now: float | None = None) -> bool:
+    def is_active(
+        self,
+        expected: AttachmentTuple,
+        *,
+        now: float | None = None,
+        context: AuthenticatedAttachmentContext | None = None,
+    ) -> bool:
         """Return whether the exact authority-held lease is still current."""
 
         with self._lock:
             current = self._clock() if now is None else now
             active = self._active.get(expected.workspace_id)
-            if active is None or not _same_tuple(active.claims, expected):
+            if (
+                active is None
+                or not _same_tuple(active.claims, expected)
+                or not _same_context(active.context, context)
+            ):
                 return False
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
                 return False
             return True
 
-    def detach(self, expected: AttachmentTuple, *, now: float | None = None) -> ActiveAttachment:
+    def detach(
+        self,
+        expected: AttachmentTuple,
+        *,
+        now: float | None = None,
+        context: AuthenticatedAttachmentContext | None = None,
+    ) -> ActiveAttachment:
         """Release only the exact active lease; stale callers cannot free a new writer."""
 
         with self._lock:
             current = self._clock() if now is None else now
             active = self._active.get(expected.workspace_id)
-            if active is None or not _same_tuple(active.claims, expected):
+            if (
+                active is None
+                or not _same_tuple(active.claims, expected)
+                or not _same_context(active.context, context)
+            ):
                 raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH, "lease does not match")
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
@@ -448,8 +515,21 @@ def _same_tuple(left: AttachmentTuple, right: AttachmentTuple) -> bool:
     )
 
 
+def _same_context(
+    left: AuthenticatedAttachmentContext | None,
+    right: AuthenticatedAttachmentContext | None,
+) -> bool:
+    """Compare API-only session context without exposing it to Runtime/wire."""
+
+    if left is None or right is None:
+        return left is None and right is None
+    fields = ("session_id", "user_id", "authorization_scope", "origin", "runtime_epoch")
+    return all(hmac.compare_digest(getattr(left, field), getattr(right, field)) for field in fields)
+
+
 __all__ = [
     "ActiveAttachment",
+    "AuthenticatedAttachmentContext",
     "AttachmentAuthority",
     "AttachmentTuple",
     "IssuedAttachmentTicket",

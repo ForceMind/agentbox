@@ -10,6 +10,7 @@ from agentbox_core.waw import AgentType, WAWDomainError, workspace_id
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
     AttachmentTuple,
+    AuthenticatedAttachmentContext,
     IssuedAttachmentTicket,
     TicketAuthorityError,
     TicketErrorCode,
@@ -19,6 +20,18 @@ PROJECT_ID = "prj_" + "0" * 32
 WORKSPACE_ID = workspace_id(PROJECT_ID, AgentType.CLAUDE)
 HOST_ID = "wri_" + "1" * 32
 BINDING_DIGEST = "a" * 64
+
+
+def _context(**overrides: str) -> AuthenticatedAttachmentContext:
+    values = {
+        "session_id": "ses_1",
+        "user_id": "usr_1",
+        "authorization_scope": "admin",
+        "origin": "https://agentbox.invalid",
+        "runtime_epoch": "7",
+    }
+    values.update(overrides)
+    return AuthenticatedAttachmentContext(**values)
 
 
 class FakeMonotonic:
@@ -98,6 +111,75 @@ def test_consume_is_single_use_and_binds_every_tuple_field() -> None:
         authority.consume(second.ticket, altered)
     assert stale.value.code is TicketErrorCode.STALE
     assert authority.pending_count == 0
+
+
+def test_context_fence_burns_ticket_on_session_origin_or_epoch_mismatch() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    issued = authority.issue(
+        workspace_id=WORKSPACE_ID,
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "5" * 32,
+        generation=1,
+        auth_epoch=4,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        binding_revision=2,
+        binding_digest=BINDING_DIGEST,
+        context=_context(),
+    )
+    with pytest.raises(TicketAuthorityError) as mismatch:
+        authority.consume(issued.ticket, issued.claims, context=_context(session_id="ses_2"))
+    assert mismatch.value.code is TicketErrorCode.STALE
+    assert authority.pending_count == 0
+    with pytest.raises(TicketAuthorityError) as replay:
+        authority.consume(issued.ticket, issued.claims, context=_context())
+    assert replay.value.code is TicketErrorCode.REPLAYED
+
+
+def test_context_fence_applies_to_active_lease_operations() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    context = _context()
+    issued = authority.issue(
+        workspace_id=WORKSPACE_ID,
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "6" * 32,
+        generation=1,
+        auth_epoch=4,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        binding_revision=2,
+        binding_digest=BINDING_DIGEST,
+        context=context,
+    )
+    authority.consume(issued.ticket, issued.claims, context=context)
+    altered = _context(origin="https://evil.invalid")
+    with pytest.raises(TicketAuthorityError) as heartbeat:
+        authority.heartbeat(issued.claims, context=altered)
+    assert heartbeat.value.code is TicketErrorCode.LEASE_MISMATCH
+    assert not authority.is_active(issued.claims, context=altered)
+    with pytest.raises(TicketAuthorityError) as detach:
+        authority.detach(issued.claims, context=altered)
+    assert detach.value.code is TicketErrorCode.LEASE_MISMATCH
+    assert authority.is_active(issued.claims, context=context)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("session_id", ""),
+        ("origin", "https://agentbox.invalid\n"),
+        ("runtime_epoch", "0"),
+        ("runtime_epoch", "18446744073709551616"),
+    ),
+)
+def test_context_rejects_invalid_or_noncanonical_identity(field: str, value: str) -> None:
+    with pytest.raises(TicketAuthorityError) as invalid:
+        _context(**{field: value})
+    assert invalid.value.code is TicketErrorCode.INVALID
 
 
 def test_expiry_uses_monotonic_clock_and_burns_ticket() -> None:

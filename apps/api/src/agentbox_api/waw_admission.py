@@ -17,6 +17,7 @@ from agentbox_core.services import AuthenticatedSession
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
+    AuthenticatedAttachmentContext,
     IssuedAttachmentTicket,
     TicketAuthorityError,
 )
@@ -97,6 +98,13 @@ def prepare_attachment(
     ):
         raise WAWAdmissionError("RUNTIME_INSTALLATION_MISMATCH", "Runtime host identity is stale")
     try:
+        context = AuthenticatedAttachmentContext(
+            session_id=authenticated.session_id,
+            user_id=authenticated.user_id,
+            authorization_scope=row.authorization_scope,
+            origin=origin,
+            runtime_epoch=runtime.runtime_epoch,
+        )
         return authority.issue(
             workspace_id=row.id,
             project_id=row.project_id,
@@ -110,6 +118,7 @@ def prepare_attachment(
             binding_digest=row.binding_digest,
             origin=origin,
             expires_at=expires_at,
+            context=context,
         )
     except TicketAuthorityError as exc:
         raise WAWAdmissionError(exc.code.value, str(exc)) from exc
