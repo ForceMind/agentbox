@@ -11,6 +11,8 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TypeAlias
 
+from agentbox_core.waw import AgentType, workspace_id
+
 from agentbox_runtime.claude import ClaudeSessionManager
 from agentbox_runtime.models import ClaudeSession, ClaudeSessionState, RuntimeOperationError
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
@@ -76,6 +78,8 @@ class WAWClaudeLifecycleExecutor(WAWLifecycleExecutor):
     def _require_claude(identity: WAWLifecycleIdentity) -> None:
         if identity.agent_type != "claude":
             raise WAWControlDispatchError("WAW_AGENT_UNSUPPORTED")
+        if workspace_id(identity.project_id, AgentType.CLAUDE) != identity.workspace_id:
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
 
     async def _project(self, project_id: str) -> str:
         project = self._project_resolver(project_id)

@@ -3,13 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from agentbox_core.waw import AgentType, workspace_id
 from agentbox_runtime.models import ClaudeSession, ClaudeSessionState, RuntimeOperationError
 from agentbox_runtime.waw_claude_executor import WAWClaudeLifecycleExecutor
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity
 
 PROJECT = "prj_" + "1" * 32
-WORKSPACE = "aws_" + "2" * 32
+WORKSPACE = workspace_id(PROJECT, AgentType.CLAUDE)
 IDENTITY = WAWLifecycleIdentity(
     workspace_id=WORKSPACE,
     project_id=PROJECT,
@@ -126,3 +127,13 @@ async def test_never_executes_claude_manager_for_codex_identity() -> None:
     executor = WAWClaudeLifecycleExecutor(FakeManager(), lambda _id: "project-a", runtime_epoch="1")
     with pytest.raises(WAWControlDispatchError, match="WAW_AGENT_UNSUPPORTED"):
         await executor.start(identity)
+
+
+@pytest.mark.anyio
+async def test_rejects_workspace_identity_mismatch_before_manager_call() -> None:
+    identity = replace(IDENTITY, workspace_id="aws_" + "9" * 32)
+    manager = FakeManager()
+    executor = WAWClaudeLifecycleExecutor(manager, lambda _id: "project-a", runtime_epoch="1")
+    with pytest.raises(WAWControlDispatchError, match="PROJECT_IDENTITY_CHANGED"):
+        await executor.start(identity)
+    assert manager.calls == []
