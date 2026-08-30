@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
 
@@ -14,7 +13,6 @@ from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType
 from agentbox_core.waw_models import RuntimeHostInstallation
-from agentbox_runtime.waw_lifecycle import WAWLifecycleObservation
 from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
 
 PASSWORD = "a sufficiently long passphrase"

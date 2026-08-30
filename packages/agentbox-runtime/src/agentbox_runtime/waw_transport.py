@@ -240,7 +240,9 @@ class WAWTmuxTransport:
         try:
             if not self._resolve(self._tmux.has_session(binding.session_name)):
                 return False
-            if not self._resolve(self._tmux.is_managed(binding.session_name, binding.managed_marker)):
+            if not self._resolve(
+                self._tmux.is_managed(binding.session_name, binding.managed_marker)
+            ):
                 return False
         except Exception:
             return False
@@ -282,7 +284,9 @@ class WAWTmuxTransport:
                 )
             self._require_managed(binding)
             killed = self._resolve(self._tmux.kill_session(binding.session_name))
-            closed = bool(killed) and not self._resolve(self._tmux.has_session(binding.session_name))
+            closed = bool(killed) and not self._resolve(
+                self._tmux.has_session(binding.session_name)
+            )
         except RuntimeOperationError:
             raise
         except Exception as exc:
