@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
+from agentbox_runtime.waw_workspace_attestation import (
+    WAWWorkspaceAttestationError,
+    WAWWorkspaceAttestationStore,
+)
 
 _BIND = "workspace.api_authority.bind"
 _REGISTER = "workspace.project_binding.register"
@@ -118,6 +122,7 @@ class WAWLifecycleRegistry:
         executor: WAWLifecycleExecutor | None = None,
         binding_digest_factory: BindingDigestFactory | None = None,
         runtime_epoch: str = "1",
+        attestation_store: WAWWorkspaceAttestationStore | None = None,
     ) -> None:
         self._host_id = runtime_host_installation_id
         self._host_revision = runtime_host_installation_revision
@@ -128,6 +133,7 @@ class WAWLifecycleRegistry:
         self._runtime_epoch = runtime_epoch
         self._executor = executor
         self._binding_digest_factory = binding_digest_factory
+        self._attestation_store = attestation_store
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -297,6 +303,19 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
         if self._executor is None:
             raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        if action == _START and self._attestation_store is not None:
+            try:
+                self._attestation_store.advance(
+                    workspace_id=identity.workspace_id,
+                    generation=int(identity.generation),
+                    binding_revision=identity.binding_revision,
+                    binding_digest=identity.binding_digest,
+                    runtime_host_installation_id=identity.runtime_host_installation_id,
+                    runtime_host_installation_revision=identity.runtime_host_installation_revision,
+                    runtime_epoch=self._runtime_epoch,
+                )
+            except WAWWorkspaceAttestationError as exc:
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         method = {
             _START: self._executor.start,
             _STOP: self._executor.stop,

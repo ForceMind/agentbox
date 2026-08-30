@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -10,6 +12,7 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
 )
+from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
 HOST = "wri_" + "4" * 32
 PROJECT = "prj_" + "3" * 32
@@ -95,7 +98,10 @@ class InvalidExecutor(FakeExecutor):
         return WAWLifecycleObservation(state="NOT_A_STATE")
 
 
-def registry(executor: FakeExecutor | None = None) -> WAWLifecycleRegistry:
+def registry(
+    executor: FakeExecutor | None = None,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
         runtime_host_installation_revision="1",
@@ -103,6 +109,7 @@ def registry(executor: FakeExecutor | None = None) -> WAWLifecycleRegistry:
         project_root_manifest_digest="d" * 64,
         executor=executor,
         binding_digest_factory=lambda _request: DIGEST,
+        attestation_store=attestation_store,
     )
 
 
@@ -230,3 +237,27 @@ async def test_invalid_observation_does_not_poison_registry() -> None:
             lifecycle_request("workspace.workspace.status", request_id="wreq_" + "6" * 32)
         )
     assert missing.value.code == "WORKSPACE_NOT_FOUND"
+
+
+@pytest.mark.anyio
+async def test_durable_attestation_fences_generation_across_registry_restart(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "attestations"
+    directory.mkdir(mode=0o700)
+    store = WAWWorkspaceAttestationStore(
+        directory, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    first = registry(FakeExecutor(), store)
+    await first.dispatch(bind_request())
+    await first.dispatch(register_request())
+    await first.dispatch(lifecycle_request("workspace.workspace.start"))
+
+    restarted = registry(FakeExecutor(), store)
+    await restarted.dispatch(bind_request("wreq_" + "6" * 32))
+    await restarted.dispatch(register_request(request_id="wreq_" + "7" * 32))
+    with pytest.raises(WAWControlDispatchError) as stale:
+        await restarted.dispatch(
+            lifecycle_request("workspace.workspace.start", request_id="wreq_" + "8" * 32)
+        )
+    assert stale.value.code == "RECONCILIATION_REQUIRED"
