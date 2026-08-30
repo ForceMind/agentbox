@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -188,6 +189,69 @@ async def test_client_normalizes_oversized_response(tmp_path: Path) -> None:
     finally:
         server.close()
         await server.wait_closed()
+
+
+async def _cancellation_resistant_operation() -> None:
+    """Remain pending after cancellation to model a stuck transport syscall."""
+
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        await asyncio.sleep(10)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["connect", "read", "drain"])
+async def test_cancellation_resistant_transport_is_bounded_and_poisoned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    import agentbox_api.waw_control_client as waw_control_client_module
+
+    client = _client(tmp_path / "workspace-control.sock", timeout_seconds=0.01)
+    if operation == "connect":
+        path = tmp_path / "workspace-control.sock"
+        server = await _serve_once(
+            path, encode_control_response(_response(), "workspace.workspace.start")
+        )
+        monkeypatch.setattr(
+            waw_control_client_module.asyncio,
+            "open_unix_connection",
+            lambda *args, **kwargs: _cancellation_resistant_operation(),
+        )
+        try:
+            started = time.monotonic()
+            with pytest.raises(WAWControlClientError) as raised:
+                await client.request("workspace.workspace.start", _request())
+            assert time.monotonic() - started < 0.5
+            assert raised.value.code == "RUNTIME_UNAVAILABLE"
+        finally:
+            server.close()
+            await server.wait_closed()
+    else:
+        deadline = time.monotonic() + 0.01
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await client._with_deadline(_cancellation_resistant_operation(), deadline)
+        assert time.monotonic() - started < 0.5
+    assert client.poisoned is True
+    with pytest.raises(WAWControlClientError, match="poisoned"):
+        await client.request("workspace.workspace.start", _request())
+
+
+@pytest.mark.anyio
+async def test_cancellation_resistant_wait_closed_is_bounded_and_poisoned(tmp_path: Path) -> None:
+    class StuckWriter:
+        def close(self) -> None:
+            return None
+
+        async def wait_closed(self) -> None:
+            await _cancellation_resistant_operation()
+
+    client = _client(tmp_path / "unused.sock", timeout_seconds=1)
+    started = time.monotonic()
+    await client._close_writer(StuckWriter())  # type: ignore[arg-type]
+    assert time.monotonic() - started < 0.5
+    assert client.poisoned is True
 
 
 def test_bind_attestation_is_pinned_to_expected_anchor() -> None:

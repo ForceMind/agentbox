@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hmac
+import inspect
 import os
 import socket
 import stat
@@ -126,12 +127,15 @@ class WAWControlClient:
         expected_socket_gid: int,
         expected_socket_mode: int = 0o660,
         timeout_seconds: float = 2.0,
+        cancellation_grace_seconds: float = 0.05,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if not isinstance(socket_path, Path):
             raise TypeError("socket_path must be a Path")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if cancellation_grace_seconds <= 0:
+            raise ValueError("cancellation_grace_seconds must be positive")
         if type(expected_peer_uid) is not int or expected_peer_uid < 0:
             raise ValueError("expected_peer_uid must be a non-negative integer")
         if type(expected_peer_gid) is not int or expected_peer_gid < 0:
@@ -149,14 +153,37 @@ class WAWControlClient:
         self._expected_socket_gid = expected_socket_gid
         self._expected_socket_mode = expected_socket_mode
         self._timeout_seconds = timeout_seconds
+        self._cancellation_grace_seconds = cancellation_grace_seconds
         self._monotonic = monotonic
+        # A cancellation-resistant operation can outlive its request.  Such
+        # a client must not be used again until its owner has explicitly
+        # re-established the Runtime connection/epoch.
+        self._poisoned = False
 
     @property
     def socket_path(self) -> Path:
         return self._socket_path
 
+    @property
+    def poisoned(self) -> bool:
+        """Whether a timed-out operation may still be mutating transport state."""
+
+        return self._poisoned
+
+    async def reconnect(self) -> None:
+        """Clear the fail-closed transport fence after external reconnect."""
+
+        self._poisoned = False
+
     async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
         """Send one validated request and decode its matching response."""
+
+        if self._poisoned:
+            raise WAWControlClientError(
+                "RUNTIME_UNAVAILABLE",
+                "WAW Runtime control transport is poisoned; reconnect is required",
+                retryable=True,
+            )
 
         peer_pidfd: int | None = None
         try:
@@ -243,9 +270,7 @@ class WAWControlClient:
                 "RUNTIME_UNAVAILABLE", "WAW Runtime control request timed out", retryable=True
             ) from exc
         finally:
-            writer.close()
-            with contextlib.suppress(OSError):
-                await writer.wait_closed()
+            await self._close_writer(writer)
             if peer_pidfd is not None:
                 with contextlib.suppress(OSError):
                     os.close(peer_pidfd)
@@ -271,13 +296,92 @@ class WAWControlClient:
         except (OSError, OverflowError, ValueError):
             return None
 
+    def _poison(self) -> None:
+        self._poisoned = True
+
+    async def _close_writer(self, writer: asyncio.StreamWriter) -> None:
+        """Close without allowing a broken wait_closed() to hold the request."""
+
+        with contextlib.suppress(OSError, RuntimeError):
+            writer.close()
+        try:
+            close_wait = writer.wait_closed()
+        except (OSError, RuntimeError):
+            return
+        if not inspect.isawaitable(close_wait):
+            return
+        task = asyncio.ensure_future(close_wait)
+        try:
+            _done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+        except asyncio.CancelledError:
+            self._poison()
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await asyncio.shield(self._finish_cancel(task))
+            raise
+        if pending:
+            self._poison()
+            task.cancel()
+            task.add_done_callback(self._consume_late_task)
+        else:
+            with contextlib.suppress(BaseException):
+                task.result()
+
+    @staticmethod
+    def _consume_late_task(task: asyncio.Future[Any]) -> None:
+        with contextlib.suppress(BaseException):
+            task.result()
+
     async def _with_deadline(self, awaitable: Any, deadline: float) -> Any:
+        """Await with a hard deadline and bounded cancellation cleanup.
+
+        ``asyncio.wait_for`` may itself exceed its timeout while waiting for a
+        cancellation-resistant coroutine to acknowledge cancellation.  Keep
+        the request bounded by detaching that operation after a short grace
+        period and poison this client so no later request can reuse it.
+        """
+
+        if not inspect.isawaitable(awaitable):
+            raise TypeError("awaitable required")
         remaining = deadline - self._monotonic()
         if remaining <= 0:
-            if hasattr(awaitable, "close"):
+            self._poison()
+            if inspect.iscoroutine(awaitable):
                 awaitable.close()
             raise TimeoutError("WAW control deadline exceeded")
-        return await asyncio.wait_for(awaitable, timeout=remaining)
+        task = asyncio.ensure_future(awaitable)
+        try:
+            done, _pending = await asyncio.wait({task}, timeout=remaining)
+        except asyncio.CancelledError:
+            self._poison()
+            task.cancel()
+            with contextlib.suppress(BaseException):
+                await asyncio.shield(self._finish_cancel(task))
+            raise
+        if done:
+            return task.result()
+
+        self._poison()
+        task.cancel()
+        _cancelled_done, cancelled_pending = await asyncio.wait(
+            {task}, timeout=self._cancellation_grace_seconds
+        )
+        if cancelled_pending:
+            self._poison()
+            # The task owns the operation and may finish later.  Consume its
+            # eventual exception without keeping the request alive.
+            task.add_done_callback(self._consume_late_task)
+        else:
+            with contextlib.suppress(BaseException):
+                task.result()
+        raise TimeoutError("WAW control deadline exceeded")
+
+    async def _finish_cancel(self, task: asyncio.Future[Any]) -> None:
+        """Give cancellation a small grace window, never joining indefinitely."""
+
+        _done, pending = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+        if pending:
+            task.add_done_callback(self._consume_late_task)
 
 
 __all__ = [
