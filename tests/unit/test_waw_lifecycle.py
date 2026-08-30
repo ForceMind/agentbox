@@ -45,15 +45,21 @@ def register_request(
     }
 
 
-def lifecycle_request(action: str, *, digest: str = DIGEST) -> dict[str, Any]:
+def lifecycle_request(
+    action: str,
+    *,
+    digest: str = DIGEST,
+    generation: str = "1",
+    request_id: str = "wreq_" + "5" * 32,
+) -> dict[str, Any]:
     return {
         "protocol_version": 1,
-        "request_id": "wreq_" + "5" * 32,
+        "request_id": request_id,
         "action": action,
         "workspace_id": WORKSPACE,
         "project_id": PROJECT,
         "agent_type": "claude",
-        "generation": "1",
+        "generation": generation,
         "binding_revision": "1",
         "binding_digest": digest,
         "runtime_host_installation_id": HOST,
@@ -80,6 +86,12 @@ class FakeExecutor:
     async def reconcile(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         self.calls.append(("reconcile", identity))
         return WAWLifecycleObservation(state="RUNNING")
+
+
+class InvalidExecutor(FakeExecutor):
+    async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self.calls.append(("start", identity))
+        return WAWLifecycleObservation(state="NOT_A_STATE")
 
 
 def registry(executor: FakeExecutor | None = None) -> WAWLifecycleRegistry:
@@ -131,13 +143,21 @@ async def test_lifecycle_dispatches_typed_start_status_stop_and_reconcile() -> N
     start = await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
     assert start["status"] == "STARTED"
     assert start["state"] == "RUNNING"
-    again = await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    again = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.start", request_id="wreq_" + "6" * 32)
+    )
     assert again["status"] == "ALREADY_RUNNING"
-    status = await runtime.dispatch(lifecycle_request("workspace.workspace.status"))
+    status = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.status", request_id="wreq_" + "7" * 32)
+    )
     assert status["status"] == "STATUS"
-    reconcile = await runtime.dispatch(lifecycle_request("workspace.workspace.reconcile"))
+    reconcile = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.reconcile", request_id="wreq_" + "8" * 32)
+    )
     assert reconcile["status"] == "RECONCILED"
-    stop = await runtime.dispatch(lifecycle_request("workspace.workspace.stop"))
+    stop = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "9" * 32)
+    )
     assert stop["status"] == "STOPPED"
     assert [name for name, _ in executor.calls] == ["start", "status", "reconcile", "stop"]
 
@@ -154,3 +174,50 @@ async def test_host_mismatch_has_no_side_effect() -> None:
         await runtime.dispatch(request)
     assert exc_info.value.code == "RUNTIME_INSTALLATION_MISMATCH"
     assert executor.calls == []
+
+
+@pytest.mark.anyio
+async def test_generation_floor_and_stop_are_idempotent() -> None:
+    executor = FakeExecutor()
+    runtime = registry(executor)
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    first_stop = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "6" * 32)
+    )
+    second_stop = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "7" * 32)
+    )
+    assert first_stop["status"] == "STOPPED"
+    assert second_stop["status"] == "ALREADY_STOPPED"
+    assert [name for name, _ in executor.calls] == ["start", "stop"]
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(
+            lifecycle_request("workspace.workspace.start", request_id="wreq_" + "8" * 32)
+        )
+    assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
+    restarted = await runtime.dispatch(
+        lifecycle_request(
+            "workspace.workspace.start", generation="2", request_id="wreq_" + "9" * 32
+        )
+    )
+    assert restarted["status"] == "STARTED"
+
+
+@pytest.mark.anyio
+async def test_invalid_observation_does_not_poison_registry() -> None:
+    executor = InvalidExecutor()
+    runtime = registry(executor)
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "INTERNAL_BOUNDED"
+    assert len(executor.calls) == 1
+    assert executor.calls[0][0] == "start"
+    with pytest.raises(WAWControlDispatchError) as missing:
+        await runtime.dispatch(
+            lifecycle_request("workspace.workspace.status", request_id="wreq_" + "6" * 32)
+        )
+    assert missing.value.code == "WORKSPACE_NOT_FOUND"

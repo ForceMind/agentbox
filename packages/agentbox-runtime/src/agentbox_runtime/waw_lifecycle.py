@@ -9,7 +9,9 @@ The side-effecting adapter is injected and receives only an immutable identity.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -23,6 +25,35 @@ _STOP = "workspace.workspace.stop"
 _STATUS = "workspace.workspace.status"
 _RECONCILE = "workspace.workspace.reconcile"
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
+_DECIMAL = re.compile(r"\A(?:0|[1-9][0-9]{0,19})\Z")
+_STATES = frozenset(
+    {
+        "STARTING",
+        "RUNNING",
+        "NEEDS_INTERACTION",
+        "TRUST_REQUIRED",
+        "LOGIN_REQUIRED",
+        "STOPPING",
+        "EXITED",
+        "STOPPED",
+        "MISSING",
+        "COLLISION",
+        "BROKEN",
+        "UNKNOWN",
+    }
+)
+_RECONCILIATION_STATES = frozenset(
+    {
+        "authoritative",
+        "stopping",
+        "missing",
+        "collision",
+        "exited",
+        "reconciliation_required",
+        "unknown",
+    }
+)
+_PROCESS_STATES = _STATES | {"NOT_STARTED"}
 
 
 @dataclass(frozen=True)
@@ -100,6 +131,8 @@ class WAWLifecycleRegistry:
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
+        self._generation_floor: dict[str, int] = {}
+        self._request_cache: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
         self._lock = asyncio.Lock()
 
     async def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -109,13 +142,30 @@ class WAWLifecycleRegistry:
         if not isinstance(action, str):
             raise WAWControlDispatchError("PROTOCOL_INVALID")
         async with self._lock:
+            request_id = request.get("request_id")
+            if not isinstance(request_id, str):
+                raise WAWControlDispatchError("PROTOCOL_INVALID")
+            fingerprint = json.dumps(
+                request, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
+            cached = self._request_cache.get(request_id)
+            if cached is not None:
+                if cached[0] != fingerprint:
+                    raise WAWControlDispatchError("PROTOCOL_INVALID")
+                return dict(cached[1])
             if action == _BIND:
-                return self._bind(request)
-            if action == _REGISTER:
-                return await self._register(request)
-            if action in {_START, _STOP, _STATUS, _RECONCILE}:
-                return await self._lifecycle(request, action)
-        raise WAWControlDispatchError("PROTOCOL_INVALID")
+                response = self._bind(request)
+            elif action == _REGISTER:
+                response = await self._register(request)
+            elif action in {_START, _STOP, _STATUS, _RECONCILE}:
+                response = await self._lifecycle(request, action)
+            else:
+                raise WAWControlDispatchError("PROTOCOL_INVALID")
+            self._request_cache[request_id] = (fingerprint, dict(response))
+            self._request_cache.move_to_end(request_id)
+            while len(self._request_cache) > 1024:
+                self._request_cache.popitem(last=False)
+            return response
 
     def _bind(self, request: dict[str, Any]) -> dict[str, Any]:
         epoch = request["api_authority_epoch"]
@@ -213,7 +263,18 @@ class WAWLifecycleRegistry:
         self._check_identity(identity)
         current = self._workspaces.get(identity.workspace_id)
         if action == _START and current is not None:
-            if current[0] != identity:
+            if (
+                current[0].project_id != identity.project_id
+                or current[0].agent_type != identity.agent_type
+                or current[0].binding_revision != identity.binding_revision
+                or current[0].binding_digest != identity.binding_digest
+            ):
+                raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+            if current[0] != identity and int(identity.generation) <= self._generation_floor.get(
+                identity.workspace_id, 0
+            ):
+                raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+            if current[0] == identity and current[1].state == "STOPPED":
                 raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
             if current[1].state in {
                 "RUNNING",
@@ -222,8 +283,16 @@ class WAWLifecycleRegistry:
                 "LOGIN_REQUIRED",
             }:
                 return self._start_response(request, current[1], "ALREADY_RUNNING")
+        elif current is not None and current[0] != identity:
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+        if action == _START and int(identity.generation) <= self._generation_floor.get(
+            identity.workspace_id, 0
+        ):
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
         if action == _STOP and current is None:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
+        if action == _STOP and current is not None and current[1].state == "STOPPED":
+            return self._stop_response(request, current[1], "ALREADY_STOPPED")
         if action in {_STATUS, _RECONCILE} and current is None:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
         if self._executor is None:
@@ -235,7 +304,12 @@ class WAWLifecycleRegistry:
             _RECONCILE: self._executor.reconcile,
         }[action]
         observation = await method(identity)
+        self._validate_observation(observation)
         self._workspaces[identity.workspace_id] = (identity, observation)
+        if action == _START:
+            self._generation_floor[identity.workspace_id] = max(
+                self._generation_floor.get(identity.workspace_id, 0), int(identity.generation)
+            )
         if action == _START:
             return self._start_response(request, observation, "STARTED")
         if action == _STOP:
@@ -263,6 +337,26 @@ class WAWLifecycleRegistry:
             or identity.binding_digest != binding.binding_digest
         ):
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+
+    def _validate_observation(self, observation: WAWLifecycleObservation) -> None:
+        if observation.state not in _STATES:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if observation.reconciliation_state not in _RECONCILIATION_STATES:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if observation.process_state not in _PROCESS_STATES:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if (
+            not isinstance(observation.runtime_epoch, str)
+            or not _DECIMAL.fullmatch(observation.runtime_epoch)
+            or int(observation.runtime_epoch) == 0
+        ):
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        if observation.runtime_epoch != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        if observation.exit_code is not None and (
+            type(observation.exit_code) is not int or not -128 <= observation.exit_code <= 255
+        ):
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
 
     @staticmethod
     def _start_response(
