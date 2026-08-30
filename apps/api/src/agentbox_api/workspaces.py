@@ -223,8 +223,8 @@ async def get_runtime_status(
     try:
         status = WorkspaceRuntimeStatus.model_validate(runtime)
     except ValidationError as exc:
-        raise WAWControlClientError(
-            "PROTOCOL_INVALID", "WAW Runtime status response is invalid"
+        raise HTTPException(
+            status_code=502, detail="WAW Runtime status response is invalid"
         ) from exc
     try:
         _validate_runtime_status_identity(status, row)
