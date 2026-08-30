@@ -131,6 +131,8 @@ def test_control_encode_rejects_missing_or_boolean_protocol_version_and_nan() ->
         encode_frame(ABWSFrameType.PING, {"protocol_version": True}, 1)
     with pytest.raises(ABWSError):
         encode_frame(ABWSFrameType.PING, {"protocol_version": 1, "value": float("nan")}, 1)
+    with pytest.raises(ABWSError):
+        encode_frame(ABWSFrameType.PING, {"protocol_version": 1, 7: "key"}, 1)
 
 
 def test_json_payload_limit_is_independent_of_outer_parser_limit() -> None:

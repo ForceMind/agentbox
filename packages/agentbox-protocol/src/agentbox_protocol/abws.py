@@ -90,6 +90,8 @@ def _reject_surrogates(value: Any) -> None:
             raise ABWSError("unpaired UTF-16 surrogate is not permitted")
     elif isinstance(value, dict):
         for key, item in value.items():
+            if not isinstance(key, str):
+                raise ABWSError("JSON object keys must be strings")
             _reject_surrogates(key)
             _reject_surrogates(item)
     elif isinstance(value, list):
