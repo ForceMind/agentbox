@@ -119,7 +119,10 @@ class WAWControlServer:
                 response = self._error(request["request_id"], "INTERNAL_BOUNDED", True)
             except Exception:
                 response = self._error(request["request_id"], "INTERNAL_BOUNDED", False)
-            if not isinstance(response, dict):
+            if (
+                not isinstance(response, dict)
+                or response.get("request_id") != request["request_id"]
+            ):
                 response = self._error(request["request_id"], "INTERNAL_BOUNDED", False)
             try:
                 encoded = encode_control_response(response, request["action"])

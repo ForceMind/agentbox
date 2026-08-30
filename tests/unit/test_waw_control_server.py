@@ -125,3 +125,21 @@ async def test_dispatch_timeout_and_typed_error_response(tmp_path: Path) -> None
     finally:
         await server.close()
         sock.close()
+
+
+@pytest.mark.anyio
+async def test_server_fences_dispatch_response_with_wrong_request_id(tmp_path: Path) -> None:
+    async def dispatch(_request):
+        return _response("wreq_" + "9" * 32)
+
+    path = tmp_path / "control.sock"
+    server, sock = await _running_server(path, dispatch)
+    try:
+        import json
+
+        raw = await _call(path, json.dumps(_request()).encode() + b"\n")
+        assert b'"error_code":"INTERNAL_BOUNDED"' in raw
+        assert b'"request_id":"wreq_' + b"1" * 32 in raw
+    finally:
+        await server.close()
+        sock.close()
