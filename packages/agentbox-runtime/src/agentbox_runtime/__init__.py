@@ -52,22 +52,6 @@ from agentbox_runtime.rpc import (
     UnixRuntimeCapabilityClient,
 )
 from agentbox_runtime.tmux import TmuxAdapter
-from agentbox_runtime.waw_manifest_codecs import (
-    APIHostAnchor,
-    CgroupDelegationManifest,
-    ProjectRootManifest,
-    RuntimeHostManifest,
-    WAWManifestCodecError,
-    decode_api_host_anchor,
-    decode_cgroup_delegation_manifest,
-    decode_project_root_manifest,
-    decode_runtime_host_manifest,
-    encode_api_host_anchor,
-    encode_cgroup_delegation_manifest,
-    encode_project_root_manifest,
-    encode_runtime_host_manifest,
-    manifest_sha256,
-)
 from agentbox_runtime.waw_activation import (
     WAWActivatedSockets,
     WAWActivationError,
@@ -102,6 +86,22 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
+)
+from agentbox_runtime.waw_manifest_codecs import (
+    APIHostAnchor,
+    CgroupDelegationManifest,
+    ProjectRootManifest,
+    RuntimeHostManifest,
+    WAWManifestCodecError,
+    decode_api_host_anchor,
+    decode_cgroup_delegation_manifest,
+    decode_project_root_manifest,
+    decode_runtime_host_manifest,
+    encode_api_host_anchor,
+    encode_cgroup_delegation_manifest,
+    encode_project_root_manifest,
+    encode_runtime_host_manifest,
+    manifest_sha256,
 )
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
