@@ -13,6 +13,7 @@ from agentbox_protocol.abws import (
     encode_frame,
     iter_frames,
 )
+from agentbox_protocol.abws_stream import ABWSFramedStreamPump
 from agentbox_protocol.auth import (
     AdminView,
     AuthData,
@@ -120,6 +121,7 @@ __all__ = [
     "ABWSParser",
     "ABWSError",
     "ABWSProtocolError",
+    "ABWSFramedStreamPump",
     "AdminView",
     "AuthData",
     "AuthResponse",
