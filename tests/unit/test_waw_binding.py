@@ -90,3 +90,21 @@ async def test_lifecycle_request_allows_only_read_only_actions() -> None:
         await coordinator.request_lifecycle("workspace.workspace.start", request)
     assert raised.value.code == "PROTOCOL_INVALID"
     assert len(client.calls) == 2
+
+
+@pytest.mark.anyio
+async def test_lifecycle_request_rejects_a_new_runtime_epoch() -> None:
+    response = _response()
+    response["runtime_epoch"] = "8"
+    client = FakeClient(response)
+    coordinator = _coordinator(client)
+    with pytest.raises(WAWControlClientError) as raised:
+        await coordinator.request_lifecycle(
+            "workspace.workspace.status",
+            {
+                "protocol_version": 1,
+                "request_id": "wreq_" + "2" * 32,
+                "action": "workspace.workspace.status",
+            },
+        )
+    assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"

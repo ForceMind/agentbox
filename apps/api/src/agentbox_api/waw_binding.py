@@ -107,7 +107,13 @@ class WAWRuntimeBindCoordinator:
         if action not in _ALLOWED_LIFECYCLE_REQUESTS:
             raise WAWControlClientError("PROTOCOL_INVALID", "WAW lifecycle action is not enabled")
         await self.bind()
-        return await self._client.request(action, request)
+        response = await self._client.request(action, request)
+        expected_epoch = self._bound_response.get("runtime_epoch") if self._bound_response else None
+        if isinstance(expected_epoch, str) and response.get("runtime_epoch") != expected_epoch:
+            raise WAWControlClientError(
+                "RUNTIME_INSTALLATION_MISMATCH", "WAW lifecycle response epoch is stale"
+            )
+        return response
 
 
 __all__ = ["WAWBindTransport", "WAWRuntimeBindCoordinator"]
