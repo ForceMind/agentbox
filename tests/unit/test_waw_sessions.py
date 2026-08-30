@@ -133,3 +133,29 @@ def test_begin_start_fences_generation_and_marker(settings: Any, clock: Any) -> 
     assert restarted.revision == 4
     assert restarted.state == WorkspaceState.STARTING.value
     assert restarted.runtime_marker != row.runtime_marker
+
+
+def test_begin_and_complete_stop_are_generation_bound(settings: Any, clock: Any) -> None:
+    database, service, project_id, host_id = _seed(settings, clock)
+    row = _create(service, project_id, host_id)
+    row = service.transition(row.id, expected_revision=1, state=WorkspaceState.RUNNING)
+    operation = service.begin_stop(row.id, expected_revision=row.revision)
+    assert operation.result == "PENDING"
+    stopping = service.get(row.id)
+    assert stopping.state == WorkspaceState.STOPPING.value
+    completed = service.complete_stop(operation.id, result="STOPPED")
+    assert completed.result == "STOPPED"
+    stopped = service.get(row.id)
+    assert stopped.state == WorkspaceState.STOPPED.value
+    assert stopped.reconciliation_state == "authoritative"
+
+
+def test_stop_timeout_requires_reconciliation(settings: Any, clock: Any) -> None:
+    database, service, project_id, host_id = _seed(settings, clock)
+    row = _create(service, project_id, host_id)
+    row = service.transition(row.id, expected_revision=1, state=WorkspaceState.RUNNING)
+    operation = service.begin_stop(row.id, expected_revision=row.revision)
+    service.complete_stop(operation.id, result="TIMEOUT", failure_code="STOP_TIMEOUT")
+    reconciled = service.get(row.id)
+    assert reconciled.state == WorkspaceState.UNKNOWN.value
+    assert reconciled.reconciliation_state == "reconciliation_required"

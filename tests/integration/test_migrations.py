@@ -30,6 +30,7 @@ from sqlalchemy.engine import Engine
 PHASE11_TABLES = {
     "waw_runtime_host_installations",
     "waw_agent_workspace_sessions",
+    "waw_workspace_stop_operations",
     "runtime_installations",
     "provider_definitions",
     "provider_credentials",

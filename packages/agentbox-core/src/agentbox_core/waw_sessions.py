@@ -14,12 +14,18 @@ from agentbox_core.waw import (
     AgentType,
     AgentWorkspaceSession,
     ReconciliationState,
+    StopResult,
     WAWDomainError,
     WorkspaceState,
+    WorkspaceStopOperation,
     managed_marker,
     managed_session_name,
 )
-from agentbox_core.waw_models import AgentWorkspaceSessionRecord, RuntimeHostInstallation
+from agentbox_core.waw_models import (
+    AgentWorkspaceSessionRecord,
+    RuntimeHostInstallation,
+    WorkspaceStopOperationRecord,
+)
 
 
 class WorkspaceSessionError(RuntimeError):
@@ -35,6 +41,10 @@ class WorkspaceSessionConflict(WorkspaceSessionError):
 
 
 class WorkspaceSessionNotReady(WorkspaceSessionError):
+    pass
+
+
+class WorkspaceStopNotFound(WorkspaceSessionError):
     pass
 
 
@@ -224,11 +234,117 @@ class WorkspaceSessionService:
             session.flush()
             return row
 
+    def begin_stop(
+        self, workspace_id_value: str, *, expected_revision: int
+    ) -> WorkspaceStopOperationRecord:
+        """Persist one generation/binding-bound Stop intent before Runtime work."""
+
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            row = session.get(AgentWorkspaceSessionRecord, workspace_id_value)
+            if row is None:
+                raise WorkspaceSessionNotFound(workspace_id_value)
+            if row.revision != expected_revision:
+                raise WorkspaceSessionConflict("workspace revision is stale")
+            current = AgentWorkspaceSession(
+                project_id=row.project_id,
+                agent_type=row.agent_type,
+                runtime_host_installation_id=row.runtime_host_installation_id,
+                runtime_host_installation_revision=row.runtime_host_installation_revision,
+                binding_revision=row.binding_revision,
+                binding_digest=row.binding_digest,
+                generation=row.generation,
+                state=row.state,
+                reconciliation_state=row.reconciliation_state,
+                id=row.id,
+            )
+            current.transition(WorkspaceState.STOPPING)
+            operation = WorkspaceStopOperation(
+                workspace_id=row.id,
+                project_id=row.project_id,
+                agent_type=row.agent_type,
+                generation=row.generation,
+                binding_revision=row.binding_revision,
+                binding_digest=row.binding_digest,
+                runtime_host_installation_id=row.runtime_host_installation_id,
+                runtime_host_installation_revision=row.runtime_host_installation_revision,
+            )
+            record = WorkspaceStopOperationRecord(
+                id=operation.stop_operation_id,
+                workspace_id=row.id,
+                project_id=row.project_id,
+                agent_type=row.agent_type,
+                generation=row.generation,
+                binding_revision=row.binding_revision,
+                binding_digest=row.binding_digest,
+                runtime_host_installation_id=row.runtime_host_installation_id,
+                runtime_host_installation_revision=row.runtime_host_installation_revision,
+                result=StopResult(operation.result).value,
+                created_at=now,
+                updated_at=now,
+            )
+            row.state = WorkspaceState.STOPPING.value
+            row.reconciliation_state = ReconciliationState.STOPPING.value
+            row.revision += 1
+            row.updated_at = now
+            session.add(record)
+            session.flush()
+            return record
+
+    def complete_stop(
+        self,
+        stop_operation_id: str,
+        *,
+        result: StopResult | str,
+        failure_code: str | None = None,
+    ) -> WorkspaceStopOperationRecord:
+        """Record exact-stop evidence outcome and reconcile the session."""
+
+        outcome = StopResult(result)
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            record = session.get(WorkspaceStopOperationRecord, stop_operation_id)
+            if record is None:
+                raise WorkspaceStopNotFound(stop_operation_id)
+            if record.result != StopResult.PENDING.value:
+                if record.result == outcome.value:
+                    return record
+                raise WorkspaceSessionConflict("stop operation is already terminal")
+            if failure_code is not None and (
+                not failure_code
+                or len(failure_code) > 64
+                or any(ord(character) < 32 for character in failure_code)
+            ):
+                raise WorkspaceSessionConflict("stop failure code is invalid")
+            row = session.get(AgentWorkspaceSessionRecord, record.workspace_id)
+            if row is None or row.generation != record.generation:
+                raise WorkspaceSessionConflict("stop operation generation is stale")
+            record.result = outcome.value
+            record.failure_code = failure_code
+            record.updated_at = now
+            row.state = (
+                WorkspaceState.STOPPED.value
+                if outcome is StopResult.STOPPED
+                else WorkspaceState.UNKNOWN.value
+            )
+            row.reconciliation_state = (
+                ReconciliationState.AUTHORITATIVE.value
+                if outcome is StopResult.STOPPED
+                else ReconciliationState.RECONCILIATION_REQUIRED.value
+            )
+            row.failure_code = failure_code
+            row.revision += 1
+            row.updated_at = now
+            row.last_seen_at = now
+            session.flush()
+            return record
+
 
 __all__ = [
     "WorkspaceSessionConflict",
     "WorkspaceSessionError",
     "WorkspaceSessionNotFound",
     "WorkspaceSessionNotReady",
+    "WorkspaceStopNotFound",
     "WorkspaceSessionService",
 ]

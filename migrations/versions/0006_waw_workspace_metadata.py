@@ -128,9 +128,55 @@ def upgrade() -> None:
         sa.UniqueConstraint("runtime_session_name", name="uq_waw_sessions_runtime_session_name"),
     )
     op.create_index("ix_waw_sessions_state", "waw_agent_workspace_sessions", ["state"])
+    op.create_table(
+        "waw_workspace_stop_operations",
+        sa.Column("id", sa.String(length=40), nullable=False),
+        sa.Column("workspace_id", sa.String(length=40), nullable=False),
+        sa.Column("project_id", sa.String(length=40), nullable=False),
+        sa.Column("agent_type", sa.String(length=8), nullable=False),
+        sa.Column("generation", sa.Integer(), nullable=False),
+        sa.Column("binding_revision", sa.Integer(), nullable=False),
+        sa.Column("binding_digest", sa.String(length=64), nullable=False),
+        sa.Column("runtime_host_installation_id", sa.String(length=40), nullable=False),
+        sa.Column("runtime_host_installation_revision", sa.Integer(), nullable=False),
+        sa.Column("result", sa.String(length=32), nullable=False, server_default="PENDING"),
+        sa.Column("failure_code", sa.String(length=64), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "length(id)=36 AND substr(id,1,4)='wso_' AND substr(id,5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_stops_id",
+        ),
+        sa.CheckConstraint(
+            "length(workspace_id)=36 AND substr(workspace_id,1,4)='aws_' AND substr(workspace_id,5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_stops_workspace_id",
+        ),
+        sa.CheckConstraint("generation >= 1", name="ck_waw_stops_generation"),
+        sa.CheckConstraint("binding_revision >= 1", name="ck_waw_stops_binding_revision"),
+        sa.CheckConstraint(
+            "length(binding_digest)=64 AND binding_digest NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_stops_binding_digest",
+        ),
+        sa.CheckConstraint(
+            "result IN ('PENDING','STOPPED','RECONCILIATION_REQUIRED','TIMEOUT')",
+            name="ck_waw_stops_result",
+        ),
+        sa.CheckConstraint("length(failure_code) <= 64", name="ck_waw_stops_failure_code"),
+        sa.ForeignKeyConstraint(
+            ["workspace_id"],
+            ["waw_agent_workspace_sessions.id"],
+            ondelete="RESTRICT",
+            name="fk_waw_stops_workspace",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "workspace_id", "generation", "binding_revision", name="uq_waw_stops_generation"
+        ),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("waw_workspace_stop_operations")
     op.drop_index("ix_waw_sessions_state", table_name="waw_agent_workspace_sessions")
     op.drop_table("waw_agent_workspace_sessions")
     op.drop_table("waw_runtime_host_installations")

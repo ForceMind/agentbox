@@ -15,6 +15,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -140,4 +141,58 @@ class AgentWorkspaceSessionRecord(Base):
     reconciliation_state: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
-__all__ = ["AgentWorkspaceSessionRecord", "RuntimeHostInstallation"]
+class WorkspaceStopOperationRecord(Base):
+    """Durable exact-Stop intent; contains no PID, path, command, or secret."""
+
+    __tablename__ = "waw_workspace_stop_operations"
+    __table_args__ = (
+        CheckConstraint(
+            "length(id)=36 AND substr(id,1,4)='wso_' AND substr(id,5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_stops_id",
+        ),
+        CheckConstraint(
+            "length(workspace_id)=36 AND substr(workspace_id,1,4)='aws_' AND substr(workspace_id,5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_stops_workspace_id",
+        ),
+        CheckConstraint("generation >= 1", name="ck_waw_stops_generation"),
+        CheckConstraint("binding_revision >= 1", name="ck_waw_stops_binding_revision"),
+        CheckConstraint(
+            "length(binding_digest)=64 AND binding_digest NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_stops_binding_digest",
+        ),
+        CheckConstraint(
+            "result IN ('PENDING','STOPPED','RECONCILIATION_REQUIRED','TIMEOUT')",
+            name="ck_waw_stops_result",
+        ),
+        CheckConstraint("length(failure_code) <= 64", name="ck_waw_stops_failure_code"),
+        ForeignKeyConstraint(
+            ["workspace_id"],
+            ["waw_agent_workspace_sessions.id"],
+            ondelete="RESTRICT",
+            name="fk_waw_stops_workspace",
+        ),
+        UniqueConstraint(
+            "workspace_id", "generation", "binding_revision", name="uq_waw_stops_generation"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    project_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    agent_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    binding_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    binding_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    runtime_host_installation_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    runtime_host_installation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    result: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
+    failure_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+__all__ = [
+    "AgentWorkspaceSessionRecord",
+    "RuntimeHostInstallation",
+    "WorkspaceStopOperationRecord",
+]
