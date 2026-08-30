@@ -138,6 +138,7 @@ def test_deterministic_manifest_vectors() -> None:
     vectors = (
         (
             encode_cgroup_delegation_manifest,
+            decode_cgroup_delegation_manifest,
             _cgroup,
             b'{"cgroup_mount_device":"0:31","cgroup_mount_filesystem_id":"host-cgroup2-1",'
             b'"cgroup_mount_type":"cgroup2","cgroup_schema_identity":"cgroup-v2",'
@@ -152,6 +153,7 @@ def test_deterministic_manifest_vectors() -> None:
         ),
         (
             encode_api_host_anchor,
+            decode_api_host_anchor,
             _anchor,
             b'{"enrollment_epoch":"7","enrollment_state":"steady","host_manifest_digest":"'
             + _HEX_B.encode()
@@ -167,6 +169,7 @@ def test_deterministic_manifest_vectors() -> None:
         ),
         (
             encode_runtime_host_manifest,
+            decode_runtime_host_manifest,
             _runtime,
             b'{"attach_supervisor_fingerprint":"'
             + _HEX_A.encode()
@@ -196,10 +199,15 @@ def test_deterministic_manifest_vectors() -> None:
             "2e937068d18af15aa5072d88771a57355e2d03386bcf5f5139518c8adf9abd96",
         ),
     )
-    for encoder, factory, expected, expected_digest in vectors:
+    for encoder, decoder, factory, expected, expected_digest in vectors:
         payload = encoder(factory())
         assert payload == expected
         assert manifest_sha256(payload) == expected_digest
+        decoded = asdict(cast(Any, decoder(expected)))
+        expected_fields = factory()
+        if "controllers" in expected_fields:
+            expected_fields["controllers"] = tuple(cast(list[str], expected_fields["controllers"]))
+        assert decoded == expected_fields
 
 
 @pytest.mark.parametrize(
