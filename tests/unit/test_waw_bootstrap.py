@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from agentbox_runtime.waw_bootstrap import (
     create_waw_lifecycle_registry_development_only,
+    create_waw_lifecycle_registry_from_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bytes,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
@@ -15,7 +17,13 @@ from agentbox_runtime.waw_host_manifest import (
 )
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity, WAWLifecycleObservation
 from agentbox_runtime.waw_manifest_codecs import (
+    APIHostAnchor,
+    ProjectRootManifest,
     RuntimeHostManifest,
+    WAWManifestCodecError,
+    decode_runtime_host_manifest,
+    encode_api_host_anchor,
+    encode_project_root_manifest,
     encode_runtime_host_manifest,
     manifest_sha256,
 )
@@ -79,6 +87,47 @@ def _strict_manifest_bytes() -> bytes:
             enrollment_state="steady",
         )
     )
+
+
+def _strict_project_root_bytes() -> bytes:
+    return encode_project_root_manifest(
+        ProjectRootManifest(
+            manifest_revision="1",
+            configured_root="/srv/agentbox/projects",
+            root_device="2049",
+            root_mount_id="42",
+            root_filesystem_id="host-filesystem-1",
+            root_uid="0",
+            root_gid="0",
+            root_mode="755",
+            relative_key_grammar_version="one-component-v1",
+            binding_digest_algorithm="sha256-rfc8785",
+            no_shell_executable_path="/bin/false",
+            no_shell_executable_digest="a" * 64,
+        )
+    )
+
+
+def _strict_manifest_bundle() -> tuple[bytes, bytes, bytes]:
+    project_raw = _strict_project_root_bytes()
+    runtime = decode_runtime_host_manifest(_strict_manifest_bytes())
+    runtime = replace(
+        runtime,
+        project_root_manifest_digest=manifest_sha256(project_raw),
+    )
+    runtime_raw = encode_runtime_host_manifest(runtime)
+    anchor_raw = encode_api_host_anchor(
+        APIHostAnchor(
+            runtime_host_installation_id=runtime.runtime_host_installation_id,
+            runtime_host_installation_revision=runtime.runtime_host_installation_revision,
+            runtime_attestation_x25519_fingerprint=runtime.runtime_attestation_x25519_fingerprint,
+            host_manifest_digest=manifest_sha256(runtime_raw),
+            project_root_manifest_digest=manifest_sha256(project_raw),
+            enrollment_epoch=runtime.enrollment_epoch,
+            enrollment_state=runtime.enrollment_state,
+        )
+    )
+    return anchor_raw, runtime_raw, project_raw
 
 
 @pytest.mark.anyio
@@ -251,3 +300,68 @@ def test_production_bootstrap_rejects_invalid_expected_digest_without_consuming_
             binding_digest_factory=lambda _request: "a" * 64,
         )
     assert store.consume() == 2
+
+
+@pytest.mark.anyio
+async def test_bundle_bootstrap_verifies_cross_manifest_pin_before_epoch_consume(
+    tmp_path: Path,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    anchor_raw, runtime_raw, project_raw = _strict_manifest_bundle()
+    registry, epoch = create_waw_lifecycle_registry_from_manifest_bundle(
+        raw_api_host_anchor=anchor_raw,
+        raw_runtime_host_manifest=runtime_raw,
+        raw_project_root_manifest=project_raw,
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    assert epoch == "2"
+    response = await registry.dispatch(
+        {
+            "protocol_version": 1,
+            "request_id": "wreq_" + "1" * 32,
+            "action": "workspace.api_authority.bind",
+            "api_authority_epoch": "5",
+            "authority_nonce": "c" * 32,
+        }
+    )
+    assert response["runtime_epoch"] == "2"
+    assert response["host_manifest_digest"] == manifest_sha256(runtime_raw)
+    assert response["project_root_manifest_digest"] == manifest_sha256(project_raw)
+
+
+def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
+    tmp_path: Path,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    anchor_raw, runtime_raw, project_raw = _strict_manifest_bundle()
+    anchor = APIHostAnchor(
+        runtime_host_installation_id=HOST,
+        runtime_host_installation_revision="3",
+        runtime_attestation_x25519_fingerprint="c" * 64,
+        host_manifest_digest="b" * 64,
+        project_root_manifest_digest=manifest_sha256(project_raw),
+        enrollment_epoch="4",
+        enrollment_state="steady",
+    )
+    with pytest.raises(WAWManifestCodecError, match="does not pin"):
+        create_waw_lifecycle_registry_from_manifest_bundle(
+            raw_api_host_anchor=encode_api_host_anchor(anchor),
+            raw_runtime_host_manifest=runtime_raw,
+            raw_project_root_manifest=project_raw,
+            epoch_store=store,
+            executor=FakeExecutor(),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    # Cross-manifest verification happens before the registry consumes epoch 2.
+    assert store.consume() == 2
+    assert anchor_raw != encode_api_host_anchor(anchor)
+
+
+def test_bundle_bootstrap_is_exported_from_runtime_package() -> None:
+    from agentbox_runtime import create_waw_lifecycle_registry_from_manifest_bundle
+
+    assert create_waw_lifecycle_registry_from_manifest_bundle is not None

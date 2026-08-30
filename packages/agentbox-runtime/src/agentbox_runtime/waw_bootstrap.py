@@ -30,6 +30,7 @@ from agentbox_runtime.waw_manifest_codecs import (
     RuntimeHostManifest,
     WAWManifestCodecError,
     manifest_sha256,
+    verify_api_host_anchor_cross_manifest,
 )
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
@@ -126,6 +127,48 @@ def create_waw_lifecycle_registry_from_manifest_bytes(
     )
 
 
+def create_waw_lifecycle_registry_from_manifest_bundle(
+    *,
+    raw_api_host_anchor: bytes,
+    raw_runtime_host_manifest: bytes,
+    raw_project_root_manifest: bytes,
+    epoch_store: WAWRuntimeEpochStore,
+    executor: WAWLifecycleExecutor | None = None,
+    executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
+    binding_digest_factory: BindingDigestFactory,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+) -> tuple[WAWLifecycleRegistry, str]:
+    """Bootstrap from a strictly cross-pinned manifest bundle.
+
+    This is a data-only strict boundary.  The API host anchor, Runtime host
+    manifest, and Project Root manifest are decoded and cross-verified before
+    the Runtime epoch is consumed.  The verified Runtime record and the exact
+    digest of its supplied canonical bytes are then passed to the shared
+    registry constructor, preventing a second decode or an independently
+    selected digest from diverging from the bytes that were checked.
+
+    The caller remains responsible for installer/host provenance and for
+    supplying an executor that is already bound to the same trust root.  This
+    helper performs no file discovery, socket binding, process execution, or
+    credential handling.
+    """
+
+    pin = verify_api_host_anchor_cross_manifest(
+        raw_api_host_anchor,
+        raw_runtime_host_manifest,
+        raw_project_root_manifest,
+    )
+    return _create_registry_from_verified_manifest(
+        manifest=pin.runtime,
+        host_manifest_digest=pin.runtime_manifest_digest,
+        epoch_store=epoch_store,
+        executor=executor,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+        attestation_store=attestation_store,
+    )
+
+
 def _create_registry_from_verified_manifest(
     *,
     manifest: RuntimeHostManifest,
@@ -211,5 +254,6 @@ def build_waw_control_server(
 
 __all__ = [
     "build_waw_control_server",
+    "create_waw_lifecycle_registry_from_manifest_bundle",
     "create_waw_lifecycle_registry_from_manifest_bytes",
 ]
