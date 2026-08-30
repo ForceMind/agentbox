@@ -22,7 +22,7 @@ from agentbox_runtime.process import (
 
 SAFE_SESSION_NAME = re.compile(r"\A[A-Za-z0-9_-]{1,80}\Z")
 _VERSION = re.compile(r"\btmux\s+([^\s]+)", re.IGNORECASE)
-_INPUT_LOCKS: dict[str, asyncio.Lock] = {}
+_INPUT_LOCKS: dict[str, threading.Lock] = {}
 _INPUT_LOCKS_GUARD = threading.Lock()
 
 
@@ -313,8 +313,13 @@ class TmuxAdapter:
         # instance.  Share the lock across all Runtime adapter instances so
         # legacy and WAW callers cannot overwrite the same fixed buffer.
         with _INPUT_LOCKS_GUARD:
-            lock = _INPUT_LOCKS.setdefault(session_name, asyncio.Lock())
-        async with lock:
+            lock = _INPUT_LOCKS.setdefault(session_name, threading.Lock())
+        acquired = False
+        try:
+            while not acquired:
+                acquired = lock.acquire(blocking=False)
+                if not acquired:
+                    await asyncio.sleep(0)
             if not await self.has_session(session_name):
                 raise RuntimeOperationError(
                     "TMUX_SESSION_UNAVAILABLE",
@@ -388,6 +393,9 @@ class TmuxAdapter:
                 raise RuntimeOperationError(
                     "TMUX_INPUT_FAILED", "tmux input buffer could not be deleted", category="broken"
                 )
+        finally:
+            if acquired:
+                lock.release()
 
     async def resize_window(self, session_name: str, *, columns: int, rows: int) -> None:
         """Resize only the exact managed pane using bounded geometry."""
