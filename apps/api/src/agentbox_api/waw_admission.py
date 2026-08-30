@@ -145,7 +145,7 @@ class WAWAttachmentTicketResponse(StrictMetadataModel):
             project_id=claims.project_id,
             agent_type=str(claims.agent_type),
             attachment_id=claims.attachment_id,
-            mode=claims.mode,
+            mode="writer",
             lease_number=str(claims.lease_number),
             generation=str(claims.generation),
             binding_revision=str(claims.binding_revision),
