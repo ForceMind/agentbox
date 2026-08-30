@@ -25,17 +25,39 @@ from agentbox_runtime.waw_pty import OutputReplay, OutputRing, PtyGeometry, vali
 class SupervisorState(StrEnum):
     ADMITTED = "ADMITTED"
     RUNNING = "RUNNING"
+    NEEDS_INTERACTION = "NEEDS_INTERACTION"
+    TRUST_REQUIRED = "TRUST_REQUIRED"
+    LOGIN_REQUIRED = "LOGIN_REQUIRED"
     DETACHED = "DETACHED"
     STOPPING = "STOPPING"
     STOPPED = "STOPPED"
     BROKEN = "BROKEN"
     INPUT_UNCERTAIN = "INPUT_UNCERTAIN"
+    RECONCILIATION_REQUIRED = "RECONCILIATION_REQUIRED"
+
+
+@dataclass(frozen=True)
+class RuntimeStartEvidence:
+    workspace_id: str
+    generation: int
+    managed_marker: str
+    state: SupervisorState
+    ready: bool
+
+
+@dataclass(frozen=True)
+class RuntimeStopEvidence:
+    workspace_id: str
+    generation: int
+    managed_marker: str
+    closed: bool
+    remaining_members: int
 
 
 class WAWTransport(Protocol):
     """The only side-effecting operations a WAW Runtime adapter may expose."""
 
-    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> None: ...
+    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence: ...
 
     def write(self, data: bytes) -> None: ...
 
@@ -43,7 +65,7 @@ class WAWTransport(Protocol):
 
     def resize(self, geometry: PtyGeometry) -> None: ...
 
-    def stop(self) -> None: ...
+    def stop(self) -> RuntimeStopEvidence: ...
 
 
 @dataclass(frozen=True)
@@ -112,13 +134,31 @@ class WAWSupervisor:
                 "WAW_START_INVALID", "Workspace is not admitted for start", category="conflict"
             )
         try:
-            self._transport.start(self._command, self._geometry)
+            evidence = self._transport.start(self._command, self._geometry)
+            if (
+                evidence.workspace_id != self._workspace_id
+                or evidence.generation != self._generation
+                or evidence.managed_marker != self._command.managed_marker
+                or not evidence.ready
+                or evidence.state
+                not in {
+                    SupervisorState.RUNNING,
+                    SupervisorState.NEEDS_INTERACTION,
+                    SupervisorState.TRUST_REQUIRED,
+                    SupervisorState.LOGIN_REQUIRED,
+                }
+            ):
+                raise RuntimeOperationError(
+                    "WAW_START_UNCONFIRMED",
+                    "Runtime start evidence is not admissible",
+                    category="conflict",
+                )
         except Exception as exc:
             self._state = SupervisorState.BROKEN
             raise RuntimeOperationError(
                 "WAW_START_FAILED", "Runtime transport could not start", category="unavailable"
             ) from exc
-        self._state = SupervisorState.RUNNING
+        self._state = evidence.state
         return self.snapshot()
 
     def attach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
@@ -227,7 +267,20 @@ class WAWSupervisor:
             )
         self._state = SupervisorState.STOPPING
         try:
-            self._transport.stop()
+            evidence = self._transport.stop()
+            if (
+                evidence.workspace_id != self._workspace_id
+                or evidence.generation != self._generation
+                or evidence.managed_marker != self._command.managed_marker
+                or not evidence.closed
+                or evidence.remaining_members != 0
+            ):
+                self._state = SupervisorState.RECONCILIATION_REQUIRED
+                raise RuntimeOperationError(
+                    "WAW_STOP_UNCONFIRMED",
+                    "Runtime did not provide exact close evidence",
+                    category="conflict",
+                )
         except Exception as exc:
             self._state = SupervisorState.BROKEN
             raise RuntimeOperationError(
@@ -266,4 +319,11 @@ class WAWSupervisor:
             )
 
 
-__all__ = ["SupervisorSnapshot", "SupervisorState", "WAWSupervisor", "WAWTransport"]
+__all__ = [
+    "RuntimeStartEvidence",
+    "RuntimeStopEvidence",
+    "SupervisorSnapshot",
+    "SupervisorState",
+    "WAWSupervisor",
+    "WAWTransport",
+]

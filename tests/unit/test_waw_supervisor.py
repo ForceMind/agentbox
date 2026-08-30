@@ -10,7 +10,12 @@ from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
 from agentbox_runtime.waw_command import WAWClaudeCommand
 from agentbox_runtime.waw_pty import PtyGeometry
-from agentbox_runtime.waw_supervisor import SupervisorState, WAWSupervisor
+from agentbox_runtime.waw_supervisor import (
+    RuntimeStartEvidence,
+    RuntimeStopEvidence,
+    SupervisorState,
+    WAWSupervisor,
+)
 
 
 class FakeTransport:
@@ -21,11 +26,23 @@ class FakeTransport:
         self.stopped = False
         self.fail_writes = False
         self.detach_confirmed = True
+        self.workspace_id = ""
+        self.generation = 1
+        self.marker = ""
 
-    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> None:
+    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
         assert command.argv == ("remote-control",)
         self.started = True
         self.resizes.append(geometry)
+        self.workspace_id = command.workspace_id
+        self.marker = command.managed_marker
+        return RuntimeStartEvidence(
+            command.workspace_id,
+            1,
+            command.managed_marker,
+            SupervisorState.RUNNING,
+            True,
+        )
 
     def write(self, data: bytes) -> None:
         if self.fail_writes:
@@ -38,8 +55,15 @@ class FakeTransport:
     def resize(self, geometry: PtyGeometry) -> None:
         self.resizes.append(geometry)
 
-    def stop(self) -> None:
+    def stop(self) -> RuntimeStopEvidence:
         self.stopped = True
+        return RuntimeStopEvidence(
+            self.workspace_id,
+            self.generation,
+            self.marker,
+            True,
+            0,
+        )
 
 
 def _attachment(workspace: str, *, attachment_id: str = "att_" + "2" * 32) -> ActiveAttachment:
