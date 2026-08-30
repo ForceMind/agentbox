@@ -348,8 +348,14 @@ class WAWSupervisor:
                 )
             return self._ring.append(payload).end_cursor
 
-    def replay_output(self, after_cursor: int) -> OutputReplay:
+    def replay_output(self, after_cursor: int, *, generation: int | None = None) -> OutputReplay:
         with self._lock:
+            if generation is not None and generation != self._generation:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_STALE",
+                    "Output cursor belongs to a different workspace generation",
+                    category="conflict",
+                )
             if self._state is SupervisorState.STOPPED:
                 raise RuntimeOperationError(
                     "WAW_OUTPUT_STOPPED",

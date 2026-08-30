@@ -234,6 +234,15 @@ def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
         supervisor.replay_output(0)
 
 
+def test_output_replay_rejects_cross_generation_cursor(tmp_path: Path) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    source = supervisor.output_source()
+    supervisor.append_output(source, b"x")
+    with pytest.raises(RuntimeOperationError, match="generation"):
+        supervisor.replay_output(0, generation=2)
+
+
 def test_output_requires_runtime_admission(tmp_path: Path) -> None:
     supervisor, _, workspace = _supervisor(tmp_path)
     supervisor.start()
