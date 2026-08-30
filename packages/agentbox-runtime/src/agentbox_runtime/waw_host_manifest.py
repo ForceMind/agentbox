@@ -24,6 +24,15 @@ _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _STATES = frozenset({"bootstrap", "steady", "rotation"})
 
 
+def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
 class WAWRuntimeHostManifestError(RuntimeError):
     """The WAW host manifest is missing, malformed, or unsafe."""
 
@@ -93,7 +102,7 @@ def load_waw_runtime_host_manifest(
     finally:
         os.close(fd)
     try:
-        value = json.loads(bytes(payload).decode("utf-8"))
+        value = json.loads(bytes(payload).decode("utf-8"), object_pairs_hook=_strict_object)
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         raise WAWRuntimeHostManifestError("WAW host manifest JSON is invalid") from exc
     if not isinstance(value, dict) or set(value) != {

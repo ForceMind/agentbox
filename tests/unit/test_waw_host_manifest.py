@@ -79,6 +79,20 @@ def test_rejects_extra_key_and_noncanonical_bytes(tmp_path: Path) -> None:
         load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
 
 
+def test_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    path = _write_manifest(tmp_path, _valid())
+    payload = path.read_bytes().replace(
+        b'"schema_version":"waw-runtime-host-installation-v1"',
+        b'"schema_version":"waw-runtime-host-installation-v1",'
+        b'"schema_version":"waw-runtime-host-installation-v1"',
+    )
+    path.chmod(0o600)
+    path.write_bytes(payload)
+    path.chmod(0o440)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+
+
 def test_rejects_symlink_manifest(tmp_path: Path) -> None:
     path = _write_manifest(tmp_path, _valid())
     target = path.with_name("target.json")
