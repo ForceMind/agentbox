@@ -95,6 +95,7 @@ class RuntimeHostManifest:
     claude_fingerprint: str
     codex_fingerprint: str
     attach_supervisor_fingerprint: str
+    cgroup_delegation_policy_digest: str
     project_root_manifest_path: str
     project_root_manifest_digest: str
     socket_digest: str
@@ -115,8 +116,10 @@ class CrossManifestPin:
     anchor: APIHostAnchor
     runtime: RuntimeHostManifest
     project_root: ProjectRootManifest
+    cgroup: CgroupDelegationManifest
     runtime_manifest_digest: str
     project_root_manifest_digest: str
+    cgroup_manifest_digest: str
 
 
 _T = TypeVar("_T")
@@ -178,6 +181,7 @@ _FIELD_NAMES: dict[type[Any], tuple[str, ...]] = {
         "claude_fingerprint",
         "codex_fingerprint",
         "attach_supervisor_fingerprint",
+        "cgroup_delegation_policy_digest",
         "project_root_manifest_path",
         "project_root_manifest_digest",
         "socket_digest",
@@ -424,6 +428,7 @@ def _validate_runtime(value: Mapping[str, Any]) -> None:
         "claude_fingerprint",
         "codex_fingerprint",
         "attach_supervisor_fingerprint",
+        "cgroup_delegation_policy_digest",
         "project_root_manifest_digest",
         "socket_digest",
         "config_digest",
@@ -495,14 +500,16 @@ def verify_api_host_anchor_cross_manifest(
     anchor: APIHostAnchor | bytes,
     runtime: RuntimeHostManifest | bytes,
     project_root: ProjectRootManifest | bytes,
+    cgroup_delegation: CgroupDelegationManifest | bytes,
 ) -> CrossManifestPin:
-    """Verify the complete non-secret API/Runtime/ProjectRoot cross-pin.
+    """Verify the complete non-secret manifest bundle cross-pin.
 
     Every input is routed through its strict canonical decoder.  The API
     anchor must pin the exact SHA-256 bytes of both the Runtime and Project
     Root records; the Runtime record must independently pin the exact Project
-    Root bytes.  Runtime identity and enrollment context must match the API
-    anchor exactly.  Any mismatch, replayed enrollment context, legacy
+    Root bytes and the cgroup delegation record.  Runtime identity and
+    enrollment context must match the API anchor exactly.  Any mismatch,
+    replayed enrollment context, legacy
     schema, non-canonical bytes, or sentinel digest raises
     :class:`WAWManifestCodecError` before a result is returned.
     """
@@ -519,15 +526,24 @@ def verify_api_host_anchor_cross_manifest(
         encode_project_root_manifest,
         decode_project_root_manifest,
     )
+    cgroup_record, cgroup_raw = _strict_record_bytes(
+        cgroup_delegation,
+        CgroupDelegationManifest,
+        encode_cgroup_delegation_manifest,
+        decode_cgroup_delegation_manifest,
+    )
 
     runtime_digest = manifest_sha256(runtime_raw)
     project_digest = manifest_sha256(project_raw)
+    cgroup_digest = manifest_sha256(cgroup_raw)
     if not hmac.compare_digest(anchor_record.host_manifest_digest, runtime_digest):
         raise WAWManifestCodecError("API anchor does not pin Runtime manifest bytes")
     if not hmac.compare_digest(anchor_record.project_root_manifest_digest, project_digest):
         raise WAWManifestCodecError("API anchor does not pin ProjectRoot manifest bytes")
     if not hmac.compare_digest(runtime_record.project_root_manifest_digest, project_digest):
         raise WAWManifestCodecError("Runtime does not pin ProjectRoot manifest bytes")
+    if not hmac.compare_digest(runtime_record.cgroup_delegation_policy_digest, cgroup_digest):
+        raise WAWManifestCodecError("Runtime does not pin cgroup delegation manifest bytes")
 
     for field in (
         "runtime_host_installation_id",
@@ -543,8 +559,10 @@ def verify_api_host_anchor_cross_manifest(
         anchor=anchor_record,
         runtime=runtime_record,
         project_root=project_record,
+        cgroup=cgroup_record,
         runtime_manifest_digest=runtime_digest,
         project_root_manifest_digest=project_digest,
+        cgroup_manifest_digest=cgroup_digest,
     )
 
 

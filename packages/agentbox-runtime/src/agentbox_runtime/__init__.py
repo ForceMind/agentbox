@@ -91,6 +91,7 @@ from agentbox_runtime.waw_lifecycle import (
 from agentbox_runtime.waw_manifest_codecs import (
     APIHostAnchor,
     CgroupDelegationManifest,
+    CrossManifestPin,
     ProjectRootManifest,
     RuntimeHostManifest,
     WAWManifestCodecError,
@@ -212,6 +213,7 @@ __all__ = [
     "validate_pr_title",
     "APIHostAnchor",
     "CgroupDelegationManifest",
+    "CrossManifestPin",
     "ProjectRootManifest",
     "RuntimeHostManifest",
     "WAWManifestCodecError",

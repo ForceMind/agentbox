@@ -18,11 +18,13 @@ from agentbox_runtime.waw_host_manifest import (
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity, WAWLifecycleObservation
 from agentbox_runtime.waw_manifest_codecs import (
     APIHostAnchor,
+    CgroupDelegationManifest,
     ProjectRootManifest,
     RuntimeHostManifest,
     WAWManifestCodecError,
     decode_runtime_host_manifest,
     encode_api_host_anchor,
+    encode_cgroup_delegation_manifest,
     encode_project_root_manifest,
     encode_runtime_host_manifest,
     manifest_sha256,
@@ -79,6 +81,7 @@ def _strict_manifest_bytes() -> bytes:
             claude_fingerprint="f" * 64,
             codex_fingerprint="9" * 64,
             attach_supervisor_fingerprint="1" * 64,
+            cgroup_delegation_policy_digest="4" * 64,
             project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
             project_root_manifest_digest="b" * 64,
             socket_digest="2" * 64,
@@ -108,12 +111,37 @@ def _strict_project_root_bytes() -> bytes:
     )
 
 
-def _strict_manifest_bundle() -> tuple[bytes, bytes, bytes]:
+def _strict_cgroup_bytes() -> bytes:
+    return encode_cgroup_delegation_manifest(
+        CgroupDelegationManifest(
+            service_unit="agentbox-runtime.service",
+            cgroup_mount_type="cgroup2",
+            cgroup_mount_device="0:31",
+            cgroup_mount_filesystem_id="host-cgroup2-1",
+            cgroup_schema_identity="cgroup-v2",
+            delegate=True,
+            delegate_subgroup="agentbox-runtime-supervisor",
+            protect_control_groups="private",
+            kill_mode="process",
+            controllers=("cpu", "memory", "pids"),
+            tasks_max=256,
+            memory_max=536870912,
+            memory_swap_max=0,
+            cpu_quota_percent=400,
+            cpu_quota_period_usec=100000,
+            policy_template_digest="a" * 64,
+        )
+    )
+
+
+def _strict_manifest_bundle() -> tuple[bytes, bytes, bytes, bytes]:
     project_raw = _strict_project_root_bytes()
+    cgroup_raw = _strict_cgroup_bytes()
     runtime = decode_runtime_host_manifest(_strict_manifest_bytes())
     runtime = replace(
         runtime,
         project_root_manifest_digest=manifest_sha256(project_raw),
+        cgroup_delegation_policy_digest=manifest_sha256(cgroup_raw),
     )
     runtime_raw = encode_runtime_host_manifest(runtime)
     anchor_raw = encode_api_host_anchor(
@@ -127,7 +155,7 @@ def _strict_manifest_bundle() -> tuple[bytes, bytes, bytes]:
             enrollment_state=runtime.enrollment_state,
         )
     )
-    return anchor_raw, runtime_raw, project_raw
+    return anchor_raw, runtime_raw, project_raw, cgroup_raw
 
 
 @pytest.mark.anyio
@@ -308,11 +336,12 @@ async def test_bundle_bootstrap_verifies_cross_manifest_pin_before_epoch_consume
 ) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
-    anchor_raw, runtime_raw, project_raw = _strict_manifest_bundle()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _strict_manifest_bundle()
     registry, epoch = create_waw_lifecycle_registry_from_manifest_bundle(
         raw_api_host_anchor=anchor_raw,
         raw_runtime_host_manifest=runtime_raw,
         raw_project_root_manifest=project_raw,
+        raw_cgroup_delegation_manifest=cgroup_raw,
         epoch_store=store,
         executor=FakeExecutor(),
         binding_digest_factory=lambda _request: "a" * 64,
@@ -337,7 +366,7 @@ def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
 ) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
-    anchor_raw, runtime_raw, project_raw = _strict_manifest_bundle()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _strict_manifest_bundle()
     anchor = APIHostAnchor(
         runtime_host_installation_id=HOST,
         runtime_host_installation_revision="3",
@@ -352,6 +381,7 @@ def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
             raw_api_host_anchor=encode_api_host_anchor(anchor),
             raw_runtime_host_manifest=runtime_raw,
             raw_project_root_manifest=project_raw,
+            raw_cgroup_delegation_manifest=cgroup_raw,
             epoch_store=store,
             executor=FakeExecutor(),
             binding_digest_factory=lambda _request: "a" * 64,
@@ -362,6 +392,10 @@ def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
 
 
 def test_bundle_bootstrap_is_exported_from_runtime_package() -> None:
-    from agentbox_runtime import create_waw_lifecycle_registry_from_manifest_bundle
+    from agentbox_runtime import (
+        CrossManifestPin,
+        create_waw_lifecycle_registry_from_manifest_bundle,
+    )
 
     assert create_waw_lifecycle_registry_from_manifest_bundle is not None
+    assert CrossManifestPin is not None

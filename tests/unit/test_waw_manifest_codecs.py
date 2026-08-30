@@ -95,6 +95,9 @@ def _runtime() -> dict[str, object]:
         "claude_fingerprint": _HEX_A,
         "codex_fingerprint": _HEX_B,
         "attach_supervisor_fingerprint": _HEX_A,
+        "cgroup_delegation_policy_digest": manifest_sha256(
+            encode_cgroup_delegation_manifest(_cgroup())
+        ),
         "project_root_manifest_path": "/usr/share/agentbox/waw/project-root.v1",
         "project_root_manifest_digest": _HEX_B,
         "socket_digest": _HEX_A,
@@ -177,6 +180,8 @@ def test_deterministic_manifest_vectors() -> None:
             + _HEX_A.encode()
             + b'","bridge_fingerprint":"'
             + _HEX_B.encode()
+            + b'","cgroup_delegation_policy_digest":"'
+            + b"bf51d4a1a2af8420a65e4403bedd9864c00ee566eeda1da34af84652aa7a56f7"
             + b'","claude_fingerprint":"'
             + _HEX_A.encode()
             + b'","codex_fingerprint":"'
@@ -198,7 +203,7 @@ def test_deterministic_manifest_vectors() -> None:
             + b'","tmux_fingerprint":"'
             + _HEX_A.encode()
             + b'"}',
-            "2e937068d18af15aa5072d88771a57355e2d03386bcf5f5139518c8adf9abd96",
+            "bd811d9d26f213655cd14259f7c1e9d923dd77f189d33e02fac90fce2e205d4d",
         ),
     )
     for encoder, decoder, factory, expected, expected_digest in vectors:
@@ -327,29 +332,33 @@ def test_dataclass_values_are_supported() -> None:
     )
 
 
-def _cross_pin_inputs() -> tuple[bytes, bytes, bytes]:
+def _cross_pin_inputs() -> tuple[bytes, bytes, bytes, bytes]:
     project_raw = encode_project_root_manifest(_project())
+    cgroup_raw = encode_cgroup_delegation_manifest(_cgroup())
     runtime_data = _runtime()
     runtime_data["project_root_manifest_digest"] = manifest_sha256(project_raw)
+    runtime_data["cgroup_delegation_policy_digest"] = manifest_sha256(cgroup_raw)
     runtime_raw = encode_runtime_host_manifest(runtime_data)
     anchor_data = _anchor()
     anchor_data["host_manifest_digest"] = manifest_sha256(runtime_raw)
     anchor_data["project_root_manifest_digest"] = manifest_sha256(project_raw)
     anchor_raw = encode_api_host_anchor(anchor_data)
-    return anchor_raw, runtime_raw, project_raw
+    return anchor_raw, runtime_raw, project_raw, cgroup_raw
 
 
 def test_cross_manifest_pin_accepts_exact_bytes_and_typed_records() -> None:
-    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
-    result = verify_api_host_anchor_cross_manifest(anchor_raw, runtime_raw, project_raw)
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
+    result = verify_api_host_anchor_cross_manifest(anchor_raw, runtime_raw, project_raw, cgroup_raw)
     assert result.anchor == decode_api_host_anchor(anchor_raw)
     assert result.runtime == decode_runtime_host_manifest(runtime_raw)
     assert result.project_root == decode_project_root_manifest(project_raw)
+    assert result.cgroup == decode_cgroup_delegation_manifest(cgroup_raw)
     assert result.runtime_manifest_digest == manifest_sha256(runtime_raw)
     assert result.project_root_manifest_digest == manifest_sha256(project_raw)
+    assert result.cgroup_manifest_digest == manifest_sha256(cgroup_raw)
 
     typed_result = verify_api_host_anchor_cross_manifest(
-        result.anchor, result.runtime, result.project_root
+        result.anchor, result.runtime, result.project_root, result.cgroup
     )
     assert typed_result == result
 
@@ -357,10 +366,11 @@ def test_cross_manifest_pin_accepts_exact_bytes_and_typed_records() -> None:
 @pytest.mark.parametrize("anchor_typed", [False, True])
 @pytest.mark.parametrize("runtime_typed", [False, True])
 @pytest.mark.parametrize("project_typed", [False, True])
+@pytest.mark.parametrize("cgroup_typed", [False, True])
 def test_cross_manifest_pin_accepts_mixed_wire_and_typed_inputs(
-    anchor_typed: bool, runtime_typed: bool, project_typed: bool
+    anchor_typed: bool, runtime_typed: bool, project_typed: bool, cgroup_typed: bool
 ) -> None:
-    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
     anchor_record = decode_api_host_anchor(anchor_raw)
     runtime_record = decode_runtime_host_manifest(runtime_raw)
     project_record = decode_project_root_manifest(project_raw)
@@ -368,10 +378,13 @@ def test_cross_manifest_pin_accepts_mixed_wire_and_typed_inputs(
     runtime: RuntimeHostManifest | bytes = runtime_record if runtime_typed else runtime_raw
     project: ProjectRootManifest | bytes = project_record if project_typed else project_raw
 
-    result = verify_api_host_anchor_cross_manifest(anchor, runtime, project)
+    cgroup_record = decode_cgroup_delegation_manifest(cgroup_raw)
+    cgroup: CgroupDelegationManifest | bytes = cgroup_record if cgroup_typed else cgroup_raw
+    result = verify_api_host_anchor_cross_manifest(anchor, runtime, project, cgroup)
     assert result.anchor == anchor_record
     assert result.runtime == runtime_record
     assert result.project_root == project_record
+    assert result.cgroup == cgroup_record
     assert result.runtime_manifest_digest == manifest_sha256(runtime_raw)
     assert result.project_root_manifest_digest == manifest_sha256(project_raw)
 
@@ -433,12 +446,25 @@ def test_decoders_reject_canonical_wire_values_for_unsafe_fields(
 
 @pytest.mark.parametrize("field", ["host_manifest_digest", "project_root_manifest_digest"])
 def test_cross_manifest_pin_rejects_digest_mismatch(field: str) -> None:
-    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
     anchor_data = asdict(decode_api_host_anchor(anchor_raw))
     anchor_data[field] = _HEX_A if anchor_data[field] != _HEX_A else _HEX_B
     with pytest.raises(WAWManifestCodecError, match="does not pin"):
         verify_api_host_anchor_cross_manifest(
-            encode_api_host_anchor(anchor_data), runtime_raw, project_raw
+            encode_api_host_anchor(anchor_data), runtime_raw, project_raw, cgroup_raw
+        )
+
+
+def test_cross_manifest_pin_rejects_cgroup_manifest_digest_mismatch() -> None:
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
+    changed_cgroup = _cgroup()
+    changed_cgroup["delegate_subgroup"] = "agentbox-runtime-other"
+    with pytest.raises(WAWManifestCodecError, match="cgroup delegation"):
+        verify_api_host_anchor_cross_manifest(
+            anchor_raw,
+            runtime_raw,
+            project_raw,
+            encode_cgroup_delegation_manifest(changed_cgroup),
         )
 
 
@@ -453,7 +479,7 @@ def test_cross_manifest_pin_rejects_digest_mismatch(field: str) -> None:
     ],
 )
 def test_cross_manifest_pin_rejects_replayed_identity_context(field: str) -> None:
-    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
     runtime_data = asdict(decode_runtime_host_manifest(runtime_raw))
     if field == "runtime_host_installation_id":
         runtime_data[field] = "wri_" + "2" * 32
@@ -470,7 +496,7 @@ def test_cross_manifest_pin_rejects_replayed_identity_context(field: str) -> Non
     anchor_data["host_manifest_digest"] = manifest_sha256(changed_runtime_raw)
     with pytest.raises(WAWManifestCodecError, match="identity mismatch"):
         verify_api_host_anchor_cross_manifest(
-            encode_api_host_anchor(anchor_data), changed_runtime_raw, project_raw
+            encode_api_host_anchor(anchor_data), changed_runtime_raw, project_raw, cgroup_raw
         )
 
 
@@ -485,16 +511,18 @@ def test_cross_manifest_pin_rejects_replayed_identity_context(field: str) -> Non
     ],
 )
 def test_cross_manifest_pin_rejects_noncanonical_or_legacy_runtime(mutator: Mutator) -> None:
-    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
     with pytest.raises(WAWManifestCodecError):
-        verify_api_host_anchor_cross_manifest(anchor_raw, mutator(runtime_raw), project_raw)
+        verify_api_host_anchor_cross_manifest(
+            anchor_raw, mutator(runtime_raw), project_raw, cgroup_raw
+        )
 
 
 def test_cross_manifest_pin_rejects_zero_project_digest_before_epoch_use() -> None:
-    anchor_raw, runtime_raw, project_raw = _cross_pin_inputs()
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _cross_pin_inputs()
     anchor_data = asdict(decode_api_host_anchor(anchor_raw))
     anchor_data["project_root_manifest_digest"] = "0" * 64
     with pytest.raises(WAWManifestCodecError):
         verify_api_host_anchor_cross_manifest(
-            encode_api_host_anchor(anchor_data), runtime_raw, project_raw
+            encode_api_host_anchor(anchor_data), runtime_raw, project_raw, cgroup_raw
         )

@@ -132,6 +132,7 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
     raw_api_host_anchor: bytes,
     raw_runtime_host_manifest: bytes,
     raw_project_root_manifest: bytes,
+    raw_cgroup_delegation_manifest: bytes,
     epoch_store: WAWRuntimeEpochStore,
     executor: WAWLifecycleExecutor | None = None,
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
@@ -157,6 +158,7 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
         raw_api_host_anchor,
         raw_runtime_host_manifest,
         raw_project_root_manifest,
+        raw_cgroup_delegation_manifest,
     )
     return _create_registry_from_verified_manifest(
         manifest=pin.runtime,
