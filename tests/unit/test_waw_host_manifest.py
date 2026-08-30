@@ -7,9 +7,10 @@ from pathlib import Path
 
 import pytest
 from agentbox_runtime.waw_host_manifest import (
+    WAWRuntimeHostManifestDevelopmentOnlyError,
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
-    load_waw_runtime_host_manifest,
+    load_waw_runtime_host_manifest_development_only,
 )
 from agentbox_runtime.waw_manifest_codecs import RuntimeHostManifest, encode_runtime_host_manifest
 
@@ -40,7 +41,7 @@ def _valid() -> dict[str, object]:
 
 def test_reads_canonical_installer_manifest(tmp_path: Path) -> None:
     path = _write_manifest(tmp_path, _valid())
-    value = load_waw_runtime_host_manifest(
+    value = load_waw_runtime_host_manifest_development_only(
         path, expected_uid=os.geteuid(), expected_gid=os.getegid()
     )
     assert value.runtime_host_installation_id == "wri_" + "c" * 32
@@ -52,7 +53,7 @@ def test_accepts_maximum_uint64_decimal_values(tmp_path: Path, field: str) -> No
     data = _valid()
     data[field] = str(2**64 - 1)
     path = _write_manifest(tmp_path, data)
-    value = load_waw_runtime_host_manifest(
+    value = load_waw_runtime_host_manifest_development_only(
         path, expected_uid=os.geteuid(), expected_gid=os.getegid()
     )
     assert getattr(value, field) == str(2**64 - 1)
@@ -63,8 +64,10 @@ def test_rejects_uint64_overflow_decimal_values(tmp_path: Path, field: str) -> N
     data = _valid()
     data[field] = str(2**64)
     path = _write_manifest(tmp_path, data)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
 
 
 @pytest.mark.parametrize(
@@ -82,23 +85,29 @@ def test_rejects_invalid_manifest_values(tmp_path: Path, field: str, value: obje
     data = _valid()
     data[field] = value
     path = _write_manifest(tmp_path, data)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
 
 
 def test_rejects_extra_key_and_noncanonical_bytes(tmp_path: Path) -> None:
     data = _valid()
     data["extra"] = "forbidden"
     path = _write_manifest(tmp_path, data)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
     path = _write_manifest(tmp_path / "second", _valid())
     payload = path.read_bytes() + b"\n"
     os.chmod(path, 0o600)
     path.write_bytes(payload)
     os.chmod(path, 0o440)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
 
 
 def test_rejects_duplicate_json_keys(tmp_path: Path) -> None:
@@ -111,8 +120,10 @@ def test_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     path.chmod(0o600)
     path.write_bytes(payload)
     path.chmod(0o440)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
 
 
 def test_rejects_symlink_manifest(tmp_path: Path) -> None:
@@ -122,19 +133,25 @@ def test_rejects_symlink_manifest(tmp_path: Path) -> None:
     os.chmod(target, 0o440)
     path.unlink()
     path.symlink_to(target)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
 
 
 def test_rejects_wrong_parent_or_file_mode(tmp_path: Path) -> None:
     path = _write_manifest(tmp_path, _valid())
     os.chmod(path.parent, stat.S_IRWXU)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
     os.chmod(path.parent, 0o750)
     os.chmod(path, 0o640)
-    with pytest.raises(WAWRuntimeHostManifestError):
-        load_waw_runtime_host_manifest(path, expected_uid=os.geteuid(), expected_gid=os.getegid())
+    with pytest.raises(WAWRuntimeHostManifestDevelopmentOnlyError):
+        load_waw_runtime_host_manifest_development_only(
+            path, expected_uid=os.geteuid(), expected_gid=os.getegid()
+        )
 
 
 def test_strict_decoder_returns_typed_verified_record() -> None:
@@ -166,3 +183,27 @@ def test_strict_decoder_rejects_legacy_seven_field_record() -> None:
         decode_canonical_waw_runtime_host_manifest(
             json.dumps(_valid(), ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode()
         )
+
+
+def test_legacy_manifest_helpers_are_not_package_exports() -> None:
+    import agentbox_runtime
+    import agentbox_runtime.waw_bootstrap as bootstrap_module
+    import agentbox_runtime.waw_host_manifest as manifest_module
+
+    legacy_names = {
+        "create_waw_lifecycle_registry",
+        "load_waw_runtime_host_manifest",
+        "WAWRuntimeHostManifest",
+        "WAWRuntimeHostManifestDevelopmentOnly",
+        "WAWRuntimeHostManifestDevelopmentOnlyError",
+    }
+    assert legacy_names.isdisjoint(agentbox_runtime.__all__)
+    assert legacy_names.isdisjoint(bootstrap_module.__all__)
+    assert legacy_names.isdisjoint(manifest_module.__all__)
+    assert "create_waw_lifecycle_registry_development_only" not in agentbox_runtime.__all__
+    assert "load_waw_runtime_host_manifest_development_only" not in agentbox_runtime.__all__
+    assert "WAWRuntimeHostManifestDevelopmentOnly" not in agentbox_runtime.__all__
+    assert "WAWRuntimeHostManifestDevelopmentOnlyError" not in agentbox_runtime.__all__
+    assert not hasattr(agentbox_runtime, "create_waw_lifecycle_registry")
+    assert not hasattr(agentbox_runtime, "load_waw_runtime_host_manifest")
+    assert not hasattr(agentbox_runtime, "WAWRuntimeHostManifest")

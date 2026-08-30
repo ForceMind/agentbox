@@ -11,10 +11,10 @@ from agentbox_api.waw_control_client import WAWControlClient
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
-    create_waw_lifecycle_registry,
+    create_waw_lifecycle_registry_development_only,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
-from agentbox_runtime.waw_host_manifest import WAWRuntimeHostManifest
+from agentbox_runtime.waw_host_manifest import WAWRuntimeHostManifestDevelopmentOnly
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleObservation,
@@ -63,8 +63,8 @@ def _listen(path: Path) -> socket.socket:
     return listener
 
 
-def _manifest() -> WAWRuntimeHostManifest:
-    return WAWRuntimeHostManifest(
+def _manifest() -> WAWRuntimeHostManifestDevelopmentOnly:
+    return WAWRuntimeHostManifestDevelopmentOnly(
         runtime_host_installation_id=HOST,
         runtime_host_installation_revision="1",
         host_manifest_digest="b" * 64,
@@ -101,7 +101,7 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path:
         executors.append(value)
         return value
 
-    registry, consumed = create_waw_lifecycle_registry(
+    registry, consumed = create_waw_lifecycle_registry_development_only(
         manifest=_manifest(),
         epoch_store=store,
         executor_factory=executor_factory,

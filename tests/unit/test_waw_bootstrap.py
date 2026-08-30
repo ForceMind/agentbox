@@ -5,11 +5,14 @@ from pathlib import Path
 
 import pytest
 from agentbox_runtime.waw_bootstrap import (
-    create_waw_lifecycle_registry,
+    create_waw_lifecycle_registry_development_only,
     create_waw_lifecycle_registry_from_manifest_bytes,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
-from agentbox_runtime.waw_host_manifest import WAWRuntimeHostManifest
+from agentbox_runtime.waw_host_manifest import (
+    WAWRuntimeHostManifestDevelopmentOnly,
+    WAWRuntimeHostManifestError,
+)
 from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity, WAWLifecycleObservation
 from agentbox_runtime.waw_manifest_codecs import (
     RuntimeHostManifest,
@@ -35,8 +38,8 @@ class FakeExecutor:
         return WAWLifecycleObservation(state="RUNNING", runtime_epoch="2")
 
 
-def _manifest() -> WAWRuntimeHostManifest:
-    return WAWRuntimeHostManifest(
+def _manifest() -> WAWRuntimeHostManifestDevelopmentOnly:
+    return WAWRuntimeHostManifestDevelopmentOnly(
         runtime_host_installation_id=HOST,
         runtime_host_installation_revision="3",
         host_manifest_digest="a" * 64,
@@ -82,7 +85,7 @@ def _strict_manifest_bytes() -> bytes:
 async def test_bootstrap_consumes_epoch_and_binds_manifest(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
-    registry, epoch = create_waw_lifecycle_registry(
+    registry, epoch = create_waw_lifecycle_registry_development_only(
         manifest=_manifest(),
         epoch_store=store,
         executor=FakeExecutor(),
@@ -119,7 +122,7 @@ async def test_bootstrap_factory_receives_consumed_epoch(tmp_path: Path) -> None
         observed.append(epoch)
         return FakeExecutor()
 
-    _registry, epoch = create_waw_lifecycle_registry(
+    _registry, epoch = create_waw_lifecycle_registry_development_only(
         manifest=_manifest(),
         epoch_store=store,
         executor_factory=factory,
@@ -132,13 +135,13 @@ async def test_bootstrap_factory_receives_consumed_epoch(tmp_path: Path) -> None
 def test_bootstrap_advances_epoch_counter_without_reuse(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
-    _registry, first_epoch = create_waw_lifecycle_registry(
+    _registry, first_epoch = create_waw_lifecycle_registry_development_only(
         manifest=_manifest(),
         epoch_store=store,
         executor=FakeExecutor(),
         binding_digest_factory=lambda _request: "a" * 64,
     )
-    _registry, second_epoch = create_waw_lifecycle_registry(
+    _registry, second_epoch = create_waw_lifecycle_registry_development_only(
         manifest=_manifest(),
         epoch_store=store,
         executor=FakeExecutor(),
@@ -176,8 +179,6 @@ async def test_production_bootstrap_decodes_strict_manifest_bytes(tmp_path: Path
 
 @pytest.mark.parametrize("raw", [b"{}", b'{"schema_version":"waw-runtime-host-installation-v1"}'])
 def test_production_bootstrap_rejects_unverified_manifest_bytes(tmp_path: Path, raw: bytes) -> None:
-    from agentbox_runtime.waw_host_manifest import WAWRuntimeHostManifestError
-
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
     with pytest.raises(WAWRuntimeHostManifestError):

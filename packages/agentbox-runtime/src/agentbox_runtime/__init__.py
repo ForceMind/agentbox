@@ -64,7 +64,6 @@ from agentbox_runtime.waw_auth_probe import (
 )
 from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
-    create_waw_lifecycle_registry,
     create_waw_lifecycle_registry_from_manifest_bytes,
 )
 from agentbox_runtime.waw_claude_executor import (
@@ -78,10 +77,8 @@ from agentbox_runtime.waw_control_server import (
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
-    WAWRuntimeHostManifest,
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
-    load_waw_runtime_host_manifest,
 )
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
@@ -177,10 +174,10 @@ __all__ = [
     "WAWActivationError",
     "load_waw_activated_sockets",
     "build_waw_control_server",
-    "create_waw_lifecycle_registry",
     "create_waw_lifecycle_registry_from_manifest_bytes",
     "WAWRuntimeEpochError",
     "WAWRuntimeEpochStore",
+    "WAWRuntimeHostManifestError",
     "WAWWorkspaceAttestation",
     "WAWWorkspaceAttestationError",
     "WAWWorkspaceAttestationStore",
@@ -188,10 +185,7 @@ __all__ = [
     "WAWLifecycleIdentity",
     "WAWLifecycleObservation",
     "WAWLifecycleRegistry",
-    "WAWRuntimeHostManifest",
-    "WAWRuntimeHostManifestError",
     "decode_canonical_waw_runtime_host_manifest",
-    "load_waw_runtime_host_manifest",
     "WAWPublicAuthEvidence",
     "WAWPublicAuthProbeCache",
     "WAWPublicAuthResult",

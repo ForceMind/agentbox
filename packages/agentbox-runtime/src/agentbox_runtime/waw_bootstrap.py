@@ -18,7 +18,7 @@ from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
-    WAWRuntimeHostManifest,
+    WAWRuntimeHostManifestDevelopmentOnly,
     decode_canonical_waw_runtime_host_manifest,
 )
 from agentbox_runtime.waw_lifecycle import (
@@ -34,9 +34,9 @@ from agentbox_runtime.waw_manifest_codecs import (
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
 
-def create_waw_lifecycle_registry(
+def create_waw_lifecycle_registry_development_only(
     *,
-    manifest: WAWRuntimeHostManifest,
+    manifest: WAWRuntimeHostManifestDevelopmentOnly,
     epoch_store: WAWRuntimeEpochStore,
     executor: WAWLifecycleExecutor | None = None,
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
@@ -211,6 +211,5 @@ def build_waw_control_server(
 
 __all__ = [
     "build_waw_control_server",
-    "create_waw_lifecycle_registry",
     "create_waw_lifecycle_registry_from_manifest_bytes",
 ]

@@ -48,12 +48,20 @@ def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return value
 
 
+class WAWRuntimeHostManifestDevelopmentOnlyError(RuntimeError):
+    """The legacy synthetic WAW host manifest is missing or unsafe.
+
+    Production bootstrap callers must use the strict codec boundary and its
+    ``WAWManifestCodecError`` failures instead.
+    """
+
+
 class WAWRuntimeHostManifestError(RuntimeError):
-    """The WAW host manifest is missing, malformed, or unsafe."""
+    """The strict Runtime host manifest codec boundary rejected the record."""
 
 
 @dataclass(frozen=True)
-class WAWRuntimeHostManifest:
+class WAWRuntimeHostManifestDevelopmentOnly:
     runtime_host_installation_id: str
     runtime_host_installation_revision: str
     host_manifest_digest: str
@@ -62,9 +70,9 @@ class WAWRuntimeHostManifest:
     enrollment_state: str
 
 
-def load_waw_runtime_host_manifest(
+def load_waw_runtime_host_manifest_development_only(
     path: Path = _DEFAULT_PATH, *, expected_uid: int = 0, expected_gid: int
-) -> WAWRuntimeHostManifest:
+) -> WAWRuntimeHostManifestDevelopmentOnly:
     """Read the legacy synthetic manifest without following links.
 
     This compatibility reader is retained for existing development fixtures.
@@ -88,10 +96,14 @@ def load_waw_runtime_host_manifest(
             or parent_details.st_gid != expected_gid
             or stat.S_IMODE(parent_details.st_mode) != 0o750
         ):
-            raise WAWRuntimeHostManifestError("WAW host manifest parent provenance is invalid")
+            raise WAWRuntimeHostManifestDevelopmentOnlyError(
+                "WAW host manifest parent provenance is invalid"
+            )
         fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
     except (OSError, ValueError) as exc:
-        raise WAWRuntimeHostManifestError("WAW host manifest is unavailable") from exc
+        raise WAWRuntimeHostManifestDevelopmentOnlyError(
+            "WAW host manifest is unavailable"
+        ) from exc
     try:
         first = os.fstat(fd)
         if (
@@ -101,7 +113,9 @@ def load_waw_runtime_host_manifest(
             or stat.S_IMODE(first.st_mode) != 0o440
             or first.st_size > _MAX_BYTES
         ):
-            raise WAWRuntimeHostManifestError("WAW host manifest provenance is invalid")
+            raise WAWRuntimeHostManifestDevelopmentOnlyError(
+                "WAW host manifest provenance is invalid"
+            )
         payload = bytearray()
         while len(payload) <= _MAX_BYTES:
             chunk = os.read(fd, min(8192, _MAX_BYTES + 1 - len(payload)))
@@ -109,7 +123,7 @@ def load_waw_runtime_host_manifest(
                 break
             payload.extend(chunk)
         if len(payload) > _MAX_BYTES:
-            raise WAWRuntimeHostManifestError("WAW host manifest is too large")
+            raise WAWRuntimeHostManifestDevelopmentOnlyError("WAW host manifest is too large")
         second = os.fstat(fd)
         if (first.st_dev, first.st_ino, first.st_size, first.st_mtime_ns) != (
             second.st_dev,
@@ -117,15 +131,21 @@ def load_waw_runtime_host_manifest(
             second.st_size,
             second.st_mtime_ns,
         ):
-            raise WAWRuntimeHostManifestError("WAW host manifest changed during read")
+            raise WAWRuntimeHostManifestDevelopmentOnlyError(
+                "WAW host manifest changed during read"
+            )
     except OSError as exc:
-        raise WAWRuntimeHostManifestError("WAW host manifest cannot be read") from exc
+        raise WAWRuntimeHostManifestDevelopmentOnlyError(
+            "WAW host manifest cannot be read"
+        ) from exc
     finally:
         os.close(fd)
     try:
         value = json.loads(bytes(payload).decode("utf-8"), object_pairs_hook=_strict_object)
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise WAWRuntimeHostManifestError("WAW host manifest JSON is invalid") from exc
+        raise WAWRuntimeHostManifestDevelopmentOnlyError(
+            "WAW host manifest JSON is invalid"
+        ) from exc
     if not isinstance(value, dict) or set(value) != {
         "schema_version",
         "runtime_host_installation_id",
@@ -135,9 +155,9 @@ def load_waw_runtime_host_manifest(
         "enrollment_epoch",
         "enrollment_state",
     }:
-        raise WAWRuntimeHostManifestError("WAW host manifest keys are invalid")
+        raise WAWRuntimeHostManifestDevelopmentOnlyError("WAW host manifest keys are invalid")
     if value["schema_version"] != _SCHEMA:
-        raise WAWRuntimeHostManifestError("WAW host manifest schema is invalid")
+        raise WAWRuntimeHostManifestDevelopmentOnlyError("WAW host manifest schema is invalid")
     for key in (
         "runtime_host_installation_id",
         "runtime_host_installation_revision",
@@ -147,7 +167,7 @@ def load_waw_runtime_host_manifest(
         "enrollment_state",
     ):
         if not isinstance(value[key], str):
-            raise WAWRuntimeHostManifestError("WAW host manifest value is invalid")
+            raise WAWRuntimeHostManifestDevelopmentOnlyError("WAW host manifest value is invalid")
     if (
         not _ID.fullmatch(value["runtime_host_installation_id"])
         or not _is_uint64_decimal(value["runtime_host_installation_revision"])
@@ -157,13 +177,13 @@ def load_waw_runtime_host_manifest(
         or value["enrollment_state"] not in _STATES
         or value["runtime_host_installation_id"] == "wri_" + "0" * 32
     ):
-        raise WAWRuntimeHostManifestError("WAW host manifest value is invalid")
+        raise WAWRuntimeHostManifestDevelopmentOnlyError("WAW host manifest value is invalid")
     canonical = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode(
         "ascii"
     )
     if bytes(payload) != canonical:
-        raise WAWRuntimeHostManifestError("WAW host manifest is not canonical")
-    return WAWRuntimeHostManifest(
+        raise WAWRuntimeHostManifestDevelopmentOnlyError("WAW host manifest is not canonical")
+    return WAWRuntimeHostManifestDevelopmentOnly(
         runtime_host_installation_id=value["runtime_host_installation_id"],
         runtime_host_installation_revision=value["runtime_host_installation_revision"],
         host_manifest_digest=value["host_manifest_digest"],
@@ -192,8 +212,6 @@ def decode_canonical_waw_runtime_host_manifest(raw: bytes) -> StrictRuntimeHostM
 
 
 __all__ = [
-    "WAWRuntimeHostManifest",
     "WAWRuntimeHostManifestError",
     "decode_canonical_waw_runtime_host_manifest",
-    "load_waw_runtime_host_manifest",
 ]
