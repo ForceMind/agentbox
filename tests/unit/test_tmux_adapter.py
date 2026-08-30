@@ -239,6 +239,7 @@ async def test_tmux_write_input_uses_stdin_buffer_and_exact_pane(tmp_path: Path)
         ProcessResult(("tmux",), 0, b"", b""),
         ProcessResult(("tmux",), 0, b"", b""),
         ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 0, b"", b""),
     ]
     adapter = TmuxAdapter(
         environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
@@ -254,5 +255,77 @@ async def test_tmux_write_input_uses_stdin_buffer_and_exact_pane(tmp_path: Path)
         ("has-session", "-t", f"={name}"),
         ("load-buffer", "-b", buffer_name, "-"),
         ("paste-buffer", "-d", "-b", buffer_name, "-t", f"={name}:0.0"),
+        ("delete-buffer", "-b", buffer_name),
     ]
-    assert runner.stdin == [None, payload, None]
+    assert runner.stdin == [None, payload, None, None]
+
+
+@pytest.mark.anyio
+async def test_tmux_write_input_deletes_buffer_when_paste_fails(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = RecordingRunner()
+    runner.responses = [
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 0, b"", b""),
+        ProcessResult(("tmux",), 1, b"", b"paste failed"),
+        ProcessResult(("tmux",), 0, b"", b""),
+    ]
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+    name = "agentbox-waw-claude-paste-failure"
+
+    with pytest.raises(RuntimeOperationError, match="could not be pasted"):
+        await adapter.write_input(name, b"opaque input")
+
+    buffer_name = f"agentbox-waw-input-{name}"
+    assert runner.calls[-1] == ("delete-buffer", "-b", buffer_name)
+
+
+class RaisingRunner(RecordingRunner):
+    def __init__(self, error: BaseException) -> None:
+        super().__init__()
+        self.error = error
+
+    async def run(
+        self,
+        executable: ExecutableIdentity,
+        arguments: Sequence[str],
+        *,
+        environment: Mapping[str, str],
+        cwd: Path,
+        timeout_seconds: float,
+        stdout_limit: int,
+        stderr_limit: int,
+        sensitive_output: bool = False,
+        stdin_data: bytes | None = None,
+        error_prefix: str = "CODEX",
+    ) -> ProcessResult:
+        del executable, environment, cwd, timeout_seconds, stdout_limit, stderr_limit
+        del sensitive_output, error_prefix
+        argv = tuple(arguments)
+        self.calls.append(argv)
+        self.stdin.append(stdin_data)
+        if argv[0] == "paste-buffer":
+            raise self.error
+        return ProcessResult(argv, 0, b"", b"")
+
+
+@pytest.mark.anyio
+async def test_tmux_write_input_deletes_buffer_when_paste_raises(tmp_path: Path) -> None:
+    identity = make_executable(tmp_path / "bin" / "tmux")
+    runner = RaisingRunner(RuntimeOperationError("TMUX_COMMAND_TIMEOUT", "timed out"))
+    adapter = TmuxAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(identity.path.parent)},
+        runner=runner,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(RuntimeOperationError, match="timed out"):
+        await adapter.write_input("agentbox-waw-claude-exception", b"opaque input")
+
+    assert runner.calls[-1] == (
+        "delete-buffer",
+        "-b",
+        "agentbox-waw-input-agentbox-waw-claude-exception",
+    )

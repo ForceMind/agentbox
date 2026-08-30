@@ -321,22 +321,53 @@ class TmuxAdapter:
             raise RuntimeOperationError(
                 "TMUX_INPUT_FAILED", "tmux input buffer could not be loaded", category="broken"
             )
-        pasted = await self._run(
-            self._require_executable(),
-            (
-                "paste-buffer",
-                "-d",
-                "-b",
-                buffer_name,
-                "-t",
-                f"={session_name}:0.0",
-            ),
-            allow_nonzero=True,
-            timeout=5,
-        )
-        if pasted.exit_code != 0:
+        operation_error: BaseException | None = None
+        cleanup_error: BaseException | None = None
+        deleted: ProcessResult | None = None
+        try:
+            pasted = await self._run(
+                self._require_executable(),
+                (
+                    "paste-buffer",
+                    "-d",
+                    "-b",
+                    buffer_name,
+                    "-t",
+                    f"={session_name}:0.0",
+                ),
+                allow_nonzero=True,
+                timeout=5,
+            )
+            if pasted.exit_code != 0:
+                raise RuntimeOperationError(
+                    "TMUX_INPUT_FAILED",
+                    "tmux input buffer could not be pasted",
+                    category="broken",
+                )
+        except BaseException as exc:
+            operation_error = exc
+        finally:
+            # ``paste-buffer -d`` deletes only after a successful paste.  Keep
+            # an explicit fixed-name cleanup as the final fence for failed,
+            # timed-out, or exception paths so opaque input is not retained in
+            # tmux's server-side buffer namespace.
+            try:
+                deleted = await self._run(
+                    self._require_executable(),
+                    ("delete-buffer", "-b", buffer_name),
+                    allow_nonzero=True,
+                    timeout=5,
+                )
+            except BaseException as exc:
+                cleanup_error = exc
+        if operation_error is not None:
+            raise operation_error
+        if cleanup_error is not None:
+            raise cleanup_error
+        assert deleted is not None
+        if deleted.exit_code != 0:
             raise RuntimeOperationError(
-                "TMUX_INPUT_FAILED", "tmux input buffer could not be pasted", category="broken"
+                "TMUX_INPUT_FAILED", "tmux input buffer could not be deleted", category="broken"
             )
 
     async def resize_window(self, session_name: str, *, columns: int, rows: int) -> None:
