@@ -100,10 +100,11 @@ def test_listener_descriptor_rejects_path_inode_mismatch(
 
     def forged_fstat(fd: int) -> object:
         details = original_fstat(fd)
+        path_details = os.lstat(path)
         return SimpleNamespace(
             st_mode=details.st_mode,
-            st_dev=details.st_dev,
-            st_ino=details.st_ino + 1,
+            st_dev=path_details.st_dev,
+            st_ino=path_details.st_ino + 1,
             st_uid=details.st_uid,
             st_gid=details.st_gid,
         )
