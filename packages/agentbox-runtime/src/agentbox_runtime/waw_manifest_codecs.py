@@ -26,6 +26,7 @@ _DECIMAL = re.compile(r"\A(?:0|[1-9][0-9]{0,19})\Z")
 _POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _ID = re.compile(r"\A(?:wri|prj)_[0-9a-f]{32}\Z")
+_RUNTIME_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
 _HEX_FINGERPRINT = _DIGEST
 _STATES = frozenset({"bootstrap", "steady", "rotation"})
 
@@ -161,6 +162,13 @@ def _id(value: object, field: str) -> str:
     return value
 
 
+def _runtime_id(value: object) -> str:
+    value = _string(value)
+    if _RUNTIME_ID.fullmatch(value) is None or value.endswith("0" * 32):
+        raise WAWManifestCodecError("invalid runtime_host_installation_id")
+    return value
+
+
 def _positive_int(value: object, field: str) -> int:
     if type(value) is not int or not 0 <= value <= _MAX_U64:
         raise WAWManifestCodecError(f"invalid {field}")
@@ -283,7 +291,7 @@ def _validate_cgroup(value: Mapping[str, Any]) -> None:
 
 
 def _validate_anchor(value: Mapping[str, Any]) -> None:
-    _id(value["runtime_host_installation_id"], "runtime_host_installation_id")
+    _runtime_id(value["runtime_host_installation_id"])
     _u64(value["runtime_host_installation_revision"], positive=True)
     _digest(
         value["runtime_attestation_x25519_fingerprint"], "runtime_attestation_x25519_fingerprint"
@@ -296,7 +304,7 @@ def _validate_anchor(value: Mapping[str, Any]) -> None:
 
 
 def _validate_runtime(value: Mapping[str, Any]) -> None:
-    _id(value["runtime_host_installation_id"], "runtime_host_installation_id")
+    _runtime_id(value["runtime_host_installation_id"])
     _u64(value["runtime_host_installation_revision"], positive=True)
     _digest(
         value["runtime_attestation_x25519_fingerprint"], "runtime_attestation_x25519_fingerprint"

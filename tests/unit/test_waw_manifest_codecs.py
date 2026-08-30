@@ -169,6 +169,14 @@ def test_closed_schema_does_not_accept_secret_or_terminal_fields() -> None:
         encode_runtime_host_manifest(data)
 
 
+@pytest.mark.parametrize("encoder", [encode_api_host_anchor, encode_runtime_host_manifest])
+def test_runtime_host_identity_cannot_use_project_id_namespace(encoder) -> None:
+    data = _anchor() if encoder is encode_api_host_anchor else _runtime()
+    data["runtime_host_installation_id"] = "prj_" + "1" * 32
+    with pytest.raises(WAWManifestCodecError):
+        encoder(data)
+
+
 def test_dataclass_values_are_supported() -> None:
     value = ProjectRootManifest(**_project())
     assert decode_project_root_manifest(encode_project_root_manifest(value)) == value
