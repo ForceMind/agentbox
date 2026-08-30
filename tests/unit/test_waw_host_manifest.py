@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -10,9 +11,13 @@ from agentbox_runtime.waw_host_manifest import (
     WAWRuntimeHostManifestDevelopmentOnlyError,
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
+    load_canonical_waw_runtime_host_manifest,
     load_waw_runtime_host_manifest_development_only,
 )
-from agentbox_runtime.waw_manifest_codecs import RuntimeHostManifest, encode_runtime_host_manifest
+from agentbox_runtime.waw_manifest_codecs import (
+    RuntimeHostManifest,
+    encode_runtime_host_manifest,
+)
 
 
 def _write_manifest(root: Path, value: dict[str, object]) -> Path:
@@ -207,3 +212,130 @@ def test_legacy_manifest_helpers_are_not_package_exports() -> None:
     assert not hasattr(agentbox_runtime, "create_waw_lifecycle_registry")
     assert not hasattr(agentbox_runtime, "load_waw_runtime_host_manifest")
     assert not hasattr(agentbox_runtime, "WAWRuntimeHostManifest")
+
+
+def _strict_runtime_bytes() -> bytes:
+    return encode_runtime_host_manifest(
+        RuntimeHostManifest(
+            runtime_host_installation_id="wri_" + "1" * 32,
+            runtime_host_installation_revision="1",
+            runtime_attestation_x25519_fingerprint="a" * 64,
+            tmux_fingerprint="b" * 64,
+            bridge_fingerprint="c" * 64,
+            claude_fingerprint="d" * 64,
+            codex_fingerprint="e" * 64,
+            attach_supervisor_fingerprint="f" * 64,
+            project_root_manifest_path="/var/lib/agentbox-waw/project-root.json",
+            project_root_manifest_digest="a" * 64,
+            socket_digest="1" * 64,
+            config_digest="2" * 64,
+            enrollment_epoch="1",
+            enrollment_state="steady",
+        )
+    )
+
+
+def _write_strict_manifest(root: Path, raw: bytes | None = None) -> tuple[Path, bytes]:
+    parent = root / "var" / "lib" / "agentbox-waw"
+    parent.mkdir(parents=True)
+    os.chmod(parent, 0o750)
+    payload = _strict_runtime_bytes() if raw is None else raw
+    path = parent / "runtime-host-installation.json"
+    path.write_bytes(payload)
+    os.chmod(path, 0o440)
+    return path, payload
+
+
+def _load_strict(path: Path, raw: bytes, **kwargs: object) -> RuntimeHostManifest:
+    return load_canonical_waw_runtime_host_manifest(
+        path,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+        expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
+        trusted_root=path.parents[3],
+        **kwargs,
+    )
+
+
+def test_strict_loader_checks_descriptor_provenance_and_digest(tmp_path: Path) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    value = _load_strict(path, raw)
+    assert isinstance(value, RuntimeHostManifest)
+    assert value.runtime_host_installation_id == "wri_" + "1" * 32
+
+
+@pytest.mark.parametrize("raw", [_strict_runtime_bytes() + b"\n", b"not-json"])
+def test_strict_loader_rejects_noncanonical_or_malformed_bytes(tmp_path: Path, raw: bytes) -> None:
+    path, _ = _write_strict_manifest(tmp_path, raw)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        _load_strict(path, raw)
+
+
+def test_strict_loader_rejects_digest_mismatch(tmp_path: Path) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    with pytest.raises(WAWRuntimeHostManifestError, match="digest mismatch"):
+        load_canonical_waw_runtime_host_manifest(
+            path,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            expected_host_manifest_digest="f" * 64,
+            trusted_root=tmp_path,
+        )
+
+
+def test_strict_loader_rejects_ancestor_symlink(tmp_path: Path) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    target = tmp_path / "real-var"
+    (target / "lib" / "agentbox-waw").mkdir(parents=True)
+    os.chmod(target / "lib" / "agentbox-waw", 0o750)
+    (target / "lib" / "agentbox-waw" / path.name).write_bytes(raw)
+    os.chmod(target / "lib" / "agentbox-waw" / path.name, 0o440)
+    path.parents[2].rename(tmp_path / "var-real")
+    (tmp_path / "var").symlink_to(target, target_is_directory=True)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        _load_strict(path, raw)
+
+
+def test_strict_loader_rejects_path_outside_trusted_root(tmp_path: Path) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    with pytest.raises(WAWRuntimeHostManifestError, match="outside trusted root"):
+        load_canonical_waw_runtime_host_manifest(
+            path,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
+            trusted_root=tmp_path / "other",
+        )
+
+
+def test_strict_loader_rejects_unsafe_or_unexpected_parent_mode(tmp_path: Path) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    os.chmod(path.parent, 0o770)
+    with pytest.raises(WAWRuntimeHostManifestError, match="ancestor mode"):
+        _load_strict(path, raw)
+    os.chmod(path.parent, 0o750)
+    with pytest.raises(WAWRuntimeHostManifestError, match="ancestor mode"):
+        _load_strict(path, raw, expected_parent_mode=0o700)
+
+
+def test_strict_loader_rejects_metadata_mutation_between_fstats(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, raw = _write_strict_manifest(tmp_path)
+    import agentbox_runtime.waw_host_manifest as module
+
+    original = module.os.fstat
+    calls: dict[int, int] = {}
+
+    def mutate_after_first(fd: int) -> os.stat_result:
+        result = original(fd)
+        calls[fd] = calls.get(fd, 0) + 1
+        if stat.S_ISREG(result.st_mode) and calls[fd] == 2:
+            return os.stat_result(
+                tuple(result[index] + (1 if index == 8 else 0) for index in range(len(result)))
+            )
+        return result
+
+    monkeypatch.setattr(module.os, "fstat", mutate_after_first)
+    with pytest.raises(WAWRuntimeHostManifestError, match="changed during read"):
+        _load_strict(path, raw)
