@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -52,3 +53,10 @@ def test_rejects_missing_epoch_file(tmp_path: Path) -> None:
     store = WAWRuntimeEpochStore(directory, expected_uid=os.geteuid(), expected_gid=os.getegid())
     with pytest.raises(WAWRuntimeEpochError):
         store.consume()
+
+
+def test_concurrent_consumers_do_not_reuse_epoch(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        values = sorted(executor.map(lambda _item: store.consume(), range(2)))
+    assert values == [2, 3]

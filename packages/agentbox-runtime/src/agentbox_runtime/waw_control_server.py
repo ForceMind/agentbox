@@ -161,7 +161,7 @@ class WAWControlServer:
     def _peer_pidfd(self, writer: asyncio.StreamWriter) -> int | None:
         peer_socket = writer.get_extra_info("socket")
         if peer_socket is None or not hasattr(peer_socket, "getsockopt"):
-            return False
+            return None
         try:
             raw = cast(
                 bytes,
