@@ -42,6 +42,7 @@ from agentbox_api.jobs import router as jobs_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
+from agentbox_api.workspaces import router as workspaces_router
 
 logger = logging.getLogger("agentbox.api")
 
@@ -208,6 +209,7 @@ def create_app(
     application.include_router(codex_router)
     application.include_router(claude_router)
     application.include_router(projects_router)
+    application.include_router(workspaces_router)
     application.include_router(github_router)
     application.include_router(jobs_router)
     application.include_router(doctor_router)
