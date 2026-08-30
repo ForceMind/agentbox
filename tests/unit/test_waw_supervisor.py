@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from agentbox_core.waw import AgentType, workspace_id
+from agentbox_core.waw import AgentType, WorkspaceStopOperation, workspace_id
 from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
@@ -193,3 +193,20 @@ def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
     supervisor.stop(attachment)
     with pytest.raises(RuntimeOperationError, match="unavailable"):
         supervisor.replay_output(0)
+
+
+def test_exact_stop_does_not_require_browser_attachment(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    operation = WorkspaceStopOperation(
+        workspace_id=workspace,
+        project_id="prj_" + "1" * 32,
+        agent_type=AgentType.CLAUDE,
+        generation=1,
+        binding_revision=1,
+        binding_digest="a" * 64,
+        runtime_host_installation_id="wri_" + "3" * 32,
+        runtime_host_installation_revision=1,
+    )
+    supervisor.exact_stop(operation)
+    assert transport.stopped is True

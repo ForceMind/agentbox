@@ -14,7 +14,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from agentbox_core.waw import validate_positive_u64, validate_workspace_id
+from agentbox_core.waw import (
+    WorkspaceStopOperation,
+    validate_positive_u64,
+    validate_workspace_id,
+)
 from agentbox_core.waw_tickets import ActiveAttachment
 
 from agentbox_runtime.models import RuntimeOperationError
@@ -261,6 +265,28 @@ class WAWSupervisor:
 
     def stop(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
         self._require_attachment(attachment)
+        return self._stop_transport()
+
+    def exact_stop(self, operation: WorkspaceStopOperation) -> SupervisorSnapshot:
+        """Execute a durable generation-bound Stop without trusting a browser lease."""
+
+        if (
+            operation.workspace_id != self._workspace_id
+            or operation.generation != self._generation
+            or str(operation.agent_type) != "claude"
+        ):
+            raise RuntimeOperationError(
+                "WAW_STOP_STALE",
+                "Stop operation does not match this workspace",
+                category="conflict",
+            )
+        if self._state in {SupervisorState.STOPPING, SupervisorState.STOPPED}:
+            raise RuntimeOperationError(
+                "WAW_STOP_INVALID", "Workspace is already stopping or stopped", category="conflict"
+            )
+        return self._stop_transport()
+
+    def _stop_transport(self) -> SupervisorSnapshot:
         if self._state in {SupervisorState.STOPPING, SupervisorState.STOPPED}:
             raise RuntimeOperationError(
                 "WAW_STOP_INVALID", "Workspace is already stopping or stopped", category="conflict"
