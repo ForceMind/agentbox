@@ -939,7 +939,7 @@ class AgentBoxInstaller:
             raise InstallError("WAW Runtime epoch file is missing after enrollment")
         self._atomic_write(
             path,
-            '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}\n',
+            '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}',
             0o600,
         )
         self.host.set_owner_mode(path, "agentbox-runtime", "agentbox-runtime", 0o600)

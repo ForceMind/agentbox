@@ -82,7 +82,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
     assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
     assert layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json").read_text() == (
-        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}\n'
+        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}'
     )
     secret_before = layout.map("/etc/agentbox/environment").read_bytes()
     config = layout.map("/etc/agentbox/agentbox.toml")
@@ -99,7 +99,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
         connection.execute("INSERT INTO admin_fixture VALUES ('preserved')")
 
     epoch_path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
-    epoch_path.write_text('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}\n')
+    epoch_path.write_text('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}')
     epoch_path.chmod(0o600)
 
     second = installer.apply(artifact, digest)
@@ -129,7 +129,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
     assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
     assert epoch_path.read_text() == (
-        '{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}\n'
+        '{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}'
     )
 
 
