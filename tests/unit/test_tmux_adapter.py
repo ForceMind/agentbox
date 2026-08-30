@@ -410,7 +410,7 @@ async def test_tmux_write_input_serializes_fixed_buffer_per_session(tmp_path: Pa
         "paste-buffer",
         "delete-buffer",
     ]
-    assert [stdin for call, stdin in buffer_calls if call[0] == "load-buffer"] == [
+    assert [stdin for call, stdin in buffer_calls if call == "load-buffer"] == [
         b"first",
         b"second",
     ]
