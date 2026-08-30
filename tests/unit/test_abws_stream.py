@@ -5,8 +5,8 @@ import asyncio
 import pytest
 from agentbox_protocol import (
     ABWSError,
-    ABWSFramedStreamPump,
     ABWSFrame,
+    ABWSFramedStreamPump,
     ABWSFrameType,
     encode_frame,
 )
