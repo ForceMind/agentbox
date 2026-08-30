@@ -12,6 +12,13 @@ from agentbox_api.waw_control_client import (
     validate_runtime_bind_attestation,
 )
 
+_ALLOWED_LIFECYCLE_REQUESTS = frozenset(
+    {
+        "workspace.workspace.status",
+        "workspace.workspace.reconcile",
+    }
+)
+
 
 class WAWBindTransport(Protocol):
     async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]: ...
@@ -89,6 +96,18 @@ class WAWRuntimeBindCoordinator:
             )
             self._bound_response = dict(verified)
             return dict(verified)
+
+    async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        """Issue one bound, read-only lifecycle request through the closed client.
+
+        Start/Stop/attachment actions are intentionally excluded until their
+        durable API transaction and lease gates are implemented.
+        """
+
+        if action not in _ALLOWED_LIFECYCLE_REQUESTS:
+            raise WAWControlClientError("PROTOCOL_INVALID", "WAW lifecycle action is not enabled")
+        await self.bind()
+        return await self._client.request(action, request)
 
 
 __all__ = ["WAWBindTransport", "WAWRuntimeBindCoordinator"]

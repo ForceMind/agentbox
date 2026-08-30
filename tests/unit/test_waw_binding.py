@@ -69,3 +69,24 @@ async def test_failed_attestation_does_not_mark_bound() -> None:
         await coordinator.bind()
     assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
     assert coordinator.bound is False
+
+
+@pytest.mark.anyio
+async def test_lifecycle_request_allows_only_read_only_actions() -> None:
+    client = FakeClient(_response())
+    coordinator = _coordinator(client)
+    request = {
+        "protocol_version": 1,
+        "request_id": "wreq_" + "2" * 32,
+        "action": "workspace.workspace.status",
+    }
+    response = await coordinator.request_lifecycle("workspace.workspace.status", request)
+    assert response == _response()
+    assert [call["action"] for call in client.calls] == [
+        "workspace.api_authority.bind",
+        "workspace.workspace.status",
+    ]
+    with pytest.raises(WAWControlClientError) as raised:
+        await coordinator.request_lifecycle("workspace.workspace.start", request)
+    assert raised.value.code == "PROTOCOL_INVALID"
+    assert len(client.calls) == 2
