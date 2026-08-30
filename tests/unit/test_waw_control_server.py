@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import socket
 from collections.abc import Awaitable, Callable
@@ -477,4 +478,80 @@ async def test_cancellation_resistant_writer_close_poison_is_not_reused() -> Non
         assert not server._io_tasks
     finally:
         release.set()
+        await server.close()
+
+
+@pytest.mark.parametrize("operation", ["read", "drain", "wait_closed"])
+@pytest.mark.anyio
+async def test_external_cancellation_cancels_child_io_and_poison_consumes_late_error(
+    operation: str,
+) -> None:
+    """Handler/close cancellation must not leave an untracked I/O task."""
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cancelled = asyncio.Event()
+    loop_errors: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+
+    def exception_handler(_loop: asyncio.AbstractEventLoop, context: dict[str, object]) -> None:
+        loop_errors.append(context)
+
+    loop.set_exception_handler(exception_handler)
+
+    async def child_io() -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            # Simulate a cancellation-resistant reader/writer close.  The
+            # server must poison immediately, then consume this late error
+            # once the operation eventually terminates.
+            await release.wait()
+            raise RuntimeError(f"late {operation} failure") from None
+
+    class FakeListeningSocket:
+        family = socket.AF_UNIX
+        type = socket.SOCK_STREAM
+
+        def getsockopt(self, _level: int, option: int) -> int:
+            assert option == socket.SO_ACCEPTCONN
+            return 1
+
+        def get_inheritable(self) -> bool:
+            return False
+
+    server = WAWControlServer(
+        cast(Any, FakeListeningSocket()),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=0.01,
+    )
+    io_task = asyncio.create_task(server._bounded_io(child_io(), 1.0))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        io_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(io_task, timeout=1)
+        assert cancelled.is_set()
+        assert server._poisoned is True
+        assert server._closing is True
+        assert len(server._io_tasks) == 1
+
+        release.set()
+        await asyncio.wait_for(cancelled.wait(), timeout=1)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert not server._io_tasks
+        assert not any(f"late {operation} failure" in str(item) for item in loop_errors)
+    finally:
+        release.set()
+        if not io_task.done():
+            io_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await io_task
+        loop.set_exception_handler(previous_handler)
         await server.close()

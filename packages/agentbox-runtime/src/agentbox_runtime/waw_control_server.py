@@ -328,7 +328,23 @@ class WAWControlServer:
         task = asyncio.ensure_future(awaitable)
         self._io_tasks.add(task)
         task.add_done_callback(self._consume_io_task)
-        done, _ = await asyncio.wait({task}, timeout=timeout)
+        try:
+            done, _ = await asyncio.wait({task}, timeout=timeout)
+        except asyncio.CancelledError:
+            # Cancellation of the handler (or ``close``) must not abandon the
+            # transport operation.  Explicitly cancel the child and give it
+            # the same bounded grace as a deadline timeout.  If it ignores
+            # cancellation, poison the listener before propagating the
+            # caller's cancellation; the done callback remains responsible
+            # for consuming any eventual late exception.
+            task.cancel()
+            done, _ = await asyncio.wait({task}, timeout=self._cancellation_grace_seconds)
+            if task not in done:
+                self._poison_listener(exclude={task})
+            else:
+                with contextlib.suppress(BaseException):
+                    task.result()
+            raise
         if task in done:
             return task.result()
         task.cancel()
