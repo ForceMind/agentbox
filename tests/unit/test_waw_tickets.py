@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 import pytest
 from agentbox_core.waw import AgentType, WAWDomainError, workspace_id
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
     AttachmentTuple,
+    IssuedAttachmentTicket,
     TicketAuthorityError,
     TicketErrorCode,
 )
@@ -28,7 +30,7 @@ class FakeMonotonic:
         self.value += seconds
 
 
-def _authority(clock: FakeMonotonic, **kwargs: object) -> AttachmentAuthority:
+def _authority(clock: FakeMonotonic, **kwargs: Any) -> AttachmentAuthority:
     return AttachmentAuthority(
         clock=clock,
         authority_epoch=11,
@@ -37,7 +39,9 @@ def _authority(clock: FakeMonotonic, **kwargs: object) -> AttachmentAuthority:
     )
 
 
-def _issue(authority: AttachmentAuthority, *, attachment_id: str = "att_" + "2" * 32):
+def _issue(
+    authority: AttachmentAuthority, *, attachment_id: str = "att_" + "2" * 32
+) -> IssuedAttachmentTicket:
     return authority.issue(
         workspace_id=WORKSPACE_ID,
         project_id=PROJECT_ID,
@@ -53,7 +57,7 @@ def _issue(authority: AttachmentAuthority, *, attachment_id: str = "att_" + "2" 
     )
 
 
-def _tuple(ticket) -> AttachmentTuple:
+def _tuple(ticket: IssuedAttachmentTicket) -> AttachmentTuple:
     return ticket.claims
 
 
