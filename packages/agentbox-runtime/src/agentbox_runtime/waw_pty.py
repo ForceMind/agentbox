@@ -21,6 +21,7 @@ MAX_INPUT_BYTES = 16 * 1024
 MAX_OUTPUT_FRAME_BYTES = 48 * 1024
 MAX_OUTPUT_BUFFER_BYTES = 256 * 1024
 MAX_U64 = 2**64 - 1
+MAX_OUTPUT_CURSOR = MAX_U64 - 1
 
 
 class WAWPTYError(ValueError):
@@ -98,7 +99,7 @@ class OutputRing:
         if len(payload) > MAX_OUTPUT_FRAME_BYTES:
             raise WAWPTYError("output frame exceeds the fixed limit")
         end = self._next_cursor + len(payload) - 1
-        if end > MAX_U64:
+        if end > MAX_OUTPUT_CURSOR:
             raise WAWPTYError("output cursor exhausted")
         frame = OutputFrame(self._next_cursor, end, payload)
         self._next_cursor = end + 1
@@ -110,7 +111,8 @@ class OutputRing:
         return frame
 
     def replay(self, after_cursor: int) -> OutputReplay:
-        validate_positive_u64(after_cursor, field="after_cursor")
+        if type(after_cursor) is not int or not 0 <= after_cursor <= MAX_OUTPUT_CURSOR:
+            raise WAWPTYError("after_cursor must be zero or a usable output cursor")
         if not self._frames:
             return OutputReplay("frames", (), after_cursor)
         oldest = self._frames[0].start_cursor

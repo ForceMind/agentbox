@@ -44,6 +44,8 @@ def test_output_ring_replays_and_reports_gap_after_eviction() -> None:
     gap = ring.replay(1)
     assert gap.kind == "gap"
     assert gap.gap_start == 5
+    baseline = ring.replay(0)
+    assert baseline.kind == "gap"
 
 
 def test_output_cursor_exhaustion_fails_closed() -> None:
@@ -51,3 +53,8 @@ def test_output_cursor_exhaustion_fails_closed() -> None:
     ring._next_cursor = 2**64
     with pytest.raises(WAWPTYError):
         ring.append(b"x")
+
+
+def test_resume_cursor_rejects_reserved_exhaustion_value() -> None:
+    with pytest.raises(WAWPTYError):
+        OutputRing().replay(2**64 - 1)
