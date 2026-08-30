@@ -113,10 +113,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         del application
-        if waw_bind_coordinator is not None:
-            await waw_bind_coordinator.bind()
-        log_event(logger, logging.INFO, "api_started", "Control plane API started")
         try:
+            if waw_bind_coordinator is not None:
+                await waw_bind_coordinator.bind()
+            log_event(logger, logging.INFO, "api_started", "Control plane API started")
             yield
         finally:
             actual_services.database.close()
