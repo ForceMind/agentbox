@@ -57,6 +57,11 @@ from agentbox_runtime.waw_activation import (
     WAWActivationError,
     load_waw_activated_sockets,
 )
+from agentbox_runtime.waw_auth_probe import (
+    WAWPublicAuthEvidence,
+    WAWPublicAuthProbeCache,
+    WAWPublicAuthResult,
+)
 from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
     create_waw_lifecycle_registry,
@@ -75,11 +80,6 @@ from agentbox_runtime.waw_host_manifest import (
     WAWRuntimeHostManifest,
     WAWRuntimeHostManifestError,
     load_waw_runtime_host_manifest,
-)
-from agentbox_runtime.waw_auth_probe import (
-    WAWPublicAuthEvidence,
-    WAWPublicAuthProbeCache,
-    WAWPublicAuthResult,
 )
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleExecutor,
