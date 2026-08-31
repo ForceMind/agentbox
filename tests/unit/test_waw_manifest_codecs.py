@@ -274,6 +274,29 @@ def test_cgroup_subgroup_is_one_safe_component(subgroup: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("tasks_max", 0),
+        ("tasks_max", 257),
+        ("memory_max", 1),
+        ("memory_max", 536870913),
+        ("memory_swap_max", 1),
+        ("cpu_quota_percent", 0),
+        ("cpu_quota_percent", 401),
+        ("cpu_quota_period_usec", 99999),
+        ("cpu_quota_period_usec", 100001),
+        ("tasks_max", 2**64),
+        ("memory_max", "536870912"),
+    ],
+)
+def test_cgroup_service_limits_are_fixed_and_bounded(field: str, value: object) -> None:
+    data = _cgroup()
+    data[field] = value
+    with pytest.raises(WAWManifestCodecError, match="approved service limit|invalid"):
+        encode_cgroup_delegation_manifest(data)
+
+
+@pytest.mark.parametrize(
     ("encoder", "factory", "field"),
     [
         (encode_project_root_manifest, _project, "no_shell_executable_digest"),

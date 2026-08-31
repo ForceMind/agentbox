@@ -32,6 +32,13 @@ _HEX_FINGERPRINT = _DIGEST
 _PROJECT_ROOT_MODE = re.compile(r"\A[0-7]{3}\Z")
 _CGROUP_SUBGROUP = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _STATES = frozenset({"bootstrap", "steady", "rotation"})
+_CGROUP_SERVICE_LIMITS = {
+    "tasks_max": 256,
+    "memory_max": 536_870_912,
+    "memory_swap_max": 0,
+    "cpu_quota_percent": 400,
+    "cpu_quota_period_usec": 100_000,
+}
 
 
 class WAWManifestCodecError(ValueError):
@@ -392,14 +399,10 @@ def _validate_cgroup(value: Mapping[str, Any]) -> None:
         raise WAWManifestCodecError("controller set must be canonical")
     for controller in controllers:
         _string(controller)
-    for field in (
-        "tasks_max",
-        "memory_max",
-        "memory_swap_max",
-        "cpu_quota_percent",
-        "cpu_quota_period_usec",
-    ):
-        _positive_int(value[field], field)
+    for field, expected in _CGROUP_SERVICE_LIMITS.items():
+        actual = _positive_int(value[field], field)
+        if actual != expected:
+            raise WAWManifestCodecError(f"{field} must equal the approved service limit")
     _digest(value["policy_template_digest"], "policy_template_digest")
 
 
