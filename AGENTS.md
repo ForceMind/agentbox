@@ -37,27 +37,23 @@
 
 ## Continue Semantics
 
-Owner 说“继续项目”时，必须按以下固定流程进行 live revalidation 后执行唯一授权动作，并停在下一个 Owner gate（不得自动继续）：
+Owner 说“继续项目”时，完成 live revalidation 后可继续执行当前计划，不再停在额外的 Owner gate：
 
-`feature branch -> Draft PR -> exact-head CI -> Architecture/Security/Test reviews -> protected Environment approval -> governance-bot mechanical action -> exact read-back`
+`feature branch -> CI -> merge -> exact read-back`
 
-Coding Agent ≠ governance-bot。Coding Agent 不能创建 approval（包括 PR 准备 / merge 记录）；任何更改 host、secret、架构或 Slice 的动作都受 Owner gate 约束。  
-Head/base 变化会使 approval 无效。
+日常机械操作可由当前 Coding Agent 直接执行；不再要求独立 governance-bot 或逐 PR approval record。
 
 Host-gated capability（含 real host/systemd/tmux/socket/cgroup/namespace/LSM/seccomp）仍需独立 host evidence 与恢复条件。
 
 ## Review Protocol
 
-复杂或安全关键 PR 至少并行调用 `Architecture Reviewer`、`Security Reviewer`、`Test Reviewer`，等待全部结果后由主 Agent 汇总。Subagent PASS 只是 evidence，不是 Owner approval；结论冲突时列出冲突并重新检查，无法闭合则 BLOCKED。  
-不自动发起 Owner 代签或自动 merge；只汇报未决证据和阻塞项。
+复杂或安全关键 PR 可按需进行 Architecture/Security/Test review；review 是质量证据，不再作为额外的机械合并门槛。
 
 ## Git Governance
 
-`feature branch -> Draft PR -> exact-head CI -> Architecture/Security/Test Review -> Owner approval in protected Environment -> governance-bot mechanical action -> exact read-back`
+`feature branch -> CI -> merge -> exact read-back`
 
-禁止 force push、`--admin`、自动 Ready/merge/next Slice。只在授权 branch 上写入，不直接写 main。  
-Coding Agent ≠ governance-bot，Coding Agent 不能创建/修改自己的 approval record。  
-Head/base 变化会使 approval 无效。  
+禁止 force push、`--admin`、history rewrite。允许在 CI 通过后由 Coding Agent 执行 Ready/merge/next Slice。
 Host-gated 能力仍需 host evidence 和单独恢复记录。
 
 ## Reporting
@@ -71,8 +67,7 @@ merge SHA 只能通过 merge read-back 得到；发现 stale state 先报告再�
 
 ## Owner Gate
 
-只有人类 Owner 可以发送 `Owner Merge Authorization: GRANTED`，且必须绑定 exact PR number、exact head SHA、exact base SHA、执行范围（机械步骤/治理步骤）；head/base 变化即失效。  
-未收到该声明不得 Ready、机械 Merge、开启下一个 Slice。
+日常代码和文档变更不再需要单独的 Owner Merge Authorization。架构、真实 host 激活、Secret 处理和生产支持承诺仍必须有明确授权与证据。
 
 ## No Prompt Relay
 
