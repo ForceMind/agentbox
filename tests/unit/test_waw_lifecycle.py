@@ -132,6 +132,17 @@ class RunningCleanupExecutor(FakeExecutor):
         return WAWLifecycleObservation(state="RUNNING")
 
 
+class CancellationResistantCleanupExecutor(FakeExecutor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.release = asyncio.Event()
+
+    async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        self.calls.append(("stop", identity))
+        await self.release.wait()
+        return WAWLifecycleObservation(state="STOPPED", process_state="STOPPED")
+
+
 def cgroup_record() -> WAWCgroupAttestation:
     return WAWCgroupAttestation(
         workspace_id=WORKSPACE,
@@ -182,6 +193,7 @@ def registry(
     cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
     cgroup_attestation_factory: Any | None = None,
     cgroup_attestation_timeout_seconds: float = 2.0,
+    cleanup_timeout_seconds: float = 2.0,
 ) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
@@ -194,6 +206,7 @@ def registry(
         cgroup_attestation_store=cgroup_attestation_store,
         cgroup_attestation_factory=cgroup_attestation_factory,
         cgroup_attestation_timeout_seconds=cgroup_attestation_timeout_seconds,
+        cleanup_timeout_seconds=cleanup_timeout_seconds,
     )
 
 
@@ -257,6 +270,27 @@ async def test_start_attestation_cleanup_requires_positive_stopped_evidence() ->
     with pytest.raises(WAWControlDispatchError) as exc_info:
         await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
     assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+
+
+@pytest.mark.anyio
+async def test_cleanup_timeout_releases_registry_and_consumes_detached_result() -> None:
+    executor = CancellationResistantCleanupExecutor()
+    runtime = registry(
+        executor,
+        cast(WAWWorkspaceAttestationStore, FailingAttestationStore()),
+        cleanup_timeout_seconds=0.001,
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    assert [kind for kind, _identity in executor.calls] == ["start", "stop"]
+    assert len(runtime._detached_cleanup_tasks) == 1
+    executor.release.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert len(runtime._detached_cleanup_tasks) == 0
 
 
 @pytest.mark.anyio

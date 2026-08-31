@@ -14,6 +14,7 @@ import math
 import re
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
@@ -67,6 +68,7 @@ _RECONCILIATION_STATES = frozenset(
 )
 _PROCESS_STATES = _STATES | {"NOT_STARTED"}
 _MAX_U64 = 2**64 - 1
+_MAX_DETACHED_CLEANUPS = 32
 
 # Runtime observations are deliberately stricter than the underlying provider
 # API.  An ambiguous process/lifecycle pair must never be exposed as healthy.
@@ -170,6 +172,7 @@ class WAWLifecycleRegistry:
         cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
         cgroup_attestation_factory: CgroupAttestationFactory | None = None,
         cgroup_attestation_timeout_seconds: float = 2.0,
+        cleanup_timeout_seconds: float = 2.0,
     ) -> None:
         self._host_id = runtime_host_installation_id
         self._host_revision = runtime_host_installation_revision
@@ -195,6 +198,15 @@ class WAWLifecycleRegistry:
         ):
             raise ValueError("cgroup_attestation_timeout_seconds must be positive")
         self._cgroup_attestation_timeout_seconds = float(cgroup_attestation_timeout_seconds)
+        if (
+            isinstance(cleanup_timeout_seconds, bool)
+            or not isinstance(cleanup_timeout_seconds, (int, float))
+            or not math.isfinite(float(cleanup_timeout_seconds))
+            or cleanup_timeout_seconds <= 0
+        ):
+            raise ValueError("cleanup_timeout_seconds must be positive")
+        self._cleanup_timeout_seconds = float(cleanup_timeout_seconds)
+        self._detached_cleanup_tasks: set[asyncio.Task[object]] = set()
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -481,7 +493,15 @@ class WAWLifecycleRegistry:
     async def _cleanup_failed_start(self, identity: WAWLifecycleIdentity) -> None:
         if self._executor is None:  # pragma: no cover - guarded by _lifecycle
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
-        cleanup = await self._executor.stop(identity)
+        if len(self._detached_cleanup_tasks) >= _MAX_DETACHED_CLEANUPS:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        task = asyncio.create_task(self._executor.stop(identity))
+        done, pending = await asyncio.wait({task}, timeout=self._cleanup_timeout_seconds)
+        if pending:
+            self._detached_cleanup_tasks.add(task)
+            task.add_done_callback(self._consume_detached_cleanup)
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        cleanup = next(iter(done)).result()
         self._validate_observation(cleanup)
         if not (
             cleanup.state == "STOPPED"
@@ -490,6 +510,11 @@ class WAWLifecycleRegistry:
             and cleanup.runtime_epoch == self._runtime_epoch
         ):
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+
+    def _consume_detached_cleanup(self, task: asyncio.Task[object]) -> None:
+        self._detached_cleanup_tasks.discard(task)
+        with suppress(BaseException):
+            task.result()
 
     async def _build_cgroup_attestation(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
