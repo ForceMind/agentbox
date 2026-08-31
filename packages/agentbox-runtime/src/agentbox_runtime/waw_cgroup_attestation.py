@@ -9,6 +9,7 @@ host-gated operations.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from dataclasses import dataclass
@@ -469,6 +470,56 @@ def decode_waw_cgroup_attestation(raw: bytes) -> WAWCgroupAttestation:
     return record
 
 
+def verify_waw_cgroup_attestation_context(
+    value: bytes | WAWCgroupAttestation,
+    *,
+    expected_workspace_id: str,
+    expected_project_id: str,
+    expected_agent_type: str,
+    expected_generation: int,
+    expected_runtime_epoch: str,
+    expected_controller_configuration_digest: str | None = None,
+    expected_workspace_limits: WAWCgroupLimits | None = None,
+    expected_workload_limits: WAWCgroupLimits | None = None,
+    expected_attachment_limits: WAWCgroupLimits | None = None,
+) -> WAWCgroupAttestation:
+    """Bind an attestation to the active Runtime lifecycle context.
+
+    This verifier checks only relationships between already validated metadata
+    and caller-provided lifecycle identity.  It does not treat the result as a
+    host attestation; callers must still obtain the record from the Runtime
+    read-back path and validate live cgroup state before using it for Start,
+    Attach, or cleanup decisions.
+    """
+
+    record = decode_waw_cgroup_attestation(value) if isinstance(value, bytes) else value
+    if not isinstance(record, WAWCgroupAttestation):
+        raise WAWCgroupAttestationError("attestation record type is invalid")
+    expected = (
+        (record.workspace_id, expected_workspace_id, "workspace identity"),
+        (record.project_id, expected_project_id, "project identity"),
+        (record.agent_type, expected_agent_type, "agent type"),
+        (record.runtime_epoch, expected_runtime_epoch, "runtime epoch"),
+    )
+    for actual, wanted, label in expected:
+        if not isinstance(wanted, str) or not hmac.compare_digest(actual, wanted):
+            raise WAWCgroupAttestationError(f"attestation {label} mismatch")
+    if type(expected_generation) is not int or record.generation != expected_generation:
+        raise WAWCgroupAttestationError("attestation generation mismatch")
+    if expected_controller_configuration_digest is not None and not hmac.compare_digest(
+        record.controller_configuration_digest, expected_controller_configuration_digest
+    ):
+        raise WAWCgroupAttestationError("attestation controller digest mismatch")
+    for actual_limits, wanted_limits, label in (
+        (record.workspace_limits, expected_workspace_limits, "workspace limits"),
+        (record.workload_limits, expected_workload_limits, "workload limits"),
+        (record.attachment_limits, expected_attachment_limits, "attachment limits"),
+    ):
+        if wanted_limits is not None and actual_limits != wanted_limits:
+            raise WAWCgroupAttestationError(f"attestation {label} mismatch")
+    return record
+
+
 def waw_cgroup_attestation_sha256(raw: bytes) -> str:
     """Return the SHA-256 digest of canonical attestation bytes."""
 
@@ -483,5 +534,6 @@ __all__ = [
     "WAWCgroupLimits",
     "decode_waw_cgroup_attestation",
     "encode_waw_cgroup_attestation",
+    "verify_waw_cgroup_attestation_context",
     "waw_cgroup_attestation_sha256",
 ]

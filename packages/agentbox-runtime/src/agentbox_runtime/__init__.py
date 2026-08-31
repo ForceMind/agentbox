@@ -78,6 +78,7 @@ from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupLimits,
     decode_waw_cgroup_attestation,
     encode_waw_cgroup_attestation,
+    verify_waw_cgroup_attestation_context,
     waw_cgroup_attestation_sha256,
 )
 from agentbox_runtime.waw_claude_executor import (
@@ -221,6 +222,7 @@ __all__ = [
     "WAWCgroupLimits",
     "decode_waw_cgroup_attestation",
     "encode_waw_cgroup_attestation",
+    "verify_waw_cgroup_attestation_context",
     "waw_cgroup_attestation_sha256",
     "ProjectResolver",
     "ClaudeProjectBinding",

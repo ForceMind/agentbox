@@ -13,6 +13,7 @@ from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupLimits,
     decode_waw_cgroup_attestation,
     encode_waw_cgroup_attestation,
+    verify_waw_cgroup_attestation_context,
     waw_cgroup_attestation_sha256,
 )
 
@@ -133,6 +134,55 @@ def test_cgroup_attestation_enforces_cleanup_and_limit_invariants() -> None:
     values["cleanup_state"] = "EMPTY_DURABLE"
     with pytest.raises(WAWCgroupAttestationError, match="EMPTY_DURABLE"):
         encode_waw_cgroup_attestation(values)
+
+
+def test_cgroup_attestation_context_verifier_binds_active_lifecycle() -> None:
+    record = _record()
+    raw = encode_waw_cgroup_attestation(record)
+    assert (
+        verify_waw_cgroup_attestation_context(
+            raw,
+            expected_workspace_id=record.workspace_id,
+            expected_project_id=record.project_id,
+            expected_agent_type=record.agent_type,
+            expected_generation=record.generation,
+            expected_runtime_epoch=record.runtime_epoch,
+            expected_controller_configuration_digest=record.controller_configuration_digest,
+            expected_workspace_limits=record.workspace_limits,
+            expected_workload_limits=record.workload_limits,
+            expected_attachment_limits=record.attachment_limits,
+        )
+        == record
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("expected_workspace_id", "aws_" + "2" * 32),
+        ("expected_project_id", "prj_" + "3" * 32),
+        ("expected_agent_type", "codex"),
+        ("expected_generation", 2),
+        ("expected_runtime_epoch", "4"),
+        ("expected_controller_configuration_digest", "b" * 64),
+    ],
+)
+def test_cgroup_attestation_context_verifier_rejects_drift(field: str, value: object) -> None:
+    record = _record()
+    kwargs: dict[str, object] = {
+        "expected_workspace_id": record.workspace_id,
+        "expected_project_id": record.project_id,
+        "expected_agent_type": record.agent_type,
+        "expected_generation": record.generation,
+        "expected_runtime_epoch": record.runtime_epoch,
+        "expected_controller_configuration_digest": record.controller_configuration_digest,
+    }
+    kwargs[field] = value
+    with pytest.raises(WAWCgroupAttestationError, match="mismatch"):
+        verify_waw_cgroup_attestation_context(
+            record,
+            **kwargs,  # type: ignore[arg-type]
+        )
 
     values = dict(_record().__dict__)
     values["workspace_limits"] = {
