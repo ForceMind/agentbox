@@ -1,9 +1,7 @@
 # Current Authorized Action
 
-Action ID: `WAW1-IMPLEMENTATION-2026-09-01`
+Action ID: `WAW1-STREAM-CONTRACT-2026-09-01`
 
-- Review and approve PR: `#45` (`codex/governance-automation-bot-policy` → `main`) with exact metadata:
-  - head: `3d3ffd848edb18a5bf3bfe0572d0d13616b76e85`
-  - base: `6e73ba5031ae2c25f99c60cfadb6a22f36bb1466`
-- Configure `agentbox-governance-bot` principal credentials and policy.
-- Gate PR 45 mechanical actions through protected `owner-approval` + bot validation.
+- Continue WAW-1 stream contract work with synthetic Runtime/Fake Runtime evidence.
+- Keep real Noise/WebSocket/PTY/browser and host activation blocked until independent host evidence exists.
+- After WAW-1 contract closure, begin WAW-2 Codex project-scoped workspace design and tests.
