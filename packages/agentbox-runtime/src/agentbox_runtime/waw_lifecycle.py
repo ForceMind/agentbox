@@ -629,6 +629,17 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         if record.runtime_epoch != self._runtime_epoch:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        active = self._workspaces.get(record.workspace_id)
+        if active is not None:
+            active_identity = active[0]
+            if (
+                active_identity.project_id != record.project_id
+                or active_identity.agent_type != record.agent_type
+                or int(active_identity.generation) != record.generation
+                or active_identity.runtime_host_installation_id != self._host_id
+                or active_identity.runtime_host_installation_revision != self._host_revision
+            ):
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         unresolved = self._cgroup_attestation_store.latest_unresolved(
             workspace_id=record.workspace_id
         )
@@ -744,7 +755,7 @@ class WAWLifecycleRegistry:
             return
         try:
             record = self._attestation_store.read(workspace_id)
-        except WAWWorkspaceAttestationError as exc:
+        except Exception as exc:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if record is not None:
             self._generation_floor[workspace_id] = max(
