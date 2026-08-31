@@ -524,6 +524,48 @@ async def test_host_gated_empty_acknowledgement_is_required_to_clear_quarantine(
 
 
 @pytest.mark.anyio
+async def test_empty_acknowledgement_binds_active_binding_identity(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    runtime = registry(
+        FakeExecutor(),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    runtime._cleanup_quarantine.add(WORKSPACE)
+    empty = replace(
+        cgroup_record(),
+        attachment_leaves=(),
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        runtime.acknowledge_cgroup_cleanup(
+            empty,
+            binding_revision="2",
+            binding_digest=DIGEST,
+        )
+    assert WORKSPACE in runtime._cleanup_quarantine
+
+    runtime.acknowledge_cgroup_cleanup(
+        empty,
+        binding_revision="1",
+        binding_digest=DIGEST,
+    )
+    assert WORKSPACE not in runtime._cleanup_quarantine
+
+
+@pytest.mark.anyio
 async def test_registry_restart_hydrates_fenced_quarantine_before_executor_start(
     tmp_path: Path,
 ) -> None:
