@@ -294,6 +294,59 @@ async def test_cleanup_timeout_releases_registry_and_consumes_detached_result() 
 
 
 @pytest.mark.anyio
+async def test_cleanup_timeout_quarantines_new_generation_until_stop_finishes() -> None:
+    executor = CancellationResistantCleanupExecutor()
+    runtime = registry(
+        executor,
+        cast(WAWWorkspaceAttestationStore, FailingAttestationStore()),
+        cleanup_timeout_seconds=0.001,
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(
+            lifecycle_request(
+                "workspace.workspace.start", generation="2", request_id="wreq_" + "9" * 32
+            )
+        )
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    executor.release.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert len(runtime._cleanup_quarantine) == 0
+
+
+@pytest.mark.anyio
+async def test_start_rejects_fenced_or_unpopulated_cgroup_attestation(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    executor = FakeExecutor()
+    runtime = registry(
+        executor,
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: replace(
+            cgroup_record(), attachment_leaves=(), cleanup_state="FENCED", last_populated="0"
+        ),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    persisted = store.read(workspace_id=WORKSPACE, generation=1)
+    assert persisted is not None
+    assert persisted.cleanup_state == "FENCED"
+
+
+@pytest.mark.anyio
 async def test_start_persists_cgroup_attestation_before_exposing_generation(tmp_path: Path) -> None:
     directory = tmp_path / "cgroup-attestations"
     directory.mkdir()

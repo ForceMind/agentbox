@@ -206,7 +206,9 @@ class WAWLifecycleRegistry:
         ):
             raise ValueError("cleanup_timeout_seconds must be positive")
         self._cleanup_timeout_seconds = float(cleanup_timeout_seconds)
-        self._detached_cleanup_tasks: set[asyncio.Task[object]] = set()
+        self._detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
+        self._detached_cleanup_identities: dict[asyncio.Task[Any], WAWLifecycleIdentity] = {}
+        self._cleanup_quarantine: set[str] = set()
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -351,6 +353,8 @@ class WAWLifecycleRegistry:
             runtime_host_installation_revision=request["runtime_host_installation_revision"],
         )
         self._check_identity(identity)
+        if action == _START and identity.workspace_id in self._cleanup_quarantine:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         current = self._workspaces.get(identity.workspace_id)
         if action == _START and current is not None:
             if (
@@ -398,8 +402,17 @@ class WAWLifecycleRegistry:
             _STATUS: self._executor.status,
             _RECONCILE: self._executor.reconcile,
         }[action]
-        observation = await method(identity)
-        self._validate_observation(observation)
+        try:
+            observation = await method(identity)
+            self._validate_observation(observation)
+        except Exception as exc:
+            if action == _STOP and self._cgroup_attestation_store is not None:
+                try:
+                    self._fence_cgroup_for_identity(identity)
+                except Exception as fence_exc:
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from fence_exc
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+            raise
         cgroup_record: WAWCgroupAttestation | None = None
         if action == _START and self._cgroup_attestation_store is not None:
             try:
@@ -414,6 +427,8 @@ class WAWLifecycleRegistry:
                     expected_generation=int(identity.generation),
                     expected_runtime_epoch=self._runtime_epoch,
                 )
+                if cgroup_record.cleanup_state != "LIVE" or cgroup_record.last_populated != "1":
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
                 self._cgroup_attestation_store.write(cgroup_record)
             except Exception as exc:
                 fence_error: Exception | None = None
@@ -516,10 +531,13 @@ class WAWLifecycleRegistry:
         if len(self._detached_cleanup_tasks) >= _MAX_DETACHED_CLEANUPS:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         task = asyncio.create_task(self._executor.stop(identity))
-        done, pending = await asyncio.wait({task}, timeout=self._cleanup_timeout_seconds)
+        try:
+            done, pending = await asyncio.wait({task}, timeout=self._cleanup_timeout_seconds)
+        except BaseException:
+            self._register_detached_cleanup(task, identity)
+            raise
         if pending:
-            self._detached_cleanup_tasks.add(task)
-            task.add_done_callback(self._consume_detached_cleanup)
+            self._register_detached_cleanup(task, identity)
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         cleanup = next(iter(done)).result()
         self._validate_observation(cleanup)
@@ -531,10 +549,28 @@ class WAWLifecycleRegistry:
         ):
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
 
-    def _consume_detached_cleanup(self, task: asyncio.Task[object]) -> None:
+    def _register_detached_cleanup(
+        self, task: asyncio.Task[Any], identity: WAWLifecycleIdentity
+    ) -> None:
+        self._detached_cleanup_tasks.add(task)
+        self._detached_cleanup_identities[task] = identity
+        self._cleanup_quarantine.add(identity.workspace_id)
+        task.add_done_callback(self._consume_detached_cleanup)
+
+    def _consume_detached_cleanup(self, task: asyncio.Task[Any]) -> None:
         self._detached_cleanup_tasks.discard(task)
+        identity = self._detached_cleanup_identities.pop(task, None)
         with suppress(BaseException):
-            task.result()
+            cleanup = task.result()
+            self._validate_observation(cleanup)
+            if (
+                identity is not None
+                and cleanup.state == "STOPPED"
+                and cleanup.process_state == "STOPPED"
+                and cleanup.reconciliation_state == "authoritative"
+                and cleanup.runtime_epoch == self._runtime_epoch
+            ):
+                self._cleanup_quarantine.discard(identity.workspace_id)
 
     async def _build_cgroup_attestation(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
