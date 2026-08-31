@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from agentbox_runtime.waw_bootstrap import (
     create_waw_lifecycle_registry_development_only,
+    create_waw_lifecycle_registry_from_filesystem_bundle,
     create_waw_lifecycle_registry_from_loaded_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bytes,
@@ -402,6 +403,67 @@ def test_loaded_bundle_bootstrap_preserves_single_bundle_boundary(tmp_path: Path
         binding_digest_factory=lambda _request: "a" * 64,
     )
     assert epoch == "2"
+
+
+def test_filesystem_bundle_bootstrap_loads_and_pins_before_epoch(tmp_path: Path) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _strict_manifest_bundle()
+    directory = tmp_path / "bundle"
+    directory.mkdir()
+    directory.chmod(0o750)
+    for filename, raw in (
+        ("api-host-anchor.v1", anchor_raw),
+        ("runtime-host-installation.v1", runtime_raw),
+        ("project-root.v1", project_raw),
+        ("cgroup-delegation.v1", cgroup_raw),
+    ):
+        path = directory / filename
+        path.write_bytes(raw)
+        path.chmod(0o440)
+
+    _registry, epoch = create_waw_lifecycle_registry_from_filesystem_bundle(
+        directory=directory,
+        expected_api_host_anchor_digest=manifest_sha256(anchor_raw),
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    assert epoch == "2"
+
+
+def test_filesystem_bundle_bootstrap_rejects_external_anchor_mismatch_without_epoch(
+    tmp_path: Path,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _strict_manifest_bundle()
+    directory = tmp_path / "bundle"
+    directory.mkdir()
+    directory.chmod(0o750)
+    for filename, raw in (
+        ("api-host-anchor.v1", anchor_raw),
+        ("runtime-host-installation.v1", runtime_raw),
+        ("project-root.v1", project_raw),
+        ("cgroup-delegation.v1", cgroup_raw),
+    ):
+        path = directory / filename
+        path.write_bytes(raw)
+        path.chmod(0o440)
+
+    with pytest.raises(WAWManifestCodecError, match="anchor digest mismatch"):
+        create_waw_lifecycle_registry_from_filesystem_bundle(
+            directory=directory,
+            expected_api_host_anchor_digest="f" * 64,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            epoch_store=store,
+            executor=FakeExecutor(),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    assert store.consume() == 2
 
 
 def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(

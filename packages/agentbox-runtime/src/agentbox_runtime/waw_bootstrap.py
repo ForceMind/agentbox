@@ -13,6 +13,7 @@ from __future__ import annotations
 import hmac
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_control_server import WAWControlServer
@@ -21,6 +22,7 @@ from agentbox_runtime.waw_host_manifest import (
     WAWCanonicalManifestBundle,
     WAWRuntimeHostManifestDevelopmentOnly,
     decode_canonical_waw_runtime_host_manifest,
+    load_canonical_waw_manifest_bundle,
 )
 from agentbox_runtime.waw_lifecycle import (
     BindingDigestFactory,
@@ -210,6 +212,59 @@ def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
     )
 
 
+def create_waw_lifecycle_registry_from_filesystem_bundle(
+    *,
+    directory: Path,
+    expected_api_host_anchor_digest: str,
+    expected_uid: int,
+    expected_gid: int,
+    epoch_store: WAWRuntimeEpochStore,
+    expected_ancestor_mode: int | None = None,
+    expected_directory_mode: int = 0o750,
+    expected_file_mode: int = 0o440,
+    expected_max_bytes: int = 64 * 1024,
+    executor: WAWLifecycleExecutor | None = None,
+    executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
+    binding_digest_factory: BindingDigestFactory,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+) -> tuple[WAWLifecycleRegistry, str]:
+    """Load, pin, and bootstrap one installer-owned manifest bundle.
+
+    The loader establishes descriptor-relative filesystem provenance, then the
+    external API-anchor digest is checked before strict cross-manifest decode
+    and durable Runtime epoch consumption.  This is still a non-activating
+    bootstrap boundary: host enrollment/attestation and socket/service startup
+    remain explicit host-gated operations owned by the Runtime entrypoint.
+    """
+
+    if (
+        not isinstance(expected_api_host_anchor_digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_api_host_anchor_digest) is None
+        or expected_api_host_anchor_digest == "0" * 64
+    ):
+        raise WAWManifestCodecError("expected API host anchor digest is invalid")
+    bundle = load_canonical_waw_manifest_bundle(
+        directory,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_directory_mode=expected_directory_mode,
+        expected_file_mode=expected_file_mode,
+        expected_max_bytes=expected_max_bytes,
+    )
+    actual_anchor_digest = manifest_sha256(bundle.api_host_anchor)
+    if not hmac.compare_digest(actual_anchor_digest, expected_api_host_anchor_digest):
+        raise WAWManifestCodecError("API host anchor digest mismatch")
+    return create_waw_lifecycle_registry_from_loaded_manifest_bundle(
+        bundle=bundle,
+        epoch_store=epoch_store,
+        executor=executor,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+        attestation_store=attestation_store,
+    )
+
+
 def _create_registry_from_verified_manifest(
     *,
     manifest: RuntimeHostManifest,
@@ -302,6 +357,7 @@ def build_waw_control_server(
 
 __all__ = [
     "build_waw_control_server",
+    "create_waw_lifecycle_registry_from_filesystem_bundle",
     "create_waw_lifecycle_registry_from_manifest_bundle",
     "create_waw_lifecycle_registry_from_loaded_manifest_bundle",
     "create_waw_lifecycle_registry_from_manifest_bytes",
