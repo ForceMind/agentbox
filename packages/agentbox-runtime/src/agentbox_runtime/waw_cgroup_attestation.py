@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 import rfc8785
 
@@ -373,7 +373,7 @@ def encode_waw_cgroup_attestation(value: object) -> bytes:
     """Encode one validated attestation as canonical JSON bytes."""
 
     record = _validated(value)
-    payload = {
+    payload: dict[str, Any] = {
         "agent_type": record.agent_type,
         "attachment_leaves": [
             {
@@ -420,9 +420,9 @@ def encode_waw_cgroup_attestation(value: object) -> bytes:
         raw = rfc8785.dumps(payload)
     except (TypeError, ValueError, rfc8785.CanonicalizationError) as exc:
         raise WAWCgroupAttestationError("attestation canonicalization failed") from exc
-    if len(raw) > _MAX_BYTES:
+    if not isinstance(raw, bytes) or not raw or len(raw) > _MAX_BYTES:
         raise WAWCgroupAttestationError("attestation is oversized")
-    return cast(bytes, raw)
+    return raw
 
 
 def _limits_payload(value: WAWCgroupLimits) -> dict[str, int]:
