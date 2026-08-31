@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
+from typing import Protocol
 
 from agentbox_core.waw import AgentType, validate_runtime_host_installation_id
 
@@ -28,6 +29,52 @@ class WAWPublicAuthResult(StrEnum):
     UNAUTHENTICATED = "UNAUTHENTICATED"
     UNKNOWN = "UNKNOWN"
     UNSUPPORTED = "UNSUPPORTED"
+
+
+class WAWPublicAuthProbeError(ValueError):
+    """A public auth probe returned evidence outside its requested tuple."""
+
+
+class WAWPublicAuthProbe(Protocol):
+    """Runtime-owned adapter contract for a bounded, metadata-only probe.
+
+    Implementations may call only the separately reviewed vendor-specific
+    public status operation.  The interface carries no command, path, argv,
+    environment, credential, or probe-output field.
+    """
+
+    def probe(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        """Return one bounded evidence record for the exact requested tuple."""
+
+
+def validate_waw_public_auth_probe_evidence(
+    evidence: WAWPublicAuthEvidence,
+    *,
+    agent_type: AgentType,
+    runtime_host_installation_id: str,
+    runtime_host_installation_revision: str,
+    executable_fingerprint: str,
+) -> WAWPublicAuthEvidence:
+    """Reject adapter evidence that is not bound to the requested identity."""
+
+    if not isinstance(evidence, WAWPublicAuthEvidence):
+        raise WAWPublicAuthProbeError("probe evidence type is invalid")
+    if (
+        evidence.agent_type is not agent_type
+        or evidence.runtime_host_installation_id != runtime_host_installation_id
+        or evidence.runtime_host_installation_revision != runtime_host_installation_revision
+        or evidence.executable_fingerprint != executable_fingerprint
+    ):
+        raise WAWPublicAuthProbeError("probe evidence identity does not match request")
+    return evidence
 
 
 @dataclass(frozen=True)
@@ -131,6 +178,9 @@ class WAWPublicAuthProbeCache:
 
 __all__ = [
     "WAWPublicAuthEvidence",
+    "WAWPublicAuthProbe",
     "WAWPublicAuthProbeCache",
+    "WAWPublicAuthProbeError",
     "WAWPublicAuthResult",
+    "validate_waw_public_auth_probe_evidence",
 ]

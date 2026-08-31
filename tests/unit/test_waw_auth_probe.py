@@ -7,12 +7,40 @@ import pytest
 from agentbox_core.waw import AgentType
 from agentbox_runtime.waw_auth_probe import (
     WAWPublicAuthEvidence,
+    WAWPublicAuthProbe,
     WAWPublicAuthProbeCache,
+    WAWPublicAuthProbeError,
     WAWPublicAuthResult,
+    validate_waw_public_auth_probe_evidence,
 )
 
 HOST_ID = "wri_" + "1" * 32
 FINGERPRINT = "a" * 64
+
+
+class _FakePublicAuthProbe:
+    """Synthetic adapter; it never executes a vendor command or reads files."""
+
+    def __init__(self, result: WAWPublicAuthResult) -> None:
+        self._result = result
+
+    def probe(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        return WAWPublicAuthEvidence(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+            result=self._result,
+        )
 
 
 def _evidence(
@@ -51,6 +79,46 @@ def test_cache_requires_matching_fresh_authenticated_evidence() -> None:
         )
         is None
     )
+
+
+@pytest.mark.parametrize("result", list(WAWPublicAuthResult))
+def test_public_auth_probe_protocol_and_evidence_binding(result: WAWPublicAuthResult) -> None:
+    probe: WAWPublicAuthProbe = _FakePublicAuthProbe(result)
+    evidence = probe.probe(
+        agent_type=AgentType.CLAUDE,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision="2",
+        executable_fingerprint=FINGERPRINT,
+        checked_at_monotonic=100.0,
+    )
+    assert (
+        validate_waw_public_auth_probe_evidence(
+            evidence,
+            agent_type=AgentType.CLAUDE,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision="2",
+            executable_fingerprint=FINGERPRINT,
+        )
+        == evidence
+    )
+
+
+def test_public_auth_probe_rejects_identity_drift() -> None:
+    evidence = _FakePublicAuthProbe(WAWPublicAuthResult.AUTHENTICATED).probe(
+        agent_type=AgentType.CLAUDE,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision="2",
+        executable_fingerprint=FINGERPRINT,
+        checked_at_monotonic=100.0,
+    )
+    with pytest.raises(WAWPublicAuthProbeError, match="identity"):
+        validate_waw_public_auth_probe_evidence(
+            evidence,
+            agent_type=AgentType.CLAUDE,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision="3",
+            executable_fingerprint=FINGERPRINT,
+        )
 
 
 @pytest.mark.parametrize(

@@ -59,8 +59,11 @@ from agentbox_runtime.waw_activation import (
 )
 from agentbox_runtime.waw_auth_probe import (
     WAWPublicAuthEvidence,
+    WAWPublicAuthProbe,
     WAWPublicAuthProbeCache,
+    WAWPublicAuthProbeError,
     WAWPublicAuthResult,
+    validate_waw_public_auth_probe_evidence,
 )
 from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
@@ -198,8 +201,11 @@ __all__ = [
     "load_canonical_waw_manifest_bundle",
     "load_canonical_waw_runtime_host_manifest",
     "WAWPublicAuthEvidence",
+    "WAWPublicAuthProbe",
     "WAWPublicAuthProbeCache",
+    "WAWPublicAuthProbeError",
     "WAWPublicAuthResult",
+    "validate_waw_public_auth_probe_evidence",
     "ProjectResolver",
     "ClaudeProjectBinding",
     "WAWClaudeLifecycleExecutor",
