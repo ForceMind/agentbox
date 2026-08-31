@@ -122,6 +122,9 @@ class ObservationExecutor(FakeExecutor):
 
 
 class FailingAttestationStore:
+    def read(self, _workspace_id: str) -> None:
+        return None
+
     def advance(self, **_kwargs: Any) -> None:
         raise WAWWorkspaceAttestationError("synthetic attestation failure")
 

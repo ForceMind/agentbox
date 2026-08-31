@@ -353,6 +353,7 @@ class WAWLifecycleRegistry:
             runtime_host_installation_id=request["runtime_host_installation_id"],
             runtime_host_installation_revision=request["runtime_host_installation_revision"],
         )
+        self._hydrate_durable_generation_floor(identity.workspace_id)
         self._check_identity(identity)
         if self._cgroup_attestation_store is not None and identity.workspace_id not in (
             self._cleanup_quarantine
@@ -410,7 +411,11 @@ class WAWLifecycleRegistry:
         if action == _START and int(identity.generation) <= self._generation_floor.get(
             identity.workspace_id, 0
         ):
-            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+            raise WAWControlDispatchError(
+                "RECONCILIATION_REQUIRED"
+                if current is None and self._attestation_store is not None
+                else "PROJECT_IDENTITY_CHANGED"
+            )
         if action == _STOP and current is None:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
         if action == _STOP and current is not None and current[1].state == "STOPPED":
@@ -692,6 +697,12 @@ class WAWLifecycleRegistry:
 
     def _check_identity(self, identity: WAWLifecycleIdentity) -> None:
         self._validate_generation(identity.generation)
+        if int(identity.generation) < self._generation_floor.get(identity.workspace_id, 0):
+            raise WAWControlDispatchError(
+                "RECONCILIATION_REQUIRED"
+                if identity.workspace_id not in self._workspaces
+                else "PROJECT_IDENTITY_CHANGED"
+            )
         if (
             identity.runtime_host_installation_id != self._host_id
             or identity.runtime_host_installation_revision != self._host_revision
@@ -705,6 +716,18 @@ class WAWLifecycleRegistry:
             or identity.binding_digest != binding.binding_digest
         ):
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+
+    def _hydrate_durable_generation_floor(self, workspace_id: str) -> None:
+        if self._attestation_store is None:
+            return
+        try:
+            record = self._attestation_store.read(workspace_id)
+        except WAWWorkspaceAttestationError as exc:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if record is not None:
+            self._generation_floor[workspace_id] = max(
+                self._generation_floor.get(workspace_id, 0), record.min_generation
+            )
 
     def _validate_observation(self, observation: WAWLifecycleObservation) -> None:
         if observation.state not in _STATES:
