@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from agentbox_runtime.waw_activation import WAWActivatedSockets
+from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
@@ -26,6 +27,7 @@ from agentbox_runtime.waw_host_manifest import (
 )
 from agentbox_runtime.waw_lifecycle import (
     BindingDigestFactory,
+    CgroupAttestationFactory,
     WAWLifecycleExecutor,
     WAWLifecycleRegistry,
 )
@@ -46,6 +48,8 @@ def create_waw_lifecycle_registry_development_only(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Development/test-only compatibility bootstrap for the legacy record.
 
@@ -84,6 +88,8 @@ def create_waw_lifecycle_registry_development_only(
         binding_digest_factory=binding_digest_factory,
         runtime_epoch=consumed_epoch,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
     return registry, consumed_epoch
 
@@ -97,6 +103,8 @@ def create_waw_lifecycle_registry_from_manifest_bytes(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Bootstrap from a strict, canonical ``runtime-host-installation.v1``.
 
@@ -131,6 +139,8 @@ def create_waw_lifecycle_registry_from_manifest_bytes(
         executor_factory=executor_factory,
         binding_digest_factory=binding_digest_factory,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
 
 
@@ -145,6 +155,8 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Internal/test-only bootstrap from a strictly cross-pinned byte bundle.
 
@@ -180,6 +192,8 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
         executor_factory=executor_factory,
         binding_digest_factory=binding_digest_factory,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
 
 
@@ -191,6 +205,8 @@ def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Bootstrap from the exact raw bytes returned by the filesystem loader.
 
@@ -214,6 +230,8 @@ def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
         executor_factory=executor_factory,
         binding_digest_factory=binding_digest_factory,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
 
 
@@ -232,6 +250,8 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Load, pin, and bootstrap one installer-owned manifest bundle.
 
@@ -267,6 +287,8 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
         executor_factory=executor_factory,
         binding_digest_factory=binding_digest_factory,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
 
 
@@ -279,6 +301,8 @@ def _create_registry_from_verified_manifest(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Internal adapter from the strict codec record to lifecycle state."""
 
@@ -294,6 +318,8 @@ def _create_registry_from_verified_manifest(
         executor_factory=executor_factory,
         binding_digest_factory=binding_digest_factory,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
 
 
@@ -310,6 +336,8 @@ def _create_registry(
     executor_factory: Callable[[str], WAWLifecycleExecutor] | None,
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None,
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Shared construction after either compatibility or strict validation.
 
@@ -337,6 +365,8 @@ def _create_registry(
         binding_digest_factory=binding_digest_factory,
         runtime_epoch=consumed_epoch,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
     return registry, consumed_epoch
 
