@@ -1,19 +1,23 @@
 # WAW-1 Contract Matrix
 
-This matrix separates the contracts currently implemented on the WAW-1 Draft
-branch from production capabilities that still require Linux host evidence and
-explicit Owner authorization. It is a verified branch-local snapshot, not an
-Accepted ADR or a production-readiness claim.
+This matrix separates the contracts merged into `main` from production
+capabilities that still require Linux host evidence and explicit Owner
+authorization. It is a verified post-merge snapshot, not a production-readiness
+claim.
 
 ## Live identity and governance
 
 - Repository: `ForceMind/agentbox`
-- PR: `#43`, `OPEN / DRAFT`
-- Head: `a8eb36fa5f80b3cee3279690692bb43f3302b78b`
-- Base: `main @ f2de2c7d2212724cc29d3b08140940fbcdf0a884`
-- Mergeability: `MERGEABLE / CLEAN`
-- Exact-head required CI: `19/19 SUCCESS`
-- Owner approval: not present; reviewer PASS is evidence only.
+- Main: `6bbc162dc99dd45b30b6162626b1bdb07cc28340`
+- PR: `#43`, `MERGED` (squash merge)
+- PR head: `622bbe7be99fbf38e0322230ff3ecb82e8fcc621`
+- PR base: `main @ f2de2c7d2212724cc29d3b08140940fbcdf0a884`
+- Exact-head CI before merge: `19/19 SUCCESS` (historical evidence for PR #43,
+  not a post-merge host or release check)
+- Merge commit observed for the exact PR/head/base above. The Owner
+  authorization was an external governance record; GitHub `reviewDecision` is
+  not that record. This does not authorize WAW-2, production activation, or
+  real-host work.
 
 ## Implemented and tested contracts
 
@@ -84,11 +88,12 @@ git fetch origin --prune
 git status --short --branch
 git rev-parse HEAD
 git rev-parse origin/main
-gh pr view 43 --json state,isDraft,headRefOid,baseRefOid,mergeStateStatus,reviewDecision
+gh pr view 43 --json state,isDraft,headRefOid,baseRefOid,mergeCommit,mergeStateStatus,reviewDecision
 gh pr checks 43
 ```
 
 Every implementation slice remains `feature branch → Draft PR → exact-head CI →
 read-only Architecture/Security/Test review → explicit Owner/host gate`. This
-document does not authorize Ready, merge, the next Slice, real Provider login,
-or production activation.
+document records that WAW-1 foundation PR #43 has completed that merge gate; it
+does not authorize production activation, WAW-2, WAW-3, real Provider login, or
+deployment.
