@@ -19,6 +19,7 @@ The bot must revalidate, for every action:
 - required CI checks are terminal SUCCESS;
 - required Architecture/Security/Test reviews are present;
 - host evidence is valid and non-secret;
+- release actions include an exact release authorization record and exact target tuple;
 - the authorization record is still current.
 
 Any head/base change invalidates the authorization.
@@ -29,7 +30,13 @@ The bot may:
 
 - update Draft/Ready state;
 - squash-merge an exact approved PR;
-- start a pre-authorized release workflow;
+- start a release workflow only when an exact release authorization record matches all of:
+  - PR number;
+  - exact target workflow ref;
+  - exact target workflow file;
+  - exact release tag or branch ref;
+  - immutable artifact fingerprint bound to the record;
+- and only for the explicit authorized release scope.
 - transition to a specifically authorized next Slice.
 
 ## Forbidden actions
