@@ -13,7 +13,7 @@ import json
 import re
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from agentbox_runtime.waw_cgroup_attestation import (
@@ -372,6 +372,7 @@ class WAWLifecycleRegistry:
         }[action]
         observation = await method(identity)
         self._validate_observation(observation)
+        cgroup_record: WAWCgroupAttestation | None = None
         if action == _START and self._cgroup_attestation_store is not None:
             try:
                 if self._cgroup_attestation_factory is None:  # pragma: no cover
@@ -387,10 +388,41 @@ class WAWLifecycleRegistry:
                 )
                 self._cgroup_attestation_store.write(cgroup_record)
             except Exception as exc:
+                fence_error: Exception | None = None
                 try:
                     await self._cleanup_failed_start(identity)
                 except Exception as cleanup_exc:
-                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_exc
+                    fence_error = cleanup_exc
+                if cgroup_record is not None:
+                    try:
+                        self._fence_cgroup_attestation(cgroup_record)
+                    except Exception as cgroup_exc:
+                        fence_error = cgroup_exc
+                if fence_error is not None:
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from fence_error
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if action == _STOP and self._cgroup_attestation_store is not None:
+            try:
+                if self._cgroup_attestation_factory is None:  # pragma: no cover
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+                cgroup_record = self._cgroup_attestation_factory(identity, observation)
+                verify_waw_cgroup_attestation_context(
+                    cgroup_record,
+                    expected_workspace_id=identity.workspace_id,
+                    expected_project_id=identity.project_id,
+                    expected_agent_type=identity.agent_type,
+                    expected_generation=int(identity.generation),
+                    expected_runtime_epoch=self._runtime_epoch,
+                )
+                if cgroup_record.cleanup_state == "LIVE":
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+                self._cgroup_attestation_store.write(cgroup_record)
+            except Exception as exc:
+                if cgroup_record is not None:
+                    try:
+                        self._fence_cgroup_attestation(cgroup_record)
+                    except Exception as fence_exc:
+                        raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from fence_exc
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if action == _START and self._attestation_store is not None:
             try:
@@ -408,7 +440,18 @@ class WAWLifecycleRegistry:
                 # floor is unsafe to retain.  Attempt exact identity cleanup;
                 # if cleanup cannot be proven, the workspace remains fenced
                 # for explicit reconciliation.
-                await self._cleanup_failed_start(identity)
+                cleanup_error: Exception | None = None
+                try:
+                    await self._cleanup_failed_start(identity)
+                except Exception as cleanup_exc:
+                    cleanup_error = cleanup_exc
+                if cgroup_record is not None:
+                    try:
+                        self._fence_cgroup_attestation(cgroup_record)
+                    except Exception as cgroup_exc:
+                        cleanup_error = cgroup_exc
+                if cleanup_error is not None:
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_error
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         self._workspaces[identity.workspace_id] = (identity, observation)
         if action == _START:
@@ -436,6 +479,16 @@ class WAWLifecycleRegistry:
             and cleanup.runtime_epoch == self._runtime_epoch
         ):
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+
+    def _fence_cgroup_attestation(self, record: WAWCgroupAttestation) -> None:
+        """Persist a conservative FENCED state without claiming empty cgroupfs."""
+
+        if self._cgroup_attestation_store is None:  # pragma: no cover
+            return
+        fenced = (
+            record if record.cleanup_state != "LIVE" else replace(record, cleanup_state="FENCED")
+        )
+        self._cgroup_attestation_store.write(fenced)
 
     def _require_authority(self) -> None:
         if self._authority is None:

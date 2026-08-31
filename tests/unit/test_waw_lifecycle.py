@@ -279,6 +279,69 @@ async def test_start_persists_cgroup_attestation_before_exposing_generation(tmp_
     assert store.read(workspace_id=WORKSPACE, generation=1) == cgroup_record()
 
 
+@pytest.mark.anyio
+async def test_stop_persists_fenced_cgroup_attestation_before_returning(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+
+    def factory(
+        _identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
+    ) -> WAWCgroupAttestation:
+        if observation.state == "STOPPED":
+            return replace(cgroup_record(), attachment_leaves=(), cleanup_state="FENCED")
+        return cgroup_record()
+
+    runtime = registry(
+        FakeExecutor(),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=factory,
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    response = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "7" * 32)
+    )
+    assert response["status"] == "STOPPED"
+    persisted = store.read(workspace_id=WORKSPACE, generation=1)
+    assert persisted is not None
+    assert persisted.cleanup_state == "FENCED"
+
+
+@pytest.mark.anyio
+async def test_workspace_attestation_failure_fences_cgroup_record_after_cleanup(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    runtime = registry(
+        FakeExecutor(),
+        cast(WAWWorkspaceAttestationStore, FailingAttestationStore()),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    persisted = store.read(workspace_id=WORKSPACE, generation=1)
+    assert persisted is not None
+    assert persisted.cleanup_state == "FENCED"
+
+
 def test_cgroup_attestation_store_and_factory_must_be_paired(tmp_path: Path) -> None:
     directory = tmp_path / "cgroup-attestations"
     directory.mkdir()
@@ -318,7 +381,9 @@ async def test_cgroup_attestation_mismatch_cleans_up_and_keeps_generation_fenced
         await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
     assert exc_info.value.code == "RECONCILIATION_REQUIRED"
     assert [kind for kind, _identity in executor.calls] == ["start", "stop"]
-    assert store.read(workspace_id=WORKSPACE, generation=1) is None
+    persisted = store.read(workspace_id=WORKSPACE, generation=1)
+    assert persisted is not None
+    assert persisted.cleanup_state == "FENCED"
 
 
 @pytest.mark.anyio
