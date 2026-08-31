@@ -255,7 +255,15 @@ def test_bundle_loader_reads_fixed_files_from_one_directory(tmp_path: Path) -> N
     )
 
 
-@pytest.mark.parametrize("filename", ["api-host-anchor.v1", "runtime-host-installation.v1"])
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "api-host-anchor.v1",
+        "runtime-host-installation.v1",
+        "project-root.v1",
+        "cgroup-delegation.v1",
+    ],
+)
 def test_bundle_loader_rejects_symlink_file(tmp_path: Path, filename: str) -> None:
     directory, _ = _write_manifest_bundle(tmp_path)
     target = directory / filename

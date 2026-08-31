@@ -539,6 +539,10 @@ def load_canonical_waw_manifest_bundle(
         raise WAWRuntimeHostManifestError("expected_max_bytes is invalid")
     if directory_mode & ~0o777 or directory_mode & 0o022:
         raise WAWRuntimeHostManifestError("expected_directory_mode is unsafe")
+    if expected_ancestor_mode is not None:
+        _validate_loader_argument(expected_ancestor_mode, "expected_ancestor_mode")
+        if expected_ancestor_mode & ~0o777 or expected_ancestor_mode & 0o022:
+            raise WAWRuntimeHostManifestError("expected_ancestor_mode is unsafe")
     if file_mode & ~0o777 or file_mode & 0o222:
         raise WAWRuntimeHostManifestError("expected_file_mode is unsafe")
 
@@ -616,7 +620,15 @@ def load_canonical_waw_manifest_bundle(
                     with suppress(OSError):
                         os.close(fd)
         parent_after = os.fstat(directory_fd)
-        parent_fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_ctime_ns")
+        parent_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
         if any(
             getattr(parent_before, field) != getattr(parent_after, field) for field in parent_fields
         ):
