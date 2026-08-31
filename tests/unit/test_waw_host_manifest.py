@@ -10,9 +10,11 @@ from typing import cast
 
 import pytest
 from agentbox_runtime.waw_host_manifest import (
+    WAWCanonicalManifestBundle,
     WAWRuntimeHostManifestDevelopmentOnlyError,
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
+    load_canonical_waw_manifest_bundle,
     load_canonical_waw_runtime_host_manifest,
     load_waw_runtime_host_manifest_development_only,
 )
@@ -215,6 +217,68 @@ def test_legacy_manifest_helpers_are_not_package_exports() -> None:
     assert not hasattr(agentbox_runtime, "create_waw_lifecycle_registry")
     assert not hasattr(agentbox_runtime, "load_waw_runtime_host_manifest")
     assert not hasattr(agentbox_runtime, "WAWRuntimeHostManifest")
+
+
+def _write_manifest_bundle(root: Path) -> tuple[Path, dict[str, bytes]]:
+    directory = root / "bundle"
+    directory.mkdir()
+    os.chmod(directory, 0o750)
+    payloads = {
+        "api-host-anchor.v1": b"anchor-bytes",
+        "runtime-host-installation.v1": b"runtime-bytes",
+        "project-root.v1": b"project-bytes",
+        "cgroup-delegation.v1": b"cgroup-bytes",
+    }
+    for name, payload in payloads.items():
+        path = directory / name
+        path.write_bytes(payload)
+        os.chmod(path, 0o440)
+    return directory, payloads
+
+
+def _load_bundle(directory: Path) -> WAWCanonicalManifestBundle:
+    return load_canonical_waw_manifest_bundle(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+
+
+def test_bundle_loader_reads_fixed_files_from_one_directory(tmp_path: Path) -> None:
+    directory, payloads = _write_manifest_bundle(tmp_path)
+    value = _load_bundle(directory)
+    assert value == WAWCanonicalManifestBundle(
+        api_host_anchor=payloads["api-host-anchor.v1"],
+        runtime_host_installation=payloads["runtime-host-installation.v1"],
+        project_root=payloads["project-root.v1"],
+        cgroup_delegation=payloads["cgroup-delegation.v1"],
+    )
+
+
+@pytest.mark.parametrize("filename", ["api-host-anchor.v1", "runtime-host-installation.v1"])
+def test_bundle_loader_rejects_symlink_file(tmp_path: Path, filename: str) -> None:
+    directory, _ = _write_manifest_bundle(tmp_path)
+    target = directory / filename
+    target.unlink()
+    (directory / filename).symlink_to(tmp_path / "outside")
+    (tmp_path / "outside").write_bytes(b"not trusted")
+    os.chmod(tmp_path / "outside", 0o440)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        _load_bundle(directory)
+
+
+def test_bundle_loader_rejects_missing_fixed_file(tmp_path: Path) -> None:
+    directory, _ = _write_manifest_bundle(tmp_path)
+    (directory / "project-root.v1").unlink()
+    with pytest.raises(WAWRuntimeHostManifestError):
+        _load_bundle(directory)
+
+
+def test_bundle_loader_rejects_unsafe_directory_mode(tmp_path: Path) -> None:
+    directory, _ = _write_manifest_bundle(tmp_path)
+    os.chmod(directory, 0o770)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        _load_bundle(directory)
 
 
 def _strict_runtime_bytes() -> bytes:

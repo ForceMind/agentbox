@@ -78,8 +78,10 @@ from agentbox_runtime.waw_control_server import (
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
+    WAWCanonicalManifestBundle,
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
+    load_canonical_waw_manifest_bundle,
     load_canonical_waw_runtime_host_manifest,
 )
 from agentbox_runtime.waw_lifecycle import (
@@ -181,6 +183,7 @@ __all__ = [
     "create_waw_lifecycle_registry_from_manifest_bytes",
     "WAWRuntimeEpochError",
     "WAWRuntimeEpochStore",
+    "WAWCanonicalManifestBundle",
     "WAWRuntimeHostManifestError",
     "WAWWorkspaceAttestation",
     "WAWWorkspaceAttestationError",
@@ -190,6 +193,7 @@ __all__ = [
     "WAWLifecycleObservation",
     "WAWLifecycleRegistry",
     "decode_canonical_waw_runtime_host_manifest",
+    "load_canonical_waw_manifest_bundle",
     "load_canonical_waw_runtime_host_manifest",
     "WAWPublicAuthEvidence",
     "WAWPublicAuthProbeCache",

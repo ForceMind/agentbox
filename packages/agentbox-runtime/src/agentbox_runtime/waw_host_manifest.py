@@ -27,6 +27,13 @@ from agentbox_runtime.waw_manifest_codecs import (
 )
 
 _DEFAULT_PATH = Path("/var/lib/agentbox-waw/runtime-host-installation.json")
+_DEFAULT_BUNDLE_DIRECTORY = Path("/var/lib/agentbox-waw")
+_BUNDLE_FILENAMES = (
+    "api-host-anchor.v1",
+    "runtime-host-installation.v1",
+    "project-root.v1",
+    "cgroup-delegation.v1",
+)
 _SCHEMA = "waw-runtime-host-installation-v1"
 _MAX_BYTES = 64 * 1024
 _MAX_U64 = 2**64 - 1
@@ -63,6 +70,21 @@ class WAWRuntimeHostManifestDevelopmentOnlyError(RuntimeError):
 
 class WAWRuntimeHostManifestError(RuntimeError):
     """The strict Runtime host manifest codec boundary rejected the record."""
+
+
+@dataclass(frozen=True)
+class WAWCanonicalManifestBundle:
+    """Canonical, installer-owned bytes read from one trusted directory.
+
+    This is deliberately a raw-byte container.  Cross-manifest decoding and
+    pin verification remain the responsibility of the strict codec/bootstrap
+    boundary, while this loader only establishes file provenance.
+    """
+
+    api_host_anchor: bytes
+    runtime_host_installation: bytes
+    project_root: bytes
+    cgroup_delegation: bytes
 
 
 @dataclass(frozen=True)
@@ -482,8 +504,135 @@ def load_canonical_waw_runtime_host_manifest(
         raise WAWRuntimeHostManifestError("WAW Runtime host manifest validation failed") from exc
 
 
+def load_canonical_waw_manifest_bundle(
+    directory: Path = _DEFAULT_BUNDLE_DIRECTORY,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int,
+    expected_ancestor_mode: int | None = None,
+    expected_directory_mode: int = 0o750,
+    expected_file_mode: int = 0o440,
+    expected_max_bytes: int = _MAX_BYTES,
+) -> WAWCanonicalManifestBundle:
+    """Read the four fixed WAW manifests from one installer-owned directory.
+
+    The directory is opened once through the existing descriptor-relative
+    ``O_NOFOLLOW`` traversal.  Each fixed filename is then opened relative to
+    that same directory descriptor and checked for regular-file type,
+    installer ownership, exact mode, bounded size, and stable pre/post-read
+    provenance.  No caller-provided filename is accepted, so traversal and
+    symlink substitution are rejected before codec/bootstrap verification.
+
+    This function establishes non-secret filesystem provenance only; it does
+    not decode records, consume an enrollment epoch, execute commands, or
+    start Runtime services.
+    """
+
+    if not isinstance(directory, Path) or not directory.is_absolute():
+        raise WAWRuntimeHostManifestError("WAW manifest bundle directory must be absolute")
+    uid = _validate_loader_argument(expected_uid, "expected_uid")
+    gid = _validate_loader_argument(expected_gid, "expected_gid")
+    directory_mode = _validate_loader_argument(expected_directory_mode, "expected_directory_mode")
+    file_mode = _validate_loader_argument(expected_file_mode, "expected_file_mode")
+    max_bytes = _validate_loader_argument(expected_max_bytes, "expected_max_bytes")
+    if max_bytes == 0 or max_bytes > _MAX_BYTES:
+        raise WAWRuntimeHostManifestError("expected_max_bytes is invalid")
+    if directory_mode & ~0o777 or directory_mode & 0o022:
+        raise WAWRuntimeHostManifestError("expected_directory_mode is unsafe")
+    if file_mode & ~0o777 or file_mode & 0o222:
+        raise WAWRuntimeHostManifestError("expected_file_mode is unsafe")
+
+    # Use the strict existing traversal to establish the directory descriptor
+    # and its exact final-parent provenance.  The placeholder name is never
+    # opened; all actual reads below use fixed basenames and dir_fd.
+    directory_fd, _ = _open_ancestor_chain(
+        directory / _BUNDLE_FILENAMES[0],
+        expected_uid=uid,
+        expected_gid=gid,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_parent_mode=directory_mode,
+        trusted_root=directory,
+    )
+    try:
+        parent_before = os.fstat(directory_fd)
+        _directory_provenance(
+            parent_before,
+            expected_uid=uid,
+            expected_gid=gid,
+            expected_mode=directory_mode,
+            require_expected_owner=True,
+        )
+        payloads: list[bytes] = []
+        for filename in _BUNDLE_FILENAMES:
+            fd: int | None = None
+            try:
+                fd = os.open(filename, _OPEN_FLAGS | os.O_NOFOLLOW, dir_fd=directory_fd)
+                first = os.fstat(fd)
+                if (
+                    not stat.S_ISREG(first.st_mode)
+                    or first.st_uid != uid
+                    or first.st_gid != gid
+                    or stat.S_IMODE(first.st_mode) != file_mode
+                    or first.st_size < 0
+                    or first.st_size > max_bytes
+                ):
+                    raise WAWRuntimeHostManifestError(
+                        f"WAW manifest bundle file provenance is invalid: {filename}"
+                    )
+                payload = bytearray()
+                while len(payload) <= max_bytes:
+                    chunk = os.read(fd, min(8192, max_bytes + 1 - len(payload)))
+                    if not chunk:
+                        break
+                    payload.extend(chunk)
+                if len(payload) > max_bytes:
+                    raise WAWRuntimeHostManifestError(
+                        f"WAW manifest bundle file is too large: {filename}"
+                    )
+                second = os.fstat(fd)
+                fields = (
+                    "st_dev",
+                    "st_ino",
+                    "st_mode",
+                    "st_uid",
+                    "st_gid",
+                    "st_size",
+                    "st_mtime_ns",
+                    "st_ctime_ns",
+                )
+                if any(getattr(first, field) != getattr(second, field) for field in fields):
+                    raise WAWRuntimeHostManifestError(
+                        f"WAW manifest bundle file changed during read: {filename}"
+                    )
+                payloads.append(bytes(payload))
+            except WAWRuntimeHostManifestError:
+                raise
+            except OSError as exc:
+                raise WAWRuntimeHostManifestError(
+                    f"WAW manifest bundle file cannot be read: {filename}"
+                ) from exc
+            finally:
+                if fd is not None:
+                    with suppress(OSError):
+                        os.close(fd)
+        parent_after = os.fstat(directory_fd)
+        fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_ctime_ns")
+        if any(getattr(parent_before, field) != getattr(parent_after, field) for field in fields):
+            raise WAWRuntimeHostManifestError("WAW manifest bundle directory changed during read")
+    except WAWRuntimeHostManifestError:
+        raise
+    except OSError as exc:
+        raise WAWRuntimeHostManifestError("WAW manifest bundle cannot be read") from exc
+    finally:
+        with suppress(OSError):
+            os.close(directory_fd)
+    return WAWCanonicalManifestBundle(*payloads)
+
+
 __all__ = [
+    "WAWCanonicalManifestBundle",
     "WAWRuntimeHostManifestError",
     "decode_canonical_waw_runtime_host_manifest",
+    "load_canonical_waw_manifest_bundle",
     "load_canonical_waw_runtime_host_manifest",
 ]
