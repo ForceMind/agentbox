@@ -24,6 +24,7 @@ from agentbox_runtime.waw_cgroup_attestation import (
 )
 from agentbox_runtime.waw_cgroup_attestation_store import (
     WAWCgroupAttestationStore,
+    WAWCgroupAttestationStoreError,
 )
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_workspace_attestation import (
@@ -353,6 +354,18 @@ class WAWLifecycleRegistry:
             runtime_host_installation_revision=request["runtime_host_installation_revision"],
         )
         self._check_identity(identity)
+        if (
+            self._cgroup_attestation_store is not None
+            and identity.workspace_id not in self._cleanup_quarantine
+            and identity.workspace_id not in self._workspaces
+        ):
+            try:
+                if self._cgroup_attestation_store.has_unresolved(
+                    workspace_id=identity.workspace_id
+                ):
+                    self._cleanup_quarantine.add(identity.workspace_id)
+            except WAWCgroupAttestationStoreError as exc:
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if identity.workspace_id in self._cleanup_quarantine:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         current = self._workspaces.get(identity.workspace_id)
