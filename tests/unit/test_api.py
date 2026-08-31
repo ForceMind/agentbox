@@ -15,6 +15,24 @@ from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
 from sqlalchemy.engine import make_url
 
 
+class FakeWAWBindCoordinator:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def bind(self) -> dict[str, object]:
+        self.calls += 1
+        return {"status": "BOUND"}
+
+
+@pytest.mark.anyio
+async def test_optional_waw_bind_runs_before_api_serving(settings: Settings) -> None:
+    coordinator = FakeWAWBindCoordinator()
+    application = create_app(settings, waw_bind_coordinator=coordinator)  # type: ignore[arg-type]
+    async with application.router.lifespan_context(application):
+        assert coordinator.calls == 1
+    application.state.services.database.close()
+
+
 @pytest.mark.anyio
 async def test_health_endpoint_without_database_readiness(settings: Settings) -> None:
     application = create_app(settings)

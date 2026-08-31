@@ -64,8 +64,8 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 33 ]]; then
-  printf 'Unexpected Phase 8 API route count: %s\n' "$route_count" >&2
+if [[ "$route_count" -ne 36 ]]; then
+  printf 'Unexpected Phase 8/WAW API route count: %s\n' "$route_count" >&2
   exit 1
 fi
 

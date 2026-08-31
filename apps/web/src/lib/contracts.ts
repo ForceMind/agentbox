@@ -215,6 +215,30 @@ export type ClaudeSessionOutputResponse = {
   }
 }
 
+export type WorkspaceRuntimeStatus = {
+  workspace_id: string
+  project_id: string
+  agent_type: 'claude' | 'codex'
+  generation: string
+  binding_revision: string
+  binding_digest: string
+  state: string
+  reconciliation_state: string
+  runtime_epoch: string
+  process_state: string
+  exit_code: number | null
+  attachment_capacity: {
+    admitted: string
+    pending: string
+    limit: string
+  }
+}
+
+export type WorkspaceRuntimeStatusResponse = {
+  request_id: string
+  data: WorkspaceRuntimeStatus
+}
+
 export type GitStatusData = {
   is_repository: boolean
   branch: string | null
@@ -865,6 +889,46 @@ export function parseClaudeSessionOutputResponse(
       output: string(data.output, 'Claude output'),
       truncated: boolean(data.truncated, 'Claude output truncation'),
       sensitive: true,
+    },
+  }
+}
+
+export function parseWorkspaceRuntimeStatusResponse(
+  value: unknown,
+): WorkspaceRuntimeStatusResponse {
+  const envelope = object(value, 'Workspace runtime status')
+  const data = object(envelope.data, 'Workspace runtime status data')
+  const capacity = object(
+    data.attachment_capacity,
+    'Workspace attachment capacity',
+  )
+  for (const forbidden of ['terminal', 'terminal_output', 'ticket']) {
+    if (forbidden in data || forbidden in capacity) {
+      throw new Error(`Invalid Workspace runtime status response`)
+    }
+  }
+  return {
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      workspace_id: string(data.workspace_id, 'workspace ID'),
+      project_id: string(data.project_id, 'Project ID'),
+      agent_type: literal(data.agent_type, ['claude', 'codex'], 'AgentType'),
+      generation: string(data.generation, 'workspace generation'),
+      binding_revision: string(data.binding_revision, 'binding revision'),
+      binding_digest: string(data.binding_digest, 'binding digest'),
+      state: string(data.state, 'workspace state'),
+      reconciliation_state: string(
+        data.reconciliation_state,
+        'reconciliation state',
+      ),
+      runtime_epoch: string(data.runtime_epoch, 'Runtime epoch'),
+      process_state: string(data.process_state, 'process state'),
+      exit_code: nullableNumber(data.exit_code, 'exit code'),
+      attachment_capacity: {
+        admitted: string(capacity.admitted, 'admitted attachment count'),
+        pending: string(capacity.pending, 'pending attachment count'),
+        limit: string(capacity.limit, 'attachment limit'),
+      },
     },
   }
 }

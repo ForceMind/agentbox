@@ -1,0 +1,305 @@
+"""Pure, fail-closed preflight for a future WAW attachment admission.
+
+The helper intentionally stops before WebSocket/Noise handshake or Runtime
+side effects.  It is safe to inject into tests/dev harnesses while production
+attachment routing remains unavailable by default.
+"""
+
+from __future__ import annotations
+
+import re
+import secrets
+from collections.abc import Collection
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Literal, Protocol, cast
+from urllib.parse import urlsplit
+
+from agentbox_core.services import AuthenticatedSession
+from agentbox_core.waw import (
+    validate_binding_digest,
+    validate_positive_u64,
+    validate_runtime_host_installation_id,
+)
+from agentbox_core.waw_models import AgentWorkspaceSessionRecord
+from agentbox_core.waw_tickets import (
+    AttachmentAuthority,
+    AuthenticatedAttachmentContext,
+    IssuedAttachmentTicket,
+    TicketAuthorityError,
+)
+from agentbox_protocol.metadata import StrictMetadataModel
+from pydantic import ConfigDict, Field, ValidationInfo, field_serializer, field_validator
+
+from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
+
+_POSITIVE_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
+_DEFAULT_ALLOWED_ORIGINS = frozenset({"https://agentbox.invalid"})
+
+
+class WAWAdmissionError(RuntimeError):
+    """A bounded preflight rejection with a stable code."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+class WorkspaceAdmissionRow(Protocol):
+    id: str
+    project_id: str
+    authorization_scope: str
+    agent_type: str
+    generation: int
+    binding_revision: int
+    binding_digest: str
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: int
+    state: str
+
+
+@dataclass(frozen=True)
+class WAWRuntimeReadiness:
+    """Explicit, already-attested Runtime identity for preflight only."""
+
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: int
+    runtime_epoch: str
+    ready: bool = True
+
+    def __post_init__(self) -> None:
+        try:
+            validate_runtime_host_installation_id(self.runtime_host_installation_id)
+            validate_positive_u64(
+                self.runtime_host_installation_revision,
+                field="runtime_host_installation_revision",
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Runtime host identity is invalid") from exc
+        if not isinstance(self.ready, bool):
+            raise ValueError("ready must be a boolean")
+        if (
+            _POSITIVE_DECIMAL.fullmatch(self.runtime_epoch) is None
+            or int(self.runtime_epoch) > 2**64 - 1
+        ):
+            raise ValueError("runtime_epoch is invalid")
+
+
+class WAWAttachmentTicketRequest(StrictMetadataModel):
+    """Closed HTTP request body for issuing one writer ticket."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    mode: Literal["writer"]
+
+
+class WAWAttachmentTicketResponse(StrictMetadataModel):
+    """Exact transient ticket response; no paths, commands, or payload bytes."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    protocol_version: Literal[1]
+    request_id: str
+    ticket: str = Field(repr=False)
+    workspace_id: str
+    project_id: str
+    agent_type: Literal["claude"]
+    attachment_id: str
+    mode: Literal["writer"]
+    lease_number: str
+    generation: str
+    binding_revision: str
+    binding_digest: str
+    auth_epoch: str
+    api_authority_epoch: str
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+    runtime_epoch: str
+    expires_at: datetime
+
+    @field_validator("request_id", "ticket", "workspace_id", "project_id", "attachment_id")
+    @classmethod
+    def _validate_identifiers(cls, value: str, info: ValidationInfo) -> str:
+        patterns = {
+            "request_id": r"\Awreq_[a-f0-9]{32}\Z",
+            "ticket": r"\Awat_[a-f0-9]{32}\Z",
+            "workspace_id": r"\Aaws_[a-f0-9]{32}\Z",
+            "project_id": r"\Aprj_[a-f0-9]{32}\Z",
+            "attachment_id": r"\Aatt_[a-f0-9]{32}\Z",
+        }
+        field_name = info.field_name
+        pattern = patterns.get(field_name or "")
+        if not isinstance(value, str) or pattern is None or re.fullmatch(pattern, value) is None:
+            raise ValueError(f"{field_name} has an invalid identifier")
+        return value
+
+    @field_validator(
+        "lease_number",
+        "generation",
+        "binding_revision",
+        "auth_epoch",
+        "api_authority_epoch",
+        "runtime_host_installation_revision",
+        "runtime_epoch",
+    )
+    @classmethod
+    def _positive_decimal(cls, value: str) -> str:
+        if _POSITIVE_DECIMAL.fullmatch(value) is None:
+            raise ValueError("value must be a positive decimal string")
+        try:
+            validate_positive_u64(int(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("value must fit uint64") from exc
+        return value
+
+    @field_validator("runtime_host_installation_id")
+    @classmethod
+    def _host_id(cls, value: str) -> str:
+        try:
+            return validate_runtime_host_installation_id(value)
+        except ValueError as exc:
+            raise ValueError("runtime_host_installation_id is invalid") from exc
+
+    @field_validator("binding_digest")
+    @classmethod
+    def _binding_digest(cls, value: str) -> str:
+        try:
+            return validate_binding_digest(value)
+        except ValueError as exc:
+            raise ValueError("binding_digest is invalid") from exc
+
+    @field_serializer("expires_at")
+    def _serialize_expiry(self, value: datetime) -> str:
+        normalized = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+        return normalized.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    @classmethod
+    def from_issued(
+        cls,
+        request_id: str,
+        issued: IssuedAttachmentTicket,
+        *,
+        runtime_epoch: str,
+    ) -> WAWAttachmentTicketResponse:
+        claims = issued.claims
+        return cls(
+            protocol_version=1,
+            request_id=request_id,
+            ticket=issued.ticket,
+            workspace_id=claims.workspace_id,
+            project_id=claims.project_id,
+            agent_type=cast(Literal["claude"], str(claims.agent_type)),
+            attachment_id=claims.attachment_id,
+            mode="writer",
+            lease_number=str(claims.lease_number),
+            generation=str(claims.generation),
+            binding_revision=str(claims.binding_revision),
+            binding_digest=claims.binding_digest,
+            auth_epoch=str(claims.auth_epoch),
+            api_authority_epoch=str(claims.api_authority_epoch),
+            runtime_host_installation_id=claims.runtime_host_installation_id,
+            runtime_host_installation_revision=str(claims.runtime_host_installation_revision),
+            runtime_epoch=runtime_epoch,
+            expires_at=issued.expires_at,
+        )
+
+
+def prepare_attachment(
+    *,
+    authenticated: AuthenticatedSession,
+    row: WorkspaceAdmissionRow,
+    policy: WorkspaceAuthorizationPolicy,
+    recent_authenticator: ProtocolRecentAuth,
+    runtime: WAWRuntimeReadiness | None,
+    bound_runtime_epoch: str | None,
+    authority: AttachmentAuthority,
+    origin: str = "https://agentbox.invalid",
+    allowed_origins: Collection[str] | None = None,
+    expires_at: datetime | None = None,
+) -> IssuedAttachmentTicket:
+    """Run ordered admission checks and issue one transient attachment ticket.
+
+    The returned bearer exists only in the caller's transient response.  This
+    helper performs no database, Runtime, WebSocket, or Audit writes.
+    """
+
+    _validate_origin(origin, allowed_origins)
+    if not policy.allows(authenticated, cast(AgentWorkspaceSessionRecord, row)):
+        raise WAWAdmissionError("WORKSPACE_NOT_FOUND", "Workspace is not available")
+    if row.agent_type != "claude":
+        raise WAWAdmissionError("WAW_AGENT_UNSUPPORTED", "Only Claude WAW attachments are enabled")
+    if not recent_authenticator.is_recently_authenticated(authenticated):
+        raise WAWAdmissionError("RECENT_AUTH_REQUIRED", "Recent authentication is required")
+    if row.state != "RUNNING":
+        raise WAWAdmissionError("WORKSPACE_NOT_RUNNING", "Workspace is not running")
+    if runtime is None or not runtime.ready:
+        raise WAWAdmissionError("RUNTIME_UNAVAILABLE", "WAW Runtime is not ready")
+    if bound_runtime_epoch is None or runtime.runtime_epoch != bound_runtime_epoch:
+        raise WAWAdmissionError("RUNTIME_INSTALLATION_MISMATCH", "Runtime epoch is stale")
+    if (
+        runtime.runtime_host_installation_id != row.runtime_host_installation_id
+        or runtime.runtime_host_installation_revision != row.runtime_host_installation_revision
+    ):
+        raise WAWAdmissionError("RUNTIME_INSTALLATION_MISMATCH", "Runtime host identity is stale")
+    try:
+        context = AuthenticatedAttachmentContext(
+            session_id=authenticated.session_id,
+            user_id=authenticated.user_id,
+            authorization_scope=row.authorization_scope,
+            origin=origin,
+            runtime_epoch=runtime.runtime_epoch,
+            auth_epoch=authenticated.auth_epoch,
+        )
+        try:
+            attachment_id = f"att_{secrets.token_hex(16)}"
+        except Exception as exc:
+            raise WAWAdmissionError(
+                "RANDOMNESS_UNAVAILABLE", "secure attachment randomness is unavailable"
+            ) from exc
+        return authority.issue(
+            workspace_id=row.id,
+            project_id=row.project_id,
+            agent_type=row.agent_type,
+            attachment_id=attachment_id,
+            generation=row.generation,
+            auth_epoch=authenticated.auth_epoch,
+            runtime_host_installation_id=row.runtime_host_installation_id,
+            runtime_host_installation_revision=row.runtime_host_installation_revision,
+            binding_revision=row.binding_revision,
+            binding_digest=row.binding_digest,
+            origin=origin,
+            expires_at=expires_at,
+            context=context,
+        )
+    except TicketAuthorityError as exc:
+        raise WAWAdmissionError(exc.code.value, str(exc)) from exc
+
+
+class ProtocolRecentAuth(Protocol):
+    def is_recently_authenticated(self, authenticated: AuthenticatedSession) -> bool: ...
+
+
+def _validate_origin(origin: str, allowed_origins: Collection[str] | None) -> None:
+    allowed = _DEFAULT_ALLOWED_ORIGINS if allowed_origins is None else frozenset(allowed_origins)
+    if not isinstance(origin, str) or len(origin) > 256 or origin not in allowed:
+        raise WAWAdmissionError("ORIGIN_INVALID", "Origin is not allowlisted")
+    parsed = urlsplit(origin)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise WAWAdmissionError("ORIGIN_INVALID", "Origin is not canonical")
+
+
+__all__ = [
+    "ProtocolRecentAuth",
+    "WAWAdmissionError",
+    "WAWRuntimeReadiness",
+    "WorkspaceAdmissionRow",
+    "prepare_attachment",
+]

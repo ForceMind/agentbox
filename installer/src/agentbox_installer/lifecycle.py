@@ -52,6 +52,15 @@ UNIT_NAMES = (
 HARDENED_DATA_LAYOUT_MIN_VERSION = "0.2.5"
 
 
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
 def _compare_versions(candidate: str, current: str) -> int:
     """Compare release precedence; build metadata never authorizes downgrade."""
     try:
@@ -276,6 +285,7 @@ class AgentBoxInstaller:
             transaction_id=transaction_id,
             resources=resources,
         )
+        self._ensure_waw_epoch(allow_bootstrap=not self.layout.database.exists())
         self._write_initial_configuration(identities)
         self._write_journal(
             status="running",
@@ -897,6 +907,53 @@ class AgentBoxInstaller:
             if not stat.S_ISDIR(details.st_mode):
                 raise InstallError(f"managed directory collision at {item.path}")
             self.host.set_owner_mode(target, item.owner, item.group, item.mode)
+
+    def _ensure_waw_epoch(self, *, allow_bootstrap: bool) -> None:
+        """Create or validate the Runtime epoch counter without overwriting it."""
+
+        directory = self.layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")
+        path = directory / "epoch.json"
+        if path.exists() or path.is_symlink():
+            details = path.lstat()
+            if (
+                path.is_symlink()
+                or not stat.S_ISREG(details.st_mode)
+                or stat.S_IMODE(details.st_mode) != 0o600
+                or (
+                    self.host.real_host
+                    and (
+                        details.st_uid,
+                        details.st_gid,
+                    )
+                    != self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+                )
+            ):
+                raise InstallError("WAW Runtime epoch file is unsafe")
+            try:
+                value = json.loads(
+                    path.read_text(encoding="utf-8"), object_pairs_hook=_strict_json_object
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise InstallError("WAW Runtime epoch file is invalid") from exc
+            if (
+                not isinstance(value, dict)
+                or set(value) != {"epoch", "schema_version"}
+                or value["schema_version"] != "waw-runtime-epoch-v1"
+                or not isinstance(value["epoch"], str)
+                or re.fullmatch(r"[1-9][0-9]{0,19}", value["epoch"]) is None
+                or int(value["epoch"]) > 2**64 - 1
+            ):
+                raise InstallError("WAW Runtime epoch file is invalid")
+            self.host.set_owner_mode(path, "agentbox-runtime", "agentbox-runtime", 0o600)
+            return
+        if not allow_bootstrap:
+            raise InstallError("WAW Runtime epoch file is missing after enrollment")
+        self._atomic_write(
+            path,
+            '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}',
+            0o600,
+        )
+        self.host.set_owner_mode(path, "agentbox-runtime", "agentbox-runtime", 0o600)
 
     def _write_initial_configuration(self, identities: IdentityFacts) -> None:
         config = self.layout.map("/etc/agentbox/agentbox.toml")

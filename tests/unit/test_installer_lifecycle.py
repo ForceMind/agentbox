@@ -79,6 +79,11 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
         "etc/os-release",
     ]
     first = installer.apply(artifact, digest)
+    assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
+    assert layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json").read_text() == (
+        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}'
+    )
     secret_before = layout.map("/etc/agentbox/environment").read_bytes()
     config = layout.map("/etc/agentbox/agentbox.toml")
     config.write_text(config.read_text() + "session_ttl = 7200\n", encoding="utf-8")
@@ -92,6 +97,10 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     with sqlite3.connect(layout.database) as connection:
         connection.execute("CREATE TABLE admin_fixture(value TEXT)")
         connection.execute("INSERT INTO admin_fixture VALUES ('preserved')")
+
+    epoch_path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
+    epoch_path.write_text('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}')
+    epoch_path.chmod(0o600)
 
     second = installer.apply(artifact, digest)
     third = installer.apply(artifact, digest)
@@ -117,6 +126,49 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox")) == 0o1770
     assert stat_mode(layout.map("/srv/agentbox/projects")) == 0o700
     assert stat_mode(layout.map("/run/agentbox")) == 0o3770
+    assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
+    assert epoch_path.read_text() == ('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}')
+
+
+@pytest.mark.parametrize(
+    "content",
+    (
+        '{"epoch":"0","schema_version":"waw-runtime-epoch-v1"}',
+        '{"epoch":"01","schema_version":"waw-runtime-epoch-v1"}',
+        '{"epoch":"1","schema_version":"wrong"}',
+        '{"epoch":"1","schema_version":"waw-runtime-epoch-v1","extra":true}',
+        '{"epoch":"1","epoch":"2","schema_version":"waw-runtime-epoch-v1"}',
+    ),
+)
+def test_waw_epoch_provisioning_rejects_malformed_existing_counter(
+    tmp_path: Path, content: str
+) -> None:
+    installer, layout = _installer(tmp_path)
+    installer._ensure_directories()
+    path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o600)
+    with pytest.raises(InstallError, match="epoch file is invalid"):
+        installer._ensure_waw_epoch(allow_bootstrap=False)
+
+
+def test_waw_epoch_provisioning_rejects_missing_counter_after_enrollment(tmp_path: Path) -> None:
+    installer, _layout = _installer(tmp_path)
+    installer._ensure_directories()
+    with pytest.raises(InstallError, match="missing after enrollment"):
+        installer._ensure_waw_epoch(allow_bootstrap=False)
+
+
+def test_waw_epoch_provisioning_rejects_symlink_counter(tmp_path: Path) -> None:
+    installer, layout = _installer(tmp_path)
+    installer._ensure_directories()
+    path = layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json")
+    target = path.parent / "other.json"
+    target.write_text('{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}')
+    path.symlink_to(target.name)
+    with pytest.raises(InstallError, match="epoch file is unsafe"):
+        installer._ensure_waw_epoch(allow_bootstrap=True)
 
 
 @pytest.mark.parametrize(

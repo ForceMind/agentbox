@@ -1,4 +1,10 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useParams,
+} from 'react-router-dom'
 
 import { AppShell } from './app/AppShell'
 import { ProtectedRoute, PublicOnlyRoute } from './app/RouteGuards'
@@ -14,6 +20,20 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { WorkspacePage } from './pages/WorkspacePage'
+import { useWorkspaceStatus } from './features/workspace/useWorkspaceStatus'
+
+function WorkspaceRoute() {
+  const { workspaceId } = useParams<{ workspaceId: string }>()
+  const { view, refresh } = useWorkspaceStatus(workspaceId)
+  return (
+    <WorkspacePage
+      refreshStatus={refresh}
+      runtimeView={view}
+      workspaceId={workspaceId}
+    />
+  )
+}
 
 function RootRedirect() {
   const { status } = useAuth()
@@ -47,6 +67,11 @@ export function App() {
               <Route element={<DashboardPage />} path="/dashboard" />
               <Route element={<CodexPage />} path="/codex" />
               <Route element={<ClaudePage />} path="/claude" />
+              <Route element={<WorkspaceRoute />} path="/workspace" />
+              <Route
+                element={<WorkspaceRoute />}
+                path="/workspace/:workspaceId"
+              />
               <Route element={<ProjectsPage />} path="/projects" />
               <Route
                 element={<ProjectDetailPage />}

@@ -1,5 +1,19 @@
 """Minimal versioned public protocol types for the control plane."""
 
+from agentbox_protocol.abws import (
+    ABWSError,
+    ABWSFrame,
+    ABWSFrameType,
+    ABWSParser,
+    ABWSProtocolError,
+    FrameType,
+    IncompleteFrame,
+    TrailingBytes,
+    decode_frame,
+    encode_frame,
+    iter_frames,
+)
+from agentbox_protocol.abws_stream import ABWSFramedStreamPump
 from agentbox_protocol.auth import (
     AdminView,
     AuthData,
@@ -87,8 +101,27 @@ from agentbox_protocol.runtime_capabilities import (
     RuntimeRemoteState,
     RuntimeType,
 )
+from agentbox_protocol.waw_control import (
+    MAX_CONTROL_DEPTH,
+    MAX_CONTROL_ENVELOPE,
+    MAX_CONTROL_KEYS,
+    MAX_CONTROL_LINE,
+    MAX_U64,
+    WAW_CONTROL_PROTOCOL_VERSION,
+    WAWControlError,
+    decode_control_request,
+    decode_control_response,
+    encode_control_request,
+    encode_control_response,
+)
 
 __all__ = [
+    "ABWSFrame",
+    "ABWSFrameType",
+    "ABWSParser",
+    "ABWSError",
+    "ABWSProtocolError",
+    "ABWSFramedStreamPump",
     "AdminView",
     "AuthData",
     "AuthResponse",
@@ -170,4 +203,21 @@ __all__ = [
     "RuntimeInstallationType",
     "RuntimeRemoteState",
     "RuntimeType",
+    "MAX_CONTROL_DEPTH",
+    "MAX_CONTROL_ENVELOPE",
+    "MAX_CONTROL_KEYS",
+    "MAX_CONTROL_LINE",
+    "MAX_U64",
+    "WAW_CONTROL_PROTOCOL_VERSION",
+    "WAWControlError",
+    "decode_control_request",
+    "decode_control_response",
+    "encode_control_request",
+    "encode_control_response",
+    "FrameType",
+    "IncompleteFrame",
+    "TrailingBytes",
+    "decode_frame",
+    "encode_frame",
+    "iter_frames",
 ]

@@ -197,7 +197,9 @@ def test_no_secret_store_uds_action_public_api_frontend_or_alembic_migration() -
     assert any(
         name.startswith("0005_phase11_control_plane_ownership_approval") for name in migrations
     )
-    assert not any(name.startswith("0006") for name in migrations)
+    # WAW-1 adds metadata-only persistence; it must not introduce Secret Store
+    # authority or provider-secret routes.
+    assert any(name.startswith("0006_waw_workspace_metadata") for name in migrations)
 
 
 def test_ordinary_control_plane_backup_never_copies_runtime_secret_store(

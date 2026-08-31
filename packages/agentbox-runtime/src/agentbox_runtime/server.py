@@ -32,6 +32,8 @@ from agentbox_runtime.rpc import (
     validate_request_id,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_control_server import WAWControlServer
+from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
 _CODEX_ACTIONS = frozenset(
@@ -82,6 +84,8 @@ class RuntimeExecutorServer:
         read_timeout_seconds: float = 5.0,
         write_timeout_seconds: float = 5.0,
         trailing_timeout_seconds: float = 0.01,
+        waw_epoch_store: WAWRuntimeEpochStore | None = None,
+        waw_control_server: WAWControlServer | None = None,
     ) -> None:
         if read_timeout_seconds <= 0 or write_timeout_seconds <= 0 or trailing_timeout_seconds <= 0:
             raise ValueError("Runtime socket timeouts must be positive")
@@ -95,9 +99,23 @@ class RuntimeExecutorServer:
         self._read_timeout_seconds = read_timeout_seconds
         self._write_timeout_seconds = write_timeout_seconds
         self._trailing_timeout_seconds = trailing_timeout_seconds
+        self._waw_epoch_store = waw_epoch_store
+        self._waw_control_server = waw_control_server
+        self._waw_runtime_epoch: int | None = None
         self._server: asyncio.AbstractServer | None = None
 
+    @property
+    def waw_runtime_epoch(self) -> int | None:
+        """The immutable epoch consumed before WAW traffic can be served."""
+
+        return self._waw_runtime_epoch
+
     async def start(self, *, create_development_parent: bool = False) -> None:
+        if self._waw_epoch_store is not None and self._waw_runtime_epoch is None:
+            try:
+                self._waw_runtime_epoch = self._waw_epoch_store.consume()
+            except WAWRuntimeEpochError as exc:
+                raise RuntimeError("WAW Runtime epoch trust root is unavailable") from exc
         parent = self._socket_path.parent
         if create_development_parent:
             parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -150,11 +168,15 @@ class RuntimeExecutorServer:
                 os.chown(self._socket_path, -1, socket_gid)
             self._socket_path.chmod(0o660)
             await self._server.start_serving()
+            if self._waw_control_server is not None:
+                await self._waw_control_server.start()
         except Exception:
             await self.close()
             raise
 
     async def close(self) -> None:
+        if self._waw_control_server is not None:
+            await self._waw_control_server.close()
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
@@ -511,6 +533,8 @@ class RuntimeExecutorServer:
 
 async def _main() -> None:
     environment = os.environ.get("AGENTBOX_ENV", "development")
+    if environment not in {"development", "test", "production"}:
+        raise RuntimeError("AGENTBOX_ENV must be development, test, or production")
     socket_path = Path(os.environ.get("AGENTBOX_RUNTIME_SOCKET", ".agentbox-dev/runtime.sock"))
     if environment == "production" and (
         not socket_path.is_absolute() or socket_path.parent != Path("/run/agentbox")
@@ -552,6 +576,15 @@ async def _main() -> None:
     github = GitHubAdapter(git)
     claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
     codex_manager = CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown)
+    waw_epoch_store = (
+        WAWRuntimeEpochStore(
+            Path("/var/lib/agentbox-waw/runtime-epoch-v1"),
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+        )
+        if environment == "production"
+        else None
+    )
     server = RuntimeExecutorServer(
         socket_path,
         codex_manager,
@@ -560,6 +593,7 @@ async def _main() -> None:
         claude_manager=claude_manager,
         project_manager=ProjectWorkspaceManager(project_registry, git, github),
         capability_collector=RuntimeCapabilityCollector(codex_manager, claude_manager),
+        waw_epoch_store=waw_epoch_store,
     )
     await server.start(create_development_parent=environment != "production")
     try:
