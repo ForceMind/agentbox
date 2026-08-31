@@ -71,6 +71,15 @@ from agentbox_runtime.waw_bootstrap import (
     create_waw_lifecycle_registry_from_loaded_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bytes,
 )
+from agentbox_runtime.waw_cgroup_attestation import (
+    WAWCgroupAttachmentLeaf,
+    WAWCgroupAttestation,
+    WAWCgroupAttestationError,
+    WAWCgroupLimits,
+    decode_waw_cgroup_attestation,
+    encode_waw_cgroup_attestation,
+    waw_cgroup_attestation_sha256,
+)
 from agentbox_runtime.waw_claude_executor import (
     ClaudeProjectBinding,
     ProjectResolver,
@@ -206,6 +215,13 @@ __all__ = [
     "WAWPublicAuthProbeError",
     "WAWPublicAuthResult",
     "validate_waw_public_auth_probe_evidence",
+    "WAWCgroupAttachmentLeaf",
+    "WAWCgroupAttestation",
+    "WAWCgroupAttestationError",
+    "WAWCgroupLimits",
+    "decode_waw_cgroup_attestation",
+    "encode_waw_cgroup_attestation",
+    "waw_cgroup_attestation_sha256",
     "ProjectResolver",
     "ClaudeProjectBinding",
     "WAWClaudeLifecycleExecutor",
