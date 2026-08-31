@@ -84,6 +84,23 @@ def test_store_writes_and_reads_validated_record(tmp_path: Path) -> None:
     assert files[0].stat().st_mode & 0o777 == 0o600
 
 
+def test_store_requires_first_generation_and_rejects_cross_generation_copy(
+    tmp_path: Path,
+) -> None:
+    store, directory = _store(tmp_path)
+    record = _record()
+    with pytest.raises(WAWCgroupAttestationStoreError, match="first-generation"):
+        store.write(replace(record, generation=2))
+
+    store.write(record)
+    source = next(directory.glob("*.json"))
+    wrong_generation = directory / (source.stem[:-2] + "g2.json")
+    wrong_generation.write_bytes(source.read_bytes())
+    wrong_generation.chmod(0o600)
+    with pytest.raises(WAWCgroupAttestationStoreError, match="key mismatch"):
+        store.read(workspace_id=record.workspace_id, generation=2)
+
+
 def test_store_write_is_idempotent_for_exact_record(tmp_path: Path) -> None:
     store, _ = _store(tmp_path)
     record = _record()

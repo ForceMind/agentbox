@@ -66,6 +66,8 @@ class WAWCgroupAttestationStore:
                 _validate_update(current, record)
                 if encode_waw_cgroup_attestation(current) == raw:
                     return current
+            elif record.generation != 1:
+                raise WAWCgroupAttestationStoreError("missing first-generation cgroup attestation")
             self._replace_locked(directory_fd, record, raw)
         return record
 
