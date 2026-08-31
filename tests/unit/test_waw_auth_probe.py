@@ -121,6 +121,72 @@ def test_public_auth_probe_rejects_identity_drift() -> None:
         )
 
 
+def test_cache_refreshes_from_bounded_probe_and_applies_freshness() -> None:
+    cache = WAWPublicAuthProbeCache()
+    evidence = cache.refresh_from_probe(
+        _FakePublicAuthProbe(WAWPublicAuthResult.AUTHENTICATED),
+        agent_type=AgentType.CLAUDE,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision="2",
+        executable_fingerprint=FINGERPRINT,
+        checked_at_monotonic=100.0,
+    )
+    assert evidence == _evidence()
+    assert (
+        cache.fresh(
+            agent_type=AgentType.CLAUDE,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision="2",
+            executable_fingerprint=FINGERPRINT,
+            now_monotonic=101.0,
+        )
+        == evidence
+    )
+
+
+def test_probe_identity_drift_cannot_replace_existing_cache_entry() -> None:
+    class DriftingProbe:
+        def probe(
+            self,
+            *,
+            agent_type: AgentType,
+            runtime_host_installation_id: str,
+            runtime_host_installation_revision: str,
+            executable_fingerprint: str,
+            checked_at_monotonic: float,
+        ) -> WAWPublicAuthEvidence:
+            del (
+                agent_type,
+                runtime_host_installation_id,
+                runtime_host_installation_revision,
+                executable_fingerprint,
+                checked_at_monotonic,
+            )
+            return _evidence()
+
+    cache = WAWPublicAuthProbeCache()
+    cache.record(_evidence(result=WAWPublicAuthResult.UNAUTHENTICATED))
+    with pytest.raises(WAWPublicAuthProbeError, match="identity"):
+        cache.refresh_from_probe(
+            DriftingProbe(),
+            agent_type=AgentType.CLAUDE,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision="3",
+            executable_fingerprint=FINGERPRINT,
+            checked_at_monotonic=101.0,
+        )
+    assert (
+        cache.fresh(
+            agent_type=AgentType.CLAUDE,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision="2",
+            executable_fingerprint=FINGERPRINT,
+            now_monotonic=101.0,
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize(
     "result",
     [

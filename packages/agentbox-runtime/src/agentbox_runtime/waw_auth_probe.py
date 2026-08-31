@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from agentbox_core.waw import AgentType, validate_runtime_host_installation_id
 
@@ -35,6 +35,7 @@ class WAWPublicAuthProbeError(ValueError):
     """A public auth probe returned evidence outside its requested tuple."""
 
 
+@runtime_checkable
 class WAWPublicAuthProbe(Protocol):
     """Runtime-owned adapter contract for a bounded, metadata-only probe.
 
@@ -129,6 +130,43 @@ class WAWPublicAuthProbeCache:
             raise TypeError("evidence must be WAWPublicAuthEvidence")
         with self._lock:
             self._entries[evidence.agent_type] = evidence
+
+    def refresh_from_probe(
+        self,
+        probe: WAWPublicAuthProbe,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        """Run one bounded adapter call and cache only matching evidence.
+
+        The adapter receives the closed identity tuple and a monotonic sample;
+        it has no command, path, argv, environment, credential, or output
+        channel through this contract.  A mismatched result is rejected before
+        it can replace an existing cache entry.
+        """
+
+        if not isinstance(probe, WAWPublicAuthProbe):
+            raise TypeError("probe must implement WAWPublicAuthProbe")
+        evidence = probe.probe(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+        )
+        validated = validate_waw_public_auth_probe_evidence(
+            evidence,
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+        )
+        self.record(validated)
+        return validated
 
     def fresh(
         self,
