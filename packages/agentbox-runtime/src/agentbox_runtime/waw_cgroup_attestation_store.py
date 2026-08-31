@@ -16,6 +16,7 @@ import secrets
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentbox_runtime.waw_cgroup_attestation import (
@@ -34,6 +35,15 @@ _STATES = {"LIVE": 0, "FENCED": 1, "EMPTY_DURABLE": 2}
 
 class WAWCgroupAttestationStoreError(RuntimeError):
     """The Runtime-only attestation store is unavailable or inconsistent."""
+
+
+@dataclass(frozen=True)
+class WAWCgroupAttestationSnapshot:
+    """One locked view of a workspace's durable cgroup records."""
+
+    latest_generation: int | None
+    unresolved_generations: tuple[int, ...]
+    latest_unresolved: WAWCgroupAttestation | None
 
 
 class WAWCgroupAttestationStore:
@@ -74,6 +84,20 @@ class WAWCgroupAttestationStore:
             records = self._records_for_workspace_locked(directory_fd, workspace_id)
             return tuple(
                 record.generation for record in records if record.cleanup_state != "EMPTY_DURABLE"
+            )
+
+    def snapshot(self, *, workspace_id: str) -> WAWCgroupAttestationSnapshot:
+        """Return floor and unresolved state from one directory lock."""
+
+        if not isinstance(workspace_id, str) or _WORKSPACE_ID.fullmatch(workspace_id) is None:
+            raise WAWCgroupAttestationStoreError("workspace_id is invalid")
+        with self._locked_directory() as directory_fd:
+            records = self._records_for_workspace_locked(directory_fd, workspace_id)
+            unresolved = [record for record in records if record.cleanup_state != "EMPTY_DURABLE"]
+            return WAWCgroupAttestationSnapshot(
+                latest_generation=records[-1].generation if records else None,
+                unresolved_generations=tuple(record.generation for record in unresolved),
+                latest_unresolved=unresolved[-1] if unresolved else None,
             )
 
     def latest_generation(self, *, workspace_id: str) -> int | None:
@@ -397,6 +421,7 @@ def _validate_update(current: WAWCgroupAttestation, updated: WAWCgroupAttestatio
 
 
 __all__ = [
+    "WAWCgroupAttestationSnapshot",
     "WAWCgroupAttestationStore",
     "WAWCgroupAttestationStoreError",
 ]

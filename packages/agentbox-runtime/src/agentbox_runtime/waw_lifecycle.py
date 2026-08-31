@@ -210,7 +210,6 @@ class WAWLifecycleRegistry:
         self._detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self._detached_cleanup_identities: dict[asyncio.Task[Any], WAWLifecycleIdentity] = {}
         self._cleanup_quarantine: set[str] = set()
-        self._cleanup_quarantine_records: dict[str, WAWCgroupAttestation] = {}
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -359,15 +358,12 @@ class WAWLifecycleRegistry:
             self._cleanup_quarantine
         ):
             try:
-                unresolved = self._cgroup_attestation_store.latest_unresolved(
+                snapshot = self._cgroup_attestation_store.snapshot(
                     workspace_id=identity.workspace_id
                 )
-                unresolved_generations = self._cgroup_attestation_store.unresolved_generations(
-                    workspace_id=identity.workspace_id
-                )
-                latest_generation = self._cgroup_attestation_store.latest_generation(
-                    workspace_id=identity.workspace_id
-                )
+                unresolved = snapshot.latest_unresolved
+                unresolved_generations = snapshot.unresolved_generations
+                latest_generation = snapshot.latest_generation
                 if latest_generation is not None:
                     self._generation_floor[identity.workspace_id] = max(
                         self._generation_floor.get(identity.workspace_id, 0), latest_generation
@@ -383,7 +379,6 @@ class WAWLifecycleRegistry:
                 )
                 if unresolved is not None and not active_live:
                     self._cleanup_quarantine.add(identity.workspace_id)
-                    self._cleanup_quarantine_records[identity.workspace_id] = unresolved
             except WAWCgroupAttestationStoreError as exc:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if identity.workspace_id in self._cleanup_quarantine:
@@ -614,7 +609,13 @@ class WAWLifecycleRegistry:
         if self._cgroup_attestation_store is None:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         if record.workspace_id not in self._cleanup_quarantine:
-            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+            try:
+                snapshot = self._cgroup_attestation_store.snapshot(workspace_id=record.workspace_id)
+            except WAWCgroupAttestationStoreError as exc:
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+            if snapshot.latest_unresolved is None:
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+            self._cleanup_quarantine.add(record.workspace_id)
         if record.cleanup_state != "EMPTY_DURABLE" or record.last_populated != "0":
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         if record.attachment_leaves:
@@ -644,7 +645,6 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if fully_empty:
             self._cleanup_quarantine.discard(record.workspace_id)
-            self._cleanup_quarantine_records.pop(record.workspace_id, None)
 
     async def _build_cgroup_attestation(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
@@ -672,7 +672,6 @@ class WAWLifecycleRegistry:
             record if record.cleanup_state != "LIVE" else replace(record, cleanup_state="FENCED")
         )
         self._cgroup_attestation_store.write(fenced)
-        self._cleanup_quarantine_records[record.workspace_id] = fenced
 
     def _fence_cgroup_for_identity(
         self, identity: WAWLifecycleIdentity, record: WAWCgroupAttestation | None = None
