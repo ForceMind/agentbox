@@ -338,9 +338,7 @@ async def test_waw_attachment_ticket_is_transient_and_no_store(
     project_runtime: FakeProjectRuntime,
 ) -> None:
     _seed_workspace(initialized_services)
-    initialized_services.workspaces.transition(
-        WORKSPACE_ID, expected_revision=1, state="RUNNING"
-    )
+    initialized_services.workspaces.transition(WORKSPACE_ID, expected_revision=1, state="RUNNING")
     coordinator = FakeLifecycleCoordinator()
     app = create_app(
         settings,
