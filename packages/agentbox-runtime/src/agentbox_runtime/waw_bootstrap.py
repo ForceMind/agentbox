@@ -18,6 +18,7 @@ from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
+    WAWCanonicalManifestBundle,
     WAWRuntimeHostManifestDevelopmentOnly,
     decode_canonical_waw_runtime_host_manifest,
 )
@@ -175,6 +176,40 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
     )
 
 
+def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
+    *,
+    bundle: WAWCanonicalManifestBundle,
+    epoch_store: WAWRuntimeEpochStore,
+    executor: WAWLifecycleExecutor | None = None,
+    executor_factory: Callable[[str], WAWLifecycleExecutor] | None = None,
+    binding_digest_factory: BindingDigestFactory,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+) -> tuple[WAWLifecycleRegistry, str]:
+    """Bootstrap from the exact raw bytes returned by the filesystem loader.
+
+    Production callers should pass the value returned by
+    :func:`load_canonical_waw_manifest_bundle` as one object, rather than
+    independently selecting four byte strings.  This preserves the loader's
+    bundle boundary through cross-pin verification.  The operation remains a
+    data-only bootstrap helper: installer enrollment, host attestation, and
+    Runtime service activation are still explicit caller/host gates.
+    """
+
+    if not isinstance(bundle, WAWCanonicalManifestBundle):
+        raise TypeError("bundle must be a WAWCanonicalManifestBundle")
+    return create_waw_lifecycle_registry_from_manifest_bundle(
+        raw_api_host_anchor=bundle.api_host_anchor,
+        raw_runtime_host_manifest=bundle.runtime_host_installation,
+        raw_project_root_manifest=bundle.project_root,
+        raw_cgroup_delegation_manifest=bundle.cgroup_delegation,
+        epoch_store=epoch_store,
+        executor=executor,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+        attestation_store=attestation_store,
+    )
+
+
 def _create_registry_from_verified_manifest(
     *,
     manifest: RuntimeHostManifest,
@@ -268,5 +303,6 @@ def build_waw_control_server(
 __all__ = [
     "build_waw_control_server",
     "create_waw_lifecycle_registry_from_manifest_bundle",
+    "create_waw_lifecycle_registry_from_loaded_manifest_bundle",
     "create_waw_lifecycle_registry_from_manifest_bytes",
 ]

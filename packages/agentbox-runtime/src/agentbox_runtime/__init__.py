@@ -64,6 +64,7 @@ from agentbox_runtime.waw_auth_probe import (
 )
 from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
+    create_waw_lifecycle_registry_from_loaded_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bytes,
 )
@@ -179,6 +180,7 @@ __all__ = [
     "WAWActivationError",
     "load_waw_activated_sockets",
     "build_waw_control_server",
+    "create_waw_lifecycle_registry_from_loaded_manifest_bundle",
     "create_waw_lifecycle_registry_from_manifest_bundle",
     "create_waw_lifecycle_registry_from_manifest_bytes",
     "WAWRuntimeEpochError",

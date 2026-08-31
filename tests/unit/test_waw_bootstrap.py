@@ -7,11 +7,13 @@ from pathlib import Path
 import pytest
 from agentbox_runtime.waw_bootstrap import (
     create_waw_lifecycle_registry_development_only,
+    create_waw_lifecycle_registry_from_loaded_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bundle,
     create_waw_lifecycle_registry_from_manifest_bytes,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
+    WAWCanonicalManifestBundle,
     WAWRuntimeHostManifestDevelopmentOnly,
     WAWRuntimeHostManifestError,
 )
@@ -381,6 +383,25 @@ async def test_bundle_bootstrap_verifies_cross_manifest_pin_before_epoch_consume
     assert response["runtime_epoch"] == "2"
     assert response["host_manifest_digest"] == manifest_sha256(runtime_raw)
     assert response["project_root_manifest_digest"] == manifest_sha256(project_raw)
+
+
+def test_loaded_bundle_bootstrap_preserves_single_bundle_boundary(tmp_path: Path) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    anchor_raw, runtime_raw, project_raw, cgroup_raw = _strict_manifest_bundle()
+    bundle = WAWCanonicalManifestBundle(
+        api_host_anchor=anchor_raw,
+        runtime_host_installation=runtime_raw,
+        project_root=project_raw,
+        cgroup_delegation=cgroup_raw,
+    )
+    _registry, epoch = create_waw_lifecycle_registry_from_loaded_manifest_bundle(
+        bundle=bundle,
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    assert epoch == "2"
 
 
 def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
