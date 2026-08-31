@@ -20,14 +20,17 @@ result is `BLOCKED`; there is no plaintext or compatibility fallback.
    executable/template digests, and host revision are read back and bound as a
    single attestation.
 3. **systemd and cgroup** — the dedicated WAW sockets are systemd-precreated;
-   `Delegate`/`DelegateSubgroup`, `KillMode=process`, controller set, limits,
-   `cgroup.events`, and same-UID write denial match the immutable policy.
+   the exact approved `Delegate`/`DelegateSubgroup`, process-lifecycle policy,
+   controller set, limits, `cgroup.events`, and same-UID write-denial behavior
+   match the immutable policy. The selected values remain an Owner/host gate.
 4. **Process isolation** — PTY/devpts, `openpty`/`setsid`/`TIOCSCTTY`,
    process-group and `pidfd` stop semantics, namespace topology, seccomp, LSM,
    and `PrivateDevices` behavior are demonstrated on the target kernel.
-5. **Transport** — authenticated WebSocket upgrade, Noise revision 34,
-   transcript/AWCE binding, replay/epoch fences, bounded ABWS framing, and
-   no-plaintext API/proxy behavior are verified with synthetic canaries.
+5. **Transport** — authenticated WebSocket upgrade, the approved Noise
+   protocol revision and transcript/payload binding, replay/epoch fences,
+   bounded ABWS framing, and no-plaintext API/proxy behavior are verified with
+   synthetic canaries. Exact cryptographic parameters require a separate
+   Architecture/Owner decision before host validation.
 6. **Claude readiness** — the Runtime user locally completes Claude login and
    Workspace Trust on the isolated disposable host. Only redacted readiness
    states are returned; credentials and auth directories never enter AgentBox
@@ -35,6 +38,13 @@ result is `BLOCKED`; there is no plaintext or compatibility fallback.
 7. **Failure and recovery** — start/attach/reconnect/detach/stop races,
    Runtime/API restart, host reboot, cgroup cleanup, stale tickets, and
    generation fencing produce the documented bounded states.
+
+## Evidence status
+
+Every item below must carry exactly one status in the eventual evidence
+package: `PASS`, `BLOCKED`, `UNKNOWN`, or `NOT RUN`. This checklist currently
+has no host observations, so all items are `NOT RUN` until an authorized
+operator supplies redacted evidence.
 
 ## Required evidence package
 

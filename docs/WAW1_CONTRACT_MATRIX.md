@@ -12,9 +12,12 @@ claim.
 - PR: `#43`, `MERGED` (squash merge)
 - PR head: `622bbe7be99fbf38e0322230ff3ecb82e8fcc621`
 - PR base: `main @ f2de2c7d2212724cc29d3b08140940fbcdf0a884`
-- Exact-head CI before merge: `19/19 SUCCESS`
-- Merge authorization: explicitly granted for the exact PR/head/base above;
-  this does not authorize WAW-2, production activation, or real-host work.
+- Exact-head CI before merge: `19/19 SUCCESS` (historical evidence for PR #43,
+  not a post-merge host or release check)
+- Merge commit observed for the exact PR/head/base above. The Owner
+  authorization was an external governance record; GitHub `reviewDecision` is
+  not that record. This does not authorize WAW-2, production activation, or
+  real-host work.
 
 ## Implemented and tested contracts
 
