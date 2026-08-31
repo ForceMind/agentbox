@@ -208,8 +208,7 @@ candidate but does not publish a tag or GitHub Release.
   come from merged protected `main`; no force push or tag replacement.
 - **Stop condition:** Draft PR and CI/rehearsal evidence are ready for human
   review, with tag and GitHub Release still absent.
-- **Human approval:** merge, version/tag, signing policy, Draft Release,
-  pre-release publication, and any support promise.
+- **Human approval:** Owner approval may be delegated to a protected `agentbox-governance-bot` for mechanical repository actions. Architecture decisions, host activation, secret handling, release publication, and support promises remain outside the bot's authority unless separately declared in protected policy.
 
 ## Phase 11 — Provider, Secret & Runtime Continuity Management (future post-MVP)
 
@@ -254,9 +253,7 @@ Phase 10 and does not insert into, reorder, or authorize Phases 6–10.
   contracts, active-writer safety, config transaction, lifecycle restoration,
   and rollback verification are proven; Unknown/Experimental remains explicit
   for every unverified continuity dimension.
-- **Human approval:** Secret Manager backends, config ownership boundary, real
-  Provider credentials or paid tests, activation, Runtime restart, session
-  impact, any independent daemon proposal, and every continuity/support claim.
+- **Human approval:** Owner approval may be delegated to a protected `agentbox-governance-bot` for mechanical actions only. Architecture decisions, host activation, secret handling, release publication, and support promises remain outside the bot's authority unless separately declared in protected policy.
 
 ## Cross-phase change control
 
