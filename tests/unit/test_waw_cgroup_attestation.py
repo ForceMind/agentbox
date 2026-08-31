@@ -89,6 +89,8 @@ def test_cgroup_attestation_round_trip_is_canonical() -> None:
         ("service_unit", "other.service"),
         ("service_cgroup_device", "/dev/cgroup"),
         ("workspace_relative_path", "/escape"),
+        ("workspace_relative_path", "."),
+        ("workload_relative_path", "waw/../escape"),
         ("last_frozen", "2"),
         ("cleanup_state", "UNKNOWN"),
     ],
@@ -121,6 +123,24 @@ def test_cgroup_attestation_rejects_more_than_one_attachment_leaf() -> None:
         },
     ]
     with pytest.raises(WAWCgroupAttestationError, match="at most one"):
+        encode_waw_cgroup_attestation(values)
+
+
+def test_cgroup_attestation_enforces_cleanup_and_limit_invariants() -> None:
+    values: dict[str, Any] = dict(_record().__dict__)
+    values["cleanup_state"] = "EMPTY_DURABLE"
+    with pytest.raises(WAWCgroupAttestationError, match="EMPTY_DURABLE"):
+        encode_waw_cgroup_attestation(values)
+
+    values = dict(_record().__dict__)
+    values["workspace_limits"] = {
+        "memory_max": 1,
+        "memory_swap_max": 0,
+        "cpu_quota_usec": 1,
+        "cpu_period_usec": 1,
+        "pids_max": 1,
+    }
+    with pytest.raises(WAWCgroupAttestationError, match="hierarchy"):
         encode_waw_cgroup_attestation(values)
 
 

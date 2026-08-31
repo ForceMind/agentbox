@@ -126,7 +126,9 @@ def _component(value: object, field: str) -> str:
 def _relative_path(value: object, field: str) -> str:
     value = _string(value, field)
     parts = value.split("/")
-    if value.startswith("/") or any(_COMPONENT.fullmatch(part) is None for part in parts):
+    if value.startswith("/") or any(
+        _COMPONENT.fullmatch(part) is None or part in {".", ".."} for part in parts
+    ):
         raise WAWCgroupAttestationError(f"invalid {field}")
     return value
 
@@ -335,6 +337,18 @@ def _validated(value: object) -> WAWCgroupAttestation:
     cleanup_state = _string(values["cleanup_state"], "cleanup_state")
     if cleanup_state not in _CLEANUP_STATES:
         raise WAWCgroupAttestationError("invalid cleanup_state")
+    workspace_limits = _limits(values["workspace_limits"], "workspace_limits")
+    workload_limits = _limits(values["workload_limits"], "workload_limits")
+    attachment_limits = _limits(values["attachment_limits"], "attachment_limits")
+    for field in ("memory_max", "cpu_quota_usec", "cpu_period_usec", "pids_max"):
+        if getattr(attachment_limits, field) > getattr(workload_limits, field) or getattr(
+            workload_limits, field
+        ) > getattr(workspace_limits, field):
+            raise WAWCgroupAttestationError("cgroup limits violate hierarchy")
+    if cleanup_state == "EMPTY_DURABLE" and (attachment_leaves or last_populated != "0"):
+        raise WAWCgroupAttestationError(
+            "EMPTY_DURABLE requires no attachment leaves and populated=0"
+        )
     return WAWCgroupAttestation(
         workspace_id=workspace_id,
         project_id=project_id,
@@ -360,9 +374,9 @@ def _validated(value: object) -> WAWCgroupAttestation:
         workload_inode=values["workload_inode"],
         attachment_leaves=attachment_leaves,
         controller_configuration_digest=controller_digest,
-        workspace_limits=_limits(values["workspace_limits"], "workspace_limits"),
-        workload_limits=_limits(values["workload_limits"], "workload_limits"),
-        attachment_limits=_limits(values["attachment_limits"], "attachment_limits"),
+        workspace_limits=workspace_limits,
+        workload_limits=workload_limits,
+        attachment_limits=attachment_limits,
         last_frozen=last_frozen,
         last_populated=last_populated,
         cleanup_state=cleanup_state,
@@ -455,8 +469,7 @@ def decode_waw_cgroup_attestation(raw: bytes) -> WAWCgroupAttestation:
 def waw_cgroup_attestation_sha256(raw: bytes) -> str:
     """Return the SHA-256 digest of canonical attestation bytes."""
 
-    if decode_waw_cgroup_attestation(raw) is None:  # pragma: no cover
-        raise WAWCgroupAttestationError("attestation is invalid")
+    decode_waw_cgroup_attestation(raw)
     return hashlib.sha256(raw).hexdigest()
 
 
