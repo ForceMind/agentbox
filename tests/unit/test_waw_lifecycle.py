@@ -628,7 +628,7 @@ async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(
         )
     )
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(entered.wait(), timeout=0.01)
+        await asyncio.wait_for(entered.wait(), timeout=0.1)
     runtime._lock.release()
     await asyncio.wait_for(entered.wait(), timeout=1)
     await task
