@@ -605,7 +605,13 @@ class WAWLifecycleRegistry:
             # quarantine remains until a host-gated EMPTY_DURABLE cgroup
             # read-back is explicitly acknowledged below.
 
-    def acknowledge_cgroup_cleanup(self, record: WAWCgroupAttestation) -> None:
+    def acknowledge_cgroup_cleanup(
+        self,
+        record: WAWCgroupAttestation,
+        *,
+        binding_revision: str | None = None,
+        binding_digest: str | None = None,
+    ) -> None:
         """Clear one workspace quarantine after host-gated empty read-back.
 
         Runtime host code may call this only after independently proving
@@ -638,6 +644,8 @@ class WAWLifecycleRegistry:
                 or int(active_identity.generation) != record.generation
                 or active_identity.runtime_host_installation_id != self._host_id
                 or active_identity.runtime_host_installation_revision != self._host_revision
+                or binding_revision != active_identity.binding_revision
+                or binding_digest != active_identity.binding_digest
             ):
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         unresolved = self._cgroup_attestation_store.latest_unresolved(
@@ -704,8 +712,7 @@ class WAWLifecycleRegistry:
         if record is not None:
             self._fence_cgroup_attestation(record)
 
-    @staticmethod
-    def _quarantine_reconcile_response(request: dict[str, Any]) -> dict[str, Any]:
+    def _quarantine_reconcile_response(self, request: dict[str, Any]) -> dict[str, Any]:
         """Return read-only evidence while cleanup quarantine remains active."""
 
         return {
@@ -718,8 +725,7 @@ class WAWLifecycleRegistry:
             "generation": request["generation"],
             "binding_revision": request["binding_revision"],
             "binding_digest": request["binding_digest"],
-            "runtime_host_installation_id": request["runtime_host_installation_id"],
-            "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+            "runtime_epoch": self._runtime_epoch,
             "state": "UNKNOWN",
             "reconciliation_state": "reconciliation_required",
         }

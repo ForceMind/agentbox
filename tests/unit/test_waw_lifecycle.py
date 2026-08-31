@@ -324,6 +324,14 @@ async def test_cleanup_timeout_quarantines_new_generation_until_stop_finishes() 
         lifecycle_request("workspace.workspace.reconcile", request_id="wreq_" + "b" * 32)
     )
     assert reconcile["status"] == "RECONCILIATION_REQUIRED"
+    assert (
+        decode_control_response(
+            encode_control_response(reconcile, "workspace.workspace.reconcile"),
+            "workspace.workspace.reconcile",
+            expected_request_id=reconcile["request_id"],
+        )
+        == reconcile
+    )
     with pytest.raises(WAWControlDispatchError) as blocked_stop:
         await runtime.dispatch(
             lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "c" * 32)
