@@ -580,6 +580,10 @@ class WAWLifecycleRegistry:
         """
 
         self._require_authority()
+        if request["runtime_epoch"] != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        if self._authority is not None and request["api_authority_epoch"] != self._authority[0]:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         workspace = self._workspaces.get(request["workspace_id"])
         if workspace is None:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
@@ -647,6 +651,10 @@ class WAWLifecycleRegistry:
         """Close one prepared attachment and return positive cleanup proof."""
 
         self._require_authority()
+        if request["runtime_epoch"] != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        if self._authority is not None and request["api_authority_epoch"] != self._authority[0]:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         current = self._attachments.get(request["attachment_id"])
         if current is None:
             raise WAWControlDispatchError("ATTACHMENT_STALE")
