@@ -382,6 +382,11 @@ class WAWLifecycleRegistry:
         if action == _STOP and current is None:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
         if action == _STOP and current is not None and current[1].state == "STOPPED":
+            if self._cgroup_attestation_store is not None:
+                try:
+                    self._fence_cgroup_for_identity(identity)
+                except Exception as exc:
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
             return self._stop_response(request, current[1], "ALREADY_STOPPED")
         if action in {_STATUS, _RECONCILE} and current is None:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
@@ -421,6 +426,11 @@ class WAWLifecycleRegistry:
                         self._fence_cgroup_attestation(cgroup_record)
                     except Exception as cgroup_exc:
                         fence_error = cgroup_exc
+                else:
+                    try:
+                        self._fence_cgroup_for_identity(identity)
+                    except Exception as cgroup_exc:
+                        fence_error = cgroup_exc
                 if fence_error is not None:
                     raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from fence_error
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
@@ -444,6 +454,11 @@ class WAWLifecycleRegistry:
                 if cgroup_record is not None:
                     try:
                         self._fence_cgroup_attestation(cgroup_record)
+                    except Exception as fence_exc:
+                        raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from fence_exc
+                else:
+                    try:
+                        self._fence_cgroup_for_identity(identity)
                     except Exception as fence_exc:
                         raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from fence_exc
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
@@ -471,6 +486,11 @@ class WAWLifecycleRegistry:
                 if cgroup_record is not None:
                     try:
                         self._fence_cgroup_attestation(cgroup_record)
+                    except Exception as cgroup_exc:
+                        cleanup_error = cgroup_exc
+                else:
+                    try:
+                        self._fence_cgroup_for_identity(identity)
                     except Exception as cgroup_exc:
                         cleanup_error = cgroup_exc
                 if cleanup_error is not None:
@@ -542,6 +562,19 @@ class WAWLifecycleRegistry:
             record if record.cleanup_state != "LIVE" else replace(record, cleanup_state="FENCED")
         )
         self._cgroup_attestation_store.write(fenced)
+
+    def _fence_cgroup_for_identity(
+        self, identity: WAWLifecycleIdentity, record: WAWCgroupAttestation | None = None
+    ) -> None:
+        if self._cgroup_attestation_store is None:
+            return
+        if record is None:
+            record = self._cgroup_attestation_store.read(
+                workspace_id=identity.workspace_id,
+                generation=int(identity.generation),
+            )
+        if record is not None:
+            self._fence_cgroup_attestation(record)
 
     def _require_authority(self) -> None:
         if self._authority is None:
