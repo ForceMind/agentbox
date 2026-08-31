@@ -121,6 +121,22 @@ def test_store_allows_only_forward_cleanup_transitions(tmp_path: Path) -> None:
         store.write(replace(empty, last_frozen="1"))
 
 
+def test_store_hydrates_unresolved_quarantine_across_restart(tmp_path: Path) -> None:
+    store, _ = _store(tmp_path)
+    record = _record()
+    assert store.has_unresolved(workspace_id=record.workspace_id) is False
+    store.write(record)
+    assert store.has_unresolved(workspace_id=record.workspace_id) is True
+
+    fenced = replace(record, attachment_leaves=(), cleanup_state="FENCED")
+    store.write(fenced)
+    assert store.has_unresolved(workspace_id=record.workspace_id) is True
+
+    empty = replace(fenced, last_populated="0", cleanup_state="EMPTY_DURABLE")
+    store.write(empty)
+    assert store.has_unresolved(workspace_id=record.workspace_id) is False
+
+
 def test_store_rejects_immutable_identity_or_backward_state_changes(tmp_path: Path) -> None:
     store, _ = _store(tmp_path)
     record = _record()

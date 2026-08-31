@@ -26,7 +26,9 @@ from agentbox_runtime.waw_cgroup_attestation import (
 )
 
 _MAX_BYTES = 64 * 1024
+_MAX_RECORD_FILES = 256
 _WORKSPACE_ID = re.compile(r"\Aaws_[0-9a-f]{32}\Z")
+_RECORD_FILE = re.compile(r"\A[0-9a-f]{32}-g([1-9][0-9]{0,19})\.json\Z")
 _STATES = {"LIVE": 0, "FENCED": 1, "EMPTY_DURABLE": 2}
 
 
@@ -52,6 +54,37 @@ class WAWCgroupAttestationStore:
         _validate_key(workspace_id, generation)
         with self._locked_directory() as directory_fd:
             return self._read_locked(directory_fd, workspace_id, generation)
+
+    def has_unresolved(self, *, workspace_id: str) -> bool:
+        """Return whether any persisted generation is not EMPTY_DURABLE.
+
+        This is a conservative restart-hydration query.  A LIVE or FENCED
+        record keeps the workspace quarantined until an explicit host-gated
+        empty acknowledgement advances that record.
+        """
+
+        if not isinstance(workspace_id, str) or _WORKSPACE_ID.fullmatch(workspace_id) is None:
+            raise WAWCgroupAttestationStoreError("workspace_id is invalid")
+        prefix = hashlib.sha256(workspace_id.encode("ascii")).hexdigest()[:32] + "-g"
+        with self._locked_directory() as directory_fd:
+            try:
+                names = os.listdir(directory_fd)
+            except OSError as exc:
+                raise WAWCgroupAttestationStoreError(
+                    "attestation directory cannot be listed"
+                ) from exc
+            candidates = [name for name in names if name.startswith(prefix)]
+            if len(candidates) > _MAX_RECORD_FILES:
+                raise WAWCgroupAttestationStoreError("too many attestation records")
+            for name in candidates:
+                match = _RECORD_FILE.fullmatch(name)
+                if match is None:
+                    raise WAWCgroupAttestationStoreError("attestation filename is invalid")
+                generation = int(match.group(1))
+                record = self._read_locked(directory_fd, workspace_id, generation)
+                if record is not None and record.cleanup_state != "EMPTY_DURABLE":
+                    return True
+        return False
 
     def write(self, record: WAWCgroupAttestation) -> WAWCgroupAttestation:
         if not isinstance(record, WAWCgroupAttestation):
