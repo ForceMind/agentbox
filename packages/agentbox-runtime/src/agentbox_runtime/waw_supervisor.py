@@ -67,6 +67,8 @@ class WAWTransport(Protocol):
 
     def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence: ...
 
+    def reconcile(self) -> RuntimeStartEvidence: ...
+
     def write(self, data: bytes) -> None: ...
 
     def detach(self) -> bool: ...
@@ -223,6 +225,43 @@ class WAWSupervisor:
                     "Workspace already has a writer attachment",
                     category="conflict",
                 )
+            # A detached browser may reconnect after the underlying provider
+            # process has exited.  If the transport exposes the optional
+            # reconciliation probe, require fresh exact marker/process
+            # evidence before reacquiring the writer slot.  Legacy test
+            # doubles without this probe retain their existing behavior; the
+            # production tmux transport implements it.
+            if self._state is SupervisorState.DETACHED:
+                reconcile = getattr(self._transport, "reconcile", None)
+                if callable(reconcile):
+                    try:
+                        evidence = reconcile()
+                        if (
+                            evidence.workspace_id != self._workspace_id
+                            or evidence.generation != self._generation
+                            or evidence.managed_marker != self._command.managed_marker
+                            or not evidence.ready
+                            or evidence.state
+                            not in {
+                                SupervisorState.RUNNING,
+                                SupervisorState.NEEDS_INTERACTION,
+                                SupervisorState.TRUST_REQUIRED,
+                                SupervisorState.LOGIN_REQUIRED,
+                            }
+                        ):
+                            raise RuntimeOperationError(
+                                "WAW_ATTACH_UNCONFIRMED",
+                                "Runtime process is not live for reconnect",
+                                category="conflict",
+                            )
+                    except RuntimeOperationError:
+                        raise
+                    except Exception as exc:
+                        raise RuntimeOperationError(
+                            "WAW_ATTACH_UNCONFIRMED",
+                            "Runtime process could not be reconciled for reconnect",
+                            category="conflict",
+                        ) from exc
             if (
                 self._attachment is None
                 and getattr(self, "_last_attachment_id", None) == attachment.attachment_id

@@ -14,8 +14,13 @@ from agentbox_api.waw_control_client import (
 
 _ALLOWED_LIFECYCLE_REQUESTS = frozenset(
     {
+        "workspace.project_binding.register",
+        "workspace.workspace.start",
+        "workspace.workspace.stop",
         "workspace.workspace.status",
         "workspace.workspace.reconcile",
+        "workspace.attach.prepare",
+        "workspace.attach.detach",
     }
 )
 
@@ -133,10 +138,11 @@ class WAWRuntimeBindCoordinator:
             return await self._bind_locked()
 
     async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
-        """Issue one bound, read-only lifecycle request through the closed client.
+        """Issue one bound lifecycle request through the closed client.
 
-        Start/Stop/attachment actions are intentionally excluded until their
-        durable API transaction and lease gates are implemented.
+        The caller still supplies only typed, identity-bound payloads.  This
+        coordinator deliberately has no generic Runtime action escape hatch;
+        the allowlist mirrors the WAW control codec's closed action set.
         """
 
         if action not in _ALLOWED_LIFECYCLE_REQUESTS:

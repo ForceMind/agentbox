@@ -284,8 +284,14 @@ def _validate_origin(origin: str, allowed_origins: Collection[str] | None) -> No
     if not isinstance(origin, str) or len(origin) > 256 or origin not in allowed:
         raise WAWAdmissionError("ORIGIN_INVALID", "Origin is not allowlisted")
     parsed = urlsplit(origin)
+    loopback_dev = parsed.scheme == "http" and parsed.hostname in {
+        "localhost",
+        "127.0.0.1",
+        "[::1]",
+        "testserver",
+    }
     if (
-        parsed.scheme != "https"
+        (parsed.scheme != "https" and not loopback_dev)
         or not parsed.netloc
         or parsed.username
         or parsed.password

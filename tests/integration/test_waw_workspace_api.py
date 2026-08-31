@@ -14,6 +14,7 @@ from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType, workspace_id
 from agentbox_core.waw_models import RuntimeHostInstallation
+from agentbox_core.waw_tickets import AttachmentAuthority
 from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
 
 PASSWORD = "a sufficiently long passphrase"
@@ -51,6 +52,38 @@ class FakeStatusCoordinator:
             "exit_code": None,
             "attachment_capacity": {"admitted": "0", "pending": "0", "limit": "32"},
         }
+
+
+class FakeLifecycleCoordinator:
+    def __init__(self) -> None:
+        self.attestation = {
+            "runtime_epoch": "7",
+            "runtime_host_installation_id": HOST_ID,
+            "runtime_host_installation_revision": "1",
+        }
+        self.actions: list[str] = []
+
+    async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        self.actions.append(action)
+        if action == "workspace.workspace.start":
+            return {
+                "status": "STARTED",
+                "state": "RUNNING",
+                "workspace_id": request["workspace_id"],
+                "project_id": request["project_id"],
+                "agent_type": "claude",
+                "generation": request["generation"],
+            }
+        if action == "workspace.workspace.stop":
+            return {
+                "status": "STOPPED",
+                "state": "STOPPED",
+                "workspace_id": request["workspace_id"],
+                "project_id": request["project_id"],
+                "agent_type": "claude",
+                "generation": request["generation"],
+            }
+        raise AssertionError(action)
 
 
 def _project(project_id: str, index: int = 0) -> Project:
@@ -242,3 +275,99 @@ async def test_runtime_status_maps_unavailable_and_epoch_mismatch(
         response = await second.get(f"/api/v1/workspaces/{WORKSPACE_ID}/status")
     assert response.status_code == 502
     assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.anyio
+async def test_waw_start_stop_routes_are_csrf_and_generation_fenced(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_workspace(initialized_services)
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        csrf = login.json()["data"]["csrf_token"]
+        started = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+            json={},
+            headers={**origin_headers, "x-csrf-token": csrf},
+        )
+        assert started.status_code == 200
+        assert started.json()["state"] == "RUNNING"
+        stale = await client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/stop",
+            json={"generation": "2"},
+            headers={**origin_headers, "x-csrf-token": csrf},
+        )
+        assert stale.status_code == 409
+        stopped = await client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/stop",
+            json={"generation": "1"},
+            headers={**origin_headers, "x-csrf-token": csrf},
+        )
+        assert stopped.status_code == 200
+        assert stopped.json()["state"] == "STOPPED"
+    assert coordinator.actions == ["workspace.workspace.start", "workspace.workspace.stop"]
+
+
+@pytest.mark.anyio
+async def test_waw_attachment_ticket_is_transient_and_no_store(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_workspace(initialized_services)
+    initialized_services.workspaces.transition(
+        WORKSPACE_ID, expected_revision=1, state="RUNNING"
+    )
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+        waw_attachment_authority=AttachmentAuthority(
+            clock=lambda: 100.0, authority_epoch=7, lease_seed=9
+        ),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        csrf = login.json()["data"]["csrf_token"]
+        ticket = await client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/attachments",
+            json={"mode": "writer"},
+            headers={**origin_headers, "x-csrf-token": csrf},
+        )
+    assert ticket.status_code == 200
+    assert ticket.headers["cache-control"] == "no-store"
+    assert ticket.json()["ticket"].startswith("wat_")
+    assert "terminal" not in ticket.text
