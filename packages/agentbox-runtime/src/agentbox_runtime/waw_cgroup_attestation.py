@@ -153,6 +153,9 @@ def _device(value: object, field: str) -> str:
     value = _string(value, field)
     if _DEVICE.fullmatch(value) is None:
         raise WAWCgroupAttestationError(f"invalid {field}")
+    major, minor = value.split(":")
+    if (len(major) > 1 and major.startswith("0")) or (len(minor) > 1 and minor.startswith("0")):
+        raise WAWCgroupAttestationError(f"invalid {field}")
     return value
 
 

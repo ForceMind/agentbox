@@ -88,6 +88,8 @@ def test_cgroup_attestation_round_trip_is_canonical() -> None:
         ("runtime_epoch", "0"),
         ("service_unit", "other.service"),
         ("service_cgroup_device", "/dev/cgroup"),
+        ("service_cgroup_device", "00:31"),
+        ("workspace_device", "0:031"),
         ("workspace_relative_path", "/escape"),
         ("workspace_relative_path", "."),
         ("workload_relative_path", "waw/../escape"),

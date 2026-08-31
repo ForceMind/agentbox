@@ -130,6 +130,7 @@ class WAWCgroupAttestationStore:
                 or first.st_uid != self._expected_uid
                 or first.st_gid != self._expected_gid
                 or stat.S_IMODE(first.st_mode) != 0o600
+                or first.st_nlink != 1
                 or first.st_size < 0
                 or first.st_size > _MAX_BYTES
             ):
@@ -149,6 +150,7 @@ class WAWCgroupAttestationStore:
                 "st_mode",
                 "st_uid",
                 "st_gid",
+                "st_nlink",
                 "st_size",
                 "st_mtime_ns",
                 "st_ctime_ns",
@@ -193,6 +195,7 @@ class WAWCgroupAttestationStore:
                 details.st_uid != self._expected_uid
                 or details.st_gid != self._expected_gid
                 or stat.S_IMODE(details.st_mode) != 0o600
+                or details.st_nlink != 1
             ):
                 raise WAWCgroupAttestationStoreError("temporary attestation provenance is invalid")
         except (OSError, WAWCgroupAttestationStoreError) as exc:
