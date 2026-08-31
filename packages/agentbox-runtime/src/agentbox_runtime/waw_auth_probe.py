@@ -78,6 +78,35 @@ def validate_waw_public_auth_probe_evidence(
     return evidence
 
 
+def _validate_probe_request(
+    *,
+    agent_type: AgentType,
+    runtime_host_installation_id: str,
+    runtime_host_installation_revision: str,
+    executable_fingerprint: str,
+    checked_at_monotonic: float,
+) -> None:
+    if not isinstance(agent_type, AgentType):
+        raise WAWPublicAuthProbeError("probe agent_type is invalid")
+    try:
+        validate_runtime_host_installation_id(runtime_host_installation_id)
+    except ValueError as exc:
+        raise WAWPublicAuthProbeError("probe Runtime installation ID is invalid") from exc
+    if _DECIMAL.fullmatch(runtime_host_installation_revision) is None:
+        raise WAWPublicAuthProbeError("probe Runtime installation revision is invalid")
+    if int(runtime_host_installation_revision) > _MAX_U64:
+        raise WAWPublicAuthProbeError("probe Runtime installation revision is invalid")
+    if _DIGEST.fullmatch(executable_fingerprint) is None:
+        raise WAWPublicAuthProbeError("probe executable fingerprint is invalid")
+    if (
+        isinstance(checked_at_monotonic, bool)
+        or not isinstance(checked_at_monotonic, (int, float))
+        or not math.isfinite(float(checked_at_monotonic))
+        or checked_at_monotonic < 0
+    ):
+        raise WAWPublicAuthProbeError("probe monotonic timestamp is invalid")
+
+
 @dataclass(frozen=True)
 class WAWPublicAuthEvidence:
     """Metadata-only result; no probe output or credential material is retained."""
@@ -151,6 +180,13 @@ class WAWPublicAuthProbeCache:
 
         if not isinstance(probe, WAWPublicAuthProbe):
             raise TypeError("probe must implement WAWPublicAuthProbe")
+        _validate_probe_request(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+        )
         evidence = probe.probe(
             agent_type=agent_type,
             runtime_host_installation_id=runtime_host_installation_id,

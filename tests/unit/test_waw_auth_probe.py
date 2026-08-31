@@ -188,6 +188,46 @@ def test_probe_identity_drift_cannot_replace_existing_cache_entry() -> None:
 
 
 @pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("runtime_host_installation_id", "bad"),
+        ("runtime_host_installation_revision", "01"),
+        ("executable_fingerprint", "A" * 64),
+        ("checked_at_monotonic", math.nan),
+    ],
+)
+def test_invalid_probe_request_is_rejected_before_adapter_call(field: str, value: object) -> None:
+    class CountingProbe:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def probe(
+            self,
+            *,
+            agent_type: AgentType,
+            runtime_host_installation_id: str,
+            runtime_host_installation_revision: str,
+            executable_fingerprint: str,
+            checked_at_monotonic: float,
+        ) -> WAWPublicAuthEvidence:
+            self.calls += 1
+            return _evidence()
+
+    probe = CountingProbe()
+    request: dict[str, object] = {
+        "agent_type": AgentType.CLAUDE,
+        "runtime_host_installation_id": HOST_ID,
+        "runtime_host_installation_revision": "2",
+        "executable_fingerprint": FINGERPRINT,
+        "checked_at_monotonic": 100.0,
+    }
+    request[field] = value
+    with pytest.raises(WAWPublicAuthProbeError):
+        WAWPublicAuthProbeCache().refresh_from_probe(probe, **request)  # type: ignore[arg-type]
+    assert probe.calls == 0
+
+
+@pytest.mark.parametrize(
     "result",
     [
         WAWPublicAuthResult.UNAUTHENTICATED,
