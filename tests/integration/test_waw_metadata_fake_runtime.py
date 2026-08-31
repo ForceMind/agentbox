@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
 from agentbox_api.main import create_app
+from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
@@ -116,7 +117,10 @@ def _app(
         codex_runtime,
         claude_runtime,
         project_runtime,
-        waw_bind_coordinator=coordinator,
+        # The app stores this dependency and the metadata route only requires
+        # its request_lifecycle/attestation seam; the fake deliberately avoids
+        # production bind side effects.
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator | None, coordinator),
     )
 
 
