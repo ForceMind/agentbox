@@ -518,7 +518,11 @@ async def test_host_gated_empty_acknowledgement_is_required_to_clear_quarantine(
         last_populated="0",
         cleanup_state="EMPTY_DURABLE",
     )
-    runtime.acknowledge_cgroup_cleanup(empty)
+    await runtime.acknowledge_cgroup_cleanup(
+        empty,
+        binding_revision="1",
+        binding_digest=DIGEST,
+    )
     assert len(runtime._cleanup_quarantine) == 0
     assert store.read(workspace_id=WORKSPACE, generation=1) == empty
 
@@ -550,14 +554,84 @@ async def test_empty_acknowledgement_binds_active_binding_identity(tmp_path: Pat
     )
 
     with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
-        runtime.acknowledge_cgroup_cleanup(
+        await runtime.acknowledge_cgroup_cleanup(
             empty,
             binding_revision="2",
             binding_digest=DIGEST,
         )
     assert WORKSPACE in runtime._cleanup_quarantine
 
-    runtime.acknowledge_cgroup_cleanup(
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        await runtime.acknowledge_cgroup_cleanup(
+            empty,
+            binding_revision="1",
+            binding_digest="b" * 64,
+        )
+    assert WORKSPACE in runtime._cleanup_quarantine
+
+    await runtime.acknowledge_cgroup_cleanup(
+        empty,
+        binding_revision="1",
+        binding_digest=DIGEST,
+    )
+    assert WORKSPACE not in runtime._cleanup_quarantine
+
+
+@pytest.mark.anyio
+async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    fenced = replace(cgroup_record(), attachment_leaves=(), cleanup_state="FENCED")
+    store.write(fenced)
+    runtime = registry(
+        FakeExecutor(),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    runtime._cleanup_quarantine.add(WORKSPACE)
+    empty = replace(fenced, last_populated="0", cleanup_state="EMPTY_DURABLE")
+
+    await runtime._lock.acquire()
+    task = asyncio.create_task(runtime.acknowledge_cgroup_cleanup(empty))
+    await asyncio.sleep(0)
+    assert not task.done()
+    runtime._lock.release()
+    await task
+    assert WORKSPACE not in runtime._cleanup_quarantine
+
+
+@pytest.mark.anyio
+async def test_restart_acknowledgement_requires_hydrated_project_binding(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    fenced = replace(cgroup_record(), attachment_leaves=(), cleanup_state="FENCED")
+    store.write(fenced)
+    runtime = registry(
+        FakeExecutor(),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    empty = replace(fenced, last_populated="0", cleanup_state="EMPTY_DURABLE")
+
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        await runtime.acknowledge_cgroup_cleanup(empty)
+    assert WORKSPACE in runtime._cleanup_quarantine
+
+    await runtime.acknowledge_cgroup_cleanup(
         empty,
         binding_revision="1",
         binding_digest=DIGEST,
@@ -627,12 +701,12 @@ async def test_empty_ack_must_target_highest_unresolved_generation(tmp_path: Pat
     )
     runtime._cleanup_quarantine.add(WORKSPACE)
     with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
-        runtime.acknowledge_cgroup_cleanup(
+        await runtime.acknowledge_cgroup_cleanup(
             replace(generation_one, last_populated="0", cleanup_state="EMPTY_DURABLE")
         )
     assert WORKSPACE in runtime._cleanup_quarantine
 
-    runtime.acknowledge_cgroup_cleanup(
+    await runtime.acknowledge_cgroup_cleanup(
         replace(generation_two, last_populated="0", cleanup_state="EMPTY_DURABLE")
     )
     assert WORKSPACE not in runtime._cleanup_quarantine

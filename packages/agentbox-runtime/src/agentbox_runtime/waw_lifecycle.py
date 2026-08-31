@@ -605,7 +605,7 @@ class WAWLifecycleRegistry:
             # quarantine remains until a host-gated EMPTY_DURABLE cgroup
             # read-back is explicitly acknowledged below.
 
-    def acknowledge_cgroup_cleanup(
+    async def acknowledge_cgroup_cleanup(
         self,
         record: WAWCgroupAttestation,
         *,
@@ -619,6 +619,20 @@ class WAWLifecycleRegistry:
         late executor STOPPED observation alone never clears quarantine.
         """
 
+        async with self._lock:
+            self._acknowledge_cgroup_cleanup_unlocked(
+                record,
+                binding_revision=binding_revision,
+                binding_digest=binding_digest,
+            )
+
+    def _acknowledge_cgroup_cleanup_unlocked(
+        self,
+        record: WAWCgroupAttestation,
+        *,
+        binding_revision: str | None,
+        binding_digest: str | None,
+    ) -> None:
         if self._cgroup_attestation_store is None:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         if record.workspace_id not in self._cleanup_quarantine:
@@ -646,6 +660,13 @@ class WAWLifecycleRegistry:
                 or active_identity.runtime_host_installation_revision != self._host_revision
                 or binding_revision != active_identity.binding_revision
                 or binding_digest != active_identity.binding_digest
+            ):
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        else:
+            binding = self._bindings.get(record.project_id)
+            if binding is not None and (
+                binding_revision != binding.binding_revision
+                or binding_digest != binding.binding_digest
             ):
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         unresolved = self._cgroup_attestation_store.latest_unresolved(
