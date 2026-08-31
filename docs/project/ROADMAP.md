@@ -3,11 +3,11 @@
 ## Completed
 
 - Phase 0 through Phase 10 (as per existing repository governance).
-- Governance automation delegation scaffold (PR #45 in progress).
+- Governance automation policy is merged; routine mechanical actions proceed after CI.
 
 ## In Progress
 
-- PR #45: governance automation documents, branch ruleset/environment updates, and delegated mechanical action policy.
+- PR #45: governance automation policy and delegated mechanical action documentation (merged).
 
 ## Next
 

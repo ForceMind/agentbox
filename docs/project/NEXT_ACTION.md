@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `GOV-AUTO-DELEGATION-2026-08-31`
+Action ID: `WAW1-IMPLEMENTATION-2026-09-01`
 
 - Review and approve PR: `#45` (`codex/governance-automation-bot-policy` → `main`) with exact metadata:
   - head: `3d3ffd848edb18a5bf3bfe0572d0d13616b76e85`
