@@ -639,7 +639,7 @@ async def issue_attachment_ticket(
         runtime = WAWRuntimeReadiness(
             runtime_host_installation_id=str(attestation["runtime_host_installation_id"]),
             runtime_host_installation_revision=int(
-                attestation["runtime_host_installation_revision"]
+                cast(str, attestation["runtime_host_installation_revision"])
             ),
             runtime_epoch=str(attestation["runtime_epoch"]),
             ready=True,
