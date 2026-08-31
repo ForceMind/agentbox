@@ -312,6 +312,15 @@ async def test_cleanup_timeout_quarantines_new_generation_until_stop_finishes() 
             )
         )
     assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    for index, action in enumerate(
+        ("workspace.workspace.status", "workspace.workspace.reconcile", "workspace.workspace.stop"),
+        start=10,
+    ):
+        with pytest.raises(WAWControlDispatchError) as blocked:
+            await runtime.dispatch(
+                lifecycle_request(action, request_id="wreq_" + str(index).zfill(32))
+            )
+        assert blocked.value.code == "RECONCILIATION_REQUIRED"
     executor.release.set()
     await asyncio.sleep(0)
     await asyncio.sleep(0)

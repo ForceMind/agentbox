@@ -353,7 +353,7 @@ class WAWLifecycleRegistry:
             runtime_host_installation_revision=request["runtime_host_installation_revision"],
         )
         self._check_identity(identity)
-        if action == _START and identity.workspace_id in self._cleanup_quarantine:
+        if identity.workspace_id in self._cleanup_quarantine:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         current = self._workspaces.get(identity.workspace_id)
         if action == _START and current is not None:
