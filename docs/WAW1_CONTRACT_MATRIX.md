@@ -36,6 +36,7 @@ real host, provider login, interactive terminal, or production route.
 | Contract-only WebSocket policy and parser | `waw_websocket_contract.py`, `waw_websocket_parser.py`; masking/RSV/length/fragment/close tests; no network listener |
 | Bounded terminal-output sanitizer | `waw_terminal_sanitizer.py`; strict UTF-8, C0/C1/Cc/Cf and ESC/OSC tests; no PTY or renderer |
 | Layer-boundary composition tests | `tests/unit/test_waw_transport_layers.py`; parser→policy, ABWS independence and Noise enum-only checks |
+| HTTP lifecycle/ticket scaffolding (synthetic only) | `apps/api/src/agentbox_api/workspaces.py` exposes CSRF/recent-auth fenced Start, Stop, Attachment-ticket and fresh Reconnect routes; routes require an already bound Runtime and durable workspace row. |
 
 ## Contract-only boundaries
 
@@ -71,8 +72,8 @@ automatic adoption is allowed.
 
 ## Not implemented
 
-- Production `POST start`, attachment-ticket route, reconnect, detach and stop
-  routes.
+- Runtime-backed attachment admission, detach cleanup proof, and WebSocket stream
+  route.
 - Real `/stream`, browser terminal rendering/input/output/resize/reconnect.
 - WAW-2 Codex slice.
 - WAW-3 continuity, mobile, recovery and reboot hardening.

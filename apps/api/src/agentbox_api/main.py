@@ -12,6 +12,7 @@ from agentbox_core.configuration import Settings
 from agentbox_core.errors import AgentBoxError
 from agentbox_core.logging import configure_logging, log_event
 from agentbox_core.services import ControlPlaneServices, build_services
+from agentbox_core.waw_tickets import AttachmentAuthority
 from agentbox_protocol import (
     ErrorBody,
     ErrorResponse,
@@ -44,6 +45,7 @@ from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
+from agentbox_api.workspaces import project_workspaces_router
 from agentbox_api.workspaces import router as workspaces_router
 
 logger = logging.getLogger("agentbox.api")
@@ -100,6 +102,7 @@ def create_app(
     *,
     waw_bind_coordinator: WAWRuntimeBindCoordinator | None = None,
     waw_authorization_policy: WorkspaceAuthorizationPolicy | None = None,
+    waw_attachment_authority: AttachmentAuthority | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
@@ -138,6 +141,7 @@ def create_app(
     application.state.project_runtime = actual_project_runtime
     application.state.waw_bind_coordinator = waw_bind_coordinator
     application.state.waw_authorization_policy = waw_authorization_policy
+    application.state.waw_attachment_authority = waw_attachment_authority
     application.state.login_executor = BoundedLoginExecutor(
         actual_services.auth,
         max_concurrency=actual_settings.argon2_max_concurrency,
@@ -219,6 +223,7 @@ def create_app(
     application.include_router(claude_router)
     application.include_router(projects_router)
     application.include_router(workspaces_router)
+    application.include_router(project_workspaces_router)
     application.include_router(github_router)
     application.include_router(jobs_router)
     application.include_router(doctor_router)

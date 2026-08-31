@@ -230,6 +230,48 @@ class WAWTmuxTransport:
                 category="broken",
             ) from exc
 
+    def reconcile(self) -> RuntimeStartEvidence:
+        """Re-prove the exact managed Claude process after a detach.
+
+        Reconnect must not infer liveness from the in-memory supervisor state;
+        the deterministic tmux name, marker and pane command are checked again
+        before a new writer lease is accepted.
+        """
+
+        self._require_started()
+        binding = self._require_binding()
+        try:
+            if not self._resolve(self._tmux.has_session(binding.session_name)):
+                raise RuntimeOperationError(
+                    "WAW_SESSION_MISSING", "Managed Runtime session is missing", category="conflict"
+                )
+            self._require_managed(binding)
+            if self._resolve(self._tmux.pane_dead(binding.session_name)):
+                raise RuntimeOperationError(
+                    "WAW_SESSION_EXITED", "Managed Runtime pane has exited", category="conflict"
+                )
+            if self._resolve(self._tmux.pane_command(binding.session_name)) != "claude":
+                raise RuntimeOperationError(
+                    "WAW_PROCESS_IDENTITY_UNCONFIRMED",
+                    "Managed Runtime pane is not Claude",
+                    category="conflict",
+                )
+        except RuntimeOperationError:
+            raise
+        except Exception as exc:
+            raise RuntimeOperationError(
+                "WAW_RECONCILIATION_REQUIRED",
+                "Managed Runtime process could not be reconciled",
+                category="conflict",
+            ) from exc
+        return RuntimeStartEvidence(
+            workspace_id=binding.workspace_id,
+            generation=binding.generation,
+            managed_marker=binding.managed_marker,
+            state=SupervisorState.RUNNING,
+            ready=True,
+        )
+
     def detach(self) -> bool:
         """Release the local attachment only after positive managed-session ACK."""
 
