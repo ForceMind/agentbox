@@ -76,6 +76,15 @@ class WAWCgroupAttestationStore:
                 record.generation for record in records if record.cleanup_state != "EMPTY_DURABLE"
             )
 
+    def latest_generation(self, *, workspace_id: str) -> int | None:
+        """Return the highest persisted generation for a workspace."""
+
+        if not isinstance(workspace_id, str) or _WORKSPACE_ID.fullmatch(workspace_id) is None:
+            raise WAWCgroupAttestationStoreError("workspace_id is invalid")
+        with self._locked_directory() as directory_fd:
+            latest = self._latest_record_locked(directory_fd, workspace_id)
+            return None if latest is None else latest.generation
+
     def latest_unresolved(self, *, workspace_id: str) -> WAWCgroupAttestation | None:
         """Return the highest-generation non-empty record for a workspace."""
 

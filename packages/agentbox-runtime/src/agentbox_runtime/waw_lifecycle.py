@@ -365,6 +365,13 @@ class WAWLifecycleRegistry:
                 unresolved_generations = self._cgroup_attestation_store.unresolved_generations(
                     workspace_id=identity.workspace_id
                 )
+                latest_generation = self._cgroup_attestation_store.latest_generation(
+                    workspace_id=identity.workspace_id
+                )
+                if latest_generation is not None:
+                    self._generation_floor[identity.workspace_id] = max(
+                        self._generation_floor.get(identity.workspace_id, 0), latest_generation
+                    )
                 current = self._workspaces.get(identity.workspace_id)
                 active_live = (
                     current is not None
