@@ -84,6 +84,23 @@ def lifecycle_request(
     }
 
 
+def attachment_request(
+    action: str, *, request_id: str, attachment_id: str = "att_" + "3" * 32
+) -> dict[str, Any]:
+    value = {
+        **lifecycle_request(action, request_id=request_id),
+        "attachment_id": attachment_id,
+        "mode": "writer",
+        "lease_number": "1",
+        "auth_epoch": "1",
+        "api_authority_epoch": "1",
+        "runtime_epoch": "1",
+    }
+    if action.endswith("prepare"):
+        value.update({"resume_cursor": None, "previous_runtime_epoch": None})
+    return value
+
+
 class FakeExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, WAWLifecycleIdentity]] = []
@@ -226,6 +243,29 @@ async def test_binding_gate_and_idempotent_bind_and_register() -> None:
     assert first["status"] == "REGISTERED"
     duplicate = await runtime.dispatch(register_request(request_id="wreq_" + "6" * 32))
     assert duplicate["status"] == "ALREADY_CURRENT"
+
+
+@pytest.mark.anyio
+async def test_attachment_prepare_and_detach_require_exact_tuple_and_cleanup_ack() -> None:
+    runtime = registry(FakeExecutor())
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    prepared = await runtime.dispatch(
+        attachment_request("workspace.attach.prepare", request_id="wreq_" + "7" * 32)
+    )
+    assert prepared["status"] == "PREPARED"
+    assert len(prepared["capability"]) == 64
+    detached = await runtime.dispatch(
+        attachment_request("workspace.attach.detach", request_id="wreq_" + "8" * 32)
+    )
+    assert detached["status"] == "DETACHED"
+    assert detached["cleanup_state"] == "ATTACH_PTY_CLOSED"
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(
+            attachment_request("workspace.attach.detach", request_id="wreq_" + "9" * 32)
+        )
+    assert exc_info.value.code == "ATTACHMENT_STALE"
 
 
 @pytest.mark.anyio
