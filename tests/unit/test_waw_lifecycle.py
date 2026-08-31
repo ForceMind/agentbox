@@ -536,6 +536,54 @@ async def test_registry_restart_hydrates_fenced_quarantine_before_executor_start
     assert executor.calls == []
 
 
+@pytest.mark.anyio
+async def test_empty_ack_must_target_highest_unresolved_generation(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    generation_one = replace(cgroup_record(), attachment_leaves=(), cleanup_state="FENCED")
+    generation_two = replace(
+        cgroup_record(),
+        generation=2,
+        workspace_relative_path="waw/ws-111-g2",
+        workspace_inode="23",
+        workload_relative_path="waw/ws-111-g2/workload",
+        workload_inode="24",
+        attachment_leaves=(),
+        cleanup_state="FENCED",
+    )
+    store.write(generation_one)
+    store.write(generation_two)
+
+    runtime = registry(
+        FakeExecutor(),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    runtime._cleanup_quarantine.add(WORKSPACE)
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        runtime.acknowledge_cgroup_cleanup(
+            replace(generation_one, last_populated="0", cleanup_state="EMPTY_DURABLE")
+        )
+    assert WORKSPACE in runtime._cleanup_quarantine
+
+    runtime.acknowledge_cgroup_cleanup(
+        replace(generation_two, last_populated="0", cleanup_state="EMPTY_DURABLE")
+    )
+    # Older unresolved generations remain conservative fences until each is
+    # independently acknowledged.
+    assert WORKSPACE in runtime._cleanup_quarantine
+    runtime.acknowledge_cgroup_cleanup(
+        replace(generation_one, last_populated="0", cleanup_state="EMPTY_DURABLE")
+    )
+    assert WORKSPACE not in runtime._cleanup_quarantine
+
+
 def test_cgroup_attestation_store_and_factory_must_be_paired(tmp_path: Path) -> None:
     directory = tmp_path / "cgroup-attestations"
     directory.mkdir()

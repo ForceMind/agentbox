@@ -210,6 +210,7 @@ class WAWLifecycleRegistry:
         self._detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self._detached_cleanup_identities: dict[asyncio.Task[Any], WAWLifecycleIdentity] = {}
         self._cleanup_quarantine: set[str] = set()
+        self._cleanup_quarantine_records: dict[str, WAWCgroupAttestation] = {}
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -354,16 +355,24 @@ class WAWLifecycleRegistry:
             runtime_host_installation_revision=request["runtime_host_installation_revision"],
         )
         self._check_identity(identity)
-        if (
-            self._cgroup_attestation_store is not None
-            and identity.workspace_id not in self._cleanup_quarantine
-            and identity.workspace_id not in self._workspaces
+        if self._cgroup_attestation_store is not None and identity.workspace_id not in (
+            self._cleanup_quarantine
         ):
             try:
-                if self._cgroup_attestation_store.has_unresolved(
+                unresolved = self._cgroup_attestation_store.latest_unresolved(
                     workspace_id=identity.workspace_id
-                ):
+                )
+                current = self._workspaces.get(identity.workspace_id)
+                active_live = (
+                    current is not None
+                    and current[0].generation == identity.generation
+                    and unresolved is not None
+                    and unresolved.cleanup_state == "LIVE"
+                    and unresolved.last_populated == "1"
+                )
+                if unresolved is not None and not active_live:
                     self._cleanup_quarantine.add(identity.workspace_id)
+                    self._cleanup_quarantine_records[identity.workspace_id] = unresolved
             except WAWCgroupAttestationStoreError as exc:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if identity.workspace_id in self._cleanup_quarantine:
@@ -601,8 +610,27 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         if record.runtime_epoch != self._runtime_epoch:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        unresolved = self._cgroup_attestation_store.latest_unresolved(
+            workspace_id=record.workspace_id
+        )
+        if unresolved is None or record.generation != unresolved.generation:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        verify_waw_cgroup_attestation_context(
+            record,
+            expected_workspace_id=unresolved.workspace_id,
+            expected_project_id=unresolved.project_id,
+            expected_agent_type=unresolved.agent_type,
+            expected_generation=unresolved.generation,
+            expected_runtime_epoch=self._runtime_epoch,
+            expected_controller_configuration_digest=unresolved.controller_configuration_digest,
+            expected_workspace_limits=unresolved.workspace_limits,
+            expected_workload_limits=unresolved.workload_limits,
+            expected_attachment_limits=unresolved.attachment_limits,
+        )
         self._cgroup_attestation_store.write(record)
-        self._cleanup_quarantine.discard(record.workspace_id)
+        if not self._cgroup_attestation_store.has_unresolved(workspace_id=record.workspace_id):
+            self._cleanup_quarantine.discard(record.workspace_id)
+            self._cleanup_quarantine_records.pop(record.workspace_id, None)
 
     async def _build_cgroup_attestation(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
@@ -630,6 +658,7 @@ class WAWLifecycleRegistry:
             record if record.cleanup_state != "LIVE" else replace(record, cleanup_state="FENCED")
         )
         self._cgroup_attestation_store.write(fenced)
+        self._cleanup_quarantine_records[record.workspace_id] = fenced
 
     def _fence_cgroup_for_identity(
         self, identity: WAWLifecycleIdentity, record: WAWCgroupAttestation | None = None

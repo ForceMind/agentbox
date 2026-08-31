@@ -93,12 +93,25 @@ def test_store_requires_first_generation_and_rejects_cross_generation_copy(
         store.write(replace(record, generation=2))
 
     store.write(record)
+    generation_two = replace(
+        record,
+        generation=2,
+        workspace_relative_path="waw/ws-111-g2",
+        workspace_inode="23",
+        workload_relative_path="waw/ws-111-g2/workload",
+        workload_inode="24",
+    )
+    assert store.write(generation_two) == generation_two
+    assert store.read(workspace_id=record.workspace_id, generation=2) == generation_two
+    with pytest.raises(WAWCgroupAttestationStoreError, match="gap"):
+        store.write(replace(generation_two, generation=4))
+
     source = next(directory.glob("*.json"))
-    wrong_generation = directory / (source.stem[:-2] + "g2.json")
+    wrong_generation = directory / (source.stem[:-2] + "g3.json")
     wrong_generation.write_bytes(source.read_bytes())
     wrong_generation.chmod(0o600)
     with pytest.raises(WAWCgroupAttestationStoreError, match="key mismatch"):
-        store.read(workspace_id=record.workspace_id, generation=2)
+        store.read(workspace_id=record.workspace_id, generation=3)
 
 
 def test_store_write_is_idempotent_for_exact_record(tmp_path: Path) -> None:
