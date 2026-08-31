@@ -8,7 +8,7 @@ claim.
 ## Live identity and governance
 
 - Repository: `ForceMind/agentbox`
-- Main: `6e73ba5031ae2c25f99c60cfadb6a22f36bb1466`
+- Main: `6bbc162dc99dd45b30b6162626b1bdb07cc28340`
 - PR: `#43`, `MERGED` (squash merge)
 - PR head: `622bbe7be99fbf38e0322230ff3ecb82e8fcc621`
 - PR base: `main @ f2de2c7d2212724cc29d3b08140940fbcdf0a884`
