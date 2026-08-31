@@ -80,6 +80,10 @@ from agentbox_runtime.waw_cgroup_attestation import (
     encode_waw_cgroup_attestation,
     waw_cgroup_attestation_sha256,
 )
+from agentbox_runtime.waw_cgroup_attestation_store import (
+    WAWCgroupAttestationStore,
+    WAWCgroupAttestationStoreError,
+)
 from agentbox_runtime.waw_claude_executor import (
     ClaudeProjectBinding,
     ProjectResolver,
@@ -222,6 +226,8 @@ __all__ = [
     "decode_waw_cgroup_attestation",
     "encode_waw_cgroup_attestation",
     "waw_cgroup_attestation_sha256",
+    "WAWCgroupAttestationStore",
+    "WAWCgroupAttestationStoreError",
     "ProjectResolver",
     "ClaudeProjectBinding",
     "WAWClaudeLifecycleExecutor",
