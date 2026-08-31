@@ -654,6 +654,7 @@ class WAWLifecycleRegistry:
             "workspace_id",
             "project_id",
             "agent_type",
+            "attachment_id",
             "mode",
             "lease_number",
             "generation",
@@ -674,7 +675,7 @@ class WAWLifecycleRegistry:
             "status": "DETACHED",
             **{field: request[field] for field in fields},
             "cleanup_state": "ATTACH_PTY_CLOSED",
-            "reason_code": "DETACHED",
+            "reason_code": None,
         }
 
     async def _cleanup_failed_start(self, identity: WAWLifecycleIdentity) -> None:
