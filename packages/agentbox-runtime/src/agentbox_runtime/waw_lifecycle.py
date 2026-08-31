@@ -9,6 +9,7 @@ The side-effecting adapter is injected and receives only an immutable identity.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import math
 import re
@@ -38,6 +39,8 @@ _START = "workspace.workspace.start"
 _STOP = "workspace.workspace.stop"
 _STATUS = "workspace.workspace.status"
 _RECONCILE = "workspace.workspace.reconcile"
+_ATTACH_PREPARE = "workspace.attach.prepare"
+_ATTACH_DETACH = "workspace.attach.detach"
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _DECIMAL = re.compile(r"\A(?:0|[1-9][0-9]{0,19})\Z")
 _STATES = frozenset(
@@ -213,6 +216,7 @@ class WAWLifecycleRegistry:
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
+        self._attachments: dict[str, dict[str, Any]] = {}
         self._generation_floor: dict[str, int] = {}
         self._request_cache: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
         self._lock = asyncio.Lock()
@@ -239,6 +243,10 @@ class WAWLifecycleRegistry:
                 response = self._bind(request)
             elif action == _REGISTER:
                 response = await self._register(request)
+            elif action == _ATTACH_PREPARE:
+                response = self._attach_prepare(request)
+            elif action == _ATTACH_DETACH:
+                response = self._attach_detach(request)
             elif action in {_START, _STOP, _STATUS, _RECONCILE}:
                 response = await self._lifecycle(request, action)
             else:
@@ -562,6 +570,112 @@ class WAWLifecycleRegistry:
         if action == _STATUS:
             return self._status_response(request, observation)
         return self._reconcile_response(request, observation)
+
+    def _attach_prepare(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Reserve one tuple-bound attachment after Runtime liveness checks.
+
+        This synthetic control-plane contract intentionally returns only a
+        deterministic capability digest.  Actual Noise keys, PTY handles and
+        terminal bytes remain in the future stream implementation.
+        """
+
+        self._require_authority()
+        workspace = self._workspaces.get(request["workspace_id"])
+        if workspace is None:
+            raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
+        identity, observation = workspace
+        if (
+            identity.project_id != request["project_id"]
+            or identity.agent_type != request["agent_type"]
+            or identity.generation != request["generation"]
+            or identity.binding_revision != request["binding_revision"]
+            or identity.binding_digest != request["binding_digest"]
+            or identity.runtime_host_installation_id != request["runtime_host_installation_id"]
+            or identity.runtime_host_installation_revision
+            != request["runtime_host_installation_revision"]
+        ):
+            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+        if observation.state not in {
+            "RUNNING",
+            "NEEDS_INTERACTION",
+            "TRUST_REQUIRED",
+            "LOGIN_REQUIRED",
+        }:
+            raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
+        attachment_id = request["attachment_id"]
+        if attachment_id in self._attachments:
+            raise WAWControlDispatchError("ATTACHMENT_PREPARE_REPLAY")
+        if len(self._attachments) >= 32:
+            raise WAWControlDispatchError("ATTACHMENT_TICKET_UNAVAILABLE")
+        capability = hashlib.sha256(
+            (
+                "agentbox-waw-capability-v1\0"
+                + attachment_id
+                + "\0"
+                + request["workspace_id"]
+                + "\0"
+                + request["lease_number"]
+                + "\0"
+                + request["runtime_epoch"]
+            ).encode("ascii")
+        ).hexdigest()
+        self._attachments[attachment_id] = dict(request)
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "PREPARED",
+            "workspace_id": request["workspace_id"],
+            "project_id": request["project_id"],
+            "agent_type": request["agent_type"],
+            "attachment_id": attachment_id,
+            "mode": request["mode"],
+            "lease_number": request["lease_number"],
+            "generation": request["generation"],
+            "binding_revision": request["binding_revision"],
+            "binding_digest": request["binding_digest"],
+            "auth_epoch": request["auth_epoch"],
+            "api_authority_epoch": request["api_authority_epoch"],
+            "runtime_host_installation_id": request["runtime_host_installation_id"],
+            "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+            "runtime_epoch": self._runtime_epoch,
+            "resume_cursor": request["resume_cursor"],
+            "previous_runtime_epoch": request["previous_runtime_epoch"],
+            "capability": capability,
+        }
+
+    def _attach_detach(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Close one prepared attachment and return positive cleanup proof."""
+
+        self._require_authority()
+        current = self._attachments.get(request["attachment_id"])
+        if current is None:
+            raise WAWControlDispatchError("ATTACHMENT_STALE")
+        fields = (
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "mode",
+            "lease_number",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "auth_epoch",
+            "api_authority_epoch",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+        )
+        if any(current.get(field) != request.get(field) for field in fields):
+            raise WAWControlDispatchError("ATTACHMENT_STALE")
+        del self._attachments[request["attachment_id"]]
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "DETACHED",
+            **{field: request[field] for field in fields},
+            "cleanup_state": "ATTACH_PTY_CLOSED",
+            "reason_code": "DETACHED",
+        }
 
     async def _cleanup_failed_start(self, identity: WAWLifecycleIdentity) -> None:
         if self._executor is None:  # pragma: no cover - guarded by _lifecycle
