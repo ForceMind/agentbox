@@ -382,6 +382,8 @@ class WAWLifecycleRegistry:
                     self._cleanup_quarantine.add(identity.workspace_id)
             except WAWCgroupAttestationStoreError as exc:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if action == _RECONCILE and identity.workspace_id in self._cleanup_quarantine:
+            return self._quarantine_reconcile_response(request)
         if identity.workspace_id in self._cleanup_quarantine:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         current = self._workspaces.get(identity.workspace_id)
@@ -690,6 +692,26 @@ class WAWLifecycleRegistry:
             )
         if record is not None:
             self._fence_cgroup_attestation(record)
+
+    @staticmethod
+    def _quarantine_reconcile_response(request: dict[str, Any]) -> dict[str, Any]:
+        """Return read-only evidence while cleanup quarantine remains active."""
+
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "RECONCILIATION_REQUIRED",
+            "workspace_id": request["workspace_id"],
+            "project_id": request["project_id"],
+            "agent_type": request["agent_type"],
+            "generation": request["generation"],
+            "binding_revision": request["binding_revision"],
+            "binding_digest": request["binding_digest"],
+            "runtime_host_installation_id": request["runtime_host_installation_id"],
+            "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+            "state": "UNKNOWN",
+            "reconciliation_state": "reconciliation_required",
+        }
 
     def _require_authority(self) -> None:
         if self._authority is None:
