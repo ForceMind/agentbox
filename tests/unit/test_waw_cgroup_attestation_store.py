@@ -158,6 +158,22 @@ def test_store_hydrates_unresolved_quarantine_across_restart(tmp_path: Path) -> 
     assert store.has_unresolved(workspace_id=record.workspace_id) is False
 
 
+def test_store_acknowledge_empty_is_single_lock_compare_and_ack(tmp_path: Path) -> None:
+    store, _ = _store(tmp_path)
+    record = _record()
+    store.write(record)
+    empty = replace(
+        record,
+        attachment_leaves=(),
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    assert store.acknowledge_empty(empty) is True
+    assert store.read(workspace_id=record.workspace_id, generation=1) == empty
+    with pytest.raises(WAWCgroupAttestationStoreError, match="latest unresolved"):
+        store.acknowledge_empty(empty)
+
+
 def test_store_rejects_immutable_identity_or_backward_state_changes(tmp_path: Path) -> None:
     store, _ = _store(tmp_path)
     record = _record()

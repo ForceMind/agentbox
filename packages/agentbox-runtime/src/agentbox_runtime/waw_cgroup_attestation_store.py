@@ -120,6 +120,41 @@ class WAWCgroupAttestationStore:
             self._replace_locked(directory_fd, record, raw)
         return record
 
+    def acknowledge_empty(self, record: WAWCgroupAttestation) -> bool:
+        """Atomically persist an EMPTY_DURABLE record and report full cleanup.
+
+        The caller must have obtained host-gated empty read-back.  This method
+        only performs the durable compare-and-ack under one store lock; it does
+        not read cgroupfs or authenticate the host producer.
+        """
+
+        if not isinstance(record, WAWCgroupAttestation):
+            raise TypeError("record must be WAWCgroupAttestation")
+        if (
+            record.cleanup_state != "EMPTY_DURABLE"
+            or record.last_populated != "0"
+            or record.attachment_leaves
+        ):
+            raise WAWCgroupAttestationStoreError("empty acknowledgement is invalid")
+        try:
+            raw = encode_waw_cgroup_attestation(record)
+        except WAWCgroupAttestationError as exc:
+            raise WAWCgroupAttestationStoreError("attestation validation failed") from exc
+        with self._locked_directory() as directory_fd:
+            records = self._records_for_workspace_locked(directory_fd, record.workspace_id)
+            unresolved = [item for item in records if item.cleanup_state != "EMPTY_DURABLE"]
+            if not unresolved or record.generation != unresolved[-1].generation:
+                raise WAWCgroupAttestationStoreError(
+                    "empty acknowledgement does not target latest unresolved generation"
+                )
+            current = self._read_locked(directory_fd, record.workspace_id, record.generation)
+            if current is None:
+                raise WAWCgroupAttestationStoreError("empty acknowledgement record is missing")
+            _validate_update(current, record)
+            self._replace_locked(directory_fd, record, raw)
+            remaining = self._records_for_workspace_locked(directory_fd, record.workspace_id)
+            return not any(item.cleanup_state != "EMPTY_DURABLE" for item in remaining)
+
     @contextmanager
     def _locked_directory(self) -> Iterator[int]:
         try:

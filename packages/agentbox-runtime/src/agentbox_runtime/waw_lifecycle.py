@@ -631,8 +631,11 @@ class WAWLifecycleRegistry:
             expected_workload_limits=unresolved.workload_limits,
             expected_attachment_limits=unresolved.attachment_limits,
         )
-        self._cgroup_attestation_store.write(record)
-        if not self._cgroup_attestation_store.has_unresolved(workspace_id=record.workspace_id):
+        try:
+            fully_empty = self._cgroup_attestation_store.acknowledge_empty(record)
+        except WAWCgroupAttestationStoreError as exc:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if fully_empty:
             self._cleanup_quarantine.discard(record.workspace_id)
             self._cleanup_quarantine_records.pop(record.workspace_id, None)
 
