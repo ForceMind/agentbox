@@ -16,6 +16,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from agentbox_runtime.waw_cgroup_attestation import (
+    WAWCgroupAttestation,
+    verify_waw_cgroup_attestation_context,
+)
+from agentbox_runtime.waw_cgroup_attestation_store import (
+    WAWCgroupAttestationStore,
+)
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
@@ -126,6 +133,9 @@ class WAWLifecycleExecutor(Protocol):
 
 
 BindingDigestFactory = Callable[[dict[str, Any]], str | Awaitable[str]]
+CgroupAttestationFactory = Callable[
+    [WAWLifecycleIdentity, WAWLifecycleObservation], WAWCgroupAttestation
+]
 
 
 @dataclass(frozen=True)
@@ -155,6 +165,8 @@ class WAWLifecycleRegistry:
         binding_digest_factory: BindingDigestFactory | None = None,
         runtime_epoch: str = "1",
         attestation_store: WAWWorkspaceAttestationStore | None = None,
+        cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+        cgroup_attestation_factory: CgroupAttestationFactory | None = None,
     ) -> None:
         self._host_id = runtime_host_installation_id
         self._host_revision = runtime_host_installation_revision
@@ -166,6 +178,12 @@ class WAWLifecycleRegistry:
         self._executor = executor
         self._binding_digest_factory = binding_digest_factory
         self._attestation_store = attestation_store
+        if (cgroup_attestation_store is None) != (cgroup_attestation_factory is None):
+            raise ValueError(
+                "cgroup_attestation_store and cgroup_attestation_factory must be provided together"
+            )
+        self._cgroup_attestation_store = cgroup_attestation_store
+        self._cgroup_attestation_factory = cgroup_attestation_factory
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -354,6 +372,26 @@ class WAWLifecycleRegistry:
         }[action]
         observation = await method(identity)
         self._validate_observation(observation)
+        if action == _START and self._cgroup_attestation_store is not None:
+            try:
+                if self._cgroup_attestation_factory is None:  # pragma: no cover
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+                cgroup_record = self._cgroup_attestation_factory(identity, observation)
+                verify_waw_cgroup_attestation_context(
+                    cgroup_record,
+                    expected_workspace_id=identity.workspace_id,
+                    expected_project_id=identity.project_id,
+                    expected_agent_type=identity.agent_type,
+                    expected_generation=int(identity.generation),
+                    expected_runtime_epoch=self._runtime_epoch,
+                )
+                self._cgroup_attestation_store.write(cgroup_record)
+            except Exception as exc:
+                try:
+                    await self._cleanup_failed_start(identity)
+                except Exception as cleanup_exc:
+                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_exc
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if action == _START and self._attestation_store is not None:
             try:
                 self._attestation_store.advance(
@@ -370,18 +408,7 @@ class WAWLifecycleRegistry:
                 # floor is unsafe to retain.  Attempt exact identity cleanup;
                 # if cleanup cannot be proven, the workspace remains fenced
                 # for explicit reconciliation.
-                try:
-                    cleanup = await self._executor.stop(identity)
-                    self._validate_observation(cleanup)
-                    if not (
-                        cleanup.state == "STOPPED"
-                        and cleanup.process_state == "STOPPED"
-                        and cleanup.reconciliation_state == "authoritative"
-                        and cleanup.runtime_epoch == self._runtime_epoch
-                    ):
-                        raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
-                except Exception as cleanup_exc:
-                    raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_exc
+                await self._cleanup_failed_start(identity)
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         self._workspaces[identity.workspace_id] = (identity, observation)
         if action == _START:
@@ -396,6 +423,19 @@ class WAWLifecycleRegistry:
         if action == _STATUS:
             return self._status_response(request, observation)
         return self._reconcile_response(request, observation)
+
+    async def _cleanup_failed_start(self, identity: WAWLifecycleIdentity) -> None:
+        if self._executor is None:  # pragma: no cover - guarded by _lifecycle
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        cleanup = await self._executor.stop(identity)
+        self._validate_observation(cleanup)
+        if not (
+            cleanup.state == "STOPPED"
+            and cleanup.process_state == "STOPPED"
+            and cleanup.reconciliation_state == "authoritative"
+            and cleanup.runtime_epoch == self._runtime_epoch
+        ):
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
 
     def _require_authority(self) -> None:
         if self._authority is None:

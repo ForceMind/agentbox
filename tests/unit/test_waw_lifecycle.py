@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from agentbox_protocol.waw_control import decode_control_response, encode_control_response
+from agentbox_runtime.waw_cgroup_attestation import (
+    WAWCgroupAttachmentLeaf,
+    WAWCgroupAttestation,
+    WAWCgroupLimits,
+)
+from agentbox_runtime.waw_cgroup_attestation_store import (
+    WAWCgroupAttestationStore,
+)
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
@@ -122,9 +131,55 @@ class RunningCleanupExecutor(FakeExecutor):
         return WAWLifecycleObservation(state="RUNNING")
 
 
+def cgroup_record() -> WAWCgroupAttestation:
+    return WAWCgroupAttestation(
+        workspace_id=WORKSPACE,
+        project_id=PROJECT,
+        agent_type="claude",
+        generation=1,
+        runtime_epoch="1",
+        service_unit="agentbox-runtime.service",
+        service_invocation_id="invocation-1",
+        service_cgroup_device="0:31",
+        service_cgroup_inode="10",
+        service_cgroup_mount_id="11",
+        delegated_subgroup="agentbox-runtime-supervisor",
+        delegate_subgroup_device="0:31",
+        delegate_subgroup_inode="12",
+        delegate_subgroup_mount_id="11",
+        cgroup_mount_id="11",
+        cgroup_filesystem_id="host-cgroup2-1",
+        workspace_relative_path="waw/ws-111-g1",
+        workspace_device="0:31",
+        workspace_inode="13",
+        workload_relative_path="waw/ws-111-g1/workload",
+        workload_device="0:31",
+        workload_inode="14",
+        attachment_leaves=(
+            WAWCgroupAttachmentLeaf(
+                attachment_id="att_" + "3" * 32,
+                relative_path="waw/ws-111-g1/attachments/att-333",
+                device="0:31",
+                inode="15",
+                lease_number=1,
+                cleanup_state="LIVE",
+            ),
+        ),
+        controller_configuration_digest="a" * 64,
+        workspace_limits=WAWCgroupLimits(128 * 1024 * 1024, 0, 200_000, 100_000, 20),
+        workload_limits=WAWCgroupLimits(120 * 1024 * 1024, 0, 190_000, 100_000, 16),
+        attachment_limits=WAWCgroupLimits(8 * 1024 * 1024, 0, 10_000, 100_000, 4),
+        last_frozen="0",
+        last_populated="1",
+        cleanup_state="LIVE",
+    )
+
+
 def registry(
     executor: FakeExecutor | None = None,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: Any | None = None,
 ) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
@@ -134,6 +189,8 @@ def registry(
         executor=executor,
         binding_digest_factory=lambda _request: DIGEST,
         attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
     )
 
 
@@ -197,6 +254,71 @@ async def test_start_attestation_cleanup_requires_positive_stopped_evidence() ->
     with pytest.raises(WAWControlDispatchError) as exc_info:
         await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
     assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+
+
+@pytest.mark.anyio
+async def test_start_persists_cgroup_attestation_before_exposing_generation(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    executor = FakeExecutor()
+    runtime = registry(
+        executor,
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    response = await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert response["status"] == "STARTED"
+    assert store.read(workspace_id=WORKSPACE, generation=1) == cgroup_record()
+
+
+def test_cgroup_attestation_store_and_factory_must_be_paired(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    with pytest.raises(ValueError, match="provided together"):
+        registry(cgroup_attestation_store=store)
+
+
+@pytest.mark.anyio
+async def test_cgroup_attestation_mismatch_cleans_up_and_keeps_generation_fenced(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    executor = FakeExecutor()
+    runtime = registry(
+        executor,
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: replace(
+            cgroup_record(), runtime_epoch="9"
+        ),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    assert [kind for kind, _identity in executor.calls] == ["start", "stop"]
+    assert store.read(workspace_id=WORKSPACE, generation=1) is None
 
 
 @pytest.mark.anyio
