@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -180,6 +181,7 @@ def registry(
     attestation_store: WAWWorkspaceAttestationStore | None = None,
     cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
     cgroup_attestation_factory: Any | None = None,
+    cgroup_attestation_timeout_seconds: float = 2.0,
 ) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
@@ -191,6 +193,7 @@ def registry(
         attestation_store=attestation_store,
         cgroup_attestation_store=cgroup_attestation_store,
         cgroup_attestation_factory=cgroup_attestation_factory,
+        cgroup_attestation_timeout_seconds=cgroup_attestation_timeout_seconds,
     )
 
 
@@ -381,6 +384,39 @@ def test_cgroup_attestation_store_and_factory_must_be_paired(tmp_path: Path) -> 
     )
     with pytest.raises(ValueError, match="provided together"):
         registry(cgroup_attestation_store=store)
+
+
+@pytest.mark.anyio
+async def test_async_cgroup_factory_timeout_cleans_up_and_fences_start(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+
+    async def slow_factory(
+        _identity: WAWLifecycleIdentity, _observation: WAWLifecycleObservation
+    ) -> WAWCgroupAttestation:
+        await asyncio.sleep(0.05)
+        return cgroup_record()
+
+    executor = FakeExecutor()
+    runtime = registry(
+        executor,
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=slow_factory,
+        cgroup_attestation_timeout_seconds=0.001,
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    assert [kind for kind, _identity in executor.calls] == ["start", "stop"]
+    assert store.read(workspace_id=WORKSPACE, generation=1) is None
 
 
 @pytest.mark.anyio

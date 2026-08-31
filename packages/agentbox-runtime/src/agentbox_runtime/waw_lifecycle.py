@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -134,7 +135,8 @@ class WAWLifecycleExecutor(Protocol):
 
 BindingDigestFactory = Callable[[dict[str, Any]], str | Awaitable[str]]
 CgroupAttestationFactory = Callable[
-    [WAWLifecycleIdentity, WAWLifecycleObservation], WAWCgroupAttestation
+    [WAWLifecycleIdentity, WAWLifecycleObservation],
+    WAWCgroupAttestation | Awaitable[WAWCgroupAttestation],
 ]
 
 
@@ -167,6 +169,7 @@ class WAWLifecycleRegistry:
         attestation_store: WAWWorkspaceAttestationStore | None = None,
         cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
         cgroup_attestation_factory: CgroupAttestationFactory | None = None,
+        cgroup_attestation_timeout_seconds: float = 2.0,
     ) -> None:
         self._host_id = runtime_host_installation_id
         self._host_revision = runtime_host_installation_revision
@@ -184,6 +187,14 @@ class WAWLifecycleRegistry:
             )
         self._cgroup_attestation_store = cgroup_attestation_store
         self._cgroup_attestation_factory = cgroup_attestation_factory
+        if (
+            isinstance(cgroup_attestation_timeout_seconds, bool)
+            or not isinstance(cgroup_attestation_timeout_seconds, (int, float))
+            or not math.isfinite(float(cgroup_attestation_timeout_seconds))
+            or cgroup_attestation_timeout_seconds <= 0
+        ):
+            raise ValueError("cgroup_attestation_timeout_seconds must be positive")
+        self._cgroup_attestation_timeout_seconds = float(cgroup_attestation_timeout_seconds)
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, _ProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -377,7 +388,7 @@ class WAWLifecycleRegistry:
             try:
                 if self._cgroup_attestation_factory is None:  # pragma: no cover
                     raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
-                cgroup_record = self._cgroup_attestation_factory(identity, observation)
+                cgroup_record = await self._build_cgroup_attestation(identity, observation)
                 verify_waw_cgroup_attestation_context(
                     cgroup_record,
                     expected_workspace_id=identity.workspace_id,
@@ -405,7 +416,7 @@ class WAWLifecycleRegistry:
             try:
                 if self._cgroup_attestation_factory is None:  # pragma: no cover
                     raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
-                cgroup_record = self._cgroup_attestation_factory(identity, observation)
+                cgroup_record = await self._build_cgroup_attestation(identity, observation)
                 verify_waw_cgroup_attestation_context(
                     cgroup_record,
                     expected_workspace_id=identity.workspace_id,
@@ -479,6 +490,23 @@ class WAWLifecycleRegistry:
             and cleanup.runtime_epoch == self._runtime_epoch
         ):
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+
+    async def _build_cgroup_attestation(
+        self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
+    ) -> WAWCgroupAttestation:
+        if self._cgroup_attestation_factory is None:  # pragma: no cover
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        value = self._cgroup_attestation_factory(identity, observation)
+        if isinstance(value, Awaitable):
+            try:
+                value = await asyncio.wait_for(
+                    value, timeout=self._cgroup_attestation_timeout_seconds
+                )
+            except TimeoutError as exc:
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if not isinstance(value, WAWCgroupAttestation):
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        return value
 
     def _fence_cgroup_attestation(self, record: WAWCgroupAttestation) -> None:
         """Persist a conservative FENCED state without claiming empty cgroupfs."""
