@@ -57,7 +57,11 @@ def create_waw_lifecycle_registry_development_only(
     the side effect of consuming the epoch and returns the consumed value for
     startup logging/diagnostics without re-reading mutable state.  When using
     ``executor_factory``, the factory receives that consumed epoch so its
-    observations can be bound to the same Runtime trust root.
+    observations can be bound to the same Runtime trust root.  Consumption is
+    durable and intentionally occurs before factory/registry construction; a
+    factory or constructor failure therefore burns that epoch and requires a
+    fresh Runtime startup with the next epoch rather than retrying with a
+    reused trust root.
     """
 
     if (executor is None) == (executor_factory is None):
@@ -212,7 +216,14 @@ def _create_registry(
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None,
 ) -> tuple[WAWLifecycleRegistry, str]:
-    """Shared construction after either compatibility or strict validation."""
+    """Shared construction after either compatibility or strict validation.
+
+    Epoch consumption is a durable one-way fence.  It deliberately precedes
+    executor and registry construction so every injected component observes
+    the exact epoch persisted for this startup.  If construction fails,
+    callers must treat the attempt as failed and restart using the next epoch;
+    the consumed value must never be reused.
+    """
 
     if (executor is None) == (executor_factory is None):
         raise ValueError("provide exactly one of executor or executor_factory")

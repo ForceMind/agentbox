@@ -209,6 +209,28 @@ async def test_bootstrap_factory_receives_consumed_epoch(tmp_path: Path) -> None
     assert observed == ["2"]
 
 
+def test_bootstrap_factory_failure_burns_epoch_and_requires_fresh_startup(
+    tmp_path: Path,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+
+    def failing_factory(_epoch: str) -> FakeExecutor:
+        raise RuntimeError("synthetic executor construction failure")
+
+    with pytest.raises(RuntimeError, match="synthetic executor construction failure"):
+        create_waw_lifecycle_registry_development_only(
+            manifest=_manifest(),
+            epoch_store=store,
+            executor_factory=failing_factory,
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+
+    # Epoch 2 was durably consumed before factory invocation.  A recovery
+    # startup must advance to 3 and must never retry with the burned value.
+    assert store.consume() == 3
+
+
 def test_bootstrap_advances_epoch_counter_without_reuse(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
