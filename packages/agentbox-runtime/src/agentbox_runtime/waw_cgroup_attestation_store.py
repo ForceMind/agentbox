@@ -65,36 +65,26 @@ class WAWCgroupAttestationStore:
 
         return self.latest_unresolved(workspace_id=workspace_id) is not None
 
+    def unresolved_generations(self, *, workspace_id: str) -> tuple[int, ...]:
+        """Return all non-empty generation numbers in ascending order."""
+
+        if not isinstance(workspace_id, str) or _WORKSPACE_ID.fullmatch(workspace_id) is None:
+            raise WAWCgroupAttestationStoreError("workspace_id is invalid")
+        with self._locked_directory() as directory_fd:
+            records = self._records_for_workspace_locked(directory_fd, workspace_id)
+            return tuple(
+                record.generation for record in records if record.cleanup_state != "EMPTY_DURABLE"
+            )
+
     def latest_unresolved(self, *, workspace_id: str) -> WAWCgroupAttestation | None:
         """Return the highest-generation non-empty record for a workspace."""
 
         if not isinstance(workspace_id, str) or _WORKSPACE_ID.fullmatch(workspace_id) is None:
             raise WAWCgroupAttestationStoreError("workspace_id is invalid")
-        prefix = hashlib.sha256(workspace_id.encode("ascii")).hexdigest()[:32] + "-g"
         with self._locked_directory() as directory_fd:
-            try:
-                names = os.listdir(directory_fd)
-            except OSError as exc:
-                raise WAWCgroupAttestationStoreError(
-                    "attestation directory cannot be listed"
-                ) from exc
-            candidates = [name for name in names if name.startswith(prefix)]
-            if len(candidates) > _MAX_RECORD_FILES:
-                raise WAWCgroupAttestationStoreError("too many attestation records")
-            latest: WAWCgroupAttestation | None = None
-            for name in candidates:
-                match = _RECORD_FILE.fullmatch(name)
-                if match is None:
-                    raise WAWCgroupAttestationStoreError("attestation filename is invalid")
-                generation = int(match.group(1))
-                record = self._read_locked(directory_fd, workspace_id, generation)
-                if (
-                    record is not None
-                    and record.cleanup_state != "EMPTY_DURABLE"
-                    and (latest is None or record.generation > latest.generation)
-                ):
-                    latest = record
-            return latest
+            records = self._records_for_workspace_locked(directory_fd, workspace_id)
+            unresolved = [record for record in records if record.cleanup_state != "EMPTY_DURABLE"]
+            return unresolved[-1] if unresolved else None
 
     def write(self, record: WAWCgroupAttestation) -> WAWCgroupAttestation:
         if not isinstance(record, WAWCgroupAttestation):
@@ -125,6 +115,8 @@ class WAWCgroupAttestationStore:
                     raise WAWCgroupAttestationStoreError(
                         "cgroup attestation lifecycle identity changed"
                     )
+                if previous.cleanup_state != "EMPTY_DURABLE":
+                    raise WAWCgroupAttestationStoreError("previous cgroup attestation is not empty")
             self._replace_locked(directory_fd, record, raw)
         return record
 
@@ -234,6 +226,12 @@ class WAWCgroupAttestationStore:
     def _latest_record_locked(
         self, directory_fd: int, workspace_id: str
     ) -> WAWCgroupAttestation | None:
+        records = self._records_for_workspace_locked(directory_fd, workspace_id)
+        return records[-1] if records else None
+
+    def _records_for_workspace_locked(
+        self, directory_fd: int, workspace_id: str
+    ) -> list[WAWCgroupAttestation]:
         prefix = hashlib.sha256(workspace_id.encode("ascii")).hexdigest()[:32] + "-g"
         try:
             names = os.listdir(directory_fd)
@@ -242,15 +240,15 @@ class WAWCgroupAttestationStore:
         candidates = [name for name in names if name.startswith(prefix)]
         if len(candidates) > _MAX_RECORD_FILES:
             raise WAWCgroupAttestationStoreError("too many attestation records")
-        latest: WAWCgroupAttestation | None = None
+        records: list[WAWCgroupAttestation] = []
         for name in candidates:
             match = _RECORD_FILE.fullmatch(name)
             if match is None:
                 raise WAWCgroupAttestationStoreError("attestation filename is invalid")
             record = self._read_locked(directory_fd, workspace_id, int(match.group(1)))
-            if record is not None and (latest is None or record.generation > latest.generation):
-                latest = record
-        return latest
+            if record is not None:
+                records.append(record)
+        return sorted(records, key=lambda record: record.generation)
 
     def _replace_locked(self, directory_fd: int, record: WAWCgroupAttestation, raw: bytes) -> None:
         name = _record_name(record.workspace_id, record.generation)

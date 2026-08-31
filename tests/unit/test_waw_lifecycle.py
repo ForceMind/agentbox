@@ -546,7 +546,9 @@ async def test_empty_ack_must_target_highest_unresolved_generation(tmp_path: Pat
         expected_uid=os.geteuid(),
         expected_gid=os.getegid(),
     )
-    generation_one = replace(cgroup_record(), attachment_leaves=(), cleanup_state="FENCED")
+    generation_one = replace(
+        cgroup_record(), attachment_leaves=(), last_populated="0", cleanup_state="EMPTY_DURABLE"
+    )
     generation_two = replace(
         cgroup_record(),
         generation=2,
@@ -574,12 +576,6 @@ async def test_empty_ack_must_target_highest_unresolved_generation(tmp_path: Pat
 
     runtime.acknowledge_cgroup_cleanup(
         replace(generation_two, last_populated="0", cleanup_state="EMPTY_DURABLE")
-    )
-    # Older unresolved generations remain conservative fences until each is
-    # independently acknowledged.
-    assert WORKSPACE in runtime._cleanup_quarantine
-    runtime.acknowledge_cgroup_cleanup(
-        replace(generation_one, last_populated="0", cleanup_state="EMPTY_DURABLE")
     )
     assert WORKSPACE not in runtime._cleanup_quarantine
 

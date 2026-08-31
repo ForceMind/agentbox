@@ -93,6 +93,14 @@ def test_store_requires_first_generation_and_rejects_cross_generation_copy(
         store.write(replace(record, generation=2))
 
     store.write(record)
+    store.write(
+        replace(
+            record,
+            attachment_leaves=(),
+            last_populated="0",
+            cleanup_state="EMPTY_DURABLE",
+        )
+    )
     generation_two = replace(
         record,
         generation=2,

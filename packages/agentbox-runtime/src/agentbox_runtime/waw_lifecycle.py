@@ -362,11 +362,15 @@ class WAWLifecycleRegistry:
                 unresolved = self._cgroup_attestation_store.latest_unresolved(
                     workspace_id=identity.workspace_id
                 )
+                unresolved_generations = self._cgroup_attestation_store.unresolved_generations(
+                    workspace_id=identity.workspace_id
+                )
                 current = self._workspaces.get(identity.workspace_id)
                 active_live = (
                     current is not None
                     and current[0].generation == identity.generation
                     and unresolved is not None
+                    and unresolved_generations == (unresolved.generation,)
                     and unresolved.cleanup_state == "LIVE"
                     and unresolved.last_populated == "1"
                 )
