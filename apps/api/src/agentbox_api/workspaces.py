@@ -804,6 +804,28 @@ async def detach_workspace(
             message="Runtime is not bound",
             retryable=True,
         )
+    operation_key = (
+        row.id,
+        payload.attachment_id,
+        payload.generation,
+        payload.lease_number,
+        authenticated.session_id,
+        authenticated.auth_epoch,
+    )
+    operation_id, already_detached = _detach_operation(request, operation_key)
+    if already_detached:
+        response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
+        return WorkspaceDetachResponse(
+            request_id=_request_id(request),
+            detach_operation_id=operation_id,
+            workspace_id=row.id,
+            attachment_id=payload.attachment_id,
+            generation=str(row.generation),
+            lease_number=payload.lease_number,
+            result="already_detached",
+            cleanup_state="ATTACH_PTY_CLOSED",
+            state=row.state,
+        )
     try:
         runtime_epoch = str(attestation["runtime_epoch"])
         runtime_host_id = str(attestation["runtime_host_installation_id"])
@@ -862,6 +884,9 @@ async def detach_workspace(
                 auth_epoch=authenticated.auth_epoch,
             ),
         )
+        operations = getattr(request.app.state, "waw_detach_operations", None)
+        if isinstance(operations, dict):
+            operations[operation_key] = (operation_id, True)
     except WAWControlClientError as exc:
         raise _runtime_error(exc) from exc
     except TicketAuthorityError as exc:
@@ -877,7 +902,7 @@ async def detach_workspace(
     response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
     return WorkspaceDetachResponse(
         request_id=_request_id(request),
-        detach_operation_id=f"wdo_{secrets.token_hex(16)}",
+        detach_operation_id=operation_id,
         workspace_id=row.id,
         attachment_id=payload.attachment_id,
         generation=str(row.generation),
@@ -922,3 +947,37 @@ def _attachment_authority(request: Request) -> AttachmentAuthority:
             retryable=True,
         )
     return authority
+
+
+def _detach_operation(request: Request, key: tuple[object, ...]) -> tuple[str, bool]:
+    """Allocate/retrieve one volatile detach operation for an exact tuple.
+
+    The operation table contains only non-secret identifiers and is scoped to
+    the API authority process, matching the non-durable attachment lease.  A
+    retry with the same authenticated tuple reuses the operation ID; a
+    different session/epoch receives a distinct operation and still must pass
+    the Runtime and lease checks.
+    """
+
+    operations = getattr(request.app.state, "waw_detach_operations", None)
+    if not isinstance(operations, dict):
+        operations = {}
+        request.app.state.waw_detach_operations = operations
+    current = operations.get(key)
+    if isinstance(current, tuple) and len(current) == 2 and isinstance(current[0], str):
+        return current[0], bool(current[1])
+    try:
+        operation_id = f"wdo_{secrets.token_hex(16)}"
+    except Exception as exc:
+        raise RuntimeGatewayError(
+            code="RANDOMNESS_UNAVAILABLE",
+            category="unavailable",
+            message="secure detach operation randomness is unavailable",
+            retryable=True,
+        ) from exc
+    operations[key] = (operation_id, False)
+    if len(operations) > 256:
+        # Bounded eviction is safe because old operation IDs are nonces only;
+        # a replay still has to present a live lease and current tuple.
+        operations.pop(next(iter(operations)))
+    return operation_id, False
