@@ -315,6 +315,34 @@ async def test_stop_persists_fenced_cgroup_attestation_before_returning(tmp_path
 
 
 @pytest.mark.anyio
+async def test_stop_rejects_live_cgroup_attestation_and_fences_record(tmp_path: Path) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    runtime = registry(
+        FakeExecutor(),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(
+            lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "8" * 32)
+        )
+    assert exc_info.value.code == "RECONCILIATION_REQUIRED"
+    persisted = store.read(workspace_id=WORKSPACE, generation=1)
+    assert persisted is not None
+    assert persisted.cleanup_state == "FENCED"
+
+
+@pytest.mark.anyio
 async def test_workspace_attestation_failure_fences_cgroup_record_after_cleanup(
     tmp_path: Path,
 ) -> None:
