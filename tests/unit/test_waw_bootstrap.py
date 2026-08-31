@@ -434,6 +434,30 @@ def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
     assert anchor_raw != encode_api_host_anchor(anchor)
 
 
+@pytest.mark.parametrize("manifest_index", range(4))
+def test_bundle_bootstrap_rejects_each_manifest_mutation_before_epoch_consume(
+    tmp_path: Path, manifest_index: int
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    bundle = list(_strict_manifest_bundle())
+    raw = bundle[manifest_index]
+    # Mutating the canonical closing byte makes each individual record
+    # malformed.  The bundle boundary must reject it before consuming epoch 2.
+    bundle[manifest_index] = raw[:-1] + b" "
+    with pytest.raises(WAWManifestCodecError):
+        create_waw_lifecycle_registry_from_manifest_bundle(
+            raw_api_host_anchor=bundle[0],
+            raw_runtime_host_manifest=bundle[1],
+            raw_project_root_manifest=bundle[2],
+            raw_cgroup_delegation_manifest=bundle[3],
+            epoch_store=store,
+            executor=FakeExecutor(),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    assert store.consume() == 2
+
+
 def test_bundle_bootstrap_is_exported_from_runtime_package() -> None:
     from agentbox_runtime import (
         CrossManifestPin,
