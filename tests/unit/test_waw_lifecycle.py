@@ -594,11 +594,19 @@ async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(tmp_path
         cgroup_attestation_store=store,
         cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
     )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
     runtime._cleanup_quarantine.add(WORKSPACE)
     empty = replace(fenced, last_populated="0", cleanup_state="EMPTY_DURABLE")
 
     await runtime._lock.acquire()
-    task = asyncio.create_task(runtime.acknowledge_cgroup_cleanup(empty))
+    task = asyncio.create_task(
+        runtime.acknowledge_cgroup_cleanup(
+            empty,
+            binding_revision="1",
+            binding_digest=DIGEST,
+        )
+    )
     await asyncio.sleep(0)
     assert not task.done()
     runtime._lock.release()
@@ -629,7 +637,7 @@ async def test_restart_acknowledgement_requires_hydrated_project_binding(tmp_pat
 
     with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
         await runtime.acknowledge_cgroup_cleanup(empty)
-    assert WORKSPACE in runtime._cleanup_quarantine
+    assert WORKSPACE not in runtime._cleanup_quarantine
 
     await runtime.acknowledge_cgroup_cleanup(
         empty,
@@ -699,15 +707,21 @@ async def test_empty_ack_must_target_highest_unresolved_generation(tmp_path: Pat
         cgroup_attestation_store=store,
         cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
     )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
     runtime._cleanup_quarantine.add(WORKSPACE)
     with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
         await runtime.acknowledge_cgroup_cleanup(
-            replace(generation_one, last_populated="0", cleanup_state="EMPTY_DURABLE")
+            replace(generation_one, last_populated="0", cleanup_state="EMPTY_DURABLE"),
+            binding_revision="1",
+            binding_digest=DIGEST,
         )
     assert WORKSPACE in runtime._cleanup_quarantine
 
     await runtime.acknowledge_cgroup_cleanup(
-        replace(generation_two, last_populated="0", cleanup_state="EMPTY_DURABLE")
+        replace(generation_two, last_populated="0", cleanup_state="EMPTY_DURABLE"),
+        binding_revision="1",
+        binding_digest=DIGEST,
     )
     assert WORKSPACE not in runtime._cleanup_quarantine
 

@@ -635,6 +635,8 @@ class WAWLifecycleRegistry:
     ) -> None:
         if self._cgroup_attestation_store is None:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        if binding_revision is None or binding_digest is None:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         if record.workspace_id not in self._cleanup_quarantine:
             try:
                 snapshot = self._cgroup_attestation_store.snapshot(workspace_id=record.workspace_id)
@@ -664,7 +666,7 @@ class WAWLifecycleRegistry:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         else:
             binding = self._bindings.get(record.project_id)
-            if binding is not None and (
+            if binding is None or (
                 binding_revision != binding.binding_revision
                 or binding_digest != binding.binding_digest
             ):
