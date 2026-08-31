@@ -590,7 +590,7 @@ def load_canonical_waw_manifest_bundle(
                         f"WAW manifest bundle file is too large: {filename}"
                     )
                 second = os.fstat(fd)
-                fields = (
+                file_fields = (
                     "st_dev",
                     "st_ino",
                     "st_mode",
@@ -600,7 +600,7 @@ def load_canonical_waw_manifest_bundle(
                     "st_mtime_ns",
                     "st_ctime_ns",
                 )
-                if any(getattr(first, field) != getattr(second, field) for field in fields):
+                if any(getattr(first, field) != getattr(second, field) for field in file_fields):
                     raise WAWRuntimeHostManifestError(
                         f"WAW manifest bundle file changed during read: {filename}"
                     )
@@ -616,8 +616,10 @@ def load_canonical_waw_manifest_bundle(
                     with suppress(OSError):
                         os.close(fd)
         parent_after = os.fstat(directory_fd)
-        fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_ctime_ns")
-        if any(getattr(parent_before, field) != getattr(parent_after, field) for field in fields):
+        parent_fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_ctime_ns")
+        if any(
+            getattr(parent_before, field) != getattr(parent_after, field) for field in parent_fields
+        ):
             raise WAWRuntimeHostManifestError("WAW manifest bundle directory changed during read")
     except WAWRuntimeHostManifestError:
         raise
