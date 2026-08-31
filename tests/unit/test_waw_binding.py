@@ -106,7 +106,7 @@ async def test_failed_attestation_does_not_mark_bound() -> None:
 
 
 @pytest.mark.anyio
-async def test_lifecycle_request_allows_only_read_only_actions() -> None:
+async def test_lifecycle_request_allows_only_typed_waw_actions() -> None:
     client = FakeClient(_response())
     coordinator = _coordinator(client)
     request = {
@@ -120,10 +120,15 @@ async def test_lifecycle_request_allows_only_read_only_actions() -> None:
         "workspace.api_authority.bind",
         "workspace.workspace.status",
     ]
+    start_request = {**request, "action": "workspace.workspace.start"}
+    assert (
+        await coordinator.request_lifecycle("workspace.workspace.start", start_request)
+        == _response()
+    )
     with pytest.raises(WAWControlClientError) as raised:
-        await coordinator.request_lifecycle("workspace.workspace.start", request)
+        await coordinator.request_lifecycle("workspace.workspace.unknown", request)
     assert raised.value.code == "PROTOCOL_INVALID"
-    assert len(client.calls) == 2
+    assert len(client.calls) == 3
 
 
 @pytest.mark.anyio
