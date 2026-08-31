@@ -250,6 +250,14 @@ def _canonical_record_payload(
         "evidence_source": (
             value.evidence_source.value if isinstance(value, WAWCleanupEvidence) else None
         ),
+        "latest_generation": (
+            value.latest_generation if isinstance(value, WAWCleanupDurableSnapshot) else None
+        ),
+        "unresolved_generations": (
+            list(value.unresolved_generations)
+            if isinstance(value, WAWCleanupDurableSnapshot)
+            else None
+        ),
     }
 
 

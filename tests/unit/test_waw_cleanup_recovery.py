@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any, cast
 
 import pytest
 from agentbox_runtime.waw_cleanup_recovery import (
@@ -19,6 +20,10 @@ PROJECT = "prj_" + "2" * 32
 HOST = "wri_" + "3" * 32
 BINDING_DIGEST = "a" * 64
 CGROUP_IDENTITY_DIGEST = "b" * 64
+
+
+def replace_evidence(value: WAWCleanupEvidence, **changes: object) -> WAWCleanupEvidence:
+    return cast(WAWCleanupEvidence, replace(cast(Any, value), **changes))
 
 
 def active(*, generation: int = 3, host: str = HOST) -> WAWCleanupActiveIdentity:
@@ -131,7 +136,7 @@ def test_exact_empty_evidence_returns_ack_with_distinct_record_digest() -> None:
     ],
 )
 def test_identity_mismatch_requires_reconciliation(field: str, value: object) -> None:
-    observed = replace(evidence(), **{field: value})
+    observed = replace_evidence(evidence(), **{field: value})
     assert (
         reduce_cleanup_recovery(active(), snapshot(), observed)
         == CleanupRecoveryDecision.RECONCILIATION_REQUIRED
@@ -160,8 +165,14 @@ def test_snapshot_generation_must_be_latest_unresolved() -> None:
     )
 
 
+def test_snapshot_digest_covers_latest_generation_metadata() -> None:
+    original = snapshot()
+    mutated = replace(original, latest_generation=4, unresolved_generations=(3, 4))
+    assert cleanup_attestation_digest(mutated) != original.attestation_digest
+
+
 def test_attestation_digest_mismatch_requires_reconciliation() -> None:
-    observed = replace(evidence(), attestation_digest="b" * 64)
+    observed = replace_evidence(evidence(), attestation_digest="b" * 64)
     assert (
         reduce_cleanup_recovery(active(), snapshot(), observed)
         == CleanupRecoveryDecision.RECONCILIATION_REQUIRED
@@ -216,7 +227,9 @@ def test_missing_snapshot_requires_reconciliation() -> None:
 )
 def test_malformed_evidence_is_rejected(field: str, value: object) -> None:
     with pytest.raises(WAWCleanupRecoveryError):
-        reduce_cleanup_recovery(active(), snapshot(), replace(evidence(), **{field: value}))
+        reduce_cleanup_recovery(
+            active(), snapshot(), replace_evidence(evidence(), **{field: value})
+        )
 
 
 def test_closed_mapping_rejects_arbitrary_fields() -> None:
