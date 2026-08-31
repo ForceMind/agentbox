@@ -407,6 +407,7 @@ class WAWLifecycleRegistry:
             self._validate_observation(observation)
         except Exception as exc:
             if action == _STOP and self._cgroup_attestation_store is not None:
+                self._cleanup_quarantine.add(identity.workspace_id)
                 try:
                     self._fence_cgroup_for_identity(identity)
                 except Exception as fence_exc:
@@ -466,6 +467,7 @@ class WAWLifecycleRegistry:
                     raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
                 self._cgroup_attestation_store.write(cgroup_record)
             except Exception as exc:
+                self._cleanup_quarantine.add(identity.workspace_id)
                 if cgroup_record is not None:
                     try:
                         self._fence_cgroup_attestation(cgroup_record)
@@ -493,6 +495,7 @@ class WAWLifecycleRegistry:
                 # floor is unsafe to retain.  Attempt exact identity cleanup;
                 # if cleanup cannot be proven, the workspace remains fenced
                 # for explicit reconciliation.
+                self._cleanup_quarantine.add(identity.workspace_id)
                 cleanup_error: Exception | None = None
                 try:
                     await self._cleanup_failed_start(identity)
@@ -559,18 +562,34 @@ class WAWLifecycleRegistry:
 
     def _consume_detached_cleanup(self, task: asyncio.Task[Any]) -> None:
         self._detached_cleanup_tasks.discard(task)
-        identity = self._detached_cleanup_identities.pop(task, None)
+        self._detached_cleanup_identities.pop(task, None)
         with suppress(BaseException):
             cleanup = task.result()
             self._validate_observation(cleanup)
-            if (
-                identity is not None
-                and cleanup.state == "STOPPED"
-                and cleanup.process_state == "STOPPED"
-                and cleanup.reconciliation_state == "authoritative"
-                and cleanup.runtime_epoch == self._runtime_epoch
-            ):
-                self._cleanup_quarantine.discard(identity.workspace_id)
+            # A late STOPPED observation is necessary but not sufficient: the
+            # quarantine remains until a host-gated EMPTY_DURABLE cgroup
+            # read-back is explicitly acknowledged below.
+
+    def acknowledge_cgroup_cleanup(self, record: WAWCgroupAttestation) -> None:
+        """Clear one workspace quarantine after host-gated empty read-back.
+
+        Runtime host code may call this only after independently proving
+        ``populated=0``, no attachment leaves, and durable cgroup cleanup.  A
+        late executor STOPPED observation alone never clears quarantine.
+        """
+
+        if self._cgroup_attestation_store is None:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        if record.workspace_id not in self._cleanup_quarantine:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        if record.cleanup_state != "EMPTY_DURABLE" or record.last_populated != "0":
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        if record.attachment_leaves:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
+        if record.runtime_epoch != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        self._cgroup_attestation_store.write(record)
+        self._cleanup_quarantine.discard(record.workspace_id)
 
     async def _build_cgroup_attestation(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation

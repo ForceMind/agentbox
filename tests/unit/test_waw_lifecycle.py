@@ -315,7 +315,9 @@ async def test_cleanup_timeout_quarantines_new_generation_until_stop_finishes() 
     executor.release.set()
     await asyncio.sleep(0)
     await asyncio.sleep(0)
-    assert len(runtime._cleanup_quarantine) == 0
+    # Executor STOPPED is necessary but not sufficient; a host-gated
+    # EMPTY_DURABLE read-back is still required to clear quarantine.
+    assert len(runtime._cleanup_quarantine) == 1
 
 
 @pytest.mark.anyio
@@ -458,6 +460,42 @@ async def test_workspace_attestation_failure_fences_cgroup_record_after_cleanup(
     persisted = store.read(workspace_id=WORKSPACE, generation=1)
     assert persisted is not None
     assert persisted.cleanup_state == "FENCED"
+
+
+@pytest.mark.anyio
+async def test_host_gated_empty_acknowledgement_is_required_to_clear_quarantine(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "cgroup-attestations"
+    directory.mkdir()
+    directory.chmod(0o700)
+    store = WAWCgroupAttestationStore(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    runtime = registry(
+        FakeExecutor(),
+        cast(WAWWorkspaceAttestationStore, FailingAttestationStore()),
+        cgroup_attestation_store=store,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert len(runtime._cleanup_quarantine) == 1
+    fenced = store.read(workspace_id=WORKSPACE, generation=1)
+    assert fenced is not None
+    empty = replace(
+        fenced,
+        attachment_leaves=(),
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    runtime.acknowledge_cgroup_cleanup(empty)
+    assert len(runtime._cleanup_quarantine) == 0
+    assert store.read(workspace_id=WORKSPACE, generation=1) == empty
 
 
 def test_cgroup_attestation_store_and_factory_must_be_paired(tmp_path: Path) -> None:
