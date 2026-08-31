@@ -578,7 +578,9 @@ async def test_empty_acknowledgement_binds_active_binding_identity(tmp_path: Pat
 
 
 @pytest.mark.anyio
-async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(tmp_path: Path) -> None:
+async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     directory = tmp_path / "cgroup-attestations"
     directory.mkdir()
     directory.chmod(0o700)
@@ -599,6 +601,24 @@ async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(tmp_path
     runtime._cleanup_quarantine.add(WORKSPACE)
     empty = replace(fenced, last_populated="0", cleanup_state="EMPTY_DURABLE")
 
+    entered = asyncio.Event()
+    original = runtime._acknowledge_cgroup_cleanup_unlocked
+
+    def wrapped(
+        record: WAWCgroupAttestation,
+        *,
+        binding_revision: str | None,
+        binding_digest: str | None,
+    ) -> None:
+        entered.set()
+        original(
+            record,
+            binding_revision=binding_revision,
+            binding_digest=binding_digest,
+        )
+
+    monkeypatch.setattr(runtime, "_acknowledge_cgroup_cleanup_unlocked", wrapped)
+
     await runtime._lock.acquire()
     task = asyncio.create_task(
         runtime.acknowledge_cgroup_cleanup(
@@ -607,9 +627,10 @@ async def test_cleanup_acknowledgement_waits_for_registry_mutation_lock(tmp_path
             binding_digest=DIGEST,
         )
     )
-    await asyncio.sleep(0)
-    assert not task.done()
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(entered.wait(), timeout=0.01)
     runtime._lock.release()
+    await asyncio.wait_for(entered.wait(), timeout=1)
     await task
     assert WORKSPACE not in runtime._cleanup_quarantine
 
