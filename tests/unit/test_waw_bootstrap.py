@@ -521,10 +521,14 @@ def test_bundle_bootstrap_rejects_each_manifest_mutation_before_epoch_consume(
 
 
 def test_bundle_bootstrap_is_exported_from_runtime_package() -> None:
+    import agentbox_runtime
     from agentbox_runtime import (
         CrossManifestPin,
-        create_waw_lifecycle_registry_from_manifest_bundle,
+        create_waw_lifecycle_registry_from_filesystem_bundle,
+        create_waw_lifecycle_registry_from_loaded_manifest_bundle,
     )
 
-    assert create_waw_lifecycle_registry_from_manifest_bundle is not None
+    assert create_waw_lifecycle_registry_from_filesystem_bundle is not None
+    assert create_waw_lifecycle_registry_from_loaded_manifest_bundle is not None
     assert CrossManifestPin is not None
+    assert not hasattr(agentbox_runtime, "create_waw_lifecycle_registry_from_manifest_bundle")

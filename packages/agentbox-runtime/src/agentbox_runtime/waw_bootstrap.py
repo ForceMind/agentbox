@@ -146,7 +146,7 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
     binding_digest_factory: BindingDigestFactory,
     attestation_store: WAWWorkspaceAttestationStore | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
-    """Bootstrap from a strictly cross-pinned manifest bundle.
+    """Internal/test-only bootstrap from a strictly cross-pinned byte bundle.
 
     This is a data-only strict boundary.  The API host anchor, Runtime host
     manifest, and Project Root manifest are decoded and cross-verified before
@@ -159,6 +159,11 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
     supplying an executor that is already bound to the same trust root.  This
     helper performs no file discovery, socket binding, process execution, or
     credential handling.
+
+    Production callers must use
+    :func:`create_waw_lifecycle_registry_from_filesystem_bundle`, which keeps
+    the loader provenance boundary intact.  This raw-byte adapter is retained
+    only for synthetic fixtures and compatibility tests.
     """
 
     pin = verify_api_host_anchor_cross_manifest(
@@ -358,7 +363,6 @@ def build_waw_control_server(
 __all__ = [
     "build_waw_control_server",
     "create_waw_lifecycle_registry_from_filesystem_bundle",
-    "create_waw_lifecycle_registry_from_manifest_bundle",
     "create_waw_lifecycle_registry_from_loaded_manifest_bundle",
     "create_waw_lifecycle_registry_from_manifest_bytes",
 ]
