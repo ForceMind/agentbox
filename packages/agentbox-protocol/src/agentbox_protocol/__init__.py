@@ -114,6 +114,14 @@ from agentbox_protocol.waw_control import (
     encode_control_request,
     encode_control_response,
 )
+from agentbox_protocol.waw_stream_contract import (
+    WAWReplay,
+    WAWResize,
+    WAWStreamContractError,
+    decode_replay,
+    decode_resize,
+    validate_empty_control,
+)
 
 __all__ = [
     "ABWSFrame",
@@ -122,6 +130,12 @@ __all__ = [
     "ABWSError",
     "ABWSProtocolError",
     "ABWSFramedStreamPump",
+    "WAWReplay",
+    "WAWResize",
+    "WAWStreamContractError",
+    "decode_replay",
+    "decode_resize",
+    "validate_empty_control",
     "AdminView",
     "AuthData",
     "AuthResponse",

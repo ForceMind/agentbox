@@ -121,6 +121,7 @@ from agentbox_runtime.waw_manifest_codecs import (
     encode_runtime_host_manifest,
     manifest_sha256,
 )
+from agentbox_runtime.waw_stream_bridge import WAWStreamBridge, WAWStreamSnapshot, WAWStreamState
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
     RuntimeStartEvidence,
@@ -184,6 +185,9 @@ __all__ = [
     "RuntimeStartEvidence",
     "RuntimeStopEvidence",
     "WAWSupervisor",
+    "WAWStreamBridge",
+    "WAWStreamSnapshot",
+    "WAWStreamState",
     "WAWTransport",
     "TmuxWAWTransport",
     "WAWTmuxTransport",
