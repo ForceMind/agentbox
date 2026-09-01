@@ -19,6 +19,8 @@ from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
+from agentbox_core.waw import AgentType
+
 from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupAttestation,
     verify_waw_cgroup_attestation_context,
@@ -73,6 +75,7 @@ _RECONCILIATION_STATES = frozenset(
 _PROCESS_STATES = _STATES | {"NOT_STARTED"}
 _MAX_U64 = 2**64 - 1
 _MAX_DETACHED_CLEANUPS = 32
+_SUPPORTED_AGENT_TYPES = frozenset(agent.value for agent in AgentType)
 
 # Runtime observations are deliberately stricter than the underlying provider
 # API.  An ambiguous process/lifecycle pair must never be exposed as healthy.
@@ -349,7 +352,11 @@ class WAWLifecycleRegistry:
 
     async def _lifecycle(self, request: dict[str, Any], action: str) -> dict[str, Any]:
         self._require_authority()
-        if request.get("agent_type") != "claude":
+        # Keep the WAW agent boundary closed at the Runtime seam.  Both
+        # providers use the same identity/fencing lifecycle contract; their
+        # side-effecting executors remain separately injected and are never
+        # selected from request-controlled values.
+        if request.get("agent_type") not in _SUPPORTED_AGENT_TYPES:
             raise WAWControlDispatchError("WAW_AGENT_UNSUPPORTED")
         identity = WAWLifecycleIdentity(
             workspace_id=request["workspace_id"],

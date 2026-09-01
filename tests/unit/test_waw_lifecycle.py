@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from agentbox_core.waw import AgentType, workspace_id
 from agentbox_protocol.waw_control import decode_control_response, encode_control_response
 from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupAttachmentLeaf,
@@ -878,13 +879,13 @@ async def test_lifecycle_fences_identity_before_executor() -> None:
 
 
 @pytest.mark.anyio
-async def test_lifecycle_registry_is_claude_only() -> None:
+async def test_lifecycle_registry_rejects_unknown_agent_type() -> None:
     executor = FakeExecutor()
     runtime = registry(executor)
     await runtime.dispatch(bind_request())
     await runtime.dispatch(register_request())
     request = lifecycle_request("workspace.workspace.start")
-    request["agent_type"] = "codex"
+    request["agent_type"] = "arbitrary-provider"
     with pytest.raises(WAWControlDispatchError) as exc_info:
         await runtime.dispatch(request)
     assert exc_info.value.code == "WAW_AGENT_UNSUPPORTED"
@@ -997,6 +998,40 @@ async def test_generation_floor_and_stop_are_idempotent() -> None:
         )
     )
     assert restarted["status"] == "STARTED"
+
+
+@pytest.mark.anyio
+async def test_codex_lifecycle_uses_same_fenced_synthetic_contract() -> None:
+    """Codex is admitted by the closed Runtime agent set without real login/process use."""
+
+    executor = FakeExecutor()
+    runtime = registry(executor)
+    await runtime.dispatch(bind_request("wreq_" + "a" * 32))
+    await runtime.dispatch(register_request(request_id="wreq_" + "b" * 32))
+
+    codex_workspace = workspace_id(PROJECT, AgentType.CODEX)
+    start = lifecycle_request(
+        "workspace.workspace.start",
+        request_id="wreq_" + "c" * 32,
+    )
+    start.update({"agent_type": AgentType.CODEX.value, "workspace_id": codex_workspace})
+    assert (await runtime.dispatch(start))["status"] == "STARTED"
+
+    attach = attachment_request("workspace.attach.prepare", request_id="wreq_" + "d" * 32)
+    attach.update({"agent_type": AgentType.CODEX.value, "workspace_id": codex_workspace})
+    prepared = await runtime.dispatch(attach)
+    assert prepared["status"] == "PREPARED"
+    assert prepared["agent_type"] == AgentType.CODEX.value
+
+    status = lifecycle_request("workspace.workspace.status", request_id="wreq_" + "e" * 32)
+    status.update({"agent_type": AgentType.CODEX.value, "workspace_id": codex_workspace})
+    assert (await runtime.dispatch(status))["state"] == "RUNNING"
+
+    stop = lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "f" * 32)
+    stop.update({"agent_type": AgentType.CODEX.value, "workspace_id": codex_workspace})
+    assert (await runtime.dispatch(stop))["status"] == "STOPPED"
+    assert [name for name, identity in executor.calls] == ["start", "status", "stop"]
+    assert all(identity.agent_type == AgentType.CODEX.value for _, identity in executor.calls)
 
 
 @pytest.mark.anyio
