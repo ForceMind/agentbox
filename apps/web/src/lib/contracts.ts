@@ -239,6 +239,52 @@ export type WorkspaceRuntimeStatusResponse = {
   data: WorkspaceRuntimeStatus
 }
 
+export type WorkspaceStartResponse = {
+  request_id: string
+  workspace_id: string
+  project_id: string
+  agent_type: 'claude'
+  state: string
+  generation: string
+}
+
+export type WorkspaceStopResponse = WorkspaceStartResponse & {
+  stop_operation_id: string
+}
+
+export type WorkspaceAttachmentTicketResponse = {
+  protocol_version: 1
+  request_id: string
+  ticket: string
+  workspace_id: string
+  project_id: string
+  agent_type: 'claude'
+  attachment_id: string
+  mode: 'writer'
+  lease_number: string
+  generation: string
+  binding_revision: string
+  binding_digest: string
+  auth_epoch: string
+  api_authority_epoch: string
+  runtime_host_installation_id: string
+  runtime_host_installation_revision: string
+  runtime_epoch: string
+  expires_at: string
+}
+
+export type WorkspaceDetachResponse = {
+  request_id: string
+  detach_operation_id: string
+  workspace_id: string
+  attachment_id: string
+  generation: string
+  lease_number: string
+  result: 'detached' | 'already_detached'
+  cleanup_state: 'ATTACH_PTY_CLOSED'
+  state: string
+}
+
 export type GitStatusData = {
   is_repository: boolean
   branch: string | null
@@ -930,6 +976,99 @@ export function parseWorkspaceRuntimeStatusResponse(
         limit: string(capacity.limit, 'attachment limit'),
       },
     },
+  }
+}
+
+export function parseWorkspaceStartResponse(
+  value: unknown,
+): WorkspaceStartResponse {
+  const data = object(value, 'Workspace start')
+  return {
+    request_id: string(data.request_id, 'request ID'),
+    workspace_id: string(data.workspace_id, 'workspace ID'),
+    project_id: string(data.project_id, 'Project ID'),
+    agent_type: literal(data.agent_type, ['claude'], 'AgentType'),
+    state: string(data.state, 'workspace state'),
+    generation: string(data.generation, 'workspace generation'),
+  }
+}
+
+export function parseWorkspaceStopResponse(
+  value: unknown,
+): WorkspaceStopResponse {
+  const data = parseWorkspaceStartResponse(value)
+  const envelope = object(value, 'Workspace stop')
+  return {
+    ...data,
+    stop_operation_id: string(envelope.stop_operation_id, 'stop operation ID'),
+  }
+}
+
+export function parseWorkspaceAttachmentTicketResponse(
+  value: unknown,
+): WorkspaceAttachmentTicketResponse {
+  const data = object(value, 'Workspace attachment ticket')
+  return {
+    protocol_version:
+      data.protocol_version === 1
+        ? 1
+        : (() => {
+            throw new Error('Invalid protocol version response')
+          })(),
+    request_id: string(data.request_id, 'request ID'),
+    ticket: string(data.ticket, 'attachment ticket'),
+    workspace_id: string(data.workspace_id, 'workspace ID'),
+    project_id: string(data.project_id, 'Project ID'),
+    agent_type: literal(data.agent_type, ['claude'], 'AgentType'),
+    attachment_id: string(data.attachment_id, 'attachment ID'),
+    mode: literal(data.mode, ['writer'], 'attachment mode'),
+    lease_number: string(data.lease_number, 'lease number'),
+    generation: string(data.generation, 'workspace generation'),
+    binding_revision: string(data.binding_revision, 'binding revision'),
+    binding_digest: string(data.binding_digest, 'binding digest'),
+    auth_epoch: string(data.auth_epoch, 'auth epoch'),
+    api_authority_epoch: string(
+      data.api_authority_epoch,
+      'API authority epoch',
+    ),
+    runtime_host_installation_id: string(
+      data.runtime_host_installation_id,
+      'Runtime host installation ID',
+    ),
+    runtime_host_installation_revision: string(
+      data.runtime_host_installation_revision,
+      'Runtime host installation revision',
+    ),
+    runtime_epoch: string(data.runtime_epoch, 'Runtime epoch'),
+    expires_at: string(data.expires_at, 'ticket expiry'),
+  }
+}
+
+export function parseWorkspaceDetachResponse(
+  value: unknown,
+): WorkspaceDetachResponse {
+  const data = object(value, 'Workspace detach')
+  return {
+    request_id: string(data.request_id, 'request ID'),
+    detach_operation_id: string(
+      data.detach_operation_id,
+      'detach operation ID',
+    ),
+    workspace_id: string(data.workspace_id, 'workspace ID'),
+    attachment_id: string(data.attachment_id, 'attachment ID'),
+    generation: string(data.generation, 'workspace generation'),
+    lease_number: string(data.lease_number, 'lease number'),
+    result: literal(
+      data.result,
+      ['detached', 'already_detached'],
+      'detach result',
+    ),
+    cleanup_state: literal(
+      data.cleanup_state,
+      ['ATTACH_PTY_CLOSED'],
+      'cleanup state',
+    ),
+    state: string(data.state, 'workspace state'),
   }
 }
 
