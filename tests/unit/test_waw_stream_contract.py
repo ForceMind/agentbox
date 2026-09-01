@@ -58,7 +58,7 @@ def test_stream_controls_reject_extra_or_invalid_fields(
 
 def test_stream_contract_never_accepts_control_payload_as_input() -> None:
     with pytest.raises(TypeError):
-        encode_frame(FrameType.INPUT, {"command": "rm"}, 1)  # type: ignore[arg-type]
+        encode_frame(FrameType.INPUT, {"command": "rm"}, 1)
 
 
 def test_bridge_routes_input_resize_replay_detach_and_close() -> None:
