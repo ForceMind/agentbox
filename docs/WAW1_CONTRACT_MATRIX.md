@@ -37,6 +37,8 @@ real host, provider login, interactive terminal, or production route.
 | Bounded terminal-output sanitizer | `waw_terminal_sanitizer.py`; strict UTF-8, C0/C1/Cc/Cf and ESC/OSC tests; no PTY or renderer |
 | Layer-boundary composition tests | `tests/unit/test_waw_transport_layers.py`; parser→policy, ABWS independence and Noise enum-only checks |
 | HTTP lifecycle/ticket scaffolding (synthetic only) | `apps/api/src/agentbox_api/workspaces.py` exposes CSRF/recent-auth fenced Start, Stop, Attachment-ticket and fresh Reconnect routes; routes require an already bound Runtime and durable workspace row. |
+| Synthetic ABWS stream bridge (contract only) | `waw_stream_contract.py`, `waw_stream_bridge.py`, and stream tests compose bounded input/resize/replay/GAP/detach/close behavior over `WAWSupervisor`; no listener or cryptography. |
+| WAW-2 Codex command identity (contract only) | `waw_codex_command.py` and `test_waw_codex_command.py` enforce Project/workspace identity, fixed argv and executable provenance; lifecycle/attachment integration is not implemented. |
 
 ## Contract-only boundaries
 
@@ -72,7 +74,7 @@ automatic adoption is allowed.
 
 ## Not implemented
 
-- WebSocket stream route, browser terminal renderer/input/resize, and real
+- WebSocket stream route, browser terminal renderer/input/resize wiring, and
   Runtime-backed Noise/PTY admission.
 - Real `/stream`, browser terminal rendering/input/output/resize/reconnect.
 - WAW-2 Codex slice.

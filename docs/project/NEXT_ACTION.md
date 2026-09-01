@@ -1,7 +1,8 @@
 # Current Authorized Action
 
-Action ID: `WAW1-STREAM-CONTRACT-2026-09-01`
+Action ID: `WAW1-STREAM-ADMISSION-2026-09-01`
 
-- Continue WAW-1 stream contract work with synthetic Runtime/Fake Runtime evidence.
+- Implement the WAW-1 WebSocket upgrade/admission boundary and connect the synthetic stream bridge to a bounded in-memory transport test harness.
+- Keep browser terminal payloads encrypted/opaque outside Runtime; no plaintext API/proxy fallback.
 - Keep real Noise/WebSocket/PTY/browser and host activation blocked until independent host evidence exists.
-- After WAW-1 contract closure, begin WAW-2 Codex project-scoped workspace design and tests.
+- After WAW-1 stream admission closure, continue WAW-2 Codex project-scoped lifecycle/attachment integration.

@@ -6,7 +6,7 @@ the exact head, and is followed by an exact merge read-back and a snapshot
 update. Synthetic/Fake Runtime evidence is never promoted to real-host or
 production evidence.
 
-## Stage 1 — WAW-1 Claude transport contract
+## Stage 1 — WAW-1 Claude transport contract (synthetic bridge complete)
 
 Deliver a bounded Runtime-owned stream session that composes the existing
 ABWS framing, Noise metadata state machine, output ring, attachment lease and
@@ -15,19 +15,29 @@ and typed failure states with synthetic data. No plaintext terminal payload may
 cross API/Worker; no real cryptography, listener, PTY or provider login is
 claimed.
 
-## Stage 2 — WAW-1 web workspace experience
+Status: the bounded ABWS/Runtime bridge and control contract are merged in PR
+#52. WebSocket admission, real Noise, PTY and host evidence remain.
+
+## Stage 2 — WAW-1 web workspace experience (control preparation complete)
 
 Wire the browser Workspace page to the typed metadata APIs and expose explicit
 Start/Connect, Detach and exact Stop state transitions with loading, conflict,
 reconnect and mobile-control states. Keep tickets and terminal bytes in memory
 only. Real WebSocket/Noise/PTY rendering remains host-gated.
 
-## Stage 3 — WAW-2 Codex
+Status: metadata action hook, strict response parsers and capability-gated
+controls are merged in PR #52. App-level action wiring and real stream rendering
+remain.
+
+## Stage 3 — WAW-2 Codex (command contract started)
 
 Add a separate Project-scoped Codex workspace model and fixed Runtime command
 contract. Claude runtime/session-only boundaries remain unchanged. Cover
 identity, generation, marker, lifecycle and attachment behavior using Fake
 Runtime; provider authentication and real Codex login are excluded.
+
+Status: fixed Codex command identity/provenance contract and tests are merged in
+PR #52. Project-scoped lifecycle and attachment integration remain.
 
 ## Stage 4 — WAW-3 continuity and recovery
 
