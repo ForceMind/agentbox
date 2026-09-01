@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,7 +29,7 @@ from agentbox_runtime import (
     UnixCodexRuntimeClient,
     UnixProjectRuntimeClient,
 )
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +50,7 @@ from agentbox_api.workspaces import project_workspaces_router
 from agentbox_api.workspaces import router as workspaces_router
 
 logger = logging.getLogger("agentbox.api")
+_WAW_WORKSPACE_ID = re.compile(r"\Aaws_[0-9a-f]{32}\Z")
 
 
 class ImmutableStaticFiles(StaticFiles):
@@ -103,6 +105,7 @@ def create_app(
     waw_bind_coordinator: WAWRuntimeBindCoordinator | None = None,
     waw_authorization_policy: WorkspaceAuthorizationPolicy | None = None,
     waw_attachment_authority: AttachmentAuthority | None = None,
+    waw_stream_handler: object | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
@@ -142,6 +145,7 @@ def create_app(
     application.state.waw_bind_coordinator = waw_bind_coordinator
     application.state.waw_authorization_policy = waw_authorization_policy
     application.state.waw_attachment_authority = waw_attachment_authority
+    application.state.waw_stream_handler = waw_stream_handler
     application.state.login_executor = BoundedLoginExecutor(
         actual_services.auth,
         max_concurrency=actual_settings.argon2_max_concurrency,
@@ -227,6 +231,26 @@ def create_app(
     application.include_router(github_router)
     application.include_router(jobs_router)
     application.include_router(doctor_router)
+
+    @application.websocket("/api/v1/workspaces/{workspace_id}/stream")
+    async def waw_stream(websocket: WebSocket, workspace_id: str) -> None:
+        """Fail-closed WAW stream boundary until an approved handler is wired.
+
+        The route is deliberately registered before the static frontend
+        catch-all.  It performs only scope/query and opaque identity checks;
+        no cookie, ticket, terminal payload, Noise key or Runtime process is
+        read when the stream handler is unavailable.
+        """
+
+        if _WAW_WORKSPACE_ID.fullmatch(workspace_id) is None or websocket.query_params:
+            await websocket.close(code=1008)
+            return
+        handler = getattr(application.state, "waw_stream_handler", None)
+        if not callable(handler):
+            await websocket.close(code=1013)
+            return
+        await handler(websocket)
+
     static_root = actual_settings.static_dir
     if static_root is not None:
         _register_static_web(application, static_root)
