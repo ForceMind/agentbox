@@ -16,7 +16,9 @@ import {
 import { WorkspaceStatusView } from '../features/workspace/useWorkspaceStatus'
 import { WorkspaceAction } from '../features/workspace/useWorkspaceActions'
 
-export type WorkspacePageActions = Partial<Record<WorkspaceAction, () => void | Promise<void>>> & {
+export type WorkspacePageActions = Partial<
+  Record<WorkspaceAction, () => void | Promise<void>>
+> & {
   input?: (key: string) => void | Promise<void>
 }
 
@@ -67,12 +69,21 @@ export function WorkspacePage({
       ? 'Runtime ADMITTED 已确认。终端输出仅在当前页面内存中显示。'
       : '等待 Runtime ADMITTED；当前不会显示终端输出。'
   const isTerminal = state.status === 'connected'
-  const metadata = runtimeView.status === 'loaded' ? runtimeView.response.data : null
+  const metadata =
+    runtimeView.status === 'loaded' ? runtimeView.response.data : null
   const busy = runtimeView.status === 'loading'
-  const canStart = Boolean(actions.start) && metadata?.state !== 'RUNNING' && metadata?.process_state !== 'RUNNING'
-  const canConnect = Boolean(actions.connect) && metadata?.state === 'RUNNING' && state.status !== 'connected'
+  const canStart =
+    Boolean(actions.start) &&
+    metadata?.state !== 'RUNNING' &&
+    metadata?.process_state !== 'RUNNING'
+  const canConnect =
+    Boolean(actions.connect) &&
+    metadata?.state === 'RUNNING' &&
+    state.status !== 'connected'
   const canReconnect = Boolean(actions.reconnect) && state.status === 'detached'
-  const canDetach = Boolean(actions.detach) && (state.status === 'connected' || state.status === 'reconnecting')
+  const canDetach =
+    Boolean(actions.detach) &&
+    (state.status === 'connected' || state.status === 'reconnecting')
   const canStop = Boolean(actions.stop) && metadata?.state === 'RUNNING'
 
   return (
@@ -106,7 +117,9 @@ export function WorkspacePage({
           </label>
         </div>
         <p className="interaction-notice">
-          控件只调用 metadata control-plane API；ticket 仅在内存中短暂流转，当前页面尚未建立 WebSocket、Noise 或 PTY，不会伪造 workspace、ticket 或运行状态。
+          控件只调用 metadata control-plane API；ticket
+          仅在内存中短暂流转，当前页面尚未建立 WebSocket、Noise 或 PTY，不会伪造
+          workspace、ticket 或运行状态。
         </p>
         {workspaceId && runtimeView.status === 'loading' && (
           <p className="loading-panel" role="status">
@@ -213,19 +226,44 @@ export function WorkspacePage({
           transcript、ticket、input history 或 terminal content。
         </p>
         <div className="action-row">
-          <button className="primary-button" disabled={!canStart || busy} onClick={() => void actions.start?.()} type="button">
+          <button
+            className="primary-button"
+            disabled={!canStart || busy}
+            onClick={() => void actions.start?.()}
+            type="button"
+          >
             Start / Connect
           </button>
-          <button className="primary-button" disabled={!canConnect || busy} onClick={() => void actions.connect?.()} type="button">
+          <button
+            className="primary-button"
+            disabled={!canConnect || busy}
+            onClick={() => void actions.connect?.()}
+            type="button"
+          >
             Connect（获取临时 ticket）
           </button>
-          <button className="secondary-button" disabled={!canReconnect || busy} onClick={() => void actions.reconnect?.()} type="button">
+          <button
+            className="secondary-button"
+            disabled={!canReconnect || busy}
+            onClick={() => void actions.reconnect?.()}
+            type="button"
+          >
             Reconnect
           </button>
-          <button className="secondary-button" disabled={!canDetach || busy} onClick={() => void actions.detach?.()} type="button">
+          <button
+            className="secondary-button"
+            disabled={!canDetach || busy}
+            onClick={() => void actions.detach?.()}
+            type="button"
+          >
             Detach（保留 agent）
           </button>
-          <button className="secondary-button" disabled={!canStop || busy} onClick={() => void actions.stop?.()} type="button">
+          <button
+            className="secondary-button"
+            disabled={!canStop || busy}
+            onClick={() => void actions.stop?.()}
+            type="button"
+          >
             Stop workspace
           </button>
         </div>

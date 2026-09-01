@@ -979,7 +979,9 @@ export function parseWorkspaceRuntimeStatusResponse(
   }
 }
 
-export function parseWorkspaceStartResponse(value: unknown): WorkspaceStartResponse {
+export function parseWorkspaceStartResponse(
+  value: unknown,
+): WorkspaceStartResponse {
   const data = object(value, 'Workspace start')
   return {
     request_id: string(data.request_id, 'request ID'),
@@ -991,16 +993,28 @@ export function parseWorkspaceStartResponse(value: unknown): WorkspaceStartRespo
   }
 }
 
-export function parseWorkspaceStopResponse(value: unknown): WorkspaceStopResponse {
+export function parseWorkspaceStopResponse(
+  value: unknown,
+): WorkspaceStopResponse {
   const data = parseWorkspaceStartResponse(value)
   const envelope = object(value, 'Workspace stop')
-  return { ...data, stop_operation_id: string(envelope.stop_operation_id, 'stop operation ID') }
+  return {
+    ...data,
+    stop_operation_id: string(envelope.stop_operation_id, 'stop operation ID'),
+  }
 }
 
-export function parseWorkspaceAttachmentTicketResponse(value: unknown): WorkspaceAttachmentTicketResponse {
+export function parseWorkspaceAttachmentTicketResponse(
+  value: unknown,
+): WorkspaceAttachmentTicketResponse {
   const data = object(value, 'Workspace attachment ticket')
   return {
-    protocol_version: data.protocol_version === 1 ? 1 : (() => { throw new Error('Invalid protocol version response') })(),
+    protocol_version:
+      data.protocol_version === 1
+        ? 1
+        : (() => {
+            throw new Error('Invalid protocol version response')
+          })(),
     request_id: string(data.request_id, 'request ID'),
     ticket: string(data.ticket, 'attachment ticket'),
     workspace_id: string(data.workspace_id, 'workspace ID'),
@@ -1013,25 +1027,47 @@ export function parseWorkspaceAttachmentTicketResponse(value: unknown): Workspac
     binding_revision: string(data.binding_revision, 'binding revision'),
     binding_digest: string(data.binding_digest, 'binding digest'),
     auth_epoch: string(data.auth_epoch, 'auth epoch'),
-    api_authority_epoch: string(data.api_authority_epoch, 'API authority epoch'),
-    runtime_host_installation_id: string(data.runtime_host_installation_id, 'Runtime host installation ID'),
-    runtime_host_installation_revision: string(data.runtime_host_installation_revision, 'Runtime host installation revision'),
+    api_authority_epoch: string(
+      data.api_authority_epoch,
+      'API authority epoch',
+    ),
+    runtime_host_installation_id: string(
+      data.runtime_host_installation_id,
+      'Runtime host installation ID',
+    ),
+    runtime_host_installation_revision: string(
+      data.runtime_host_installation_revision,
+      'Runtime host installation revision',
+    ),
     runtime_epoch: string(data.runtime_epoch, 'Runtime epoch'),
     expires_at: string(data.expires_at, 'ticket expiry'),
   }
 }
 
-export function parseWorkspaceDetachResponse(value: unknown): WorkspaceDetachResponse {
+export function parseWorkspaceDetachResponse(
+  value: unknown,
+): WorkspaceDetachResponse {
   const data = object(value, 'Workspace detach')
   return {
     request_id: string(data.request_id, 'request ID'),
-    detach_operation_id: string(data.detach_operation_id, 'detach operation ID'),
+    detach_operation_id: string(
+      data.detach_operation_id,
+      'detach operation ID',
+    ),
     workspace_id: string(data.workspace_id, 'workspace ID'),
     attachment_id: string(data.attachment_id, 'attachment ID'),
     generation: string(data.generation, 'workspace generation'),
     lease_number: string(data.lease_number, 'lease number'),
-    result: literal(data.result, ['detached', 'already_detached'], 'detach result'),
-    cleanup_state: literal(data.cleanup_state, ['ATTACH_PTY_CLOSED'], 'cleanup state'),
+    result: literal(
+      data.result,
+      ['detached', 'already_detached'],
+      'detach result',
+    ),
+    cleanup_state: literal(
+      data.cleanup_state,
+      ['ATTACH_PTY_CLOSED'],
+      'cleanup state',
+    ),
     state: string(data.state, 'workspace state'),
   }
 }
