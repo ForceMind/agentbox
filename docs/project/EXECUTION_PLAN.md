@@ -16,7 +16,8 @@ cross API/Worker; no real cryptography, listener, PTY or provider login is
 claimed.
 
 Status: the bounded ABWS/Runtime bridge and control contract are merged in PR
-#52. WebSocket admission, real Noise, PTY and host evidence remain.
+#52, and the fail-closed WebSocket route boundary is merged in PR #54. Real
+Noise, PTY and host evidence remain.
 
 ## Stage 2 — WAW-1 web workspace experience (control preparation complete)
 
@@ -36,10 +37,11 @@ contract. Claude runtime/session-only boundaries remain unchanged. Cover
 identity, generation, marker, lifecycle and attachment behavior using Fake
 Runtime; provider authentication and real Codex login are excluded.
 
-Status: fixed Codex command identity/provenance contract and tests are merged in
-PR #52. Project-scoped lifecycle and attachment integration remain.
+Status: fixed Codex command identity/provenance contract is merged in PR #52;
+synthetic lifecycle support is merged in PR #55. Project-scoped attachment and
+CLI integration remain.
 
-## Stage 4 — WAW-3 continuity and recovery
+## Stage 4 — WAW-3 continuity and recovery (next active stage)
 
 Implement bounded restart/reconnect, lease and cursor fencing, mobile/background
 suspension handling, Runtime/API restart classification, recovery states and

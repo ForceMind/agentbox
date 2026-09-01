@@ -1,8 +1,8 @@
 # Current Authorized Action
 
-Action ID: `WAW1-STREAM-ADMISSION-2026-09-01`
+Action ID: `WAW3-RECOVERY-CONTRACT-2026-09-01`
 
-- Implement the WAW-1 WebSocket upgrade/admission boundary and connect the synthetic stream bridge to a bounded in-memory transport test harness.
-- Keep browser terminal payloads encrypted/opaque outside Runtime; no plaintext API/proxy fallback.
+- Implement pure WAW-3 recovery/cursor/lease reducers with exact generation, binding and runtime epoch fencing.
+- Wire the Workspace reducer to reject stale events before any real stream is enabled.
 - Keep real Noise/WebSocket/PTY/browser and host activation blocked until independent host evidence exists.
-- After WAW-1 stream admission closure, continue WAW-2 Codex project-scoped lifecycle/attachment integration.
+- After recovery contracts, continue WAW-2 Codex attachment/CLI integration.
