@@ -8,16 +8,18 @@ claim.
 ## Live identity and governance
 
 - Repository: `ForceMind/agentbox`
-- Main: `03f862a6cab41cd499a9d9a1024d581348818eda`
-- PR: `#43`, `MERGED` (squash merge)
+- Verified main on 2026-09-03: `24d08414b20e7158e8c84694aac59d0326799bfd`.
+- Main exact-head workflows: Backend, Frontend, E2E, Deployment, Security,
+  Release Candidate all terminal `success`. See `project/CURRENT_STATE.md`.
+- Historical foundation PR: `#43`, `MERGED` (squash merge)
 - PR head: `622bbe7be99fbf38e0322230ff3ecb82e8fcc621`
 - PR base: `main @ f2de2c7d2212724cc29d3b08140940fbcdf0a884`
 - Exact-head CI before merge: `19/19 SUCCESS` (historical evidence for PR #43,
   not a post-merge host or release check)
 - Merge commit observed for the exact PR/head/base above. The Owner
   authorization was an external governance record; GitHub `reviewDecision` is
-  not that record. This does not authorize WAW-2, production activation, or
-  real-host work.
+  not that record. Subsequent software authorization is tracked in
+  `project/NEXT_ACTION.md`; no repository merge proves host/production readiness.
 
 ## Implemented and tested contracts
 
@@ -38,7 +40,8 @@ real host, provider login, interactive terminal, or production route.
 | Layer-boundary composition tests | `tests/unit/test_waw_transport_layers.py`; parser→policy, ABWS independence and Noise enum-only checks |
 | HTTP lifecycle/ticket scaffolding (synthetic only) | `apps/api/src/agentbox_api/workspaces.py` exposes CSRF/recent-auth fenced Start, Stop, Attachment-ticket and fresh Reconnect routes; routes require an already bound Runtime and durable workspace row. |
 | Synthetic ABWS stream bridge (contract only) | `waw_stream_contract.py`, `waw_stream_bridge.py`, and stream tests compose bounded input/resize/replay/GAP/detach/close behavior over `WAWSupervisor`; no listener or cryptography. |
-| WAW-2 Codex command identity (contract only) | `waw_codex_command.py` and `test_waw_codex_command.py` enforce Project/workspace identity, fixed argv and executable provenance; lifecycle/attachment integration is not implemented. |
+| WAW-2 Codex command identity and lifecycle (synthetic only) | `waw_codex_command.py` / `test_waw_codex_command.py` enforce Project/workspace identity, fixed argv and executable provenance. PR #55 extends Runtime lifecycle tests to Codex; API attachment/real CLI integration remains incomplete. |
+| Fail-closed WebSocket boundary | `apps/api/src/agentbox_api/main.py` has an authenticated route boundary that refuses service without a qualified handler; no production encrypted stream is claimed. |
 
 ## Contract-only boundaries
 
@@ -74,11 +77,12 @@ automatic adoption is allowed.
 
 ## Not implemented
 
-- WebSocket stream route, browser terminal renderer/input/resize wiring, and
-  Runtime-backed Noise/PTY admission.
+- Functional encrypted WebSocket stream, browser terminal renderer/input/resize
+  wiring and Runtime-backed Noise/PTY admission.
 - Real `/stream`, browser terminal rendering/input/output/resize/reconnect.
-- WAW-2 Codex slice.
-- WAW-3 continuity, mobile, recovery and reboot hardening.
+- Complete WAW-2 Codex Project-scoped API attachment/CLI slice.
+- Complete WAW-3 continuity, mobile, recovery composition and reboot hardening;
+  existing lease/ring/cleanup contracts are being extended, not reimplemented.
 - Final release artifacts, production deployment and launch.
 - Provider API keys, Secret handling, account/channel balance monitoring.
 
@@ -95,8 +99,9 @@ gh pr view 43 --json state,isDraft,headRefOid,baseRefOid,mergeCommit,mergeStateS
 gh pr checks 43
 ```
 
-Every implementation slice remains `feature branch → Draft PR → exact-head CI →
-read-only Architecture/Security/Test review → explicit Owner/host gate`. This
-document records that WAW-1 foundation PR #43 has completed that merge gate; it
-does not authorize production activation, WAW-2, WAW-3, real Provider login, or
-deployment.
+The current routine flow is `feature branch → CI → merge → exact read-back`.
+Security-critical changes receive independent read-only Architecture/Security/Test
+review. Draft state, a governance bot and a separate Owner Merge Authorization
+are not routine merge requirements. Architecture changes, real host activation,
+Secret handling and production publication retain their separate explicit gates.
+See `project/GOVERNANCE.md` and `project/EXECUTION_PLAN.md`.

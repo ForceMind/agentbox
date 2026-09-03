@@ -1,71 +1,79 @@
 # AgentBox Execution Plan
 
-This is the live execution plan for the remaining AgentBox product slices.
-Each stage is delivered as a feature branch and PR, requires terminal CI for
-the exact head, and is followed by an exact merge read-back and a snapshot
-update. Synthetic/Fake Runtime evidence is never promoted to real-host or
-production evidence.
+## 目标与完成标准
 
-## Stage 1 — WAW-1 Claude transport contract (synthetic bridge complete)
+目标用户是管理单台服务器的管理员。最终操作路径是：登录 AgentBox →
+选择正式 `READY` Project → 选择 Claude/Codex → Start/Connect →
+浏览器 input/output/resize → detach/reconnect → exact Stop；保留 Project
+和 Git 修改。Remote Control、Provider Authentication、官方 CLI Login 与
+Interactive Workspace 保持独立。
 
-Deliver a bounded Runtime-owned stream session that composes the existing
-ABWS framing, Noise metadata state machine, output ring, attachment lease and
-supervisor. Cover input, resize, output replay/GAP, detach, close, backpressure
-and typed failure states with synthetic data. No plaintext terminal payload may
-cross API/Worker; no real cryptography, listener, PTY or provider login is
-claimed.
+2026-09-03 Owner 要求制定计划、启用多智能体并行开发、持续完成剩余功能，
+且每完成一个阶段更新 GitHub 和文档。该指令覆盖日常软件开发与阶段交付；
+architecture 变更、真实 host 激活、Secret handling、生产发布及支持承诺仍遵守
+`GOVERNANCE.md` 的明确授权与证据边界。历史提案中的未实现描述不替代 live
+代码，历史授权记录也不自动升级为生产证据。
 
-Status: the bounded ABWS/Runtime bridge and control contract are merged in PR
-#52, and the fail-closed WebSocket route boundary is merged in PR #54. Real
-Noise, PTY and host evidence remain.
+最终完成必须同时具有已合并实现、exact-head terminal CI、适用的独立审查、
+merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、macOS
+本地测试和 CI 不证明真实 Linux terminal/host readiness。
 
-## Stage 2 — WAW-1 web workspace experience (control preparation complete)
+## 已核实基线
 
-Wire the browser Workspace page to the typed metadata APIs and expose explicit
-Start/Connect, Detach and exact Stop state transitions with loading, conflict,
-reconnect and mobile-control states. Keep tickets and terminal bytes in memory
-only. Real WebSocket/Noise/PTY rendering remains host-gated.
+- `main` / `origin/main`: `24d08414b20e7158e8c84694aac59d0326799bfd`。
+- 工作区开始时干净；main exact-head 的 Backend、Frontend、E2E、Deployment、
+  Security、Release Candidate 六个 workflow 均为 terminal `success`。
+- 已有 WAW lifecycle、ticket/admission、attachment prepare/detach、bounded
+  synthetic stream、fail-closed WebSocket boundary 和 Codex lifecycle 契约。
+- 尚不能通过真实浏览器终端使用 Claude/Codex；不能把 HTTP 成功视为 connected。
+- 历史 Draft PR #42 不在本轮写入范围内。
 
-Status: metadata action hook, strict response parsers and capability-gated
-controls are merged in PR #52. App-level action wiring and real stream rendering
-remain.
+## 阶段清单
 
-## Stage 3 — WAW-2 Codex (command contract started)
+状态使用：未开始、进行中、待验证、审查未通过、已完成。只有完成本阶段
+适用验证、审查、CI 和合并回读才标为已完成。
 
-Add a separate Project-scoped Codex workspace model and fixed Runtime command
-contract. Claude runtime/session-only boundaries remain unchanged. Cover
-identity, generation, marker, lifecycle and attachment behavior using Fake
-Runtime; provider authentication and real Codex login are excluded.
+| 阶段 | 状态 | 交付范围 | 验收与依赖 |
+| --- | --- | --- | --- |
+| A — 计划与基线 | 待验证 | 修正 stale snapshot、统一现行治理引用、建立需求/实现/验证映射 | 对照 live Git/GitHub；随首个实现 PR 交付 |
+| B — WAW-3 recovery contracts | 待验证 | 补齐现有纯 recovery/cursor/lease 决策与前端 stale-event fencing | 覆盖 exact generation/binding/host/epoch/attachment、同代 replay、API/Runtime restart 分类、mobile suspension、uncertain input 与 cleanup proof；不接通真实 transport |
+| C — WAW-2 Codex integration | 未开始 | 在既有 substrate 上补齐 Project-scoped Codex attachment 与固定 CLI 接线 | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
+| D — Workspace metadata UX | 未开始 | 页面接通已实现的 Start/Connect/Detach/exact Stop；明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
+| E — 软件发布准备 | 未开始 | 完整 CI matrix、独立 Architecture/Security/Test 审查、限制和 release checklist、产物验证 | 所有检查 terminal；精确记录 artifact fingerprints 与未验证范围；依赖 B/C/D，不能标为生产就绪 |
+| F — 真实 transport/host 与产品验收 | 未开始 | 已批准参数下的 Noise/WebSocket/PTY、真实 CLI、安装隔离、浏览器 terminal、reboot/recovery | 需要明确 host/architecture 授权、可归属的非 Secret evidence、恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
 
-Status: fixed Codex command identity/provenance contract is merged in PR #52;
-synthetic lifecycle support is merged in PR #55. Project-scoped attachment and
-CLI integration remain.
+F 的缺少证据不阻止互不依赖的软件工作，但它是整体产品完成的阻断项。
+没有真实证据时不能将其标为已完成，也不能开放 plaintext fallback、generic
+shell/filesystem gateway 或通过重命名消除 gate。
 
-## Stage 4 — WAW-3 continuity and recovery (next active stage)
+## 多智能体职责与写入边界
 
-Implement bounded restart/reconnect, lease and cursor fencing, mobile/background
-suspension handling, Runtime/API restart classification, recovery states and
-reboot-safe reconciliation. Add race, stale-generation and failure-injection
-tests without durable terminal transcript storage.
+- 主智能体：计划、文档、接口协调、最终集成、GitHub/CI/merge/read-back。
+- Backend worker：core/runtime recovery 与对应 Python 测试；不改 Web。
+- Frontend worker：Workspace reducer/hook/page 与对应 Web 测试；不改 Python。
+- 独立 reviewer：只读 Architecture/Security/Test 审查，报告证据与缺陷；
+  不参与实现，不把 synthetic evidence 写成 host PASS。
 
-## Stage 5 — release readiness
+先确认依赖和文件所有权，再并行独立模块；禁止覆盖其他贡献者修改。
+每阶段中按实际需要复用角色，不为形式重复审查。
 
-Run the complete Python/frontend/e2e/security test matrix, obtain independent
-read-only Architecture/Security/Test conclusions, update all project snapshots
-and release documents, and prepare artifacts. Any unverified host capability
-remains explicitly blocked.
+## 每阶段交付流程
 
-## Stage 6 — host validation and production
+1. `git fetch origin --prune`，核对工作区、HEAD/main/merge-base、open PR、
+   exact-head CI 和上阶段 read-back。
+2. 在 `codex/` feature branch 实施已授权范围，保存有意义的测试与非敏感证据。
+3. 同步 `CURRENT_STATE.md`、`NEXT_ACTION.md`、`ROADMAP.md`、相关契约文档，
+   明确实现、合并、真实运行验证之间的差别。
+4. 创建 PR，完成独立审查与 exact-head 所有 CI；pending 不是 PASS。
+5. CI 通过后普通 merge；禁止 force push、`--admin` 或 history rewrite。
+6. 读取 PR 的实际 `mergeCommit` 并核对 `origin/main`。下一阶段 snapshot
+   记录已观察 SHA；绝不预测包含自身文档更新的未来 merge SHA。
 
-Only with authorized disposable Linux host evidence, validate installer,
-systemd sockets, cgroups, PTY/devpts, pidfd/process isolation, Noise/WebSocket
-transport, Claude readiness, recovery and deployment. Record exact evidence and
-release fingerprints before production publication; otherwise report the
-specific blocker and continue non-host work.
+每次报告记录实际命令、exit code、exact SHA、审查方式、剩余阻碍与下一步。
 
-## Exit criteria
+## 参考与权威顺序
 
-The product is complete only when each stage has merged code/docs, terminal
-CI, exact read-back, and evidence appropriate to its claim. Real-host and
-production criteria cannot be satisfied by local macOS tests, Fake Runtime,
-synthetic canaries, or architecture prose.
+最新 Owner 指令与 `AGENTS.md` / `GOVERNANCE.md` 决定执行权限；live Git/GitHub
+决定仓库事实；代码和实际测试决定实现状态；`CURRENT_STATE.md` 是快照。
+`WEB_AGENT_WORKSPACE_ARCHITECTURE_AUTHORIZATION_REVIEW.md` 保留历史提案与
+安全契约，不改写其历史批准状态。现行阶段入口为 `NEXT_ACTION.md`。

@@ -62,8 +62,8 @@ operator supplies redacted evidence.
 
 ## Governance stop
 
-The checklist may be prepared and reviewed in a Draft PR. It does not enable
-production routes, real PTY/WS/Noise, service activation, Provider login,
-deployment, or the next Slice. Host evidence must be supplied by an authorized
-operator, and implementation/merge decisions remain bound to the exact PR
-head/base and Owner gate.
+The checklist may be prepared and reviewed in a feature PR. It does not enable
+production routes, real PTY/WS/Noise, service activation, Provider login or
+deployment. Host evidence must be supplied by an authorized operator. Routine
+software implementation and CI-gated merges follow `project/GOVERNANCE.md` and
+`project/NEXT_ACTION.md`; they do not satisfy the separate host gate.

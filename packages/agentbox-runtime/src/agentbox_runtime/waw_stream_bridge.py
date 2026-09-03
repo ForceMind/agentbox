@@ -43,8 +43,20 @@ class WAWStreamBridge:
     """Bounded one-attachment bridge around a pre-started supervisor."""
 
     def __init__(self, supervisor: WAWSupervisor, attachment: ActiveAttachment) -> None:
+        if attachment.context is None:
+            raise RuntimeOperationError(
+                "WAW_ATTACHMENT_CONTEXT_REQUIRED",
+                "Stream bridge requires an attachment Runtime identity",
+                category="validation",
+            )
         self._supervisor = supervisor
         self._attachment = attachment
+        # Capture the immutable fence at bridge creation.  A bridge is never
+        # allowed to follow a later workspace generation or Runtime epoch.
+        self._bound_generation = attachment.claims.generation
+        self._bound_runtime_epoch = (
+            attachment.context.runtime_epoch if attachment.context is not None else None
+        )
         self._state = WAWStreamState.DETACHED
         self._next_sequence = 1
 
@@ -85,7 +97,11 @@ class WAWStreamBridge:
                 )
             if frame.frame_type is FrameType.STATE:
                 replay = decode_replay(frame)
-                result = self._supervisor.replay_output(replay.after_cursor)
+                result = self._supervisor.replay_output(
+                    replay.after_cursor,
+                    generation=self._bound_generation,
+                    runtime_epoch=self._bound_runtime_epoch,
+                )
                 if result.kind == "gap":
                     return (
                         self._reply(
@@ -128,7 +144,11 @@ class WAWStreamBridge:
     def output(self, after_cursor: int) -> tuple[bytes, ...]:
         """Read bounded replay as OUTPUT/GAP frames for synthetic consumers."""
         self._ensure(WAWStreamState.ATTACHED, WAWStreamState.DETACHED)
-        result = self._supervisor.replay_output(after_cursor)
+        result = self._supervisor.replay_output(
+            after_cursor,
+            generation=self._bound_generation,
+            runtime_epoch=self._bound_runtime_epoch,
+        )
         if result.kind == "gap":
             return (
                 self._reply(

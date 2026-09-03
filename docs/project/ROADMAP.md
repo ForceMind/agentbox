@@ -10,8 +10,17 @@
 
 ## In Progress
 
-- WAW-1 real stream/Noise/PTY/browser remain in progress; WAW-2 CLI/attachment integration and WAW-3 recovery remain in progress.
+- Stage B: complete existing WAW-3 recovery/cursor/lease contracts and browser
+  stale-event fencing; software/synthetic scope only.
+- Parallel multi-agent execution and per-stage GitHub/document updates are
+  authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- Complete WAW-3 recovery/cursor/lease synthetic contracts, then finish WAW-2 Codex attachment/CLI integration and host-gated validation.
+- Stage C: WAW-2 Codex Project-scoped attachment and fixed CLI integration.
+- Stage D: Workspace metadata actions and desktop/mobile recovery states.
+- Stage E: complete software verification, independent review and release
+  preparation with explicit limitations.
+- Stage F: real stream/Noise/PTY/browser, isolated CLI/host qualification and
+  product acceptance. This stage has missing authorization/evidence gates;
+  it is not implemented or validated by synthetic software stages.

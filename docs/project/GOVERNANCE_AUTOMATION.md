@@ -8,26 +8,26 @@ optional and is not required for routine repository work.
 
 ## Required checks
 
-The bot must revalidate, for every action:
+The Coding Agent or optional bot revalidates routine repository actions:
 
 - repository is `ForceMind/agentbox`;
 - exact PR number;
 - exact head SHA;
 - exact base SHA;
 - required CI checks are terminal SUCCESS;
-- host evidence is valid and non-secret;
-- release actions include an exact release authorization record and exact target tuple;
-- the authorization record is still current.
+- all additional exact-head checks are terminal and successful as well.
 
-Head/base validation remains recommended for auditability but does not create a
-separate approval gate.
+Host activation additionally requires valid, attributable non-secret host
+evidence. Release publication additionally requires a current exact release
+authorization record and target tuple. These additional gates apply to those
+operations, not to an ordinary software/documentation merge.
 
 ## Allowed actions
 
 The Coding Agent may:
 
 - update Draft/Ready state;
-- squash-merge an exact approved PR;
+- squash-merge a PR whose exact head has completed CI and applicable review;
 - start a release workflow only when an exact release authorization record matches all of:
   - PR number;
   - exact target workflow ref;
@@ -35,7 +35,7 @@ The Coding Agent may:
   - exact release tag or branch ref;
   - immutable artifact fingerprint bound to the record;
 - and only for the explicit authorized release scope.
-- transition to a specifically authorized next Slice.
+- transition to the next software stage in the current Owner-authorized plan.
 
 ## Forbidden actions
 
@@ -46,4 +46,5 @@ The bot and Coding Agent may never:
 - use `--admin`, force push, or rewrite history;
 - expose arbitrary shell, filesystem, or process execution;
 - activate real host capabilities without host evidence;
-- infer authorization for a different PR, head, base, or Slice.
+- infer host, Secret, architecture or release authorization from a routine PR
+  merge, or exceed the currently authorized software plan.

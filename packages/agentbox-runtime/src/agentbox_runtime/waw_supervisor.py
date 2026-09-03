@@ -113,6 +113,7 @@ class WAWSupervisor:
         attachment_validator: Callable[[ActiveAttachment], bool],
         stop_binding: WorkspaceStopOperation,
         output_capacity_bytes: int = 256 * 1024,
+        runtime_epoch: str,
     ) -> None:
         validate_workspace_id(workspace_id)
         validate_positive_u64(generation, field="generation")
@@ -152,6 +153,19 @@ class WAWSupervisor:
         self._clock = clock
         self._attachment_validator = attachment_validator
         self._stop_binding = stop_binding
+        if (
+            not isinstance(runtime_epoch, str)
+            or not runtime_epoch.isascii()
+            or not runtime_epoch.isdecimal()
+            or runtime_epoch.startswith("0")
+            or int(runtime_epoch) > 2**64 - 1
+        ):
+            raise RuntimeOperationError(
+                "WAW_RUNTIME_EPOCH_INVALID",
+                "Runtime epoch must be canonical",
+                category="validation",
+            )
+        self._runtime_epoch = runtime_epoch
         self._ring = OutputRing(capacity_bytes=output_capacity_bytes)
         self._state = SupervisorState.ADMITTED
         self._attachment: ActiveAttachment | None = None
@@ -385,9 +399,15 @@ class WAWSupervisor:
                 )
             return self._ring.append(payload).end_cursor
 
-    def replay_output(self, after_cursor: int, *, generation: int | None = None) -> OutputReplay:
+    def replay_output(
+        self,
+        after_cursor: int,
+        *,
+        generation: int | None = None,
+        runtime_epoch: str | None = None,
+    ) -> OutputReplay:
         with self._lock:
-            if generation is not None and generation != self._generation:
+            if generation is None or generation != self._generation:
                 raise RuntimeOperationError(
                     "WAW_OUTPUT_STALE",
                     "Output cursor belongs to a different workspace generation",
@@ -397,6 +417,12 @@ class WAWSupervisor:
                 raise RuntimeOperationError(
                     "WAW_OUTPUT_STOPPED",
                     "Stopped workspace output is unavailable",
+                    category="conflict",
+                )
+            if runtime_epoch is None or runtime_epoch != self._runtime_epoch:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_STALE",
+                    "Output cursor belongs to a different Runtime epoch",
                     category="conflict",
                 )
             return self._ring.replay(after_cursor)
@@ -469,6 +495,12 @@ class WAWSupervisor:
 
     def _check_attachment(self, attachment: ActiveAttachment) -> None:
         claims = attachment.claims
+        if attachment.context is None or attachment.context.runtime_epoch != self._runtime_epoch:
+            raise RuntimeOperationError(
+                "WAW_ATTACHMENT_STALE",
+                "Attachment belongs to a different Runtime epoch",
+                category="conflict",
+            )
         if (
             claims.workspace_id != self._workspace_id
             or claims.project_id != self._stop_binding.project_id
