@@ -16,7 +16,6 @@ from threading import RLock
 from typing import Protocol
 
 from agentbox_core.waw import (
-    AgentType,
     StopResult,
     WorkspaceStopOperation,
     managed_marker,
@@ -26,7 +25,11 @@ from agentbox_core.waw import (
 from agentbox_core.waw_tickets import ActiveAttachment
 
 from agentbox_runtime.models import RuntimeOperationError
-from agentbox_runtime.waw_command import WAWClaudeCommand
+from agentbox_runtime.waw_managed_command import (
+    WAWManagedCommand,
+    managed_command_agent_type,
+    validate_managed_command,
+)
 from agentbox_runtime.waw_pty import OutputReplay, OutputRing, PtyGeometry, validate_input
 
 
@@ -65,7 +68,7 @@ class RuntimeStopEvidence:
 class WAWTransport(Protocol):
     """The only side-effecting operations a WAW Runtime adapter may expose."""
 
-    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence: ...
+    def start(self, command: WAWManagedCommand, geometry: PtyGeometry) -> RuntimeStartEvidence: ...
 
     def write(self, data: bytes) -> None: ...
 
@@ -106,7 +109,7 @@ class WAWSupervisor:
         *,
         workspace_id: str,
         generation: int,
-        command: WAWClaudeCommand,
+        command: WAWManagedCommand,
         transport: WAWTransport,
         geometry: PtyGeometry,
         clock: Callable[[], float],
@@ -115,6 +118,7 @@ class WAWSupervisor:
         output_capacity_bytes: int = 256 * 1024,
         runtime_epoch: str,
     ) -> None:
+        command = validate_managed_command(command)
         validate_workspace_id(workspace_id)
         validate_positive_u64(generation, field="generation")
         if command.workspace_id != workspace_id:
@@ -126,7 +130,7 @@ class WAWSupervisor:
         if (
             stop_binding.workspace_id != workspace_id
             or stop_binding.project_id != command.project_id
-            or stop_binding.agent_type is not AgentType.CLAUDE
+            or stop_binding.agent_type is not managed_command_agent_type(command)
             or stop_binding.generation != generation
             or managed_marker(
                 runtime_host_installation_id=stop_binding.runtime_host_installation_id,
@@ -196,6 +200,7 @@ class WAWSupervisor:
                     "WAW_START_INVALID", "Workspace is not admitted for start", category="conflict"
                 )
             try:
+                validate_managed_command(self._command)
                 evidence = self._transport.start(self._command, self._geometry)
                 if (
                     evidence.workspace_id != self._workspace_id

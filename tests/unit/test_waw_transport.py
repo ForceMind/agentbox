@@ -8,6 +8,7 @@ import pytest
 from agentbox_core.waw import AgentType, workspace_id
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
+from agentbox_runtime.waw_codex_command import WAWCodexCommand
 from agentbox_runtime.waw_command import WAWClaudeCommand
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_supervisor import SupervisorState
@@ -288,3 +289,32 @@ async def test_resolve_timeout_cancels_worker_without_late_mutation(
     with pytest.raises(RuntimeOperationError, match="timed out"):
         waw_transport._resolve(delayed_mutation())
     assert mutated is False
+
+
+def test_legacy_claude_adapter_rejects_codex_before_tmux_io(tmp_path: Path) -> None:
+    executable = tmp_path / "codex"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    details = executable.stat()
+    project = "prj_" + "1" * 32
+    command = WAWCodexCommand(
+        workspace_id=workspace_id(project, AgentType.CODEX),
+        project_id=project,
+        cwd=tmp_path,
+        executable=ExecutableIdentity(
+            executable,
+            details.st_dev,
+            details.st_ino,
+            details.st_mode,
+            details.st_size,
+            details.st_mtime_ns,
+        ),
+        argv=(),
+        managed_marker="waw-v1:wri_" + "3" * 32 + ":" + "a" * 32,
+    )
+    tmux = FakeTmux()
+    transport = WAWTmuxTransport(workspace_id=command.workspace_id, generation=1, tmux=tmux)
+    with pytest.raises(RuntimeOperationError) as error:
+        transport.start(command, PtyGeometry(80, 24))
+    assert error.value.code == "WAW_AGENT_UNSUPPORTED"
+    assert tmux.calls == []

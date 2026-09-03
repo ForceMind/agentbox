@@ -14,6 +14,11 @@
   requires GitHub/document updates at every completed stage. See
   `EXECUTION_PLAN.md` for scope, ownership, dependencies and exit criteria.
 
+- `MAC-DEVELOPMENT-2026-09-03`: Owner clarified continued development on the
+  current Mac. Separate software implementation/local+CI checks from actual
+  Linux activation and qualification; a missing Linux target does not block
+  independent software work. See `NEXT_ACTION.md`.
+
 ## Architecture and evidence
 
 - `WEB_AGENT_WORKSPACE_ARCHITECTURE_AUTHORIZATION_REVIEW.md`: historical WAW

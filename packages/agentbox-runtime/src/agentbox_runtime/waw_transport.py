@@ -27,7 +27,12 @@ from agentbox_core.waw import AgentType, validate_positive_u64, validate_workspa
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
 from agentbox_runtime.tmux import TmuxAdapter
-from agentbox_runtime.waw_command import WAWClaudeCommand
+from agentbox_runtime.waw_managed_command import (
+    WAWClaudeCommand,
+    WAWManagedCommand,
+    managed_command_agent_type,
+    validate_managed_command,
+)
 from agentbox_runtime.waw_pty import PtyGeometry, validate_input
 from agentbox_runtime.waw_supervisor import (
     RuntimeStartEvidence,
@@ -124,7 +129,7 @@ class WAWTmuxTransport:
     def attached(self) -> bool:
         return self._attached
 
-    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
+    def start(self, command: WAWManagedCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
         """Create/adopt the exact marked tmux session and return evidence."""
 
         if self._poisoned:
@@ -139,7 +144,7 @@ class WAWTmuxTransport:
                 "Runtime transport has already started or closed",
                 category="conflict",
             )
-        self._validate_command(command)
+        command = self._validate_command(command)
         session_name = _managed_session_name(command.project_id)
         marker = command.managed_marker
         if self._expected_marker is not None and marker != self._expected_marker:
@@ -347,11 +352,16 @@ class WAWTmuxTransport:
             remaining_members=0 if closed else 1,
         )
 
-    def _validate_command(self, command: WAWClaudeCommand) -> None:
-        if not isinstance(command, WAWClaudeCommand):
+    def _validate_command(self, command: WAWManagedCommand) -> WAWClaudeCommand:
+        validated = validate_managed_command(command)
+        if managed_command_agent_type(validated) is not AgentType.CLAUDE:
             raise RuntimeOperationError(
-                "WAW_COMMAND_INVALID", "Runtime command contract is invalid", category="validation"
+                "WAW_AGENT_UNSUPPORTED",
+                "The Claude tmux adapter does not execute Codex",
+                category="validation",
             )
+        assert type(validated) is WAWClaudeCommand
+        command = validated
         if command.workspace_id != self._workspace_id:
             raise RuntimeOperationError(
                 "WAW_WORKSPACE_MISMATCH",
@@ -366,6 +376,7 @@ class WAWTmuxTransport:
             raise RuntimeOperationError(
                 "WAW_MARKER_INVALID", "Runtime marker is invalid", category="validation"
             )
+        return command
 
     def _require_managed(self, binding: _TransportBinding) -> None:
         if not self._resolve(self._tmux.is_managed(binding.session_name, binding.managed_marker)):

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from agentbox_core.waw import AgentType, WorkspaceStopOperation, managed_marker, workspace_id
@@ -10,11 +12,14 @@ from agentbox_core.waw_tickets import (
     AttachmentTuple,
     AuthenticatedAttachmentContext,
 )
+from agentbox_protocol.abws import FrameType, decode_frame, encode_frame
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
+from agentbox_runtime.waw_codex_command import WAWCodexCommand
 from agentbox_runtime.waw_command import WAWClaudeCommand
+from agentbox_runtime.waw_managed_command import WAWManagedCommand, validate_managed_command
 from agentbox_runtime.waw_pty import PtyGeometry
-from agentbox_runtime.waw_stream_bridge import WAWStreamBridge
+from agentbox_runtime.waw_stream_bridge import WAWStreamBridge, WAWStreamState
 from agentbox_runtime.waw_supervisor import (
     RuntimeStartEvidence,
     RuntimeStopEvidence,
@@ -26,6 +31,7 @@ from agentbox_runtime.waw_supervisor import (
 class FakeTransport:
     def __init__(self) -> None:
         self.started = False
+        self.commands: list[WAWManagedCommand] = []
         self.writes: list[bytes] = []
         self.resizes: list[PtyGeometry] = []
         self.stopped = False
@@ -36,8 +42,9 @@ class FakeTransport:
         self.generation = 1
         self.marker = ""
 
-    def start(self, command: WAWClaudeCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
-        assert command.argv == ("remote-control",)
+    def start(self, command: WAWManagedCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
+        assert command.argv == (("remote-control",) if type(command) is WAWClaudeCommand else ())
+        self.commands.append(command)
         self.started = True
         self.resizes.append(geometry)
         self.workspace_id = command.workspace_id
@@ -76,7 +83,11 @@ def _attachment(workspace: str, *, attachment_id: str = "att_" + "2" * 32) -> Ac
     claims = AttachmentTuple(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
-        agent_type=AgentType.CLAUDE,
+        agent_type=(
+            AgentType.CODEX
+            if workspace == workspace_id("prj_" + "1" * 32, AgentType.CODEX)
+            else AgentType.CLAUDE
+        ),
         attachment_id=attachment_id,
         lease_number=1,
         generation=1,
@@ -98,24 +109,25 @@ def _attachment(workspace: str, *, attachment_id: str = "att_" + "2" * 32) -> Ac
 
 
 def _supervisor(
-    tmp_path: Path, *, runtime_epoch: str = "1"
+    tmp_path: Path, *, runtime_epoch: str = "1", agent_type: AgentType = AgentType.CLAUDE
 ) -> tuple[WAWSupervisor, FakeTransport, str]:
-    workspace = workspace_id("prj_" + "1" * 32, AgentType.CLAUDE)
+    workspace = workspace_id("prj_" + "1" * 32, agent_type)
     stop_binding = WorkspaceStopOperation(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
-        agent_type=AgentType.CLAUDE,
+        agent_type=agent_type,
         generation=1,
         binding_revision=1,
         binding_digest="a" * 64,
         runtime_host_installation_id="wri_" + "3" * 32,
         runtime_host_installation_revision=1,
     )
-    executable_path = tmp_path / "claude"
+    executable_path = tmp_path / agent_type.value
     executable_path.write_text("#!/bin/sh\n", encoding="utf-8")
     executable_path.chmod(0o755)
     details = executable_path.stat()
-    command = WAWClaudeCommand(
+    command_type = WAWClaudeCommand if agent_type is AgentType.CLAUDE else WAWCodexCommand
+    command = command_type(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
         cwd=tmp_path,
@@ -127,7 +139,7 @@ def _supervisor(
             details.st_size,
             details.st_mtime_ns,
         ),
-        argv=("remote-control",),
+        argv=("remote-control",) if agent_type is AgentType.CLAUDE else (),
         managed_marker=managed_marker(
             runtime_host_installation_id=stop_binding.runtime_host_installation_id,
             runtime_host_installation_revision=stop_binding.runtime_host_installation_revision,
@@ -158,13 +170,19 @@ def _supervisor(
 
 
 @pytest.mark.parametrize("epoch", ["١", "0", "9" * 21])
-def test_supervisor_rejects_noncanonical_runtime_epoch(tmp_path: Path, epoch: str) -> None:
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_supervisor_rejects_noncanonical_runtime_epoch(
+    tmp_path: Path, agent_type: AgentType, epoch: str
+) -> None:
     with pytest.raises(RuntimeOperationError, match="canonical"):
-        _supervisor(tmp_path, runtime_epoch=epoch)
+        _supervisor(tmp_path, agent_type=agent_type, runtime_epoch=epoch)
 
 
-def test_bridge_same_epoch_replay_is_bound_and_exposes_output(tmp_path: Path) -> None:
-    supervisor, _transport, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_bridge_same_epoch_replay_is_bound_and_exposes_output(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, _transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     attachment = _attachment(workspace)
     bridge = WAWStreamBridge(supervisor, attachment)
@@ -173,10 +191,12 @@ def test_bridge_same_epoch_replay_is_bound_and_exposes_output(tmp_path: Path) ->
     assert bridge.output(0)
 
 
+@pytest.mark.parametrize("agent_type", list(AgentType))
 def test_bridge_rejects_missing_context_and_mismatched_generation_or_epoch(
     tmp_path: Path,
+    agent_type: AgentType,
 ) -> None:
-    supervisor, _transport, workspace = _supervisor(tmp_path)
+    supervisor, _transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     attachment = _attachment(workspace)
     with pytest.raises(RuntimeOperationError, match="identity"):
@@ -189,7 +209,7 @@ def test_bridge_rejects_missing_context_and_mismatched_generation_or_epoch(
     epoch_bridge = WAWStreamBridge(supervisor, mismatched)
     with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
         epoch_bridge.attach()
-    with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
+    with pytest.raises(RuntimeOperationError, match="current state"):
         epoch_bridge.output(0)
     with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
         supervisor.write_input(mismatched, b"never-written")
@@ -205,8 +225,11 @@ def test_bridge_rejects_missing_context_and_mismatched_generation_or_epoch(
         generation_bridge.attach()
 
 
-def test_lifecycle_fences_input_resize_replay_detach_and_stop(tmp_path: Path) -> None:
-    supervisor, transport, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_lifecycle_fences_input_resize_replay_detach_and_stop(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     attachment = _attachment(workspace)
     assert supervisor.state is SupervisorState.ADMITTED
     supervisor.start()
@@ -227,8 +250,11 @@ def test_lifecycle_fences_input_resize_replay_detach_and_stop(tmp_path: Path) ->
     assert transport.started and transport.writes == [b"hello\r"] and transport.stopped
 
 
-def test_stale_attachment_and_input_failure_fail_closed(tmp_path: Path) -> None:
-    supervisor, transport, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_stale_attachment_and_input_failure_fail_closed(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     attachment = _attachment(workspace)
     supervisor.attach(attachment)
@@ -242,8 +268,11 @@ def test_stale_attachment_and_input_failure_fail_closed(tmp_path: Path) -> None:
     assert supervisor.state is SupervisorState.INPUT_UNCERTAIN
 
 
-def test_forged_same_id_claims_and_reconnect_are_rejected(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_forged_same_id_claims_and_reconnect_are_rejected(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     attachment = _attachment(workspace)
     supervisor.attach(attachment)
@@ -258,8 +287,9 @@ def test_forged_same_id_claims_and_reconnect_are_rejected(tmp_path: Path) -> Non
         supervisor.attach(attachment)
 
 
-def test_detach_requires_positive_runtime_ack(tmp_path: Path) -> None:
-    supervisor, transport, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_detach_requires_positive_runtime_ack(tmp_path: Path, agent_type: AgentType) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     attachment = _attachment(workspace)
     supervisor.attach(attachment)
@@ -269,8 +299,11 @@ def test_detach_requires_positive_runtime_ack(tmp_path: Path) -> None:
     assert supervisor.state is SupervisorState.RUNNING
 
 
-def test_heartbeat_replaces_immutable_authority_lease(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_heartbeat_replaces_immutable_authority_lease(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     attachment = _attachment(workspace)
     supervisor.attach(attachment)
@@ -285,8 +318,9 @@ def test_heartbeat_replaces_immutable_authority_lease(tmp_path: Path) -> None:
     supervisor.write_input(renewed, b"new")
 
 
-def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_output_is_not_available_after_exact_stop(tmp_path: Path, agent_type: AgentType) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     attachment = _attachment(workspace)
     supervisor.start()
     supervisor.attach(attachment)
@@ -297,8 +331,11 @@ def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
         supervisor.replay_output(0, generation=1, runtime_epoch="1")
 
 
-def test_output_replay_rejects_cross_generation_cursor(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_output_replay_rejects_cross_generation_cursor(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     source = supervisor.output_source()
     supervisor.append_output(source, b"x")
@@ -306,21 +343,25 @@ def test_output_replay_rejects_cross_generation_cursor(tmp_path: Path) -> None:
         supervisor.replay_output(0, generation=2)
 
 
-def test_output_requires_runtime_admission(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_output_requires_runtime_admission(tmp_path: Path, agent_type: AgentType) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     forged_source = object()
     with pytest.raises(RuntimeOperationError, match="source"):
         supervisor.append_output(forged_source, b"x")  # type: ignore[arg-type]
 
 
-def test_exact_stop_does_not_require_browser_attachment(tmp_path: Path) -> None:
-    supervisor, transport, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_exact_stop_does_not_require_browser_attachment(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     operation = WorkspaceStopOperation(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
-        agent_type=AgentType.CLAUDE,
+        agent_type=agent_type,
         generation=1,
         binding_revision=1,
         binding_digest="a" * 64,
@@ -331,13 +372,14 @@ def test_exact_stop_does_not_require_browser_attachment(tmp_path: Path) -> None:
     assert transport.stopped is True
 
 
-def test_exact_stop_rejects_stale_binding(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_exact_stop_rejects_stale_binding(tmp_path: Path, agent_type: AgentType) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     operation = WorkspaceStopOperation(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
-        agent_type=AgentType.CLAUDE,
+        agent_type=agent_type,
         generation=1,
         binding_revision=1,
         binding_digest="b" * 64,
@@ -348,13 +390,16 @@ def test_exact_stop_rejects_stale_binding(tmp_path: Path) -> None:
         supervisor.exact_stop(operation)
 
 
-def test_exact_stop_rejects_terminal_operation_replay(tmp_path: Path) -> None:
-    supervisor, _, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_exact_stop_rejects_terminal_operation_replay(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     operation = WorkspaceStopOperation(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
-        agent_type=AgentType.CLAUDE,
+        agent_type=agent_type,
         generation=1,
         binding_revision=1,
         binding_digest="a" * 64,
@@ -366,14 +411,17 @@ def test_exact_stop_rejects_terminal_operation_replay(tmp_path: Path) -> None:
         supervisor.exact_stop(operation)
 
 
-def test_unconfirmed_stop_preserves_reconciliation_state(tmp_path: Path) -> None:
-    supervisor, transport, workspace = _supervisor(tmp_path)
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_unconfirmed_stop_preserves_reconciliation_state(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
     supervisor.start()
     transport.stop_closed = False
     operation = WorkspaceStopOperation(
         workspace_id=workspace,
         project_id="prj_" + "1" * 32,
-        agent_type=AgentType.CLAUDE,
+        agent_type=agent_type,
         generation=1,
         binding_revision=1,
         binding_digest="a" * 64,
@@ -383,3 +431,150 @@ def test_unconfirmed_stop_preserves_reconciliation_state(tmp_path: Path) -> None
     with pytest.raises(RuntimeOperationError, match="exact close"):
         supervisor.exact_stop(operation)
     assert supervisor.state is SupervisorState.RECONCILIATION_REQUIRED
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_abws_full_flow_uses_the_same_agent_fenced_supervisor(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
+    supervisor.start()
+    attachment = _attachment(workspace)
+    bridge = WAWStreamBridge(supervisor, attachment)
+    bridge.attach()
+    reply = bridge.handle(decode_frame(encode_frame(FrameType.INPUT, b"prompt\r", 1)))
+    assert decode_frame(reply[0]).frame_type is FrameType.ACK
+    assert transport.writes == [b"prompt\r"]
+    reply = bridge.handle(
+        decode_frame(
+            encode_frame(FrameType.RESIZE, {"protocol_version": 1, "columns": 100, "rows": 30}, 2)
+        )
+    )
+    assert decode_frame(reply[0]).frame_type is FrameType.RESIZE_ACK
+    assert transport.resizes[-1] == PtyGeometry(100, 30)
+    supervisor.append_output(supervisor.output_source(), b"output")
+    reply = bridge.handle(
+        decode_frame(encode_frame(FrameType.STATE, {"protocol_version": 1, "after_cursor": 0}, 3))
+    )
+    assert [decode_frame(frame).payload for frame in reply] == [b"output"]
+    bridge.handle(decode_frame(encode_frame(FrameType.DETACH, {"protocol_version": 1}, 4)))
+    assert not bool(transport.stopped)
+    fresh = _attachment(workspace, attachment_id="att_" + "5" * 32)
+    fresh = replace(fresh, claims=replace(fresh.claims, lease_number=2))
+    reconnect = WAWStreamBridge(supervisor, fresh)
+    reconnect.attach()
+    assert [decode_frame(frame).payload for frame in reconnect.output(0)] == [b"output"]
+    with pytest.raises(RuntimeOperationError):
+        bridge.output(0)
+    supervisor.exact_stop(
+        WorkspaceStopOperation(
+            workspace_id=workspace,
+            project_id="prj_" + "1" * 32,
+            agent_type=agent_type,
+            generation=1,
+            binding_revision=1,
+            binding_digest="a" * 64,
+            runtime_host_installation_id="wri_" + "3" * 32,
+            runtime_host_installation_revision=1,
+        )
+    )
+    assert supervisor.state is SupervisorState.STOPPED
+    assert transport.stopped
+    with pytest.raises(RuntimeOperationError):
+        reconnect.output(0)
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_other_agent_cannot_write_or_stop_the_current_workspace(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
+    supervisor.start()
+    supervisor.attach(_attachment(workspace))
+    other = AgentType.CODEX if agent_type is AgentType.CLAUDE else AgentType.CLAUDE
+    other_workspace = workspace_id("prj_" + "1" * 32, other)
+    with pytest.raises(RuntimeOperationError):
+        supervisor.write_input(_attachment(other_workspace), b"wrong-agent")
+    with pytest.raises(RuntimeOperationError):
+        supervisor.exact_stop(
+            WorkspaceStopOperation(
+                workspace_id=other_workspace,
+                project_id="prj_" + "1" * 32,
+                agent_type=other,
+                generation=1,
+                binding_revision=1,
+                binding_digest="a" * 64,
+                runtime_host_installation_id="wri_" + "3" * 32,
+                runtime_host_installation_revision=1,
+            )
+        )
+    assert transport.writes == []
+    assert not transport.stopped
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_command_is_revalidated_before_any_transport_start(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, _ = _supervisor(tmp_path, agent_type=agent_type)
+    (tmp_path / agent_type.value).write_text("replaced executable contents\n")
+    with pytest.raises(RuntimeOperationError):
+        supervisor.start()
+    assert not transport.started
+    assert transport.commands == []
+
+
+def test_structural_command_and_subclass_cannot_widen_the_allowlist(tmp_path: Path) -> None:
+    supervisor, transport, _ = _supervisor(tmp_path)
+    supervisor.start()
+    command = transport.commands[0]
+    forged = SimpleNamespace(**command.__dict__)
+    with pytest.raises(RuntimeOperationError, match="supported WAW command"):
+        validate_managed_command(cast(WAWManagedCommand, forged))
+
+    class UnapprovedCommand(WAWClaudeCommand):
+        pass
+
+    subclass = UnapprovedCommand(**command.__dict__)
+    with pytest.raises(RuntimeOperationError, match="supported WAW command"):
+        validate_managed_command(subclass)
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_close_releases_only_the_attachment_and_rejects_late_replay(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
+    supervisor.start()
+    bridge = WAWStreamBridge(supervisor, _attachment(workspace))
+    bridge.attach()
+    supervisor.append_output(supervisor.output_source(), b"still-running")
+    reply = bridge.handle(decode_frame(encode_frame(FrameType.CLOSE, {"protocol_version": 1}, 1)))
+    assert decode_frame(reply[0]).frame_type is FrameType.CLOSE
+    assert bridge.state is WAWStreamState.CLOSED
+    assert supervisor.state is SupervisorState.DETACHED
+    assert not transport.stopped
+    with pytest.raises(RuntimeOperationError):
+        bridge.handle(
+            decode_frame(
+                encode_frame(FrameType.STATE, {"protocol_version": 1, "after_cursor": 0}, 2)
+            )
+        )
+    assert bridge.state is WAWStreamState.CLOSED
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_failed_close_does_not_release_a_writer_or_kill_the_workspace(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
+    supervisor.start()
+    attachment = _attachment(workspace)
+    bridge = WAWStreamBridge(supervisor, attachment)
+    bridge.attach()
+    transport.detach_confirmed = False
+    with pytest.raises(RuntimeOperationError):
+        bridge.handle(decode_frame(encode_frame(FrameType.CLOSE, {"protocol_version": 1}, 1)))
+    assert supervisor.snapshot().attachment_id == attachment.attachment_id
+    assert supervisor.state is SupervisorState.RUNNING
+    assert not transport.stopped

@@ -78,6 +78,7 @@ class WAWStreamBridge:
         """Apply one already-decoded inbound frame and return encoded replies."""
         if not isinstance(frame, ABWSFrame):
             raise TypeError("frame must be an ABWSFrame")
+        self._ensure(WAWStreamState.ATTACHED, WAWStreamState.DETACHED)
         try:
             if frame.frame_type is FrameType.INPUT:
                 self._ensure(WAWStreamState.ATTACHED)
@@ -96,6 +97,7 @@ class WAWStreamBridge:
                     ),
                 )
             if frame.frame_type is FrameType.STATE:
+                self._ensure(WAWStreamState.ATTACHED)
                 replay = decode_replay(frame)
                 result = self._supervisor.replay_output(
                     replay.after_cursor,
@@ -134,6 +136,8 @@ class WAWStreamBridge:
                 return (self._reply(FrameType.DETACH_ACK, {"protocol_version": 1}),)
             if frame.frame_type is FrameType.CLOSE:
                 validate_empty_control(frame, FrameType.CLOSE)
+                if self._state is WAWStreamState.ATTACHED:
+                    self._supervisor.detach(self._attachment)
                 self._state = WAWStreamState.CLOSED
                 return (self._reply(FrameType.CLOSE, {"protocol_version": 1}),)
             raise WAWStreamContractError("frame type is not permitted by WAW stream bridge")
@@ -143,7 +147,7 @@ class WAWStreamBridge:
 
     def output(self, after_cursor: int) -> tuple[bytes, ...]:
         """Read bounded replay as OUTPUT/GAP frames for synthetic consumers."""
-        self._ensure(WAWStreamState.ATTACHED, WAWStreamState.DETACHED)
+        self._ensure(WAWStreamState.ATTACHED)
         result = self._supervisor.replay_output(
             after_cursor,
             generation=self._bound_generation,

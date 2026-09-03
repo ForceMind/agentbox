@@ -79,7 +79,21 @@ No installation, execution, tag or publication was performed. This final
 snapshot records already-observed artifacts and does not predict a later
 snapshot/merge artifact's hash.
 
-## Stage F — required work and input
+## Mac development clarification
+
+The Owner subsequently clarified that development continues on the current Mac.
+The remaining software is not blocked merely because no Linux host is attached:
+shared Runtime, protocol and browser components can be implemented and tested
+locally and in CI. The gates below constrain actual activation, architectural
+changes and readiness claims; they are not a blanket prohibition on Mac coding.
+A–E remain completed increments, not a claim that all remaining software is done.
+
+The current increment adds the concrete Claude/Codex command union and shared
+supervisor path, preserving AgentType/binding/epoch fences. The legacy Claude
+tmux adapter remains explicit about unsupported Codex; real process/bootstrap
+and encrypted terminal integration remain subsequent work.
+
+## Stage F — implementation and qualification
 
 | Area | Current state | Required next condition |
 | --- | --- | --- |
