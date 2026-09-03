@@ -1,6 +1,6 @@
 # Fixed Noise NX software core
 
-Status: implemented and independently reviewed on the feature branch; exact-head CI pending.
+Status: merged in PR #65 as `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`, after independent review and 19/19 successful exact-head CI checks.
 This is a cryptographic core, not an admitted AgentBox terminal channel.
 
 ## Scope and boundaries

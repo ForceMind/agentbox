@@ -40,7 +40,7 @@ merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、mac
 | C — WAW-2 Codex integration | 已完成 | 在既有 substrate 上补齐 Project-scoped Codex API attachment 与 Web contracts；复用固定 CLI command contract，真实执行接线列入 F | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
 | D — Workspace metadata UX | 已完成 | 页面接通选择、精确查询、Start/exact Stop；Connect/Detach/input 随真实通道 gate 保持不可用，明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
 | E — 软件发布准备 | 已完成 | 完整 CI matrix、独立 Architecture/Security/Test 审查、限制和 release checklist、产物验证 | 所有检查 terminal；精确记录 artifact fingerprints 与未验证范围；依赖 B/C/D，不能标为生产就绪 |
-| F1 — Mac 持续实现 | 进行中 | F1.1 双 AgentType supervisor 已合并；F1.2 concrete executor/probe/cleanup 已合并；F1.3 Noise 核心、独立向量和双语言互通进行中，随后应用加密流与浏览器集成 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
+| F1 — Mac 持续实现 | 进行中 | F1.1 双 AgentType supervisor 已合并；F1.2 concrete executor/probe/cleanup 已合并；F1.3 Noise 核心、独立向量和双语言互通已合并；应用加密流三处未定义 wire bytes 待 Owner 决策后继续接线 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
 | F2 — Linux 集成与产品验收 | 未开始 | systemd/cgroup/namespace/PTY/真实 CLI/重启恢复等平台行为与生产准备 | 真实 host 激活和新的架构决策仍需授权、非 Secret evidence 和恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
 
 Owner 已明确要求在 Mac 持续开发。F2 的缺少证据不阻止 F1 软件实现，但它是整体产品完成的阻断项。
@@ -97,3 +97,5 @@ Linux 是目标部署/验收平台。可在 Mac 编写与验证的 Runtime、协
 F1.1 已由 PR #63 交付：head `c78cb92a5afe8056ab44a1cc4e8a6bea3074e184`，19/19 exact-head checks `SUCCESS`；实际 merge `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`（2026-09-03T06:43:01Z）。F1.2 继续开发 concrete Runtime composition，不能将其等同真实 CLI/PTY 产品验收。
 
 F1.2 已由 PR #64 交付：head `ef8641bd409bbb6d17db707370de66f552bf4640`，19/19 exact-head checks `SUCCESS`；实际 merge `624b34b656dbf239dbc56fa79d216db7d17a349b`（2026-09-03T07:09:03Z）。F1.3 实现固定 Noise 核心；应用层三处未冻结的 wire bytes 已形成明确补充提案，单独请求 Owner 决策，不影响核心算法软件开发。
+
+F1.3 已由 PR #65 交付：head `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7`，19/19 exact-head checks `SUCCESS`；实际 merge `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`（2026-09-03T07:40:44Z）。固定核心独立安全审查通过；Python目标矩阵54通过、Web129通过、双角色Python/Node完整独立向量与篡改拒绝互通通过。下一 application profile 保持未开始，待明确协议补充方案确认。

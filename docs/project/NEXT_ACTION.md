@@ -9,23 +9,28 @@ The prior blanket host prerequisite for all remaining software work is supersede
 by this clarification; actual host activation, Secret handling, new architecture
 decisions and production promises retain their existing boundaries.
 
-## Current slice — fixed Noise NX core
+## Completed slice — fixed Noise NX core
 
-PR #64 completed concrete Runtime composition with 19/19 CI checks and merge
-`624b34b656dbf239dbc56fa79d216db7d17a349b`.
+PR #65 completed fixed Python/WebCrypto Noise NX cores, pinned independent
+vectors, concurrency/failure regressions and both-role interoperability:
+head `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7`, 19/19 checks SUCCESS,
+merge `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`.
 
-- Implement the existing fixed Noise revision-34 NX profile in Python and
-  WebCrypto using existing platform cryptographic primitives.
-- Compare exact independent pinned Noise-C vectors and run real Python/Node
-  interoperability for both roles, AD, tamper and cipher-state lifecycle.
-- Require independent security review of handwritten state machines, including
-  concurrent destroy, late async results, bounds, key-reference release and nonce
-  exhaustion; no production key, socket, plaintext API or terminal activation.
-- Update docs and GitHub, require exact-head CI, merge and read back.
-- The concrete supplemental application encoding is in
-  [WAW_ENCRYPTED_STREAM_DECISION.md](WAW_ENCRYPTED_STREAM_DECISION.md); its three
-  previously undefined byte rules are awaiting Owner decision. Noise core work
-  continues independently. Do not silently choose application bytes.
+## Next slice — application profile decision
+
+Status: **未开始 — concrete architecture byte rules await Owner confirmation**.
+
+[WAW_ENCRYPTED_STREAM_DECISION.md](WAW_ENCRYPTED_STREAM_DECISION.md) proposes
+exact `protocol_id`, final Noise hash usage and direction-label/AAD bytes that
+were absent from the historical document. The proposal is reviewable and has
+been presented to Owner. Do not silently treat it as approved or implement
+alternative bytes while waiting.
+
+After approval, implement the strict context/confirmation/AWCE codecs, Runtime
+stream server and API ciphertext-only relay with staged admission, then browser
+terminal integration. Require independent review, exact cross-language vectors,
+normal/failure/cancellation tests and per-stage GitHub/document delivery. Keep
+all existing real-key/host/production authorization and evidence boundaries.
 
 ## Next implementation and validation
 
