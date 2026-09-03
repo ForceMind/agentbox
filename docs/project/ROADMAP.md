@@ -14,9 +14,11 @@
 
 - Workspace metadata workflow merged in PR #60 with 19/19 exact-head checks successful; desktop/mobile metadata interactions are tested, terminal admission remains unavailable.
 
+- Software readiness and packaged WAW scope/gate documents merged in PR #61; 19/19 exact-head checks and independent artifact/doc-presence validation passed.
+
 ## In Progress
 
-- Stage E: software candidate verification, current capability documentation and artifact-contained WAW boundaries.
+- Final evidence snapshot and CI/merge read-back; software stages A–E are complete.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

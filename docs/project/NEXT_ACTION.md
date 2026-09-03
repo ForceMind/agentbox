@@ -1,26 +1,37 @@
 # Current Authorized Action
 
-Action ID: `WAW-SOFTWARE-READINESS-2026-09-03`
+Action ID: `WAW-HOST-GATE-PENDING-2026-09-03`
 
-Stage E documentation/packaging awaits exact-head CI/merge on `codex/waw-software-readiness`, based on
-`6972f0dba907afd9741c2dc3584f431ee32765ed` (PR #60 exact merge read-back).
+Software stages A–E are merged and verified. The final documentation snapshot
+records PR #61 merge `35191eeaf858041cf5c0767dc1579b67690444ec` and its exact-head
+CI/artifact evidence; the snapshot itself follows normal CI/merge/read-back.
 
-- Verify the merged implementation baseline's CI artifact by exact source
-  commit/ref kind, manifest/checksums/SBOM, archive and nested-wheel scans.
-- Reconcile current README, limitations, acceptance, release notes and checklist
-  with the actual software foundations and explicitly unavailable real terminal.
-- Include WAW workflow/recovery/host-gate/readiness documents in the candidate
-  artifact so standalone readers receive the same capability boundaries.
-- Independently review, run the exact-head CI matrix, merge and read back; no
-  version/tag publication, production activation or support promise is included.
+## Stage F — 未开始，等待必要输入
 
-After E, Stage F is pending explicit Architecture/Owner scope, an identified
-isolated Linux test host and attributable host evidence. The outstanding work
-is listed in `../WAW_SOFTWARE_READINESS.md`: real fixed CLI/PTY execution,
-legacy interlocks, Noise/WebSocket/browser terminal, Linux isolation, official
-Runtime-user readiness and end-to-end restart/reboot recovery. Some are not yet
-implemented; none may be marked PASS from synthetic contracts.
+The overall interactive-terminal goal is not complete. Before real WAW
+implementation/activation proceeds, the current project gates require:
 
-The Owner was asked for the isolated host/SSH alias during this task; no target
-has been provided. Continue safe software preparation while available. Do not
-infer host, Secret or publication authorization from the routine merge plan.
+1. Explicit Architecture/Owner scope for the existing proposed real
+   Noise/WebSocket/PTY/process profile.
+2. A named authorized isolated Linux test host (for example an SSH alias), with
+   bounded install/start/stop/restart/recovery permission and preservation of
+   existing production data/state.
+3. Attributable non-secret evidence in the order of
+   `../WAW1_HOST_GATE_CHECKLIST.md`, including operator-managed official CLI
+   readiness, exact Runtime identities and recovery conditions.
+
+The Owner was asked for the host during this task; no target/SSH alias was
+provided. Do not reuse an existing production/MVP host by inference. Safe
+read-only planning may continue, but ordinary merge permission does not
+satisfy real architecture, host, Secret or publication gates.
+
+Remaining implementation includes fixed CLI/PTY execution, legacy process
+probes/interlocks, real Noise and authenticated WebSocket/browser terminal,
+Linux isolation and end-to-end Runtime/API restart/reboot recovery. These are
+not merely unchecked test boxes and must not be marked complete from Fake
+Runtime or metadata UI. The detailed scope is `../WAW_SOFTWARE_READINESS.md`.
+
+On receipt of the missing authorization/target, revalidate live Git/GitHub and
+host context, then proceed in bounded feature branches. No prompt relay to
+another AI, generic shell/filesystem gateway, credential copying, automatic
+Trust acceptance, production release or support promise is permitted.

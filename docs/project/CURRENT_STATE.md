@@ -1,99 +1,80 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T05:39:28Z"
+verified_at_utc: "2026-09-03T05:52:08Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-- Repository: `ForceMind/agentbox`
-- Current stage starting `HEAD` / `main` / `origin/main` / merge-base: `6972f0dba907afd9741c2dc3584f431ee32765ed`.
-- Starting working tree: clean. Active implementation branch: `codex/waw-software-readiness`.
-- Historical starting-main `24d08414b20e7158e8c84694aac59d0326799bfd` CI: Backend, Frontend, E2E, Deployment, Security and Release Candidate were all terminal `success`. Current merge CI is tracked separately below.
-- Historical Draft PR `#42` remains open and is outside this implementation branch.
-- WAW-1 HTTP lifecycle/attachment routes: PR `#47` merged (`cd599a6e4b24ba860f4c9f294b16625a397a30f7`).
-- WAW-1 Runtime attachment prepare/detach contracts: PR `#49` merged (`03f862a6cab41cd499a9d9a1024d581348818eda`).
-- WAW-1 synthetic stream bridge, bounded stream controls, and WAW-2 Codex command identity contract: PR `#52` merged (`2bd58b07a7e0941e45b62eecc6bd5d66efc8350e`).
-- WAW-1 fail-closed WebSocket route boundary: PR `#54` merged (`73a423576fe23a2671fd68b0d54dfcd0c9d9469d`).
-- WAW-2 Codex lifecycle synthetic support: PR `#55` merged (`d25615b6edb3dce5d0ceecd79589a66558d49b21`).
-- Repository Ruleset and `owner-approval` Environment were removed on 2026-09-01 at Owner request.
-- Routine mechanical actions may proceed after CI; host/Secret safety boundaries remain.
-- Owner authorized parallel multi-agent development and per-stage GitHub/document updates on 2026-09-03. See `EXECUTION_PLAN.md`.
-- WAW-3 already has lease cleanup, output ring and durable cleanup contracts; software recovery classification and browser event fencing were merged in PR #58. Full transport recovery remains incomplete.
-- Real WAW Linux host, PTY/devpts, Noise cryptography, WebSocket transport, browser terminal wiring, Codex attachment/CLI integration and WAW-3 end-to-end continuity/recovery remain unverified/incomplete. Earlier MVP host qualification is not WAW qualification.
-- Durable generation allocation currently fails closed at SQLite signed-64 maximum (`2**63 - 1`); full protocol uint64 storage is not claimed. A storage representation change would require a separate architecture decision.
+## Live baseline
 
-## Evidence boundaries
+- Verified `HEAD` / `main` / `origin/main` / merge-base at snapshot-branch start:
+  `35191eeaf858041cf5c0767dc1579b67690444ec`.
+- Active documentation branch: `codex/waw-final-state-snapshot`; starting tree clean.
+- Historical Draft PR #42 remains open and outside this task's write scope.
+- This file records observed commits; it cannot predict its own future merge
+  SHA. Live Git/GitHub always overrides the snapshot.
 
-- Preflight: `git fetch origin --prune`, local identity/diff checks, `gh pr list`, and `gh run list --commit 24d08414b20e7158e8c84694aac59d0326799bfd` all exited `0`.
-- Initial targeted baseline: `.venv/bin/python -m pytest tests/unit/test_waw_lease.py tests/unit/test_waw_stream_contract.py tests/unit/test_waw_lifecycle.py -q` exited `0`, `51 passed`.
-- Local toolchain is Python `3.14.7`, Node `26.7.0`, pnpm `11.19.0`; project CI uses Python `3.11–3.13`, Node `22`, pnpm `11.20.0`. Local checks supplement exact-head CI and do not replace its supported matrix.
-- This snapshot records an observed base. The merge SHA of the containing PR can only be recorded after actual merge read-back, in a later snapshot.
+## Delivered software stages
 
-## Stage B local verification (before PR CI)
+| Stage | PR | Exact reviewed head | Observed merge | Exact-head CI |
+| --- | --- | --- | --- | --- |
+| A/B — plan + recovery | #58 | `f3bb9035e061fc0babfcace6af891f257eb7fa74` | `d2470601a06da0a4024fa1772b4f32ec2daa7293` | 19/19 SUCCESS |
+| C — Codex control | #59 | `3e0e7a921e008d9c6b5198d37b8254fbee174068` | `7c1c755854077d2e0989ff1d3ab3d54f77e9e707` | 19/19 SUCCESS |
+| D — metadata UX | #60 | `9be95b10e57a3daa3690205d6c2ffad8da74424d` | `6972f0dba907afd9741c2dc3584f431ee32765ed` | 19/19 SUCCESS |
+| E — software readiness | #61 | `0c894ff52f49793f599eb33c4b92b8223e6109b3` | `35191eeaf858041cf5c0767dc1579b67690444ec` | 19/19 SUCCESS |
 
-- `.venv/bin/ruff check apps packages tests migrations`: exit `0`.
-- `.venv/bin/black --check apps/api apps/worker apps/cli packages tests migrations`: exit `0`, 196 files unchanged; final touched Python files were also formatted/checked.
-- `.venv/bin/mypy --platform linux apps/api apps/worker apps/cli packages tests`: exit `0`, 188 files. This is static Linux-target checking, not execution on Linux.
-- `.venv/bin/python -m pytest -q tests/unit/test_waw_recovery.py tests/unit/test_waw_lease.py tests/unit/test_waw_supervisor.py tests/unit/test_waw_stream_contract.py tests/unit/test_waw_lifecycle.py`: exit `0`, `101 passed`.
-- `pnpm typecheck`, `pnpm lint`, `pnpm format:check`: exit `0`.
-- `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: exit `0`, `102 passed`, including 47 recovery reducer tests. Without this local Node 26 flag, 20 existing storage assertions failed because Node's experimental storage shadowed jsdom; no production code or assertions were relaxed.
-- `pnpm build`: exit `0`.
-- Expanded local WAW unit/integration run outside the sandbox: exit `1`, `545 passed / 73 failed`; macOS lacks the required Linux socket behavior and the short temporary directory did not satisfy provenance checks. This matrix is **not PASS**; supported Linux exact-head CI remains required.
-- Independent read-only Architecture/Security review found no remaining frontend P1/P2 after repairs. Backend review found identity/epoch/cleanup issues which were fixed and regression tested; final independent Test/Security review reran all 101 targeted tests and reported no remaining software-contract blocker.
-- No real terminal, host activation, browser transport, Provider login or production release was executed. Contract mapping: `../WAW3_RECOVERY_CONTRACTS.md`.
+PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
+GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
+All B/C/D/E merge commits completed all six post-merge workflows. E main
+`35191eeaf858041cf5c0767dc1579b67690444ec` was re-read after completion; all six
+were terminal SUCCESS, separately from its reviewed PR-head evidence.
 
-## Stage A/B completed and Stage C live preflight
+## Implemented scope
 
-- PR #58: `MERGED` at `2026-09-03T04:22:05Z`.
-- Exact reviewed head: `f3bb9035e061fc0babfcace6af891f257eb7fa74`; base: `24d08414b20e7158e8c84694aac59d0326799bfd`.
-- Exact-head CI: `19/19 SUCCESS`, all terminal, including Python 3.11/3.12/3.13, Node 22 frontend, E2E, deployment, security and release gates.
-- Observed merge commit: `d2470601a06da0a4024fa1772b4f32ec2daa7293`; `origin/main` matches. Merge/read-back/fetch/fast-forward commands exited `0`.
-- Post-merge exact-main CI was re-read: all six workflows (Backend, Frontend, E2E, Deployment, Security, Release Candidate) are terminal `success` for `d2470601a06da0a4024fa1772b4f32ec2daa7293`. This is separate from the PR-head 19/19 evidence.
-- Stage C began from a clean tree; only historical Draft PR #42 remains open. WAW Codex API/Web contract work is in progress; real CLI execution remains host/architecture-gated.
+- Pure recovery/cursor/lease identity fences and browser stale-event rejection.
+- Typed Project-scoped Claude/Codex Start/Stop/ticket contracts with exact
+  response identity, CSRF/recent-auth, transient tickets and no-store behavior.
+- READY Project/AgentType metadata lookup, explicit Start and native exact Stop
+  confirmation; stale lookup/action/auth/Runtime observations fail closed.
+- README, limitations, acceptance, platform and release documents now agree;
+  candidates include four fixed WAW workflow/recovery/readiness/host-gate docs.
+- Phase 11 includes metadata/capability/Runtime Secret Store foundations, not a
+  product Provider/Secret Manager or production activation capability.
 
-## Stage C software validation (before PR CI)
+## Verification evidence
 
-- API Start/Stop/ticket now support both closed AgentTypes and reject mismatched Runtime workspace/Project/AgentType/generation responses.
-- Web Start/Stop/ticket/Detach parsers reject unknown fields and bind response identity to the requested context; the action hook rejects concurrent work and discards results after auth scope changes or unmount.
-- `.venv/bin/python -m pytest -q tests/integration/test_waw_workspace_api.py tests/unit/test_waw_admission.py tests/unit/test_workspace_api_contract.py tests/unit/test_waw_codex_command.py`: exit `0`, `50 passed`.
-- `ruff check`, `black --check`: exit `0`; `mypy --platform linux apps/api apps/worker apps/cli packages tests`: exit `0`, 188 files.
-- `pnpm typecheck`, `pnpm lint`, `pnpm format:check`: exit `0`; `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: exit `0`, `110 passed`; `pnpm build`: exit `0`.
-- `python scripts/check-doc-links.py`: exit `0`, 148 relative links.
-- Independent read-only API and frontend Architecture/Security reviews: PASS for this synthetic/control software scope, no remaining blocker. Review does not qualify a real CLI/host.
-- Actual legacy Remote Control interlocks and fixed Codex process/PTY execution remain unimplemented/unverified. The API rejects Runtime-reported conflict states; no real process probe, terminal or login was run.
+- Recovery tests: `pytest -q tests/unit/test_waw_recovery.py tests/unit/test_waw_lease.py tests/unit/test_waw_supervisor.py tests/unit/test_waw_stream_contract.py tests/unit/test_waw_lifecycle.py`: exit `0`, 101 passed.
+- API/command tests: `pytest -q tests/integration/test_waw_workspace_api.py tests/unit/test_waw_admission.py tests/unit/test_workspace_api_contract.py tests/unit/test_waw_codex_command.py`: exit `0`, 56 passed.
+- Web `typecheck`, `lint`, `format:check`, `build`: exit `0`; `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: exit `0`, 115 passed.
+- `ruff check`, `black --check`, Linux-target mypy: exit `0`; 188 application/test Python files and 14 installer files checked in the respective runs.
+- `pytest -q tests/unit/test_release_candidate.py`: exit `0`, 22 passed, with an expected duplicate-ZIP fixture warning.
+- Full local E2E first passed the 54 existing tests and found four ambiguous new test locators. After correction, all four new desktop/mobile metadata E2E passed; the final complete E2E CI gate passed for PRs #60 and #61.
+- Main-agent visual QA viewed actual Chromium at 1280x900 and 390x844 for normal/native Stop/empty/error states: no horizontal overflow, tested controls at least 44px, Cancel/Escape restored Stop focus. Synthetic metadata only; screenshots were not committed. Temporary preview was stopped.
+- Independent read-only Architecture/Security/Test reviews found no remaining blocker in the delivered software scope. Visual work was main-agent structured QA, not an independent visual certification.
+- Local Python 3.14.7 / Node 26.7.0 / pnpm 11.19.0 differ from CI's supported matrix. The expanded macOS WAW matrix did not pass (Linux socket/provenance requirements); it was not promoted to host evidence. Python tests above used `.venv/bin/python -m pytest`; Linux CI is the authoritative supported matrix.
 
-## Stage C completed / Stage D in progress
+## Independently verified candidate with packaged WAW docs
 
-- PR #59 MERGED at `2026-09-03T04:45:48Z`; reviewed head `3e0e7a921e008d9c6b5198d37b8254fbee174068`, base `d2470601a06da0a4024fa1772b4f32ec2daa7293`.
-- Exact-head checks: `19/19 SUCCESS`, all terminal. Actual merge read-back and `origin/main`: `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`.
-- Stage D began from a clean tree; only historical Draft PR #42 remains open.
-- Workspace metadata queries, UI/controller integration and desktop/mobile validation are in progress. Terminal transport remains unavailable and is not replaced with a fake admission.
+- E head: `0c894ff52f49793f599eb33c4b92b8223e6109b3`; source ref kind `pull_request_head`.
+- Release Candidate run `33719963292`, artifact ID `9879903829`; terminal SUCCESS.
+- Tarball SHA-256: `9b1dcd19452a79ee933a4781da368d70415deb374b2a6bd46353501b0c23eb03`.
+- Manifest SHA-256: `20d460d8e1a4aee9c05149289d474fcbf2ed9d20904acd685eccb154d60ed354`.
+- SBOM SHA-256: `4405cf4f6c8510da3cfacf346a0231893ac8133c94bc5cda3200da3068c676d4`.
+- `scripts/check-release-artifact.py` with exact source/ref: exit `0`, 81 archive members, 2757 nested wheel members, 27510853 bytes, no source maps/canaries; all four required WAW docs present. Download and read-only validation only, no install/execution.
+- Earlier merged implementation artifact and complete scope are recorded in `../WAW_SOFTWARE_READINESS.md`. Artifact integrity is not publisher authenticity; the candidate is unsigned.
 
-## Stage D software and browser evidence (before PR CI)
+## Remaining blocker / next action
 
-- PR #59 post-merge CI for `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`: all six workflows terminal `success`.
-- Typed Project/AgentType query filters precede authorization/32-row cap; Workspace page now uses exact selection, registered metadata, explicit Start and scoped exact Stop confirmation.
-- `.venv/bin/python -m pytest -q tests/integration/test_waw_workspace_api.py tests/unit/test_waw_admission.py tests/unit/test_workspace_api_contract.py tests/unit/test_waw_codex_command.py`: exit `0`, `56 passed`.
-- `ruff check`, `black --check`, `mypy --platform linux ...`: exit `0` (188 Python source files for mypy).
-- Web `typecheck`, `lint`, `format:check`, `build`: exit `0`; `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: exit `0`, `115 passed`.
-- Initial `pnpm e2e`: exit `1`, 54 existing tests passed and four new metadata tests failed due to ambiguous Playwright locators. Locators were made exact; subsequent `PLAYWRIGHT_BASE_URL=http://127.0.0.1:4178 pnpm --filter @agentbox/web exec playwright test e2e/workspace-metadata.spec.ts`: exit `0`, all four new desktop/mobile tests passed. The combined final exact-head CI remains the merge gate.
-- Main-agent visual QA used actual Chromium at `1280x900` and `390x844`; synthetic normal, Stop confirmation, mobile empty and mobile error renderings were viewed. No horizontal overflow; all tested visible controls at least 44px; native Cancel/Escape restored Stop focus. Screenshots contain synthetic metadata only and are not committed or release artifacts.
-- Independent read-only Architecture/Security review: PASS for metadata/control scope after checking server-side binding/epoch validation, client stale-response and Stop-target fencing. Visual checking was main-agent structured QA, not an independent visual certification.
-- Terminal remains `NOT ADMITTED`; no ticket/terminal bytes were obtained or persisted, no real host or Provider operation occurred. Workflow mapping: `../WORKSPACE_METADATA_WORKFLOW.md`.
+**The complete interactive product is not finished.** Stage F remains not
+started: explicit real-transport Architecture/Owner scope, an authorized isolated
+Linux target, and attributable non-secret host evidence are missing. The Owner
+was asked for the target/SSH alias; no target was supplied during this snapshot.
 
-## Stage D completed / Stage E artifact and documentation work
-
-- PR #60 MERGED at `2026-09-03T05:27:15Z`; reviewed head `9be95b10e57a3daa3690205d6c2ffad8da74424d`, base `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`.
-- Exact-head CI: `19/19 SUCCESS`, all terminal, including the complete final E2E gate. Observed merge and origin/main: `6972f0dba907afd9741c2dc3584f431ee32765ed`.
-- Post-merge main `6972f0dba907afd9741c2dc3584f431ee32765ed`: all six CI workflows SUCCESS. Release Candidate run `33718909935`: SUCCESS. Artifact `9879550362` downloaded via `gh run download` (exit `0`) to a task temporary directory, not installed or executed.
-- Independent `scripts/check-release-artifact.py` with expected commit `6972f0dba907afd9741c2dc3584f431ee32765ed` and ref kind `main`: exit `0`, 77 members / 2757 nested wheel members / 27498769 bytes, no source maps or canaries.
-- Exact artifact/manifest/SBOM hashes and scope are recorded in `../WAW_SOFTWARE_READINESS.md`. This is an immutable implementation-baseline artifact; E's own CI will rebuild its documentation/packaging changes.
-- `pytest -q tests/unit/test_release_candidate.py`: exit `0`, 22 passed; one expected duplicate-ZIP fixture warning. Installer Linux-target mypy: exit `0`, 14 source files. Documentation links: exit `0`.
-- README/limitations/acceptance/release documents distinguish implemented Phase 11 foundations from unimplemented product Provider/Secret management, and metadata UX from unavailable real WAW terminal.
-- F is not started: explicit real-transport architecture/host scope, a disposable Linux target and real evidence are still missing. A host/SSH-alias question was sent to the Owner; no answer was available at this snapshot.
-
-- Stage E independent read-only documentation/packaging scope review: PASS; all current-head release gates remain pending until CI finishes. Fixed RELEASE_DOCUMENTS now includes four WAW boundary documents.
-- Local release-candidate unit checks: 22 passed; installer ruff/black and Linux-target mypy (14 files) passed; source documentation link check: 156 links passed.
-- Local preview used for metadata visual QA was stopped after verification; no background host/runtime activation was left running.
+Real fixed CLI/PTY execution, Noise/WebSocket/browser terminal, legacy process
+interlocks, Runtime/API restart and reboot recovery still require implementation
+and qualification. Current UI remains NOT ADMITTED. Earlier MVP OpenCloudOS
+qualification does not qualify WAW. No real Provider credentials, Runtime HOME,
+Secret handling, host activation, release tag/publication or production support
+promise was used or authorized by this task. See `NEXT_ACTION.md`.
