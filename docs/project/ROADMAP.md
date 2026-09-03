@@ -30,9 +30,11 @@
 
 - Descriptor-held executable provenance foundation merged in PR #69 with 19/19 exact-head checks successful; complete interactive process/host qualification remains unfinished.
 
+- Isolated numeric authentication timing diagnostic and failure/privacy regressions merged in PR #70 with 19/19 exact-head checks successful; historical latency cause remains unknown.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer work is in progress. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics passed independent re-review and local 21-case/4-sample/60-test verification, awaiting CI and merge.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer work is in progress. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics are merged; R9.1 tokenizer passed independent re-review after two P2 fixes, with 113 tests and 133 independent negatives, awaiting CI/merge.
 
 ## In Progress
 
