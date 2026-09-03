@@ -39,3 +39,10 @@
   reservation are required before claiming Runtime observations; attachment
   prepare remains separate from actual admission. No host activation or
   architecture proposal approval is inferred.
+
+
+- `REMAINING-EXECUTION-2026-09-03`: Owner requested reassessment and persistent
+  parallel development, routing complex work to `gpt-5.6-sol` and ordinary work
+  to `gpt-5.6-terra`. Current finite goals/dependencies are in
+  [REMAINING_PLAN.md](REMAINING_PLAN.md). Routine implementation/CI/merge continue;
+  unapproved architecture and real-host/key/production actions retain their gates.

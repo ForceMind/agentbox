@@ -1,0 +1,144 @@
+# Remaining development plan — 2026-09-03
+
+## Goal and completion standard
+
+目标用户是管理服务器与正式 Project 的管理员。最终交付路径是：登录 →
+选择 `READY` Project 与 Claude/Codex → Start → 验证 Runtime 信任并 Connect →
+input/output/resize → detach/reconnect → exact Stop，保留 Project 与 Git 修改。
+
+Owner 最新要求重新评估剩余开发、制定目标、持续多智能体并行执行，并指定
+复杂问题使用 `gpt-5.6-sol`，普通问题使用 `gpt-5.6-terra`。每阶段继续遵守
+`feature branch → exact-head CI → merge → exact read-back`，同步 GitHub 和文档。
+
+完成分为两个可验证层次，不能混淆：
+
+- **Software completion**：所有计划中的实现已经实际接通；受控测试执行完整
+  流程及失败/取消/撤销/重启/并发场景；没有用简化协议或默认成功值替代真实
+  实现；适用的独立审查、完整 Linux CI 和 merge read-back 已通过。
+- **Product qualification**：在明确授权的真实目标上证明 CLI、PTY、隔离、
+  Runtime key custody、信任配置、真实浏览器、重启恢复和运营边界。未获得
+  这些证据时，不能将软件测试升级为生产能力或把整个目标标为完成。
+
+Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实现、诊断或测试。
+实际 host 激活、真实 key/Provider Secret 操作、架构决策和生产发布仍服从
+[GOVERNANCE.md](GOVERNANCE.md) 的明确授权边界。
+
+## Verified baseline and reachable behavior
+
+本轮开始时工作区干净，`main = origin/main = HEAD = merge-base`：
+`dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9`。六个 exact-main workflow 均 SUCCESS。
+仅历史 Draft PR #42 打开，不在本轮写入范围内。当前证据不以旧 snapshot 替代。
+
+| 用户能力 | 已有实现与证据 | 剩余内容 |
+| --- | --- | --- |
+| Project 选择与状态 | Workspace 页面、正式 Project API、metadata controller 与 E2E | 保持既有功能；不得将 metadata ready 当作 terminal admitted |
+| Start / exact Stop | Project-scoped HTTP、typed Runtime lifecycle、exact supervisor binding | 正式 interactive CLI profile、生产 Runtime factory 与 host qualification |
+| Connect | ticket/authority 与 handler seam 存在；当前页面按钮 disabled，WS 无 handler 返回 1013 | 信任验证、分阶段准入、真正 Runtime stream 与 API relay |
+| input/output/resize | supervisor、固定 Noise core 和 synthetic stream 测试已完成 | 完整 wire schemas、AWCE application crypto、PTY adapter、真实 browser controller |
+| detach/reconnect | lease/recovery/core fencing 与 fresh-key 基础已完成 | socket/PTY 正向 cleanup、fresh admission、ring re-encryption 与 UI 恢复接线 |
+| 输出安全 | 有协议/安全设计及 bounded core | 浏览器 VT/UTF-8 tokenizer、危险控制序列处理、真实交互验证 |
+| Runtime/API restart | durable epoch/generation/cgroup metadata 基础 | 实际进程恢复、quarantine/cleanup、host reboot evidence |
+
+入口事实：`apps/api/src/agentbox_api/main.py` 尚未提供真实 stream handler；
+`WorkspacePage.tsx` 的连接/重连/断开按钮仍关闭；`waw_bootstrap.py` 构造 control
+server，但没有 stream server。已有 core 类不等于可访问的终端功能。
+
+## Confirmed issue and unresolved observations
+
+- **P1 AUTH-CAPACITY-CANCEL**：已在纯内存 Event barrier 实验中复现：
+  `max_concurrency=1`，取消第一个 login await 后线程仍在运行，第二个 worker
+  提前开始，峰值达到 2。修复目标是按实际 worker completion 释放共享 login /
+  reauthentication capacity，而非按 HTTP caller lifetime 释放。
+- **AUTH-MAC-LATENCY**：此前 Mac 全量 E2E 为 56 passed / 4 timeout；新 native
+  crypto 两例通过，Linux PR #66 全量 60 passed。没有证据将这四次 timeout
+  归因于上述取消缺陷。Argon2 不在登录写事务内，E2E 使用低成本参数。应先
+  测量请求/线程池/SQLite lock/event-loop/浏览器阶段耗时，保留原断言。
+- **AUTH-SESSION-CLOCK**：同步 authenticate 可能阻塞 event loop；事务时间
+  可能在 SQLite 实际拿锁前固定。这些是独立待验证风险，未经复现不写成已
+  确认缺陷，不与取消修复混合。
+
+## Plan and dependencies
+
+状态只使用：未开始、进行中、待验证、审查未通过、已完成。完成包括相应
+测试、适用审查、CI、合并与回读；表中设计目标不代表已实现能力。
+
+| Slice | 当前状态 | 具体交付 / ownership | 验收和依赖 |
+| --- | --- | --- | --- |
+| R0 plan + AUTH-CAPACITY-CANCEL | 待验证 | `auth.py` 与 executor tests；主智能体维护计划、安全文档与 GitHub | 已有 barrier 复现；取消等待/执行、共享 gate、成功/异常/提交失败、ContextVar；不得提前释放或遗留未消费异常 |
+| R1 opaque AWCE codecs | 待验证 | Python `awce.py` / Web `awce.ts` 与边界测试 | 现有明确 44-byte header、精确长度、uint64/BigInt、高位与尾随拒绝、双语言固定向量；无 crypto/authentication 声明，不依赖未决 AAD |
+| R2 login latency evidence | 未开始 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
+| R3 complete protocol clarification | 进行中 | 一个完整补充决策，修正规范冲突与字段缺失 | 下节列出的 wire/admission/trust 问题收敛并明确获得所需 Owner 授权；不逐文件临时发明协议 |
+| R4 application crypto | 未开始 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
+| R5 full wire schemas | 未开始 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
+| R6 staged attachment authority | 未开始 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
+| R7 Runtime encrypted stream | 未开始 | Runtime stream session/server 与有限 executor integration | R4/R5/R6；capability once、同锁 process recheck、ring 先选再加密、partial input ACK、exit/cleanup barrier |
+| R8 API ciphertext relay | 未开始 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
+| R9 browser trust + terminal | 未开始 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
+| R10 fixed interactive process | 未开始 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；正式 AgentType argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
+| R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
+| R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
+
+```mermaid
+flowchart LR
+  R0 --> R1
+  R3 --> R4
+  R3 --> R5
+  R5 --> R6
+  R4 --> R7
+  R6 --> R7
+  R7 --> R8
+  R8 --> R9
+  R9 --> R11
+  R10 --> R11
+  R11 --> R12
+```
+
+R2 是独立测量工作；不把未知原因当作其它 slice 的通用阻断。R1 是纯 framing，
+不能因为其编解码成功而跳过 R3/R4 的加密、身份和准入验证。
+
+## Contract decisions that must be consolidated
+
+原 [三项字节补充](WAW_ENCRYPTED_STREAM_DECISION.md) 尚不足以完整冻结实际 wire。
+Sol 只读复核发现以下需要明确解决的冲突，先保留为 PROPOSED：
+
+1. KEY_INIT/ATTEST 的扁平 `AdmissionTuple` 与后文 `HandshakeContext` 字段集合
+   不一致（`mode` / `protocol_id`）；需逐帧冻结 exact keys 与 context 派生规则。
+2. KEY_CONFIRM/ACK 缺少 ciphertext 字段名、hash wire encoding 和明确的
+   `protocol_version`；确认密文应是固定 48 bytes 的 canonical encoding。
+3. API 无 channel key，不能宣称解密验证 browser canary；必须明确 Runtime
+   confirmation 与 browser 本地验证/ADMITTED gate，或批准额外回执及序号变化。
+4. Runtime 不知道 API 重写前的 browser hop，internal ACK 不能凭空返回它；
+   需明确 Runtime ACK 与 API bounded mapping 的职责及 schema。
+5. API input quota/drop 的 ACK/重试表述与“丢弃任何 ciphertext 即关闭”冲突；
+   必须统一并区分 API rejection 与 Runtime 已解密后的 rejection。
+6. AWCE 49152-byte 协议最大值与 HELLO 的 input 16384/output 32768 有效限额
+   分层不清；需要明确每层 enforce 的上限。
+7. pin schema 的 dash/dot literal 与签名 fixture 不一致；root/pin revision
+   的 uint64 范围与 JCS JSON Number 安全范围需同时冻结，不能擅自重签未知 key。
+
+当前 `waw_stream_bridge.py` 和 `waw_noise_contract.py` 保留 synthetic contract
+用途。它们的简化 ACK/GAP、client STATE/CLOSE、提前 ActiveAttachment 和 sequence
+空间不得直接用于真实 wire。现有 Noise core 与 supervisor 可复用，不重写。
+
+## Model and ownership policy
+
+| 任务性质 | 模型 | 责任 |
+| --- | --- | --- |
+| 架构、crypto/admission、并发取消、恢复、安全边界与复杂根因 | `gpt-5.6-sol` | 制定/审查精确契约、处理复杂实现与确定性复现 |
+| 已冻结的 codec、常规接口/UI实现、fixtures、日常验证 | `gpt-5.6-terra` | 按明确 ownership 实施与测试；发现新安全/状态歧义立即交回 sol |
+| 独立安全/架构审查 | 独立 `gpt-5.6-sol` | 只读，不修改被审实现；PASS 是质量证据，不代替 Owner 授权 |
+| 集成、计划、文档与阶段交付 | 主智能体 | 维护依赖/范围/证据，保护并发编辑，执行正常 PR/CI/merge/read-back |
+
+遵守实际并发上限；槽位不足时顺序调度，不虚构已启用的 agent。不并行写同一
+文件。简单任务不因模型升级而扩大范围；复杂问题不为了节省成本降低验证标准。
+
+## Delivery and stop rules
+
+每阶段先 live revalidate，按 ownership 实施，运行必要验证、独立审查，再更新
+`CURRENT_STATE` / `NEXT_ACTION` / 本计划 / 相关契约并提交 GitHub。只合并所有
+exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获取。
+禁止 force push、history rewrite、admin bypass 或用未运行测试伪造完成。
+
+整体目标仅在软件和适用产品验收均完成时结束；未知/缺少授权证据的项目继续
+保持未开始或待验证。遇到真实外部条件时，先完成不依赖它的授权工作，再给出
+明确证据、影响和恢复条件。不得以无限整理替代功能交付或重复扫描已验证部分。

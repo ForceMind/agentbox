@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+from collections.abc import Callable
+from contextvars import copy_context
+from functools import partial
 from typing import cast
 from urllib.parse import urlsplit
 
@@ -35,6 +38,38 @@ class BoundedLoginExecutor:
     def __init__(self, auth_service: AuthService, *, max_concurrency: int) -> None:
         self._auth_service = auth_service
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        self._workers: set[asyncio.Future[IssuedSession]] = set()
+
+    async def _run(self, operation: Callable[[], IssuedSession]) -> IssuedSession:
+        # Admit before submitting to the default pool; queued requests remain
+        # coroutines. Copy the caller context just as asyncio.to_thread does.
+        await self._semaphore.acquire()
+        try:
+            loop = asyncio.get_running_loop()
+            completed: asyncio.Future[None] = loop.create_future()
+            worker = loop.run_in_executor(None, copy_context().run, operation)
+        except BaseException:
+            self._semaphore.release()
+            raise
+        self._workers.add(worker)
+        worker.add_done_callback(partial(self._worker_finished, completed=completed))
+        # Cancelling a request cannot stop an already running thread. Keep its
+        # capacity until the executor Future completes, without delaying cancel.
+        # Shield a non-raising completion signal: Python 3.14 otherwise logs
+        # late worker exceptions even when our callback already retrieved them.
+        await asyncio.shield(completed)
+        return worker.result()
+
+    def _worker_finished(
+        self, worker: asyncio.Future[IssuedSession], *, completed: asyncio.Future[None]
+    ) -> None:
+        self._workers.discard(worker)
+        self._semaphore.release()
+        if not worker.cancelled():
+            # Retrieve errors even when the caller has gone away. Awaiting
+            # callers still receive the same exception from worker.result().
+            worker.exception()
+        completed.set_result(None)
 
     async def login(
         self,
@@ -45,10 +80,8 @@ class BoundedLoginExecutor:
         request_id: str | None,
         client_label: str | None,
     ) -> IssuedSession:
-        # Acquire capacity before submitting work to the default thread pool;
-        # excess requests wait as coroutines rather than unbounded thread jobs.
-        async with self._semaphore:
-            return await asyncio.to_thread(
+        return await self._run(
+            partial(
                 self._auth_service.login,
                 username=username,
                 password=password,
@@ -56,6 +89,7 @@ class BoundedLoginExecutor:
                 request_id=request_id,
                 client_label=client_label,
             )
+        )
 
     async def reauthenticate(
         self,
@@ -65,14 +99,15 @@ class BoundedLoginExecutor:
         source_identifier: str,
         request_id: str | None,
     ) -> IssuedSession:
-        async with self._semaphore:
-            return await asyncio.to_thread(
+        return await self._run(
+            partial(
                 self._auth_service.reauthenticate,
                 authenticated,
                 password=password,
                 source_identifier=source_identifier,
                 request_id=request_id,
             )
+        )
 
 
 def _services(request: Request) -> ControlPlaneServices:

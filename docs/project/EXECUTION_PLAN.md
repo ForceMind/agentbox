@@ -18,7 +18,7 @@ architecture 变更、真实 host 激活、Secret handling、生产发布及支�
 merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、macOS
 本地测试和 CI 不证明真实 Linux terminal/host readiness。
 
-## 已核实基线
+## 历史初始基线（当前以 live state 为准）
 
 - `main` / `origin/main`: `24d08414b20e7158e8c84694aac59d0326799bfd`。
 - 工作区开始时干净；main exact-head 的 Backend、Frontend、E2E、Deployment、
@@ -27,6 +27,8 @@ merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、mac
   synthetic stream、fail-closed WebSocket boundary 和 Codex lifecycle 契约。
 - 尚不能通过真实浏览器终端使用 Claude/Codex；不能把 HTTP 成功视为 connected。
 - 历史 Draft PR #42 不在本轮写入范围内。
+
+最新剩余执行入口为 [REMAINING_PLAN.md](REMAINING_PLAN.md)，沿用下列历史交付，不重新实现。Owner 当前要求复杂问题使用 sol，普通问题使用 terra。
 
 ## 阶段清单
 

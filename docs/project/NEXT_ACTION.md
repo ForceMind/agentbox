@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `MAC-WAW-NOISE-CORE-2026-09-03`
+Action ID: `REMAINING-PLAN-AUTH-CAPACITY-2026-09-03`
 
 Owner clarified that development continues on the current Mac. Development
 platform and deployment qualification are separate: a missing Linux test host
@@ -9,40 +9,22 @@ The prior blanket host prerequisite for all remaining software work is supersede
 by this clarification; actual host activation, Secret handling, new architecture
 decisions and production promises retain their existing boundaries.
 
-## Completed slice — fixed Noise NX core
+## Active reassessment and implementation
 
-PR #65 completed fixed Python/WebCrypto Noise NX cores, pinned independent
-vectors, concurrency/failure regressions and both-role interoperability:
-head `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7`, 19/19 checks SUCCESS,
-merge `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`.
+Owner requests continued parallel execution: complex work uses sol, ordinary
+work uses terra. The current finite checklist is [REMAINING_PLAN.md](REMAINING_PLAN.md).
 
-## Next slice — application profile decision
+- R0: fix the reproduced login/reauthentication cancellation capacity defect;
+  retain admission until actual thread completion and verify race/error behavior.
+- R1: implement Python/Web opaque AWCE framing from the already fixed header;
+  no application crypto, authentication, AAD choice or socket activation.
+- R2: measure old local authentication timing failures before changing behavior;
+  do not attribute them to the confirmed cancellation bug without evidence.
+- R3: consolidate the newly identified full-wire/admission/trust ambiguities with
+  the existing three-byte proposal into one reviewable decision. Its authority
+  status remains PROPOSED; no new application bytes are silently approved.
 
-Status: **未开始 — concrete architecture byte rules await Owner confirmation**.
-
-[WAW_ENCRYPTED_STREAM_DECISION.md](WAW_ENCRYPTED_STREAM_DECISION.md) proposes
-exact `protocol_id`, final Noise hash usage and direction-label/AAD bytes that
-were absent from the historical document. The proposal is reviewable and has
-been presented to Owner. Do not silently treat it as approved or implement
-alternative bytes while waiting.
-
-After approval, implement the strict context/confirmation/AWCE codecs, Runtime
-stream server and API ciphertext-only relay with staged admission, then browser
-terminal integration. Require independent review, exact cross-language vectors,
-normal/failure/cancellation tests and per-stage GitHub/document delivery. Keep
-all existing real-key/host/production authorization and evidence boundaries.
-
-## Next implementation and validation
-
-Continue the remaining Runtime command/transport factory, process and encrypted
-stream/browser integration on Mac where feasible, using injected OS boundaries
-and truthful local/CI evidence. Use the existing architecture contracts; resolve
-new architecture decisions explicitly when encountered. Do not substitute Fake
-Runtime evidence for actual CLI/PTY/Noise/host qualification or call partial
-integration complete.
-
-Linux systemd/cgroup/namespace/LSM/seccomp, real Runtime activation, official
-Runtime-user login/Trust, deployment and reboot acceptance still require an
-identified authorized target and attributable host evidence before those
-operations or readiness claims. A Linux SSH alias is not required merely to
-continue software development on this Mac.
+Continue independent authorized software work on Mac. Architecture, real host,
+real key/Provider Secret operations and production publication retain explicit
+approval/evidence requirements. After required protocol decisions, proceed through
+R4–R12 in the current plan; routine CI/merge/read-back needs no extra Owner gate.

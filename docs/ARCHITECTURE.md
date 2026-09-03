@@ -38,8 +38,9 @@ Phase 3 implements only the local control-plane security foundation:
   bounded in-process login throttling, request IDs, safe errors, and structured
   redacted logs;
 - an asynchronous API login boundary that admits at most two Argon2/login work
-  units by default, then runs the synchronous service through
-  `asyncio.to_thread`; rate-limit rejection occurs before real/dummy verify;
+  units by default, then runs the synchronous service in the default thread pool
+  with copied caller context; cancellation retains the permit until actual
+  worker completion, and rate-limit rejection occurs before real/dummy verify;
 - `GET /healthz`, `GET /readyz`, `GET /api/v1/meta`, and the three Phase 3 auth
   routes under `/api/v1/auth`;
 - a separate Worker lifecycle that may connect to the database and clean old

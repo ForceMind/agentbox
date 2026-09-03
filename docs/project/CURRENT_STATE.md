@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T07:41:11Z"
+verified_at_utc: "2026-09-03T09:02:21Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,12 +9,12 @@ repository: "ForceMind/agentbox"
 
 ## Live baseline
 
-- Verified `HEAD` / `main` / `origin/main` / merge-base at delivery-branch start:
-  `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`; working tree clean.
-- Delivery snapshot branch: `codex/waw-mac-delivery-state`.
-- Historical Draft PR #42 remains open and outside this task's write scope.
-- This file records observed commits; it cannot predict its own future merge
-  SHA. Live Git/GitHub always overrides the snapshot.
+- At current-task start: clean tree; `HEAD/main/origin/main/merge-base` equal
+  `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9`.
+- All six exact-main workflows completed SUCCESS. Historical Draft PR #42 is
+  the only open PR and is outside current writes. Network preflight exited 0.
+- Active branch: `codex/remaining-plan-auth-capacity`.
+- This snapshot records observed facts and cannot predict its own merge SHA.
 
 ## Delivered software stages
 
@@ -192,3 +192,31 @@ and remaining CLI/host acceptance in the existing plan.
   preview and temporary data after the run.
 - The application byte proposal also passed independent read-only review as a
   coherent clarification. Its status remains PROPOSED pending Owner acceptance.
+
+
+## Current reassessment
+
+Owner requested a fresh remaining-plan evaluation, a persistent goal and
+model-routed multi-agent work: complex sol, ordinary terra. See REMAINING_PLAN.
+Sol confirmed AUTH-CAPACITY-CANCEL with an in-memory barrier reproduction:
+configured limit 1, cancelled caller, peak actual workers 2. Fix and deterministic
+unit/API verification are in progress; this is not claimed as the cause of old
+Mac E2E timeouts. Terra implements independently specified opaque AWCE framing.
+Sol also found additional full wire/admission/trust conflicts beyond the three
+proposed bytes; those are consolidated in the new plan instead of silently
+promoting the synthetic bridge or metadata state machine to production.
+
+
+R0 local implementation evidence:
+
+- `BoundedLoginExecutor` keeps shared login/reauthentication capacity until the
+  underlying executor Future finishes, independent of caller cancellation. A
+  non-throwing completion signal prevents Python 3.14 shield late-error logs;
+  original exceptions still reach active callers and ContextVars propagate.
+- `.venv/bin/python -m pytest -q tests/unit/test_auth_executor.py tests/integration/test_auth_api.py`: exit 0, 45 passed (14 new deterministic executor cases plus 31 existing auth API tests).
+- Scoped Ruff, Black, Linux-target mypy and whitespace checks: exit 0.
+- Independent sol review: PASS for this bounded fix; 14 executor cases rerun as
+  part of its 48-case Python review with the separate opaque AWCE work.
+- No password/Session/CSRF policy, limiter budget, database locking or E2E timeout
+  was changed. The previous four Mac E2E authentication timeouts are not claimed
+  resolved by this fix. R0 is awaiting exact-head CI and merge/read-back.

@@ -22,6 +22,10 @@
 
 - Fixed Noise NX Python/WebCrypto cores, pinned independent vectors and two-role interoperability merged in PR #65 with 19/19 exact-head checks successful.
 
+## Current reassessment
+
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 closes a reproduced authentication concurrency defect; R1 implements already-frozen opaque AWCE framing. Full wire/admission/trust clarification is still necessary before application integration; a three-byte proposal alone does not close all protocol gaps.
+
 ## In Progress
 
 - Mac remains the development platform. F1.1/F1.2/F1.3 are complete software increments; the overall terminal product is incomplete. Application profile wire-byte clarification is proposed and awaits Owner confirmation.
