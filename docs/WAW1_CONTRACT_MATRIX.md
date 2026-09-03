@@ -40,7 +40,7 @@ real host, provider login, interactive terminal, or production route.
 | Layer-boundary composition tests | `tests/unit/test_waw_transport_layers.py`; parser→policy, ABWS independence and Noise enum-only checks |
 | HTTP lifecycle/ticket scaffolding (synthetic only) | `apps/api/src/agentbox_api/workspaces.py` exposes CSRF/recent-auth fenced Start, Stop, Attachment-ticket and fresh Reconnect routes; routes require an already bound Runtime and durable workspace row. |
 | Synthetic ABWS stream bridge (contract only) | `waw_stream_contract.py`, `waw_stream_bridge.py`, and stream tests compose bounded input/resize/replay/GAP/detach/close behavior over `WAWSupervisor`; no listener or cryptography. |
-| WAW-2 Codex command identity and lifecycle (synthetic only) | `waw_codex_command.py` / `test_waw_codex_command.py` enforce Project/workspace identity, fixed argv and executable provenance. PR #55 extends Runtime lifecycle tests to Codex; API attachment/real CLI integration remains incomplete. |
+| WAW-2 Codex command identity and lifecycle (synthetic only) | `waw_codex_command.py` / `test_waw_codex_command.py` enforce Project/workspace identity, fixed argv and executable provenance. PR #55 extends Runtime lifecycle tests to Codex. The current software stage adds symmetric API Start/Stop/ticket and Web parser/action contracts with ASGI/Fake Runtime evidence; real CLI/transport and legacy interlocks remain incomplete. |
 | Fail-closed WebSocket boundary | `apps/api/src/agentbox_api/main.py` has an authenticated route boundary that refuses service without a qualified handler; no production encrypted stream is claimed. |
 
 ## Contract-only boundaries
@@ -80,7 +80,7 @@ automatic adoption is allowed.
 - Functional encrypted WebSocket stream, browser terminal renderer/input/resize
   wiring and Runtime-backed Noise/PTY admission.
 - Real `/stream`, browser terminal rendering/input/output/resize/reconnect.
-- Complete WAW-2 Codex Project-scoped API attachment/CLI slice.
+- Complete WAW-2 real Codex CLI/transport slice and legacy Remote Control interlocks; the Project-scoped API path is implemented separately as a software contract.
 - Complete WAW-3 continuity, mobile, recovery composition and reboot hardening;
   existing lease/ring/cleanup contracts are being extended, not reimplemented.
 - Final release artifacts, production deployment and launch.

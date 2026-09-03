@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import secrets
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
 from typing import Literal, Protocol, cast
@@ -143,7 +144,7 @@ class WorkspaceStartResponse(StrictMetadataModel):
     request_id: str
     workspace_id: str
     project_id: str
-    agent_type: Literal["claude"]
+    agent_type: Literal["claude", "codex"]
     state: str
     generation: str
 
@@ -165,7 +166,7 @@ class WorkspaceStopResponse(StrictMetadataModel):
     request_id: str
     workspace_id: str
     project_id: str
-    agent_type: Literal["claude"]
+    agent_type: Literal["claude", "codex"]
     generation: str
     stop_operation_id: str
     state: str
@@ -492,7 +493,7 @@ async def get_workspace(
 )
 async def start_workspace(
     project_id: str,
-    agent_type: Literal["claude"],
+    agent_type: Literal["claude", "codex"],
     request: Request,
     response: Response,
     _body: EmptyWorkspaceBody,
@@ -524,10 +525,6 @@ async def start_workspace(
         raise RuntimeGatewayError(
             code="WORKSPACE_NOT_READY", category="conflict", message="Project is not ready"
         ) from exc
-    if agent_type != "claude":
-        raise RuntimeGatewayError(
-            code="WAW_AGENT_UNSUPPORTED", category="validation", message="Agent type is unsupported"
-        )
     workspace_id_value = _workspace_id_for(project.id, agent_type)
     try:
         row = _services(request).workspaces.get(workspace_id_value)
@@ -549,7 +546,7 @@ async def start_workspace(
             request_id=_request_id(request),
             workspace_id=row.id,
             project_id=row.project_id,
-            agent_type="claude",
+            agent_type=row.agent_type,
             state=row.state,
             generation=str(row.generation),
         )
@@ -572,6 +569,14 @@ async def start_workspace(
         )
     except WAWControlClientError as exc:
         raise _runtime_error(exc) from exc
+    try:
+        _validate_lifecycle_response_identity(runtime, row)
+    except WAWControlClientError as exc:
+        raise RuntimeGatewayError(
+            code="RUNTIME_INSTALLATION_MISMATCH",
+            category="unavailable",
+            message="Runtime start response identity mismatch",
+        ) from exc
     state = runtime.get("state")
     if not isinstance(state, str) or state not in {
         "RUNNING",
@@ -602,7 +607,7 @@ async def start_workspace(
         request_id=_request_id(request),
         workspace_id=row.id,
         project_id=row.project_id,
-        agent_type="claude",
+        agent_type=cast(Literal["claude", "codex"], row.agent_type),
         state=row.state,
         generation=str(row.generation),
     )
@@ -737,6 +742,18 @@ async def stop_workspace(
                 operation.id, result=StopResult.RECONCILIATION_REQUIRED
             )
         raise _runtime_error(exc) from exc
+    try:
+        _validate_lifecycle_response_identity(runtime, row)
+    except WAWControlClientError as exc:
+        with suppress(Exception):
+            _services(request).workspaces.complete_stop(
+                operation.id, result=StopResult.RECONCILIATION_REQUIRED
+            )
+        raise RuntimeGatewayError(
+            code="RUNTIME_INSTALLATION_MISMATCH",
+            category="unavailable",
+            message="Runtime stop response identity mismatch",
+        ) from exc
     state = runtime.get("state")
     if state == "STOPPED":
         try:
@@ -763,7 +780,7 @@ async def stop_workspace(
         request_id=_request_id(request),
         workspace_id=row.id,
         project_id=row.project_id,
-        agent_type="claude",
+        agent_type=cast(Literal["claude", "codex"], row.agent_type),
         generation=str(row.generation),
         stop_operation_id=operation.id,
         state="STOPPED",
@@ -917,6 +934,23 @@ def _workspace_id_for(project_id: str, agent_type: str) -> str:
     from agentbox_core.waw import workspace_id
 
     return workspace_id(project_id, AgentType(agent_type))
+
+
+def _validate_lifecycle_response_identity(
+    runtime: Mapping[str, object], row: AgentWorkspaceSessionRecord
+) -> None:
+    """Require Runtime lifecycle replies to echo the exact durable identity."""
+
+    expected = {
+        "workspace_id": row.id,
+        "project_id": row.project_id,
+        "agent_type": row.agent_type,
+        "generation": str(row.generation),
+    }
+    if any(runtime.get(field) != value for field, value in expected.items()):
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH", "WAW lifecycle response identity is stale"
+        )
 
 
 def _lifecycle_payload(

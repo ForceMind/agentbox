@@ -10,6 +10,7 @@ import httpx
 import pytest
 from agentbox_api.main import create_app
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
+from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType, workspace_id
@@ -21,6 +22,7 @@ PASSWORD = "a sufficiently long passphrase"
 HOST_ID = "wri_" + "a" * 32
 PROJECT_ID = "prj_" + "b" * 32
 WORKSPACE_ID = workspace_id(PROJECT_ID, AgentType.CLAUDE)
+CODEX_WORKSPACE_ID = workspace_id(PROJECT_ID, AgentType.CODEX)
 DIGEST = "d" * 64
 FINGERPRINT = "e" * 64
 
@@ -55,34 +57,43 @@ class FakeStatusCoordinator:
 
 
 class FakeLifecycleCoordinator:
-    def __init__(self) -> None:
+    def __init__(self, *, overrides: dict[str, dict[str, Any]] | None = None) -> None:
         self.attestation = {
             "runtime_epoch": "7",
             "runtime_host_installation_id": HOST_ID,
             "runtime_host_installation_revision": "1",
         }
         self.actions: list[str] = []
+        self.overrides = overrides or {}
 
     async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
         self.actions.append(action)
+        if action in self.overrides:
+            override = self.overrides[action]
+            if "error" in override:
+                raise WAWControlClientError(str(override["error"]), "synthetic Runtime failure")
         if action == "workspace.workspace.start":
-            return {
+            response = {
                 "status": "STARTED",
                 "state": "RUNNING",
                 "workspace_id": request["workspace_id"],
                 "project_id": request["project_id"],
-                "agent_type": "claude",
+                "agent_type": request["agent_type"],
                 "generation": request["generation"],
             }
+            response.update(self.overrides.get(action, {}))
+            return response
         if action == "workspace.workspace.stop":
-            return {
+            response = {
                 "status": "STOPPED",
                 "state": "STOPPED",
                 "workspace_id": request["workspace_id"],
                 "project_id": request["project_id"],
-                "agent_type": "claude",
+                "agent_type": request["agent_type"],
                 "generation": request["generation"],
             }
+            response.update(self.overrides.get(action, {}))
+            return response
         raise AssertionError(action)
 
 
@@ -114,13 +125,18 @@ def _host() -> RuntimeHostInstallation:
     )
 
 
-def _seed_workspace(services: ControlPlaneServices, *, scope: str = "admin") -> None:
+def _seed_workspace(
+    services: ControlPlaneServices,
+    *,
+    scope: str = "admin",
+    agent_type: AgentType = AgentType.CLAUDE,
+) -> str:
     with services.database.transaction() as session:
         session.add(_project(PROJECT_ID))
         session.add(_host())
-    services.workspaces.create(
+    workspace = services.workspaces.create(
         project_id=PROJECT_ID,
-        agent_type=AgentType.CLAUDE,
+        agent_type=agent_type,
         authorization_scope=scope,
         runtime_host_installation_id=HOST_ID,
         runtime_host_installation_revision=1,
@@ -128,6 +144,7 @@ def _seed_workspace(services: ControlPlaneServices, *, scope: str = "admin") -> 
         binding_digest=DIGEST,
         executable_fingerprint=FINGERPRINT,
     )
+    return workspace.id
 
 
 def _seed_many(services: ControlPlaneServices, count: int = 33) -> None:
@@ -326,6 +343,185 @@ async def test_waw_start_stop_routes_are_csrf_and_generation_fenced(
         assert stopped.status_code == 200
         assert stopped.json()["state"] == "STOPPED"
     assert coordinator.actions == ["workspace.workspace.start", "workspace.workspace.stop"]
+
+
+@pytest.mark.anyio
+async def test_waw_codex_project_start_ticket_reconnect_and_exact_stop(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    assert _seed_workspace(initialized_services, agent_type=AgentType.CODEX) == CODEX_WORKSPACE_ID
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+        waw_attachment_authority=AttachmentAuthority(
+            clock=lambda: 100.0, authority_epoch=7, lease_seed=9
+        ),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        csrf = login.json()["data"]["csrf_token"]
+        headers = {**origin_headers, "x-csrf-token": csrf}
+        unknown = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/unknownagent/start",
+            json={},
+            headers=headers,
+        )
+        assert unknown.status_code == 422
+        started = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/codex/start",
+            json={},
+            headers=headers,
+        )
+        assert started.status_code == 200
+        assert started.json()["agent_type"] == "codex"
+        ticket = await client.post(
+            f"/api/v1/workspaces/{CODEX_WORKSPACE_ID}/attachments",
+            json={"mode": "writer"},
+            headers=headers,
+        )
+        assert ticket.status_code == 200
+        assert ticket.json()["agent_type"] == "codex"
+        assert ticket.headers["cache-control"] == "no-store"
+        reconnect = await client.post(
+            f"/api/v1/workspaces/{CODEX_WORKSPACE_ID}/reconnect",
+            json={},
+            headers=headers,
+        )
+        assert reconnect.status_code == 200
+        assert reconnect.json()["agent_type"] == "codex"
+        assert reconnect.headers["cache-control"] == "no-store"
+        assert reconnect.json()["attachment_id"] != ticket.json()["attachment_id"]
+        assert reconnect.json()["lease_number"] != ticket.json()["lease_number"]
+        stopped = await client.post(
+            f"/api/v1/workspaces/{CODEX_WORKSPACE_ID}/stop",
+            json={"generation": "1"},
+            headers=headers,
+        )
+        assert stopped.status_code == 200
+        assert stopped.json()["agent_type"] == "codex"
+    assert coordinator.actions == ["workspace.workspace.start", "workspace.workspace.stop"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "override, expected_status",
+    [
+        ({"workspace_id": "aws_" + "9" * 32}, 503),
+        ({"generation": "99"}, 503),
+        ({"state": "COLLISION"}, 503),
+        ({"state": "UNKNOWN"}, 503),
+        ({"error": "CODEX_REMOTE_CONFLICT"}, 409),
+        ({"error": "PROJECT_RUNTIME_ACTIVE"}, 409),
+    ],
+)
+async def test_waw_codex_start_rejects_wrong_runtime_identity_or_terminal_state(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+    override: dict[str, Any],
+    expected_status: int,
+) -> None:
+    _seed_workspace(initialized_services, agent_type=AgentType.CODEX)
+    coordinator = FakeLifecycleCoordinator(overrides={"workspace.workspace.start": override})
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        headers = {**origin_headers, "x-csrf-token": login.json()["data"]["csrf_token"]}
+        response = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/codex/start",
+            json={},
+            headers=headers,
+        )
+    assert response.status_code == expected_status
+    assert response.json().get("data", {}).get("state") != "RUNNING"
+
+
+@pytest.mark.anyio
+async def test_waw_codex_start_stop_fail_closed_for_csrf_nonready_and_stale_generation(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_workspace(initialized_services, agent_type=AgentType.CODEX)
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        headers = {**origin_headers, "x-csrf-token": login.json()["data"]["csrf_token"]}
+        missing_csrf = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/codex/start", json={}, headers=origin_headers
+        )
+        assert missing_csrf.status_code == 403
+        with initialized_services.database.transaction() as session:
+            project = session.get(Project, PROJECT_ID)
+            assert project is not None
+            project.state = "error"
+        nonready = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/codex/start", json={}, headers=headers
+        )
+        assert nonready.status_code == 409
+        with initialized_services.database.transaction() as session:
+            project = session.get(Project, PROJECT_ID)
+            assert project is not None
+            project.state = "ready"
+        started = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/codex/start", json={}, headers=headers
+        )
+        assert started.status_code == 200
+        stale = await client.post(
+            f"/api/v1/workspaces/{CODEX_WORKSPACE_ID}/stop",
+            json={"generation": "2"},
+            headers=headers,
+        )
+        assert stale.status_code == 409
 
 
 @pytest.mark.anyio
