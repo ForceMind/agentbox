@@ -40,9 +40,10 @@ merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、mac
 | C — WAW-2 Codex integration | 已完成 | 在既有 substrate 上补齐 Project-scoped Codex API attachment 与 Web contracts；复用固定 CLI command contract，真实执行接线列入 F | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
 | D — Workspace metadata UX | 已完成 | 页面接通选择、精确查询、Start/exact Stop；Connect/Detach/input 随真实通道 gate 保持不可用，明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
 | E — 软件发布准备 | 已完成 | 完整 CI matrix、独立 Architecture/Security/Test 审查、限制和 release checklist、产物验证 | 所有检查 terminal；精确记录 artifact fingerprints 与未验证范围；依赖 B/C/D，不能标为生产就绪 |
-| F — 真实 transport/host 与产品验收 | 未开始 | 已批准参数下的 Noise/WebSocket/PTY、真实 CLI、安装隔离、浏览器 terminal、reboot/recovery | 需要明确 host/architecture 授权、可归属的非 Secret evidence、恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
+| F1 — Mac 持续实现 | 进行中 | 先补齐双 AgentType supervisor/stream 软件接线，再推进 Runtime factory、进程边界、加密流与浏览器集成 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
+| F2 — Linux 集成与产品验收 | 未开始 | systemd/cgroup/namespace/PTY/真实 CLI/重启恢复等平台行为与生产准备 | 真实 host 激活和新的架构决策仍需授权、非 Secret evidence 和恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
 
-F 的缺少证据不阻止互不依赖的软件工作，但它是整体产品完成的阻断项。
+Owner 已明确要求在 Mac 持续开发。F2 的缺少证据不阻止 F1 软件实现，但它是整体产品完成的阻断项。
 没有真实证据时不能将其标为已完成，也不能开放 plaintext fallback、generic
 shell/filesystem gateway 或通过重命名消除 gate。
 
@@ -52,7 +53,7 @@ C 已由 PR #59 交付：head `3e0e7a921e008d9c6b5198d37b8254fbee174068`，19/19
 
 D 已由 PR #60 交付：head `9be95b10e57a3daa3690205d6c2ffad8da74424d`，19/19 exact-head checks `SUCCESS`；实际 merge `6972f0dba907afd9741c2dc3584f431ee32765ed`（2026-09-03T05:27:15Z）。
 
-E 已由 PR #61 交付：head `0c894ff52f49793f599eb33c4b92b8223e6109b3`，19/19 exact-head checks `SUCCESS`；实际 merge `35191eeaf858041cf5c0767dc1579b67690444ec`（2026-09-03T05:47:57Z）。候选包独立扫描及4份WAW文档包含性检查已通过。当前只做最终状态回写，F仍未开始。
+E 已由 PR #61 交付：head `0c894ff52f49793f599eb33c4b92b8223e6109b3`，19/19 exact-head checks `SUCCESS`；实际 merge `35191eeaf858041cf5c0767dc1579b67690444ec`（2026-09-03T05:47:57Z）。候选包独立扫描及4份WAW文档包含性检查已通过。随后 Owner 澄清在 Mac 持续开发，F1 已开始；F2 真实平台验收单独跟踪。
 
 ## 多智能体职责与写入边界
 
@@ -85,3 +86,10 @@ E 已由 PR #61 交付：head `0c894ff52f49793f599eb33c4b92b8223e6109b3`，19/19
 决定仓库事实；代码和实际测试决定实现状态；`CURRENT_STATE.md` 是快照。
 `WEB_AGENT_WORKSPACE_ARCHITECTURE_AUTHORIZATION_REVIEW.md` 保留历史提案与
 安全契约，不改写其历史批准状态。现行阶段入口为 `NEXT_ACTION.md`。
+
+## Development-platform clarification
+
+此前将整个剩余 F 阶段等待 Linux 主机的表述过宽。Mac 是当前开发平台，
+Linux 是目标部署/验收平台。可在 Mac 编写与验证的 Runtime、协议、浏览器及
+恢复逻辑继续实现；真实 host 激活与平台能力声明仍逐项取证。A–E 的已交付
+范围与历史证据保留，但不代表所有剩余软件都已完成。

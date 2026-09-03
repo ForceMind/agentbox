@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T05:52:08Z"
+verified_at_utc: "2026-09-03T06:28:15Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -10,8 +10,8 @@ repository: "ForceMind/agentbox"
 ## Live baseline
 
 - Verified `HEAD` / `main` / `origin/main` / merge-base at snapshot-branch start:
-  `35191eeaf858041cf5c0767dc1579b67690444ec`.
-- Active documentation branch: `codex/waw-final-state-snapshot`; starting tree clean.
+  `dfc788a29623de5b5a9c3230855af1ee7aed2953`.
+- Active implementation branch: `codex/waw-codex-supervisor`; starting tree clean.
 - Historical Draft PR #42 remains open and outside this task's write scope.
 - This file records observed commits; it cannot predict its own future merge
   SHA. Live Git/GitHub always overrides the snapshot.
@@ -65,16 +65,32 @@ were terminal SUCCESS, separately from its reviewed PR-head evidence.
 - `scripts/check-release-artifact.py` with exact source/ref: exit `0`, 81 archive members, 2757 nested wheel members, 27510853 bytes, no source maps/canaries; all four required WAW docs present. Download and read-only validation only, no install/execution.
 - Earlier merged implementation artifact and complete scope are recorded in `../WAW_SOFTWARE_READINESS.md`. Artifact integrity is not publisher authenticity; the candidate is unsigned.
 
-## Remaining blocker / next action
+## Current action after Owner clarification
 
-**The complete interactive product is not finished.** Stage F remains not
-started: explicit real-transport Architecture/Owner scope, an authorized isolated
-Linux target, and attributable non-secret host evidence are missing. The Owner
-was asked for the target/SSH alias; no target was supplied during this snapshot.
+Owner explicitly clarified that development continues on this Mac. The missing
+Linux host is a gate for actual activation/qualification, not a blanket block
+on software implementation. The prior blocked status has been superseded for
+Mac development; A–E remain historical delivered increments.
 
-Real fixed CLI/PTY execution, Noise/WebSocket/browser terminal, legacy process
-interlocks, Runtime/API restart and reboot recovery still require implementation
-and qualification. Current UI remains NOT ADMITTED. Earlier MVP OpenCloudOS
-qualification does not qualify WAW. No real Provider credentials, Runtime HOME,
-Secret handling, host activation, release tag/publication or production support
-promise was used or authorized by this task. See `NEXT_ACTION.md`.
+Current branch implements shared Claude/Codex supervisor/stream integration,
+retains strict concrete command types and validates both AgentTypes locally.
+Real Runtime/PTY/Noise/WebSocket deployment and production readiness are not
+claimed. Next scope is in `NEXT_ACTION.md`.
+
+Live preflight from `dfc788a29623de5b5a9c3230855af1ee7aed2953`: clean tree,
+HEAD/main/origin/main/merge-base equal, six exact-main workflows SUCCESS, only
+historical Draft PR #42 open. Git fetch/GitHub reads exited 0.
+
+## Mac follow-up local evidence
+
+- Shared concrete Claude/Codex command union, full supervisor binding checks,
+  command revalidation and terminal stream cleanup/replay fences implemented.
+- `.venv/bin/python -m pytest -q tests/unit/test_waw_command.py tests/unit/test_waw_codex_command.py tests/unit/test_waw_supervisor.py tests/unit/test_waw_stream_contract.py tests/unit/test_waw_transport.py tests/unit/test_waw_lifecycle.py tests/integration/test_waw_workspace_api.py`: exit 0, 135 passed.
+- `ruff check apps packages tests migrations`, `black --check ...` and
+  `mypy --platform linux apps/api apps/worker apps/cli packages tests`: exit 0;
+  mypy checked 189 source files.
+- Independent read-only review: PASS for this increment, including positive
+  cleanup proof, rejection of post-close replay and explicit unsupported real
+  Codex tmux handling. Targeted reviewer tests passed (55).
+- No frontend behavior, CLI argv, real host, credential or production activation
+  changed. Mac development evidence is not Linux-host qualification.

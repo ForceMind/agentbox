@@ -82,3 +82,21 @@ mobile keyboard/真实网络中断的 terminal E2E。现有 `AttachmentAuthority
 所有真实 host、transport、recovery 操作须经过现有独立证据与授权要求。
 阶段实际命令、结果和 merge read-back 见 `project/CURRENT_STATE.md`，待验收项
 见 `project/NEXT_ACTION.md`。
+
+## Shared supervisor follow-up on Mac
+
+The supervisor now accepts only the concrete `WAWClaudeCommand` and
+`WAWCodexCommand` classes through a closed `WAWManagedCommand` union. The actual
+class fixes AgentType; the complete durable stop binding and marker must match.
+Commands are revalidated before transport start, including executable drift;
+unknown objects/subclasses do not become a generic command gateway.
+
+Both AgentTypes exercise the same input/output/resize/detach/reconnect/exact
+Stop software path. Closed/error stream bridges reject subsequent control or
+replay; active CLOSE first obtains positive attachment cleanup proof and leaves
+the workspace alive. An unconfirmed cleanup retains the writer reservation.
+
+The existing real tmux adapter is still Claude-only and rejects Codex before
+any tmux I/O. Current command argv values are prototype contracts, not proof of
+the final qualified bootstrap/vendor invocation. Mac tests and Linux CI validate
+software behavior; actual host/CLI qualification remains separate.

@@ -18,12 +18,11 @@
 
 ## In Progress
 
-- Final evidence snapshot and CI/merge read-back; software stages A–E are complete.
+- Mac development resumed per Owner clarification: shared Claude/Codex supervisor and stream lifecycle integration. A–E describe completed increments, not all remaining software.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- Stage F: real stream/Noise/PTY/browser, isolated CLI/host qualification and
-  product acceptance. This stage has missing authorization/evidence gates;
-  it is not implemented or validated by synthetic software stages.
+- F1: continue remaining software implementation on Mac and validate through local tests plus Linux CI.
+- F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and product acceptance remain independently gated.
