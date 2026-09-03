@@ -34,9 +34,11 @@
 
 - Incremental UTF-8/VT tokenizer foundation merged in PR #71 with 19/19 exact-head checks successful; complete browser terminal/controller remains unfinished.
 
+- Accepted application cryptography merged in PR #73 with 19/19 exact-head checks; full-vector interop and 62 native/normal browser cases passed.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 Python/Web implementation passed independent review, interop and native tests and awaits CI/merge; R5 is in parallel implementation/review; full R9/R10 decisions and host evidence remain separately tracked.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 wire and R6 staged admission passed independent review and await separate delivery; R7 Runtime stream implementation is active; full R9/R10 decisions and host evidence remain separately tracked.
 
 ## In Progress
 

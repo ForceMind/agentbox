@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T11:34:38Z"
+verified_at_utc: "2026-09-03T12:38:16Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -14,12 +14,12 @@ repository: "ForceMind/agentbox"
   only historical Draft #42 open. Fetch/GitHub reads exited 0.
 - Owner explicitly delegated software goals/plans/architecture decisions. Coding
   Agent accepts the reviewed full protocol supplement; the prior R3 approval
-  blocker is resolved. Current branch: `codex/waw-application-crypto`.
-- R4 Python/Web contexts and actual application profiles are implemented and
-  independently reviewed. Full Python/Node interop and native Chromium tests
-  passed; exact-head CI/merge are pending. R5 wire schemas passed independent review and await their separate
-  integration/delivery; R6 staged admission is in progress. Both are excluded
-  from this stage's commit.
+  blocker is resolved. Current branch: `codex/waw-wire-profiles`.
+- Latest stage baseline: `HEAD/main/origin/main/merge-base` at
+  `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064`; six exact-main workflows SUCCESS.
+  R3/R4 merged. R5 code, interoperability and independent review passed and await
+  CI/merge. R6 is reviewed; R7 implementation is active. Their concurrent edits
+  are excluded from the R5 commit.
 - PR #72 documentation head `cd402e69d0550fbc4c7c103894ebaae8f7bae2a4` merged as
   `c0a10c78fe1dd86922172f4c433fa1ba976eb017` at `2026-09-03T10:42:41Z` after
   19/19 exact-head checks; merge read-back/fetch/fast-forward exited 0.
@@ -58,6 +58,7 @@ repository: "ForceMind/agentbox"
 | R10.1 — executable provenance | #69 | `9147cace5b554205dfecc20cf8bfb643d4c46761` | `9529da6d5c110b7a09d5972dfa0db5e012727451` | 19/19 SUCCESS |
 | R2 — auth timing diagnostic | #70 | `eca03e47849b12449bb2ab4aec8dfdc001ef13dd` | `f7ef3c936529b19838cd087dc9e232397f1e304d` | 19/19 SUCCESS |
 | R9.1 — browser tokenizer | #71 | `a57764ae0e1f3fc962bc4d52e3610373ef4226ff` | `3f2e3a2de4b0482629f5f9a296d5db757f989876` | 19/19 SUCCESS |
+| R3/R4 — accepted application crypto | #73 | `df943ecbf37b6c748dc1af73f4270017a3d9f6dc` | `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -387,7 +388,31 @@ PROPOSED architecture status are preserved.
 - Root isolated full E2E: exit 0, 62 passed in 45.3s, including new native
   Chromium desktop/mobile application crypto tests. Earlier attempt stopped at
   a temporary in-progress R5 test compile error, not a browser test failure.
-- R3/R4 await exact-head CI/merge. R5 repaired hostile numeric exponent,
+- R3/R4 merged at `2026-09-03T11:54:23Z` after 19/19 exact-head checks;
+  merge read-back/fetch/main fast-forward exited 0. R5 repaired hostile numeric exponent,
   failure-state/order, paired-source and Python sequence synchronization findings;
   independent R5 review passed with 276 Python / 274 Web cases. Its software
   delivery remains separate; no product admission is claimed.
+
+## R5 full wire evidence
+
+- All 27 types / 50 direction profiles, strict exact scalar/JSON/binary codecs,
+  four-leg observed ordering, byte-preserving key/opaque relay and bounded FIFO
+  source witnesses are implemented. Python state changes use RLock; no grant,
+  decryption, ACK lifecycle or actual network ownership is implied.
+- Independent sol review closed extreme-number exception escape, early/regressing
+  STATE, premature browser failure, unsourced/altered relay and concurrent hop
+  acceptance findings. See [WAW_WIRE_CONTRACT](../WAW_WIRE_CONTRACT.md).
+- Python 279 / Web 274 cases passed; independent schema/negative/boundary review
+  passed. Python/Web interop covers 50 controlled-clock structural profiles and
+  four actual-clock probes, preserving raw key JSON and immutable AWCE bytes.
+- Actual-clock combined R6/API/ticket/wire tests initially failed under parser GC
+  or cold timestamp work. Moving the number-token type to module scope and using
+  direct strict calendar validation resolved both causes without changing GC or
+  the 5 ms budget. Final combined gate: exit 0, 496 passed.
+- Independent fresh-process measurements: 6/6 first ADMITTED decodes passed,
+  0.594–1.141 ms CPU; 5,000 mixed decodes had zero failures, P95 0.185 ms,
+  maximum 1.430 ms. Injected >6 ms CPU work remains rejected. These are local
+  measurements, not universal latency guarantees.
+- R5 awaits exact-head CI/merge. R6 passed independent review after four fixes;
+  30s stale/60s grace and complete active lifecycle remain R7/R8 dependencies.

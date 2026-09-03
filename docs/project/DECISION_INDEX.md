@@ -50,3 +50,5 @@
 - `WAW-STREAM-SUPPLEMENT-ACCEPTED`: the complete protocol supplement is accepted by the Coding Agent under the Owner's explicit 2026-09-03 software decision delegation. It resolves key/context, verification, ACK, drop, limit and signed-pin contradictions. Prior independent review passed; implementation is R4/R5, and host/production evidence remains separate.
 
 - `SOFTWARE-DECISION-DELEGATION-2026-09-03`: Owner explicitly permits the Coding Agent to decide goals, plans and software architecture for the ongoing objective. See GOVERNANCE for scope; resolve software choices with evidence/review without repeatedly requesting the same authorization.
+
+- `WAW-WIRE-IMPLEMENTATION-2026-09-03`: under delegated software authority, the [wire contract](../WAW_WIRE_CONTRACT.md) records precise early-failure precedence, exact numeric/version handling, retry limits, bounded opaque-source pairing and synchronized sequence acceptance. Independent review and actual parser-budget evidence are recorded separately from authority effects.

@@ -11,14 +11,13 @@ blocker is resolved. Do not request the same software approval again.
 ## Active implementation
 
 - Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
-- R3: record delegated acceptance and keep implementation/evidence distinct.
-- R4: deliver reviewed strict Python/Web contexts and actual fixed application handshake,
-  two n=0 confirmations, AWCE n>=1 channels, exact pin/context/cursor binding,
-  cancellation/deadline/destruction and cross-language verification. Two sol
-  workers own separate Python and Web files; root owns integration/docs/interop.
-- R5: complete full direction-specific schemas/four-leg sequencing and repair
-  independent review findings. Reuse R4 pure context and ABWS/AWCE framing; do
-  not stage unreviewed R5 work with the R4 delivery.
+- R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.
+- R5: deliver reviewed full schemas/four-leg trace and cross-language checks.
+  Cold-start/GC parser failures are fixed without relaxing the 5 ms budget.
+- R6: deliver reviewed staged authority/coordinator with ticket burn, atomic
+  publication, reader handoff and exact cleanup/Audit fences.
+- R7: implement the Runtime encrypted stream/server and fixed integration seams;
+  reuse real R4 crypto and R5 codecs, not the synthetic plaintext bridge.
 - After R4/R5, continue R6 staged authority, R7 Runtime stream, R8 API relay,
   full R9 browser terminal/trust and R10 execution profile, then R11 integration.
   Resolve remaining software contracts with documented rationale and independent
