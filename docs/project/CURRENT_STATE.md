@@ -173,3 +173,22 @@ snapshot. That is an architecture clarification under GOVERNANCE, not a Linux
 host prerequisite for ordinary Mac development. After approval, continue the
 application crypto, ciphertext-only relay, staged admission, browser controls
 and remaining CLI/host acceptance in the existing plan.
+
+## Native browser follow-up in the delivery PR
+
+- Added `apps/web/e2e/noise-core.spec.ts`, reusing the actual core and pinned
+  vector in native browser WebCrypto. No duplicated crypto implementation or
+  product route/UI activation. Trace/video/screenshots disabled.
+- Local engine: Chromium `151.0.7922.34`, desktop/mobile profiles. Both crypto
+  tests passed, including the exact six messages/hash, nonextractable private
+  keys, bidirectional AD and original-counter tamper/retry rejection.
+- `node scripts/run-e2e.mjs`: exit 1, 56 passed and 4 existing 5-second
+  authentication waits timed out (three Dashboard waits, one credentials alert).
+  This is not recorded as a full local E2E pass. The new native crypto cases both
+  passed in that run; root cause of local timing remains unproven. Linux CI must
+  pass the complete updated suite before merge.
+- Native test Prettier, ESLint and TypeScript checks passed. The worker's static
+  preview on port 4173 was stopped; the isolated harness cleaned its own API,
+  preview and temporary data after the run.
+- The application byte proposal also passed independent read-only review as a
+  coherent clarification. Its status remains PROPOSED pending Owner acceptance.
