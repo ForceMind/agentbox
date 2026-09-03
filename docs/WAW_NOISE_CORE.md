@@ -1,6 +1,6 @@
 # Fixed Noise NX software core
 
-Status: implemented and independently reviewed on the feature branch; exact-head CI pending.
+Status: merged in PR #65 as `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`, after independent review and 19/19 successful exact-head CI checks.
 This is a cryptographic core, not an admitted AgentBox terminal channel.
 
 ## Scope and boundaries
@@ -71,3 +71,27 @@ AWCE context/envelope validation, API ciphertext-only admission/relay, Runtime
 stream socket composition, browser terminal integration, exact disconnect cleanup
 and real CLI/PTY/Linux qualification. The production WebSocket route remains
 fail closed until its complete authorized implementation and evidence are ready.
+
+## Native Chromium verification
+
+`apps/web/e2e/noise-core.spec.ts` compiles the actual TypeScript source into the
+browser page and invokes native `window.crypto.subtle` in a secure localhost
+context. The runner uses Node only to prepare published fixture key encodings;
+Node WebCrypto is not substituted for the browser implementation. The test
+compares both handshake messages, four transport ciphertexts and both handshake
+hashes against the same pinned fixture, checks private-key nonextractability,
+exercises nonempty AD in both directions and rejects tamper followed by the
+original valid ciphertext at the same counter. Trace, video and screenshots are
+explicitly disabled; only bounded result markers and browser-version metadata
+are reported. Cipher/handshake references are destroyed after the checks.
+
+Local Chromium `151.0.7922.34` passed the `desktop-chromium` and
+`mobile-chromium` profiles. The full isolated harness run containing these tests
+returned exit 1: 56 passed, 4 existing authentication waits timed out at 5 seconds.
+Both new crypto cases passed. The failures were three Dashboard-after-login
+waits and one invalid-credentials alert wait; they occurred before those tests'
+subsequent business assertions. No assertion or timeout was relaxed. These are
+observed local failures, not a proven new runtime regression or a full local E2E
+PASS. The supported Linux CI runs the complete updated suite as the merge gate.
+Mobile here is a Chromium device profile, not physical-device/IME qualification.
+The harness stopped its temporary API/preview and removed its temporary data.

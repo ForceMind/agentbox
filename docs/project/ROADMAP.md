@@ -20,9 +20,11 @@
 
 - Concrete Runtime executor, formal Project mapping, read-only probes and failed-start recovery merged in PR #64 with 19/19 exact-head checks successful.
 
+- Fixed Noise NX Python/WebCrypto cores, pinned independent vectors and two-role interoperability merged in PR #65 with 19/19 exact-head checks successful.
+
 ## In Progress
 
-- Mac development resumed per Owner clarification: fixed Noise NX Python/WebCrypto cores, independent vectors and interoperability. A–E describe completed increments, not all remaining software.
+- Mac remains the development platform. F1.1/F1.2/F1.3 are complete software increments; the overall terminal product is incomplete. Application profile wire-byte clarification is proposed and awaits Owner confirmation.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

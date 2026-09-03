@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T07:22:50Z"
+verified_at_utc: "2026-09-03T07:41:11Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,11 +9,9 @@ repository: "ForceMind/agentbox"
 
 ## Live baseline
 
-- Observed `origin/main`: `624b34b656dbf239dbc56fa79d216db7d17a349b`.
-- Active implementation branch: `codex/waw-encrypted-channel`, created from
-  PR #64 head and normally merged with the read-back main; no history rewrite.
-- Local `main` still points to `dfc788a29623de5b5a9c3230855af1ee7aed2953`
-  while work continues on the feature branch.
+- Verified `HEAD` / `main` / `origin/main` / merge-base at delivery-branch start:
+  `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`; working tree clean.
+- Delivery snapshot branch: `codex/waw-mac-delivery-state`.
 - Historical Draft PR #42 remains open and outside this task's write scope.
 - This file records observed commits; it cannot predict its own future merge
   SHA. Live Git/GitHub always overrides the snapshot.
@@ -28,6 +26,7 @@ repository: "ForceMind/agentbox"
 | E — software readiness | #61 | `0c894ff52f49793f599eb33c4b92b8223e6109b3` | `35191eeaf858041cf5c0767dc1579b67690444ec` | 19/19 SUCCESS |
 | F1.1 — shared supervisor | #63 | `c78cb92a5afe8056ab44a1cc4e8a6bea3074e184` | `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e` | 19/19 SUCCESS |
 | F1.2 — Runtime composition | #64 | `ef8641bd409bbb6d17db707370de66f552bf4640` | `624b34b656dbf239dbc56fa79d216db7d17a349b` | 19/19 SUCCESS |
+| F1.3 — fixed Noise core | #65 | `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7` | `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -78,9 +77,9 @@ Mac development; A–E remain historical delivered increments.
 
 PR #63 delivered shared Claude/Codex supervisor/stream integration.
 PR #64 delivered the concrete lifecycle executor, read-only process probe,
-two-phase attachment boundary and failed-start cleanup/restart fencing. Current
-branch implements fixed Noise NX Python/WebCrypto cores and their interoperability
-checks; application encoding remains a separate pending decision.
+two-phase attachment boundary and failed-start cleanup/restart fencing. PR #65 delivered
+fixed Noise NX Python/WebCrypto cores and their interoperability checks; application
+encoding remains a separate pending decision.
 Real Runtime/PTY/Noise/WebSocket deployment and production readiness are not
 claimed. Next scope is in `NEXT_ACTION.md`.
 
@@ -123,10 +122,10 @@ F1.2 final local validation before PR CI:
   two binding cancellation/path-drift regressions. Final executor test file:
   14 passed, including those regressions. All transports/processes are synthetic.
 - Six exact-main workflows for `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`
-  completed successfully; this is separate from this branch's pending PR CI.
+  completed successfully; this is separate from PR #63's reviewed-head CI.
 
 
-## F1.3 fixed Noise core in progress
+## F1.3 merged fixed Noise core
 
 - PR #64 merge read-back: `624b34b656dbf239dbc56fa79d216db7d17a349b`,
   merged at `2026-09-03T07:09:03Z`; GitHub merge/fetch exited 0. Final independent
@@ -156,4 +155,40 @@ F1.3 final local validation before PR CI:
 - Web Vitest: exit 0, 129 passed; new core tests include paused AES/DH destroy, constructor digest destroy, malformed inputs, maximum boundaries, prologue mismatch and low-order peer rejection. Node WebCrypto evidence, not native-browser certification.
 - Web Prettier, ESLint, typecheck and production build: exit 0. No visible UI or admission route changed, so a new visual check is not applicable.
 - Ruff, Black, Linux-target mypy: exit 0; 202 formatted files, 194 typed files. Documentation link check: exit 0, 164 relative links. `git diff --check`: exit 0.
-- Core review and local tests complete; exact-head CI remains pending until the feature PR is checked. Application bytes, pins, encrypted relay, real CLI/PTY/host and production readiness remain unclaimed.
+- Core review, local tests and all 19 PR #65 exact-head CI checks completed successfully. Application bytes, pins, encrypted relay, real CLI/PTY/host and production readiness remain unclaimed.
+
+
+## Delivery read-back and next decision
+
+PR #65 merged at `2026-09-03T07:40:44Z`; GitHub merge, merge read-back,
+`git fetch origin --prune`, local main fast-forward and delivery-branch creation
+all exited 0. F1.1/F1.2/F1.3 have completed applicable software tests, independent
+reviews and exact-head CI/merge. This is not completion of the interactive
+terminal product or F2 host qualification.
+
+The next application-profile implementation is **未开始** pending the explicit
+byte-level decision in `WAW_ENCRYPTED_STREAM_DECISION.md`. Owner was asked to
+approve the concrete three-rule proposal; no approval has been received at this
+snapshot. That is an architecture clarification under GOVERNANCE, not a Linux
+host prerequisite for ordinary Mac development. After approval, continue the
+application crypto, ciphertext-only relay, staged admission, browser controls
+and remaining CLI/host acceptance in the existing plan.
+
+## Native browser follow-up in the delivery PR
+
+- Added `apps/web/e2e/noise-core.spec.ts`, reusing the actual core and pinned
+  vector in native browser WebCrypto. No duplicated crypto implementation or
+  product route/UI activation. Trace/video/screenshots disabled.
+- Local engine: Chromium `151.0.7922.34`, desktop/mobile profiles. Both crypto
+  tests passed, including the exact six messages/hash, nonextractable private
+  keys, bidirectional AD and original-counter tamper/retry rejection.
+- `node scripts/run-e2e.mjs`: exit 1, 56 passed and 4 existing 5-second
+  authentication waits timed out (three Dashboard waits, one credentials alert).
+  This is not recorded as a full local E2E pass. The new native crypto cases both
+  passed in that run; root cause of local timing remains unproven. Linux CI must
+  pass the complete updated suite before merge.
+- Native test Prettier, ESLint and TypeScript checks passed. The worker's static
+  preview on port 4173 was stopped; the isolated harness cleaned its own API,
+  preview and temporary data after the run.
+- The application byte proposal also passed independent read-only review as a
+  coherent clarification. Its status remains PROPOSED pending Owner acceptance.

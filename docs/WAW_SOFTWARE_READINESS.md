@@ -132,7 +132,8 @@ are recorded in `WAW3_RECOVERY_CONTRACTS.md`; the overall product remains incomp
 
 ## Fixed Noise core follow-up
 
-The next software increment implements the existing fixed Noise NX revision-34
+PR #65 (merge `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269`, 19/19 successful
+exact-head checks) implements the existing fixed Noise NX revision-34
 core in Python and WebCrypto, with a pinned independent Noise-C vector and
 cross-language interoperability in CI. Independent state-machine review passed;
 local Python/Node evidence does not qualify a native browser or real Runtime.
