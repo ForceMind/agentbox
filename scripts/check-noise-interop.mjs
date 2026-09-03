@@ -133,11 +133,19 @@ async function exchange(core, browserRole) {
       const inbound = await peer.request({ action: 'encrypt' });
       assert.equal(new TextDecoder().decode(await transport.receive.decrypt(bytes(inbound.ciphertext), ad)), 'synthetic Python-to-WebCrypto input');
     }
-    const tampered = await transport.send.encrypt(text('synthetic WebCrypto-to-Python input'), ad);
+    const original = await transport.send.encrypt(text('synthetic WebCrypto-to-Python input'), ad);
+    const tampered = original.slice();
     tampered[tampered.length - 1] ^= 1;
     assert.equal((await peer.request({ action: 'decrypt', ciphertext: hex(tampered) })).rejected, true);
-    const retry = await transport.send.encrypt(text('synthetic WebCrypto-to-Python input'), ad);
-    assert.equal((await peer.request({ action: 'decrypt', ciphertext: hex(retry) })).rejected, true);
+    // Retry the valid ciphertext at the exact failed counter. Advancing to a
+    // new counter would fail even if the peer incorrectly kept its key alive.
+    assert.equal((await peer.request({ action: 'decrypt', ciphertext: hex(original) })).rejected, true);
+    const inbound = await peer.request({ action: 'encrypt' });
+    const validInbound = bytes(inbound.ciphertext);
+    const badInbound = validInbound.slice();
+    badInbound[badInbound.length - 1] ^= 1;
+    await assert.rejects(transport.receive.decrypt(badInbound, ad), core.NoiseNXError);
+    await assert.rejects(transport.receive.decrypt(validInbound, ad), core.NoiseNXError);
     assert.equal((await peer.request({ action: 'destroy' })).ok, true);
   } finally {
     transport?.destroy();
