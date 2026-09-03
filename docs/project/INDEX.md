@@ -27,3 +27,5 @@
 - [Browser tokenizer foundation](../WAW_BROWSER_TOKENIZER.md): incremental UTF-8/VT typed tokens, independent limits, explicit failure boundary and remaining controller/renderer contracts.
 
 - [WAW application cryptography](../WAW_APPLICATION_CRYPTO.md): exact implemented handshake/channel, deadline/publication rules, independent vectors/interop and native-browser evidence.
+
+- [Full WAW wire profiles](../WAW_WIRE_CONTRACT.md): complete direction schemas, exact-byte relay/trace, failure/retry decisions, parser budgets and measured verification.

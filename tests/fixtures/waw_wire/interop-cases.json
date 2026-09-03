@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "source": "R5 closed direction allowlists in waw_wire.py and wawWire.ts",
+  "profiles": [
+    ["browser-to-api", 1], ["browser-to-api", 3], ["browser-to-api", 5], ["browser-to-api", 9],
+    ["browser-to-api", 11], ["browser-to-api", 12], ["browser-to-api", 13], ["browser-to-api", 15],
+    ["api-to-browser", 4], ["api-to-browser", 6], ["api-to-browser", 8], ["api-to-browser", 10],
+    ["api-to-browser", 14], ["api-to-browser", 16], ["api-to-browser", 17], ["api-to-browser", 18],
+    ["api-to-browser", 19], ["api-to-browser", 20], ["api-to-browser", 21], ["api-to-browser", 26], ["api-to-browser", 27],
+    ["api-to-runtime", 2], ["api-to-runtime", 3], ["api-to-runtime", 5], ["api-to-runtime", 9],
+    ["api-to-runtime", 11], ["api-to-runtime", 12], ["api-to-runtime", 13], ["api-to-runtime", 14],
+    ["api-to-runtime", 15], ["api-to-runtime", 20], ["api-to-runtime", 22], ["api-to-runtime", 24],
+    ["runtime-to-api", 4], ["runtime-to-api", 6], ["runtime-to-api", 7], ["runtime-to-api", 10],
+    ["runtime-to-api", 12], ["runtime-to-api", 13], ["runtime-to-api", 14], ["runtime-to-api", 16],
+    ["runtime-to-api", 17], ["runtime-to-api", 18], ["runtime-to-api", 19], ["runtime-to-api", 20],
+    ["runtime-to-api", 21], ["runtime-to-api", 23], ["runtime-to-api", 25], ["runtime-to-api", 26], ["runtime-to-api", 27]
+  ]
+}
