@@ -122,7 +122,7 @@ F1.2 final local validation before PR CI:
   two binding cancellation/path-drift regressions. Final executor test file:
   14 passed, including those regressions. All transports/processes are synthetic.
 - Six exact-main workflows for `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`
-  completed successfully; this is separate from this branch's pending PR CI.
+  completed successfully; this is separate from PR #63's reviewed-head CI.
 
 
 ## F1.3 merged fixed Noise core
