@@ -31,6 +31,10 @@ from agentbox_runtime.waw_cgroup_attestation_store import (
     WAWCgroupAttestationStoreError,
 )
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
+from agentbox_runtime.waw_encrypted_stream import (
+    EncryptedStreamError,
+    WAWEncryptedAttachmentService,
+)
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
     WAWWorkspaceAttestationStore,
@@ -237,6 +241,19 @@ class WAWLifecycleRegistry:
         self._recovered_generation_floor: dict[str, int] = {}
         self._request_cache: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
         self._lock = asyncio.Lock()
+        self._encrypted_attachments: WAWEncryptedAttachmentService | None = None
+        self._encrypted_operations: set[asyncio.Task[dict[str, Any]]] = set()
+
+    def configure_encrypted_attachments(self, service: WAWEncryptedAttachmentService) -> None:
+        """Install the real fixed service before serving; never replace live wiring."""
+        if (
+            type(service) is not WAWEncryptedAttachmentService
+            or service.registry.runtime_epoch != self._runtime_epoch
+            or self._encrypted_attachments is not None
+            or self._attachments
+        ):
+            raise ValueError("encrypted attachment service cannot be installed")
+        self._encrypted_attachments = service
 
     async def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         """Dispatch one decoded control request; all mutations are serialized."""
@@ -252,7 +269,10 @@ class WAWLifecycleRegistry:
                 request, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             )
             cached = self._request_cache.get(request_id)
-            if cached is not None:
+            if cached is not None and not (
+                self._encrypted_attachments is not None
+                and action in {_BIND, _ATTACH_PREPARE, _ATTACH_DETACH}
+            ):
                 if cached[0] != fingerprint:
                     raise WAWControlDispatchError("PROTOCOL_INVALID")
                 return dict(cached[1])
@@ -261,22 +281,62 @@ class WAWLifecycleRegistry:
             elif action == _REGISTER:
                 response = await self._register(request)
             elif action == _ATTACH_PREPARE:
-                response = self._attach_prepare(request)
+                response = (
+                    self._attach_prepare(request)
+                    if self._encrypted_attachments is None
+                    else await self._encrypted_call(self._attach_prepare, request)
+                )
             elif action == _ATTACH_DETACH:
-                response = self._attach_detach(request)
+                response = (
+                    self._attach_detach(request)
+                    if self._encrypted_attachments is None
+                    else await self._encrypted_call(self._attach_detach, request)
+                )
             elif action in {_START, _STOP, _STATUS, _RECONCILE}:
                 response = await self._lifecycle(request, action)
             else:
                 raise WAWControlDispatchError("PROTOCOL_INVALID")
+            # A real PREPARED bearer is owned only by the capability authority;
+            # never retain it in the generic request cache past burn/expiry.
+            if self._encrypted_attachments is not None and action in {
+                _ATTACH_PREPARE,
+                _ATTACH_DETACH,
+            }:
+                return response
             self._request_cache[request_id] = (fingerprint, dict(response))
             self._request_cache.move_to_end(request_id)
             while len(self._request_cache) > 1024:
                 self._request_cache.popitem(last=False)
             return response
 
+    async def _encrypted_call(
+        self, operation: Callable[[dict[str, Any]], dict[str, Any]], request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Keep bounded synchronous PTY/probe work off the control event loop.
+
+        Cancellation never cancels a worker or frees its slot while effects may
+        continue. Registry/supervisor ownership remains the exact reuse fence.
+        """
+        if len(self._encrypted_operations) >= 8:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE")
+        task = asyncio.create_task(asyncio.to_thread(operation, request))
+        self._encrypted_operations.add(task)
+        task.add_done_callback(self._encrypted_done)
+        return await asyncio.shield(task)
+
+    def _encrypted_done(self, task: asyncio.Task[dict[str, Any]]) -> None:
+        self._encrypted_operations.discard(task)
+        with suppress(BaseException):
+            task.result()
+
     def _bind(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self._encrypted_attachments is not None:
+            try:
+                self._encrypted_attachments.bind_authority(request)
+            except EncryptedStreamError as exc:
+                raise WAWControlDispatchError(exc.code) from None
         epoch = request["api_authority_epoch"]
-        nonce = request["authority_nonce"]
+        nonce = hashlib.sha256(request["authority_nonce"].encode("ascii")).hexdigest()
         current = self._authority
         if current is not None and current != (epoch, nonce):
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
@@ -666,6 +726,11 @@ class WAWLifecycleRegistry:
             "LOGIN_REQUIRED",
         }:
             raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
+        if self._encrypted_attachments is not None:
+            try:
+                return self._encrypted_attachments.prepare(request)
+            except EncryptedStreamError as exc:
+                raise WAWControlDispatchError(exc.code) from None
         attachment_id = request["attachment_id"]
         try:
             if (
@@ -734,6 +799,11 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         if self._authority is not None and request["api_authority_epoch"] != self._authority[0]:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        if self._encrypted_attachments is not None:
+            try:
+                return self._encrypted_attachments.detach(request)
+            except EncryptedStreamError as exc:
+                raise WAWControlDispatchError(exc.code) from None
         current = self._attachments.get(request["attachment_id"])
         if current is None:
             raise WAWControlDispatchError("ATTACHMENT_STALE")

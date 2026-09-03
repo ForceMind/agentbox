@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T13:10:59Z"
+verified_at_utc: "2026-09-03T16:25:05Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -14,11 +14,15 @@ repository: "ForceMind/agentbox"
   only historical Draft #42 open. Fetch/GitHub reads exited 0.
 - Owner explicitly delegated software goals/plans/architecture decisions. Coding
   Agent accepts the reviewed full protocol supplement; the prior R3 approval
-  blocker is resolved. Current branch: `codex/waw-staged-admission`.
+  blocker is resolved. Current branch: `codex/waw-runtime-encrypted-stream`.
 - Latest stage baseline: `HEAD/main/origin/main/merge-base` at
-  `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6`. R5 merged after all 19 exact-head
-  checks; fetch/read-back/fast-forward exited 0. R3/R4 post-main six workflows
-  were SUCCESS. R6 is reviewed and being delivered; R7/R8 edits are excluded.
+  `a27621faca0e0d04b529b51993f98138496a75b5`. R6 merged after all 19 exact-head
+  checks; fetch/read-back/main fast-forward exited 0. R5 post-main six workflows
+  were SUCCESS. R6 post-main six workflows were subsequently read as SUCCESS.
+  Concurrent R7/R8 changes are retained on the R7 branch.
+- Resume preflight: HEAD/main/origin/main/merge-base remain that same R6 merge;
+  fetch and GitHub reads exited 0, all six exact-main workflows are SUCCESS and
+  only historical Draft #42 is open. R7/R8 and separate R9 work remain uncommitted.
 - PR #72 documentation head `cd402e69d0550fbc4c7c103894ebaae8f7bae2a4` merged as
   `c0a10c78fe1dd86922172f4c433fa1ba976eb017` at `2026-09-03T10:42:41Z` after
   19/19 exact-head checks; merge read-back/fetch/fast-forward exited 0.
@@ -59,6 +63,7 @@ repository: "ForceMind/agentbox"
 | R9.1 — browser tokenizer | #71 | `a57764ae0e1f3fc962bc4d52e3610373ef4226ff` | `3f2e3a2de4b0482629f5f9a296d5db757f989876` | 19/19 SUCCESS |
 | R3/R4 — accepted application crypto | #73 | `df943ecbf37b6c748dc1af73f4270017a3d9f6dc` | `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064` | 19/19 SUCCESS |
 | R5 — full wire profiles | #74 | `62d04adbfa775f3a14ab678c485093f15b1039ed` | `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6` | 19/19 SUCCESS |
+| R6 — staged admission | #75 | `679b2f71ec5917ead7695c3b20cb1118cb46cc76` | `a27621faca0e0d04b529b51993f98138496a75b5` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -432,6 +437,32 @@ PROPOSED architecture status are preserved.
 - The 30s stale/60s grace, idle/absolute lifetime, Runtime health, native controls,
   failed-attempt rate limits and real Audit/network adapters remain R7/R8 scope.
   Configured authority expiry is not a standalone live-input authorization proof.
-- R6 awaits its own exact-head CI/merge. R7 Runtime server/lifecycle and R8 native
-  WebSocket/API relay are being implemented in parallel; no complete terminal or
-  real-host qualification is claimed yet.
+- R6 merged at `2026-09-03T13:33:51Z` after 19/19 exact-head checks; normal
+  merge, read-back, fetch and local main fast-forward exited 0. Root final staged/
+  coordinator/ticket regression: exit 0, 164 passed; scoped lint/format/type passed.
+- R7 Runtime server/lifecycle and R8 native WebSocket/API relay are being
+  implemented in parallel; no complete terminal or real-host qualification is
+  claimed yet. See [Runtime stream scope](../WAW_RUNTIME_ENCRYPTED_STREAM.md).
+
+## R7/R8 current review checkpoint
+
+- R7 worker completed bounded failure profiles, health/ping checks at each live
+  permit, truthful non-exit STATE handling and preserved workspace fault fences.
+  Actual UDS regressions also repaired late OUTPUT after detach/exact Stop, with
+  socket publication tied to cleanup and the exact Runtime lease invalidator.
+- Latest R7 stream/server/supervisor/executor command: exit 0, 160 passed; all
+  ten owned files passed scoped lint/format/Linux-target type checks. Final
+  independent R7 re-review is pending, so R7 is not marked complete or merged.
+- R8 repairs cover terminal queue authorization, actual send guards, pending PING
+  deadlines and fresh browser-leg correlation IDs. Shared 128 partial slots /
+  8 MiB parser accounting and synchronous first-ciphertext-drop fencing remain
+  under final verification/review. No R8 PR-head CI or merge is claimed yet.
+- The R6 admission-negative integration seam is a separate uncommitted R8 change:
+  17 new tests pass; independent review closed both correlation and per-frame
+  revocation findings, with 26 focused coordinator/wire tests and direct replay.
+- The existing two Sol/high execution/review roles resumed after a model-service
+  interruption; unfinished checks were retained as unverified. A separate
+  Sol/ultra role is doing only the new R9 read-only plan under the updated working
+  agreement, with no execution delegation or file writes from that role.
+- The newly required visible-version plan is awaiting confirmation; the current
+  single source remains `0.3.0rc1`. No version bump or online deployment is claimed.

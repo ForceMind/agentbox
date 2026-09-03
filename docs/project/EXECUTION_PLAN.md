@@ -42,7 +42,7 @@ merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、mac
 | C — WAW-2 Codex integration | 已完成 | 在既有 substrate 上补齐 Project-scoped Codex API attachment 与 Web contracts；复用固定 CLI command contract，真实执行接线列入 F | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
 | D — Workspace metadata UX | 已完成 | 页面接通选择、精确查询、Start/exact Stop；Connect/Detach/input 随真实通道 gate 保持不可用，明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
 | E — 软件发布准备 | 已完成 | 完整 CI matrix、独立 Architecture/Security/Test 审查、限制和 release checklist、产物验证 | 所有检查 terminal；精确记录 artifact fingerprints 与未验证范围；依赖 B/C/D，不能标为生产就绪 |
-| F1 — Mac 持续实现 | 进行中 | F1.1 双 AgentType supervisor 已合并；F1.2 concrete executor/probe/cleanup 已合并；F1.3 Noise 核心、独立向量和双语言互通已合并；R0 登录并发修复已合并，R1 opaque framing 已合并；完整 wire/admission/trust 补充待 Owner 决策后继续应用接线 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
+| F1 — Mac 持续实现 | 进行中 | F1.1 双 AgentType supervisor 已合并；F1.2 concrete executor/probe/cleanup 已合并；F1.3 Noise 核心、独立向量和双语言互通已合并；R0 登录并发修复已合并，R1 opaque framing 已合并；完整补充已按明确软件决策委托接受，R4/R5/R6已交付，继续实际Runtime/API接线 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
 | F2 — Linux 集成与产品验收 | 未开始 | systemd/cgroup/namespace/PTY/真实 CLI/重启恢复等平台行为与生产准备 | 真实 host 激活和新的架构决策仍需授权、非 Secret evidence 和恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
 
 Owner 已明确要求在 Mac 持续开发。F2 的缺少证据不阻止 F1 软件实现，但它是整体产品完成的阻断项。
@@ -125,3 +125,5 @@ R3/R4 委托决策与实现进入交付：Python回归560、Web148、独立向�
 R3/R4 已由 PR #73 交付：head `df943ecbf37b6c748dc1af73f4270017a3d9f6dc`，19/19 SUCCESS；merge `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064`。R5 完整wire与性能修复复审PASS，R6 staged admission复审PASS；按阶段独立交付，R7正在实现。
 
 R5 已由 PR #74 合并（head `62d04adbfa775f3a14ab678c485093f15b1039ed`，19/19 SUCCESS；merge `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6`）。R6 已复审PASS并准备交付，R7/R8实际Runtime/API网络接线并行进行。
+
+R6 已由 PR #75 合并（head `679b2f71ec5917ead7695c3b20cb1118cb46cc76`，19/19 SUCCESS；merge `a27621faca0e0d04b529b51993f98138496a75b5`，`2026-09-03T13:33:51Z`）。R7补齐失败响应后独立审查，R8原生WebSocket/密文转发继续并行，真实产品验收保持单独证据边界。

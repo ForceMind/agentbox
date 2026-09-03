@@ -9,10 +9,11 @@ secret from a caller.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from enum import StrEnum
-from threading import RLock
+from threading import Lock, RLock
 from typing import Protocol
 
 from agentbox_core.waw import (
@@ -22,7 +23,7 @@ from agentbox_core.waw import (
     validate_positive_u64,
     validate_workspace_id,
 )
-from agentbox_core.waw_tickets import ActiveAttachment
+from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_managed_command import (
@@ -31,6 +32,69 @@ from agentbox_runtime.waw_managed_command import (
     validate_managed_command,
 )
 from agentbox_runtime.waw_pty import OutputReplay, OutputRing, PtyGeometry, validate_input
+
+
+class RuntimePublicationInvalidator:
+    """One exact Runtime lease's nonblocking publication shutdown hook.
+
+    It never acquires a registry/supervisor lock from its callback. A Stop that
+    wins before stream binding permanently fences a later bind as well.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._callback: Callable[[], bool] | None = None
+        self._bound = self._invalidated = False
+
+    def bind(self, callback: Callable[[], bool]) -> None:
+        with self._lock:
+            if self._bound:
+                raise ValueError("Runtime publication is already bound")
+            self._bound = True
+            self._callback = callback
+            invalidated = self._invalidated
+        if invalidated and callback() is not True:
+            raise RuntimeOperationError(
+                "WAW_STOP_UNCONFIRMED", "Publication shutdown is unconfirmed", category="conflict"
+            )
+
+    def invalidate(self) -> bool:
+        with self._lock:
+            self._invalidated = True
+            callback = self._callback
+        return callback is None or callback() is True
+
+
+@dataclass(frozen=True, repr=False)
+class RuntimeAttachmentLease:
+    """Runtime-only authority; deliberately contains no API Session identity."""
+
+    claims: AttachmentTuple
+    runtime_epoch: str
+    expires_at: float
+    current: Callable[[], bool] = field(repr=False, compare=False)
+    publication: RuntimePublicationInvalidator = field(
+        default_factory=RuntimePublicationInvalidator, repr=False, compare=False
+    )
+
+    @property
+    def attachment_id(self) -> str:
+        return self.claims.attachment_id
+
+    def active_at(self, now: float) -> bool:
+        return now < self.expires_at
+
+
+AttachmentLease = ActiveAttachment | RuntimeAttachmentLease
+
+
+@dataclass(frozen=True)
+class RuntimeAttachmentCleanupEvidence:
+    """Exact attach-child/PTY close evidence supplied by a qualified Runtime port."""
+
+    lease: RuntimeAttachmentLease
+    closed: bool
+    remaining_members: int
 
 
 class SupervisorState(StrEnum):
@@ -195,7 +259,8 @@ class WAWSupervisor:
         self._runtime_epoch = runtime_epoch
         self._ring = OutputRing(capacity_bytes=output_capacity_bytes)
         self._state = SupervisorState.ADMITTED
-        self._attachment: ActiveAttachment | None = None
+        self._attachment: AttachmentLease | None = None
+        self._runtime_pending: RuntimeAttachmentLease | None = None
         self._output_source: OutputSource | None = None
         self._lock = RLock()
 
@@ -252,9 +317,13 @@ class WAWSupervisor:
             self._state = evidence.state
             return self.snapshot()
 
-    def attach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
+    def attach(self, attachment: AttachmentLease) -> SupervisorSnapshot:
         with self._lock:
             self._check_attachment(attachment)
+            if self._runtime_pending is not None and self._runtime_pending is not attachment:
+                raise RuntimeOperationError(
+                    "WORKSPACE_WRITER_BUSY", "Runtime writer is reserved", category="conflict"
+                )
             if self._state not in {SupervisorState.RUNNING, SupervisorState.DETACHED}:
                 raise RuntimeOperationError(
                     "WAW_ATTACH_INVALID", "Workspace is not attachable", category="conflict"
@@ -315,6 +384,107 @@ class WAWSupervisor:
             self._state = SupervisorState.RUNNING
             return self.snapshot()
 
+    @contextmanager
+    def runtime_attachment_guard(
+        self,
+        attachment: RuntimeAttachmentLease,
+        *,
+        require_writer: bool = False,
+        require_running: bool = True,
+    ) -> Iterator[RuntimeProbeEvidence]:
+        """Hold the process/state/binding/lease fence through caller publication.
+
+        Only the exact Runtime-created reservation may enter. Probe is mandatory;
+        legacy transports without exact read-only evidence fail closed.
+        """
+        with self._lock:
+            self._check_attachment(attachment)
+            if self._runtime_pending is not attachment:
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_STALE", "Runtime reservation is stale", category="conflict"
+                )
+            if require_writer and self._attachment is not attachment:
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_REQUIRED", "Writer is not committed", category="conflict"
+                )
+            evidence = self.probe()
+            if require_running and (
+                evidence.state is not RuntimeProbeState.RUNNING
+                or self._state not in {SupervisorState.RUNNING, SupervisorState.DETACHED}
+            ):
+                raise RuntimeOperationError(
+                    "WORKSPACE_NOT_RUNNING", "Exact process is not running", category="conflict"
+                )
+            yield evidence
+            self._check_attachment(attachment)
+
+    def reserve_runtime_attachment(self, attachment: RuntimeAttachmentLease) -> None:
+        """Reserve one exact attachment without acquiring a writer or opening PTYs."""
+        with self._lock:
+            self._check_attachment(attachment)
+            if not callable(getattr(self._transport, "close_attachment", None)):
+                raise RuntimeOperationError(
+                    "RUNTIME_UNAVAILABLE",
+                    "Exact attachment cleanup port is unavailable",
+                    category="unavailable",
+                )
+            if self._runtime_pending is not None or self._attachment is not None:
+                raise RuntimeOperationError(
+                    "WORKSPACE_WRITER_BUSY", "Runtime writer is reserved", category="conflict"
+                )
+            if getattr(self, "_last_attachment_id", None) == attachment.attachment_id:
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_STALE", "Runtime attachment was retired", category="conflict"
+                )
+            self._runtime_pending = attachment
+
+    def commit_runtime_attachment(self, attachment: RuntimeAttachmentLease) -> None:
+        with self.runtime_attachment_guard(attachment):
+            self.attach(attachment)
+
+    def cleanup_runtime_attachment(self, attachment: RuntimeAttachmentLease) -> bool:
+        """Close only the exact reserved PTY, even after authority revocation.
+
+        False or exception retains the reservation. A new writer can never be
+        closed by an old cleanup request. No underlying workspace Stop occurs.
+        """
+        with self._lock:
+            if self._runtime_pending is not attachment:
+                return False
+            if self._attachment is not None and self._attachment is not attachment:
+                return False
+            try:
+                close_attachment = getattr(self._transport, "close_attachment", None)
+                evidence = close_attachment(attachment) if callable(close_attachment) else None
+                confirmed = (
+                    type(evidence) is RuntimeAttachmentCleanupEvidence
+                    and evidence.lease is attachment
+                    and evidence.closed is True
+                    and type(evidence.remaining_members) is int
+                    and evidence.remaining_members == 0
+                )
+            except Exception:
+                confirmed = False
+            if not confirmed:
+                self._state = SupervisorState.RECONCILIATION_REQUIRED
+                return False
+            self._runtime_pending = None
+            self._attachment = None
+            self._last_attachment_id = attachment.attachment_id
+            # PTY closure releases attachment resources, not workspace fault
+            # authority. INPUT_UNCERTAIN/BROKEN/reconciliation and lifecycle
+            # states keep their existing recovery gates across new tickets.
+            if self._state in {SupervisorState.RUNNING, SupervisorState.DETACHED}:
+                self._state = SupervisorState.DETACHED
+            return True
+
+    def clear_runtime_output(self, reason: str) -> None:
+        """Discard volatile plaintext on the closed security/lifecycle event set."""
+        if reason not in {"crypto_failure", "runtime_epoch", "exit", "stop"}:
+            raise ValueError("unsupported output-clear event")
+        with self._lock:
+            self._ring.clear()
+
     def probe(self) -> RuntimeProbeEvidence:
         """Require fresh exact evidence without changing attachment or input state.
 
@@ -359,7 +529,7 @@ class WAWSupervisor:
                 )
             return evidence
 
-    def detach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
+    def detach(self, attachment: AttachmentLease) -> SupervisorSnapshot:
         with self._lock:
             self._require_attachment(attachment)
             try:
@@ -382,7 +552,7 @@ class WAWSupervisor:
             self._state = SupervisorState.DETACHED
             return self.snapshot()
 
-    def write_input(self, attachment: ActiveAttachment, data: bytes) -> None:
+    def write_input(self, attachment: AttachmentLease, data: bytes) -> None:
         with self._lock:
             self._require_attachment(attachment)
             if self._state is SupervisorState.INPUT_UNCERTAIN:
@@ -425,7 +595,7 @@ class WAWSupervisor:
             self._attachment = renewed
             return self.snapshot()
 
-    def resize(self, attachment: ActiveAttachment, geometry: PtyGeometry) -> SupervisorSnapshot:
+    def resize(self, attachment: AttachmentLease, geometry: PtyGeometry) -> SupervisorSnapshot:
         with self._lock:
             self._require_attachment(attachment)
             if self._state is SupervisorState.INPUT_UNCERTAIN:
@@ -471,13 +641,23 @@ class WAWSupervisor:
                 )
             return self._ring.append(payload).end_cursor
 
+    def append_encrypted_output(self, source: OutputSource, payload: bytes) -> tuple[int, ...]:
+        """Chunk the bounded producer read before allocating shared cursors."""
+        if type(payload) is not bytes or not 1 <= len(payload) <= 64 * 1024:
+            raise ValueError("producer read exceeds fixed bound")
+        with self._lock:
+            return tuple(
+                self.append_output(source, payload[offset : offset + 32768])
+                for offset in range(0, len(payload), 32768)
+            )
+
     def replay_output(
         self,
         after_cursor: int,
         *,
         generation: int | None = None,
         runtime_epoch: str | None = None,
-        attachment: ActiveAttachment | None = None,
+        attachment: AttachmentLease | None = None,
     ) -> OutputReplay:
         with self._lock:
             if attachment is not None:
@@ -502,7 +682,7 @@ class WAWSupervisor:
                 )
             return self._ring.replay(after_cursor)
 
-    def stop(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
+    def stop(self, attachment: AttachmentLease) -> SupervisorSnapshot:
         with self._lock:
             self._require_attachment(attachment)
             return self._stop_transport()
@@ -536,6 +716,21 @@ class WAWSupervisor:
                 "WAW_STOP_INVALID", "Workspace is already stopping or stopped", category="conflict"
             )
         self._state = SupervisorState.STOPPING
+        # Revoke the exact pending/active stream before process effects. The
+        # callback only marks closed and shuts down its one socket; it does not
+        # wait for the registry lock that a concurrent sender may own.
+        if self._runtime_pending is not None:
+            try:
+                fenced = self._runtime_pending.publication.invalidate()
+            except Exception:
+                fenced = False
+            if not fenced:
+                self._state = SupervisorState.RECONCILIATION_REQUIRED
+                raise RuntimeOperationError(
+                    "WAW_STOP_UNCONFIRMED",
+                    "Publication shutdown is unconfirmed",
+                    category="conflict",
+                )
         try:
             evidence = self._transport.stop()
             if (
@@ -566,11 +761,17 @@ class WAWSupervisor:
         self._attachment = None
         self._output_source = None
         self._state = SupervisorState.STOPPED
+        self._ring.clear()
         return self.snapshot()
 
-    def _check_attachment(self, attachment: ActiveAttachment) -> None:
+    def _check_attachment(self, attachment: AttachmentLease) -> None:
         claims = attachment.claims
-        if attachment.context is None or attachment.context.runtime_epoch != self._runtime_epoch:
+        epoch = (
+            attachment.runtime_epoch
+            if isinstance(attachment, RuntimeAttachmentLease)
+            else attachment.context.runtime_epoch if attachment.context is not None else None
+        )
+        if epoch != self._runtime_epoch:
             raise RuntimeOperationError(
                 "WAW_ATTACHMENT_STALE",
                 "Attachment belongs to a different Runtime epoch",
@@ -597,14 +798,19 @@ class WAWSupervisor:
             raise RuntimeOperationError(
                 "WAW_ATTACHMENT_EXPIRED", "Attachment lease is expired", category="conflict"
             )
-        if not self._attachment_validator(attachment):
+        valid = (
+            attachment.current()
+            if isinstance(attachment, RuntimeAttachmentLease)
+            else self._attachment_validator(attachment)
+        )
+        if not valid:
             raise RuntimeOperationError(
                 "WAW_ATTACHMENT_REVOKED",
                 "Attachment is no longer current at the authority",
                 category="conflict",
             )
 
-    def _require_attachment(self, attachment: ActiveAttachment) -> None:
+    def _require_attachment(self, attachment: AttachmentLease) -> None:
         self._check_attachment(attachment)
         if self._attachment is None or self._attachment is not attachment:
             raise RuntimeOperationError(

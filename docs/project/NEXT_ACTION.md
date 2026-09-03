@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `DELEGATED-STAGED-STREAM-2026-09-03`
+Action ID: `DELEGATED-RUNTIME-RELAY-2026-09-03`
 
 The Owner explicitly delegated software goal, plan and architecture decisions to
 the Coding Agent and instructed continued development. The complete reviewed
@@ -14,8 +14,8 @@ blocker is resolved. Do not request the same software approval again.
 - R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.
 - R5 is merged as PR #74 after 19/19 checks and exact read-back. Cold-start/GC
   parser failures are fixed without relaxing the 5 ms budget.
-- R6: deliver reviewed staged authority/coordinator with ticket burn, atomic
-  publication, reader handoff and exact cleanup/Audit fences.
+- R6 is merged as PR #75 after 19/19 checks and exact read-back; staged ticket
+  authority, atomic publication, reader handoff and cleanup/Audit fences delivered.
 - R7: implement the Runtime encrypted stream/server and fixed integration seams;
   reuse real R4 crypto and R5 codecs, not the synthetic plaintext bridge.
 - R8: implement the actual native WebSocket/API ciphertext relay and adapters.

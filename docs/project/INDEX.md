@@ -11,7 +11,7 @@
 7. `GOVERNANCE_AUTOMATION.md`
 8. `EXECUTION_PLAN.md` — 当前目标、阶段状态、职责、验收与交付流程。
 
-- [WAW encrypted stream supplemental decision](WAW_ENCRYPTED_STREAM_DECISION.md): accepted full wire/admission/trust contract under explicit Owner-delegated software decision authority; R4/R5 implementation is in progress.
+- [WAW encrypted stream supplemental decision](WAW_ENCRYPTED_STREAM_DECISION.md): accepted full wire/admission/trust contract under explicit Owner-delegated software decision authority; R4/R5 are merged and Runtime/API integration is in progress.
 
 - [Fixed Noise NX core](../WAW_NOISE_CORE.md): implementation limits, independent vector provenance and Python/WebCrypto interoperability.
 
@@ -31,3 +31,5 @@
 - [Full WAW wire profiles](../WAW_WIRE_CONTRACT.md): complete direction schemas, exact-byte relay/trace, failure/retry decisions, parser budgets and measured verification.
 
 - [Staged admission](../WAW_STAGED_ADMISSION.md): ticket burn/reservation, required Audit, atomic publication, reader handoff, cleanup and the distinct active-lifecycle obligations.
+
+- [Runtime encrypted stream](../WAW_RUNTIME_ENCRYPTED_STREAM.md): actual Runtime crypto/session/server, exact cleanup and trusted deployment-port boundaries; current review status is explicit.

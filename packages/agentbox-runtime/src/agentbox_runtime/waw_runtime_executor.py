@@ -23,7 +23,7 @@ from agentbox_core.waw import (
     validate_runtime_host_installation_id,
     validate_workspace_id,
 )
-from agentbox_core.waw_tickets import ActiveAttachment
+from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.project import ConfiguredProject, ProjectRegistry
@@ -261,6 +261,49 @@ class WAWSupervisorExecutor:
                     category="conflict",
                 )
         return WAWStreamBridge(supervisor, attachment)
+
+    def encrypted_supervisor(self, claims: AttachmentTuple) -> WAWSupervisor:
+        """Resolve the exact running generation for the fixed encrypted service."""
+        identity = WAWLifecycleIdentity(
+            workspace_id=claims.workspace_id,
+            project_id=claims.project_id,
+            agent_type=str(claims.agent_type),
+            generation=str(claims.generation),
+            binding_revision=str(claims.binding_revision),
+            binding_digest=claims.binding_digest,
+            runtime_host_installation_id=claims.runtime_host_installation_id,
+            runtime_host_installation_revision=str(claims.runtime_host_installation_revision),
+        )
+        key = self._key(identity)
+        with self._map_lock:
+            pending = self._inflight.get(key.workspace_id)
+            if pending is not None and not pending.done():
+                raise RuntimeOperationError(
+                    "WAW_OPERATION_BUSY", "Workspace operation is pending", category="conflict"
+                )
+            supervisor = self._supervisors.get(key)
+            if supervisor is None or not self.encrypted_binding_current(claims):
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_STALE",
+                    "Exact Runtime binding is unavailable",
+                    category="conflict",
+                )
+            return supervisor
+
+    def encrypted_binding_current(self, claims: AttachmentTuple) -> bool:
+        """Current registered binding predicate, called inside the attachment fence."""
+        with self._map_lock:
+            bound = self._bindings.get(claims.project_id)
+            if bound is None or claims.project_id in self._binding_reserved:
+                return False
+            binding = bound[0]
+            return (
+                binding.binding_revision == str(claims.binding_revision)
+                and binding.binding_digest == claims.binding_digest
+                and binding.runtime_host_installation_id == claims.runtime_host_installation_id
+                and binding.runtime_host_installation_revision
+                == str(claims.runtime_host_installation_revision)
+            )
 
     async def _probe(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         key = self._key(identity)
