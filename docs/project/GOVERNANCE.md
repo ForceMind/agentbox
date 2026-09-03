@@ -22,6 +22,24 @@ There is no additional Owner gate for routine code, documentation, or test chang
 Architecture changes, real-host activation, Secret handling, and production
 support promises remain explicitly authorized operations.
 
+## Current-task software decision delegation
+
+On 2026-09-03 the Owner explicitly instructed the Coding Agent to continue and
+stated that it may start/change goals and make the decisions itself. This is
+explicit delegation of software plan and architecture decisions for the current
+remaining-development objective, not merely an automatic “continue” event.
+The Coding Agent may resolve reviewed software contract choices, record its
+rationale, implement, test and obtain independent review without another
+per-decision Owner confirmation.
+
+Under that delegation the Coding Agent accepts the complete
+[WAW stream supplement](WAW_ENCRYPTED_STREAM_DECISION.md) as the R4/R5 software
+implementation contract. Existing authority separation, exact fixed actions,
+no arbitrary shell/filesystem gateway, cryptographic verification and truthful
+acceptance evidence remain mandatory. Real-host activation, production Runtime
+key/Provider Secret operations, publication and production support commitments
+still require a concrete authorized target/scope and actual evidence.
+
 ## Prohibitions
 
 - No `--admin`, force push, or history rewrite.

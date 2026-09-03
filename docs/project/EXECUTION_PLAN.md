@@ -111,3 +111,13 @@ R10.1 已由 PR #69 交付：head `9147cace5b554205dfecc20cf8bfb643d4c46761`，1
 R2 已由 PR #70 交付：head `eca03e47849b12449bb2ab4aec8dfdc001ef13dd`，19/19 exact-head checks SUCCESS；实际 merge `f7ef3c936529b19838cd087dc9e232397f1e304d`。R9.1 tokenizer 已修复独立审查发现并复审通过，113测试和133独立负例通过，待CI/merge；完整终端尚未接通。
 
 R9.1 已由 PR #71 交付：head `a57764ae0e1f3fc962bc4d52e3610373ef4226ff`，19/19 exact-head checks SUCCESS；实际 merge `3f2e3a2de4b0482629f5f9a296d5db757f989876`。本轮已交付 R0、R1、R2、R9.1、R10.1 五个软件子阶段；完整产品未完成。下一步是完整协议补充的 Owner acceptance，随后按 R4/R5 并行实现。
+
+## Explicit software decision delegation
+
+Owner 最新明确指令“继续啊，你可以启动目标修改目标，你都可以决定”，委托
+Coding Agent 自主决定本目标内的软件计划和架构。Coding Agent 已接受完整
+R3 补充并启动 R4 Python/Web 实现，R5 随并发槽位推进。此前等待同一软件
+确认的恢复点已解除；继续采用 sol/terra 分工、独立审查及逐阶段 GitHub/文档
+交付。真实主机、生产 key/Secret、发布和支持承诺仍需明确范围与真实证据。
+
+R3/R4 委托决策与实现进入交付：Python回归560、Web148、独立向量/双角色互通、完整E2E62通过，独立sol复审PASS，待exact-head CI/merge。R5并行实现及审查修复进行中；真实终端仍需后续R6–R12。

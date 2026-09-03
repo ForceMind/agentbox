@@ -1,47 +1,38 @@
 # Current Authorized Action
 
-Action ID: `REMAINING-PROTOCOL-ACCEPTANCE-2026-09-03`
+Action ID: `DELEGATED-WAW-CRYPTO-WIRE-2026-09-03`
 
-Owner clarified that development continues on the current Mac. Development
-platform and deployment qualification are separate: a missing Linux test host
-must not block platform-independent implementation, local tests or Linux CI.
-The prior blanket host prerequisite for all remaining software work is superseded
-by this clarification; actual host activation, Secret handling, new architecture
-decisions and production promises retain their existing boundaries.
+The Owner explicitly delegated software goal, plan and architecture decisions to
+the Coding Agent and instructed continued development. The complete reviewed
+[WAW stream supplement](WAW_ENCRYPTED_STREAM_DECISION.md) is accepted for software
+implementation under [GOVERNANCE](GOVERNANCE.md). The previous R3 confirmation
+blocker is resolved. Do not request the same software approval again.
 
-## Active reassessment and implementation
+## Active implementation
 
-Owner requests continued parallel execution: complex work uses sol, ordinary
-work uses terra. The current finite checklist is [REMAINING_PLAN.md](REMAINING_PLAN.md).
+- Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
+- R3: record delegated acceptance and keep implementation/evidence distinct.
+- R4: deliver reviewed strict Python/Web contexts and actual fixed application handshake,
+  two n=0 confirmations, AWCE n>=1 channels, exact pin/context/cursor binding,
+  cancellation/deadline/destruction and cross-language verification. Two sol
+  workers own separate Python and Web files; root owns integration/docs/interop.
+- R5: complete full direction-specific schemas/four-leg sequencing and repair
+  independent review findings. Reuse R4 pure context and ABWS/AWCE framing; do
+  not stage unreviewed R5 work with the R4 delivery.
+- After R4/R5, continue R6 staged authority, R7 Runtime stream, R8 API relay,
+  full R9 browser terminal/trust and R10 execution profile, then R11 integration.
+  Resolve remaining software contracts with documented rationale and independent
+  review under the delegated authority, rather than another mechanical Owner gate.
 
-- R0 is merged as PR #67 after 19/19 exact-head checks and merge read-back.
-- R1 is merged as PR #68 after 19/19 checks and actual merge read-back.
-  No crypto/authentication or socket activation is implied.
-- R2 is merged as PR #70 with 19/19 checks and read-back. CI executed all 21
-  diagnostic regressions and 60 normal E2E cases. No historical root cause is claimed.
-- R3: the complete reviewed full-wire/admission/trust supplement is ready for
-  Owner acceptance. It remains PROPOSED; dependent R4/R5 implementation has not begun.
-- R9.1 is merged as PR #71 after 19/19 checks and read-back. All 113 tests and
-  133 independent negatives passed; no renderer, trust/admission/controller or
-  socket integration is implied.
-- R10.1 is merged as PR #69 after 19/19 checks and actual merge read-back.
-  Fixed interactive CLI execution profiles still need the missing launch/retention
-  contracts; this foundation does not execute a CLI or claim host qualification.
+Each stage follows feature branch → exact-head terminal CI → normal merge →
+exact read-back, updating CURRENT_STATE, the remaining plan and relevant scope
+documents. Complex work uses sol; routine implementation/verification uses terra.
 
-Continue independent authorized software work on Mac. Architecture, real host,
-real key/Provider Secret operations and production publication retain explicit
-approval/evidence requirements. After required protocol decisions, proceed through
-R4–R12 in the current plan; routine CI/merge/read-back needs no extra Owner gate.
+## Remaining evidence boundaries
 
-## Concrete next decision
-
-Owner acceptance is still needed for the reviewed
-[complete protocol supplement](WAW_ENCRYPTED_STREAM_DECISION.md), under the
-architecture rule in [GOVERNANCE](GOVERNANCE.md). It enables R4 application crypto
-and R5 full direction-specific wire schemas to proceed in parallel with sol.
-Routine implementation and subsequent CI/merge need no additional Owner gate.
-
-The R9 logical-line deadline/recovery contract and independent trust provider,
-R10 complete execution profile, and real-host/key/production evidence retain
-their own explicit dependencies in REMAINING_PLAN. Completed foundations do not
-satisfy those requirements. The overall goal remains unfinished.
+Mac remains the development platform. Real host activation, production keys or
+Provider Secret operations, publication and support promises require a concrete
+scope/target and real evidence. Software decisions do not certify those gates.
+The independent trust-provider deployment and actual CLI/PTY/isolation/restart
+qualification remain required before full product completion. No synthetic
+handler or passing codec test may be presented as a working terminal.

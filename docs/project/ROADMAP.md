@@ -36,11 +36,11 @@
 
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics and R9.1 tokenizer are merged. The next R4/R5 implementation awaits explicit acceptance of the complete protocol supplement; full R9/R10 decisions and host evidence remain separately tracked.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 Python/Web implementation passed independent review, interop and native tests and awaits CI/merge; R5 is in parallel implementation/review; full R9/R10 decisions and host evidence remain separately tracked.
 
 ## In Progress
 
-- Mac remains the development platform. F1.1/F1.2/F1.3 are complete software increments; the overall terminal product is incomplete. Application profile wire-byte clarification is proposed and awaits Owner confirmation.
+- Mac remains the development platform. F1.1/F1.2/F1.3 are complete software increments; the overall terminal product is incomplete. Application profile contract is accepted and implementation is active under delegated software decision authority.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

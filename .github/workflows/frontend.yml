@@ -31,4 +31,6 @@ jobs:
       - run: python -m pip install -e .
       - run: node scripts/check-noise-interop.mjs
       - run: node scripts/check-awce-interop.mjs
+      - run: python scripts/check-waw-crypto-vector.py
+      - run: node scripts/check-waw-crypto-interop.mjs
       - run: pnpm build
