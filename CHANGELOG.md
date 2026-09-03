@@ -3,6 +3,24 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc2] - Unreleased
+
+### Added
+
+- Runtime-owned encrypted WAW attachment stream and bounded inherited Unix
+  listener, with exact lease, publication and cleanup fences.
+
+### Fixed
+
+- Exact detach/Stop prevents a previously prepared or partially written OUTPUT
+  from publishing after cleanup, and preserves input/reconciliation faults.
+
+### Known limitations
+
+- R7 software review is complete; exact-head CI/merge and R8 remain separate.
+- Browser terminal/controller, independent trust provider, fixed interactive
+  CLI execution, Linux isolation and real-host qualification remain unfinished.
+
 ## [0.3.0rc1] - Unreleased
 
 ### Added

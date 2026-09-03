@@ -83,6 +83,7 @@ class OutputRing:
         self._capacity = capacity_bytes
         self._frames: deque[OutputFrame] = deque()
         self._bytes = 0
+        self._line_breaks = 0
         self._next_cursor = 1
         self._dropped_until = 0
 
@@ -106,11 +107,26 @@ class OutputRing:
         self._next_cursor = end + 1
         self._frames.append(frame)
         self._bytes += len(payload)
-        while self._bytes > self._capacity:
+        self._line_breaks += payload.count(b"\n")
+        while self._bytes > self._capacity or self._retained_line_count() > 2000:
             removed = self._frames.popleft()
             self._bytes -= len(removed.payload)
+            self._line_breaks -= removed.payload.count(b"\n")
             self._dropped_until = removed.end_cursor
         return frame
+
+    def _retained_line_count(self) -> int:
+        """Count LF-delimited lines plus one unterminated stream tail."""
+
+        has_unterminated_tail = self._frames and not self._frames[-1].payload.endswith(b"\n")
+        return self._line_breaks + bool(has_unterminated_tail)
+
+    def clear(self) -> None:
+        """Drop volatile bytes without reusing cursors in the current domain."""
+        self._frames.clear()
+        self._bytes = 0
+        self._line_breaks = 0
+        self._dropped_until = self._next_cursor - 1
 
     def replay(self, after_cursor: int) -> OutputReplay:
         if type(after_cursor) is not int or not 0 <= after_cursor <= MAX_OUTPUT_CURSOR:

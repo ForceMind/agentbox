@@ -60,6 +60,7 @@ class WAWControlServer:
         max_active_connections: int = 64,
         max_active_dispatches: int = 16,
         monotonic: Callable[[], float] = time.monotonic,
+        peer_authorizer: Callable[[int, int, int, int], bool] | None = None,
     ) -> None:
         if sock.family != socket.AF_UNIX or sock.type != socket.SOCK_STREAM:
             raise ValueError("WAW control socket must be AF_UNIX SOCK_STREAM")
@@ -81,6 +82,7 @@ class WAWControlServer:
             raise ValueError("expected_peer_gid must be a non-negative integer")
         self._sock = sock
         self._dispatch = dispatch
+        self._peer_authorizer = peer_authorizer
         self._timeout_seconds = timeout_seconds
         self._cancellation_grace_seconds = cancellation_grace_seconds
         self._max_active_connections = max_active_connections
@@ -345,7 +347,18 @@ class WAWControlServer:
         if uid != self._expected_peer_uid or gid != self._expected_peer_gid:
             return None
         try:
-            return os.pidfd_open(pid, 0)
+            pidfd = os.pidfd_open(pid, 0)
+            try:
+                if (
+                    self._peer_authorizer is not None
+                    and self._peer_authorizer(pid, uid, gid, pidfd) is not True
+                ):
+                    os.close(pidfd)
+                    return None
+            except Exception:
+                os.close(pidfd)
+                return None
+            return pidfd
         except (OSError, OverflowError, ValueError):
             return None
 

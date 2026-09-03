@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import AgentType, managed_marker, workspace_id
@@ -16,11 +17,18 @@ from agentbox_core.waw_tickets import (
     AuthenticatedAttachmentContext,
 )
 from agentbox_protocol.abws import ABWSFrame, FrameType
+from agentbox_protocol.waw_wire import Leg, encode_wire_frame
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import inspect_executable
 from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.waw_codex_command import WAWCodexCommand
 from agentbox_runtime.waw_command import WAWClaudeCommand
+from agentbox_runtime.waw_encrypted_stream import (
+    BoundedRedraw,
+    RuntimePeer,
+    WAWEncryptedRegistry,
+    admission_fields,
+)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleRegistry,
@@ -29,6 +37,8 @@ from agentbox_runtime.waw_lifecycle import (
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_supervisor import (
+    RuntimeAttachmentCleanupEvidence,
+    RuntimeAttachmentLease,
     RuntimeProbeEvidence,
     RuntimeProbeState,
     RuntimeStartEvidence,
@@ -86,6 +96,9 @@ class FakeTransport:
         return RuntimeStopEvidence(
             self.identity.workspace_id, int(self.identity.generation), self.marker, True, 0
         )
+
+    def close_attachment(self, lease: RuntimeAttachmentLease) -> RuntimeAttachmentCleanupEvidence:
+        return RuntimeAttachmentCleanupEvidence(lease, self.detach(), 0)
 
     def probe(self) -> RuntimeProbeEvidence:
         return RuntimeProbeEvidence(
@@ -165,8 +178,364 @@ def setup(
     return executor, identity, transport, root
 
 
+def generation_setup(
+    tmp_path: Path,
+    agent: AgentType,
+    *,
+    factory_entered: threading.Event | None = None,
+    release_factory: threading.Event | None = None,
+) -> tuple[WAWSupervisorExecutor, WAWLifecycleIdentity, dict[str, FakeTransport]]:
+    root = tmp_path / "generation-projects"
+    project = root / "project-a"
+    project.mkdir(parents=True)
+    executable_path = tmp_path / agent.value
+    executable_path.write_text("#!/bin/sh\n")
+    executable_path.chmod(0o755)
+    executable = inspect_executable(executable_path)
+    transports: dict[str, FakeTransport] = {}
+
+    def command_factory(
+        item: WAWLifecycleIdentity, configured: Any
+    ) -> WAWClaudeCommand | WAWCodexCommand:
+        marker = managed_marker(
+            runtime_host_installation_id=HOST,
+            runtime_host_installation_revision=1,
+            project_id=PROJECT,
+            agent_type=agent,
+            workspace_id_value=item.workspace_id,
+            generation=int(item.generation),
+            binding_revision=1,
+            binding_digest=DIGEST,
+        )
+        cls = WAWClaudeCommand if agent is AgentType.CLAUDE else WAWCodexCommand
+        argv = ("remote-control",) if agent is AgentType.CLAUDE else ()
+        return cls(item.workspace_id, item.project_id, configured.path, executable, argv, marker)
+
+    def transport_factory(item: WAWLifecycleIdentity, command: Any) -> FakeTransport:
+        transport = FakeTransport(item, command.managed_marker)
+        transports[item.generation] = transport
+        if item.generation == "2" and factory_entered is not None:
+            factory_entered.set()
+            if release_factory is not None:
+                release_factory.wait(timeout=5)
+        return transport
+
+    executor = WAWSupervisorExecutor(
+        runtime_epoch="1",
+        project_registry=ProjectRegistry(root),
+        command_factory=command_factory,
+        transport_factory=transport_factory,
+        geometry=PtyGeometry(80, 24),
+        clock=lambda: 0.0,
+        attachment_validator=lambda active: active.active_at(0.0),
+    )
+    return executor, ident(agent), transports
+
+
 def binding(revision: str = "1", relative_key: str = "project-a") -> WAWProjectBinding:
     return WAWProjectBinding(PROJECT, relative_key, "1", revision, DIGEST, HOST, "1")
+
+
+def _exercise_start_open_lock_order(tmp_dir: str, result: Any) -> None:
+    """Run the lock-order schedule outside pytest so a regression cannot hang it."""
+
+    tmp_path = Path(tmp_dir)
+    root = tmp_path / "deadlock-projects"
+    project = root / "project-a"
+    project.mkdir(parents=True)
+    executable_path = tmp_path / "codex"
+    executable_path.write_text("#!/bin/sh\n")
+    executable_path.chmod(0o755)
+    executable = inspect_executable(executable_path)
+    factory_entered = threading.Event()
+    release_factory = threading.Event()
+    open_has_supervisor = threading.Event()
+    release_open_to_map = threading.Event()
+    block_current = threading.Event()
+    nested_map_to_supervisor = threading.Event()
+    transports: dict[str, FakeTransport] = {}
+
+    def command_factory(
+        item: WAWLifecycleIdentity, configured: Any
+    ) -> WAWClaudeCommand | WAWCodexCommand:
+        marker = managed_marker(
+            runtime_host_installation_id=HOST,
+            runtime_host_installation_revision=1,
+            project_id=PROJECT,
+            agent_type=AgentType(item.agent_type),
+            workspace_id_value=item.workspace_id,
+            generation=int(item.generation),
+            binding_revision=1,
+            binding_digest=DIGEST,
+        )
+        return WAWCodexCommand(
+            item.workspace_id, item.project_id, configured.path, executable, (), marker
+        )
+
+    def transport_factory(item: WAWLifecycleIdentity, command: Any) -> FakeTransport:
+        transport = FakeTransport(item, command.managed_marker)
+        transports[item.generation] = transport
+        if item.generation == "2":
+            factory_entered.set()
+            release_factory.wait(timeout=5)
+        return transport
+
+    executor = WAWSupervisorExecutor(
+        runtime_epoch="1",
+        project_registry=ProjectRegistry(root),
+        command_factory=command_factory,
+        transport_factory=transport_factory,
+        geometry=PtyGeometry(80, 24),
+        clock=lambda: 0.0,
+        attachment_validator=lambda active: active.active_at(0.0),
+    )
+    old_identity = ident(AgentType.CODEX)
+    asyncio.run(executor.register_project_binding(binding()))
+    asyncio.run(executor.start(old_identity))
+    claims = attachment(old_identity).claims
+    old_supervisor = executor.encrypted_supervisor(claims)
+    peer = RuntimePeer(object(), "1", lambda: True)
+    registry = WAWEncryptedRegistry(
+        runtime_epoch="1", static_key=lambda: bytes(range(32)), clock=lambda: 0.0
+    )
+
+    def current() -> bool:
+        if block_current.is_set():
+            open_has_supervisor.set()
+            release_open_to_map.wait(timeout=5)
+        return executor.encrypted_binding_current(claims)
+
+    capability = registry.prepare(
+        peer=peer,
+        claims=claims,
+        supervisor=old_supervisor,
+        capture=lambda: BoundedRedraw(b"", False),
+        current=current,
+    )
+    asyncio.run(executor.stop(old_identity))
+    block_current.set()
+    raw_hello = encode_wire_frame(
+        FrameType.RUNTIME_HELLO,
+        Leg.API_TO_RUNTIME,
+        {
+            "protocol_version": 1,
+            **admission_fields(claims),
+            "runtime_epoch": "1",
+            "capability": capability,
+            "resume_cursor": None,
+            "previous_runtime_epoch": None,
+        },
+        1,
+    )
+
+    # The old implementation reads state twice. Its second read occurs while
+    # holding the executor map, so this hook makes that exact ABBA edge visible.
+    supervisor_class: Any = type(old_supervisor)
+    original_state = cast(property, supervisor_class.state)
+    original_getter = original_state.fget
+    assert original_getter is not None
+    state_reads = 0
+
+    def observed_state(supervisor: Any) -> SupervisorState:
+        nonlocal state_reads
+        if supervisor is old_supervisor:
+            state_reads += 1
+            if state_reads == 2:
+                nested_map_to_supervisor.set()
+        return cast(SupervisorState, original_getter(supervisor))
+
+    supervisor_class.state = property(observed_state)
+    errors: list[str] = []
+
+    def start_new_generation() -> None:
+        try:
+            asyncio.run(executor.start(_replace(old_identity, generation="2")))
+        except BaseException as exc:
+            errors.append(f"start:{type(exc).__name__}")
+
+    def open_old_attachment() -> None:
+        try:
+            registry.open(peer, raw_hello)
+        except BaseException as exc:
+            errors.append(f"open:{type(exc).__name__}")
+
+    start_thread = threading.Thread(target=start_new_generation, daemon=True)
+    open_thread = threading.Thread(target=open_old_attachment, daemon=True)
+    start_thread.start()
+    if not factory_entered.wait(timeout=2):
+        result.send({"setup": "start did not reach precommit"})
+        return
+    open_thread.start()
+    if not open_has_supervisor.wait(timeout=2):
+        result.send({"setup": "open did not acquire supervisor"})
+        return
+    release_factory.set()
+    nested_map_to_supervisor.wait(timeout=0.5)
+
+    probe_complete = threading.Event()
+
+    def probe_map() -> None:
+        executor.encrypted_binding_current(claims)
+        probe_complete.set()
+
+    probe_thread = threading.Thread(target=probe_map, daemon=True)
+    probe_thread.start()
+    map_available = probe_complete.wait(timeout=1)
+    if not map_available:
+        result.send(
+            {
+                "map_available": False,
+                "nested_map_to_supervisor": nested_map_to_supervisor.is_set(),
+            }
+        )
+        return
+
+    release_open_to_map.set()
+    start_thread.join(timeout=2)
+    open_thread.join(timeout=2)
+    result.send(
+        {
+            "map_available": True,
+            "start_complete": not start_thread.is_alive(),
+            "open_complete": not open_thread.is_alive(),
+            "generation_2_started": transports.get("2", FakeTransport(old_identity, "")).starts,
+            "errors": errors,
+        }
+    )
+
+
+def test_start_and_late_old_open_use_supervisor_then_map_lock_order(tmp_path: Path) -> None:
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_exercise_start_open_lock_order,
+        args=(str(tmp_path), sender),
+    )
+    process.start()
+    sender.close()
+    try:
+        assert receiver.poll(10), "isolated lock-order process did not report"
+        observed = receiver.recv()
+        assert "setup" not in observed, observed
+        assert observed["map_available"], observed
+        assert observed["start_complete"], observed
+        assert observed["open_complete"], observed
+        assert observed["generation_2_started"] == 1, observed
+    finally:
+        process.join(timeout=2)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=2)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("agent", list(AgentType))
+async def test_cleanup_fault_after_preflight_blocks_next_generation(
+    tmp_path: Path, agent: AgentType
+) -> None:
+    factory_entered, release_factory = threading.Event(), threading.Event()
+    executor, old_identity, transports = generation_setup(
+        tmp_path,
+        agent,
+        factory_entered=factory_entered,
+        release_factory=release_factory,
+    )
+    await executor.register_project_binding(binding())
+    await executor.start(old_identity)
+    claims = attachment(old_identity).claims
+    supervisor = executor.encrypted_supervisor(claims)
+    peer = RuntimePeer(object(), "1", lambda: True)
+    registry = WAWEncryptedRegistry(
+        runtime_epoch="1", static_key=lambda: bytes(range(32)), clock=lambda: 0.0
+    )
+    registry.prepare(
+        peer=peer,
+        claims=claims,
+        supervisor=supervisor,
+        capture=lambda: BoundedRedraw(b"", False),
+        current=lambda: executor.encrypted_binding_current(claims),
+    )
+    await executor.stop(old_identity)
+    old_transport: Any = transports["1"]
+    old_transport.close_attachment = lambda lease: RuntimeAttachmentCleanupEvidence(lease, False, 1)
+
+    pending = asyncio.create_task(executor.start(_replace(old_identity, generation="2")))
+    assert await asyncio.to_thread(factory_entered.wait, 2)
+    proof = registry.cleanup(peer, claims)
+    assert not proof.confirmed
+    assert supervisor.state is SupervisorState.RECONCILIATION_REQUIRED
+    release_factory.set()
+    with pytest.raises(RuntimeOperationError, match="not positively stopped"):
+        await pending
+    assert transports["2"].starts == 0
+    assert executor.encrypted_supervisor(claims) is supervisor
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("drift", ["map", "binding", "inflight"])
+async def test_start_final_commit_rejects_map_authority_drift(tmp_path: Path, drift: str) -> None:
+    factory_entered, release_factory = threading.Event(), threading.Event()
+    executor, old_identity, transports = generation_setup(
+        tmp_path,
+        AgentType.CODEX,
+        factory_entered=factory_entered,
+        release_factory=release_factory,
+    )
+    await executor.register_project_binding(binding())
+    await executor.start(old_identity)
+    await executor.stop(old_identity)
+    pending = asyncio.create_task(executor.start(_replace(old_identity, generation="2")))
+    assert await asyncio.to_thread(factory_entered.wait, 2)
+    with executor._map_lock:
+        if drift == "map":
+            old_key = next(
+                key
+                for key in executor._supervisors
+                if key.workspace_id == old_identity.workspace_id
+            )
+            executor._supervisors.pop(old_key)
+        elif drift == "binding":
+            _, configured = executor._bindings[PROJECT]
+            executor._bindings[PROJECT] = (binding("2"), configured)
+        else:
+            executor._inflight_tokens[old_identity.workspace_id] = object()
+    release_factory.set()
+    with pytest.raises(RuntimeOperationError):
+        await pending
+    assert transports["2"].starts == 0
+    assert all(key.generation != "2" for key in executor._supervisors)
+
+
+async def _cancelled_start_worker_rejects_lost_inflight_reservation(tmp_path: Path) -> None:
+    factory_entered, release_factory = threading.Event(), threading.Event()
+    executor, old_identity, transports = generation_setup(
+        tmp_path,
+        AgentType.CLAUDE,
+        factory_entered=factory_entered,
+        release_factory=release_factory,
+    )
+    await executor.register_project_binding(binding())
+    await executor.start(old_identity)
+    await executor.stop(old_identity)
+    pending = asyncio.create_task(executor.start(_replace(old_identity, generation="2")))
+    assert await asyncio.to_thread(factory_entered.wait, 2)
+    with executor._map_lock:
+        worker = executor._inflight[old_identity.workspace_id]
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    with executor._map_lock:
+        executor._inflight_tokens[old_identity.workspace_id] = object()
+    release_factory.set()
+    _, unfinished = await asyncio.wait({worker}, timeout=2)
+    assert not unfinished
+    assert isinstance(worker.exception(), RuntimeOperationError)
+    assert transports["2"].starts == 0
+    assert all(key.generation != "2" for key in executor._supervisors)
+
+
+def test_cancelled_start_worker_rejects_lost_inflight_reservation(tmp_path: Path) -> None:
+    asyncio.run(_cancelled_start_worker_rejects_lost_inflight_reservation(tmp_path))
 
 
 def reqs(identity: WAWLifecycleIdentity) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:

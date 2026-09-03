@@ -15,9 +15,18 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+from agentbox_core.waw_tickets import AttachmentTuple
+
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_control_server import WAWControlServer
+from agentbox_runtime.waw_encrypted_server import PeerVerifier, WAWEncryptedServer
+from agentbox_runtime.waw_encrypted_stream import (
+    BoundedRedraw,
+    RuntimePeer,
+    WAWEncryptedAttachmentService,
+    WAWEncryptedRegistry,
+)
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
     WAWCanonicalManifestBundle,
@@ -37,6 +46,7 @@ from agentbox_runtime.waw_manifest_codecs import (
     manifest_sha256,
     verify_api_host_anchor_cross_manifest,
 )
+from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
 
@@ -388,6 +398,54 @@ def build_waw_control_server(
         expected_peer_gid=expected_peer_gid,
         timeout_seconds=timeout_seconds,
     )
+
+
+def build_waw_encrypted_servers(
+    *,
+    sockets: WAWActivatedSockets,
+    registry: WAWLifecycleRegistry,
+    executor: WAWSupervisorExecutor,
+    runtime_epoch: str,
+    static_key: Callable[[], bytes],
+    peer: Callable[[], RuntimePeer],
+    peer_verifier: PeerVerifier,
+    control_peer_authorizer: Callable[[int, int, int, int], bool],
+    capture: Callable[[AttachmentTuple], BoundedRedraw],
+    expected_peer_uid: int,
+    expected_peer_gid: int,
+    clock: Callable[[], float],
+) -> tuple[WAWControlServer, WAWEncryptedServer, WAWEncryptedRegistry]:
+    """Non-activating composition of qualified fixed Runtime endpoints.
+
+    No key file is read. Missing capture, process peer/unit, pidfd, named socket
+    or key custody evidence cannot be supplied by this helper; the deployment
+    caller must provide qualified ports. Test keys/ports are software evidence.
+    """
+    if any(
+        not callable(value)
+        for value in (peer, peer_verifier, control_peer_authorizer, capture, static_key)
+    ):
+        raise ValueError("trusted encrypted Runtime providers are required")
+    streams = WAWEncryptedRegistry(runtime_epoch=runtime_epoch, static_key=static_key, clock=clock)
+    stream_server = WAWEncryptedServer.from_activated(sockets, streams, peer_verifier=peer_verifier)
+    service = WAWEncryptedAttachmentService(
+        streams,
+        peer=peer,
+        supervisor=executor.encrypted_supervisor,
+        capture=capture,
+        current=executor.encrypted_binding_current,
+    )
+    control_server = WAWControlServer(
+        sockets.control,
+        registry.dispatch,
+        expected_peer_uid=expected_peer_uid,
+        expected_peer_gid=expected_peer_gid,
+        peer_authorizer=control_peer_authorizer,
+        max_active_connections=16,
+        max_active_dispatches=8,
+    )
+    registry.configure_encrypted_attachments(service)
+    return control_server, stream_server, streams
 
 
 __all__ = [

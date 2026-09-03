@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -23,7 +24,7 @@ from agentbox_core.waw import (
     validate_runtime_host_installation_id,
     validate_workspace_id,
 )
-from agentbox_core.waw_tickets import ActiveAttachment
+from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.project import ConfiguredProject, ProjectRegistry
@@ -58,6 +59,12 @@ class _SupervisorKey:
     runtime_host_installation_id: str
     runtime_host_installation_revision: str
     runtime_epoch: str
+
+
+@dataclass(frozen=True)
+class _StartSnapshot:
+    binding: tuple[WAWProjectBinding, ConfiguredProject]
+    prior: tuple[tuple[_SupervisorKey, WAWSupervisor], ...]
 
 
 CommandFactory = Callable[[WAWLifecycleIdentity, ConfiguredProject], WAWManagedCommand]
@@ -101,6 +108,7 @@ class WAWSupervisorExecutor:
         self._map_lock = threading.RLock()
         self._inflight: dict[str, asyncio.Task[Any]] = {}
         self._inflight_project_ids: dict[str, str] = {}
+        self._inflight_tokens: dict[str, object] = {}
         self._binding_inflight: dict[str, asyncio.Task[Any]] = {}
         self._binding_reserved: set[str] = set()
 
@@ -180,10 +188,11 @@ class WAWSupervisorExecutor:
 
     async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         key = self._key(identity)
+        operation_token = object()
 
         def operation() -> WAWLifecycleObservation:
-            self._assert_startable(key)
-            command = self._command(identity)
+            start_snapshot = self._start_snapshot(key, operation_token)
+            command = self._command(identity, start_snapshot.binding)
             transport = self._transport_factory(identity, command)
             supervisor = WAWSupervisor(
                 workspace_id=key.workspace_id,
@@ -196,19 +205,11 @@ class WAWSupervisorExecutor:
                 stop_binding=self._stop_binding(identity),
                 runtime_epoch=self._runtime_epoch,
             )
-            with self._map_lock:
-                self._assert_startable(key)
-                self._supervisors = {
-                    prior_key: prior
-                    for prior_key, prior in self._supervisors.items()
-                    if prior_key.workspace_id != key.workspace_id
-                    or prior_key.generation == key.generation
-                }
-                self._supervisors[key] = supervisor
+            self._commit_start(key, supervisor, start_snapshot, operation_token)
             snapshot = supervisor.start()
             return self._start_observation(snapshot.state)
 
-        return await self._submit(key, operation)
+        return await self._submit(key, operation, operation_token=operation_token)
 
     async def status(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         return await self._probe(identity)
@@ -261,6 +262,53 @@ class WAWSupervisorExecutor:
                     category="conflict",
                 )
         return WAWStreamBridge(supervisor, attachment)
+
+    def encrypted_supervisor(self, claims: AttachmentTuple) -> WAWSupervisor:
+        """Resolve the exact running generation for the fixed encrypted service."""
+        identity = WAWLifecycleIdentity(
+            workspace_id=claims.workspace_id,
+            project_id=claims.project_id,
+            agent_type=str(claims.agent_type),
+            generation=str(claims.generation),
+            binding_revision=str(claims.binding_revision),
+            binding_digest=claims.binding_digest,
+            runtime_host_installation_id=claims.runtime_host_installation_id,
+            runtime_host_installation_revision=str(claims.runtime_host_installation_revision),
+        )
+        key = self._key(identity)
+        with self._map_lock:
+            pending = self._inflight.get(key.workspace_id)
+            if pending is not None and not pending.done():
+                raise RuntimeOperationError(
+                    "WAW_OPERATION_BUSY", "Workspace operation is pending", category="conflict"
+                )
+            supervisor = self._supervisors.get(key)
+            if supervisor is None or not self._encrypted_binding_current_locked(claims):
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_STALE",
+                    "Exact Runtime binding is unavailable",
+                    category="conflict",
+                )
+            return supervisor
+
+    def encrypted_binding_current(self, claims: AttachmentTuple) -> bool:
+        """Current registered binding predicate, called inside the attachment fence."""
+        with self._map_lock:
+            return self._encrypted_binding_current_locked(claims)
+
+    def _encrypted_binding_current_locked(self, claims: AttachmentTuple) -> bool:
+        bound = self._bindings.get(claims.project_id)
+        if bound is None or claims.project_id in self._binding_reserved:
+            return False
+        binding = bound[0]
+        return (
+            binding.project_id == claims.project_id
+            and binding.binding_revision == str(claims.binding_revision)
+            and binding.binding_digest == claims.binding_digest
+            and binding.runtime_host_installation_id == claims.runtime_host_installation_id
+            and binding.runtime_host_installation_revision
+            == str(claims.runtime_host_installation_revision)
+        )
 
     async def _probe(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         key = self._key(identity)
@@ -339,13 +387,11 @@ class WAWSupervisorExecutor:
             ) from exc
         return value
 
-    def _command(self, identity: WAWLifecycleIdentity) -> WAWManagedCommand:
-        with self._map_lock:
-            bound = self._bindings.get(self._field(identity, "project_id"))
-        if bound is None:
-            raise RuntimeOperationError(
-                "WAW_BINDING_REQUIRED", "Project binding is not registered", category="conflict"
-            )
+    def _command(
+        self,
+        identity: WAWLifecycleIdentity,
+        bound: tuple[WAWProjectBinding, ConfiguredProject],
+    ) -> WAWManagedCommand:
         binding, registered_project = bound
         if (
             int(binding.binding_revision) != int(self._field(identity, "binding_revision"))
@@ -438,8 +484,15 @@ class WAWSupervisorExecutor:
             )
         return value
 
-    async def _submit(self, key: _SupervisorKey, operation: Callable[[], _T]) -> _T:
+    async def _submit(
+        self,
+        key: _SupervisorKey,
+        operation: Callable[[], _T],
+        *,
+        operation_token: object | None = None,
+    ) -> _T:
         workspace_id = key.workspace_id
+        token = object() if operation_token is None else operation_token
         with self._map_lock:
             existing = self._inflight.get(workspace_id)
             if existing is not None and not existing.done():
@@ -451,6 +504,7 @@ class WAWSupervisorExecutor:
             task: asyncio.Task[_T] = asyncio.create_task(asyncio.to_thread(operation))
             self._inflight[workspace_id] = task
             self._inflight_project_ids[workspace_id] = key.project_id
+            self._inflight_tokens[workspace_id] = token
         try:
             return await asyncio.shield(task)
         except asyncio.CancelledError:
@@ -469,6 +523,7 @@ class WAWSupervisorExecutor:
             if self._inflight.get(workspace_id) is task:
                 self._inflight.pop(workspace_id, None)
                 self._inflight_project_ids.pop(workspace_id, None)
+                self._inflight_tokens.pop(workspace_id, None)
 
     def _consume_binding_task(self, project_id: str, task: asyncio.Task[Any]) -> None:
         if not task.cancelled():
@@ -482,37 +537,140 @@ class WAWSupervisorExecutor:
         with self._map_lock:
             self._binding_reserved.discard(project_id)
 
-    def _assert_startable(self, key: _SupervisorKey) -> None:
+    def _start_snapshot(self, key: _SupervisorKey, operation_token: object) -> _StartSnapshot:
         with self._map_lock:
-            if key.project_id in self._binding_reserved or key.project_id in self._binding_inflight:
+            self._assert_start_map_locked(key)
+            self._assert_start_inflight_locked(key, operation_token)
+            binding = self._bindings.get(key.project_id)
+            if binding is None:
                 raise RuntimeOperationError(
-                    "WAW_OPERATION_BUSY",
-                    "Project binding update is in progress",
+                    "WAW_BINDING_REQUIRED",
+                    "Project binding is not registered",
                     category="conflict",
                 )
-            if key in self._supervisors:
+            if not self._binding_matches_key(binding[0], key):
                 raise RuntimeOperationError(
-                    "WAW_START_INVALID",
-                    "Workspace generation is already registered",
+                    "WAW_COMMAND_IDENTITY_MISMATCH",
+                    "Runtime binding does not match identity",
                     category="conflict",
                 )
-            prior = [
+            prior = tuple(
                 (prior_key, supervisor)
                 for prior_key, supervisor in self._supervisors.items()
                 if prior_key.workspace_id == key.workspace_id
-            ]
-        if any(supervisor.state is not SupervisorState.STOPPED for _, supervisor in prior):
+            )
+        for prior_key, supervisor in prior:
+            with supervisor.stopped_generation_guard(self._operation_for_key(prior_key)):
+                pass
+        return _StartSnapshot(binding, prior)
+
+    def _commit_start(
+        self,
+        key: _SupervisorKey,
+        supervisor: WAWSupervisor,
+        start_snapshot: _StartSnapshot,
+        operation_token: object,
+    ) -> None:
+        # Runtime attachment guards acquire supervisor then map. Hold every old
+        # state lock in the same order through the map replacement so a late
+        # cleanup cannot invalidate STOPPED after the final check.
+        with ExitStack() as guards:
+            for prior_key, prior in start_snapshot.prior:
+                guards.enter_context(
+                    prior.stopped_generation_guard(self._operation_for_key(prior_key))
+                )
+            with self._map_lock:
+                self._assert_start_map_locked(key)
+                self._assert_start_inflight_locked(key, operation_token)
+                current_binding = self._bindings.get(key.project_id)
+                if current_binding is not start_snapshot.binding or not self._binding_matches_key(
+                    current_binding[0], key
+                ):
+                    raise RuntimeOperationError(
+                        "WAW_COMMAND_IDENTITY_MISMATCH",
+                        "Runtime binding changed during start",
+                        category="conflict",
+                    )
+                current_prior = {
+                    prior_key: prior
+                    for prior_key, prior in self._supervisors.items()
+                    if prior_key.workspace_id == key.workspace_id
+                }
+                expected_prior = dict(start_snapshot.prior)
+                if current_prior.keys() != expected_prior.keys() or any(
+                    current_prior[prior_key] is not prior
+                    for prior_key, prior in start_snapshot.prior
+                ):
+                    raise RuntimeOperationError(
+                        "RECONCILIATION_REQUIRED",
+                        "Workspace generation changed during start",
+                        category="conflict",
+                    )
+                self._supervisors = {
+                    prior_key: prior
+                    for prior_key, prior in self._supervisors.items()
+                    if prior_key.workspace_id != key.workspace_id
+                }
+                self._supervisors[key] = supervisor
+
+    def _assert_start_map_locked(self, key: _SupervisorKey) -> None:
+        if key.project_id in self._binding_reserved or key.project_id in self._binding_inflight:
             raise RuntimeOperationError(
-                "RECONCILIATION_REQUIRED",
-                "Previous workspace generation is not positively stopped",
+                "WAW_OPERATION_BUSY",
+                "Project binding update is in progress",
                 category="conflict",
             )
-        if any(int(prior_key.generation) >= int(key.generation) for prior_key, _ in prior):
+        if key in self._supervisors:
+            raise RuntimeOperationError(
+                "WAW_START_INVALID",
+                "Workspace generation is already registered",
+                category="conflict",
+            )
+        if any(
+            prior_key.workspace_id == key.workspace_id
+            and int(prior_key.generation) >= int(key.generation)
+            for prior_key in self._supervisors
+        ):
             raise RuntimeOperationError(
                 "WAW_GENERATION_STALE",
                 "Workspace generation is not strictly newer",
                 category="conflict",
             )
+
+    def _assert_start_inflight_locked(self, key: _SupervisorKey, operation_token: object) -> None:
+        if (
+            key.workspace_id not in self._inflight
+            or self._inflight_project_ids.get(key.workspace_id) != key.project_id
+            or self._inflight_tokens.get(key.workspace_id) is not operation_token
+        ):
+            raise RuntimeOperationError(
+                "WAW_OPERATION_BUSY",
+                "Workspace start reservation changed",
+                category="conflict",
+            )
+
+    @staticmethod
+    def _binding_matches_key(binding: WAWProjectBinding, key: _SupervisorKey) -> bool:
+        return (
+            binding.project_id == key.project_id
+            and binding.binding_revision == key.binding_revision
+            and binding.binding_digest == key.binding_digest
+            and binding.runtime_host_installation_id == key.runtime_host_installation_id
+            and binding.runtime_host_installation_revision == key.runtime_host_installation_revision
+        )
+
+    @staticmethod
+    def _operation_for_key(key: _SupervisorKey) -> WorkspaceStopOperation:
+        return WorkspaceStopOperation(
+            workspace_id=key.workspace_id,
+            project_id=key.project_id,
+            agent_type=AgentType(key.agent_type),
+            generation=int(key.generation),
+            binding_revision=int(key.binding_revision),
+            binding_digest=key.binding_digest,
+            runtime_host_installation_id=key.runtime_host_installation_id,
+            runtime_host_installation_revision=int(key.runtime_host_installation_revision),
+        )
 
     def _start_observation(self, state: SupervisorState) -> WAWLifecycleObservation:
         process_state = "NOT_STARTED" if state is SupervisorState.LOGIN_REQUIRED else "RUNNING"
