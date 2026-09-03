@@ -18,3 +18,6 @@
 - [Remaining development plan](REMAINING_PLAN.md): latest assessed goals, finite slices, model routing, confirmed defects and contract decisions.
 
 - [Opaque AWCE framing](../WAW_AWCE_FRAMING.md): exact envelope layout, bounded Python/Web codecs, header builders, cross-language checks and unimplemented crypto/session boundaries.
+
+- [Executable provenance](../WAW_EXECUTABLE_PROVENANCE.md): descriptor-held Runtime inventory verification and its launch/host limits.
+- [Interactive CLI assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md): current code/vendor documentation gaps requiring a complete execution-profile contract.

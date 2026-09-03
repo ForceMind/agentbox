@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `REMAINING-AWCE-DIAGNOSTICS-2026-09-03`
+Action ID: `REMAINING-EXECUTABLE-DIAGNOSTICS-2026-09-03`
 
 Owner clarified that development continues on the current Mac. Development
 platform and deployment qualification are separate: a missing Linux test host
@@ -15,14 +15,16 @@ Owner requests continued parallel execution: complex work uses sol, ordinary
 work uses terra. The current finite checklist is [REMAINING_PLAN.md](REMAINING_PLAN.md).
 
 - R0 is merged as PR #67 after 19/19 exact-head checks and merge read-back.
-- R1: deliver reviewed Python/Web opaque AWCE framing and pre-encryption header
-  builders, including cross-language CI. No crypto/authentication or socket activation.
+- R1 is merged as PR #68 after 19/19 checks and actual merge read-back.
+  No crypto/authentication or socket activation is implied.
 - R2: review and deliver the bounded opt-in authentication timing diagnostic.
   Two small local runs passed the original 5-second assertions; old timeouts were
   not reproduced, so no latency root cause or behavioral fix is claimed.
 - R3: the complete reviewed full-wire/admission/trust supplement is ready for
   Owner acceptance. It remains PROPOSED; dependent R4/R5 implementation has not begun.
-- R10: implement the independently specified descriptor-held executable verifier.
+- R9.1: implement the independently specified browser tokenizer core; no renderer,
+  trust/admission/controller or socket integration is implied.
+- R10.1: deliver the reviewed descriptor-held executable verifier with exact-head CI.
   Fixed interactive CLI execution profiles still need the missing launch/retention
   contracts; this foundation does not execute a CLI or claim host qualification.
 

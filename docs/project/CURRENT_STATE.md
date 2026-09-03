@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T09:56:00Z"
+verified_at_utc: "2026-09-03T10:08:00Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -14,10 +14,11 @@ repository: "ForceMind/agentbox"
 - All six exact-main workflows completed SUCCESS. Historical Draft PR #42 is
   the only open PR and is outside current writes. Network preflight exited 0.
 - Latest stage baseline: `HEAD/main/origin/main/merge-base` equal
-  `d9c26b9eb26664368c384805d1138a5349b92b60`; all six exact-main workflows
-  completed SUCCESS. Fetch and GitHub reads exited 0. Independent R2 work is
-  present in the shared working tree and excluded from this stage's commit.
-- Active branch: `codex/awce-framing-contract`.
+  `3ebb3e938a03d067ea7df66b6746b9675637e65b`. Five exact-main workflows completed
+  SUCCESS; Backend was still running when read. PR #68's distinct reviewed-head
+  evidence is 19/19 SUCCESS. Fetch and GitHub read-back exited 0.
+- Active branch: `codex/waw-executable-provenance`. Independent R2 diagnostics
+  and R9 tokenizer work are excluded from this stage's commit.
 - This snapshot records observed facts and cannot predict its own merge SHA.
 
 ## Delivered software stages
@@ -33,6 +34,7 @@ repository: "ForceMind/agentbox"
 | F1.3 — fixed Noise core | #65 | `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7` | `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269` | 19/19 SUCCESS |
 | Native browser Noise | #66 | `27ff0161ef65f4a6fe1389a4dbcf4fa318f63db1` | `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9` | 19/19 SUCCESS |
 | R0 — auth worker capacity | #67 | `31a0bc9f38a5c2891a4b9d2bb403a09175579a98` | `d9c26b9eb26664368c384805d1138a5349b92b60` | 19/19 SUCCESS |
+| R1 — opaque AWCE framing | #68 | `0dccb2a71ea38259f1e76e2b268961c213bc98e1` | `3ebb3e938a03d067ea7df66b6746b9675637e65b` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -242,8 +244,29 @@ R0 local implementation evidence:
   drop handling, effective limits and signed-pin compatibility. Independent sol
   review passed; three public Ed25519 fixtures and bootstrap digest were verified.
   It remains **PROPOSED**, not Owner acceptance or implemented application behavior.
-- R1 awaits exact-head CI and merge/read-back. R2 diagnostic evidence and R10
-  descriptor-held executable verification are separate increments in progress.
+- R1 merged at `2026-09-03T10:05:01Z` after 19/19 exact-head CI; read-back,
+  fetch and main fast-forward exited 0. R2 diagnostics and R10 are separate increments.
 - PR #66's Linux E2E run `33731800570`: exit 0, all 60 tests passed in 42.3s.
   Its six post-main workflows also completed SUCCESS. This does not erase the
   earlier four local timeouts or prove a local root cause.
+
+## R10.1 executable provenance evidence
+
+- New trusted Runtime inventory and descriptor-held executable verifier implement
+  closed kind selection, root-owned no-follow ancestry, regular native ELF/file
+  checks, bounded exact hash, path/descriptor revalidation and synchronized
+  lifetime/cleanup. No execution or public filesystem action exists.
+- `.venv/bin/python -m pytest -q tests/unit/test_waw_executable.py`: exit 0,
+  80 passed / 1 native Linux skip. Scoped Ruff/Black/Linux-target mypy: exit 0.
+- Independent sol read-only review: PASS, including additional syscall-failure
+  and close/reuse injection. Mac positive stat/platform fixtures are synthetic;
+  actual FD/read/rename/close work is exercised. No Linux-host readiness claimed.
+- See [WAW_EXECUTABLE_PROVENANCE](../WAW_EXECUTABLE_PROVENANCE.md) for the API and
+  [WAW_INTERACTIVE_PROFILE_ASSESSMENT](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md)
+  for remaining launch/environment/state/retention gaps. R10.1 awaits CI/merge;
+  full R10 stays in progress. Browser parser foundation is independent R9 work.
+- R2's review found raw exception logging, missing metrics accepted as PASS and
+  an ambiguous 5-second flag. Fixes passed 21 dedicated regression cases and a
+  fresh 4/4 isolated Chromium diagnostic; independent sol re-review passed with
+  all 21 regression cases executed. R2 awaits its separate CI/merge.
+  The historic four local auth timeouts remain unproven, not marked fixed.

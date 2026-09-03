@@ -65,15 +65,15 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | Slice | 当前状态 | 具体交付 / ownership | 验收和依赖 |
 | --- | --- | --- | --- |
 | R0 plan + AUTH-CAPACITY-CANCEL | 已完成 | `auth.py` 与 executor tests；主智能体维护计划、安全文档与 GitHub | 已有 barrier 复现；取消等待/执行、共享 gate、成功/异常/提交失败、ContextVar；不得提前释放或遗留未消费异常 |
-| R1 opaque AWCE codecs | 待验证 | Python `awce.py` / Web `awce.ts` 与边界测试 | 现有明确 44-byte header、精确长度、uint64/BigInt、高位与尾随拒绝、双语言固定向量；无 crypto/authentication 声明，不依赖未决 AAD |
-| R2 login latency evidence | 审查未通过 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
+| R1 opaque AWCE codecs | 已完成 | Python `awce.py` / Web `awce.ts` 与边界测试 | 现有明确 44-byte header、精确长度、uint64/BigInt、高位与尾随拒绝、双语言固定向量；无 crypto/authentication 声明，不依赖未决 AAD |
+| R2 login latency evidence | 待验证 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
 | R3 complete protocol clarification | 进行中 | 一个完整补充决策，修正规范冲突与字段缺失 | 下节列出的 wire/admission/trust 问题收敛并明确获得所需 Owner 授权；不逐文件临时发明协议 |
 | R4 application crypto | 未开始 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
 | R5 full wire schemas | 未开始 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
 | R6 staged attachment authority | 未开始 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
 | R7 Runtime encrypted stream | 未开始 | Runtime stream session/server 与有限 executor integration | R4/R5/R6；capability once、同锁 process recheck、ring 先选再加密、partial input ACK、exit/cleanup barrier |
 | R8 API ciphertext relay | 未开始 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
-| R9 browser trust + terminal | 未开始 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
+| R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
 | R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；正式 AgentType argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
@@ -95,10 +95,15 @@ flowchart LR
 
 R0 已由 PR #67 合并：head `31a0bc9f38a5c2891a4b9d2bb403a09175579a98`，
 19/19 checks SUCCESS；实际 merge `d9c26b9eb26664368c384805d1138a5349b92b60`。
-R1 的 Python 44 / Web 38 cases 与双向互通通过，独立 sol 审查 PASS，待 CI/merge。
+R1 的 Python 44 / Web 38 cases 与双向互通通过，独立 sol 审查 PASS；PR #68
+head `0dccb2a71ea38259f1e76e2b268961c213bc98e1`，19/19 SUCCESS，实际 merge
+`3ebb3e938a03d067ea7df66b6746b9675637e65b`。
 R2 两轮小样本未复现旧超时；独立审查发现异常日志、空测量通过和计时标签问题，
-修复与回归验证进行中。R10 仅启动已明确的 executable verifier 基础，完整 CLI
-launch/retention profile 仍未冻结，不得把该基础视为执行接线完成。
+修复后 21 回归与 4/4 Chromium diagnostic 通过，待复审与 CI。
+R9.1 仅进行独立的 browser tokenizer core，完整 controller/trust/renderer 未接通。
+R10.1 executable verifier 已通过独立 sol 审查，80 passed / 1 native Linux skip，
+待 CI/merge；完整 CLI launch/retention profile 仍未冻结，详见
+[assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md)，不得把该基础视为执行接线完成。
 
 R2 是独立测量工作；不把未知原因当作其它 slice 的通用阻断。R1 是纯 framing，
 不能因为其编解码成功而跳过 R3/R4 的加密、身份和准入验证。

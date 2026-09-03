@@ -26,9 +26,11 @@
 
 - Login/reauthentication capacity now follows actual worker completion after caller cancellation; PR #67 merged with 19/19 exact-head checks successful.
 
+- Opaque AWCE Python/Web framing, header builders and interoperability merged in PR #68 with 19/19 exact-head checks successful.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 is merged; R1 delivers independently reviewed opaque AWCE framing and cross-language checks. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics and the R10 executable-verifier foundation proceed independently.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is independently reviewed and awaiting CI; R9.1 browser tokenizer work is in progress. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics and the R10 executable-verifier foundation proceed independently.
 
 ## In Progress
 
