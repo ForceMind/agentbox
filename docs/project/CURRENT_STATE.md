@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T06:28:15Z"
+verified_at_utc: "2026-09-03T06:50:25Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,9 +9,11 @@ repository: "ForceMind/agentbox"
 
 ## Live baseline
 
-- Verified `HEAD` / `main` / `origin/main` / merge-base at snapshot-branch start:
-  `dfc788a29623de5b5a9c3230855af1ee7aed2953`.
-- Active implementation branch: `codex/waw-codex-supervisor`; starting tree clean.
+- Observed `origin/main`: `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`.
+- Active implementation branch: `codex/waw-runtime-composition`, created from
+  PR #63 head and normally merged with the read-back main; no history rewrite.
+- Local `main` still points to `dfc788a29623de5b5a9c3230855af1ee7aed2953`
+  while work continues on the feature branch.
 - Historical Draft PR #42 remains open and outside this task's write scope.
 - This file records observed commits; it cannot predict its own future merge
   SHA. Live Git/GitHub always overrides the snapshot.
@@ -24,6 +26,7 @@ repository: "ForceMind/agentbox"
 | C — Codex control | #59 | `3e0e7a921e008d9c6b5198d37b8254fbee174068` | `7c1c755854077d2e0989ff1d3ab3d54f77e9e707` | 19/19 SUCCESS |
 | D — metadata UX | #60 | `9be95b10e57a3daa3690205d6c2ffad8da74424d` | `6972f0dba907afd9741c2dc3584f431ee32765ed` | 19/19 SUCCESS |
 | E — software readiness | #61 | `0c894ff52f49793f599eb33c4b92b8223e6109b3` | `35191eeaf858041cf5c0767dc1579b67690444ec` | 19/19 SUCCESS |
+| F1.1 — shared supervisor | #63 | `c78cb92a5afe8056ab44a1cc4e8a6bea3074e184` | `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -72,8 +75,9 @@ Linux host is a gate for actual activation/qualification, not a blanket block
 on software implementation. The prior blocked status has been superseded for
 Mac development; A–E remain historical delivered increments.
 
-Current branch implements shared Claude/Codex supervisor/stream integration,
-retains strict concrete command types and validates both AgentTypes locally.
+PR #63 delivered shared Claude/Codex supervisor/stream integration.
+Current branch implements the concrete lifecycle executor, read-only process
+probe, two-phase attachment boundary and failed-start cleanup/restart fencing.
 Real Runtime/PTY/Noise/WebSocket deployment and production readiness are not
 claimed. Next scope is in `NEXT_ACTION.md`.
 
@@ -81,7 +85,7 @@ Live preflight from `dfc788a29623de5b5a9c3230855af1ee7aed2953`: clean tree,
 HEAD/main/origin/main/merge-base equal, six exact-main workflows SUCCESS, only
 historical Draft PR #42 open. Git fetch/GitHub reads exited 0.
 
-## Mac follow-up local evidence
+## F1.1 merged evidence
 
 - Shared concrete Claude/Codex command union, full supervisor binding checks,
   command revalidation and terminal stream cleanup/replay fences implemented.
@@ -94,3 +98,26 @@ historical Draft PR #42 open. Git fetch/GitHub reads exited 0.
   Codex tmux handling. Targeted reviewer tests passed (55).
 - No frontend behavior, CLI argv, real host, credential or production activation
   changed. Mac development evidence is not Linux-host qualification.
+
+## F1.2 Runtime composition in progress
+
+- Concrete `WAWSupervisorExecutor` shares exact supervisors between lifecycle
+  dispatch and admitted stream bridges; factories are trusted Runtime inputs.
+- Status/reconcile use a separate exact read-only probe. They do not reconnect
+  a PTY, grant a writer or clear uncertain input.
+- Failed readiness keeps the exact cleanup target. Durable generation
+  reservation precedes process effects; unknown restart state stays quarantined
+  until the existing host evidence path acknowledges cleanup.
+- PR #63 merged at `2026-09-03T06:43:01Z`; GitHub merge read-back and fetch
+  both exited 0. F1.2 validation and review are being completed on this branch.
+
+F1.2 final local validation before PR CI:
+
+- `.venv/bin/python -m pytest -q tests/unit/test_waw_command.py tests/unit/test_waw_codex_command.py tests/unit/test_waw_supervisor.py tests/unit/test_waw_stream_contract.py tests/unit/test_waw_transport.py tests/unit/test_waw_lifecycle.py tests/unit/test_waw_bootstrap.py tests/unit/test_waw_runtime_executor.py tests/integration/test_waw_workspace_api.py`: exit 0, 187 passed.
+- `ruff check apps packages tests migrations`, `black --check apps/api apps/worker apps/cli packages tests migrations`, `mypy --platform linux apps/api apps/worker apps/cli packages tests`: exit 0; 199 formatted files and 191 typed files.
+- `scripts/check-doc-links.py`: exit 0, 156 relative links; `git diff --check`: exit 0.
+- Independent read-only review PASS; reviewer ran 127 tests before the final
+  two binding cancellation/path-drift regressions. Final executor test file:
+  14 passed, including those regressions. All transports/processes are synthetic.
+- Six exact-main workflows for `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`
+  completed successfully; this is separate from this branch's pending PR CI.

@@ -100,3 +100,53 @@ The existing real tmux adapter is still Claude-only and rejects Codex before
 any tmux I/O. Current command argv values are prototype contracts, not proof of
 the final qualified bootstrap/vendor invocation. Mac tests and Linux CI validate
 software behavior; actual host/CLI qualification remains separate.
+
+## Concrete Runtime composition on Mac
+
+`waw_runtime_executor.py` now supplies `WAWSupervisorExecutor` for the existing
+`executor_factory(consumed_epoch)` bootstrap seam. It is an actual composition
+of the lifecycle executor port and `WAWSupervisor`, with trusted Runtime-only
+Project/command/transport factories. It does not select argv, paths, environment,
+PIDs or session names from control requests. The full identity and Runtime epoch
+key the retained supervisor; unresolved generations cannot be replaced.
+
+Blocking adapter operations run outside the async event loop. An in-flight
+workspace operation remains fenced after cancellation until the worker actually
+finishes. Later generations cannot bypass that fence; old stopped supervisors
+are replaced only by a strictly newer generation with positive Stop evidence.
+
+Status and lifecycle reconcile use `RuntimeProbeEvidence`, checked for exact
+workspace/generation/marker and closed state/exit-code combinations. A probe
+never grants a writer, reconnects a PTY or clears `INPUT_UNCERTAIN`. The Claude
+tmux adapter keeps `probe()` read-only and only explicit reconnect restores its
+local attachment binding. Missing session is `MISSING`, not Stop proof; a dead
+pane without a verified exit code is `UNKNOWN`.
+
+`bridge(identity, attachment)` reuses the same supervisor, but does not admit
+an attachment. The caller must provide an `ActiveAttachment` from the existing
+authority after admission; `attach.prepare` is still only a reservation. No new
+public endpoint, Noise plaintext fallback or synthetic active writer is added.
+
+Readiness failure keeps the exact Runtime target available for cleanup. With
+a durable workspace store, the registry reserves the generation before any
+executor effect, then reads it back after startup. Failed start invokes bounded
+exact cleanup; uncertain cleanup remains quarantined. On restart, a durable
+generation without a known live row cannot authorize reuse or a newer start.
+The existing independent empty-cgroup recovery acknowledgement is required.
+In-memory fixtures can retry exact Stop after failed cleanup; this is not a
+replacement for durable host recovery.
+
+These changes are software integration. They neither start a production Runtime
+nor qualify current prototype CLI argv. Linux process isolation, actual Codex
+adapter, encrypted socket/browser integration and real reboot acceptance remain
+separate work tracked in the project plan.
+
+Formal Project mapping uses the existing register action: canonical `prj_*`
+identity maps to a validated single-component `relative_key` under the Runtime
+Project root through `WAWProjectBindingConsumer`. The executor resolves that key
+with `ProjectRegistry`, supplies the resulting record to its trusted command
+factory and checks cwd against the registered path again before start. It never
+assumes the directory has the same name as the opaque Project ID. Live or
+in-flight work prevents binding replacement so the previous exact Stop remains
+usable. Stream output/replay also rechecks the current attachment authority;
+revocation cannot leave a readable buffered-output channel.

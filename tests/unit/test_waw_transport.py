@@ -11,7 +11,7 @@ from agentbox_runtime.process import ExecutableIdentity
 from agentbox_runtime.waw_codex_command import WAWCodexCommand
 from agentbox_runtime.waw_command import WAWClaudeCommand
 from agentbox_runtime.waw_pty import PtyGeometry
-from agentbox_runtime.waw_supervisor import SupervisorState
+from agentbox_runtime.waw_supervisor import RuntimeProbeState, SupervisorState
 from agentbox_runtime.waw_transport import WAWTmuxTransport
 
 
@@ -104,6 +104,98 @@ def _command(tmp_path: Path, *, project_id: str = "prj_" + "1" * 32) -> WAWClaud
         argv=("remote-control",),
         managed_marker="waw-v1:wri_" + "2" * 32 + ":" + "3" * 32,
     )
+
+
+def test_read_only_probe_does_not_reattach_but_reconnect_allows_second_detach(
+    tmp_path: Path,
+) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    transport.start(command, PtyGeometry(80, 24))
+    assert transport.detach()
+    calls_before = len(tmux.calls)
+    assert transport.probe().state is RuntimeProbeState.RUNNING
+    assert not bool(transport.attached)
+    assert {name for name, _ in tmux.calls[calls_before:]} <= {"has", "managed", "dead", "command"}
+    transport.reconcile()
+    assert bool(transport.attached)
+    assert transport.detach()
+    assert not bool(transport.attached)
+    assert not tmux.writes
+    assert not any(name == "kill" for name, _ in tmux.calls)
+
+
+def test_probe_requires_stop_proof_and_rejects_reappearing_session(tmp_path: Path) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    transport.start(command, PtyGeometry(80, 24))
+    sessions = dict(tmux.sessions)
+    tmux.sessions.clear()
+    assert transport.probe().state is RuntimeProbeState.MISSING
+    tmux.sessions.update(sessions)
+    tmux.pane_is_dead = True
+    assert transport.probe().state is RuntimeProbeState.UNKNOWN
+    tmux.pane_is_dead = False
+    tmux.pane_process = "codex"
+    assert transport.probe().state is RuntimeProbeState.COLLISION
+    tmux.pane_process = "claude"
+    assert transport.stop().closed
+    assert transport.probe().state is RuntimeProbeState.STOPPED
+    tmux.sessions.update(sessions)
+    assert transport.probe().state is RuntimeProbeState.UNKNOWN
+
+
+def test_failed_readiness_keeps_exact_target_for_cleanup(tmp_path: Path) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    tmux.pane_is_dead = True
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    with pytest.raises(RuntimeOperationError):
+        transport.start(command, PtyGeometry(80, 24))
+    assert len(tmux.sessions) == 1
+    with pytest.raises(RuntimeOperationError):
+        transport.start(command, PtyGeometry(80, 24))
+    assert sum(name == "create" for name, _ in tmux.calls) == 1
+    assert transport.stop().closed
+    assert not tmux.sessions
+    assert transport.probe().state is RuntimeProbeState.STOPPED
+
+
+def test_failed_start_cleanup_cannot_kill_a_replaced_marker(tmp_path: Path) -> None:
+    command = _command(tmp_path)
+    tmux = FakeTmux()
+    tmux.pane_is_dead = True
+    transport = WAWTmuxTransport(
+        workspace_id=command.workspace_id,
+        generation=1,
+        tmux=tmux,
+        managed_marker=command.managed_marker,
+    )
+    with pytest.raises(RuntimeOperationError):
+        transport.start(command, PtyGeometry(80, 24))
+    session = next(iter(tmux.sessions))
+    tmux.sessions[session] = "unrelated-marker"
+    with pytest.raises(RuntimeOperationError):
+        transport.stop()
+    assert tmux.sessions[session] == "unrelated-marker"
+    assert not any(name == "kill" for name, _ in tmux.calls)
 
 
 def test_tmux_transport_binds_fixed_command_and_typed_lifecycle(tmp_path: Path) -> None:

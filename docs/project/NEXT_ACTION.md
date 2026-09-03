@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `MAC-WAW-CODEX-SUPERVISOR-2026-09-03`
+Action ID: `MAC-WAW-RUNTIME-COMPOSITION-2026-09-03`
 
 Owner clarified that development continues on the current Mac. Development
 platform and deployment qualification are separate: a missing Linux test host
@@ -9,19 +9,21 @@ The prior blanket host prerequisite for all remaining software work is supersede
 by this clarification; actual host activation, Secret handling, new architecture
 decisions and production promises retain their existing boundaries.
 
-## Current slice — shared Codex supervisor and stream lifecycle
+## Current slice — concrete Runtime composition
 
-- Reuse the concrete fixed Claude/Codex command types as a closed union.
-- Bind supervisor lifecycle/attachment/input/output/resize/detach/reconnect/exact
-  Stop to the selected command's AgentType and complete workspace identity.
-- Revalidate concrete commands before transport start; reject duck types,
-  subclasses, stale executable identity and cross-AgentType operations.
-- Fence closed/detached stream replay and make active CLOSE use positive
-  attachment cleanup proof without stopping the workspace.
-- Keep the existing real Claude tmux adapter explicit about unsupported Codex;
-  no caller argv/path/env or fake real-host success is introduced.
-- Run Mac-compatible tests, independent review, exact-head Linux CI, then
-  merge/read-back and update the project documents.
+PR #63 completed shared Claude/Codex supervisor integration with 19/19 CI
+checks and merge `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`.
+
+- Implement `WAWSupervisorExecutor` over the real shared supervisor and trusted
+  Project/command/transport factories, using the consumed Runtime epoch.
+- Use exact read-only process probes for status/reconcile; preserve detached
+  writer and uncertain input states. Explicit reconnect restores the binding.
+- Retain failed-start targets for exact cleanup; consume durable generation
+  before side effects and quarantine unknown restart/cleanup outcomes.
+- Construct stream bridges over the same supervisor only for an already-admitted
+  `ActiveAttachment`; prepare remains a reservation with no terminal writer.
+- Test both AgentTypes, failure, cancellation, identity drift and restart; run
+  independent review and exact-head Linux CI before merge/read-back.
 
 ## Next implementation and validation
 
