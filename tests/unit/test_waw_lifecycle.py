@@ -270,6 +270,26 @@ async def test_attachment_prepare_and_detach_require_exact_tuple_and_cleanup_ack
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "resume_cursor,previous_runtime_epoch",
+    [("8", None), ("0", "1"), ("8", "2")],
+)
+async def test_attachment_prepare_rejects_resume_hint_outside_closed_set(
+    resume_cursor: str, previous_runtime_epoch: str | None
+) -> None:
+    runtime = registry(FakeExecutor())
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    request = attachment_request("workspace.attach.prepare", request_id="wreq_" + "a" * 32)
+    request["resume_cursor"] = resume_cursor
+    request["previous_runtime_epoch"] = previous_runtime_epoch
+    with pytest.raises(WAWControlDispatchError) as exc_info:
+        await runtime.dispatch(request)
+    assert exc_info.value.code == "RESUME_HINT_INVALID"
+
+
+@pytest.mark.anyio
 async def test_binding_revision_requires_exact_predecessor_digest() -> None:
     runtime = registry()
     await runtime.dispatch(bind_request())

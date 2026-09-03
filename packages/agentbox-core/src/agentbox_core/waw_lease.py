@@ -8,10 +8,13 @@ transport implementations.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from threading import RLock
+
+from agentbox_core.waw_recovery import RecoveryIdentity
 
 
 class LeaseCleanupState(StrEnum):
@@ -32,6 +35,31 @@ class LeaseCleanupError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         self.code = code
         super().__init__(message)
+
+
+@dataclass(frozen=True)
+class LeaseOwner:
+    """Exact immutable attachment lease owner required for cleanup proof."""
+
+    identity: RecoveryIdentity
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, RecoveryIdentity):
+            raise LeaseCleanupError(
+                "LEASE_OWNER_INVALID", "validated recovery identity is required"
+            )
+
+    @property
+    def attachment_id(self) -> str:
+        return self.identity.attachment_id
+
+    @property
+    def generation(self) -> int:
+        return self.identity.generation
+
+    @property
+    def lease_number(self) -> int:
+        return self.identity.lease_number
 
 
 @dataclass(frozen=True)
@@ -64,13 +92,24 @@ class LeaseCleanupFence:
         grace_seconds: float = 60.0,
         detach_timeout_seconds: float = 1.0,
     ) -> None:
-        if stale_after_seconds <= 0 or grace_seconds <= 0 or detach_timeout_seconds <= 0:
+        durations = (stale_after_seconds, grace_seconds, detach_timeout_seconds)
+        if (
+            any(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                or value <= 0
+                for value in durations
+            )
+            or grace_seconds < stale_after_seconds
+        ):
             raise ValueError("lease cleanup durations must be positive")
         self._clock = clock
         self._stale_after = stale_after_seconds
         self._grace = grace_seconds
         self._detach_timeout = detach_timeout_seconds
         self._snapshot: LeaseCleanupSnapshot | None = None
+        self._owner: LeaseOwner | None = None
         self._last_observed: float | None = None
         self._lock = RLock()
 
@@ -80,9 +119,19 @@ class LeaseCleanupFence:
             return self._snapshot
 
     def begin(
-        self, *, attachment_id: str, generation: int, lease_number: int
+        self, *, attachment_id: str, generation: int, lease_number: int, owner: LeaseOwner
     ) -> LeaseCleanupSnapshot:
         with self._lock:
+            if not isinstance(owner, LeaseOwner):
+                raise LeaseCleanupError("LEASE_OWNER_INVALID", "typed lease owner is required")
+            if (
+                owner.attachment_id != attachment_id
+                or owner.generation != generation
+                or owner.lease_number != lease_number
+            ):
+                raise LeaseCleanupError(
+                    "LEASE_OWNER_MISMATCH", "lease owner does not match attachment"
+                )
             if self._snapshot is not None and self._snapshot.writer_slot_reserved:
                 raise LeaseCleanupError("ATTACHMENT_BUSY", "attachment cleanup is already reserved")
             now = self._observe_now(None)
@@ -93,10 +142,14 @@ class LeaseCleanupFence:
                 state=LeaseCleanupState.ADMITTING,
                 last_heartbeat=now,
                 stale_at=now + self._stale_after,
-                grace_until=now + self._stale_after + self._grace,
+                # The recovery grace window is measured from the last
+                # heartbeat.  With the architecture defaults, a lease is
+                # stale at +30s and expires at +60s (not +90s).
+                grace_until=now + self._grace,
                 detach_deadline=None,
                 cleanup_state=None,
             )
+            self._owner = owner
             return self._snapshot
 
     def commit_admission(self) -> LeaseCleanupSnapshot:
@@ -118,7 +171,7 @@ class LeaseCleanupFence:
                 snapshot,
                 last_heartbeat=current,
                 stale_at=current + self._stale_after,
-                grace_until=current + self._stale_after + self._grace,
+                grace_until=current + self._grace,
             )
             return self._snapshot
 
@@ -148,7 +201,7 @@ class LeaseCleanupFence:
             return self._snapshot
 
     def acknowledge_cleanup(
-        self, *, cleanup_state: str, now: float | None = None
+        self, *, cleanup_state: str, now: float | None = None, owner: LeaseOwner
     ) -> LeaseCleanupSnapshot:
         with self._lock:
             snapshot = self._advance(now)
@@ -158,6 +211,10 @@ class LeaseCleanupFence:
             }:
                 raise LeaseCleanupError(
                     "DETACH_ACK_UNEXPECTED", "cleanup acknowledgement is unexpected"
+                )
+            if self._owner is not None and owner != self._owner:
+                raise LeaseCleanupError(
+                    "DETACH_ACK_STALE", "cleanup proof does not match the exact attachment owner"
                 )
             if cleanup_state != "ATTACH_PTY_CLOSED":
                 raise LeaseCleanupError(
@@ -193,6 +250,12 @@ class LeaseCleanupFence:
 
     def _observe_now(self, requested: float | None) -> float:
         current = self._clock() if requested is None else requested
+        if (
+            isinstance(current, bool)
+            or not isinstance(current, (int, float))
+            or not math.isfinite(float(current))
+        ):
+            raise LeaseCleanupError("CLOCK_INVALID", "lease cleanup clock must be finite")
         if self._last_observed is not None and current < self._last_observed:
             raise LeaseCleanupError("CLOCK_ROLLBACK", "lease cleanup clock moved backwards")
         self._last_observed = current
@@ -204,4 +267,10 @@ class LeaseCleanupFence:
         return self._snapshot
 
 
-__all__ = ["LeaseCleanupError", "LeaseCleanupFence", "LeaseCleanupSnapshot", "LeaseCleanupState"]
+__all__ = [
+    "LeaseCleanupError",
+    "LeaseCleanupFence",
+    "LeaseCleanupSnapshot",
+    "LeaseCleanupState",
+    "LeaseOwner",
+]

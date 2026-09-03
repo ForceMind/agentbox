@@ -5,11 +5,16 @@ from pathlib import Path
 
 import pytest
 from agentbox_core.waw import AgentType, WorkspaceStopOperation, managed_marker, workspace_id
-from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
+from agentbox_core.waw_tickets import (
+    ActiveAttachment,
+    AttachmentTuple,
+    AuthenticatedAttachmentContext,
+)
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import ExecutableIdentity
 from agentbox_runtime.waw_command import WAWClaudeCommand
 from agentbox_runtime.waw_pty import PtyGeometry
+from agentbox_runtime.waw_stream_bridge import WAWStreamBridge
 from agentbox_runtime.waw_supervisor import (
     RuntimeStartEvidence,
     RuntimeStopEvidence,
@@ -82,10 +87,19 @@ def _attachment(workspace: str, *, attachment_id: str = "att_" + "2" * 32) -> Ac
         binding_revision=1,
         binding_digest="a" * 64,
     )
-    return ActiveAttachment(claims, 0.0, 0.0, 100.0, 200.0)
+    return ActiveAttachment(
+        claims,
+        0.0,
+        0.0,
+        100.0,
+        200.0,
+        AuthenticatedAttachmentContext("ses_1", "usr_1", "waw", "https://agentbox", "1", 1),
+    )
 
 
-def _supervisor(tmp_path: Path) -> tuple[WAWSupervisor, FakeTransport, str]:
+def _supervisor(
+    tmp_path: Path, *, runtime_epoch: str = "1"
+) -> tuple[WAWSupervisor, FakeTransport, str]:
     workspace = workspace_id("prj_" + "1" * 32, AgentType.CLAUDE)
     stop_binding = WorkspaceStopOperation(
         workspace_id=workspace,
@@ -136,10 +150,59 @@ def _supervisor(tmp_path: Path) -> tuple[WAWSupervisor, FakeTransport, str]:
             clock=lambda: 1.0,
             attachment_validator=lambda _: True,
             stop_binding=stop_binding,
+            runtime_epoch=runtime_epoch,
         ),
         transport,
         workspace,
     )
+
+
+@pytest.mark.parametrize("epoch", ["١", "0", "9" * 21])
+def test_supervisor_rejects_noncanonical_runtime_epoch(tmp_path: Path, epoch: str) -> None:
+    with pytest.raises(RuntimeOperationError, match="canonical"):
+        _supervisor(tmp_path, runtime_epoch=epoch)
+
+
+def test_bridge_same_epoch_replay_is_bound_and_exposes_output(tmp_path: Path) -> None:
+    supervisor, _transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    attachment = _attachment(workspace)
+    bridge = WAWStreamBridge(supervisor, attachment)
+    bridge.attach()
+    supervisor.append_output(supervisor.output_source(), b"ok")
+    assert bridge.output(0)
+
+
+def test_bridge_rejects_missing_context_and_mismatched_generation_or_epoch(
+    tmp_path: Path,
+) -> None:
+    supervisor, _transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    attachment = _attachment(workspace)
+    with pytest.raises(RuntimeOperationError, match="identity"):
+        WAWStreamBridge(supervisor, replace(attachment, context=None))
+    bridge = WAWStreamBridge(supervisor, attachment)
+    bridge.attach()
+    supervisor.append_output(supervisor.output_source(), b"secret")
+    assert attachment.context is not None
+    mismatched = replace(attachment, context=replace(attachment.context, runtime_epoch="2"))
+    epoch_bridge = WAWStreamBridge(supervisor, mismatched)
+    with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
+        epoch_bridge.attach()
+    with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
+        epoch_bridge.output(0)
+    with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
+        supervisor.write_input(mismatched, b"never-written")
+    assert _transport.writes == []
+    with pytest.raises(RuntimeOperationError, match="Runtime epoch"):
+        supervisor.replay_output(0, generation=1, runtime_epoch="2")
+    with pytest.raises(RuntimeOperationError, match="generation"):
+        supervisor.replay_output(0, generation=2, runtime_epoch="1")
+    generation_bridge = WAWStreamBridge(
+        supervisor, replace(attachment, claims=replace(attachment.claims, generation=2))
+    )
+    with pytest.raises(RuntimeOperationError, match="binding"):
+        generation_bridge.attach()
 
 
 def test_lifecycle_fences_input_resize_replay_detach_and_stop(tmp_path: Path) -> None:
@@ -152,7 +215,7 @@ def test_lifecycle_fences_input_resize_replay_detach_and_stop(tmp_path: Path) ->
     supervisor.write_input(attachment, b"hello\r")
     supervisor.resize(attachment, PtyGeometry(100, 30))
     supervisor.append_output(output_source, b"ok")
-    replay = supervisor.replay_output(0)
+    replay = supervisor.replay_output(0, generation=1, runtime_epoch="1")
     assert replay.kind == "frames"
     assert replay.frames[0].payload == b"ok"
     supervisor.detach(attachment)
@@ -231,7 +294,7 @@ def test_output_is_not_available_after_exact_stop(tmp_path: Path) -> None:
     supervisor.append_output(output_source, b"x")
     supervisor.stop(attachment)
     with pytest.raises(RuntimeOperationError, match="unavailable"):
-        supervisor.replay_output(0)
+        supervisor.replay_output(0, generation=1, runtime_epoch="1")
 
 
 def test_output_replay_rejects_cross_generation_cursor(tmp_path: Path) -> None:

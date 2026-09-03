@@ -8,7 +8,8 @@ AgentBox turns a Linux host into a securely operated AI development workstation 
 
 - Read/write only via versioned APIs.
 - No arbitrary command/filesystem/process gateway.
-- Mechanical repository actions can be delegated to a protected governance bot.
+- Mechanical repository actions follow CI-gated feature branch, merge and exact
+  read-back; a separate governance bot is optional.
 
 ## Governance boundary
 

@@ -20,6 +20,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from agentbox_core.waw import AgentType
+from agentbox_core.waw_recovery import RecoveryError, ResumeHint
 
 from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupAttestation,
@@ -45,6 +46,7 @@ _ATTACH_PREPARE = "workspace.attach.prepare"
 _ATTACH_DETACH = "workspace.attach.detach"
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _DECIMAL = re.compile(r"\A(?:0|[1-9][0-9]{0,19})\Z")
+_POS_DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 _STATES = frozenset(
     {
         "STARTING",
@@ -181,6 +183,10 @@ class WAWLifecycleRegistry:
         cgroup_attestation_timeout_seconds: float = 2.0,
         cleanup_timeout_seconds: float = 2.0,
     ) -> None:
+        if not isinstance(runtime_epoch, str) or _POS_DECIMAL.fullmatch(runtime_epoch) is None:
+            raise ValueError("runtime_epoch must be a canonical positive decimal")
+        if int(runtime_epoch) > _MAX_U64:
+            raise ValueError("runtime_epoch exceeds uint64")
         self._host_id = runtime_host_installation_id
         self._host_revision = runtime_host_installation_revision
         self._host_manifest_digest = host_manifest_digest
@@ -614,6 +620,25 @@ class WAWLifecycleRegistry:
         }:
             raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
         attachment_id = request["attachment_id"]
+        try:
+            if (
+                not isinstance(request["auth_epoch"], str)
+                or _POS_DECIMAL.fullmatch(request["auth_epoch"]) is None
+                or int(request["auth_epoch"]) > _MAX_U64
+            ):
+                raise ValueError("auth_epoch must be canonical")
+            ResumeHint(
+                resume_cursor=(
+                    None if request["resume_cursor"] is None else int(request["resume_cursor"])
+                ),
+                previous_runtime_epoch=(
+                    None
+                    if request["previous_runtime_epoch"] is None
+                    else int(request["previous_runtime_epoch"])
+                ),
+            ).validate(current_runtime_epoch=int(self._runtime_epoch))
+        except (RecoveryError, TypeError, ValueError) as exc:
+            raise WAWControlDispatchError("RESUME_HINT_INVALID") from exc
         if attachment_id in self._attachments:
             raise WAWControlDispatchError("ATTACHMENT_PREPARE_REPLAY")
         if len(self._attachments) >= 32:

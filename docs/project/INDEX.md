@@ -9,3 +9,4 @@
 5. `DECISION_INDEX.md`
 6. `GOVERNANCE.md`
 7. `GOVERNANCE_AUTOMATION.md`
+8. `EXECUTION_PLAN.md` — 当前目标、阶段状态、职责、验收与交付流程。
