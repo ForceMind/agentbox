@@ -22,9 +22,13 @@
 
 - Fixed Noise NX Python/WebCrypto cores, pinned independent vectors and two-role interoperability merged in PR #65 with 19/19 exact-head checks successful.
 
+- Native Chromium Noise verification merged in PR #66; all 60 Linux E2E tests and 19/19 exact-head checks passed.
+
+- Login/reauthentication capacity now follows actual worker completion after caller cancellation; PR #67 merged with 19/19 exact-head checks successful.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 closes a reproduced authentication concurrency defect; R1 implements already-frozen opaque AWCE framing. Full wire/admission/trust clarification is still necessary before application integration; a three-byte proposal alone does not close all protocol gaps.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 is merged; R1 delivers independently reviewed opaque AWCE framing and cross-language checks. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics and the R10 executable-verifier foundation proceed independently.
 
 ## In Progress
 
