@@ -23,3 +23,5 @@
 - [Interactive CLI assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md): current code/vendor documentation gaps requiring a complete execution-profile contract.
 
 - [Authentication timing diagnostic](../AUTH_TIMING_DIAGNOSTIC.md): isolated numeric observations, failure/privacy rules, regression evidence and unknown historical latency cause.
+
+- [Browser tokenizer foundation](../WAW_BROWSER_TOKENIZER.md): incremental UTF-8/VT typed tokens, independent limits, explicit failure boundary and remaining controller/renderer contracts.

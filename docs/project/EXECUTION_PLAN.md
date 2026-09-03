@@ -107,3 +107,5 @@ R0 已由 PR #67 交付：head `31a0bc9f38a5c2891a4b9d2bb403a09175579a98`，19/1
 R1 已由 PR #68 交付：head `0dccb2a71ea38259f1e76e2b268961c213bc98e1`，19/19 exact-head checks SUCCESS；实际 merge `3ebb3e938a03d067ea7df66b6746b9675637e65b`。R10.1 verifier 和修复后的 R2 diagnostic 均已通过独立 sol 审查，按阶段等待 CI/merge；R9.1 tokenizer core 独立开发中。
 
 R10.1 已由 PR #69 交付：head `9147cace5b554205dfecc20cf8bfb643d4c46761`，19/19 exact-head checks SUCCESS；实际 merge `9529da6d5c110b7a09d5972dfa0db5e012727451`。这完成 descriptor-held verifier，不代表完整 R10 CLI execution。R2 已修复审查问题并通过默认本机60项E2E，待阶段CI。
+
+R2 已由 PR #70 交付：head `eca03e47849b12449bb2ab4aec8dfdc001ef13dd`，19/19 exact-head checks SUCCESS；实际 merge `f7ef3c936529b19838cd087dc9e232397f1e304d`。R9.1 tokenizer 已修复独立审查发现并复审通过，113测试和133独立负例通过，待CI/merge；完整终端尚未接通。

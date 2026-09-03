@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T10:17:00Z"
+verified_at_utc: "2026-09-03T10:25:09Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -14,11 +14,11 @@ repository: "ForceMind/agentbox"
 - All six exact-main workflows completed SUCCESS. Historical Draft PR #42 is
   the only open PR and is outside current writes. Network preflight exited 0.
 - Latest stage baseline: `HEAD/main/origin/main/merge-base` equal
-  `9529da6d5c110b7a09d5972dfa0db5e012727451`. Three exact-main workflows completed
-  SUCCESS; Backend/E2E/Release Candidate were running when read. PR #69's separate
+  `f7ef3c936529b19838cd087dc9e232397f1e304d`. Three exact-main workflows completed
+  SUCCESS; Backend/E2E/Release Candidate were running when read. PR #70's separate
   reviewed-head evidence is 19/19 SUCCESS. Fetch and merge read-back exited 0.
-- Active branch: `codex/auth-timing-diagnostic`. Independent R9 tokenizer work
-  is excluded from this stage's commit. R1's six post-main workflows are SUCCESS.
+- Active branch: `codex/browser-terminal-tokenizer`; only historical Draft #42
+  is open at preflight. R10.1's six post-main workflows completed SUCCESS.
 - This snapshot records observed facts and cannot predict its own merge SHA.
 
 ## Delivered software stages
@@ -36,6 +36,7 @@ repository: "ForceMind/agentbox"
 | R0 — auth worker capacity | #67 | `31a0bc9f38a5c2891a4b9d2bb403a09175579a98` | `d9c26b9eb26664368c384805d1138a5349b92b60` | 19/19 SUCCESS |
 | R1 — opaque AWCE framing | #68 | `0dccb2a71ea38259f1e76e2b268961c213bc98e1` | `3ebb3e938a03d067ea7df66b6746b9675637e65b` | 19/19 SUCCESS |
 | R10.1 — executable provenance | #69 | `9147cace5b554205dfecc20cf8bfb643d4c46761` | `9529da6d5c110b7a09d5972dfa0db5e012727451` | 19/19 SUCCESS |
+| R2 — auth timing diagnostic | #70 | `eca03e47849b12449bb2ab4aec8dfdc001ef13dd` | `f7ef3c936529b19838cd087dc9e232397f1e304d` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -290,7 +291,30 @@ R0 local implementation evidence:
   60 passed in 37.2s with API/preview cleanup. Historical timeout cause remains
   unknown; current passing samples do not establish a latency fix.
 - Scoped lint/format/type/syntax checks and independent sol re-review passed.
-  R2 awaits exact-head CI and merge. R9.1 core has 96 local tests and is under
-  independent review; no browser terminal/controller has been enabled.
+  R2 merged at `2026-09-03T10:23:56Z` with 19/19 exact-head CI and read-back.
+  CI E2E job `100611172739` executed all 21 regressions (3.67s) and the complete
+  60-test browser suite (40.0s); no diagnostic case was skipped. R9.1 remains
+  a separate increment; no browser terminal/controller has been enabled.
 - PR #69 Python 3.13 CI job `100608598342`: 1864 passed / 1 skipped / 5 warnings
   in 171.77s. This is full software CI, not real CLI/host qualification.
+
+## R9.1 tokenizer foundation evidence
+
+- Added pure incremental UTF-8/VT tokenizer with typed output tokens, the closed
+  character/control allowlist, frame/task/sequence/raw-line limits and explicit
+  reset/destroy. No renderer, browser response, DOM, logging or persistence exists.
+- Independent sol review found line overflow masking a simultaneous frame-control
+  limit and incomplete ESC/CSI state exposing a denied C1 sequence body. Both
+  were fixed; the same-root ESC re-entry case was fixed with the same budget rules.
+  Output suppression no longer bypasses parsing/counters, and introducer changes
+  preserve the earliest deadline and cumulative byte count.
+- Worker and independent reviewer each ran 113 scoped Vitest tests, exit 0.
+  The reviewer additionally ran 133 independent negatives against actual
+  transpiled source, all passed. Independent sol re-review: PASS.
+- Scoped ESLint, Prettier, TypeScript and whitespace checks passed. No visible
+  UI change, so visual QA is not applicable. See
+  [WAW_BROWSER_TOKENIZER](../WAW_BROWSER_TOKENIZER.md) for API and integration limits.
+- R9.1 awaits exact-head CI/merge. Full R9 remains incomplete: renderer/controller,
+  trust/crypto/admission, attachment scheduler and exact detach are not connected.
+  Logical-line deadline duration and post-limit controller recovery still need
+  explicit contract resolution; this core does not invent them.

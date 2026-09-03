@@ -47,8 +47,8 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 
 - **P1 AUTH-CAPACITY-CANCEL**：已在纯内存 Event barrier 实验中复现：
   `max_concurrency=1`，取消第一个 login await 后线程仍在运行，第二个 worker
-  提前开始，峰值达到 2。修复目标是按实际 worker completion 释放共享 login /
-  reauthentication capacity，而非按 HTTP caller lifetime 释放。
+  提前开始，峰值达到 2。R0 已修复为按实际 worker completion 释放共享 login /
+  reauthentication capacity，并通过确定性取消/失败回归和完整CI。
 - **AUTH-MAC-LATENCY**：此前 Mac 全量 E2E 为 56 passed / 4 timeout；新 native
   crypto 两例通过，Linux PR #66 全量 60 passed。没有证据将这四次 timeout
   归因于上述取消缺陷。Argon2 不在登录写事务内，E2E 使用低成本参数。应先
@@ -66,7 +66,7 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | --- | --- | --- | --- |
 | R0 plan + AUTH-CAPACITY-CANCEL | 已完成 | `auth.py` 与 executor tests；主智能体维护计划、安全文档与 GitHub | 已有 barrier 复现；取消等待/执行、共享 gate、成功/异常/提交失败、ContextVar；不得提前释放或遗留未消费异常 |
 | R1 opaque AWCE codecs | 已完成 | Python `awce.py` / Web `awce.ts` 与边界测试 | 现有明确 44-byte header、精确长度、uint64/BigInt、高位与尾随拒绝、双语言固定向量；无 crypto/authentication 声明，不依赖未决 AAD |
-| R2 login latency evidence | 待验证 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
+| R2 login latency evidence | 已完成 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
 | R3 complete protocol clarification | 进行中 | 一个完整补充决策，修正规范冲突与字段缺失 | 下节列出的 wire/admission/trust 问题收敛并明确获得所需 Owner 授权；不逐文件临时发明协议 |
 | R4 application crypto | 未开始 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
 | R5 full wire schemas | 未开始 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
@@ -100,8 +100,13 @@ head `0dccb2a71ea38259f1e76e2b268961c213bc98e1`，19/19 SUCCESS，实际 merge
 `3ebb3e938a03d067ea7df66b6746b9675637e65b`。
 R2 两轮小样本未复现旧超时；独立审查发现异常日志、空测量通过和计时标签问题，
 修复后 21 回归与 4/4 Chromium diagnostic 通过，独立 sol 复审 PASS；
-默认完整本机 E2E 60 passed (37.2s)，待 CI/merge。
-R9.1 仅进行独立的 browser tokenizer core，完整 controller/trust/renderer 未接通。
+默认完整本机 E2E 60 passed (37.2s)。PR #70 head
+`eca03e47849b12449bb2ab4aec8dfdc001ef13dd`，19/19 SUCCESS，实际 merge
+`f7ef3c936529b19838cd087dc9e232397f1e304d`；CI另执行21回归及60E2E全部通过。
+R9.1 browser tokenizer core 修复独立审查两个P2及同根因ESC re-entry，113 tests
+与133独立负例通过，复审PASS，待CI/merge。完整controller/trust/renderer未接通；
+logical-line deadline duration和post-limit controller recovery仍需明确契约，
+详见[tokenizer foundation](../WAW_BROWSER_TOKENIZER.md)。
 R10.1 executable verifier 已通过独立 sol 审查，80 passed / 1 native Linux skip，
 PR #69 head `9147cace5b554205dfecc20cf8bfb643d4c46761` 经19/19 SUCCESS合并，
 实际 merge `9529da6d5c110b7a09d5972dfa0db5e012727451`；完整 CLI launch/retention profile 仍未冻结，详见
