@@ -51,7 +51,11 @@ Login request validation and exact Origin/Host checks run before the login
 service is scheduled. The service checks the rate-limit buckets before the user
 lookup and before any real or dummy Argon2 verification; a locked bucket never
 performs the expensive verify. Accepted login work runs through
-`asyncio.to_thread` only after acquiring a process-local semaphore. The default
+the default thread pool with copied caller context only after acquiring a
+process-local semaphore. Login and reauthentication share that capacity. The
+permit is released by actual worker completion, not caller cancellation; a
+non-raising shielded completion signal keeps cancelled requests prompt while
+retrieving late worker errors without logging credential-bearing exceptions. The default
 `AGENTBOX_ARGON2_MAX_CONCURRENCY=2` is constrained to 1–4, bounding simultaneous
 Argon2 work and keeping password verify, dummy verify, hash, and rehash off the
 FastAPI event loop. Limiter decisions and updates use serialized SQLite write
