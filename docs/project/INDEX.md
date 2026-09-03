@@ -21,3 +21,5 @@
 
 - [Executable provenance](../WAW_EXECUTABLE_PROVENANCE.md): descriptor-held Runtime inventory verification and its launch/host limits.
 - [Interactive CLI assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md): current code/vendor documentation gaps requiring a complete execution-profile contract.
+
+- [Authentication timing diagnostic](../AUTH_TIMING_DIAGNOSTIC.md): isolated numeric observations, failure/privacy rules, regression evidence and unknown historical latency cause.

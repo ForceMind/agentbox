@@ -28,9 +28,11 @@
 
 - Opaque AWCE Python/Web framing, header builders and interoperability merged in PR #68 with 19/19 exact-head checks successful.
 
+- Descriptor-held executable provenance foundation merged in PR #69 with 19/19 exact-head checks successful; complete interactive process/host qualification remains unfinished.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is independently reviewed and awaiting CI; R9.1 browser tokenizer work is in progress. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics and the R10 executable-verifier foundation proceed independently.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer work is in progress. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics passed independent re-review and local 21-case/4-sample/60-test verification, awaiting CI and merge.
 
 ## In Progress
 

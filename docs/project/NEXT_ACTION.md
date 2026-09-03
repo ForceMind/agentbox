@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `REMAINING-EXECUTABLE-DIAGNOSTICS-2026-09-03`
+Action ID: `REMAINING-DIAGNOSTIC-TOKENIZER-2026-09-03`
 
 Owner clarified that development continues on the current Mac. Development
 platform and deployment qualification are separate: a missing Linux test host
@@ -17,14 +17,14 @@ work uses terra. The current finite checklist is [REMAINING_PLAN.md](REMAINING_P
 - R0 is merged as PR #67 after 19/19 exact-head checks and merge read-back.
 - R1 is merged as PR #68 after 19/19 checks and actual merge read-back.
   No crypto/authentication or socket activation is implied.
-- R2: review and deliver the bounded opt-in authentication timing diagnostic.
-  Two small local runs passed the original 5-second assertions; old timeouts were
-  not reproduced, so no latency root cause or behavioral fix is claimed.
+- R2: deliver the repaired, independently reviewed opt-in authentication diagnostic
+  and its negative-case CI gate. Dedicated regressions 21/21, diagnostic 4/4 and
+  normal local E2E 60/60 passed. No historical latency root cause is claimed.
 - R3: the complete reviewed full-wire/admission/trust supplement is ready for
   Owner acceptance. It remains PROPOSED; dependent R4/R5 implementation has not begun.
-- R9.1: implement the independently specified browser tokenizer core; no renderer,
+- R9.1: review and deliver the independently specified browser tokenizer core; no renderer,
   trust/admission/controller or socket integration is implied.
-- R10.1: deliver the reviewed descriptor-held executable verifier with exact-head CI.
+- R10.1 is merged as PR #69 after 19/19 checks and actual merge read-back.
   Fixed interactive CLI execution profiles still need the missing launch/retention
   contracts; this foundation does not execute a CLI or claim host qualification.
 

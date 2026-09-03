@@ -99,10 +99,12 @@ R1 的 Python 44 / Web 38 cases 与双向互通通过，独立 sol 审查 PASS�
 head `0dccb2a71ea38259f1e76e2b268961c213bc98e1`，19/19 SUCCESS，实际 merge
 `3ebb3e938a03d067ea7df66b6746b9675637e65b`。
 R2 两轮小样本未复现旧超时；独立审查发现异常日志、空测量通过和计时标签问题，
-修复后 21 回归与 4/4 Chromium diagnostic 通过，待复审与 CI。
+修复后 21 回归与 4/4 Chromium diagnostic 通过，独立 sol 复审 PASS；
+默认完整本机 E2E 60 passed (37.2s)，待 CI/merge。
 R9.1 仅进行独立的 browser tokenizer core，完整 controller/trust/renderer 未接通。
 R10.1 executable verifier 已通过独立 sol 审查，80 passed / 1 native Linux skip，
-待 CI/merge；完整 CLI launch/retention profile 仍未冻结，详见
+PR #69 head `9147cace5b554205dfecc20cf8bfb643d4c46761` 经19/19 SUCCESS合并，
+实际 merge `9529da6d5c110b7a09d5972dfa0db5e012727451`；完整 CLI launch/retention profile 仍未冻结，详见
 [assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md)，不得把该基础视为执行接线完成。
 
 R2 是独立测量工作；不把未知原因当作其它 slice 的通用阻断。R1 是纯 framing，

@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T10:08:00Z"
+verified_at_utc: "2026-09-03T10:17:00Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -14,11 +14,11 @@ repository: "ForceMind/agentbox"
 - All six exact-main workflows completed SUCCESS. Historical Draft PR #42 is
   the only open PR and is outside current writes. Network preflight exited 0.
 - Latest stage baseline: `HEAD/main/origin/main/merge-base` equal
-  `3ebb3e938a03d067ea7df66b6746b9675637e65b`. Five exact-main workflows completed
-  SUCCESS; Backend was still running when read. PR #68's distinct reviewed-head
-  evidence is 19/19 SUCCESS. Fetch and GitHub read-back exited 0.
-- Active branch: `codex/waw-executable-provenance`. Independent R2 diagnostics
-  and R9 tokenizer work are excluded from this stage's commit.
+  `9529da6d5c110b7a09d5972dfa0db5e012727451`. Three exact-main workflows completed
+  SUCCESS; Backend/E2E/Release Candidate were running when read. PR #69's separate
+  reviewed-head evidence is 19/19 SUCCESS. Fetch and merge read-back exited 0.
+- Active branch: `codex/auth-timing-diagnostic`. Independent R9 tokenizer work
+  is excluded from this stage's commit. R1's six post-main workflows are SUCCESS.
 - This snapshot records observed facts and cannot predict its own merge SHA.
 
 ## Delivered software stages
@@ -35,6 +35,7 @@ repository: "ForceMind/agentbox"
 | Native browser Noise | #66 | `27ff0161ef65f4a6fe1389a4dbcf4fa318f63db1` | `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9` | 19/19 SUCCESS |
 | R0 — auth worker capacity | #67 | `31a0bc9f38a5c2891a4b9d2bb403a09175579a98` | `d9c26b9eb26664368c384805d1138a5349b92b60` | 19/19 SUCCESS |
 | R1 — opaque AWCE framing | #68 | `0dccb2a71ea38259f1e76e2b268961c213bc98e1` | `3ebb3e938a03d067ea7df66b6746b9675637e65b` | 19/19 SUCCESS |
+| R10.1 — executable provenance | #69 | `9147cace5b554205dfecc20cf8bfb643d4c46761` | `9529da6d5c110b7a09d5972dfa0db5e012727451` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -263,10 +264,33 @@ R0 local implementation evidence:
   actual FD/read/rename/close work is exercised. No Linux-host readiness claimed.
 - See [WAW_EXECUTABLE_PROVENANCE](../WAW_EXECUTABLE_PROVENANCE.md) for the API and
   [WAW_INTERACTIVE_PROFILE_ASSESSMENT](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md)
-  for remaining launch/environment/state/retention gaps. R10.1 awaits CI/merge;
-  full R10 stays in progress. Browser parser foundation is independent R9 work.
+  for remaining launch/environment/state/retention gaps. R10.1 merged at
+  `2026-09-03T10:15:12Z` with 19/19 exact-head CI and read-back; full R10 stays in progress. Browser parser foundation is independent R9 work.
 - R2's review found raw exception logging, missing metrics accepted as PASS and
   an ambiguous 5-second flag. Fixes passed 21 dedicated regression cases and a
   fresh 4/4 isolated Chromium diagnostic; independent sol re-review passed with
   all 21 regression cases executed. R2 awaits its separate CI/merge.
   The historic four local auth timeouts remain unproven, not marked fixed.
+
+## R2 diagnostic delivery evidence
+
+- Added closed `--auth-timing` mode to the existing isolated harness, separate
+  diagnostic Playwright configuration/spec and test-only numeric API wrapper.
+  Normal default E2E selection and production auth/database policy are unchanged.
+- Repaired three independent review findings: raw exception logs, missing metrics
+  accepted as PASS and a misleading total-visibility flag. Required sample
+  completeness, fixed numeric failure metadata and separate per-assertion/total
+  elapsed flags are verified. See [AUTH_TIMING_DIAGNOSTIC](../AUTH_TIMING_DIAGNOSTIC.md).
+- Worker and independent sol reviewer each ran 21 dedicated regressions, exit 0,
+  zero skipped, including real Uvicorn/child-process and transpiled-spec negatives.
+  E2E CI runs them after web dependency installation so these negatives cannot
+  silently skip due to a Python-only job lacking TypeScript.
+- Repaired isolated Chromium diagnostic: exit 0, 4/4 in 6.5s, observed visibility
+  approximately 78–456 ms. Root default `node scripts/run-e2e.mjs`: exit 0,
+  60 passed in 37.2s with API/preview cleanup. Historical timeout cause remains
+  unknown; current passing samples do not establish a latency fix.
+- Scoped lint/format/type/syntax checks and independent sol re-review passed.
+  R2 awaits exact-head CI and merge. R9.1 core has 96 local tests and is under
+  independent review; no browser terminal/controller has been enabled.
+- PR #69 Python 3.13 CI job `100608598342`: 1864 passed / 1 skipped / 5 warnings
+  in 171.77s. This is full software CI, not real CLI/host qualification.
