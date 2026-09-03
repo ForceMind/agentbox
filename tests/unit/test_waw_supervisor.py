@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import AgentType, WorkspaceStopOperation, managed_marker, workspace_id
@@ -21,6 +21,8 @@ from agentbox_runtime.waw_managed_command import WAWManagedCommand, validate_man
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_stream_bridge import WAWStreamBridge, WAWStreamState
 from agentbox_runtime.waw_supervisor import (
+    RuntimeProbeEvidence,
+    RuntimeProbeState,
     RuntimeStartEvidence,
     RuntimeStopEvidence,
     SupervisorState,
@@ -76,6 +78,14 @@ class FakeTransport:
             self.marker,
             self.stop_closed,
             0 if self.stop_closed else 1,
+        )
+
+    def probe(self) -> RuntimeProbeEvidence:
+        return RuntimeProbeEvidence(
+            self.workspace_id,
+            self.generation,
+            self.marker,
+            RuntimeProbeState.STOPPED if self.stopped else RuntimeProbeState.RUNNING,
         )
 
 
@@ -578,3 +588,79 @@ def test_failed_close_does_not_release_a_writer_or_kill_the_workspace(
     assert supervisor.snapshot().attachment_id == attachment.attachment_id
     assert supervisor.state is SupervisorState.RUNNING
     assert not transport.stopped
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_probe_preserves_input_uncertainty_and_detached_writer_state(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path, agent_type=agent_type)
+    supervisor.start()
+    attachment = _attachment(workspace)
+    supervisor.attach(attachment)
+    transport.fail_writes = True
+    with pytest.raises(RuntimeOperationError):
+        supervisor.write_input(attachment, b"uncertain")
+    assert supervisor.probe().state is RuntimeProbeState.RUNNING
+    assert supervisor.state is SupervisorState.INPUT_UNCERTAIN
+    transport.fail_writes = False
+    with pytest.raises(RuntimeOperationError, match="Input is paused"):
+        supervisor.write_input(attachment, b"do not replay")
+    supervisor.detach(attachment)
+    before = supervisor.snapshot()
+    assert supervisor.probe().state is RuntimeProbeState.RUNNING
+    assert supervisor.snapshot() == before
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("generation", 2),
+        ("generation", True),
+        ("managed_marker", "waw-v1:wri_" + "9" * 32 + ":" + "9" * 32),
+        ("state", "RUNNING"),
+        ("exit_code", 0),
+        ("state", RuntimeProbeState.EXITED),
+    ],
+)
+def test_probe_rejects_ambiguous_or_stale_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    supervisor, transport, _ = _supervisor(tmp_path)
+    supervisor.start()
+    # Deliberately inject malformed external evidence past static annotations.
+    evidence = replace(transport.probe(), **cast(dict[str, Any], {field: value}))
+    monkeypatch.setattr(transport, "probe", lambda: evidence)
+    with pytest.raises(RuntimeOperationError, match="observation is not exact"):
+        supervisor.probe()
+
+
+def test_missing_probe_never_falls_back_to_running_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor, transport, _ = _supervisor(tmp_path)
+    supervisor.start()
+    monkeypatch.setattr(transport, "probe", None)
+    with pytest.raises(RuntimeOperationError, match="observation is unavailable"):
+        supervisor.probe()
+    assert supervisor.state is SupervisorState.RUNNING
+
+
+@pytest.mark.parametrize("agent_type", list(AgentType))
+def test_stream_replay_rechecks_current_attachment_authority(
+    tmp_path: Path, agent_type: AgentType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor, _, workspace = _supervisor(tmp_path, agent_type=agent_type)
+    supervisor.start()
+    bridge = WAWStreamBridge(supervisor, _attachment(workspace))
+    bridge.attach()
+    supervisor.append_output(supervisor.output_source(), b"private output")
+    monkeypatch.setattr(supervisor, "_attachment_validator", lambda _attachment: False)
+    with pytest.raises(RuntimeOperationError, match="no longer current"):
+        bridge.output(0)
+    with pytest.raises(RuntimeOperationError, match="no longer current"):
+        bridge.handle(
+            decode_frame(
+                encode_frame(FrameType.STATE, {"protocol_version": 1, "after_cursor": 0}, 1)
+            )
+        )

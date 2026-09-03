@@ -65,6 +65,29 @@ class RuntimeStopEvidence:
     remaining_members: int
 
 
+class RuntimeProbeState(StrEnum):
+    RUNNING = "RUNNING"
+    NEEDS_INTERACTION = "NEEDS_INTERACTION"
+    TRUST_REQUIRED = "TRUST_REQUIRED"
+    LOGIN_REQUIRED = "LOGIN_REQUIRED"
+    STOPPED = "STOPPED"
+    MISSING = "MISSING"
+    EXITED = "EXITED"
+    COLLISION = "COLLISION"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class RuntimeProbeEvidence:
+    """Read-only observation of one exact Runtime process binding."""
+
+    workspace_id: str
+    generation: int
+    managed_marker: str
+    state: RuntimeProbeState
+    exit_code: int | None = None
+
+
 class WAWTransport(Protocol):
     """The only side-effecting operations a WAW Runtime adapter may expose."""
 
@@ -242,6 +265,15 @@ class WAWSupervisor:
                     "Workspace already has a writer attachment",
                     category="conflict",
                 )
+            if (
+                self._attachment is None
+                and getattr(self, "_last_attachment_id", None) == attachment.attachment_id
+            ):
+                raise RuntimeOperationError(
+                    "WAW_ATTACHMENT_REPLAYED",
+                    "Reconnect requires a fresh attachment",
+                    category="conflict",
+                )
             # A detached browser may reconnect after the underlying provider
             # process has exited.  If the transport exposes the optional
             # reconciliation probe, require fresh exact marker/process
@@ -279,18 +311,53 @@ class WAWSupervisor:
                             "Runtime process could not be reconciled for reconnect",
                             category="conflict",
                         ) from exc
-            if (
-                self._attachment is None
-                and getattr(self, "_last_attachment_id", None) == attachment.attachment_id
-            ):
-                raise RuntimeOperationError(
-                    "WAW_ATTACHMENT_REPLAYED",
-                    "Reconnect requires a fresh attachment",
-                    category="conflict",
-                )
             self._attachment = attachment
             self._state = SupervisorState.RUNNING
             return self.snapshot()
+
+    def probe(self) -> RuntimeProbeEvidence:
+        """Require fresh exact evidence without changing attachment or input state.
+
+        Legacy test transports may omit the capability, but callers that need
+        lifecycle observations must fail closed instead of using a snapshot.
+        A probe never clears INPUT_UNCERTAIN or grants a reconnect writer.
+        """
+
+        with self._lock:
+            probe = getattr(self._transport, "probe", None)
+            if not callable(probe):
+                raise RuntimeOperationError(
+                    "WAW_PROBE_UNAVAILABLE",
+                    "Runtime observation is unavailable",
+                    category="unavailable",
+                )
+            evidence = probe()
+            if (
+                type(evidence) is not RuntimeProbeEvidence
+                or evidence.workspace_id != self._workspace_id
+                or type(evidence.generation) is not int
+                or evidence.generation != self._generation
+                or evidence.managed_marker != self._command.managed_marker
+                or type(evidence.state) is not RuntimeProbeState
+                or (
+                    evidence.state is RuntimeProbeState.EXITED
+                    and (
+                        type(evidence.exit_code) is not int or not -128 <= evidence.exit_code <= 255
+                    )
+                )
+                or (
+                    evidence.state is not RuntimeProbeState.EXITED
+                    and evidence.exit_code is not None
+                )
+                or (
+                    self._state is SupervisorState.STOPPED
+                    and evidence.state is not RuntimeProbeState.STOPPED
+                )
+            ):
+                raise RuntimeOperationError(
+                    "WAW_PROBE_UNCONFIRMED", "Runtime observation is not exact", category="conflict"
+                )
+            return evidence
 
     def detach(self, attachment: ActiveAttachment) -> SupervisorSnapshot:
         with self._lock:
@@ -410,8 +477,11 @@ class WAWSupervisor:
         *,
         generation: int | None = None,
         runtime_epoch: str | None = None,
+        attachment: ActiveAttachment | None = None,
     ) -> OutputReplay:
         with self._lock:
+            if attachment is not None:
+                self._require_attachment(attachment)
             if generation is None or generation != self._generation:
                 raise RuntimeOperationError(
                     "WAW_OUTPUT_STALE",
@@ -558,6 +628,8 @@ def _same_stop_binding(left: WorkspaceStopOperation, right: WorkspaceStopOperati
 
 
 __all__ = [
+    "RuntimeProbeEvidence",
+    "RuntimeProbeState",
     "RuntimeStartEvidence",
     "RuntimeStopEvidence",
     "OutputSource",

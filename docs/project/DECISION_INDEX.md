@@ -33,3 +33,9 @@
 - `docs/WAW_SOFTWARE_READINESS.md`: immutable software/artifact evidence, current capability limits and explicit Stage F input/gates.
 - `CURRENT_STATE.md`: last verified snapshot. `NEXT_ACTION.md`: current software
   stage and remaining gates.
+
+- `MAC-RUNTIME-COMPOSITION-2026-09-03`: continue concrete lifecycle-to-supervisor
+  software composition on Mac. Read-only status probes and durable generation
+  reservation are required before claiming Runtime observations; attachment
+  prepare remains separate from actual admission. No host activation or
+  architecture proposal approval is inferred.

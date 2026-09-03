@@ -17,7 +17,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from typing import Any, Protocol
+from typing import Any, Protocol, cast, runtime_checkable
 
 from agentbox_core.waw import AgentType
 from agentbox_core.waw_recovery import RecoveryError, ResumeHint
@@ -152,7 +152,9 @@ CgroupAttestationFactory = Callable[
 
 
 @dataclass(frozen=True)
-class _ProjectBinding:
+class WAWProjectBinding:
+    """Internal canonical Project binding; relative_key is root-resolved only."""
+
     project_id: str
     relative_key: str
     project_revision: str
@@ -160,6 +162,11 @@ class _ProjectBinding:
     binding_digest: str
     runtime_host_installation_id: str
     runtime_host_installation_revision: str
+
+
+@runtime_checkable
+class WAWProjectBindingConsumer(Protocol):
+    async def register_project_binding(self, binding: WAWProjectBinding) -> None: ...
 
 
 class WAWLifecycleRegistry:
@@ -223,10 +230,11 @@ class WAWLifecycleRegistry:
         self._detached_cleanup_identities: dict[asyncio.Task[Any], WAWLifecycleIdentity] = {}
         self._cleanup_quarantine: set[str] = set()
         self._authority: tuple[str, str] | None = None
-        self._bindings: dict[str, _ProjectBinding] = {}
+        self._bindings: dict[str, WAWProjectBinding] = {}
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
         self._attachments: dict[str, dict[str, Any]] = {}
         self._generation_floor: dict[str, int] = {}
+        self._recovered_generation_floor: dict[str, int] = {}
         self._request_cache: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
         self._lock = asyncio.Lock()
 
@@ -335,7 +343,7 @@ class WAWLifecycleRegistry:
                     "runtime_host_installation_revision": self._host_revision,
                 }
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
-        binding = _ProjectBinding(
+        binding = WAWProjectBinding(
             project_id=project_id,
             relative_key=request["relative_key"],
             project_revision=request["project_revision"],
@@ -344,6 +352,9 @@ class WAWLifecycleRegistry:
             runtime_host_installation_id=self._host_id,
             runtime_host_installation_revision=self._host_revision,
         )
+        consumer = cast(object, self._executor)
+        if isinstance(consumer, WAWProjectBindingConsumer):
+            await consumer.register_project_binding(binding)
         self._bindings[project_id] = binding
         return {
             "protocol_version": 1,
@@ -405,7 +416,17 @@ class WAWLifecycleRegistry:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if action == _RECONCILE and identity.workspace_id in self._cleanup_quarantine:
             return self._quarantine_reconcile_response(request)
-        if identity.workspace_id in self._cleanup_quarantine:
+        # In the in-memory development composition an exact Stop may retry
+        # failed cleanup. Durable/host quarantines still require their existing
+        # independent recovery evidence and cannot be cleared by this shortcut.
+        cleanup_retry = (
+            action == _STOP
+            and self._attestation_store is None
+            and self._cgroup_attestation_store is None
+            and self._workspaces.get(identity.workspace_id, (None,))[0] == identity
+            and identity not in self._detached_cleanup_identities.values()
+        )
+        if identity.workspace_id in self._cleanup_quarantine and not cleanup_retry:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
         current = self._workspaces.get(identity.workspace_id)
         if action == _START and current is not None:
@@ -452,6 +473,22 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("WORKSPACE_NOT_FOUND")
         if self._executor is None:
             raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        if action == _START and self._attestation_store is not None:
+            # Burn the generation durably before any executor side effect.
+            # A restart must not reuse a generation whose start was interrupted.
+            try:
+                self._attestation_store.advance(
+                    workspace_id=identity.workspace_id,
+                    generation=int(identity.generation),
+                    binding_revision=identity.binding_revision,
+                    binding_digest=identity.binding_digest,
+                    runtime_host_installation_id=identity.runtime_host_installation_id,
+                    runtime_host_installation_revision=identity.runtime_host_installation_revision,
+                    runtime_epoch=self._runtime_epoch,
+                )
+            except Exception as exc:
+                self._cleanup_quarantine.add(identity.workspace_id)
+                raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         method = {
             _START: self._executor.start,
             _STOP: self._executor.stop,
@@ -461,7 +498,13 @@ class WAWLifecycleRegistry:
         try:
             observation = await method(identity)
             self._validate_observation(observation)
-        except Exception as exc:
+        except BaseException as exc:
+            if action == _START:
+                # A transport can create a process and then fail its readiness
+                # check, or continue after caller cancellation. Retain the
+                # attempted identity and fence retries before awaiting cleanup.
+                await self._rollback_failed_executor_start(identity)
+                raise
             if action == _STOP and self._cgroup_attestation_store is not None:
                 self._cleanup_quarantine.add(identity.workspace_id)
                 try:
@@ -537,15 +580,17 @@ class WAWLifecycleRegistry:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if action == _START and self._attestation_store is not None:
             try:
-                self._attestation_store.advance(
-                    workspace_id=identity.workspace_id,
-                    generation=int(identity.generation),
-                    binding_revision=identity.binding_revision,
-                    binding_digest=identity.binding_digest,
-                    runtime_host_installation_id=identity.runtime_host_installation_id,
-                    runtime_host_installation_revision=identity.runtime_host_installation_revision,
-                    runtime_epoch=self._runtime_epoch,
-                )
+                record = self._attestation_store.read(identity.workspace_id)
+                if record is None or (
+                    record.min_generation != int(identity.generation)
+                    or record.binding_revision != identity.binding_revision
+                    or record.binding_digest != identity.binding_digest
+                    or record.runtime_host_installation_id != identity.runtime_host_installation_id
+                    or record.runtime_host_installation_revision
+                    != identity.runtime_host_installation_revision
+                    or record.runtime_epoch != self._runtime_epoch
+                ):
+                    raise WAWWorkspaceAttestationError("reserved generation read-back changed")
             except WAWWorkspaceAttestationError as exc:
                 # A successful provider start without a committed generation
                 # floor is unsafe to retain.  Attempt exact identity cleanup;
@@ -571,6 +616,8 @@ class WAWLifecycleRegistry:
                     raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from cleanup_error
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         self._workspaces[identity.workspace_id] = (identity, observation)
+        if cleanup_retry and observation.state == "STOPPED":
+            self._cleanup_quarantine.discard(identity.workspace_id)
         if action == _START:
             self._generation_floor[identity.workspace_id] = max(
                 self._generation_floor.get(identity.workspace_id, 0), int(identity.generation)
@@ -718,6 +765,39 @@ class WAWLifecycleRegistry:
             "reason_code": None,
         }
 
+    async def _rollback_failed_executor_start(self, identity: WAWLifecycleIdentity) -> None:
+        self._generation_floor[identity.workspace_id] = max(
+            self._generation_floor.get(identity.workspace_id, 0), int(identity.generation)
+        )
+        self._workspaces[identity.workspace_id] = (
+            identity,
+            WAWLifecycleObservation(
+                state="UNKNOWN",
+                process_state="UNKNOWN",
+                reconciliation_state="reconciliation_required",
+                runtime_epoch=self._runtime_epoch,
+            ),
+        )
+        self._cleanup_quarantine.add(identity.workspace_id)
+        try:
+            await self._cleanup_failed_start(identity)
+        except asyncio.CancelledError:
+            # Late cleanup must not make this identity reusable. The existing
+            # detached-cleanup tracker retains tasks until their actual end.
+            raise
+        except Exception as exc:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        finally:
+            self._fence_cgroup_for_identity(identity)
+        self._workspaces[identity.workspace_id] = (
+            identity,
+            WAWLifecycleObservation(
+                state="STOPPED", process_state="STOPPED", runtime_epoch=self._runtime_epoch
+            ),
+        )
+        if self._attestation_store is None and self._cgroup_attestation_store is None:
+            self._cleanup_quarantine.discard(identity.workspace_id)
+
     async def _cleanup_failed_start(self, identity: WAWLifecycleIdentity) -> None:
         if self._executor is None:  # pragma: no cover - guarded by _lifecycle
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
@@ -849,6 +929,7 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if fully_empty:
             self._cleanup_quarantine.discard(record.workspace_id)
+            self._recovered_generation_floor[record.workspace_id] = record.generation
 
     async def _build_cgroup_attestation(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
@@ -945,6 +1026,13 @@ class WAWLifecycleRegistry:
             self._generation_floor[workspace_id] = max(
                 self._generation_floor.get(workspace_id, 0), record.min_generation
             )
+            if (
+                workspace_id not in self._workspaces
+                and record.min_generation > self._recovered_generation_floor.get(workspace_id, 0)
+            ):
+                # A durable generation is not proof its processes are gone.
+                # Neither the same nor a newer generation may bypass recovery.
+                self._cleanup_quarantine.add(workspace_id)
 
     def _validate_observation(self, observation: WAWLifecycleObservation) -> None:
         if observation.state not in _STATES:
@@ -1068,6 +1156,8 @@ class WAWLifecycleRegistry:
 
 
 __all__ = [
+    "WAWProjectBinding",
+    "WAWProjectBindingConsumer",
     "BindingDigestFactory",
     "WAWLifecycleExecutor",
     "WAWLifecycleIdentity",

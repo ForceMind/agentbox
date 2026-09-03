@@ -16,9 +16,11 @@
 
 - Software readiness and packaged WAW scope/gate documents merged in PR #61; 19/19 exact-head checks and independent artifact/doc-presence validation passed.
 
+- Shared Claude/Codex supervisor and stream lifecycle fences merged in PR #63 with 19/19 exact-head checks successful.
+
 ## In Progress
 
-- Mac development resumed per Owner clarification: shared Claude/Codex supervisor and stream lifecycle integration. A–E describe completed increments, not all remaining software.
+- Mac development resumed per Owner clarification: concrete Runtime executor, read-only probe and failed-start recovery integration. A–E describe completed increments, not all remaining software.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

@@ -103,6 +103,7 @@ class WAWStreamBridge:
                     replay.after_cursor,
                     generation=self._bound_generation,
                     runtime_epoch=self._bound_runtime_epoch,
+                    attachment=self._attachment,
                 )
                 if result.kind == "gap":
                     return (
@@ -152,6 +153,7 @@ class WAWStreamBridge:
             after_cursor,
             generation=self._bound_generation,
             runtime_epoch=self._bound_runtime_epoch,
+            attachment=self._attachment,
         )
         if result.kind == "gap":
             return (

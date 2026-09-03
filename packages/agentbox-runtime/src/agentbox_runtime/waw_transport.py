@@ -35,6 +35,8 @@ from agentbox_runtime.waw_managed_command import (
 )
 from agentbox_runtime.waw_pty import PtyGeometry, validate_input
 from agentbox_runtime.waw_supervisor import (
+    RuntimeProbeEvidence,
+    RuntimeProbeState,
     RuntimeStartEvidence,
     RuntimeStopEvidence,
     SupervisorState,
@@ -138,7 +140,7 @@ class WAWTmuxTransport:
                 "Runtime transport is unusable after an incomplete operation cancellation",
                 category="broken",
             )
-        if self._started or self._closed:
+        if self._started or self._closed or self._binding is not None:
             raise RuntimeOperationError(
                 "WAW_START_INVALID",
                 "Runtime transport has already started or closed",
@@ -160,6 +162,9 @@ class WAWTmuxTransport:
             managed_marker=marker,
             session_name=session_name,
         )
+        # Retain the exact target before create/adopt can have side effects.
+        # Readiness failure must still permit narrowly fenced Stop cleanup.
+        self._binding = binding
         try:
             exists = self._resolve(self._tmux.has_session(session_name))
             if exists:
@@ -244,23 +249,53 @@ class WAWTmuxTransport:
         """
 
         self._require_started()
+        evidence = self.probe()
+        errors = {
+            RuntimeProbeState.MISSING: "WAW_SESSION_MISSING",
+            RuntimeProbeState.COLLISION: "WAW_PROCESS_IDENTITY_UNCONFIRMED",
+            RuntimeProbeState.UNKNOWN: "WAW_SESSION_EXITED",
+        }
+        if evidence.state is not RuntimeProbeState.RUNNING:
+            raise RuntimeOperationError(
+                errors.get(evidence.state, "WAW_RECONCILIATION_REQUIRED"),
+                "Managed Runtime process is not live for reconnect",
+                category="conflict",
+            )
+        self._attached = True
+        return RuntimeStartEvidence(
+            workspace_id=evidence.workspace_id,
+            generation=evidence.generation,
+            managed_marker=evidence.managed_marker,
+            state=SupervisorState.RUNNING,
+            ready=True,
+        )
+
+    def probe(self) -> RuntimeProbeEvidence:
+        """Observe the fixed session without changing its PTY attachment.
+
+        A missing session alone is not stop evidence. STOPPED requires the
+        previous positive exact Stop plus a fresh absence observation. A dead
+        pane with no verified exit code is UNKNOWN, not a fabricated EXITED.
+        """
+
+        if self._poisoned:
+            raise RuntimeOperationError(
+                "WAW_TRANSPORT_INVALID", "Runtime transport is poisoned", category="broken"
+            )
         binding = self._require_binding()
         try:
             if not self._resolve(self._tmux.has_session(binding.session_name)):
-                raise RuntimeOperationError(
-                    "WAW_SESSION_MISSING", "Managed Runtime session is missing", category="conflict"
-                )
-            self._require_managed(binding)
-            if self._resolve(self._tmux.pane_dead(binding.session_name)):
-                raise RuntimeOperationError(
-                    "WAW_SESSION_EXITED", "Managed Runtime pane has exited", category="conflict"
-                )
-            if self._resolve(self._tmux.pane_command(binding.session_name)) != "claude":
-                raise RuntimeOperationError(
-                    "WAW_PROCESS_IDENTITY_UNCONFIRMED",
-                    "Managed Runtime pane is not Claude",
-                    category="conflict",
-                )
+                state = RuntimeProbeState.STOPPED if self._closed else RuntimeProbeState.MISSING
+            elif not self._resolve(
+                self._tmux.is_managed(binding.session_name, binding.managed_marker)
+            ):
+                state = RuntimeProbeState.COLLISION
+            elif self._closed or self._resolve(self._tmux.pane_dead(binding.session_name)):
+                state = RuntimeProbeState.UNKNOWN
+            elif self._resolve(self._tmux.pane_command(binding.session_name)) != "claude":
+                state = RuntimeProbeState.COLLISION
+            else:
+                state = RuntimeProbeState.RUNNING
         except RuntimeOperationError:
             raise
         except Exception as exc:
@@ -269,12 +304,11 @@ class WAWTmuxTransport:
                 "Managed Runtime process could not be reconciled",
                 category="conflict",
             ) from exc
-        return RuntimeStartEvidence(
+        return RuntimeProbeEvidence(
             workspace_id=binding.workspace_id,
             generation=binding.generation,
             managed_marker=binding.managed_marker,
-            state=SupervisorState.RUNNING,
-            ready=True,
+            state=state,
         )
 
     def detach(self) -> bool:
@@ -320,7 +354,12 @@ class WAWTmuxTransport:
     def stop(self) -> RuntimeStopEvidence:
         """Kill only the exact managed session and prove zero remaining members."""
 
-        self._require_started()
+        if self._poisoned or self._closed:
+            raise RuntimeOperationError(
+                "WAW_TRANSPORT_INVALID",
+                "Runtime cannot safely stop this transport",
+                category="conflict",
+            )
         binding = self._require_binding()
         try:
             if not self._resolve(self._tmux.has_session(binding.session_name)):

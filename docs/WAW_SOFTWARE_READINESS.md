@@ -116,3 +116,16 @@ Repository governance and the active checklist are in `docs/project/`; those
 source-management documents may not be included in the standalone artifact.
 The packaged workflow and recovery documents explain the current product limits
 without requiring access to that directory.
+
+## Mac Runtime composition follow-up
+
+PR #63 delivered the shared Claude/Codex supervisor and stream cleanup fences:
+reviewed head `c78cb92a5afe8056ab44a1cc4e8a6bea3074e184`, 19/19 checks SUCCESS,
+observed merge `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`.
+
+The following increment adds a concrete supervisor lifecycle executor, read-only
+process probes, retained exact failed-start cleanup and generation reservation
+before process effects. Its command and transport factories remain trusted
+Runtime injections. It does not make the existing Claude tmux transport support
+Codex or connect the production browser socket. The boundary and recovery rules
+are recorded in `WAW3_RECOVERY_CONTRACTS.md`; the overall product remains incomplete.

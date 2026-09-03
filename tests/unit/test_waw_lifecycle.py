@@ -140,11 +140,18 @@ class ObservationExecutor(FakeExecutor):
 
 
 class FailingAttestationStore:
+    """Reserve succeeds, but the post-start read-back fails once."""
+
+    fail_next_read = False
+
     def read(self, _workspace_id: str) -> None:
+        if self.fail_next_read:
+            self.fail_next_read = False
+            raise WAWWorkspaceAttestationError("synthetic attestation read-back failure")
         return None
 
     def advance(self, **_kwargs: Any) -> None:
-        raise WAWWorkspaceAttestationError("synthetic attestation failure")
+        self.fail_next_read = True
 
 
 class RunningCleanupExecutor(FakeExecutor):
@@ -1070,7 +1077,7 @@ async def test_lifecycle_generation_enforces_uint64_upper_bound(generation: str)
 
 
 @pytest.mark.anyio
-async def test_invalid_observation_does_not_poison_registry() -> None:
+async def test_invalid_start_observation_requires_cleanup_and_consumes_generation() -> None:
     executor = InvalidExecutor()
     runtime = registry(executor)
     await runtime.dispatch(bind_request())
@@ -1078,13 +1085,45 @@ async def test_invalid_observation_does_not_poison_registry() -> None:
     with pytest.raises(WAWControlDispatchError) as exc_info:
         await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
     assert exc_info.value.code == "INTERNAL_BOUNDED"
-    assert len(executor.calls) == 1
-    assert executor.calls[0][0] == "start"
-    with pytest.raises(WAWControlDispatchError) as missing:
-        await runtime.dispatch(
-            lifecycle_request("workspace.workspace.status", request_id="wreq_" + "6" * 32)
-        )
-    assert missing.value.code == "WORKSPACE_NOT_FOUND"
+    assert [method for method, _ in executor.calls] == ["start", "stop"]
+    assert executor.calls[0][1] == executor.calls[1][1]
+    stopped = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "6" * 32)
+    )
+    assert stopped["status"] == "ALREADY_STOPPED"
+    with pytest.raises(WAWControlDispatchError, match="PROJECT_IDENTITY_CHANGED"):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+
+
+@pytest.mark.anyio
+async def test_failed_start_cleanup_can_retry_exact_stop_without_durable_stores() -> None:
+    class UncertainExecutor(InvalidExecutor):
+        closed = False
+
+        async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+            self.calls.append(("stop", identity))
+            if not self.closed:
+                raise RuntimeError("synthetic cleanup failure")
+            return WAWLifecycleObservation(state="STOPPED", process_state="STOPPED")
+
+    executor = UncertainExecutor()
+    runtime = registry(executor)
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start", generation="2"))
+    with pytest.raises(WAWControlDispatchError):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.stop", generation="2"))
+    assert [method for method, _ in executor.calls] == ["start", "stop"]
+    executor.closed = True
+    stopped = await runtime.dispatch(
+        lifecycle_request("workspace.workspace.stop", request_id="wreq_" + "6" * 32)
+    )
+    assert stopped["status"] == "STOPPED"
+    with pytest.raises(WAWControlDispatchError, match="PROJECT_IDENTITY_CHANGED"):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
 
 
 @pytest.mark.anyio
@@ -1109,3 +1148,59 @@ async def test_durable_attestation_fences_generation_across_registry_restart(
             lifecycle_request("workspace.workspace.start", request_id="wreq_" + "8" * 32)
         )
     assert stale.value.code == "RECONCILIATION_REQUIRED"
+
+
+@pytest.mark.anyio
+async def test_generation_reservation_failure_prevents_executor_side_effects() -> None:
+    class RejectReservation(FailingAttestationStore):
+        def advance(self, **_kwargs: Any) -> None:
+            raise WAWWorkspaceAttestationError("synthetic durable write failure")
+
+    executor = FakeExecutor()
+    runtime = registry(executor, cast(WAWWorkspaceAttestationStore, RejectReservation()))
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert executor.calls == []
+
+
+@pytest.mark.anyio
+async def test_failed_executor_generation_is_durable_before_side_effect_and_restart(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "attestations"
+    directory.mkdir(mode=0o700)
+    store = WAWWorkspaceAttestationStore(
+        directory, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+
+    class FailedAfterSideEffect(FakeExecutor):
+        async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+            persisted = store.read(identity.workspace_id)
+            assert persisted is not None
+            assert persisted.min_generation == int(identity.generation)
+            self.calls.append(("start", identity))
+            raise RuntimeError("synthetic process started before readiness failure")
+
+        async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+            self.calls.append(("stop", identity))
+            raise RuntimeError("synthetic cleanup unavailable")
+
+    first_executor = FailedAfterSideEffect()
+    first = registry(first_executor, store)
+    await first.dispatch(bind_request())
+    await first.dispatch(register_request())
+    with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+        await first.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert [method for method, _ in first_executor.calls] == ["start", "stop"]
+    restarted_executor = FakeExecutor()
+    restarted = registry(restarted_executor, store)
+    await restarted.dispatch(bind_request())
+    await restarted.dispatch(register_request())
+    for generation in ("1", "2"):
+        with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+            await restarted.dispatch(
+                lifecycle_request("workspace.workspace.start", generation=generation)
+            )
+    assert restarted_executor.calls == []
