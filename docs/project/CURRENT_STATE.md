@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T04:41:00Z"
+verified_at_utc: "2026-09-03T05:22:07Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -8,8 +8,8 @@ repository: "ForceMind/agentbox"
 # Current Verified State
 
 - Repository: `ForceMind/agentbox`
-- Current stage starting `HEAD` / `main` / `origin/main` / merge-base: `d2470601a06da0a4024fa1772b4f32ec2daa7293`.
-- Starting working tree: clean. Active implementation branch: `codex/waw2-codex-control-integration`.
+- Current stage starting `HEAD` / `main` / `origin/main` / merge-base: `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`.
+- Starting working tree: clean. Active implementation branch: `codex/workspace-metadata-workflow`.
 - Historical starting-main `24d08414b20e7158e8c84694aac59d0326799bfd` CI: Backend, Frontend, E2E, Deployment, Security and Release Candidate were all terminal `success`. Current merge CI is tracked separately below.
 - Historical Draft PR `#42` remains open and is outside this implementation branch.
 - WAW-1 HTTP lifecycle/attachment routes: PR `#47` merged (`cd599a6e4b24ba860f4c9f294b16625a397a30f7`).
@@ -63,3 +63,22 @@ repository: "ForceMind/agentbox"
 - `python scripts/check-doc-links.py`: exit `0`, 148 relative links.
 - Independent read-only API and frontend Architecture/Security reviews: PASS for this synthetic/control software scope, no remaining blocker. Review does not qualify a real CLI/host.
 - Actual legacy Remote Control interlocks and fixed Codex process/PTY execution remain unimplemented/unverified. The API rejects Runtime-reported conflict states; no real process probe, terminal or login was run.
+
+## Stage C completed / Stage D in progress
+
+- PR #59 MERGED at `2026-09-03T04:45:48Z`; reviewed head `3e0e7a921e008d9c6b5198d37b8254fbee174068`, base `d2470601a06da0a4024fa1772b4f32ec2daa7293`.
+- Exact-head checks: `19/19 SUCCESS`, all terminal. Actual merge read-back and `origin/main`: `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`.
+- Stage D began from a clean tree; only historical Draft PR #42 remains open.
+- Workspace metadata queries, UI/controller integration and desktop/mobile validation are in progress. Terminal transport remains unavailable and is not replaced with a fake admission.
+
+## Stage D software and browser evidence (before PR CI)
+
+- PR #59 post-merge CI for `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`: all six workflows terminal `success`.
+- Typed Project/AgentType query filters precede authorization/32-row cap; Workspace page now uses exact selection, registered metadata, explicit Start and scoped exact Stop confirmation.
+- `.venv/bin/python -m pytest -q tests/integration/test_waw_workspace_api.py tests/unit/test_waw_admission.py tests/unit/test_workspace_api_contract.py tests/unit/test_waw_codex_command.py`: exit `0`, `56 passed`.
+- `ruff check`, `black --check`, `mypy --platform linux ...`: exit `0` (188 Python source files for mypy).
+- Web `typecheck`, `lint`, `format:check`, `build`: exit `0`; `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: exit `0`, `115 passed`.
+- Initial `pnpm e2e`: exit `1`, 54 existing tests passed and four new metadata tests failed due to ambiguous Playwright locators. Locators were made exact; subsequent `PLAYWRIGHT_BASE_URL=http://127.0.0.1:4178 pnpm --filter @agentbox/web exec playwright test e2e/workspace-metadata.spec.ts`: exit `0`, all four new desktop/mobile tests passed. The combined final exact-head CI remains the merge gate.
+- Main-agent visual QA used actual Chromium at `1280x900` and `390x844`; synthetic normal, Stop confirmation, mobile empty and mobile error renderings were viewed. No horizontal overflow; all tested visible controls at least 44px; native Cancel/Escape restored Stop focus. Screenshots contain synthetic metadata only and are not committed or release artifacts.
+- Independent read-only Architecture/Security review: PASS for metadata/control scope after checking server-side binding/epoch validation, client stale-response and Stop-target fencing. Visual checking was main-agent structured QA, not an independent visual certification.
+- Terminal remains `NOT ADMITTED`; no ticket/terminal bytes were obtained or persisted, no real host or Provider operation occurred. Workflow mapping: `../WORKSPACE_METADATA_WORKFLOW.md`.

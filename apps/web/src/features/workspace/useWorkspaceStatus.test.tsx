@@ -111,10 +111,17 @@ describe('useWorkspaceStatus', () => {
     const first = new Promise<Response>((resolve) => {
       resolveFirst = resolve
     })
+    const secondResponse = {
+      ...statusResponse,
+      data: {
+        ...statusResponse.data,
+        workspace_id: 'aws_fedcba9876543210fedcba9876543210',
+      },
+    }
     const fetchMock = vi
       .fn()
       .mockReturnValueOnce(first)
-      .mockResolvedValueOnce(jsonResponse(200, statusResponse))
+      .mockResolvedValueOnce(jsonResponse(200, secondResponse))
     vi.stubGlobal('fetch', fetchMock)
     const { result, rerender } = renderHook(
       ({ workspaceId }: { workspaceId: string }) =>
@@ -131,7 +138,7 @@ describe('useWorkspaceStatus', () => {
     await act(async () => await first)
     expect(result.current.view).toMatchObject({
       status: 'loaded',
-      response: statusResponse,
+      response: secondResponse,
     })
   })
 

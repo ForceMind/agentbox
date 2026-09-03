@@ -147,7 +147,9 @@ def _seed_workspace(
     return workspace.id
 
 
-def _seed_many(services: ControlPlaneServices, count: int = 33) -> None:
+def _seed_many(
+    services: ControlPlaneServices, count: int = 33, *, unauthorized_count: int = 32
+) -> None:
     with services.database.transaction() as session:
         session.add(_host())
         for index in range(count):
@@ -157,7 +159,7 @@ def _seed_many(services: ControlPlaneServices, count: int = 33) -> None:
         services.workspaces.create(
             project_id=f"prj_{index + 1:032x}",
             agent_type=AgentType.CLAUDE,
-            authorization_scope="other" if index < 32 else "admin",
+            authorization_scope="other" if index < unauthorized_count else "admin",
             runtime_host_installation_id=HOST_ID,
             runtime_host_installation_revision=1,
             binding_revision=1,
@@ -257,6 +259,111 @@ async def test_list_authorizes_before_32_row_cap(
     rows = response.json()["data"]["workspaces"]
     assert len(rows) == 1
     assert rows[0]["project_id"] == "prj_" + f"{33:032x}"
+
+
+@pytest.mark.anyio
+async def test_list_filters_in_sql_before_authorization_and_cap(
+    waw_client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    _seed_many(initialized_services)
+    with initialized_services.database.transaction() as session:
+        session.add(_project(PROJECT_ID, 99))
+    target_id = initialized_services.workspaces.create(
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=DIGEST,
+        executable_fingerprint=FINGERPRINT,
+    ).id
+    await _login(waw_client, origin_headers)
+    response = await waw_client.get(
+        "/api/v1/workspaces", params={"project_id": PROJECT_ID, "agent_type": "claude"}
+    )
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    rows = response.json()["data"]["workspaces"]
+    assert len(rows) == 1
+    assert rows[0]["id"] == target_id
+
+
+@pytest.mark.anyio
+async def test_list_project_filter_returns_both_agent_types_and_exact_empty_project(
+    waw_client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    _seed_workspace(initialized_services, agent_type=AgentType.CLAUDE)
+    initialized_services.workspaces.create(
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CODEX,
+        authorization_scope="admin",
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=DIGEST,
+        executable_fingerprint=FINGERPRINT,
+    )
+    await _login(waw_client, origin_headers)
+    both = await waw_client.get("/api/v1/workspaces", params={"project_id": PROJECT_ID})
+    assert both.status_code == 200
+    assert {row["agent_type"] for row in both.json()["data"]["workspaces"]} == {
+        "claude",
+        "codex",
+    }
+    empty = await waw_client.get("/api/v1/workspaces", params={"project_id": "prj_" + "9" * 32})
+    assert empty.status_code == 200
+    assert empty.json()["data"]["workspaces"] == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"agent_type": "unknownagent"},
+        {"project_id": "not-a-project"},
+    ],
+)
+async def test_list_rejects_invalid_typed_filters(
+    waw_client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    params: dict[str, str],
+) -> None:
+    _seed_workspace(initialized_services)
+    await _login(waw_client, origin_headers)
+    response = await waw_client.get("/api/v1/workspaces", params=params)
+    assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_list_filter_does_not_leak_unauthorized_target(
+    waw_client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    _seed_workspace(initialized_services, scope="other")
+    await _login(waw_client, origin_headers)
+    response = await waw_client.get("/api/v1/workspaces", params={"project_id": PROJECT_ID})
+    assert response.status_code == 200
+    assert response.json()["data"]["workspaces"] == []
+
+
+@pytest.mark.anyio
+async def test_list_without_filter_retains_32_row_response_cap(
+    waw_client: httpx.AsyncClient,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+) -> None:
+    _seed_many(initialized_services, count=33, unauthorized_count=0)
+    await _login(waw_client, origin_headers)
+    response = await waw_client.get("/api/v1/workspaces")
+    assert response.status_code == 200
+    assert len(response.json()["data"]["workspaces"]) == 32
 
 
 @pytest.mark.anyio

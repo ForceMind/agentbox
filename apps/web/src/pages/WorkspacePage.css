@@ -1,0 +1,71 @@
+.workspace-stop-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 1rem;
+  background: var(--surface);
+  color: var(--text);
+}
+.workspace-stop-dialog::backdrop {
+  background: rgb(0 0 0 / 70%);
+}
+.workspace-stop-dialog .runtime-card {
+  margin: 0;
+  border: 0;
+}
+.workspace-stop-dialog code,
+.workspace-state-line code {
+  overflow-wrap: anywhere;
+}
+.workspace-selection-card .project-forms select {
+  min-width: 0;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.workspace-state-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.workspace-terminal-placeholder {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+}
+
+.workspace-selection-card,
+section[aria-labelledby='workspace-status'] {
+  margin-bottom: 1rem;
+}
+.workspace-stop-dialog .primary-button,
+section[aria-labelledby='workspace-terminal'] .primary-button {
+  padding: 0.65rem 0.95rem;
+}
+.workspace-selection-card .error-panel code,
+section[aria-labelledby='workspace-status'] .error-panel code {
+  overflow-wrap: anywhere;
+}
+
+section[aria-labelledby='workspace-status'] .error-panel {
+  display: block;
+}
+section[aria-labelledby='workspace-status'] .error-panel code {
+  display: block;
+  margin-top: 0.35rem;
+}

@@ -24,5 +24,6 @@
   conditions; unobserved items remain `NOT RUN`.
 - `docs/WAW3_RECOVERY_CONTRACTS.md`: software recovery classification, browser
   event fences, validation mapping and explicit unimplemented integration scope.
+- `docs/WORKSPACE_METADATA_WORKFLOW.md`: current metadata UI/control workflow, exact lookup and Stop boundaries, tests and visual evidence limits.
 - `CURRENT_STATE.md`: last verified snapshot. `NEXT_ACTION.md`: current software
   stage and remaining gates.

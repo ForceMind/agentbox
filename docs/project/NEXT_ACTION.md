@@ -1,32 +1,25 @@
 # Current Authorized Action
 
-Action ID: `WAW2-CODEX-CONTROL-2026-09-03`
+Action ID: `WORKSPACE-METADATA-UX-2026-09-03`
 
-## Current stage
+Stage D implementation awaits exact-head CI/merge on `codex/workspace-metadata-workflow`, based on
+`7c1c755854077d2e0989ff1d3ab3d54f77e9e707` (PR #59 exact merge read-back).
 
-Stage C software implementation awaits exact-head CI/merge on `codex/waw2-codex-control-integration`, based on
-`d2470601a06da0a4024fa1772b4f32ec2daa7293` (PR #58 exact merge read-back).
-
-- Reuse the existing closed `AgentType`, Project-scoped WAW identity,
-  `WAWCodexCommand`, lifecycle and transient attachment ticket contracts.
-- Enable symmetric Codex Start/Stop/ticket metadata in API schemas/routes and
-  Web response parsers/action hooks. Preserve exact Project/AgentType/generation
-  response binding, CSRF/recent-auth, writer lease and no-store boundaries.
-- Keep pre-registered Runtime/Project workspace provenance required. Do not
-  synthesize a host binding, adopt legacy Remote Control, or route WAW through
-  `codex.remote.*`.
-- Validate with ASGI/Fake Runtime, closed-schema and cross-identity tests;
+- Add typed Project/AgentType filters before workspace list authorization/cap.
+- Connect READY Project and Claude/Codex selectors to exact workspace metadata.
+- Wire explicit Start and exact-generation Stop with a scoped second confirmation.
+- Reject stale query/action responses, unknown selection, Runtime mismatch or
+  recovery-required states; distinguish durable metadata from Runtime evidence.
+- Provide clear loading/empty/unregistered/error states and desktop/mobile
+  controls, plus an entry from Project Detail.
+- Keep terminal Connect/Reconnect/Detach/input visibly unavailable until a
+  qualified real stream adapter exists. No ticket is obtained merely to make a
+  button appear functional, and HTTP success is never ADMITTED.
+- Run unit/integration tests and actual browser metadata interaction/visual QA;
   independently review, update docs, run exact-head CI, merge and read back.
 
-## Remaining scope
-
-- Stage D wires the actual Workspace metadata page workflow and verifies its
-  desktop/mobile rendering and interactions.
-- The fixed Codex command exists, but real command execution still depends on
-  the approved Runtime process/PTY substrate. Current Claude tmux adapter is not
-  proof of Codex execution; no generic shell or caller argv fallback is allowed.
-- Stage E prepares software release evidence. Stage F requires explicit
-  architecture/host authorization and real evidence for Noise/WebSocket/PTY,
-  CLI readiness, isolation, reboot and production acceptance.
-- No Secret handling, Provider login, production release or host activation is
-  authorized by routine software merges. See `EXECUTION_PLAN.md`.
+Stage E prepares software release evidence and remaining limitations. Stage F
+still requires explicit architecture/host authorization and attributable real
+host evidence for fixed CLI/PTY execution, legacy interlocks, Noise/WebSocket,
+login readiness, isolation and reboot recovery. No Secret/host/production
+activation is part of this metadata UI stage.

@@ -7,7 +7,7 @@ import secrets
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
-from typing import Literal, Protocol, cast
+from typing import Annotated, Literal, Protocol, cast
 
 from agentbox_core.errors import AgentBoxError, RecentAuthenticationRequired, RuntimeGatewayError
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
@@ -24,7 +24,7 @@ from agentbox_core.waw_tickets import (
     TicketAuthorityError,
 )
 from agentbox_protocol.metadata import StrictMetadataModel
-from fastapi import APIRouter, Cookie, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Request, Response
 from pydantic import ConfigDict, ValidationError, field_validator
 
 from agentbox_api.auth import SESSION_COOKIE, _validate_origin, authenticate_request
@@ -388,6 +388,8 @@ def _metadata(row: AgentWorkspaceSessionRecord) -> WorkspaceMetadata:
 async def list_workspaces(
     request: Request,
     response: Response,
+    project_id: Annotated[str | None, Query(pattern=r"^prj_[0-9a-f]{32}$")] = None,
+    agent_type: Literal["claude", "codex"] | None = Query(default=None),
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> WorkspaceListResponse:
     authenticated = authenticate_request(request, agentbox_session)
@@ -402,6 +404,10 @@ async def list_workspaces(
         query = session.query(AgentWorkspaceSessionRecord).order_by(
             AgentWorkspaceSessionRecord.created_at, AgentWorkspaceSessionRecord.id
         )
+        if project_id is not None:
+            query = query.filter(AgentWorkspaceSessionRecord.project_id == project_id)
+        if agent_type is not None:
+            query = query.filter(AgentWorkspaceSessionRecord.agent_type == agent_type)
         for row in query.yield_per(64):
             if policy.allows(authenticated, row):
                 rows_list.append(row)

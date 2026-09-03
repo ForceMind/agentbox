@@ -37,8 +37,8 @@ merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、mac
 | --- | --- | --- | --- |
 | A — 计划与基线 | 已完成 | 修正 stale snapshot、统一现行治理引用、建立需求/实现/验证映射 | 对照 live Git/GitHub；随首个实现 PR 交付 |
 | B — WAW-3 recovery contracts | 已完成 | 补齐现有纯 recovery/cursor/lease 决策与前端 stale-event fencing | 覆盖 exact generation/binding/host/epoch/attachment、同代 replay、API/Runtime restart 分类、mobile suspension、uncertain input 与 cleanup proof；不接通真实 transport |
-| C — WAW-2 Codex integration | 待验证 | 在既有 substrate 上补齐 Project-scoped Codex API attachment 与 Web contracts；复用固定 CLI command contract，真实执行接线列入 F | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
-| D — Workspace metadata UX | 未开始 | 页面接通已实现的 Start/Connect/Detach/exact Stop；明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
+| C — WAW-2 Codex integration | 已完成 | 在既有 substrate 上补齐 Project-scoped Codex API attachment 与 Web contracts；复用固定 CLI command contract，真实执行接线列入 F | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
+| D — Workspace metadata UX | 待验证 | 页面接通选择、精确查询、Start/exact Stop；Connect/Detach/input 随真实通道 gate 保持不可用，明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
 | E — 软件发布准备 | 未开始 | 完整 CI matrix、独立 Architecture/Security/Test 审查、限制和 release checklist、产物验证 | 所有检查 terminal；精确记录 artifact fingerprints 与未验证范围；依赖 B/C/D，不能标为生产就绪 |
 | F — 真实 transport/host 与产品验收 | 未开始 | 已批准参数下的 Noise/WebSocket/PTY、真实 CLI、安装隔离、浏览器 terminal、reboot/recovery | 需要明确 host/architecture 授权、可归属的非 Secret evidence、恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
 
@@ -47,6 +47,8 @@ F 的缺少证据不阻止互不依赖的软件工作，但它是整体产品完
 shell/filesystem gateway 或通过重命名消除 gate。
 
 A/B 已由 PR #58 交付：head `f3bb9035e061fc0babfcace6af891f257eb7fa74`，19/19 exact-head checks `SUCCESS`；实际 merge `d2470601a06da0a4024fa1772b4f32ec2daa7293`（2026-09-03T04:22:05Z）。完整 WAW-3 transport/reboot 验收仍在 F。
+
+C 已由 PR #59 交付：head `3e0e7a921e008d9c6b5198d37b8254fbee174068`，19/19 exact-head checks `SUCCESS`；实际 merge `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`（2026-09-03T04:45:48Z）。
 
 ## 多智能体职责与写入边界
 
