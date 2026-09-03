@@ -9,7 +9,7 @@ the Phase 10 PR is merged.
 ## Source and version
 
 - [ ] Build from a clean tracked checkout at the reviewed source commit.
-- [ ] Protected-main required checks and review conversations are green/resolved.
+- [ ] All required and additional exact-head checks are terminal successful and applicable reviews are resolved.
 - [ ] Python core, package metadata, `agentbox --version`, `/api/v1/meta`, Web
       package, installer, manifest, artifact name, release notes, and changelog
       report one consistent candidate version.
@@ -40,8 +40,8 @@ the Phase 10 PR is merged.
 - [ ] Backend ruff, Black, mypy, pytest, Alembic
       upgrade/downgrade/upgrade, and `pip-audit` pass.
 - [ ] Frontend lint, format, typecheck, unit, build, and high audit pass.
-- [ ] E2E, four-job Deployment matrix, `deployment-gate`, and all ten current
-      required checks pass.
+- [ ] E2E, four-job Deployment matrix, `deployment-gate`, and every current required/additional
+      exact-head check passes (19 observed for the WAW software PRs).
 
 ## Reproducibility and artifact contract
 
@@ -146,3 +146,29 @@ and SHA-256, then run `scripts/check-release-toolchain.py`. Review every diff;
 never regenerate the lock dynamically inside the Release Candidate workflow.
 The two-line `requirements-release-packaging.lock` must be reviewed at the same
 time and must exactly match the pip/wheel versions and hashes in the full lock.
+
+## WAW software preparation versus product release
+
+The phase-specific evidence record is `WAW_SOFTWARE_READINESS.md`. This checklist
+is a gate template; boxes are not retroactively marked from synthetic evidence.
+
+Software evidence may cover:
+
+- [ ] Closed Claude/Codex API and Web contracts, identity and stale-event fences.
+- [ ] Exact Project/AgentType metadata queries, explicit Start/exact Stop and
+      desktop/mobile metadata interactions.
+- [ ] Reproducible candidate, exact source commit/ref kind, manifest/checksums,
+      SBOM/notices and archive/canary scans.
+
+The following remain separate product/host gates:
+
+- [ ] Explicit Architecture/Owner scope for real Noise/PTY/WebSocket and CLI
+      execution; an authorized disposable Linux target and recovery conditions.
+- [ ] Actual legacy process probes/interlocks and no-adoption/exact-stop proof.
+- [ ] Real desktop/mobile terminal input/output/resize/detach/reconnect and
+      Runtime/API restart/reboot recovery with attributable non-secret evidence.
+- [ ] Runtime-only login/Trust readiness without credential or HOME disclosure.
+- [ ] Exact version/tag/artifact publication authorization and final release
+      read-back. Ordinary code merges do not authorize production activation.
+
+A CI-built software artifact cannot check any of the real-host boxes above.

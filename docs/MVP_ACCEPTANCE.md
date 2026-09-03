@@ -32,7 +32,19 @@ deployment. `NOT SUPPORTED` means the RC intentionally provides no such action.
 | Run Runtime non-root | PASS | `agentbox-runtime` identity, separate HOME and Project Root |
 | Invoke arbitrary root action | NOT SUPPORTED | Helper exposes only six fixed argument-free AgentBox lifecycle actions |
 | Listen publicly by default | NOT SUPPORTED | Default and validated listener is `127.0.0.1:8787` |
-| Provider or Secret management | NOT SUPPORTED | Phase 11 is planned only and remains not started |
+| Provider or Secret management | NOT SUPPORTED | Phase 11 software foundations exist; product API/UI/CLI and activation workflows remain incomplete |
 
 This table is an MVP acceptance record, not a performance certification or
 promise that third-party services remain compatible indefinitely.
+
+## WAW software acceptance
+
+| User-visible capability | Status | Evidence / boundary |
+| --- | --- | --- |
+| READY Project/Claude/Codex metadata selection | PASS | Typed exact query filters and browser metadata E2E |
+| Explicit WAW Start and exact Stop confirmation | PASS | ASGI/Fake Runtime and desktop/mobile metadata tests; trusted pre-registered binding remains mandatory |
+| Real browser terminal input/output/resize/detach/reconnect | NOT SUPPORTED | NOT ADMITTED; real transport/process implementation and host qualification remain Stage F gates |
+| Runtime/API restart and host reboot continuity | NOT SUPPORTED | Pure recovery contracts exist; complete real end-to-end behavior still requires implementation and attributable host evidence |
+
+These PASS rows describe software/control evidence, not a real terminal or
+production-host approval. See [WAW software readiness](WAW_SOFTWARE_READINESS.md).

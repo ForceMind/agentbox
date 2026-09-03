@@ -74,13 +74,24 @@ SSH/firewall/tunnels, or change Provider/Secret configuration. Codex and Claude
 are detected separately; installation guidance is versioned but no existing
 Runtime is automatically upgraded.
 
-A future Phase 11 — Provider, Secret & Runtime Continuity Management is
-architecture/backlog only. It separates concrete `ProviderDefinitionID` values
-from stable AgentBox `RuntimeBindingID` intent, uses a separate Secret Manager
-and transactional Runtime-specific config adapters, and reports Provider,
-Runtime, Remote, thread, context, and discovery evidence independently. No
-Provider API/UI/CLI, Secret backend, config mutation, or continuity claim is
-implemented today.
+Phase 11 has software foundations for non-secret Provider metadata,
+Runtime/Profile/Binding identities, credential references and bounded capability
+observations, plus a Runtime-owned Secret Store foundation with integrity and
+provenance checks. These do not yet provide a product Provider Manager or Secret
+Manager: public Provider API/UI/CLI, credential management, config activation,
+Provider switching, automatic failover and end-to-end continuity remain
+incomplete. This work does not authorize real Provider credentials or production
+Secret handling.
+
+The Web Agent Workspace now has recovery/cursor/lease contracts, Project-scoped
+Claude/Codex control APIs and a Chinese metadata workflow for READY Project and
+AgentType selection, explicit Start and exact Stop. It remains **NOT ADMITTED**:
+real terminal transport, CLI attachment, PTY, Noise/WebSocket and legacy Runtime
+interlocks remain unavailable. Earlier MVP host evidence does not qualify WAW.
+See the [execution plan](docs/project/EXECUTION_PLAN.md),
+[metadata workflow](docs/WORKSPACE_METADATA_WORKFLOW.md),
+[recovery contracts](docs/WAW3_RECOVERY_CONTRACTS.md) and
+[host gates](docs/WAW1_HOST_GATE_CHECKLIST.md).
 
 ## MVP goal
 
