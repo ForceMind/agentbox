@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T12:38:16Z"
+verified_at_utc: "2026-09-03T13:10:59Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -14,12 +14,11 @@ repository: "ForceMind/agentbox"
   only historical Draft #42 open. Fetch/GitHub reads exited 0.
 - Owner explicitly delegated software goals/plans/architecture decisions. Coding
   Agent accepts the reviewed full protocol supplement; the prior R3 approval
-  blocker is resolved. Current branch: `codex/waw-wire-profiles`.
+  blocker is resolved. Current branch: `codex/waw-staged-admission`.
 - Latest stage baseline: `HEAD/main/origin/main/merge-base` at
-  `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064`; six exact-main workflows SUCCESS.
-  R3/R4 merged. R5 code, interoperability and independent review passed and await
-  CI/merge. R6 is reviewed; R7 implementation is active. Their concurrent edits
-  are excluded from the R5 commit.
+  `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6`. R5 merged after all 19 exact-head
+  checks; fetch/read-back/fast-forward exited 0. R3/R4 post-main six workflows
+  were SUCCESS. R6 is reviewed and being delivered; R7/R8 edits are excluded.
 - PR #72 documentation head `cd402e69d0550fbc4c7c103894ebaae8f7bae2a4` merged as
   `c0a10c78fe1dd86922172f4c433fa1ba976eb017` at `2026-09-03T10:42:41Z` after
   19/19 exact-head checks; merge read-back/fetch/fast-forward exited 0.
@@ -59,6 +58,7 @@ repository: "ForceMind/agentbox"
 | R2 — auth timing diagnostic | #70 | `eca03e47849b12449bb2ab4aec8dfdc001ef13dd` | `f7ef3c936529b19838cd087dc9e232397f1e304d` | 19/19 SUCCESS |
 | R9.1 — browser tokenizer | #71 | `a57764ae0e1f3fc962bc4d52e3610373ef4226ff` | `3f2e3a2de4b0482629f5f9a296d5db757f989876` | 19/19 SUCCESS |
 | R3/R4 — accepted application crypto | #73 | `df943ecbf37b6c748dc1af73f4270017a3d9f6dc` | `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064` | 19/19 SUCCESS |
+| R5 — full wire profiles | #74 | `62d04adbfa775f3a14ab678c485093f15b1039ed` | `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -414,5 +414,24 @@ PROPOSED architecture status are preserved.
   0.594–1.141 ms CPU; 5,000 mixed decodes had zero failures, P95 0.185 ms,
   maximum 1.430 ms. Injected >6 ms CPU work remains rejected. These are local
   measurements, not universal latency guarantees.
-- R5 awaits exact-head CI/merge. R6 passed independent review after four fixes;
+- R5 merged at `2026-09-03T13:03:37Z` after 19/19 exact-head CI; exact
+  merge/fetch/main read-back completed. R6 passed independent review after four fixes;
   30s stale/60s grace and complete active lifecycle remain R7/R8 dependencies.
+
+## R6 staged admission evidence
+
+- Real staged ticket authority and coordinator implemented over closed ports,
+  including exact burn/reserve/advance, required Audit, bounded quarantine,
+  commit retry, reader retirement, atomic publication and positive cleanup.
+  See [WAW_STAGED_ADMISSION](../WAW_STAGED_ADMISSION.md).
+- Independent sol review PASS after four fixes: known mismatched bearer burn,
+  single-reader handoff, known-cleanup issuance fence and detached failure Audit
+  after Runtime cleanup errors. New suites: 135 passed; scoped type/lint/format
+  and relevant existing API/ticket regressions passed. The actual-clock combined
+  R6/wire suite passed 496 cases after R5 performance repair.
+- The 30s stale/60s grace, idle/absolute lifetime, Runtime health, native controls,
+  failed-attempt rate limits and real Audit/network adapters remain R7/R8 scope.
+  Configured authority expiry is not a standalone live-input authorization proof.
+- R6 awaits its own exact-head CI/merge. R7 Runtime server/lifecycle and R8 native
+  WebSocket/API relay are being implemented in parallel; no complete terminal or
+  real-host qualification is claimed yet.

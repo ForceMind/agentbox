@@ -69,10 +69,10 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | R2 login latency evidence | 已完成 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
 | R3 complete protocol clarification | 已完成 | 完整补充已独立审查；Owner 已明确委托软件决策，Coding Agent 已接受该完整合同 | 委托与接受记录随阶段CI/merge交付；不把接受合同视为实现完成 |
 | R4 application crypto | 已完成 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
-| R5 full wire schemas | 待验证 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
+| R5 full wire schemas | 已完成 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
 | R6 staged attachment authority | 待验证 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
 | R7 Runtime encrypted stream | 进行中 | Runtime stream session/server 与有限 executor integration | R4/R5/R6；capability once、同锁 process recheck、ring 先选再加密、partial input ACK、exit/cleanup barrier |
-| R8 API ciphertext relay | 未开始 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
+| R8 API ciphertext relay | 进行中 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8 + 明确 logical-line deadline duration / post-limit controller recovery；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
 | R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；须明确 AgentType launch records、vendor state roots、retention/telemetry、official login / Project Trust；正式 argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
@@ -172,7 +172,7 @@ R0/R1/R2/R9.1/R10.1 已完成适用实现、独立审查、CI、合并和回读�
 明确要求继续并委托目标、计划与软件决策；Coding Agent 已接受独立审查通过的
 完整 R3 协议补充。Python/Web R4 实现已通过独立审查、560 Python 回归、148 Web测试、
 双角色互通和62 native/既有E2E，并由PR #73合并。R5完整wire及性能修复
-以279 Python / 274 Web、独立复审和双语言互通通过，待CI/merge；R6 staged
+以279 Python / 274 Web、独立复审和双语言互通通过，并由PR #74合并；R6 staged
 authority与coordinator已复审通过，R7实际Runtime加密流正在实现。后续软件合同由 Coding Agent 决策、记录理由并审查，
 不再等待重复的软件 Owner gate。真实 host、生产 key/Secret 与发布的具体范围
 和真实证据仍保留；完整产品尚未完成。
@@ -183,3 +183,5 @@ trace/互通与性能修复已复审通过，Python279/Web274及组合496回归�
 R6 四项准入/发布/清理审查问题已修复并复审通过，待独立交付；R7 Runtime
 实际加密流实现已启动。R6 authority slot expiry 不替代 R7/R8 的30s stale、60s
 grace、15min idle、8h absolute及10s Runtime health要求。
+
+R5 已由 PR #74 交付：head `62d04adbfa775f3a14ab678c485093f15b1039ed`，19/19 SUCCESS；实际 merge `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6`。R6 四项审查缺陷全部关闭，待阶段CI；R7/R8已并行开发实际网络与加密流接线。

@@ -123,3 +123,5 @@ R3 补充并启动 R4 Python/Web 实现，R5 随并发槽位推进。此前等�
 R3/R4 委托决策与实现进入交付：Python回归560、Web148、独立向量/双角色互通、完整E2E62通过，独立sol复审PASS，待exact-head CI/merge。R5并行实现及审查修复进行中；真实终端仍需后续R6–R12。
 
 R3/R4 已由 PR #73 交付：head `df943ecbf37b6c748dc1af73f4270017a3d9f6dc`，19/19 SUCCESS；merge `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064`。R5 完整wire与性能修复复审PASS，R6 staged admission复审PASS；按阶段独立交付，R7正在实现。
+
+R5 已由 PR #74 合并（head `62d04adbfa775f3a14ab678c485093f15b1039ed`，19/19 SUCCESS；merge `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6`）。R6 已复审PASS并准备交付，R7/R8实际Runtime/API网络接线并行进行。

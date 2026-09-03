@@ -64,11 +64,14 @@ def _authority(clock: FakeMonotonic, **kwargs: Any) -> AttachmentAuthority:
 
 
 def _issue(
-    authority: AttachmentAuthority, *, attachment_id: str = "att_" + "2" * 32
+    authority: AttachmentAuthority,
+    *,
+    attachment_id: str = "att_" + "2" * 32,
+    project_id: str = PROJECT_ID,
 ) -> IssuedAttachmentTicket:
     return authority.issue(
-        workspace_id=WORKSPACE_ID,
-        project_id=PROJECT_ID,
+        workspace_id=workspace_id(project_id, AgentType.CLAUDE),
+        project_id=project_id,
         agent_type=AgentType.CLAUDE,
         attachment_id=attachment_id,
         generation=1,
@@ -278,10 +281,11 @@ def test_expired_lease_requires_cleanup_proof_before_replacement() -> None:
     with pytest.raises(TicketAuthorityError) as expired:
         authority.detach(issued.claims)
     assert expired.value.code is TicketErrorCode.LEASE_EXPIRED
-    replacement = _issue(authority, attachment_id="att_" + "3" * 32)
     with pytest.raises(TicketAuthorityError) as blocked:
-        authority.consume(replacement.ticket, _tuple(replacement))
+        _issue(authority, attachment_id="att_" + "3" * 32)
     assert blocked.value.code is TicketErrorCode.WRITER_BUSY
+    other = _issue(authority, project_id="prj_" + "3" * 32)
+    assert other.claims.workspace_id != issued.claims.workspace_id
     authority.acknowledge_cleanup(issued.claims, cleanup_state="ATTACH_PTY_CLOSED")
     replacement = _issue(authority, attachment_id="att_" + "4" * 32)
     authority.consume(replacement.ticket, _tuple(replacement))
@@ -315,8 +319,11 @@ def test_cleanup_pending_lease_counts_toward_authority_capacity() -> None:
     clock.advance(2)
     authority.sweep()
     assert authority.record_count == 1
-    with pytest.raises(TicketAuthorityError) as full:
+    with pytest.raises(TicketAuthorityError) as fenced:
         _issue(authority, attachment_id="att_" + "3" * 32)
+    assert fenced.value.code is TicketErrorCode.WRITER_BUSY
+    with pytest.raises(TicketAuthorityError) as full:
+        _issue(authority, attachment_id="att_" + "3" * 32, project_id="prj_" + "3" * 32)
     assert full.value.code is TicketErrorCode.CAPACITY
 
 
@@ -358,22 +365,24 @@ def test_session_epoch_revocation_burns_pending_and_fences_active_lease() -> Non
         authority.consume(pending.ticket, pending.claims, context=_context())
     assert replay.value.code is TicketErrorCode.REPLAYED
     assert authority.is_active(active.claims, context=_context()) is False
-    blocked_ticket = authority.issue(
-        workspace_id=WORKSPACE_ID,
-        project_id=PROJECT_ID,
-        agent_type=AgentType.CLAUDE,
-        attachment_id="att_" + "a" * 32,
-        generation=1,
-        auth_epoch=4,
-        runtime_host_installation_id=HOST_ID,
-        runtime_host_installation_revision=3,
-        binding_revision=2,
-        binding_digest=BINDING_DIGEST,
-        context=_context(),
-    )
     with pytest.raises(TicketAuthorityError) as busy:
-        authority.consume(blocked_ticket.ticket, blocked_ticket.claims, context=_context())
+        authority.issue(
+            workspace_id=WORKSPACE_ID,
+            project_id=PROJECT_ID,
+            agent_type=AgentType.CLAUDE,
+            attachment_id="att_" + "a" * 32,
+            generation=1,
+            auth_epoch=4,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision=3,
+            binding_revision=2,
+            binding_digest=BINDING_DIGEST,
+            context=_context(),
+        )
     assert busy.value.code is TicketErrorCode.WRITER_BUSY
+    authority.acknowledge_cleanup(active.claims, cleanup_state="ATTACH_PTY_CLOSED")
+    replacement = _issue(authority, attachment_id="att_" + "b" * 32)
+    assert authority.consume(replacement.ticket, replacement.claims).claims == replacement.claims
 
 
 def test_capacity_counts_pending_and_active_records_and_sweeps_expired_entries() -> None:
