@@ -105,3 +105,5 @@ F1.3 已由 PR #65 交付：head `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7`，19
 R0 已由 PR #67 交付：head `31a0bc9f38a5c2891a4b9d2bb403a09175579a98`，19/19 exact-head checks SUCCESS；实际 merge `d9c26b9eb26664368c384805d1138a5349b92b60`。当前 R1 framing、R2 诊断修复、R3 完整补充提案与 R10 verifier 按 REMAINING_PLAN 独立推进。
 
 R1 已由 PR #68 交付：head `0dccb2a71ea38259f1e76e2b268961c213bc98e1`，19/19 exact-head checks SUCCESS；实际 merge `3ebb3e938a03d067ea7df66b6746b9675637e65b`。R10.1 verifier 和修复后的 R2 diagnostic 均已通过独立 sol 审查，按阶段等待 CI/merge；R9.1 tokenizer core 独立开发中。
+
+R10.1 已由 PR #69 交付：head `9147cace5b554205dfecc20cf8bfb643d4c46761`，19/19 exact-head checks SUCCESS；实际 merge `9529da6d5c110b7a09d5972dfa0db5e012727451`。这完成 descriptor-held verifier，不代表完整 R10 CLI execution。R2 已修复审查问题并通过默认本机60项E2E，待阶段CI。

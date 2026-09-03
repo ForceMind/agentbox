@@ -11,6 +11,14 @@ const repositoryRoot = resolve(import.meta.dirname, "..");
 const localPython = join(repositoryRoot, ".venv", "bin", "python");
 const pythonCommand = existsSync(localPython) ? localPython : "python";
 const children = [];
+const arguments_ = process.argv.slice(2);
+if (
+  arguments_.length > 1 ||
+  (arguments_.length === 1 && arguments_[0] !== "--auth-timing")
+) {
+  throw new Error("supported E2E argument: --auth-timing");
+}
+const authTiming = arguments_[0] === "--auth-timing";
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
@@ -27,11 +35,14 @@ function run(command, args, options = {}) {
   });
 }
 
-function start(command, args, env) {
+function start(command, args, env, numericDiagnosticsOnly = false) {
   const child = spawn(command, args, {
     cwd: repositoryRoot,
     env,
-    stdio: "inherit",
+    // Diagnostic API startup/background failures must not print tracebacks,
+    // SQL parameters or credentials. Readiness/exit failures remain fatal;
+    // request failures are reported through the numeric metrics endpoint.
+    stdio: numericDiagnosticsOnly ? ["ignore", "ignore", "ignore"] : "inherit",
   });
   children.push(child);
   return child;
@@ -134,6 +145,12 @@ try {
     AGENTBOX_PROJECT_ROOT: join(temporaryRoot, "projects"),
     AGENTBOX_SECRET_KEY: randomBytes(48).toString("base64url"),
     PLAYWRIGHT_BASE_URL: webOrigin,
+    ...(authTiming
+      ? {
+          AGENTBOX_E2E_AUTH_TIMING: "1",
+          AGENTBOX_E2E_TIMING_RESULTS: join(temporaryRoot, "auth-timing.jsonl"),
+        }
+      : {}),
   };
 
   await run(pythonCommand, ["-m", "alembic", "upgrade", "head"], {
@@ -148,7 +165,7 @@ try {
     [
       "-m",
       "uvicorn",
-      "e2e_app:app",
+      authTiming ? "e2e_auth_timing_app:app" : "e2e_app:app",
       "--app-dir",
       "tests",
       "--host",
@@ -158,6 +175,7 @@ try {
       "--no-access-log",
     ],
     testEnvironment,
+    authTiming,
   );
   await waitFor(`${apiOrigin}/readyz`, api, "API");
 
@@ -181,11 +199,22 @@ try {
 
   await run(
     "pnpm",
-    ["--filter", "@agentbox/web", "exec", "playwright", "test"],
+    [
+      "--filter", "@agentbox/web", "exec", "playwright", "test",
+      ...(authTiming ? ["--config", "diagnostics/playwright.config.ts"] : []),
+    ],
     {
       env: testEnvironment,
     },
   );
+  if (authTiming) {
+    const results = (
+      await readFile(testEnvironment.AGENTBOX_E2E_TIMING_RESULTS, "utf8")
+    ).trim().split("\n").map((line) => JSON.parse(line));
+    if (results.length !== 4 || results.some((result) => result.passed !== 1)) {
+      throw new Error("auth timing diagnostic failed; see numeric sample results");
+    }
+  }
 } catch (error) {
   runError = error;
 } finally {
