@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `DELEGATED-WAW-CRYPTO-WIRE-2026-09-03`
+Action ID: `DELEGATED-STAGED-STREAM-2026-09-03`
 
 The Owner explicitly delegated software goal, plan and architecture decisions to
 the Coding Agent and instructed continued development. The complete reviewed
@@ -12,15 +12,18 @@ blocker is resolved. Do not request the same software approval again.
 
 - Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
 - R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.
-- R5: deliver reviewed full schemas/four-leg trace and cross-language checks.
-  Cold-start/GC parser failures are fixed without relaxing the 5 ms budget.
+- R5 is merged as PR #74 after 19/19 checks and exact read-back. Cold-start/GC
+  parser failures are fixed without relaxing the 5 ms budget.
 - R6: deliver reviewed staged authority/coordinator with ticket burn, atomic
   publication, reader handoff and exact cleanup/Audit fences.
 - R7: implement the Runtime encrypted stream/server and fixed integration seams;
   reuse real R4 crypto and R5 codecs, not the synthetic plaintext bridge.
-- After R4/R5, continue R6 staged authority, R7 Runtime stream, R8 API relay,
-  full R9 browser terminal/trust and R10 execution profile, then R11 integration.
-  Resolve remaining software contracts with documented rationale and independent
+- R8: implement the actual native WebSocket/API ciphertext relay and adapters.
+  After these stages, continue full R9 browser terminal/trust and R10 execution
+  profile, then R11 integration.
+- Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
+  15min idle/8h absolute, Runtime health, current auth and positive cleanup.
+- Resolve remaining software contracts with documented rationale and independent
   review under the delegated authority, rather than another mechanical Owner gate.
 
 Each stage follows feature branch → exact-head terminal CI → normal merge →

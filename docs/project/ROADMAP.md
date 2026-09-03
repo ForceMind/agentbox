@@ -36,9 +36,11 @@
 
 - Accepted application cryptography merged in PR #73 with 19/19 exact-head checks; full-vector interop and 62 native/normal browser cases passed.
 
+- Full WAW wire profiles and bounded transcript validation merged in PR #74 with 19/19 exact-head checks; real parser-budget integration failures were corrected and measured.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 wire and R6 staged admission passed independent review and await separate delivery; R7 Runtime stream implementation is active; full R9/R10 decisions and host evidence remain separately tracked.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 is merged; R6 staged admission passed independent review and awaits delivery; R7/R8 Runtime/API integration is active; full R9/R10 decisions and host evidence remain separately tracked.
 
 ## In Progress
 

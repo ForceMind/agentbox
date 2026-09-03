@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import re
 import secrets
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from threading import RLock
+from typing import Protocol
 
 from agentbox_core.waw import (
     AgentType,
@@ -50,6 +52,7 @@ class TicketErrorCode(StrEnum):
     LEASE_EXPIRED = "ATTACHMENT_LEASE_EXPIRED"
     LEASE_MISMATCH = "ATTACHMENT_LEASE_MISMATCH"
     RANDOMNESS_UNAVAILABLE = "RANDOMNESS_UNAVAILABLE"
+    DELIVERY_FAILED = "ADMITTED_DELIVERY_FAILED"
 
 
 class TicketAuthorityError(WAWDomainError):
@@ -149,7 +152,7 @@ class AttachmentTuple:
 class IssuedAttachmentTicket:
     """One transient response containing a bearer and its server-issued claims."""
 
-    ticket: str
+    ticket: str = field(repr=False)
     claims: AttachmentTuple
     issued_at_monotonic: float
     expires_at_monotonic: float
@@ -200,6 +203,56 @@ class _PendingTicket:
     context: AuthenticatedAttachmentContext | None = field(default=None, repr=False)
 
 
+class AdmissionStage(StrEnum):
+    RESERVED = "RESERVED"
+    RUNTIME_PREPARED = "RUNTIME_PREPARED"
+    VERIFIED = "VERIFIED"
+    PREPARED_AUDITED = "PREPARED_AUDITED"
+    READY = "READY"
+    QUARANTINED = "QUARANTINED"
+    COMMITTED = "COMMITTED"
+    ADMITTED_AUDITED = "ADMITTED_AUDITED"
+    ACTIVE = "ACTIVE"
+    FENCED = "FENCED"
+
+
+@dataclass(frozen=True, repr=False)
+class StagedAttachment:
+    """Authority-issued local handle, never a wire bearer or writer permission."""
+
+    claims: AttachmentTuple
+    context: AuthenticatedAttachmentContext = field(repr=False)
+    connection_id: object = field(repr=False)
+    started_at_monotonic: float
+    deadline_monotonic: float
+    lease_expires_at_monotonic: float
+    absolute_expires_at_monotonic: float
+
+    def __repr__(self) -> str:
+        return "StagedAttachment(<authority-held>)"
+
+
+@dataclass
+class _StagedRecord:
+    handle: StagedAttachment = field(repr=False)
+    stage: AdmissionStage = AdmissionStage.RESERVED
+
+
+class AdmissionPublication(Protocol):
+    """Trusted bounded queue transaction; release must be synchronous and atomic.
+
+    A failed release must expose no frame. Readers must check the authority's
+    active lease before reading, so the authority lock is the publication fence.
+    Neither method may call back into authority mutations or perform I/O.
+    """
+
+    def release(self) -> None: ...
+
+    def discard(self) -> None: ...
+
+    def take(self) -> bytes | None: ...
+
+
 class AttachmentAuthority:
     """Single-process, bounded ticket and one-writer lease authority.
 
@@ -218,13 +271,17 @@ class AttachmentAuthority:
         absolute_lease_seconds: float = 300.0,
         max_records: int = 64,
         replay_cache_size: int = 256,
+        max_writers: int = 32,
+        max_per_admin: int = 4,
     ) -> None:
         if ticket_ttl_seconds <= 0 or lease_ttl_seconds <= 0 or absolute_lease_seconds <= 0:
             raise ValueError("ticket and lease TTLs must be positive")
         if lease_ttl_seconds > absolute_lease_seconds:
             raise ValueError("lease TTL cannot exceed absolute lease lifetime")
-        if max_records < 1 or replay_cache_size < 1:
+        if not 1 <= max_records <= 64 or replay_cache_size < 1:
             raise ValueError("authority capacities must be positive")
+        if not 1 <= max_writers <= 32 or not 1 <= max_per_admin <= 4:
+            raise ValueError("writer capacities are invalid")
         self._clock = clock
         self._authority_epoch = _u64_or_random(authority_epoch)
         self._next_lease_number = _u64_or_random(lease_seed)
@@ -232,9 +289,13 @@ class AttachmentAuthority:
         self._lease_ttl = lease_ttl_seconds
         self._absolute_lease = absolute_lease_seconds
         self._max_records = max_records
+        self._max_writers = max_writers
+        self._max_per_admin = max_per_admin
         self._pending: dict[bytes, _PendingTicket] = {}
         self._active: dict[str, ActiveAttachment] = {}
         self._cleanup_pending: dict[str, AttachmentTuple] = {}
+        self._cleanup_contexts: dict[str, AuthenticatedAttachmentContext | None] = {}
+        self._staged: dict[str, _StagedRecord] = {}
         self._replayed: deque[bytes] = deque(maxlen=replay_cache_size)
         self._lock = RLock()
 
@@ -255,7 +316,9 @@ class AttachmentAuthority:
     @property
     def record_count(self) -> int:
         with self._lock:
-            return len(self._pending) + len(self._active) + len(self._cleanup_pending)
+            return len(self._pending) + len(
+                self._active.keys() | self._cleanup_pending.keys() | self._staged.keys()
+            )
 
     def issue(
         self,
@@ -279,13 +342,17 @@ class AttachmentAuthority:
         with self._lock:
             now = self._clock()
             self.sweep(now=now)
-            if (
-                len(self._pending) + len(self._active) + len(self._cleanup_pending)
-                >= self._max_records
+            staged = self._staged.get(workspace_id)
+            if workspace_id in self._cleanup_pending or (
+                staged is not None and staged.stage == AdmissionStage.FENCED
             ):
+                raise TicketAuthorityError(TicketErrorCode.WRITER_BUSY)
+            if self.record_count >= self._max_records:
                 raise TicketAuthorityError(
                     TicketErrorCode.CAPACITY, "attachment capacity is exhausted"
                 )
+            if context is not None and self._admin_count(context.user_id) >= self._max_per_admin:
+                raise TicketAuthorityError(TicketErrorCode.CAPACITY)
             if not isinstance(origin, str) or not origin or len(origin) > 256:
                 raise TicketAuthorityError(TicketErrorCode.INVALID, "origin is invalid")
             if context is not None and not hmac.compare_digest(context.origin, origin):
@@ -340,7 +407,11 @@ class AttachmentAuthority:
         now: float | None = None,
         context: AuthenticatedAttachmentContext | None = None,
     ) -> ActiveAttachment:
-        """Atomically consume a ticket and acquire the workspace writer slot."""
+        """Synthetic compatibility path: immediately acquire a writer lease.
+
+        Real encrypted admission must use reserve/advance/activate_with_publication.
+        This historical helper supplies no Runtime, Audit or delivery evidence.
+        """
 
         with self._lock:
             current = self._clock() if now is None else now
@@ -369,6 +440,9 @@ class AttachmentAuthority:
                     )
                 del self._active[expected.workspace_id]
                 self._cleanup_pending[expected.workspace_id] = active.claims
+                self._cleanup_contexts[expected.workspace_id] = active.context
+                if expected.workspace_id in self._staged:
+                    self.fence(self._staged[expected.workspace_id].handle)
                 raise TicketAuthorityError(
                     TicketErrorCode.WRITER_BUSY,
                     "workspace writer cleanup proof is pending",
@@ -378,6 +452,12 @@ class AttachmentAuthority:
                     TicketErrorCode.WRITER_BUSY,
                     "workspace writer cleanup proof is pending",
                 )
+            if (
+                expected.workspace_id in self._staged
+                or len(self._active.keys() | self._cleanup_pending.keys() | self._staged.keys())
+                >= self._max_writers
+            ):
+                raise TicketAuthorityError(TicketErrorCode.WRITER_BUSY)
             lease = ActiveAttachment(
                 claims=expected,
                 opened_at_monotonic=current,
@@ -388,6 +468,242 @@ class AttachmentAuthority:
             )
             self._active[expected.workspace_id] = lease
             return lease
+
+    def reserve(
+        self,
+        ticket: str,
+        expected: AttachmentTuple,
+        *,
+        context: AuthenticatedAttachmentContext,
+        connection_id: object,
+        started_at: float,
+        now: float | None = None,
+        presented_claims: Mapping[str, str] | None = None,
+        presented_runtime_epoch: str | None = None,
+    ) -> StagedAttachment:
+        """Burn once and reserve one workspace without creating an active lease.
+
+        The original connection deadline and ticket expiry can only shorten the
+        reservation. An invalid tuple/context burns the submitted known ticket.
+        A wire adapter supplies its syntactically validated hello claims and
+        epoch here, so semantic mismatches cannot precede the atomic burn.
+        No Runtime effect is authorized by merely possessing the returned handle.
+        """
+        with self._lock:
+            current = self._clock() if now is None else now
+            digest = _ticket_digest(ticket)
+            pending = self._pending.pop(digest, None)
+            if pending is None:
+                raise TicketAuthorityError(
+                    TicketErrorCode.REPLAYED
+                    if digest in self._replayed
+                    else TicketErrorCode.INVALID
+                )
+            self._replayed.append(digest)
+            if (
+                type(current) not in (int, float)
+                or type(started_at) not in (int, float)
+                or not math.isfinite(current)
+                or not math.isfinite(started_at)
+                or started_at < 0
+                or current < started_at
+                or connection_id is None
+                or type(context) is not AuthenticatedAttachmentContext
+            ):
+                raise TicketAuthorityError(TicketErrorCode.INVALID)
+            if current >= pending.expires_at_monotonic:
+                raise TicketAuthorityError(TicketErrorCode.EXPIRED)
+            if current >= started_at + 5.0:
+                raise TicketAuthorityError(TicketErrorCode.STALE)
+            if (
+                not _same_tuple(pending.claims, expected)
+                or not _same_context(pending.context, context)
+                or expected.auth_epoch != context.auth_epoch
+                or expected.api_authority_epoch != self._authority_epoch
+                or (presented_claims is None) != (presented_runtime_epoch is None)
+                or (
+                    presented_claims is not None
+                    and (
+                        not _same_presented_tuple(pending.claims, presented_claims)
+                        or presented_runtime_epoch != context.runtime_epoch
+                    )
+                )
+            ):
+                raise TicketAuthorityError(TicketErrorCode.STALE)
+            self.sweep(now=current)
+            workspace = expected.workspace_id
+            if (
+                workspace in self._active
+                or workspace in self._cleanup_pending
+                or workspace in self._staged
+            ):
+                raise TicketAuthorityError(TicketErrorCode.WRITER_BUSY)
+            # Reserve writer headroom before Runtime allocation, including every
+            # pending/fenced staged writer; no optimistic overcommit of 32 slots.
+            if (
+                len(self._active.keys() | self._cleanup_pending.keys() | self._staged.keys())
+                >= self._max_writers
+            ):
+                raise TicketAuthorityError(TicketErrorCode.WRITER_BUSY)
+            if self._admin_count(context.user_id) >= self._max_per_admin:
+                raise TicketAuthorityError(TicketErrorCode.CAPACITY)
+            handle = StagedAttachment(
+                expected,
+                context,
+                connection_id,
+                started_at,
+                min(started_at + 5.0, pending.expires_at_monotonic),
+                current + self._lease_ttl,
+                current + self._absolute_lease,
+            )
+            self._staged[workspace] = _StagedRecord(handle)
+            return handle
+
+    def stage(self, handle: StagedAttachment) -> AdmissionStage:
+        with self._lock:
+            return self._exact_staged(handle).stage
+
+    def check_reserved(self, handle: StagedAttachment, *, now: float | None = None) -> None:
+        """Revalidate local reservation after every external await."""
+        with self._lock:
+            self._check_reserved(handle, self._clock() if now is None else now)
+
+    def advance(
+        self,
+        handle: StagedAttachment,
+        stage: AdmissionStage,
+        *,
+        now: float | None = None,
+    ) -> None:
+        """Record one coordinator-proven phase, never skip a required phase."""
+        with self._lock:
+            record = self._check_reserved(handle, self._clock() if now is None else now)
+            stages = tuple(AdmissionStage)
+            if (
+                type(stage) is not AdmissionStage
+                or stage in (AdmissionStage.ACTIVE, AdmissionStage.FENCED)
+                or stages.index(stage) != stages.index(record.stage) + 1
+            ):
+                self.fence(handle)
+                raise TicketAuthorityError(TicketErrorCode.STALE)
+            record.stage = stage
+
+    def activate_with_publication(
+        self,
+        handle: StagedAttachment,
+        publication: AdmissionPublication,
+        *,
+        now: float | None = None,
+    ) -> ActiveAttachment:
+        """Linearize ACTIVE and the exact bounded queue release under one lock."""
+        with self._lock:
+            current = self._clock() if now is None else now
+            record = self._check_reserved(handle, current)
+            if record.stage != AdmissionStage.ADMITTED_AUDITED:
+                self.fence(handle)
+                raise TicketAuthorityError(TicketErrorCode.STALE)
+            lease = ActiveAttachment(
+                handle.claims,
+                current,
+                current,
+                handle.lease_expires_at_monotonic,
+                handle.absolute_expires_at_monotonic,
+                handle.context,
+            )
+            try:
+                # Queue readers cannot pass is_active while this lock is held.
+                publication.release()
+                self._check_reserved(handle, self._clock())
+                if record.stage != AdmissionStage.ADMITTED_AUDITED:
+                    raise TicketAuthorityError(TicketErrorCode.STALE)
+            except BaseException:
+                self.fence(handle)
+                publication.discard()
+                raise TicketAuthorityError(TicketErrorCode.DELIVERY_FAILED) from None
+            record.stage = AdmissionStage.ACTIVE
+            self._active[handle.claims.workspace_id] = lease
+            return lease
+
+    def fence(self, handle: StagedAttachment) -> None:
+        """Permanently close local authority; retain the slot until exact cleanup."""
+        with self._lock:
+            record = self._exact_staged(handle)
+            record.stage = AdmissionStage.FENCED
+            workspace = handle.claims.workspace_id
+            self._active.pop(workspace, None)
+            self._cleanup_pending[workspace] = handle.claims
+            self._cleanup_contexts[workspace] = handle.context
+
+    def read_published(
+        self, handle: StagedAttachment, publication: AdmissionPublication
+    ) -> bytes | None:
+        """Read a complete opaque queue frame only while the exact writer is live."""
+        with self._lock:
+            record = self._exact_staged(handle)
+            if record.stage != AdmissionStage.ACTIVE or not self.is_active(
+                handle.claims, context=handle.context
+            ):
+                return None
+            return publication.take()
+
+    def acknowledge_staged_cleanup(
+        self,
+        handle: StagedAttachment,
+        *,
+        connection_id: object,
+        cleanup_state: str,
+        failure_audited: bool,
+    ) -> None:
+        """Accept exact trusted Runtime proof plus durable failure metadata.
+
+        The adapter must authenticate the proof; neither transport close nor a
+        local queue drain is positive Runtime cleanup evidence.
+        """
+        with self._lock:
+            record = self._exact_staged(handle)
+            if (
+                record.stage != AdmissionStage.FENCED
+                or connection_id is not handle.connection_id
+                or cleanup_state != "ATTACH_PTY_CLOSED"
+                or failure_audited is not True
+            ):
+                raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH)
+            workspace = handle.claims.workspace_id
+            del self._staged[workspace]
+            self._cleanup_pending.pop(workspace, None)
+            self._cleanup_contexts.pop(workspace, None)
+
+    def _exact_staged(self, handle: StagedAttachment) -> _StagedRecord:
+        if type(handle) is not StagedAttachment:
+            raise TicketAuthorityError(TicketErrorCode.STALE)
+        record = self._staged.get(handle.claims.workspace_id)
+        if record is None or record.handle is not handle:
+            raise TicketAuthorityError(TicketErrorCode.STALE)
+        return record
+
+    def _check_reserved(self, handle: StagedAttachment, now: float) -> _StagedRecord:
+        record = self._exact_staged(handle)
+        if (
+            not math.isfinite(now)
+            or now < handle.started_at_monotonic
+            or now >= min(handle.deadline_monotonic, handle.lease_expires_at_monotonic)
+            or record.stage in (AdmissionStage.FENCED, AdmissionStage.ACTIVE)
+        ):
+            if record.stage != AdmissionStage.ACTIVE:
+                self.fence(handle)
+            raise TicketAuthorityError(TicketErrorCode.STALE)
+        return record
+
+    def _admin_count(self, user_id: str) -> int:
+        contexts = [pending.context for pending in self._pending.values()]
+        contexts.extend(active.context for active in self._active.values())
+        contexts.extend(self._cleanup_contexts.values())
+        contexts.extend(
+            record.handle.context
+            for workspace, record in self._staged.items()
+            if workspace not in self._active and workspace not in self._cleanup_pending
+        )
+        return sum(context is not None and context.user_id == user_id for context in contexts)
 
     def heartbeat(
         self,
@@ -410,6 +726,9 @@ class AttachmentAuthority:
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
                 self._cleanup_pending[expected.workspace_id] = active.claims
+                self._cleanup_contexts[expected.workspace_id] = active.context
+                if expected.workspace_id in self._staged:
+                    self.fence(self._staged[expected.workspace_id].handle)
                 raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
             renewed_until = min(current + self._lease_ttl, active.absolute_expires_at_monotonic)
             updated = replace(
@@ -441,6 +760,9 @@ class AttachmentAuthority:
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
                 self._cleanup_pending[expected.workspace_id] = active.claims
+                self._cleanup_contexts[expected.workspace_id] = active.context
+                if expected.workspace_id in self._staged:
+                    self.fence(self._staged[expected.workspace_id].handle)
                 return False
             return True
 
@@ -465,7 +787,13 @@ class AttachmentAuthority:
             if not active.active_at(current):
                 del self._active[expected.workspace_id]
                 self._cleanup_pending[expected.workspace_id] = active.claims
+                self._cleanup_contexts[expected.workspace_id] = active.context
+                if expected.workspace_id in self._staged:
+                    self.fence(self._staged[expected.workspace_id].handle)
                 raise TicketAuthorityError(TicketErrorCode.LEASE_EXPIRED, "lease has expired")
+            if expected.workspace_id in self._staged:
+                self.fence(self._staged[expected.workspace_id].handle)
+                return active
             del self._active[expected.workspace_id]
             return active
 
@@ -478,6 +806,8 @@ class AttachmentAuthority:
         """Release an expired writer slot only after exact positive cleanup proof."""
 
         with self._lock:
+            if expected.workspace_id in self._staged:
+                raise TicketAuthorityError(TicketErrorCode.LEASE_MISMATCH)
             claims = self._cleanup_pending.get(expected.workspace_id)
             if claims is None or not _same_tuple(claims, expected):
                 raise TicketAuthorityError(
@@ -490,6 +820,7 @@ class AttachmentAuthority:
                     "positive PTY cleanup proof is required",
                 )
             del self._cleanup_pending[expected.workspace_id]
+            self._cleanup_contexts.pop(expected.workspace_id, None)
 
     def revoke_session(self, *, session_id: str, auth_epoch: int) -> tuple[str, ...]:
         """Fence tickets and leases for one authenticated session epoch.
@@ -522,7 +853,14 @@ class AttachmentAuthority:
                 if context.session_id == session_id and context.auth_epoch == auth_epoch:
                     del self._active[workspace]
                     self._cleanup_pending[workspace] = active.claims
+                    self._cleanup_contexts[workspace] = active.context
                     revoked.append(active.attachment_id)
+            for record in tuple(self._staged.values()):
+                context = record.handle.context
+                if context.session_id == session_id and context.auth_epoch == auth_epoch:
+                    self.fence(record.handle)
+                    if record.handle.claims.attachment_id not in revoked:
+                        revoked.append(record.handle.claims.attachment_id)
         return tuple(revoked)
 
     def invalidate_all(self) -> None:
@@ -534,6 +872,11 @@ class AttachmentAuthority:
             self._pending.clear()
             self._active.clear()
             self._cleanup_pending.clear()
+            self._cleanup_contexts.clear()
+            # Staged Runtime effects cannot be forgotten on local shutdown.
+            # Actual process restart must independently reconcile Runtime epoch.
+            for record in tuple(self._staged.values()):
+                self.fence(record.handle)
 
     def sweep(self, *, now: float | None = None) -> tuple[str, ...]:
         """Remove expired pending tickets and leases without evicting live records."""
@@ -550,7 +893,17 @@ class AttachmentAuthority:
                 if not active.active_at(current):
                     del self._active[workspace]
                     self._cleanup_pending[workspace] = active.claims
+                    self._cleanup_contexts[workspace] = active.context
                     expired.append(active.attachment_id)
+                    if workspace in self._staged:
+                        self.fence(self._staged[workspace].handle)
+            for record in tuple(self._staged.values()):
+                if (
+                    record.stage not in (AdmissionStage.ACTIVE, AdmissionStage.FENCED)
+                    and current >= record.handle.deadline_monotonic
+                ):
+                    self.fence(record.handle)
+                    expired.append(record.handle.claims.attachment_id)
             return tuple(expired)
 
     def _allocate_lease_number(self) -> int:
@@ -622,6 +975,33 @@ def _same_tuple(left: AttachmentTuple, right: AttachmentTuple) -> bool:
     )
 
 
+def _same_presented_tuple(claims: AttachmentTuple, presented: Mapping[str, str]) -> bool:
+    """Compare a parsed wire tuple after burning its bearer, under the same lock.
+
+    Constructing another AttachmentTuple first would incorrectly reject a
+    well-shaped mismatched Project/workspace pair before retiring the ticket.
+    """
+    fields = (
+        "workspace_id",
+        "project_id",
+        "agent_type",
+        "attachment_id",
+        "lease_number",
+        "generation",
+        "auth_epoch",
+        "api_authority_epoch",
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "binding_revision",
+        "binding_digest",
+        "mode",
+    )
+    return presented.keys() == set(fields) and all(
+        type(presented[name]) is str and presented[name] == str(getattr(claims, name))
+        for name in fields
+    )
+
+
 def _same_context(
     left: AuthenticatedAttachmentContext | None,
     right: AuthenticatedAttachmentContext | None,
@@ -646,10 +1026,13 @@ def _same_context(
 
 __all__ = [
     "ActiveAttachment",
+    "AdmissionPublication",
+    "AdmissionStage",
     "AuthenticatedAttachmentContext",
     "AttachmentAuthority",
     "AttachmentTuple",
     "IssuedAttachmentTicket",
+    "StagedAttachment",
     "TicketAuthorityError",
     "TicketErrorCode",
 ]

@@ -29,3 +29,5 @@
 - [WAW application cryptography](../WAW_APPLICATION_CRYPTO.md): exact implemented handshake/channel, deadline/publication rules, independent vectors/interop and native-browser evidence.
 
 - [Full WAW wire profiles](../WAW_WIRE_CONTRACT.md): complete direction schemas, exact-byte relay/trace, failure/retry decisions, parser budgets and measured verification.
+
+- [Staged admission](../WAW_STAGED_ADMISSION.md): ticket burn/reservation, required Audit, atomic publication, reader handoff, cleanup and the distinct active-lifecycle obligations.

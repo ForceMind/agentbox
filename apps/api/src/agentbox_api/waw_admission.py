@@ -25,11 +25,13 @@ from agentbox_core.waw import (
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
+    AttachmentTuple,
     AuthenticatedAttachmentContext,
     IssuedAttachmentTicket,
     TicketAuthorityError,
 )
 from agentbox_protocol.metadata import StrictMetadataModel
+from agentbox_protocol.waw_crypto_context import validate_admission
 from pydantic import ConfigDict, Field, ValidationInfo, field_serializer, field_validator
 
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
@@ -303,10 +305,36 @@ def _validate_origin(origin: str, allowed_origins: Collection[str] | None) -> No
         raise WAWAdmissionError("ORIGIN_INVALID", "Origin is not canonical")
 
 
+def wire_admission_tuple(claims: AttachmentTuple) -> dict[str, str]:
+    """Project authenticated ticket claims onto the exact public wire tuple.
+
+    Session/admin/scope/origin, ticket and Runtime capability never enter this
+    projection. Runtime epoch remains a separately bound value.
+    """
+    return validate_admission(
+        {
+            "attachment_id": claims.attachment_id,
+            "workspace_id": claims.workspace_id,
+            "project_id": claims.project_id,
+            "agent_type": str(claims.agent_type),
+            "runtime_host_installation_id": claims.runtime_host_installation_id,
+            "runtime_host_installation_revision": str(claims.runtime_host_installation_revision),
+            "auth_epoch": str(claims.auth_epoch),
+            "api_authority_epoch": str(claims.api_authority_epoch),
+            "lease_number": str(claims.lease_number),
+            "generation": str(claims.generation),
+            "binding_revision": str(claims.binding_revision),
+            "mode": claims.mode,
+            "binding_digest": claims.binding_digest,
+        }
+    )
+
+
 __all__ = [
     "ProtocolRecentAuth",
     "WAWAdmissionError",
     "WAWRuntimeReadiness",
     "WorkspaceAdmissionRow",
     "prepare_attachment",
+    "wire_admission_tuple",
 ]
