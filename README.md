@@ -6,9 +6,9 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox `0.3.0rc1` is a **pre-release / MVP Release Candidate** for one Linux
-x86_64 server and one administrator. Phases 0–9 and the stable Deployment gate
-are merged; Phase 10 prepares reproducible artifacts and release documentation.
+AgentBox source is now the **pre-release `0.3.0rc2` development candidate** for
+one Linux x86_64 server and one administrator. The qualified artifact baseline
+remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 This is not a stable-release, production-readiness, penetration-test,
 enterprise-support, or broad platform-support claim.
 

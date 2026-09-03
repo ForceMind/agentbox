@@ -281,6 +281,25 @@ class WAWSupervisor:
                 attachment_id=(self._attachment.attachment_id if self._attachment else None),
             )
 
+    @contextmanager
+    def stopped_generation_guard(self, operation: WorkspaceStopOperation) -> Iterator[None]:
+        """Hold an exact positive STOPPED fence through an executor map commit."""
+
+        with self._lock:
+            if not _same_stop_binding(operation, self._stop_binding):
+                raise RuntimeOperationError(
+                    "WAW_GENERATION_STALE",
+                    "Previous workspace generation binding is stale",
+                    category="conflict",
+                )
+            if self._state is not SupervisorState.STOPPED:
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED",
+                    "Previous workspace generation is not positively stopped",
+                    category="conflict",
+                )
+            yield
+
     def start(self) -> SupervisorSnapshot:
         with self._lock:
             if self._state is not SupervisorState.ADMITTED:

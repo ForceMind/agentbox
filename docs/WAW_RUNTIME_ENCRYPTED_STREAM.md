@@ -111,7 +111,18 @@ latest worker regression command was:
 It exited 0 with 160 passed, including pending Stop, partial output interrupted
 by a cross-thread Stop, old-lease/new-generation isolation and unconfirmed
 shutdown. All ten R7 files passed scoped lint, format and Linux-target type
-checks. Independent re-review remains pending; this is not final R7 acceptance.
+checks. Final review of the first draft head found a map/supervisor lock-order
+inversion and a 2001-line retention error. The repaired Start transaction now
+uses `supervisor → map`, holds the stopped old-generation state through final
+map replacement and rechecks exact objects/binding/reservation/inflight/
+generation. The ring counts LF-delimited lines plus one unterminated stream tail.
+
+The worker's repaired complete R7 matrix passed 170 cases; 16 focused lock/state/
+cancellation cases passed. The PTY suite passed 17 cases. All ten R7 files passed
+scoped lint, format and Linux-target type checks. Independent re-review passed
+10 deadlock/state tests plus all 17 PTY tests and reproduced both former failures
+as closed. This is software evidence; exact-head CI/merge and host qualification
+remain separate.
 
 Local tests perform actual temporary Unix socket reads/writes. PTY, capture,
 static-key and peer-provenance ports are explicitly synthetic. macOS does not
