@@ -46,3 +46,5 @@
   to `gpt-5.6-terra`. Current finite goals/dependencies are in
   [REMAINING_PLAN.md](REMAINING_PLAN.md). Routine implementation/CI/merge continue;
   unapproved architecture and real-host/key/production actions retain their gates.
+
+- `WAW-STREAM-SUPPLEMENT-PROPOSED`: [complete protocol supplement](WAW_ENCRYPTED_STREAM_DECISION.md) resolves identified key/context, admission verification, ACK, drop, limit and signed-pin contradictions. Independent sol review passed; Owner acceptance is pending. Documentation merge does not approve the architecture.

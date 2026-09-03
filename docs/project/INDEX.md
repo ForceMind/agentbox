@@ -11,8 +11,10 @@
 7. `GOVERNANCE_AUTOMATION.md`
 8. `EXECUTION_PLAN.md` — 当前目标、阶段状态、职责、验收与交付流程。
 
-- [WAW encrypted stream byte decision](WAW_ENCRYPTED_STREAM_DECISION.md): proposed exact application encoding; Owner decision required before its implementation.
+- [WAW encrypted stream supplemental decision](WAW_ENCRYPTED_STREAM_DECISION.md): proposed full wire/admission/trust clarification; Owner decision required before its implementation.
 
 - [Fixed Noise NX core](../WAW_NOISE_CORE.md): implementation limits, independent vector provenance and Python/WebCrypto interoperability.
 
 - [Remaining development plan](REMAINING_PLAN.md): latest assessed goals, finite slices, model routing, confirmed defects and contract decisions.
+
+- [Opaque AWCE framing](../WAW_AWCE_FRAMING.md): exact envelope layout, bounded Python/Web codecs, header builders, cross-language checks and unimplemented crypto/session boundaries.

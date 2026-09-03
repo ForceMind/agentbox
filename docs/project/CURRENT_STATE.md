@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T09:02:21Z"
+verified_at_utc: "2026-09-03T09:56:00Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -13,7 +13,11 @@ repository: "ForceMind/agentbox"
   `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9`.
 - All six exact-main workflows completed SUCCESS. Historical Draft PR #42 is
   the only open PR and is outside current writes. Network preflight exited 0.
-- Active branch: `codex/remaining-plan-auth-capacity`.
+- Latest stage baseline: `HEAD/main/origin/main/merge-base` equal
+  `d9c26b9eb26664368c384805d1138a5349b92b60`; all six exact-main workflows
+  completed SUCCESS. Fetch and GitHub reads exited 0. Independent R2 work is
+  present in the shared working tree and excluded from this stage's commit.
+- Active branch: `codex/awce-framing-contract`.
 - This snapshot records observed facts and cannot predict its own merge SHA.
 
 ## Delivered software stages
@@ -27,6 +31,8 @@ repository: "ForceMind/agentbox"
 | F1.1 — shared supervisor | #63 | `c78cb92a5afe8056ab44a1cc4e8a6bea3074e184` | `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e` | 19/19 SUCCESS |
 | F1.2 — Runtime composition | #64 | `ef8641bd409bbb6d17db707370de66f552bf4640` | `624b34b656dbf239dbc56fa79d216db7d17a349b` | 19/19 SUCCESS |
 | F1.3 — fixed Noise core | #65 | `6d0c0f8ff8b452fd0288d6ac98b1f3fe79352ed7` | `f95d1a4b0f0bdbdda45bd8da6cc10f3f8ac10269` | 19/19 SUCCESS |
+| Native browser Noise | #66 | `27ff0161ef65f4a6fe1389a4dbcf4fa318f63db1` | `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9` | 19/19 SUCCESS |
+| R0 — auth worker capacity | #67 | `31a0bc9f38a5c2891a4b9d2bb403a09175579a98` | `d9c26b9eb26664368c384805d1138a5349b92b60` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -166,10 +172,11 @@ all exited 0. F1.1/F1.2/F1.3 have completed applicable software tests, independe
 reviews and exact-head CI/merge. This is not completion of the interactive
 terminal product or F2 host qualification.
 
-The next application-profile implementation is **未开始** pending the explicit
-byte-level decision in `WAW_ENCRYPTED_STREAM_DECISION.md`. Owner was asked to
-approve the concrete three-rule proposal; no approval has been received at this
-snapshot. That is an architecture clarification under GOVERNANCE, not a Linux
+The next application-profile implementation is **未开始** pending the complete
+supplemental decision in `WAW_ENCRYPTED_STREAM_DECISION.md`. The earlier three-rule
+proposal has been expanded after identifying additional protocol conflicts;
+Owner acceptance of the complete proposal has been requested and not received at
+this snapshot. That is an architecture clarification under GOVERNANCE, not a Linux
 host prerequisite for ordinary Mac development. After approval, continue the
 application crypto, ciphertext-only relay, staged admission, browser controls
 and remaining CLI/host acceptance in the existing plan.
@@ -199,9 +206,9 @@ and remaining CLI/host acceptance in the existing plan.
 Owner requested a fresh remaining-plan evaluation, a persistent goal and
 model-routed multi-agent work: complex sol, ordinary terra. See REMAINING_PLAN.
 Sol confirmed AUTH-CAPACITY-CANCEL with an in-memory barrier reproduction:
-configured limit 1, cancelled caller, peak actual workers 2. Fix and deterministic
-unit/API verification are in progress; this is not claimed as the cause of old
-Mac E2E timeouts. Terra implements independently specified opaque AWCE framing.
+configured limit 1, cancelled caller, peak actual workers 2. R0's fix and
+deterministic unit/API verification are merged; this is not claimed as the cause
+of old Mac E2E timeouts. Terra implemented independently specified opaque AWCE framing.
 Sol also found additional full wire/admission/trust conflicts beyond the three
 proposed bytes; those are consolidated in the new plan instead of silently
 promoting the synthetic bridge or metadata state machine to production.
@@ -219,4 +226,24 @@ R0 local implementation evidence:
   part of its 48-case Python review with the separate opaque AWCE work.
 - No password/Session/CSRF policy, limiter budget, database locking or E2E timeout
   was changed. The previous four Mac E2E authentication timeouts are not claimed
-  resolved by this fix. R0 is awaiting exact-head CI and merge/read-back.
+  resolved by this fix. PR #67 completed all 19 exact-head checks and merged at
+  `2026-09-03T09:26:56Z`; GitHub read-back, fetch and main fast-forward exited 0.
+
+## R1 framing and R3 proposal evidence
+
+- R1 implements strict Python/Web opaque AWCE v1 framing and a shared header
+  builder usable before encryption. Scope, field offsets and evidence are in
+  [WAW_AWCE_FRAMING](../WAW_AWCE_FRAMING.md). No channel crypto or socket is activated.
+- Python AWCE tests: exit 0, 44 passed. Web AWCE tests: exit 0, 38 passed.
+  Bidirectional Python/TypeScript interop: exit 0. Scoped formatting/lint/type
+  checks passed; independent sol read-only codec/header review: PASS.
+- The complete R3 supplement freezes proposed key schemas/context derivation,
+  Runtime/browser confirmation responsibility, ACK hop mapping, API ciphertext
+  drop handling, effective limits and signed-pin compatibility. Independent sol
+  review passed; three public Ed25519 fixtures and bootstrap digest were verified.
+  It remains **PROPOSED**, not Owner acceptance or implemented application behavior.
+- R1 awaits exact-head CI and merge/read-back. R2 diagnostic evidence and R10
+  descriptor-held executable verification are separate increments in progress.
+- PR #66's Linux E2E run `33731800570`: exit 0, all 60 tests passed in 42.3s.
+  Its six post-main workflows also completed SUCCESS. This does not erase the
+  earlier four local timeouts or prove a local root cause.
