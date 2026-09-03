@@ -67,10 +67,10 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | R0 plan + AUTH-CAPACITY-CANCEL | 已完成 | `auth.py` 与 executor tests；主智能体维护计划、安全文档与 GitHub | 已有 barrier 复现；取消等待/执行、共享 gate、成功/异常/提交失败、ContextVar；不得提前释放或遗留未消费异常 |
 | R1 opaque AWCE codecs | 已完成 | Python `awce.py` / Web `awce.ts` 与边界测试 | 现有明确 44-byte header、精确长度、uint64/BigInt、高位与尾随拒绝、双语言固定向量；无 crypto/authentication 声明，不依赖未决 AAD |
 | R2 login latency evidence | 已完成 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
-| R3 complete protocol clarification | 未开始 | 完整 PROPOSED 补充已独立审查；待 Owner acceptance 后进入已批准执行状态 | 下节列出的 wire/admission/trust 问题收敛并明确获得所需 Owner 授权；不逐文件临时发明协议 |
-| R4 application crypto | 未开始 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
-| R5 full wire schemas | 未开始 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
-| R6 staged attachment authority | 未开始 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
+| R3 complete protocol clarification | 待验证 | 完整补充已独立审查；Owner 已明确委托软件决策，Coding Agent 已接受该完整合同 | 委托与接受记录随阶段CI/merge交付；不把接受合同视为实现完成 |
+| R4 application crypto | 待验证 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
+| R5 full wire schemas | 待验证 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
+| R6 staged attachment authority | 进行中 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
 | R7 Runtime encrypted stream | 未开始 | Runtime stream session/server 与有限 executor integration | R4/R5/R6；capability once、同锁 process recheck、ring 先选再加密、partial input ACK、exit/cleanup barrier |
 | R8 API ciphertext relay | 未开始 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8 + 明确 logical-line deadline duration / post-limit controller recovery；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
@@ -121,7 +121,8 @@ R2 是独立测量工作；不把未知原因当作其它 slice 的通用阻断�
 
 原三项字节补充不足以完整冻结实际 wire，已扩充为
 [完整协议补充提案](WAW_ENCRYPTED_STREAM_DECISION.md)，并通过独立 sol 审查。
-下列冲突已在提案中明确解决；Owner acceptance 尚未收到，仍为 PROPOSED：
+下列冲突已在完整补充中解决；Owner 最新明确委托软件决策后，Coding Agent
+已接受该合同用于实现。此前等待 Owner acceptance 的状态已被本次授权取代：
 
 1. KEY_INIT/ATTEST 的扁平 `AdmissionTuple` 与后文 `HandshakeContext` 字段集合
    不一致（`mode` / `protocol_id`）；需逐帧冻结 exact keys 与 context 派生规则。
@@ -167,8 +168,11 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 
 ## Current resumption point
 
-R0/R1/R2/R9.1/R10.1 已完成适用实现、独立审查、CI、合并和回读。R3 的提案
-文档与独立审查已完成，但 Owner acceptance 尚未收到，因此已批准执行状态
-保持未开始。下一步先明确接受完整协议补充，随后由 sol 并行推进 R4 application
-crypto 与 R5 full wire schemas；既有 framing/core 不重新实现。完整 R9/R10、
-R6–R8/R11/R12 仍按上表依赖推进，整体目标没有标为完成。
+R0/R1/R2/R9.1/R10.1 已完成适用实现、独立审查、CI、合并和回读。Owner 最新
+明确要求继续并委托目标、计划与软件决策；Coding Agent 已接受独立审查通过的
+完整 R3 协议补充。Python/Web R4 实现已通过独立审查、560 Python 回归、148 Web测试、
+双角色互通和62 native/既有E2E，待CI/merge；R5完整wire schemas已并行开发，
+276 Python / 274 Web及独立复审通过，待单独互通/CI/merge；R6 staged authority
+与coordinator已启动。后续软件合同由 Coding Agent 决策、记录理由并审查，
+不再等待重复的软件 Owner gate。真实 host、生产 key/Secret 与发布的具体范围
+和真实证据仍保留；完整产品尚未完成。

@@ -1,13 +1,30 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T10:35:54Z"
+verified_at_utc: "2026-09-03T11:34:38Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## Live baseline
+## Current authorized implementation
+
+- New task preflight: clean `HEAD/main/origin/main/merge-base` at
+  `c0a10c78fe1dd86922172f4c433fa1ba976eb017`; six exact-main workflows SUCCESS,
+  only historical Draft #42 open. Fetch/GitHub reads exited 0.
+- Owner explicitly delegated software goals/plans/architecture decisions. Coding
+  Agent accepts the reviewed full protocol supplement; the prior R3 approval
+  blocker is resolved. Current branch: `codex/waw-application-crypto`.
+- R4 Python/Web contexts and actual application profiles are implemented and
+  independently reviewed. Full Python/Node interop and native Chromium tests
+  passed; exact-head CI/merge are pending. R5 wire schemas passed independent review and await their separate
+  integration/delivery; R6 staged admission is in progress. Both are excluded
+  from this stage's commit.
+- PR #72 documentation head `cd402e69d0550fbc4c7c103894ebaae8f7bae2a4` merged as
+  `c0a10c78fe1dd86922172f4c433fa1ba976eb017` at `2026-09-03T10:42:41Z` after
+  19/19 exact-head checks; merge read-back/fetch/fast-forward exited 0.
+
+## Historical live baselines
 
 - At current-task start: clean tree; `HEAD/main/origin/main/merge-base` equal
   `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9`.
@@ -326,7 +343,7 @@ R0 local implementation evidence:
   Logical-line deadline duration and post-limit controller recovery still need
   explicit contract resolution; this core does not invent them.
 
-## Delivery checkpoint and next required decision
+## Historical checkpoint before software decision delegation
 
 The current reassessment delivered five reviewed software increments: R0, R1,
 R2, R10.1 and R9.1. Each has an observed merged PR and 19/19 successful exact-head
@@ -351,3 +368,26 @@ Independent terra documentation review found one stale R2 merge sentence and
 missing R9/R10 decision dependencies in the plan's acceptance cells. Those are
 corrected in this documentation checkpoint. Existing historical evidence and
 PROPOSED architecture status are preserved.
+
+## R3/R4 delegated implementation evidence
+
+- Complete R3 supplement accepted by the Coding Agent under the Owner's explicit
+  software decision delegation. GOVERNANCE/NEXT_ACTION/plan record that the old
+  software approval blocker is resolved; real target/key/production scope and
+  evidence remain separate.
+- R4 implements exact context/prologue, four key frames, independent pin checks,
+  confirmation n=0, AWCE n>=1/AAD/size/cursor binding and permanent failure/close
+  fences. See [WAW_APPLICATION_CRYPTO](../WAW_APPLICATION_CRYPTO.md).
+- Root Python context/profile + Noise/AWCE: exit 0, 560 passed. New Web suites:
+  exit 0, 148 passed. Independent primitive reference and Python/WebCrypto
+  bidirectional full-profile interop: exit 0, exact complete vector/bounds/fences.
+- Independent sol review: PASS after fixing Python close publication and final
+  readiness publication races. Both original P1 reproductions were rerun and
+  rejected correctly; previously verified Web/metadata/vector evidence retained.
+- Root isolated full E2E: exit 0, 62 passed in 45.3s, including new native
+  Chromium desktop/mobile application crypto tests. Earlier attempt stopped at
+  a temporary in-progress R5 test compile error, not a browser test failure.
+- R3/R4 await exact-head CI/merge. R5 repaired hostile numeric exponent,
+  failure-state/order, paired-source and Python sequence synchronization findings;
+  independent R5 review passed with 276 Python / 274 Web cases. Its software
+  delivery remains separate; no product admission is claimed.

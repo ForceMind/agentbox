@@ -1,12 +1,19 @@
 # WAW encrypted stream supplemental contract decision
 
-Status: **PROPOSED — Owner acceptance required before application-profile implementation**.
+Status: **ACCEPTED for software implementation — 2026-09-03**.
+
+Decision authority: the Owner explicitly delegated software goal/plan/architecture
+decisions to the Coding Agent (“继续啊，你可以启动目标修改目标，你都可以决定”).
+The Coding Agent elects to accept this complete, independently reviewed supplement
+under that delegation; see [GOVERNANCE](GOVERNANCE.md). This records delegated
+acceptance, not a claim that the Owner separately approved each byte choice.
 
 This is one reviewable supplement to the historical
 [WAW architecture](../../WEB_AGENT_WORKSPACE_ARCHITECTURE_AUTHORIZATION_REVIEW.md).
 It retains that document's historical approval state. The words “must”, “exact”,
-and “reject” below specify the proposed contract, not implemented capabilities or
-new authority. A routine documentation PR/merge does not approve these choices.
+and “reject” below specify the accepted software contract, not already implemented
+capabilities or host/production authority. Routine merge alone is not the basis
+for acceptance; the explicit delegation and recorded decision above are.
 The fixed Noise NX core, opaque AWCE codecs, and synthetic stream classes retain
 their separate scopes; none demonstrates a working encrypted terminal.
 
@@ -24,13 +31,13 @@ ACK, quota, size, and trust rules. This supplement consolidates those decisions;
 the earlier review of the three-byte proposal is not a review of this expanded
 contract and is not Owner authorization.
 
-If accepted, the following resolutions take precedence only over the identified
+The accepted resolutions below take precedence only over the identified
 contradictory passages. All other fixed frame types, direction restrictions,
 resource ceilings, exact process/lease fences, cleanup proofs, and host gates
 remain applicable. It does not authorize generic commands/filesystem access,
 Provider authentication, plaintext API relay, or a different Noise pattern.
 
-| Historical location | Proposed resolution |
+| Historical location | Accepted resolution |
 | --- | --- |
 | Streaming Frames key rows versus Complete key frames prose | `KEY_INIT`/`KEY_ATTEST` carry the flat `AdmissionTuple`; derive `HandshakeContext` by the exact rule in section 2. Freeze all four key schemas. |
 | KEY_CONFIRM/ACK unnamed ciphertext and missing protocol version | Use `ciphertext`, exactly 48 decoded bytes; require numeric `protocol_version=1`; ACK hash is 64 lowercase hexadecimal characters. |
@@ -131,7 +138,7 @@ only the outer hop header. Parsing metadata is not permission to reserialize it.
 
 ### Retained byte choices and confirmation formulas
 
-| Item | Exact proposed bytes / formula |
+| Item | Exact accepted bytes / formula |
 | --- | --- |
 | `protocol_id` | ASCII JSON string `agentbox-waw/v1` |
 | Noise prologue | Complete RFC 8785 UTF-8 `C` bytes above |
@@ -369,7 +376,7 @@ implementation, trust-store lifecycle or present-day deployment validity. The
 fixtures' validity begins in 2030; use an explicit test clock, not today's clock,
 for positive validity tests. No private key was read, generated or used to sign.
 
-The smallest proposed fix is to use **only** `waw-runtime-pin.v1` as the pin schema
+The accepted compatibility rule is to use **only** `waw-runtime-pin.v1` as the pin schema
 literal and preserve the existing signed pin bytes/signature. Dash-form pin
 literal is rejected. Root remains `waw-runtime-root-v1`; bootstrap remains
 `waw-runtime-bootstrap-v1`. Do not silently accept aliases, normalize a signed
@@ -437,7 +444,7 @@ revision floors, trustworthy time, and the required origin/network-policy checks
 A normal mutable API response, served frontend configuration, localStorage or
 IndexedDB alone does not meet that contract. An in-memory test provider can test
 verification logic, but cannot prove persistent rollback resistance or deployment
-authority. This proposal adds no provider API, automatic enrollment or fake
+authority. This supplement adds no provider API, automatic enrollment or fake
 production trust source. The deployment choice and its evidence remain an explicit
 R9/R12 gate; software crypto/schema work can proceed after this supplement is
 accepted without claiming that gate has passed.
@@ -467,15 +474,16 @@ Architecture/Security/Test review and supported Python/browser interoperability.
 | Signed numbers | Public test-key vectors for `2^53-1` accepted where lifecycle permits, `2^53` and `2^64-1` rejected before rounding, quoted/exponent/fraction variants rejected; wire decimal-string equality with the signed Number remains exact. Never use an unknown Owner key to manufacture replacement fixtures. |
 | Trust provider | Missing/ambiguous/untrusted provider, time rollback, stale floor, API replacement, origin mismatch and partial rotation deny attachment. Mock-provider tests are explicitly distinct from real policy-store/host qualification. |
 
-## 9. Requested decision and remaining limits
+## 9. Accepted decision and remaining limits
 
-Accept this **complete supplemental contract** for software implementation and
-verification, or replace the exact choices before R4/R5 integration. Acceptance
-must cover the flat context/key schemas and ciphertext field, separate verification
-authorities, ACK translation/rejection, immediate ciphertext-drop behavior, layered
-limits, preserved signed pin literal and safe signed-number range together with
-the retained original three byte choices. No approval is inferred from “continue”,
-core/codec test success, independent review, or routine GitHub merge.
+The Coding Agent accepts the **complete supplemental contract** for software
+implementation and verification under the Owner's explicit current-task decision
+delegation. The decision covers the flat context/key schemas and ciphertext
+field, separate verification authorities, ACK translation/rejection, immediate
+ciphertext-drop behavior, layered limits, preserved signed pin literal and safe
+signed-number range, together with the original three byte choices. Earlier
+ordinary “continue” events, core/codec tests, review and routine merge were not
+approval; the latest explicit delegation supplies the authority to decide.
 
 Real host activation, production Runtime key custody/rotation, Provider Secret
 handling, the concrete independent trust-provider deployment, publication and

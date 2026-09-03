@@ -47,4 +47,6 @@
   [REMAINING_PLAN.md](REMAINING_PLAN.md). Routine implementation/CI/merge continue;
   unapproved architecture and real-host/key/production actions retain their gates.
 
-- `WAW-STREAM-SUPPLEMENT-PROPOSED`: [complete protocol supplement](WAW_ENCRYPTED_STREAM_DECISION.md) resolves identified key/context, admission verification, ACK, drop, limit and signed-pin contradictions. Independent sol review passed; Owner acceptance is pending. Documentation merge does not approve the architecture.
+- `WAW-STREAM-SUPPLEMENT-ACCEPTED`: the complete protocol supplement is accepted by the Coding Agent under the Owner's explicit 2026-09-03 software decision delegation. It resolves key/context, verification, ACK, drop, limit and signed-pin contradictions. Prior independent review passed; implementation is R4/R5, and host/production evidence remains separate.
+
+- `SOFTWARE-DECISION-DELEGATION-2026-09-03`: Owner explicitly permits the Coding Agent to decide goals, plans and software architecture for the ongoing objective. See GOVERNANCE for scope; resolve software choices with evidence/review without repeatedly requesting the same authorization.
