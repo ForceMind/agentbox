@@ -4,6 +4,7 @@ import {
   Route,
   Routes,
   useParams,
+  useSearchParams,
 } from 'react-router-dom'
 
 import { AppShell } from './app/AppShell'
@@ -21,18 +22,30 @@ import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkspacePage } from './pages/WorkspacePage'
-import { useWorkspaceStatus } from './features/workspace/useWorkspaceStatus'
+import { useWorkspaceController } from './features/workspace/useWorkspaceController'
 
 function WorkspaceRoute() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
-  const { view, refresh } = useWorkspaceStatus(workspaceId)
+  const [search] = useSearchParams()
+  const projectId = search.get('project_id') ?? undefined
+  const agentType = search.get('agent_type') ?? undefined
   return (
-    <WorkspacePage
-      refreshStatus={refresh}
-      runtimeView={view}
+    <WorkspaceScreen
+      key={`${workspaceId ?? ''}:${projectId ?? ''}:${agentType ?? ''}`}
       workspaceId={workspaceId}
+      projectId={projectId}
+      agentType={agentType}
     />
   )
+}
+
+function WorkspaceScreen(props: {
+  workspaceId?: string
+  projectId?: string
+  agentType?: string
+}) {
+  const model = useWorkspaceController(props)
+  return <WorkspacePage model={model} />
 }
 
 function RootRedirect() {

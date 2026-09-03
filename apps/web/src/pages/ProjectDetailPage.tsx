@@ -86,6 +86,14 @@ export function ProjectDetailPage() {
               <dd>{project.source_type}</dd>
             </div>
           </dl>
+          {project.state === 'ready' && (
+            <Link
+              className="primary-button"
+              to={`/workspace?project_id=${encodeURIComponent(project.id)}`}
+            >
+              打开交互式工作区
+            </Link>
+          )}
         </article>
         <article className="runtime-card">
           <div className="runtime-card-heading">

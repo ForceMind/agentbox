@@ -1,100 +1,54 @@
-import {
-  AlertTriangle,
-  Keyboard,
-  MonitorUp,
-  RefreshCw,
-  ShieldAlert,
-} from 'lucide-react'
-
+import { AlertTriangle, MonitorUp, RefreshCw, ShieldAlert } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePageTitle } from '../hooks/usePageTitle'
-import {
-  initialWorkspaceState,
-  WorkspaceState,
-} from '../features/workspace/workspaceState'
-import { WorkspaceStatusView } from '../features/workspace/useWorkspaceStatus'
-import { WorkspaceAction } from '../features/workspace/useWorkspaceActions'
+import './WorkspacePage.css'
+import type { WorkspacePageModel } from '../features/workspace/workspaceView'
 
-export type WorkspacePageActions = Partial<
-  Record<WorkspaceAction, () => void | Promise<void>>
-> & {
-  input?: (key: string) => void | Promise<void>
+const labels: Record<string, string> = {
+  STARTING: '启动中',
+  RUNNING: '运行中',
+  NEEDS_INTERACTION: '需要交互',
+  TRUST_REQUIRED: '需要本地确认信任',
+  LOGIN_REQUIRED: '需要本地登录',
+  STOPPING: '停止中',
+  EXITED: '进程已退出',
+  STOPPED: '已停止',
+  MISSING: '进程不存在',
+  COLLISION: '检测到冲突',
+  BROKEN: '需要恢复核对',
+  UNKNOWN: '状态未知',
 }
 
-const statusLabels: Record<WorkspaceState['status'], string> = {
-  checking: '检查中',
-  starting: '启动中',
-  connecting: '连接中',
-  connected: '已连接',
-  reconnecting: '重新连接中',
-  error: '错误',
-  stopping: '停止中',
-  detached: '已分离',
-  stopped: '已停止',
-  gap: '输出有缺口',
-  input_uncertain: '输入状态不确定',
-  login_required: '需要本地登录',
-  trust_required: '需要 Workspace Trust',
-  exited: '进程已退出',
-  missing: '进程不存在',
-  collision: '检测到冲突',
-  unavailable: '不可用',
-}
-
-function statusTone(status: WorkspaceState['status']) {
-  if (status === 'connected') return 'good' as const
-  if (status === 'stopped' || status === 'detached') return 'muted' as const
-  return 'warning' as const
-}
-
-export function WorkspacePage({
-  initialState = initialWorkspaceState,
-  refreshStatus,
-  runtimeView = { status: 'idle' },
-  workspaceId,
-  actions = {},
-}: {
-  initialState?: WorkspaceState
-  refreshStatus?: () => Promise<void>
-  runtimeView?: WorkspaceStatusView
-  workspaceId?: string
-  actions?: WorkspacePageActions
-}) {
-  const state = initialState
-  usePageTitle('Workspace')
-
-  const terminalMessage =
-    state.status === 'connected'
-      ? 'Runtime ADMITTED 已确认。终端输出仅在当前页面内存中显示。'
-      : '等待 Runtime ADMITTED；当前不会显示终端输出。'
-  const isTerminal = state.status === 'connected'
+export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
+  usePageTitle('交互式工作区')
+  const stopDialog = useRef<HTMLDialogElement>(null)
+  const busy = model.pending !== null
   const metadata =
-    runtimeView.status === 'loaded' ? runtimeView.response.data : null
-  const busy = runtimeView.status === 'loading'
-  const canStart =
-    Boolean(actions.start) &&
-    metadata?.state !== 'RUNNING' &&
-    metadata?.process_state !== 'RUNNING'
-  const canConnect =
-    Boolean(actions.connect) &&
-    metadata?.state === 'RUNNING' &&
-    state.status !== 'connected'
-  const canReconnect = Boolean(actions.reconnect) && state.status === 'detached'
-  const canDetach =
-    Boolean(actions.detach) &&
-    (state.status === 'connected' || state.status === 'reconnecting')
-  const canStop = Boolean(actions.stop) && metadata?.state === 'RUNNING'
-
+    model.runtimeView.status === 'loaded'
+      ? model.runtimeView.response.data
+      : null
+  const runtimeError =
+    model.runtimeView.status === 'error' ? model.runtimeView.error.code : null
+  useEffect(() => {
+    const dialog = stopDialog.current
+    if (model.stopTarget && dialog && !dialog.open) {
+      dialog.showModal()
+    }
+    if (!model.stopTarget && dialog?.open) dialog.close()
+  }, [model.stopTarget])
   return (
     <>
       <PageHeader
-        description="在一个正式 READY Project 中连接受控的 Claude AgentType。此页面只提供受限的交互式 Workspace，不是 shell 或 Provider 登录入口。"
         eyebrow="Web Agent Workspace"
-        title="Interactive Workspace"
+        title="交互式工作区"
+        description="在正式 READY Project 中管理受控的 Claude 或 Codex 工作区生命周期。终端连接尚未开放。"
       />
-
-      <section className="runtime-card" aria-labelledby="workspace-selection">
+      <section
+        className="runtime-card workspace-selection-card"
+        aria-labelledby="workspace-selection"
+      >
         <div className="runtime-card-heading">
           <div>
             <p className="eyebrow">Workspace selection</p>
@@ -104,202 +58,229 @@ export function WorkspacePage({
         </div>
         <div className="project-forms">
           <label>
-            Formal READY Project
-            <select aria-label="Formal READY Project" disabled>
-              <option>请先加载 READY Project</option>
+            正式 READY Project
+            <select
+              aria-label="正式 READY Project"
+              value={model.selectedProjectId}
+              onChange={(e) => model.selectProject(e.target.value)}
+              disabled={model.projectsLoading || model.projects.length === 0}
+            >
+              {!model.projectsLoading &&
+                model.projects.length > 0 &&
+                !model.selectedProjectId && (
+                  <option value="">请选择 Project</option>
+                )}
+              {model.projectsLoading && (
+                <option value="">正在加载 Project…</option>
+              )}
+              {!model.projectsLoading && model.projects.length === 0 && (
+                <option value="">暂无 READY Project</option>
+              )}
+              {model.projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.displayName}
+                </option>
+              ))}
             </select>
           </label>
           <label>
             AgentType
-            <select aria-label="AgentType" defaultValue="claude" disabled>
-              <option value="claude">Claude · claude</option>
+            <select
+              aria-label="AgentType"
+              value={model.agentType}
+              onChange={(e) =>
+                model.selectAgent(e.target.value as 'claude' | 'codex')
+              }
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
             </select>
           </label>
         </div>
-        <p className="interaction-notice">
-          控件只调用 metadata control-plane API；ticket
-          仅在内存中短暂流转，当前页面尚未建立 WebSocket、Noise 或 PTY，不会伪造
-          workspace、ticket 或运行状态。
-        </p>
-        {workspaceId && runtimeView.status === 'loading' && (
-          <p className="loading-panel" role="status">
-            正在读取 Runtime metadata…
+        {model.projectError && (
+          <p className="error-panel" role="alert">
+            <AlertTriangle aria-hidden="true" />
+            {model.projectError}
           </p>
         )}
-        {workspaceId && runtimeView.status === 'error' && (
+        {model.lookup === 'unregistered' && (
+          <p className="interaction-notice" role="status">
+            当前 AgentType 尚未注册，无法启动工作区。
+          </p>
+        )}
+        {model.lookup === 'loading' && (
+          <p className="loading-panel" role="status">
+            正在读取工作区信息…
+          </p>
+        )}
+        {model.lookup === 'error' && !model.error && (
           <p className="error-panel" role="alert">
-            <AlertTriangle aria-hidden="true" /> Runtime metadata 暂不可用：
-            {runtimeView.error.code}
+            工作区信息暂不可用。{runtimeError && <code>{runtimeError}</code>}
           </p>
         )}
       </section>
-
       <section className="runtime-card" aria-labelledby="workspace-status">
         <div className="runtime-card-heading">
           <div>
-            <p className="eyebrow">Connection state</p>
-            <h2 id="workspace-status">连接状态</h2>
+            <p className="eyebrow">Lifecycle state</p>
+            <h2 id="workspace-status">工作区记录状态</h2>
           </div>
-          <StatusBadge tone={statusTone(state.status)}>
-            {statusLabels[state.status]}
+          <StatusBadge
+            tone={model.lifecycleState === 'RUNNING' ? 'good' : 'warning'}
+          >
+            {labels[model.lifecycleState ?? ''] ??
+              model.lifecycleState ??
+              '未加载'}
           </StatusBadge>
         </div>
         <p className="workspace-state-line">
-          <code>{state.status}</code>
-          {state.workspaceId && <code>{state.workspaceId}</code>}
-          {state.errorCode && <code>{state.errorCode}</code>}
+          <code>{model.lifecycleState ?? '未加载'}</code>
+          {model.workspaceId && <code>{model.workspaceId}</code>}
+          {model.generation && <code>generation {model.generation}</code>}
         </p>
-        {runtimeView.status === 'loaded' && (
+        {metadata && (
           <dl className="runtime-details" aria-label="Runtime metadata">
             <div>
-              <dt>Runtime state</dt>
-              <dd>{runtimeView.response.data.state}</dd>
+              <dt>Runtime 状态</dt>
+              <dd>{metadata.state}</dd>
             </div>
             <div>
-              <dt>Process state</dt>
-              <dd>{runtimeView.response.data.process_state}</dd>
+              <dt>进程状态</dt>
+              <dd>{metadata.process_state}</dd>
             </div>
             <div>
               <dt>Generation</dt>
-              <dd>{runtimeView.response.data.generation}</dd>
+              <dd>{metadata.generation}</dd>
             </div>
             <div>
-              <dt>Attachment capacity</dt>
-              <dd>
-                {runtimeView.response.data.attachment_capacity.admitted}/
-                {runtimeView.response.data.attachment_capacity.limit}
-              </dd>
+              <dt>Reconciliation 状态</dt>
+              <dd>{metadata.reconciliation_state}</dd>
             </div>
           </dl>
         )}
-        {workspaceId && refreshStatus && (
-          <button
-            aria-label="Refresh workspace status"
-            className="icon-button"
-            disabled={runtimeView.status === 'loading'}
-            onClick={() => void refreshStatus()}
-            type="button"
-          >
-            <RefreshCw size={18} />
-          </button>
+        <button
+          aria-label="刷新工作区状态"
+          className="icon-button"
+          disabled={model.runtimeView.status === 'loading'}
+          onClick={() => void model.refresh()}
+          type="button"
+        >
+          <RefreshCw size={18} />
+        </button>
+        {model.notice && (
+          <p className="workspace-notice" role="status">
+            {model.notice}
+          </p>
         )}
-        {state.message && <p className="workspace-notice">{state.message}</p>}
-        {state.status === 'error' && (
+        {model.error && (
           <p className="error-panel" role="alert">
-            <AlertTriangle aria-hidden="true" /> Workspace 操作未完成。请查看
-            technical error code；页面不会重试或猜测 Runtime 状态。
-          </p>
-        )}
-        {state.status === 'gap' && (
-          <p className="interaction-notice" role="status">
-            输出历史存在 bounded GAP。页面不会声称拥有完整
-            transcript，也不提供下载。
-          </p>
-        )}
-        {state.status === 'input_uncertain' && (
-          <p className="interaction-notice" role="status">
-            Runtime 未能确认输入是否写入 PTY。请由用户决定是否重新输入；AgentBox
-            不会自动重放。
+            {model.error.code === 'WAW_INVALID_AGENT'
+              ? '链接中的 AgentType 无效，请重新选择项目与 AgentType。'
+              : '操作未完成，请刷新状态后重试。'}{' '}
+            <code>{model.error.code}</code>
           </p>
         )}
       </section>
-
       <section className="runtime-card" aria-labelledby="workspace-terminal">
         <div className="runtime-card-heading">
           <div>
             <p className="eyebrow">Terminal viewport</p>
-            <h2 id="workspace-terminal">Claude terminal</h2>
+            <h2 id="workspace-terminal">受控终端</h2>
           </div>
-          <StatusBadge tone={isTerminal ? 'good' : 'muted'}>
-            {isTerminal ? 'ADMITTED' : 'NOT ADMITTED'}
-          </StatusBadge>
+          <StatusBadge tone="muted">NOT ADMITTED</StatusBadge>
         </div>
         <pre
           aria-label="Terminal output"
           className="workspace-terminal-placeholder"
         >
-          {terminalMessage}
+          终端连接尚未开放。当前页面仅提供状态与生命周期管理。
         </pre>
         <p className="sensitive-output workspace-sensitive-warning">
-          <ShieldAlert aria-hidden="true" />{' '}
-          终端内容可能包含源码、模型输出、提示词或误粘贴的敏感数据。不会保存
-          transcript、ticket、input history 或 terminal content。
+          <ShieldAlert aria-hidden="true" />
+          终端内容不写入浏览器存储，也不提供历史记录下载。
         </p>
         <div className="action-row">
           <button
             className="primary-button"
-            disabled={!canStart || busy}
-            onClick={() => void actions.start?.()}
+            disabled={!model.canStart || busy}
+            onClick={() => void model.start()}
             type="button"
           >
-            Start / Connect
-          </button>
-          <button
-            className="primary-button"
-            disabled={!canConnect || busy}
-            onClick={() => void actions.connect?.()}
-            type="button"
-          >
-            Connect（获取临时 ticket）
+            启动工作区
           </button>
           <button
             className="secondary-button"
-            disabled={!canReconnect || busy}
-            onClick={() => void actions.reconnect?.()}
+            disabled={!model.canStop || busy}
+            onClick={() => {
+              model.requestStop()
+            }}
             type="button"
           >
-            Reconnect
+            停止工作区
           </button>
-          <button
-            className="secondary-button"
-            disabled={!canDetach || busy}
-            onClick={() => void actions.detach?.()}
-            type="button"
-          >
-            Detach（保留 agent）
+        </div>
+        <div className="action-row">
+          <button className="secondary-button" disabled type="button">
+            连接终端
           </button>
-          <button
-            className="secondary-button"
-            disabled={!canStop || busy}
-            onClick={() => void actions.stop?.()}
-            type="button"
-          >
-            Stop workspace
+          <button className="secondary-button" disabled type="button">
+            重新连接
+          </button>
+          <button className="secondary-button" disabled type="button">
+            断开连接
+          </button>
+          <button className="secondary-button" disabled type="button">
+            键盘输入
           </button>
         </div>
         <p className="stop-note">
-          Stop 需要二次确认，只终止 exact managed workspace，不删除 Project 或
-          Git changes。Detach 只断开当前浏览器连接。
+          连接终端、重新连接、断开连接与键盘输入将在真实连接能力完成后开放。
         </p>
       </section>
-
-      <section className="runtime-card" aria-labelledby="workspace-input">
-        <div className="runtime-card-heading">
-          <div>
-            <p className="eyebrow">Input controls</p>
-            <h2 id="workspace-input">键盘与移动设备</h2>
-          </div>
-          <Keyboard aria-hidden="true" />
-        </div>
-        <p className="runtime-copy">
-          支持文本、Enter、箭头、Tab、Esc 和 Ctrl
-          组合键；移动设备提供等价的显式控制。输入确认只代表写入 PTY，不代表
-          Agent 已消费。
-        </p>
-        <div className="action-row" aria-label="Mobile terminal controls">
-          {['↑', '↓', '←', '→', 'Tab', 'Esc', 'Ctrl'].map((key) => (
+      <dialog
+        className="workspace-stop-dialog"
+        ref={stopDialog}
+        aria-labelledby="stop-title"
+        onCancel={(event) => {
+          event.preventDefault()
+          if (!busy) model.cancelStop()
+        }}
+      >
+        <div className="runtime-card">
+          <h2 id="stop-title">确认停止工作区</h2>
+          <p>仅停止受管进程，保留 Project 和 Git 修改。</p>
+          {model.stopTarget && (
+            <p>
+              Workspace ID：<code>{model.stopTarget.workspaceId}</code>
+              <br />
+              Generation：<code>{model.stopTarget.generation}</code>
+            </p>
+          )}
+          <div className="action-row">
             <button
               className="secondary-button"
-              disabled={!isTerminal || !actions.input}
-              onClick={() => void actions.input?.(key)}
-              key={key}
+              disabled={busy}
+              autoFocus
+              onClick={() => {
+                model.cancelStop()
+              }}
               type="button"
             >
-              {key}
+              取消
             </button>
-          ))}
+            <button
+              className="primary-button"
+              disabled={busy || !model.stopTarget}
+              onClick={() => {
+                if (model.stopTarget && !busy) void model.confirmStop()
+              }}
+              type="button"
+            >
+              确认停止
+            </button>
+          </div>
         </div>
-      </section>
+      </dialog>
     </>
   )
 }

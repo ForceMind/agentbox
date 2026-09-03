@@ -24,35 +24,50 @@ function normalizedError(error: unknown): ApiError {
 }
 
 /** Fetches bounded metadata only; it never creates an admission or terminal transport. */
-export function useWorkspaceStatus(workspaceId: string | undefined) {
-  const { api } = useAuth()
-  const [view, setView] = useState<WorkspaceStatusView>({ status: 'idle' })
+export function useWorkspaceStatus(
+  workspaceId: string | undefined,
+  refreshKey = '',
+) {
+  const { api, auth } = useAuth()
+  const scope = `${auth?.session.id ?? ''}:${auth?.csrf_token ?? ''}:${workspaceId ?? ''}:${refreshKey}`
+  const [snapshot, setSnapshot] = useState<{
+    scope: string
+    view: WorkspaceStatusView
+  }>({ scope: '', view: { status: 'idle' } })
   const requestGeneration = useRef(0)
 
   const refresh = useCallback(async () => {
     const generation = ++requestGeneration.current
     if (!workspaceId) {
-      setView({ status: 'idle' })
+      setSnapshot({ scope, view: { status: 'idle' } })
       return
     }
-    setView({ status: 'loading' })
+    setSnapshot({ scope, view: { status: 'loading' } })
     try {
       const response = await api.get<WorkspaceRuntimeStatusResponse>(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/status`,
         {
           timeoutMs: 10_000,
-          validate: parseWorkspaceRuntimeStatusResponse,
+          validate: (value) => {
+            const result = parseWorkspaceRuntimeStatusResponse(value)
+            if (result.data.workspace_id !== workspaceId)
+              throw new Error('Workspace status identity mismatch')
+            return result
+          },
         },
       )
       if (requestGeneration.current === generation) {
-        setView({ status: 'loaded', response })
+        setSnapshot({ scope, view: { status: 'loaded', response } })
       }
     } catch (error) {
       if (requestGeneration.current === generation) {
-        setView({ status: 'error', error: normalizedError(error) })
+        setSnapshot({
+          scope,
+          view: { status: 'error', error: normalizedError(error) },
+        })
       }
     }
-  }, [api, workspaceId])
+  }, [api, scope, workspaceId])
 
   useEffect(() => {
     void refresh()
@@ -61,5 +76,9 @@ export function useWorkspaceStatus(workspaceId: string | undefined) {
     }
   }, [refresh])
 
+  const view: WorkspaceStatusView =
+    snapshot.scope === scope
+      ? snapshot.view
+      : { status: workspaceId ? 'loading' : 'idle' }
   return { refresh, view }
 }

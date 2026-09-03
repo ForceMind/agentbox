@@ -22,7 +22,7 @@ const navigation = [
   { label: 'Dashboard', path: '/dashboard', icon: Gauge },
   { label: 'Codex', path: '/codex', icon: Bot },
   { label: 'Claude', path: '/claude', icon: Sparkles },
-  { label: 'Workspace', path: '/workspace', icon: Terminal },
+  { label: '工作区', path: '/workspace', icon: Terminal },
   { label: 'Projects', path: '/projects', icon: Boxes },
   { label: 'Doctor', path: '/doctor', icon: Activity },
   { label: 'Logs', path: '/logs', icon: FileText },

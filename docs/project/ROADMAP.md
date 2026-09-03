@@ -10,15 +10,16 @@
 
 - WAW-3 software recovery/cursor/lease and browser stale-event fences merged in PR #58, with 19/19 exact-head checks successful. Full WAW-3 real transport/reboot remains unverified.
 
+- WAW-2 Codex API/ticket/Web contracts merged in PR #59 with 19/19 exact-head checks successful. Real CLI execution and legacy process interlocks remain gated.
+
 ## In Progress
 
-- Stage C: Codex Project-scoped API attachment and Web contracts; software/synthetic scope only.
+- Stage D: Workspace metadata workflow, precise Project/AgentType lookup and explicit Start/exact Stop UI.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- Stage D: Workspace metadata actions and desktop/mobile recovery states.
 - Stage E: complete software verification, independent review and release
   preparation with explicit limitations.
 - Stage F: real stream/Noise/PTY/browser, isolated CLI/host qualification and
