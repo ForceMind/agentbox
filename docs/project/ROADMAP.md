@@ -32,9 +32,11 @@
 
 - Isolated numeric authentication timing diagnostic and failure/privacy regressions merged in PR #70 with 19/19 exact-head checks successful; historical latency cause remains unknown.
 
+- Incremental UTF-8/VT tokenizer foundation merged in PR #71 with 19/19 exact-head checks successful; complete browser terminal/controller remains unfinished.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer work is in progress. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics are merged; R9.1 tokenizer passed independent re-review after two P2 fixes, with 113 tests and 133 independent negatives, awaiting CI/merge.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and remains PROPOSED pending Owner acceptance. R2 diagnostics and R9.1 tokenizer are merged. The next R4/R5 implementation awaits explicit acceptance of the complete protocol supplement; full R9/R10 decisions and host evidence remain separately tracked.
 
 ## In Progress
 

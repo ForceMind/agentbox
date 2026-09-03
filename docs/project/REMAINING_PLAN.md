@@ -67,14 +67,14 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | R0 plan + AUTH-CAPACITY-CANCEL | 已完成 | `auth.py` 与 executor tests；主智能体维护计划、安全文档与 GitHub | 已有 barrier 复现；取消等待/执行、共享 gate、成功/异常/提交失败、ContextVar；不得提前释放或遗留未消费异常 |
 | R1 opaque AWCE codecs | 已完成 | Python `awce.py` / Web `awce.ts` 与边界测试 | 现有明确 44-byte header、精确长度、uint64/BigInt、高位与尾随拒绝、双语言固定向量；无 crypto/authentication 声明，不依赖未决 AAD |
 | R2 login latency evidence | 已完成 | 有限诊断 harness / metadata-only evidence | 分离 HTTP、admission、Argon2、SQLite 与 browser 延迟；不打印 credential/body/header，不放宽断言；仅修实际复现问题 |
-| R3 complete protocol clarification | 进行中 | 一个完整补充决策，修正规范冲突与字段缺失 | 下节列出的 wire/admission/trust 问题收敛并明确获得所需 Owner 授权；不逐文件临时发明协议 |
+| R3 complete protocol clarification | 未开始 | 完整 PROPOSED 补充已独立审查；待 Owner acceptance 后进入已批准执行状态 | 下节列出的 wire/admission/trust 问题收敛并明确获得所需 Owner 授权；不逐文件临时发明协议 |
 | R4 application crypto | 未开始 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
 | R5 full wire schemas | 未开始 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
 | R6 staged attachment authority | 未开始 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
 | R7 Runtime encrypted stream | 未开始 | Runtime stream session/server 与有限 executor integration | R4/R5/R6；capability once、同锁 process recheck、ring 先选再加密、partial input ACK、exit/cleanup barrier |
 | R8 API ciphertext relay | 未开始 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
-| R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
-| R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；正式 AgentType argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
+| R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8 + 明确 logical-line deadline duration / post-limit controller recovery；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
+| R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；须明确 AgentType launch records、vendor state roots、retention/telemetry、official login / Project Trust；正式 argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
@@ -104,7 +104,9 @@ R2 两轮小样本未复现旧超时；独立审查发现异常日志、空测�
 `eca03e47849b12449bb2ab4aec8dfdc001ef13dd`，19/19 SUCCESS，实际 merge
 `f7ef3c936529b19838cd087dc9e232397f1e304d`；CI另执行21回归及60E2E全部通过。
 R9.1 browser tokenizer core 修复独立审查两个P2及同根因ESC re-entry，113 tests
-与133独立负例通过，复审PASS，待CI/merge。完整controller/trust/renderer未接通；
+与133独立负例通过，复审PASS；PR #71 head
+`a57764ae0e1f3fc962bc4d52e3610373ef4226ff` 经19/19 SUCCESS合并，实际 merge
+`3f2e3a2de4b0482629f5f9a296d5db757f989876`。完整controller/trust/renderer未接通；
 logical-line deadline duration和post-limit controller recovery仍需明确契约，
 详见[tokenizer foundation](../WAW_BROWSER_TOKENIZER.md)。
 R10.1 executable verifier 已通过独立 sol 审查，80 passed / 1 native Linux skip，
@@ -162,3 +164,11 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 整体目标仅在软件和适用产品验收均完成时结束；未知/缺少授权证据的项目继续
 保持未开始或待验证。遇到真实外部条件时，先完成不依赖它的授权工作，再给出
 明确证据、影响和恢复条件。不得以无限整理替代功能交付或重复扫描已验证部分。
+
+## Current resumption point
+
+R0/R1/R2/R9.1/R10.1 已完成适用实现、独立审查、CI、合并和回读。R3 的提案
+文档与独立审查已完成，但 Owner acceptance 尚未收到，因此已批准执行状态
+保持未开始。下一步先明确接受完整协议补充，随后由 sol 并行推进 R4 application
+crypto 与 R5 full wire schemas；既有 framing/core 不重新实现。完整 R9/R10、
+R6–R8/R11/R12 仍按上表依赖推进，整体目标没有标为完成。

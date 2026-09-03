@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T10:25:09Z"
+verified_at_utc: "2026-09-03T10:35:54Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -13,12 +13,15 @@ repository: "ForceMind/agentbox"
   `dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9`.
 - All six exact-main workflows completed SUCCESS. Historical Draft PR #42 is
   the only open PR and is outside current writes. Network preflight exited 0.
-- Latest stage baseline: `HEAD/main/origin/main/merge-base` equal
-  `f7ef3c936529b19838cd087dc9e232397f1e304d`. Three exact-main workflows completed
-  SUCCESS; Backend/E2E/Release Candidate were running when read. PR #70's separate
-  reviewed-head evidence is 19/19 SUCCESS. Fetch and merge read-back exited 0.
-- Active branch: `codex/browser-terminal-tokenizer`; only historical Draft #42
-  is open at preflight. R10.1's six post-main workflows completed SUCCESS.
+- Latest code delivery baseline: clean tree before this documentation snapshot;
+  `HEAD/main/origin/main/merge-base` equal
+  `3f2e3a2de4b0482629f5f9a296d5db757f989876`. PR #71 completed 19/19 exact-head
+  checks before normal merge. Fetch, merge read-back and main fast-forward exited 0.
+- Active snapshot branch: `codex/remaining-plan-delivery-record`. This increment
+  updates documentation only; it cannot predict its own future merge SHA.
+- R0/R1/R10.1/R2 six-workflow post-main runs were separately read as SUCCESS.
+  R9.1's six post-main workflows were also read as terminal SUCCESS at
+  `2026-09-03T10:35:54Z`, independently of its PR-head checks.
 - This snapshot records observed facts and cannot predict its own merge SHA.
 
 ## Delivered software stages
@@ -37,6 +40,7 @@ repository: "ForceMind/agentbox"
 | R1 — opaque AWCE framing | #68 | `0dccb2a71ea38259f1e76e2b268961c213bc98e1` | `3ebb3e938a03d067ea7df66b6746b9675637e65b` | 19/19 SUCCESS |
 | R10.1 — executable provenance | #69 | `9147cace5b554205dfecc20cf8bfb643d4c46761` | `9529da6d5c110b7a09d5972dfa0db5e012727451` | 19/19 SUCCESS |
 | R2 — auth timing diagnostic | #70 | `eca03e47849b12449bb2ab4aec8dfdc001ef13dd` | `f7ef3c936529b19838cd087dc9e232397f1e304d` | 19/19 SUCCESS |
+| R9.1 — browser tokenizer | #71 | `a57764ae0e1f3fc962bc4d52e3610373ef4226ff` | `3f2e3a2de4b0482629f5f9a296d5db757f989876` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -270,7 +274,8 @@ R0 local implementation evidence:
 - R2's review found raw exception logging, missing metrics accepted as PASS and
   an ambiguous 5-second flag. Fixes passed 21 dedicated regression cases and a
   fresh 4/4 isolated Chromium diagnostic; independent sol re-review passed with
-  all 21 regression cases executed. R2 awaits its separate CI/merge.
+  all 21 regression cases executed. R2 subsequently merged after 19/19
+  exact-head CI and read-back.
   The historic four local auth timeouts remain unproven, not marked fixed.
 
 ## R2 diagnostic delivery evidence
@@ -314,7 +319,35 @@ R0 local implementation evidence:
 - Scoped ESLint, Prettier, TypeScript and whitespace checks passed. No visible
   UI change, so visual QA is not applicable. See
   [WAW_BROWSER_TOKENIZER](../WAW_BROWSER_TOKENIZER.md) for API and integration limits.
-- R9.1 awaits exact-head CI/merge. Full R9 remains incomplete: renderer/controller,
+- R9.1 merged at `2026-09-03T10:32:17Z` after 19/19 exact-head CI and read-back.
+  Frontend CI job `100613672473` ran 280 tests in 13 files, all passed, and both
+  Noise NX / AWCE interoperability checks passed. Full R9 remains incomplete: renderer/controller,
   trust/crypto/admission, attachment scheduler and exact detach are not connected.
   Logical-line deadline duration and post-limit controller recovery still need
   explicit contract resolution; this core does not invent them.
+
+## Delivery checkpoint and next required decision
+
+The current reassessment delivered five reviewed software increments: R0, R1,
+R2, R10.1 and R9.1. Each has an observed merged PR and 19/19 successful exact-head
+checks. Each stage updated GitHub and its scope/verification/plan documents.
+The complete terminal product and the persistent overall goal are not complete.
+
+The next implementation is R4/R5 after explicit acceptance of the reviewed
+[complete protocol supplement](WAW_ENCRYPTED_STREAM_DECISION.md). Acceptance has
+been requested but not received; its status remains PROPOSED. This is the
+architecture Owner gate in GOVERNANCE, not an extra routine PR approval or a
+requirement to move development off this Mac. No real key, Provider Secret,
+Runtime HOME, CLI login, host activation or production release was performed.
+
+Additional remaining decisions/evidence are tracked explicitly: interactive
+AgentType launch/state/retention/official login/Project Trust profile; the
+independent browser trust provider; logical-line deadline and post-limit
+controller recovery; complete stream/relay/terminal integration; then authorized
+real-host/CLI/isolation/restart qualification. Historical local authentication
+timeouts were not reproduced, so their root cause remains unknown.
+
+Independent terra documentation review found one stale R2 merge sentence and
+missing R9/R10 decision dependencies in the plan's acceptance cells. Those are
+corrected in this documentation checkpoint. Existing historical evidence and
+PROPOSED architecture status are preserved.
