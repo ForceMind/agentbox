@@ -129,3 +129,14 @@ before process effects. Its command and transport factories remain trusted
 Runtime injections. It does not make the existing Claude tmux transport support
 Codex or connect the production browser socket. The boundary and recovery rules
 are recorded in `WAW3_RECOVERY_CONTRACTS.md`; the overall product remains incomplete.
+
+## Fixed Noise core follow-up
+
+The next software increment implements the existing fixed Noise NX revision-34
+core in Python and WebCrypto, with a pinned independent Noise-C vector and
+cross-language interoperability in CI. Independent state-machine review passed;
+local Python/Node evidence does not qualify a native browser or real Runtime.
+The core is not wired to a production socket or terminal and reads no host key.
+The application profile's exact context/AAD bytes remain a proposed Owner
+clarification. Pin trust, confirmation, AWCE, relay, actual CLI/PTY and host
+activation are still incomplete; there is no plaintext fallback.

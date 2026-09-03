@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T06:50:25Z"
+verified_at_utc: "2026-09-03T07:22:50Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,9 +9,9 @@ repository: "ForceMind/agentbox"
 
 ## Live baseline
 
-- Observed `origin/main`: `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`.
-- Active implementation branch: `codex/waw-runtime-composition`, created from
-  PR #63 head and normally merged with the read-back main; no history rewrite.
+- Observed `origin/main`: `624b34b656dbf239dbc56fa79d216db7d17a349b`.
+- Active implementation branch: `codex/waw-encrypted-channel`, created from
+  PR #64 head and normally merged with the read-back main; no history rewrite.
 - Local `main` still points to `dfc788a29623de5b5a9c3230855af1ee7aed2953`
   while work continues on the feature branch.
 - Historical Draft PR #42 remains open and outside this task's write scope.
@@ -27,6 +27,7 @@ repository: "ForceMind/agentbox"
 | D — metadata UX | #60 | `9be95b10e57a3daa3690205d6c2ffad8da74424d` | `6972f0dba907afd9741c2dc3584f431ee32765ed` | 19/19 SUCCESS |
 | E — software readiness | #61 | `0c894ff52f49793f599eb33c4b92b8223e6109b3` | `35191eeaf858041cf5c0767dc1579b67690444ec` | 19/19 SUCCESS |
 | F1.1 — shared supervisor | #63 | `c78cb92a5afe8056ab44a1cc4e8a6bea3074e184` | `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e` | 19/19 SUCCESS |
+| F1.2 — Runtime composition | #64 | `ef8641bd409bbb6d17db707370de66f552bf4640` | `624b34b656dbf239dbc56fa79d216db7d17a349b` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -76,8 +77,10 @@ on software implementation. The prior blocked status has been superseded for
 Mac development; A–E remain historical delivered increments.
 
 PR #63 delivered shared Claude/Codex supervisor/stream integration.
-Current branch implements the concrete lifecycle executor, read-only process
-probe, two-phase attachment boundary and failed-start cleanup/restart fencing.
+PR #64 delivered the concrete lifecycle executor, read-only process probe,
+two-phase attachment boundary and failed-start cleanup/restart fencing. Current
+branch implements fixed Noise NX Python/WebCrypto cores and their interoperability
+checks; application encoding remains a separate pending decision.
 Real Runtime/PTY/Noise/WebSocket deployment and production readiness are not
 claimed. Next scope is in `NEXT_ACTION.md`.
 
@@ -99,7 +102,7 @@ historical Draft PR #42 open. Git fetch/GitHub reads exited 0.
 - No frontend behavior, CLI argv, real host, credential or production activation
   changed. Mac development evidence is not Linux-host qualification.
 
-## F1.2 Runtime composition in progress
+## F1.2 merged Runtime composition
 
 - Concrete `WAWSupervisorExecutor` shares exact supervisors between lifecycle
   dispatch and admitted stream bridges; factories are trusted Runtime inputs.
@@ -109,7 +112,7 @@ historical Draft PR #42 open. Git fetch/GitHub reads exited 0.
   reservation precedes process effects; unknown restart state stays quarantined
   until the existing host evidence path acknowledges cleanup.
 - PR #63 merged at `2026-09-03T06:43:01Z`; GitHub merge read-back and fetch
-  both exited 0. F1.2 validation and review are being completed on this branch.
+  both exited 0. F1.2 validation/review and subsequent PR #64 CI/merge are complete.
 
 F1.2 final local validation before PR CI:
 
@@ -121,3 +124,36 @@ F1.2 final local validation before PR CI:
   14 passed, including those regressions. All transports/processes are synthetic.
 - Six exact-main workflows for `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`
   completed successfully; this is separate from this branch's pending PR CI.
+
+
+## F1.3 fixed Noise core in progress
+
+- PR #64 merge read-back: `624b34b656dbf239dbc56fa79d216db7d17a349b`,
+  merged at `2026-09-03T07:09:03Z`; GitHub merge/fetch exited 0. Final independent
+  composition review passed with 129 tests. A final pre-existing composition
+  regression was subsequently added locally (15 executor tests); it is tracked
+  with the next software increment rather than attributed to the earlier SHA.
+- The new Python and WebCrypto modules implement only fixed Noise revision-34 NX
+  and split CipherStates. Existing cryptography 50.0.0 and native WebCrypto are
+  used; no dependency, real-key file loader, socket or product activation added.
+- Shared Noise-C public vector has pinned commit, source/fixture SHA-256 and MIT
+  notice. It contains public test key material only.
+- Handwritten state-machine independent security review: PASS after fixing
+  concurrent destroy/late-result, malformed-input and key-reference handling.
+  Reviewer ran 14 Python core tests and the real Python/Node interop check.
+  Golden vectors and cross-language positives were reviewed separately from
+  concurrency/failure regressions.
+- `WAW_ENCRYPTED_STREAM_DECISION.md` provides the concrete proposed application
+  bytes absent from the historical architecture; Owner confirmation requested.
+  Fixed core implementation continues, while those application bytes remain
+  unimplemented/unapproved. See `../WAW_NOISE_CORE.md` for exact scope.
+
+
+F1.3 final local validation before PR CI:
+
+- `AGENTBOX_NOISE_TEST_PYTHON="$PWD/.venv/bin/python" node scripts/check-noise-interop.mjs`: exit 0; both roles, exact independent handshake/hash/four transport vectors, nonempty AD, bidirectional transport and tamper/closed-state fence.
+- `.venv/bin/python -m pytest -q tests/unit/test_noise_nx.py tests/unit/test_waw_runtime_executor.py tests/unit/test_waw_noise_contract.py`: exit 0, 54 passed (14 new core, 15 executor, 25 existing metadata contract).
+- Web Vitest: exit 0, 129 passed; new core tests include paused AES/DH destroy, constructor digest destroy, malformed inputs, maximum boundaries, prologue mismatch and low-order peer rejection. Node WebCrypto evidence, not native-browser certification.
+- Web Prettier, ESLint, typecheck and production build: exit 0. No visible UI or admission route changed, so a new visual check is not applicable.
+- Ruff, Black, Linux-target mypy: exit 0; 202 formatted files, 194 typed files. Documentation link check: exit 0, 164 relative links. `git diff --check`: exit 0.
+- Core review and local tests complete; exact-head CI remains pending until the feature PR is checked. Application bytes, pins, encrypted relay, real CLI/PTY/host and production readiness remain unclaimed.

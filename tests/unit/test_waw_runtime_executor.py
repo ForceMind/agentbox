@@ -52,6 +52,7 @@ class FakeTransport:
     probe_state: RuntimeProbeState = RuntimeProbeState.RUNNING
     ready: bool = True
     start_gate: threading.Event | None = None
+    fail_write: bool = False
 
     def start(self, command: Any, geometry: PtyGeometry) -> RuntimeStartEvidence:
         assert command.workspace_id == self.identity.workspace_id
@@ -69,6 +70,8 @@ class FakeTransport:
         )
 
     def write(self, data: bytes) -> None:
+        if self.fail_write:
+            raise OSError("synthetic delivery uncertainty")
         self.writes.append(data)
 
     def resize(self, geometry: PtyGeometry) -> None:
@@ -343,6 +346,26 @@ async def test_registered_project_path_drift_is_rejected(tmp_path: Path) -> None
     (root / "project-a").rename(root / "project-moved")
     with pytest.raises(RuntimeOperationError):
         await executor.start(identity)
+
+
+@pytest.mark.anyio
+async def test_input_uncertain_is_not_cleared_by_probe_and_output_stays_fenced(
+    tmp_path: Path,
+) -> None:
+    executor, identity, transport, _ = setup(tmp_path, AgentType.CODEX)
+    await executor.register_project_binding(binding())
+    await executor.start(identity)
+    stream = executor.bridge(identity, attachment(identity))
+    stream.attach()
+    transport.fail_write = True
+    with pytest.raises(RuntimeOperationError, match="could not confirm"):
+        stream.handle(ABWSFrame(FrameType.INPUT, 1, b"uncertain"))
+    transport.fail_write = False
+    with pytest.raises(RuntimeOperationError):
+        stream.handle(ABWSFrame(FrameType.INPUT, 2, b"must-reconcile"))
+    with pytest.raises(RuntimeOperationError):
+        stream.output(0)
+    assert (await executor.status(identity)).state == "RUNNING"
 
 
 @pytest.mark.anyio

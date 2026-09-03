@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `MAC-WAW-RUNTIME-COMPOSITION-2026-09-03`
+Action ID: `MAC-WAW-NOISE-CORE-2026-09-03`
 
 Owner clarified that development continues on the current Mac. Development
 platform and deployment qualification are separate: a missing Linux test host
@@ -9,21 +9,23 @@ The prior blanket host prerequisite for all remaining software work is supersede
 by this clarification; actual host activation, Secret handling, new architecture
 decisions and production promises retain their existing boundaries.
 
-## Current slice — concrete Runtime composition
+## Current slice — fixed Noise NX core
 
-PR #63 completed shared Claude/Codex supervisor integration with 19/19 CI
-checks and merge `90df8b9adfe3c03fc089634c18214a4fb6fcfe9e`.
+PR #64 completed concrete Runtime composition with 19/19 CI checks and merge
+`624b34b656dbf239dbc56fa79d216db7d17a349b`.
 
-- Implement `WAWSupervisorExecutor` over the real shared supervisor and trusted
-  Project/command/transport factories, using the consumed Runtime epoch.
-- Use exact read-only process probes for status/reconcile; preserve detached
-  writer and uncertain input states. Explicit reconnect restores the binding.
-- Retain failed-start targets for exact cleanup; consume durable generation
-  before side effects and quarantine unknown restart/cleanup outcomes.
-- Construct stream bridges over the same supervisor only for an already-admitted
-  `ActiveAttachment`; prepare remains a reservation with no terminal writer.
-- Test both AgentTypes, failure, cancellation, identity drift and restart; run
-  independent review and exact-head Linux CI before merge/read-back.
+- Implement the existing fixed Noise revision-34 NX profile in Python and
+  WebCrypto using existing platform cryptographic primitives.
+- Compare exact independent pinned Noise-C vectors and run real Python/Node
+  interoperability for both roles, AD, tamper and cipher-state lifecycle.
+- Require independent security review of handwritten state machines, including
+  concurrent destroy, late async results, bounds, key-reference release and nonce
+  exhaustion; no production key, socket, plaintext API or terminal activation.
+- Update docs and GitHub, require exact-head CI, merge and read back.
+- The concrete supplemental application encoding is in
+  [WAW_ENCRYPTED_STREAM_DECISION.md](WAW_ENCRYPTED_STREAM_DECISION.md); its three
+  previously undefined byte rules are awaiting Owner decision. Noise core work
+  continues independently. Do not silently choose application bytes.
 
 ## Next implementation and validation
 
