@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T04:17:40Z"
+verified_at_utc: "2026-09-03T04:41:00Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -8,9 +8,9 @@ repository: "ForceMind/agentbox"
 # Current Verified State
 
 - Repository: `ForceMind/agentbox`
-- Verified starting `HEAD` / `main` / `origin/main` / merge-base: `24d08414b20e7158e8c84694aac59d0326799bfd`.
-- Starting working tree: clean. Active implementation branch: `codex/waw3-recovery-contracts`.
-- Exact-main CI: Backend, Frontend, E2E, Deployment, Security and Release Candidate are all terminal `success` (live GitHub read on 2026-09-03).
+- Current stage starting `HEAD` / `main` / `origin/main` / merge-base: `d2470601a06da0a4024fa1772b4f32ec2daa7293`.
+- Starting working tree: clean. Active implementation branch: `codex/waw2-codex-control-integration`.
+- Historical starting-main `24d08414b20e7158e8c84694aac59d0326799bfd` CI: Backend, Frontend, E2E, Deployment, Security and Release Candidate were all terminal `success`. Current merge CI is tracked separately below.
 - Historical Draft PR `#42` remains open and is outside this implementation branch.
 - WAW-1 HTTP lifecycle/attachment routes: PR `#47` merged (`cd599a6e4b24ba860f4c9f294b16625a397a30f7`).
 - WAW-1 Runtime attachment prepare/detach contracts: PR `#49` merged (`03f862a6cab41cd499a9d9a1024d581348818eda`).
@@ -20,7 +20,7 @@ repository: "ForceMind/agentbox"
 - Repository Ruleset and `owner-approval` Environment were removed on 2026-09-01 at Owner request.
 - Routine mechanical actions may proceed after CI; host/Secret safety boundaries remain.
 - Owner authorized parallel multi-agent development and per-stage GitHub/document updates on 2026-09-03. See `EXECUTION_PLAN.md`.
-- WAW-3 already has lease cleanup, output ring and durable cleanup contracts; software recovery classification and browser event fencing are implemented in this branch and await exact-head CI/merge. Full transport recovery remains incomplete.
+- WAW-3 already has lease cleanup, output ring and durable cleanup contracts; software recovery classification and browser event fencing were merged in PR #58. Full transport recovery remains incomplete.
 - Real WAW Linux host, PTY/devpts, Noise cryptography, WebSocket transport, browser terminal wiring, Codex attachment/CLI integration and WAW-3 end-to-end continuity/recovery remain unverified/incomplete. Earlier MVP host qualification is not WAW qualification.
 - Durable generation allocation currently fails closed at SQLite signed-64 maximum (`2**63 - 1`); full protocol uint64 storage is not claimed. A storage representation change would require a separate architecture decision.
 
@@ -43,3 +43,23 @@ repository: "ForceMind/agentbox"
 - Expanded local WAW unit/integration run outside the sandbox: exit `1`, `545 passed / 73 failed`; macOS lacks the required Linux socket behavior and the short temporary directory did not satisfy provenance checks. This matrix is **not PASS**; supported Linux exact-head CI remains required.
 - Independent read-only Architecture/Security review found no remaining frontend P1/P2 after repairs. Backend review found identity/epoch/cleanup issues which were fixed and regression tested; final independent Test/Security review reran all 101 targeted tests and reported no remaining software-contract blocker.
 - No real terminal, host activation, browser transport, Provider login or production release was executed. Contract mapping: `../WAW3_RECOVERY_CONTRACTS.md`.
+
+## Stage A/B completed and Stage C live preflight
+
+- PR #58: `MERGED` at `2026-09-03T04:22:05Z`.
+- Exact reviewed head: `f3bb9035e061fc0babfcace6af891f257eb7fa74`; base: `24d08414b20e7158e8c84694aac59d0326799bfd`.
+- Exact-head CI: `19/19 SUCCESS`, all terminal, including Python 3.11/3.12/3.13, Node 22 frontend, E2E, deployment, security and release gates.
+- Observed merge commit: `d2470601a06da0a4024fa1772b4f32ec2daa7293`; `origin/main` matches. Merge/read-back/fetch/fast-forward commands exited `0`.
+- Post-merge exact-main CI was re-read: all six workflows (Backend, Frontend, E2E, Deployment, Security, Release Candidate) are terminal `success` for `d2470601a06da0a4024fa1772b4f32ec2daa7293`. This is separate from the PR-head 19/19 evidence.
+- Stage C began from a clean tree; only historical Draft PR #42 remains open. WAW Codex API/Web contract work is in progress; real CLI execution remains host/architecture-gated.
+
+## Stage C software validation (before PR CI)
+
+- API Start/Stop/ticket now support both closed AgentTypes and reject mismatched Runtime workspace/Project/AgentType/generation responses.
+- Web Start/Stop/ticket/Detach parsers reject unknown fields and bind response identity to the requested context; the action hook rejects concurrent work and discards results after auth scope changes or unmount.
+- `.venv/bin/python -m pytest -q tests/integration/test_waw_workspace_api.py tests/unit/test_waw_admission.py tests/unit/test_workspace_api_contract.py tests/unit/test_waw_codex_command.py`: exit `0`, `50 passed`.
+- `ruff check`, `black --check`: exit `0`; `mypy --platform linux apps/api apps/worker apps/cli packages tests`: exit `0`, 188 files.
+- `pnpm typecheck`, `pnpm lint`, `pnpm format:check`: exit `0`; `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: exit `0`, `110 passed`; `pnpm build`: exit `0`.
+- `python scripts/check-doc-links.py`: exit `0`, 148 relative links.
+- Independent read-only API and frontend Architecture/Security reviews: PASS for this synthetic/control software scope, no remaining blocker. Review does not qualify a real CLI/host.
+- Actual legacy Remote Control interlocks and fixed Codex process/PTY execution remain unimplemented/unverified. The API rejects Runtime-reported conflict states; no real process probe, terminal or login was run.

@@ -11,6 +11,7 @@ from agentbox_api.workspaces import (
     WAWRequestIdError,
     WorkspaceMetadata,
     WorkspaceRuntimeStatus,
+    _validate_lifecycle_response_identity,
     _validate_runtime_status_epoch,
     _validate_runtime_status_identity,
     _waw_request_id,
@@ -174,6 +175,28 @@ def test_runtime_status_epoch_requires_verified_bind_attestation() -> None:
     )
     with pytest.raises(WAWControlClientError, match="attestation"):
         _validate_runtime_status_epoch(status, SimpleNamespace())
+
+
+def test_lifecycle_response_identity_is_exactly_fenced() -> None:
+    row = cast(
+        AgentWorkspaceSessionRecord,
+        SimpleNamespace(
+            id="aws_" + "1" * 32,
+            project_id="prj_" + "2" * 32,
+            agent_type="codex",
+            generation=7,
+        ),
+    )
+    response = {
+        "workspace_id": row.id,
+        "project_id": row.project_id,
+        "agent_type": row.agent_type,
+        "generation": "7",
+    }
+    _validate_lifecycle_response_identity(response, row)
+    for field, value in (("project_id", "prj_" + "3" * 32), ("agent_type", "claude")):
+        with pytest.raises(WAWControlClientError, match="identity"):
+            _validate_lifecycle_response_identity({**response, field: value}, row)
 
 
 def test_workspace_id_is_bounded_before_persistence_lookup() -> None:

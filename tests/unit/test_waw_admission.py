@@ -105,18 +105,25 @@ def test_prepare_attachment_issues_transient_bearer_with_exact_tuple() -> None:
     assert response.expires_at > datetime.now(UTC)
 
 
-def test_prepare_attachment_rejects_codex_until_waw2() -> None:
-    with pytest.raises(WAWAdmissionError) as exc_info:
-        prepare_attachment(
-            authenticated=_auth(),
-            row=cast(AgentWorkspaceSessionRecord, _row(agent_type="codex")),
-            policy=SingleAdminWorkspacePolicy(),
-            recent_authenticator=RecentAuth(),
-            runtime=_runtime(),
-            bound_runtime_epoch="12",
-            authority=_authority(),
-        )
-    assert exc_info.value.code == "WAW_AGENT_UNSUPPORTED"
+def test_prepare_attachment_supports_codex_with_exact_identity() -> None:
+    project_id = "prj_" + "5" * 32
+    row = _row(
+        id=workspace_id(project_id, AgentType.CODEX),
+        project_id=project_id,
+        agent_type=AgentType.CODEX.value,
+    )
+    issued = prepare_attachment(
+        authenticated=_auth(),
+        row=cast(AgentWorkspaceSessionRecord, row),
+        policy=SingleAdminWorkspacePolicy(),
+        recent_authenticator=RecentAuth(),
+        runtime=_runtime(),
+        bound_runtime_epoch="12",
+        authority=_authority(),
+    )
+    assert issued.claims.project_id == project_id
+    assert issued.claims.workspace_id == row.id
+    assert issued.claims.agent_type == AgentType.CODEX.value
 
 
 def test_attachment_ticket_request_is_closed_to_writer_mode() -> None:

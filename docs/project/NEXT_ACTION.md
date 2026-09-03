@@ -1,21 +1,32 @@
 # Current Authorized Action
 
-Action ID: `WAW3-RECOVERY-CONTRACT-2026-09-03`
+Action ID: `WAW2-CODEX-CONTROL-2026-09-03`
 
-- Implement pure WAW-3 recovery/cursor/lease reducers with exact generation, binding and runtime epoch fencing.
-- Wire the Workspace reducer to reject stale events before any real stream is enabled.
-- Keep real Noise/WebSocket/PTY/browser and host activation blocked until independent host evidence exists.
-- After recovery contracts, continue WAW-2 Codex attachment/CLI integration.
+## Current stage
 
-## Current stage and delivery
+Stage C software implementation awaits exact-head CI/merge on `codex/waw2-codex-control-integration`, based on
+`d2470601a06da0a4024fa1772b4f32ec2daa7293` (PR #58 exact merge read-back).
 
-- Stage B implementation is awaiting exact-head CI/merge on `codex/waw3-recovery-contracts` with independent
-  backend/frontend ownership and read-only Architecture/Security/Test review.
-- Preserve existing implementations; complete the specific missing recovery
-  fences and meaningful negative tests. No public ABWS schema expansion,
-  transport activation, database storage migration or Secret operation is part
-  of this stage.
-- Update project docs in the stage PR, wait for all exact-head CI to be
-  terminal, merge normally and read back the actual merge SHA.
-- Subsequent software work follows stages C/D/E in `EXECUTION_PLAN.md`.
-  Stage F remains dependent on explicit authorization and host evidence.
+- Reuse the existing closed `AgentType`, Project-scoped WAW identity,
+  `WAWCodexCommand`, lifecycle and transient attachment ticket contracts.
+- Enable symmetric Codex Start/Stop/ticket metadata in API schemas/routes and
+  Web response parsers/action hooks. Preserve exact Project/AgentType/generation
+  response binding, CSRF/recent-auth, writer lease and no-store boundaries.
+- Keep pre-registered Runtime/Project workspace provenance required. Do not
+  synthesize a host binding, adopt legacy Remote Control, or route WAW through
+  `codex.remote.*`.
+- Validate with ASGI/Fake Runtime, closed-schema and cross-identity tests;
+  independently review, update docs, run exact-head CI, merge and read back.
+
+## Remaining scope
+
+- Stage D wires the actual Workspace metadata page workflow and verifies its
+  desktop/mobile rendering and interactions.
+- The fixed Codex command exists, but real command execution still depends on
+  the approved Runtime process/PTY substrate. Current Claude tmux adapter is not
+  proof of Codex execution; no generic shell or caller argv fallback is allowed.
+- Stage E prepares software release evidence. Stage F requires explicit
+  architecture/host authorization and real evidence for Noise/WebSocket/PTY,
+  CLI readiness, isolation, reboot and production acceptance.
+- No Secret handling, Provider login, production release or host activation is
+  authorized by routine software merges. See `EXECUTION_PLAN.md`.

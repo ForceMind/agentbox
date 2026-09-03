@@ -1,5 +1,38 @@
 # Codex Integration
 
+## Project-scoped Web Agent Workspace (software contract)
+
+WAW uses a separate `(Project, AgentType=codex)` workspace identity. It does not
+reuse the host-level Remote Control process or its pairing flow described below.
+The fixed `WAWCodexCommand` contract has Runtime-resolved Project cwd, checked
+executable provenance, a managed marker and no caller arguments.
+
+The WAW metadata/control API uses the existing endpoints:
+
+- `POST /api/v1/projects/{project_id}/workspaces/codex/start`
+- `GET /api/v1/workspaces/{workspace_id}/status`
+- `POST /api/v1/workspaces/{workspace_id}/attachments`
+- `POST /api/v1/workspaces/{workspace_id}/reconnect`
+- `POST /api/v1/workspaces/{workspace_id}/detach`
+- `POST /api/v1/workspaces/{workspace_id}/stop`
+
+Start requires a formal READY Project and a pre-registered trusted Runtime
+workspace binding. Stop carries the exact generation; Detach carries the exact
+attachment/generation/lease. CSRF, recent authentication, writer admission,
+Runtime identity and transient/no-store ticket rules are shared with Claude.
+Lifecycle responses must match Project, workspace, AgentType and generation.
+HTTP success or a ticket never means an admitted terminal connection.
+
+ASGI/Fake Runtime tests cover this software API path. Real fixed Codex CLI
+execution, isolation, PTY/Noise/WebSocket, public login readiness and bidirectional
+legacy Remote Control interlocks remain unimplemented/unverified host-stage work.
+The API rejects reported Runtime conflicts; it does not itself inspect or adopt
+a legacy process. No Provider Manager, private login state or arbitrary
+command/path/argv gateway is part of WAW.
+
+See `project/EXECUTION_PLAN.md` for phase/merge state and
+`WAW3_RECOVERY_CONTRACTS.md` for recovery constraints.
+
 Status: Phase 5 implementation, pending human review
 
 ## Boundary and supported intent

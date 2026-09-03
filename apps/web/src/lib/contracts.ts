@@ -243,7 +243,7 @@ export type WorkspaceStartResponse = {
   request_id: string
   workspace_id: string
   project_id: string
-  agent_type: 'claude'
+  agent_type: 'claude' | 'codex'
   state: string
   generation: string
 }
@@ -258,7 +258,7 @@ export type WorkspaceAttachmentTicketResponse = {
   ticket: string
   workspace_id: string
   project_id: string
-  agent_type: 'claude'
+  agent_type: 'claude' | 'codex'
   attachment_id: string
   mode: 'writer'
   lease_number: string
@@ -283,6 +283,15 @@ export type WorkspaceDetachResponse = {
   result: 'detached' | 'already_detached'
   cleanup_state: 'ATTACH_PTY_CLOSED'
   state: string
+}
+
+export type WorkspaceExpectedContext = {
+  projectId?: string
+  workspaceId?: string
+  agentType?: 'claude' | 'codex'
+  generation?: string
+  attachmentId?: string
+  leaseNumber?: string
 }
 
 export type GitStatusData = {
@@ -398,6 +407,17 @@ function object(value: unknown, context: string): JsonObject {
     throw new Error(`Invalid ${context} response`)
   }
   return value as JsonObject
+}
+
+function exactKeys(
+  value: JsonObject,
+  keys: readonly string[],
+  context: string,
+): void {
+  const expected = new Set(keys)
+  if (Object.keys(value).some((key) => !expected.has(key))) {
+    throw new Error(`Invalid ${context} response`)
+  }
 }
 
 function string(value: unknown, context: string): string {
@@ -979,24 +999,61 @@ export function parseWorkspaceRuntimeStatusResponse(
   }
 }
 
-export function parseWorkspaceStartResponse(
+function parseWorkspaceStartResponseInternal(
   value: unknown,
+  expected?: WorkspaceExpectedContext,
+  allowedExtraKeys: readonly string[] = [],
 ): WorkspaceStartResponse {
   const data = object(value, 'Workspace start')
-  return {
+  exactKeys(
+    data,
+    [
+      'request_id',
+      'workspace_id',
+      'project_id',
+      'agent_type',
+      'state',
+      'generation',
+      ...allowedExtraKeys,
+    ],
+    'Workspace start',
+  )
+  const result = {
     request_id: string(data.request_id, 'request ID'),
     workspace_id: string(data.workspace_id, 'workspace ID'),
     project_id: string(data.project_id, 'Project ID'),
-    agent_type: literal(data.agent_type, ['claude'], 'AgentType'),
+    agent_type: literal(data.agent_type, ['claude', 'codex'], 'AgentType'),
     state: string(data.state, 'workspace state'),
     generation: string(data.generation, 'workspace generation'),
   }
+  if (
+    (expected?.projectId !== undefined &&
+      result.project_id !== expected.projectId) ||
+    (expected?.workspaceId !== undefined &&
+      result.workspace_id !== expected.workspaceId) ||
+    (expected?.agentType !== undefined &&
+      result.agent_type !== expected.agentType) ||
+    (expected?.generation !== undefined &&
+      result.generation !== expected.generation)
+  )
+    throw new Error('Workspace response identity mismatch')
+  return result
+}
+
+export function parseWorkspaceStartResponse(
+  value: unknown,
+  expected?: WorkspaceExpectedContext,
+): WorkspaceStartResponse {
+  return parseWorkspaceStartResponseInternal(value, expected)
 }
 
 export function parseWorkspaceStopResponse(
   value: unknown,
+  expected?: WorkspaceExpectedContext,
 ): WorkspaceStopResponse {
-  const data = parseWorkspaceStartResponse(value)
+  const data = parseWorkspaceStartResponseInternal(value, expected, [
+    'stop_operation_id',
+  ])
   const envelope = object(value, 'Workspace stop')
   return {
     ...data,
@@ -1006,9 +1063,34 @@ export function parseWorkspaceStopResponse(
 
 export function parseWorkspaceAttachmentTicketResponse(
   value: unknown,
+  expected?: WorkspaceExpectedContext,
 ): WorkspaceAttachmentTicketResponse {
   const data = object(value, 'Workspace attachment ticket')
-  return {
+  exactKeys(
+    data,
+    [
+      'protocol_version',
+      'request_id',
+      'ticket',
+      'workspace_id',
+      'project_id',
+      'agent_type',
+      'attachment_id',
+      'mode',
+      'lease_number',
+      'generation',
+      'binding_revision',
+      'binding_digest',
+      'auth_epoch',
+      'api_authority_epoch',
+      'runtime_host_installation_id',
+      'runtime_host_installation_revision',
+      'runtime_epoch',
+      'expires_at',
+    ],
+    'Workspace attachment ticket',
+  )
+  const result: WorkspaceAttachmentTicketResponse = {
     protocol_version:
       data.protocol_version === 1
         ? 1
@@ -1019,7 +1101,7 @@ export function parseWorkspaceAttachmentTicketResponse(
     ticket: string(data.ticket, 'attachment ticket'),
     workspace_id: string(data.workspace_id, 'workspace ID'),
     project_id: string(data.project_id, 'Project ID'),
-    agent_type: literal(data.agent_type, ['claude'], 'AgentType'),
+    agent_type: literal(data.agent_type, ['claude', 'codex'], 'AgentType'),
     attachment_id: string(data.attachment_id, 'attachment ID'),
     mode: literal(data.mode, ['writer'], 'attachment mode'),
     lease_number: string(data.lease_number, 'lease number'),
@@ -1042,13 +1124,41 @@ export function parseWorkspaceAttachmentTicketResponse(
     runtime_epoch: string(data.runtime_epoch, 'Runtime epoch'),
     expires_at: string(data.expires_at, 'ticket expiry'),
   }
+  if (
+    (expected?.projectId !== undefined &&
+      result.project_id !== expected.projectId) ||
+    (expected?.workspaceId !== undefined &&
+      result.workspace_id !== expected.workspaceId) ||
+    (expected?.agentType !== undefined &&
+      result.agent_type !== expected.agentType) ||
+    (expected?.generation !== undefined &&
+      result.generation !== expected.generation)
+  )
+    throw new Error('Workspace response identity mismatch')
+  return result
 }
 
 export function parseWorkspaceDetachResponse(
   value: unknown,
+  expected?: WorkspaceExpectedContext,
 ): WorkspaceDetachResponse {
   const data = object(value, 'Workspace detach')
-  return {
+  exactKeys(
+    data,
+    [
+      'request_id',
+      'detach_operation_id',
+      'workspace_id',
+      'attachment_id',
+      'generation',
+      'lease_number',
+      'result',
+      'cleanup_state',
+      'state',
+    ],
+    'Workspace detach',
+  )
+  const result = {
     request_id: string(data.request_id, 'request ID'),
     detach_operation_id: string(
       data.detach_operation_id,
@@ -1070,6 +1180,18 @@ export function parseWorkspaceDetachResponse(
     ),
     state: string(data.state, 'workspace state'),
   }
+  if (
+    (expected?.workspaceId !== undefined &&
+      result.workspace_id !== expected.workspaceId) ||
+    (expected?.attachmentId !== undefined &&
+      result.attachment_id !== expected.attachmentId) ||
+    (expected?.generation !== undefined &&
+      result.generation !== expected.generation) ||
+    (expected?.leaseNumber !== undefined &&
+      result.lease_number !== expected.leaseNumber)
+  )
+    throw new Error('Workspace response identity mismatch')
+  return result
 }
 
 function parseGitStatus(value: unknown): GitStatusData {
