@@ -1,6 +1,6 @@
 # Current Authorized Action
 
-Action ID: `REMAINING-TOKENIZER-CONTRACT-2026-09-03`
+Action ID: `REMAINING-PROTOCOL-ACCEPTANCE-2026-09-03`
 
 Owner clarified that development continues on the current Mac. Development
 platform and deployment qualification are separate: a missing Linux test host
@@ -21,9 +21,9 @@ work uses terra. The current finite checklist is [REMAINING_PLAN.md](REMAINING_P
   diagnostic regressions and 60 normal E2E cases. No historical root cause is claimed.
 - R3: the complete reviewed full-wire/admission/trust supplement is ready for
   Owner acceptance. It remains PROPOSED; dependent R4/R5 implementation has not begun.
-- R9.1: deliver the repaired, independently reviewed browser tokenizer core
-  through exact-head CI. All 113 tests and 133 independent negatives passed;
-  no renderer, trust/admission/controller or socket integration is implied.
+- R9.1 is merged as PR #71 after 19/19 checks and read-back. All 113 tests and
+  133 independent negatives passed; no renderer, trust/admission/controller or
+  socket integration is implied.
 - R10.1 is merged as PR #69 after 19/19 checks and actual merge read-back.
   Fixed interactive CLI execution profiles still need the missing launch/retention
   contracts; this foundation does not execute a CLI or claim host qualification.
@@ -32,3 +32,16 @@ Continue independent authorized software work on Mac. Architecture, real host,
 real key/Provider Secret operations and production publication retain explicit
 approval/evidence requirements. After required protocol decisions, proceed through
 R4–R12 in the current plan; routine CI/merge/read-back needs no extra Owner gate.
+
+## Concrete next decision
+
+Owner acceptance is still needed for the reviewed
+[complete protocol supplement](WAW_ENCRYPTED_STREAM_DECISION.md), under the
+architecture rule in [GOVERNANCE](GOVERNANCE.md). It enables R4 application crypto
+and R5 full direction-specific wire schemas to proceed in parallel with sol.
+Routine implementation and subsequent CI/merge need no additional Owner gate.
+
+The R9 logical-line deadline/recovery contract and independent trust provider,
+R10 complete execution profile, and real-host/key/production evidence retain
+their own explicit dependencies in REMAINING_PLAN. Completed foundations do not
+satisfy those requirements. The overall goal remains unfinished.
