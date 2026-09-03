@@ -179,6 +179,39 @@ def _supervisor(
     )
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {
+            "project_id": "prj_" + "9" * 32,
+            "workspace_id": workspace_id("prj_" + "9" * 32, AgentType.CLAUDE),
+        },
+        {"generation": 2},
+        {"binding_digest": "b" * 64},
+    ],
+)
+def test_stopped_generation_guard_requires_exact_positive_stop(
+    tmp_path: Path, changes: dict[str, object]
+) -> None:
+    supervisor, _, _ = _supervisor(tmp_path)
+    operation = supervisor._stop_binding
+    supervisor.start()
+    with (
+        pytest.raises(RuntimeOperationError, match="not positively stopped"),
+        supervisor.stopped_generation_guard(operation),
+    ):
+        pass
+    supervisor.exact_stop(operation)
+    with supervisor.stopped_generation_guard(operation):
+        assert supervisor.state is SupervisorState.STOPPED
+    stale = replace(operation, **cast(dict[str, Any], changes))
+    with (
+        pytest.raises(RuntimeOperationError, match="binding is stale"),
+        supervisor.stopped_generation_guard(stale),
+    ):
+        pass
+
+
 @pytest.mark.parametrize("epoch", ["١", "0", "9" * 21])
 @pytest.mark.parametrize("agent_type", list(AgentType))
 def test_supervisor_rejects_noncanonical_runtime_epoch(
