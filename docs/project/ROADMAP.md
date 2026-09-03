@@ -12,16 +12,16 @@
 
 - WAW-2 Codex API/ticket/Web contracts merged in PR #59 with 19/19 exact-head checks successful. Real CLI execution and legacy process interlocks remain gated.
 
+- Workspace metadata workflow merged in PR #60 with 19/19 exact-head checks successful; desktop/mobile metadata interactions are tested, terminal admission remains unavailable.
+
 ## In Progress
 
-- Stage D: Workspace metadata workflow, precise Project/AgentType lookup and explicit Start/exact Stop UI.
+- Stage E: software candidate verification, current capability documentation and artifact-contained WAW boundaries.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- Stage E: complete software verification, independent review and release
-  preparation with explicit limitations.
 - Stage F: real stream/Noise/PTY/browser, isolated CLI/host qualification and
   product acceptance. This stage has missing authorization/evidence gates;
   it is not implemented or validated by synthetic software stages.

@@ -25,5 +25,6 @@
 - `docs/WAW3_RECOVERY_CONTRACTS.md`: software recovery classification, browser
   event fences, validation mapping and explicit unimplemented integration scope.
 - `docs/WORKSPACE_METADATA_WORKFLOW.md`: current metadata UI/control workflow, exact lookup and Stop boundaries, tests and visual evidence limits.
+- `docs/WAW_SOFTWARE_READINESS.md`: immutable software/artifact evidence, current capability limits and explicit Stage F input/gates.
 - `CURRENT_STATE.md`: last verified snapshot. `NEXT_ACTION.md`: current software
   stage and remaining gates.

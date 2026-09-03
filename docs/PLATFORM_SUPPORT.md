@@ -2,6 +2,10 @@
 
 Status: `0.3.0rc1` qualification matrix
 
+These qualifications cover the existing MVP installation and management
+surfaces. They do not qualify the new WAW terminal, isolated CLI/PTY, Noise or
+restart/reboot path. See [WAW software readiness](WAW_SOFTWARE_READINESS.md).
+
 | Platform | Package adapter | Evidence | Qualification |
 |---|---|---|---|
 | OpenCloudOS 9 x86_64 | DNF | fixture, offline unit analysis, designated OpenCloudOS 9.4 host install/update/rollback/service validation | **Real-host validated** |

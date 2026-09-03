@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T05:22:07Z"
+verified_at_utc: "2026-09-03T05:39:28Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -8,8 +8,8 @@ repository: "ForceMind/agentbox"
 # Current Verified State
 
 - Repository: `ForceMind/agentbox`
-- Current stage starting `HEAD` / `main` / `origin/main` / merge-base: `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`.
-- Starting working tree: clean. Active implementation branch: `codex/workspace-metadata-workflow`.
+- Current stage starting `HEAD` / `main` / `origin/main` / merge-base: `6972f0dba907afd9741c2dc3584f431ee32765ed`.
+- Starting working tree: clean. Active implementation branch: `codex/waw-software-readiness`.
 - Historical starting-main `24d08414b20e7158e8c84694aac59d0326799bfd` CI: Backend, Frontend, E2E, Deployment, Security and Release Candidate were all terminal `success`. Current merge CI is tracked separately below.
 - Historical Draft PR `#42` remains open and is outside this implementation branch.
 - WAW-1 HTTP lifecycle/attachment routes: PR `#47` merged (`cd599a6e4b24ba860f4c9f294b16625a397a30f7`).
@@ -82,3 +82,18 @@ repository: "ForceMind/agentbox"
 - Main-agent visual QA used actual Chromium at `1280x900` and `390x844`; synthetic normal, Stop confirmation, mobile empty and mobile error renderings were viewed. No horizontal overflow; all tested visible controls at least 44px; native Cancel/Escape restored Stop focus. Screenshots contain synthetic metadata only and are not committed or release artifacts.
 - Independent read-only Architecture/Security review: PASS for metadata/control scope after checking server-side binding/epoch validation, client stale-response and Stop-target fencing. Visual checking was main-agent structured QA, not an independent visual certification.
 - Terminal remains `NOT ADMITTED`; no ticket/terminal bytes were obtained or persisted, no real host or Provider operation occurred. Workflow mapping: `../WORKSPACE_METADATA_WORKFLOW.md`.
+
+## Stage D completed / Stage E artifact and documentation work
+
+- PR #60 MERGED at `2026-09-03T05:27:15Z`; reviewed head `9be95b10e57a3daa3690205d6c2ffad8da74424d`, base `7c1c755854077d2e0989ff1d3ab3d54f77e9e707`.
+- Exact-head CI: `19/19 SUCCESS`, all terminal, including the complete final E2E gate. Observed merge and origin/main: `6972f0dba907afd9741c2dc3584f431ee32765ed`.
+- Post-merge main `6972f0dba907afd9741c2dc3584f431ee32765ed`: all six CI workflows SUCCESS. Release Candidate run `33718909935`: SUCCESS. Artifact `9879550362` downloaded via `gh run download` (exit `0`) to a task temporary directory, not installed or executed.
+- Independent `scripts/check-release-artifact.py` with expected commit `6972f0dba907afd9741c2dc3584f431ee32765ed` and ref kind `main`: exit `0`, 77 members / 2757 nested wheel members / 27498769 bytes, no source maps or canaries.
+- Exact artifact/manifest/SBOM hashes and scope are recorded in `../WAW_SOFTWARE_READINESS.md`. This is an immutable implementation-baseline artifact; E's own CI will rebuild its documentation/packaging changes.
+- `pytest -q tests/unit/test_release_candidate.py`: exit `0`, 22 passed; one expected duplicate-ZIP fixture warning. Installer Linux-target mypy: exit `0`, 14 source files. Documentation links: exit `0`.
+- README/limitations/acceptance/release documents distinguish implemented Phase 11 foundations from unimplemented product Provider/Secret management, and metadata UX from unavailable real WAW terminal.
+- F is not started: explicit real-transport architecture/host scope, a disposable Linux target and real evidence are still missing. A host/SSH-alias question was sent to the Owner; no answer was available at this snapshot.
+
+- Stage E independent read-only documentation/packaging scope review: PASS; all current-head release gates remain pending until CI finishes. Fixed RELEASE_DOCUMENTS now includes four WAW boundary documents.
+- Local release-candidate unit checks: 22 passed; installer ruff/black and Linux-target mypy (14 files) passed; source documentation link check: 156 links passed.
+- Local preview used for metadata visual QA was stopped after verification; no background host/runtime activation was left running.
