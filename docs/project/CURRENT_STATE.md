@@ -675,3 +675,6 @@ PROPOSED architecture status are preserved.
   bind-remount stage `95`. The classic remount is replaced by Linux 5.12+
   `mount_setattr`: it only sets `NOSUID|NODEV` and policy `RDONLY`, never clears
   inherited mount attributes, and fails closed when the syscall is unavailable.
+- Head `8bf1ef2` remained within the project bind stage. The bounded diagnostic
+  now distinguishes descriptor/path construction, initial `MS_BIND`,
+  `mount_setattr`, and unsupported UAPI with non-overlapping integer statuses.

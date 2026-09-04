@@ -79,9 +79,11 @@ static int bind_descriptor(int fd, const char *target, int read_only) {
     char source[32];
     struct mount_attr attributes;
     int length = snprintf(source, sizeof(source), "/proc/self/fd/%d", fd);
-    if (length < 0 || (size_t)length >= sizeof(source) ||
-        mount(source, target, NULL, MS_BIND, NULL) != 0) {
-        return -1;
+    if (length < 0 || (size_t)length >= sizeof(source)) {
+        return 1;
+    }
+    if (mount(source, target, NULL, MS_BIND, NULL) != 0) {
+        return 2;
     }
 #if defined(SYS_mount_setattr) && defined(MOUNT_ATTR_NOSUID) && defined(MOUNT_ATTR_NODEV) && \
     defined(MOUNT_ATTR_RDONLY) && defined(MOUNT_ATTR_SIZE_VER0)
@@ -93,11 +95,11 @@ static int bind_descriptor(int fd, const char *target, int read_only) {
     return syscall(SYS_mount_setattr, AT_FDCWD, target, 0U, &attributes,
                    MOUNT_ATTR_SIZE_VER0) == 0L
                ? 0
-               : -1;
+               : 3;
 #else
     (void)read_only;
     errno = ENOTSUP;
-    return -1;
+    return 4;
 #endif
 }
 
@@ -185,17 +187,29 @@ static int setup_mounts(const struct agentbox_waw_bridge_config *config) {
     if (mask_fd < 0 || close(mask_fd) != 0) {
         return 94;
     }
-    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_PROJECT_FD, project_target, 0) != 0) {
-        return 95;
+    {
+        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_PROJECT_FD, project_target, 0);
+        if (bind_status != 0) {
+            return 110 + bind_status;
+        }
     }
-    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_HOME_FD, home_target, 0) != 0) {
-        return 96;
+    {
+        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_HOME_FD, home_target, 0);
+        if (bind_status != 0) {
+            return 120 + bind_status;
+        }
     }
-    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_TEMP_FD, temp_target, 0) != 0) {
-        return 97;
+    {
+        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_TEMP_FD, temp_target, 0);
+        if (bind_status != 0) {
+            return 130 + bind_status;
+        }
     }
-    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_POLICY_FD, policy, 1) != 0) {
-        return 98;
+    {
+        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_POLICY_FD, policy, 1);
+        if (bind_status != 0) {
+            return 140 + bind_status;
+        }
     }
     for (index = 0; index < sizeof(fixed_masks) / sizeof(fixed_masks[0]); ++index) {
         if (mask_existing(fixed_masks[index], mask_directory, mask_file) != 0) {
