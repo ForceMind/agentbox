@@ -187,7 +187,6 @@ static int setup_mounts(const struct agentbox_waw_bridge_config *config) {
         mask_existing(other_home, mask_directory, mask_file) != 0 ||
         chmod(mask_directory, 0000) != 0 || chmod(mask_file, 0000) != 0 ||
         chdir(project_target) != 0 ||
-        umount2("/proc", MNT_DETACH) != 0 ||
         mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC,
               "hidepid=2,subset=pid") != 0) {
         return -1;

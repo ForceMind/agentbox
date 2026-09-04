@@ -623,3 +623,9 @@ PROPOSED architecture status are preserved.
   AppArmor restriction on unprivileged user namespaces. The ephemeral CI host explicitly
   disables that runner-only restriction before executing the helper as the
   non-root runner. The setting is not product installation or R12 host evidence.
+- Kernel mount-namespace rules also explain the remaining pre-READY exit: mounts
+  inherited into a less-privileged user-owned namespace are locked and cannot be
+  individually unmounted. `setup_mounts` no longer attempts to detach inherited
+  `/proc`; it stacks the new PID-namespace procfs directly over it with the fixed
+  `nosuid,nodev,noexec,hidepid=2,subset=pid` restrictions. The regression gate
+  forbids reintroducing the invalid detach.

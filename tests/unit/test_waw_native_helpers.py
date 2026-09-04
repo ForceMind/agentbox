@@ -37,6 +37,8 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert "execveat" in source
     assert "AT_EMPTY_PATH" in source
     assert "AGENTBOX_WAW_READY_STATUS_RUNNING" in source
+    assert 'umount2("/proc"' not in source
+    assert 'mount("proc", "/proc", "proc"' in source
 
 
 def test_native_ready_header_matches_python_adapter() -> None:
