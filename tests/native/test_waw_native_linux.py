@@ -545,6 +545,48 @@ def _wbr_resize(sequence: int, columns: int, rows: int) -> bytes:
     )
 
 
+def _pane_died_tmux_config(
+    tmp_path: Path, name: str, *, history_limit: int | None = None
+) -> tuple[Path, str]:
+    token = "waw-pane-died-" + hashlib.sha256(f"{tmp_path}\0{name}".encode()).hexdigest()[:32]
+    config = tmp_path / f"{name}-tmux.conf"
+    options = b"\nset-option -g remain-on-exit on\n"
+    if history_limit is not None:
+        options += f"set-option -g history-limit {history_limit}\n".encode()
+    config.write_bytes(
+        TMUX_CONFIG.read_bytes()
+        + options
+        + f"set-hook -g pane-died 'wait-for -S {token}'\n".encode()
+    )
+    return config, token
+
+
+def _wait_for_exact_pane_death(session: str, token: str, exit_code: int) -> None:
+    subprocess.run(
+        ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "wait-for", token],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=5,
+    )
+    pane_status = subprocess.run(
+        [
+            "/usr/bin/tmux",
+            "-S",
+            str(TMUX_SOCKET),
+            "list-panes",
+            "-t",
+            f"={session}:0.0",
+            "-F",
+            "#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert pane_status == f"1:{exit_code}:"
+
+
 def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
@@ -780,10 +822,8 @@ def test_bridge_tmux_parent_death_cleans_vendor_without_spin(
 def test_bridge_flushes_large_vendor_tail_after_child_exit(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    capture_config = tmp_path / "capture-tmux.conf"
-    capture_config.write_bytes(
-        TMUX_CONFIG.read_bytes()
-        + b"\nset-option -g history-limit 4096\nset-option -g remain-on-exit on\n"
+    capture_config, wait_token = _pane_died_tmux_config(
+        tmp_path, "tail-capture", history_limit=4096
     )
     session, control, wbr = _begin_real_workspace(
         native_binaries, fake_binaries[0], tmp_path, tmux_config=capture_config
@@ -807,27 +847,7 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
     drainer = threading.Thread(target=drain_attach_output, daemon=True)
     drainer.start()
     os.write(master, b"tail\n")
-    deadline = time.monotonic() + 5.0
-    pane_status = ""
-    while pane_status != "1:7":
-        pane_status = subprocess.run(
-            [
-                "/usr/bin/tmux",
-                "-S",
-                str(TMUX_SOCKET),
-                "list-panes",
-                "-t",
-                f"={session}:0.0",
-                "-F",
-                "#{pane_dead}:#{pane_dead_status}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        if time.monotonic() >= deadline:
-            raise AssertionError(f"tail pane did not exit cleanly: {pane_status}")
-        time.sleep(0.01)
+    _wait_for_exact_pane_death(session, wait_token, 7)
     attached.send_signal(signal.SIGTERM)
     assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
     drainer.join(timeout=5)
@@ -1040,13 +1060,7 @@ def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(
 def test_incomplete_vendor_dcs_fails_closed_before_pane_success(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    wait_token = "waw-dcs-" + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:32]
-    dcs_config = tmp_path / "dcs-tmux.conf"
-    dcs_config.write_bytes(
-        TMUX_CONFIG.read_bytes()
-        + b"\nset-option -g remain-on-exit on\n"
-        + f"set-hook -g pane-died 'wait-for -S {wait_token}'\n".encode()
-    )
+    dcs_config, wait_token = _pane_died_tmux_config(tmp_path, "incomplete-dcs")
     session, control, wbr = _begin_real_workspace(
         native_binaries, fake_binaries[0], tmp_path, tmux_config=dcs_config
     )
@@ -1054,29 +1068,7 @@ def test_incomplete_vendor_dcs_fails_closed_before_pane_success(
     attached, master = _spawn_real_attach(native_binaries, "claude")
     _read_fd_until(master, b"READY claude")
     os.write(master, b"dcs-exit\n")
-    subprocess.run(
-        ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "wait-for", wait_token],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=5,
-    )
-    pane_status = subprocess.run(
-        [
-            "/usr/bin/tmux",
-            "-S",
-            str(TMUX_SOCKET),
-            "list-panes",
-            "-t",
-            f"={session}:0.0",
-            "-F",
-            "#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    assert pane_status == "1:74:"
+    _wait_for_exact_pane_death(session, wait_token, 74)
     attached.send_signal(signal.SIGTERM)
     assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
     os.close(master)
@@ -1088,8 +1080,7 @@ def test_incomplete_vendor_dcs_fails_closed_before_pane_success(
 def test_closed_stdio_descendant_is_reaped_before_successful_drain_ack(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    descendant_config = tmp_path / "descendant-tmux.conf"
-    descendant_config.write_bytes(TMUX_CONFIG.read_bytes() + b"\nset-option -g remain-on-exit on\n")
+    descendant_config, wait_token = _pane_died_tmux_config(tmp_path, "closed-descendant")
     session, control, wbr = _begin_real_workspace(
         native_binaries, fake_binaries[0], tmp_path, tmux_config=descendant_config
     )
@@ -1098,27 +1089,7 @@ def test_closed_stdio_descendant_is_reaped_before_successful_drain_ack(
     _read_fd_until(master, b"READY claude")
     os.write(master, b"closed-descendant\n")
     assert b"CLOSED-SPAWNED" in _read_fd_until(master, b"CLOSED-SPAWNED")
-    deadline = time.monotonic() + 5.0
-    pane_status = ""
-    while pane_status != "1:7":
-        pane_status = subprocess.run(
-            [
-                "/usr/bin/tmux",
-                "-S",
-                str(TMUX_SOCKET),
-                "list-panes",
-                "-t",
-                f"={session}:0.0",
-                "-F",
-                "#{pane_dead}:#{pane_dead_status}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        if time.monotonic() >= deadline:
-            raise AssertionError(f"closed-stdio descendant was not reaped: {pane_status}")
-        time.sleep(0.01)
+    _wait_for_exact_pane_death(session, wait_token, 7)
     assert (tmp_path / "temp" / ".descendant-term-canary").read_bytes() == b"\x01"
     attached.send_signal(signal.SIGTERM)
     assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}

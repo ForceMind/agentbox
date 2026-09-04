@@ -632,7 +632,13 @@ PROPOSED architecture status are preserved.
   yielding transient `pane_dead_status` empty. The strict DCS gate now waits on a
   unique test-only `pane-died → wait-for -S` child-status event and then requires
   exact `1:74:` (normal exit 74, no signal). Independent Sol review PASS; a new
-  exact-head Linux CI run remains required.
+  exact-head Linux CI run remained required.
+- Head `5b4237e...` proved that DCS gate, then the same PTY-dead/status-publication
+  race appeared in the closed-descendant status check. All three `remain-on-exit`
+  gates now share one test-only unique `pane-died → wait-for -S` barrier and
+  strictly require `1:7:`, `1:74:`, and `1:7:` respectively. Tail order/hash and
+  descendant termination-canary assertions remain unchanged; another exact-head
+  native normal/sanitizer run is required.
 - Retained control/stream `BoundRuntimePeer`, API authority transfer, redraw and
   application ownership remain active rc6 work. No production WAW path is enabled
   by this foundation.
