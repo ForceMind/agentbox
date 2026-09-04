@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import hashlib
 import json
 import os
 import platform
@@ -97,6 +98,13 @@ def linux_native_host_gate() -> Iterator[object]:
     _kill_tmux_server()
     control.close()
     control_path.unlink(missing_ok=True)
+
+
+@pytest.fixture(autouse=True)
+def linux_native_test_cleanup() -> Iterator[None]:
+    yield
+    if LINUX and HOST_GATE:
+        _kill_tmux_server()
 
 
 @pytest.fixture(scope="session")
@@ -409,6 +417,7 @@ def _begin_real_workspace(
     agent: str = "claude",
     launch: bytes | None = None,
     delete_policy_after_open: bool = False,
+    tmux_config: Path = TMUX_CONFIG,
 ) -> tuple[str, socket.socket, socket.socket]:
     _kill_tmux_server()
     launch_path = Path("/run/agentbox-waw/tmp") / HASH / "launch.v1.sock"
@@ -445,7 +454,7 @@ def _begin_real_workspace(
             "-S",
             str(TMUX_SOCKET),
             "-f",
-            str(TMUX_CONFIG),
+            str(tmux_config),
             "new-session",
             "-d",
             "-s",
@@ -767,19 +776,73 @@ def test_bridge_tmux_parent_death_cleans_vendor_without_spin(
 def test_bridge_flushes_large_vendor_tail_after_child_exit(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    session, control, wbr = _begin_real_workspace(native_binaries, fake_binaries[0], tmp_path)
+    capture_config = tmp_path / "capture-tmux.conf"
+    capture_config.write_bytes(
+        TMUX_CONFIG.read_bytes()
+        + b"\nset-option -g history-limit 4096\nset-option -g remain-on-exit on\n"
+    )
+    session, control, wbr = _begin_real_workspace(
+        native_binaries, fake_binaries[0], tmp_path, tmux_config=capture_config
+    )
     assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
     attached, master = _spawn_real_attach(native_binaries, "claude")
     _read_fd_until(master, b"READY claude")
     os.write(master, b"tail\n")
-    output = _read_fd_until(master, b"TAIL-END", timeout=10)
-    assert output.count(b"X") == 100000
-    assert b"TAIL-END" in output
-    assert attached.wait(timeout=10) in {0, 1, 7, 143, -signal.SIGTERM}
+    assert b"TAIL-END" in _read_fd_until(master, b"TAIL-END", timeout=10)
+    deadline = time.monotonic() + 5.0
+    pane_status = ""
+    while pane_status != "1:7":
+        pane_status = subprocess.run(
+            [
+                "/usr/bin/tmux",
+                "-S",
+                str(TMUX_SOCKET),
+                "list-panes",
+                "-t",
+                f"={session}:0.0",
+                "-F",
+                "#{pane_dead}:#{pane_dead_status}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"tail pane did not exit cleanly: {pane_status}")
+        time.sleep(0.01)
+    attached.send_signal(signal.SIGTERM)
+    assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
     os.close(master)
-    _wait_session_gone(session)
+    captured = subprocess.run(
+        [
+            "/usr/bin/tmux",
+            "-S",
+            str(TMUX_SOCKET),
+            "capture-pane",
+            "-p",
+            "-S",
+            "-",
+            "-E",
+            "-",
+            "-t",
+            f"={session}:0.0",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
     control.close()
     wbr.close()
+    _kill_tmux_server()
+    payload = "0123456789abcdef0123456789abcdef"
+    expected = [f"TAIL {index:04d} {payload}" for index in range(2048)]
+    observed = [line for line in captured if re.fullmatch(r"TAIL [0-9]{4} [0-9a-f]{32}", line)]
+    assert sum(len(line) + 1 for line in observed) > 65536
+    assert (
+        hashlib.sha256("\n".join(observed).encode()).digest()
+        == hashlib.sha256("\n".join(expected).encode()).digest()
+    )
+    assert observed == expected
 
 
 def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(

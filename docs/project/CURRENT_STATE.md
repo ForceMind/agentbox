@@ -816,6 +816,14 @@ PROPOSED architecture status are preserved.
   a server for that command, leaving an unrecorded stale pathname that production
   Start correctly rejected. Cleanup now returns immediately when no recorded
   socket exists, and the session fixture uses that same identity-bound helper.
+- Exact head `1300696` reached `59 passed`; its first failure received the final
+  `TAIL-END` but counted only 94,775 of 100,000 repeated bytes on a live tmux
+  attach client. That client is a coalesced screen-update view, not a raw pane
+  journal. The replacement regression uses a test-only pre-creation tmux config
+  with history 4096 and `remain-on-exit=on`, emits 2,048 numbered deterministic
+  short-line frames (>64 KiB), waits for exact pane exit `7`, captures complete
+  server history, and verifies sequence, payload, byte bound and SHA-256. The
+  packaged config remains independently pinned to history 25/remain-off.
 - The same head reached the standalone launcher fake but returned its diagnostic
   `90`: that fixture only accepted attach-session argv while the launcher test
   correctly emits fixed new-session argv. The fake now validates both exact

@@ -397,8 +397,8 @@ int main(int argc, char **argv) {
             }
         } else if (strcmp(line, "tail\n") == 0 || strcmp(line, "tail\r\n") == 0) {
             size_t index;
-            for (index = 0; index < 100000U; ++index) {
-                if (putchar('X') == EOF) {
+            for (index = 0; index < 2048U; ++index) {
+                if (printf("TAIL %04zu 0123456789abcdef0123456789abcdef\r\n", index) < 0) {
                     return 92;
                 }
             }
