@@ -34,9 +34,10 @@ blocker is resolved. Do not request the same software approval again.
   `navigator.languages[0]`: primary `zh` → `zh-CN`; all other/missing/malformed
   values → English; technical identifiers remain English.
 - The public API anchor loader, durable epoch transaction and fixed-backlog Runtime
-  listener re-`listen` are implemented and locally verified; next close retained
-  `BoundRuntimePeer`, API authority transfer and bounded redraw before production
-  bootstrap.
+  listener re-`listen` are implemented and exact-head verified. API retained
+  `BoundRuntimePeer` is implemented and independently reviewed; next complete its
+  Linux exact-head CI, then close Runtime-side API authority transfer and bounded
+  redraw before production bootstrap.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent

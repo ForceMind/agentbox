@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 import socket
+import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +27,15 @@ HOST = "wri_" + "1" * 32
 PROJECT = "prj_" + "2" * 32
 WORKSPACE = "aws_" + "3" * 32
 DIGEST = "a" * 64
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux", reason="SO_PEERCRED/pidfd control integration requires Linux"
+)
+
+
+@pytest.fixture
+def socket_dir() -> Iterator[Path]:
+    with tempfile.TemporaryDirectory(prefix=".waw-control-path-", dir=Path.cwd()) as directory:
+        yield Path(directory)
 
 
 class FakeExecutor:
@@ -85,7 +97,9 @@ def _request(action: str, request_id: str, **fields: str | None) -> dict[str, An
 
 
 @pytest.mark.anyio
-async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path: Path) -> None:
+async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(
+    tmp_path: Path, socket_dir: Path
+) -> None:
     epoch_dir = tmp_path / "epoch"
     epoch_dir.mkdir(mode=0o700)
     store = WAWRuntimeEpochStore(
@@ -109,8 +123,8 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path:
     )
     assert consumed == "2"
 
-    control_socket = _listen(tmp_path / "control.sock")
-    stream_socket = _listen(tmp_path / "stream.sock")
+    control_socket = _listen(socket_dir / "control.sock")
+    stream_socket = _listen(socket_dir / "stream.sock")
     sockets = WAWActivatedSockets(control=control_socket, stream=stream_socket)
     server = build_waw_control_server(
         sockets=sockets,
@@ -118,10 +132,11 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path:
         expected_peer_uid=os.geteuid(),
         expected_peer_gid=os.getegid(),
     )
+    coordinator: WAWRuntimeBindCoordinator | None = None
     await server.start()
     try:
         client = WAWControlClient(
-            tmp_path / "control.sock",
+            socket_dir / "control.sock",
             expected_peer_uid=os.geteuid(),
             expected_peer_gid=os.getegid(),
             expected_socket_uid=os.geteuid(),
@@ -154,7 +169,9 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path:
             runtime_host_installation_id=HOST,
             runtime_host_installation_revision="1",
         )
-        registered = await client.request("workspace.project_binding.register", register)
+        registered = await coordinator.request_lifecycle(
+            "workspace.project_binding.register", register
+        )
         assert registered["binding_digest"] == DIGEST
 
         lifecycle_fields = {
@@ -167,7 +184,7 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path:
             "runtime_host_installation_id": HOST,
             "runtime_host_installation_revision": "1",
         }
-        started = await client.request(
+        started = await coordinator.request_lifecycle(
             "workspace.workspace.start",
             _request("workspace.workspace.start", "wreq_" + "3" * 32, **lifecycle_fields),
         )
@@ -182,5 +199,7 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(tmp_path:
         assert "terminal" not in status
         assert "ticket" not in status
     finally:
+        if coordinator is not None:
+            await coordinator.close()
         await server.close()
         sockets.close()

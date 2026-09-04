@@ -12,7 +12,6 @@ import ipaddress
 import os
 import re
 import secrets
-import select
 import socket
 import stat
 import struct
@@ -68,6 +67,7 @@ from agentbox_api.waw_admission_coordinator import (
     WAWAdmissionCoordinator,
 )
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
+from agentbox_api.waw_control_client import RuntimePeerBorrow, WAWControlClientError
 from agentbox_api.waw_input_budget import (
     BrowserDelivery,
     InputBudget,
@@ -137,6 +137,8 @@ class RuntimeControl(Protocol):
 
     async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]: ...
 
+    def borrow_runtime_peer(self, peer_socket: Any) -> RuntimePeerBorrow: ...
+
 
 @dataclass(frozen=True)
 class RuntimeSocketTrust:
@@ -167,7 +169,7 @@ class UnixRuntimePort:
         self._connection = object()
         self._socket: socket.socket | None = None
         self._receive_task: asyncio.Task[bytes] | None = None
-        self._pidfd: int | None = None
+        self._peer_borrow: RuntimePeerBorrow | None = None
         self._request: RuntimePrepareRequest | None = None
         self._prepare_task: asyncio.Task[dict[str, Any]] | None = None
         self._aborted = False
@@ -205,19 +207,32 @@ class UnixRuntimePort:
                 peer.close()
                 raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
         self._socket = peer
-        await asyncio.get_running_loop().sock_connect(peer, str(_STREAM_PATH))
-        if self._aborted or self._path_identity() != before:
-            raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
-        pid, uid, gid = struct.unpack(
-            "3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
-        )
-        if uid != self._trust.runtime_uid or gid != self._trust.runtime_gid:
-            raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
-        self._pidfd = os.pidfd_open(pid, 0)
-        self._current()
+        try:
+            await asyncio.get_running_loop().sock_connect(peer, str(_STREAM_PATH))
+            if self._aborted or self._path_identity() != before:
+                raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
+            try:
+                borrow = self._control.borrow_runtime_peer(peer)
+            except WAWControlClientError as exc:
+                raise RelayFailure("RUNTIME_UNAVAILABLE", 1013) from exc
+            if (
+                borrow.parent.uid != self._trust.runtime_uid
+                or borrow.parent.gid != self._trust.runtime_gid
+            ):
+                borrow.close()
+                raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
+            self._peer_borrow = borrow
+            self._current()
+        except BaseException:
+            peer.close()
+            self._socket = None
+            if self._peer_borrow is not None:
+                self._peer_borrow.close()
+                self._peer_borrow = None
+            raise
 
     def _current(self) -> None:
-        if self._aborted or self._pidfd is None or select.select([self._pidfd], [], [], 0)[0]:
+        if self._aborted or self._peer_borrow is None or not self._peer_borrow.current():
             raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
         attestation = self._control.attestation
         if self._request is not None and (
@@ -411,9 +426,9 @@ class UnixRuntimePort:
             self._socket.close()
         if self._receive_task is not None:
             self._receive_task.cancel()
-        if self._pidfd is not None:
-            os.close(self._pidfd)
-            self._pidfd = None
+        if self._peer_borrow is not None:
+            self._peer_borrow.close()
+            self._peer_borrow = None
 
 
 def _consume_result(task: asyncio.Future[Any]) -> None:

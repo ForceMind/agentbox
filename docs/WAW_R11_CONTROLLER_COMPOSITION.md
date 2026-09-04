@@ -53,6 +53,12 @@ closed or terminal peer invalidates the cached attestation. Candidate pidfds are
 closed on cancellation, protocol failure or failed attestation and are published
 atomically with the verified attestation.
 
+Connection borrows use `dup` of the retained pidfd and carry the exact parent
+object/generation; they never reconstruct authority from a numeric PID. Client and
+coordinator close publish a synchronous fence before awaiting locks, and an
+unpublished candidate cannot cross that fence. A retired client may create one
+fresh owner only after its close task completed successfully with no pending work.
+
 An inherited systemd AF_UNIX listener carries the credentials of the process that
 called `listen`. Before readiness, the Runtime process must explicitly call
 `listen(fixed_backlog)` again on both inherited control and stream listeners so

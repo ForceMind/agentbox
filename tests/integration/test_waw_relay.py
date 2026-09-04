@@ -11,10 +11,16 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import agentbox_api.waw_control_client as control_subject
 import pytest
 from agentbox_api.waw_admission_coordinator import AdmissionAuditAction as A
 from agentbox_api.waw_admission_coordinator import RuntimeCleanupRequest, RuntimePrepareRequest
-from agentbox_api.waw_control_client import WAWControlClient
+from agentbox_api.waw_control_client import (
+    BoundRuntimePeer,
+    RuntimePeerBorrow,
+    WAWControlClient,
+    WAWSocketPathIdentity,
+)
 from agentbox_api.waw_input_budget import InputBudgetOverflow, InputBudgetOwner
 from agentbox_api.waw_relay import (
     DurableAdmissionAudit,
@@ -41,6 +47,27 @@ from sqlalchemy import select
 from support.waw_admission import Harness
 
 BA, AB, AR, RA = tuple(Leg)
+
+
+def _published_runtime_peer() -> tuple[BoundRuntimePeer, int, dict[str, object]]:
+    retained, writer = os.pipe()
+    peer = BoundRuntimePeer(
+        control_subject._RuntimePeerObservation(
+            pid=7331,
+            uid=os.getuid(),
+            gid=os.getgid(),
+            pidfd=retained,
+        ),
+        WAWSocketPathIdentity(3, 5),
+    )
+    owner: dict[str, object] = {"peer": peer, "generation": 1}
+    peer._publish(
+        generation=1,
+        owner_current=lambda candidate, generation: (
+            owner["peer"] is candidate and owner["generation"] == generation
+        ),
+    )
+    return peer, writer, owner
 
 
 def relay(h: Harness) -> WAWCiphertextRelay:
@@ -535,16 +562,30 @@ def test_uds_read_handoff_preserves_partial_frame_and_fixed_cleanup(
             expected_socket_uid=os.lstat(control_path).st_uid,
             expected_socket_gid=os.lstat(control_path).st_gid,
         )
-        # Linux peer/pidfd and root ownership remain independent host gates.
-        monkeypatch.setattr(client, "_peer_pidfd", lambda writer: os.open(os.devnull, os.O_RDONLY))
+        # This test isolates reader handoff. Production peer ownership is tested
+        # through the bound coordinator/control-path suites.
+        peer_reader, peer_writer = os.pipe()
+        monkeypatch.setattr(
+            client,
+            "_capture_unbound_peer",
+            lambda _socket: control_subject._RuntimePeerObservation(
+                pid=os.getpid(),
+                uid=os.getuid(),
+                gid=os.getgid(),
+                pidfd=os.dup(peer_reader),
+            ),
+        )
 
         class Control:
             attestation = {"runtime_epoch": "2"}
 
+            def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+                raise AssertionError("reader-handoff fixture bypasses stream connect")
+
             async def request_lifecycle(
                 self, action: str, request: dict[str, Any]
             ) -> dict[str, Any]:
-                return await client.request(action, request)
+                return await client._request_unbound_test_only(action, request)
 
         port = UnixRuntimePort(Control(), RuntimeSocketTrust(os.getgid(), os.getuid(), os.getgid()))
 
@@ -578,6 +619,8 @@ def test_uds_read_handoff_preserves_partial_frame_and_fixed_cleanup(
         stream_server.close()
         await server.wait_closed()
         await stream_server.wait_closed()
+        os.close(peer_reader)
+        os.close(peer_writer)
         directory.cleanup()
 
     asyncio.run(run())
@@ -743,6 +786,9 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
 
         class Control:
             attestation = {"runtime_epoch": "2"}
+
+            def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+                raise AssertionError("backpressure fixture uses an installed socket")
 
             async def request_lifecycle(
                 self, action: str, request: dict[str, Any]
@@ -1202,6 +1248,9 @@ def test_uds_backpressure_rechecks_guard_before_resuming_kernel_write(
         class Control:
             attestation = {"runtime_epoch": "2"}
 
+            def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+                raise AssertionError("backpressure fixture uses an installed socket")
+
             async def request_lifecycle(
                 self, action: str, request: dict[str, Any]
             ) -> dict[str, Any]:
@@ -1444,3 +1493,71 @@ def test_native_close_blocks_queued_runtime_input_before_reader_cleanup(
         await r.close(RelayFailure("ATTACHMENT_STALE", 4403))
 
     asyncio.run(run())
+
+
+def test_stream_abort_closes_only_its_bound_peer_borrow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer, writer, _owner = _published_runtime_peer()
+    monkeypatch.setattr(
+        control_subject,
+        "_peer_credentials",
+        lambda _socket: (7331, os.getuid(), os.getgid()),
+    )
+
+    class Control:
+        attestation = {"runtime_epoch": "2"}
+
+        def borrow_runtime_peer(self, peer_socket: object) -> RuntimePeerBorrow:
+            return peer.borrow(peer_socket)
+
+        async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError((action, request))
+
+    port = UnixRuntimePort(Control(), RuntimeSocketTrust(os.getgid(), os.getuid(), os.getgid()))
+    borrow = peer.borrow(object())
+    left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    port._peer_borrow = borrow
+    port._socket = left
+
+    port.abort()
+    port.abort()
+
+    assert not borrow.current()
+    assert peer.current()
+    right.close()
+    peer.close()
+    os.close(writer)
+
+
+def test_control_rebind_generation_immediately_fences_old_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer, writer, owner = _published_runtime_peer()
+    monkeypatch.setattr(
+        control_subject,
+        "_peer_credentials",
+        lambda _socket: (7331, os.getuid(), os.getgid()),
+    )
+
+    class Control:
+        attestation = {"runtime_epoch": "2"}
+
+        def borrow_runtime_peer(self, peer_socket: object) -> RuntimePeerBorrow:
+            return peer.borrow(peer_socket)
+
+        async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError((action, request))
+
+    port = UnixRuntimePort(Control(), RuntimeSocketTrust(os.getgid(), os.getuid(), os.getgid()))
+    port._peer_borrow = peer.borrow(object())
+    owner["peer"] = object()
+    owner["generation"] = 2
+
+    with pytest.raises(RelayFailure) as raised:
+        port._current()
+
+    assert raised.value.code == "RUNTIME_UNAVAILABLE"
+    port.abort()
+    peer.close()
+    os.close(writer)

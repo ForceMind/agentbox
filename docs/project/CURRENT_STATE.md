@@ -644,7 +644,18 @@ PROPOSED architecture status are preserved.
   finish and its done callback could clear `_close_operation` before the test
   captured it. The test now captures the synchronously created operation before
   its first await; sticky failure/direct-cancel assertions remain unchanged.
-  Python 3.12/3.13 and the other 19 checks passed; a new exact head is required.
-- Retained control/stream `BoundRuntimePeer`, API authority transfer, redraw and
-  application ownership remain active rc6 work. No production WAW path is enabled
-  by this foundation.
+  Python 3.12/3.13 and the other 19 checks passed. Head `4059474...` then completed
+  all 20 exact-head checks, including Python 3.11 and native normal/sanitizer.
+- API control bind now publishes one retained `BoundRuntimePeer` only after full
+  response/EOF, anchor attestation and durable epoch classification. Every later
+  control request and stream connection borrows only a duplicate of that retained
+  pidfd with exact peer credentials, owner identity and generation checks.
+- Coordinator/client close synchronously fence new bind/request/borrow work;
+  candidate publication rechecks the fence. Poison and close are irreversible;
+  a retired client can issue only one replacement after a successful terminal
+  close. `poll(0)` supports high pidfds, and uncertain writer cleanup poisons.
+  Focused regression passes 115 with one Linux-only peer integration skip; full
+  Linux-target mypy checks 254 sources. Independent Sol review reports PASS with
+  no P0/P1/P2. Linux exact-head CI remains required for this uncommitted slice.
+- Runtime-side API authority transfer, redraw and application ownership remain
+  active rc6 work. No production WAW path is enabled by this foundation.
