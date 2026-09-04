@@ -405,6 +405,11 @@ int main(int argc, char **argv) {
             if (printf("TAIL-END\r\n") < 0) {
                 return 92;
             }
+            for (index = 0; index < 32U; ++index) {
+                if (printf("TAIL-PAD %02zu\r\n", index) < 0) {
+                    return 92;
+                }
+            }
             return 7;
         } else if (strcmp(line, "exit7\n") == 0 || strcmp(line, "exit7\r\n") == 0) {
             return 7;

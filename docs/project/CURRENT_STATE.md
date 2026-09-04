@@ -840,6 +840,11 @@ PROPOSED architecture status are preserved.
   reader thread while polling pane `1:7`; only then does it terminate/reap the
   attach client, join the drainer, and capture history. This proves input
   delivery without treating redraw bytes as the integrity source.
+- Exact head `8bae10d` reached `61 passed`; all 2,048 frames were captured, but
+  tmux's dead-pane notice overwrote the final screen line containing `TAIL-END`.
+  The fake now emits 32 fixed padding lines after the marker, pushing the marker
+  into history before exit without changing the filtered frame digest or byte
+  count.
 - The three Python quality jobs on `34fbdfd` failed only because one unit test
   monkeypatched the imported module's private `time` name, which mypy correctly
   rejected as not explicitly exported. The unnecessary sleep monkeypatch is
