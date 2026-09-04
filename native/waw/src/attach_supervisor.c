@@ -251,12 +251,23 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
                    AGENTBOX_WAW_ATTACH_CONFIG_FD,
                    AGENTBOX_WAW_ATTACH_READY_FD};
     if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
-        getppid() != expected_parent ||
-        validate_attach_descriptors() != 0 || !isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) ||
-        !isatty(STDERR_FILENO) ||
-        agentbox_waw_close_except(kept, sizeof(kept) / sizeof(kept[0])) != 0 ||
-        agentbox_waw_apply_basic_limits() != 0 || agentbox_waw_apply_no_new_privs() != 0) {
+        getppid() != expected_parent) {
         return 65;
+    }
+    if (validate_attach_descriptors() != 0) {
+        return 66;
+    }
+    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) || !isatty(STDERR_FILENO)) {
+        return 67;
+    }
+    if (agentbox_waw_close_except(kept, sizeof(kept) / sizeof(kept[0])) != 0) {
+        return 68;
+    }
+    if (agentbox_waw_apply_basic_limits() != 0) {
+        return 69;
+    }
+    if (agentbox_waw_apply_no_new_privs() != 0) {
+        return 70;
     }
     if (getsid(0) != getpid() && setsid() < 0) {
         return 72;

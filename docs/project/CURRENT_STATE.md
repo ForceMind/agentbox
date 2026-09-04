@@ -746,3 +746,7 @@ PROPOSED architecture status are preserved.
   vendor exec. The remaining primary failure is isolated to attach before attach
   READY. A bounded attach-stage status replaces the generic `71` only for this
   diagnosis; retained-pane cascades remain non-primary.
+- Exact head `5d1b1a2` reports attach status `65`, before fork/exec/query. The
+  bounded entry diagnostics now separate parent-death binding, role-FD
+  validation, three-stream TTY validation, FD lockdown, resource limits and
+  NNP; workspace READY remains proven at this head.
