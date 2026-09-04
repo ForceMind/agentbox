@@ -226,7 +226,7 @@ async def test_server_uses_preconsumed_composition_without_second_epoch(
     manager_root = tmp_path / "server"
     manager_root.mkdir()
     codex, claude = _managers(manager_root)
-    socket_root = Path(tempfile.mkdtemp(prefix="ab-s-", dir="/private/tmp"))
+    socket_root = Path(tempfile.mkdtemp(prefix="ab-s-", dir="/tmp"))
 
     class FakeAsyncServer:
         async def start_serving(self) -> None:

@@ -604,3 +604,7 @@ PROPOSED architecture status are preserved.
   passes `repository-boundaries`. Its Linux native compiler found one missing
   standard `<signal.h>` declaration for `SIGKILL`; the header is now included.
   This source-level portability fix still awaits a new exact-head Linux run.
+- The same replacement head's Python 3.13 matrix passed `3418` tests before one
+  new server test tried to create its short Unix-socket directory under macOS-only
+  `/private/tmp`. The fixture now uses portable `/tmp`, preserving the short-path
+  requirement on both macOS and Linux; the next exact head must re-prove the matrix.
