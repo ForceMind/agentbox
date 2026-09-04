@@ -1402,7 +1402,7 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
             with _suppress_process_lookup():
                 os.killpg(resources.process_group, signal.SIGKILL)
             exited = _observe_resources_exit(resources, self._stop_timeout)
-        group_empty = not _process_group_exists(resources.process_group)
+        group_empty = _wait_process_group_empty(resources.process_group, self._stop_timeout)
         populated = resources.cgroup.populated()
         if type(populated) is not int or populated not in {0, 1}:
             raise RuntimeOperationError(
@@ -2445,6 +2445,20 @@ def _process_group_exists(process_group: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def _wait_process_group_empty(process_group: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        if time.monotonic() > deadline:
+            return False
+        exists = _process_group_exists(process_group)
+        observed_at = time.monotonic()
+        if observed_at > deadline:
+            return False
+        if not exists:
+            return True
+        time.sleep(min(0.01, deadline - observed_at))
 
 
 class _suppress_process_lookup:

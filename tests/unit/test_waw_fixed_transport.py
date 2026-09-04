@@ -652,6 +652,21 @@ def test_observed_nonchild_termination_closes_pidfd_once(
     assert closed == [41]
 
 
+def test_process_group_empty_waits_for_tmux_zombie_reap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations = iter((True, True, False))
+    monkeypatch.setattr(fixed_subject, "_process_group_exists", lambda _group: next(observations))
+    assert fixed_subject._wait_process_group_empty(42, 1.0)
+
+
+def test_process_group_empty_rejects_evidence_after_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fixed_subject, "_process_group_exists", lambda _group: True)
+    assert not fixed_subject._wait_process_group_empty(42, 0.0)
+
+
 def test_unpopulated_stop_remains_fenced_for_exact_destroy_retry(tmp_path: Path) -> None:
     item = fixed_identity()
     port = FakeNativePort()

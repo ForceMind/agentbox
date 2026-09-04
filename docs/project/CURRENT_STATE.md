@@ -881,6 +881,11 @@ PROPOSED architecture status are preserved.
   treats a discarded canary-handler `write` result as an error. The async-safe
   handler now explicitly receives that result; no production code or behavior
   changed in this correction.
+- Exact head `d0eccb8` passed 63 native tests; only the production-port Stop
+  returned `remaining_members=1` because pidfd exit/cgroup-zero preceded tmux's
+  reap of the pane zombie by a short interval. Stop now uses its existing bound
+  to wait for the exact PGID to disappear before socket cleanup; a live or
+  unreaped group at the deadline still remains unconfirmed.
 - The three Python quality jobs on `34fbdfd` failed only because one unit test
   monkeypatched the imported module's private `time` name, which mypy correctly
   rejected as not explicitly exported. The unnecessary sleep monkeypatch is
