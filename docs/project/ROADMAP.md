@@ -52,19 +52,22 @@
 
 See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0–R9 are delivered through PR #78.
 R10.1 executable provenance is merged, and full R10/rc5 local implementation plus
-independent review are complete. Linux exact-head CI, merge and read-back remain
-before R10 delivery; host evidence remains separately tracked in R12.
+independent review are complete. PR #79 implementation head `6083e6e...` passed
+20/20 exact-head checks, including Linux native normal/sanitizer coverage. Final
+documentation-head CI, merge and read-back remain before R10 delivery; host
+evidence remains separately tracked in R12.
 
 ## In Progress
 
 - Mac remains the development platform. R10 fixed interactive process/profile is
-  locally complete and `待验证` under delegated software decision authority.
+  exact-head verified and `待验证` only for final documentation CI, merge and
+  read-back under delegated software decision authority.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- F1: deliver R10 through Linux exact-head CI, merge and read-back; then execute
+- F1: deliver R10 through final documentation CI, merge and read-back; then execute
   R11 rc6–rc9 controller integration, failure injection, operations and full
   browser-selected Chinese/English UI.
 - F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and

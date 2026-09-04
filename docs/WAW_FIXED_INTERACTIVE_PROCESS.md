@@ -1,6 +1,6 @@
 # Fixed WAW interactive process
 
-Status: R10 software candidate. It contains the fixed process/profile,
+Status: R10 exact-head verified software candidate. It contains the fixed process/profile,
 descriptor, native helper, Runtime transport, probe/conflict and inert packaging
 implementation. It does not state that a host has installed a manifest or run a
 real Claude/Codex build.
@@ -119,7 +119,7 @@ vendor build and effective policy.
 
 | Stage | Evidence supplied | Evidence still required |
 | --- | --- | --- |
-| R10 software | v2 authority, fixed native/Runtime process chain, bounded probes/conflicts, closed templates, tests and release inventories | Linux exact-head CI remains software evidence, not installed-host evidence |
+| R10 software | v2 authority, fixed native/Runtime process chain, bounded probes/conflicts, closed templates, tests and release inventories; PR #79 implementation head passed Linux exact-head CI | Final documentation-head CI, merge/read-back; CI remains software evidence, not installed-host evidence |
 | R11 integration | Browser/API controller composition, full failure injection, artifact and operational checks | No real-host qualification by synthetic tests |
 | R12 host | Authorized host installation, actual vendor/PTY/isolation/recovery evidence and canonical manifest pins | Production/support claim only after the applicable acceptance record |
 
@@ -190,3 +190,13 @@ artifact scanner rejects a missing or unexpected native source, build script or
 WAW wheel asset. The backend native job builds hardened PIE/RELRO/NOW helpers
 and runs the Linux tmux/PTY/namespace/cgroup/relay matrix in normal and sanitizer
 modes. Passing that job is not production binary provenance or host activation.
+
+PR #79 implementation head
+`6083e6e1aa118b19b548a9070b7e49558988f7e5` completed all 20 exact-head checks.
+The Python 3.13 matrix reported `3428 passed / 43 skipped`; the Linux native job
+reported `66 passed` in normal mode and `24 passed` with sanitizers. Web reported
+`915` tests, the browser-trust extension `6`, Chromium E2E `64`, release
+validation `143`, and the documentation link check `238`. Independent Sol review
+reported no remaining P0/P1/P2 in this software scope. A later documentation-only
+head must complete its own CI before merge, and none of these counts qualifies a
+real vendor CLI, account, CRX installation, native binary provenance or host.

@@ -42,7 +42,7 @@ merge read-back 和与能力相称的运行证据。Synthetic/Fake Runtime、mac
 | C — WAW-2 Codex integration | 已完成 | 在既有 substrate 上补齐 Project-scoped Codex API attachment 与 Web contracts；复用固定 CLI command contract，真实执行接线列入 F | Codex/Claude 隔离、legacy Remote Control conflict、fixed argv/provenance、正常/冲突/失效路径及 Fake Runtime 集成；依赖 B |
 | D — Workspace metadata UX | 已完成 | 页面接通选择、精确查询、Start/exact Stop；Connect/Detach/input 随真实通道 gate 保持不可用，明确恢复/失败/未开放能力 | zh-CN、显式用户操作、Stop 二次确认、无持久 ticket/input/output、desktop/mobile 元数据交互；依赖 B/C |
 | E — 软件发布准备 | 已完成 | 完整 CI matrix、独立 Architecture/Security/Test 审查、限制和 release checklist、产物验证 | 所有检查 terminal；精确记录 artifact fingerprints 与未验证范围；依赖 B/C/D，不能标为生产就绪 |
-| F1 — Mac 持续实现 | 进行中 | F1.1 双 AgentType supervisor 已合并；F1.2 concrete executor/probe/cleanup 已合并；F1.3 Noise 核心、独立向量和双语言互通已合并；R0 登录并发修复已合并，R1 opaque framing 已合并；完整补充已按明确软件决策委托接受，R4/R5/R6已交付，继续实际Runtime/API接线 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
+| F1 — Mac 持续实现 | 进行中 | R0–R9 已交付；R10 fixed interactive process implementation head `6083e6e...` 已通过独立复审和 20/20 exact-head CI，等待最终文档 CI、merge/read-back；随后进入 R11 rc6–rc9 controller、故障注入、运营演练和全页面双语迁移 | 在 Mac 做可运行的软件实现/本地测试；Linux CI 补平台矩阵；不等同真实 host 验收 |
 | F2 — Linux 集成与产品验收 | 未开始 | systemd/cgroup/namespace/PTY/真实 CLI/重启恢复等平台行为与生产准备 | 真实 host 激活和新的架构决策仍需授权、非 Secret evidence 和恢复条件；按 `docs/WAW1_HOST_GATE_CHECKLIST.md` 验收 |
 
 Owner 已明确要求在 Mac 持续开发。F2 的缺少证据不阻止 F1 软件实现，但它是整体产品完成的阻断项。

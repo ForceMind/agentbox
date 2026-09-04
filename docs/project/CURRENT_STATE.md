@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T13:22:47Z"
+verified_at_utc: "2026-09-04T20:21:53Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -12,9 +12,9 @@ repository: "ForceMind/agentbox"
 - Live preflight after `git fetch origin --prune`: active R10 branch
   `codex/waw-fixed-interactive-process` has merge-base
   `15a4632f915dd1e1bde19425e313b52ada27166f`, equal to `origin/main` and the
-  observed R9 merge. Branch HEAD `e3bc440bcce8b141cb4b7d9e20891282c5f246b0`
-  contains the Dependency Graph input repair and R9 read-back documentation.
-  Only historical Draft PR #42 is open; no R10 PR or exact-head CI exists yet.
+  observed R9 merge. Local and remote branch HEAD are exactly
+  `6083e6e1aa118b19b548a9070b7e49558988f7e5` with a clean worktree before this
+  documentation update. Open PRs are R10 PR #79 and historical Draft PR #42.
 - R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
   all six standard post-main workflows. The separate historical Dependency Graph
   limitation is addressed on this R10 branch by the `.txt` release input.
@@ -22,9 +22,11 @@ repository: "ForceMind/agentbox"
   approved managed Chromium extension + Native Messaging + independent `trustd`,
   followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 is delivered;
   real host/key/provider activation remains R12.
-- R10 `0.3.0rc5` implementation and local review are complete in the working
-  tree. Commit/push, PR exact-head Linux CI, normal merge and exact read-back are
-  still pending, so R10 remains `待验证` rather than delivered.
+- R10 `0.3.0rc5` implementation and independent review are complete. PR #79 is
+  `MERGEABLE/CLEAN`; implementation head `6083e6e...` completed 20/20 exact-head
+  checks, including Linux native normal/sanitizer runs. This documentation update
+  will create a new exact head, so final CI, normal merge and exact read-back are
+  still required before R10 is recorded as delivered.
 
 ## Historical live baselines
 
@@ -561,343 +563,35 @@ PROPOSED architecture status are preserved.
   assets. No CLI/HOME/key/host action occurred; implementation is approved after
   R9 delivery.
 
-## R10 reviewed local candidate
+## R10 exact-head verified candidate
 
 - Runtime host manifest v2 closes the exact-six executable inventory and exact-two
-  Claude/Codex profiles. Descriptor-held launch authority carries seven fixed FD
-  roles, and WBR resize/ack uses the fixed 64-byte network-order protocol.
-- Three C17 Linux helpers implement pane bootstrap, PTY relay and attach supervision.
-  Runtime composition adds one-shot pre-birth cgroup authority, exact tmux/process
-  inspection, bounded output/input/resize/detach/reconnect cleanup and exact Stop.
-- Vendor auth probes require qualified isolation evidence. Local login/trust uses
-  a held foreground TTY, and the host-wide conflict coordinator serializes WAW and
-  legacy Claude/Codex starts without making the default legacy-only server active.
-- Inert tmux, sandbox, Claude and Codex policy assets are closed by package and
-  release inventories. Codex ships the exact-two TOML inputs plus their canonical
-  digest bundle; no policy is installed or activated.
-- Local focused Runtime/release regression passed `676` tests with `12` explicit
-  Linux-only skips; the encrypted Runtime server passed a separate `24` tests
-  outside the macOS socket sandbox. Native portable-source gate built all three
-  helpers. Ruff passed, Black left `287` files unchanged, Linux-target mypy passed
-  `252` sources, and the documentation checker passed `238` relative links.
-- With the repository Node option, Web passed `915` tests and the extension passed
-  `6`; typecheck, lint, format and production builds passed. A deliberately broad
-  macOS run remains invalid host evidence because Linux socket/peer-credential and
-  temporary-path assumptions fail on this platform.
-- Independent Sol review reports PASS with no P0/P1/P2 after closing constructor-
-  time transport ownership and release inventory findings. Linux namespace,
-  cgroup, tmux and sanitizer checks remain exact-head CI evidence; real vendor CLI,
-  account, CRX installation and host qualification remain R12.
-- Browser locale remains document-fixed: only `navigator.languages[0]` is read;
-  primary `zh` selects `zh-CN`, while every other, missing or malformed value
-  selects English. Technical identifiers stay English. Full cross-page bilingual
-  migration remains an R11 deliverable.
-- Chromium E2E passes `64` desktop/mobile cases and reads back the actual
-  Dashboard `0.3.0rc5` / `API v1` text from the built candidate.
-- PR #79 opened at initial exact head `35efb88f412386900a9e4188589f2debca4aa1f1`.
-  Its first `repository-boundaries` run correctly rejected the new fixed vendor
-  probe adapter because the controlled subprocess allowlist had not named that
-  Runtime module. The allowlist now names only `waw_vendor_probe.py` in addition
-  to the existing controlled adapters; the local boundary script and shell syntax
-  checks pass. A replacement exact head and complete CI result are still pending.
-- Replacement head `59a96da9b4e318d6ab28d7ec5385de75e24b963f`
-  passes `repository-boundaries`. Its Linux native compiler found one missing
-  standard `<signal.h>` declaration for `SIGKILL`; the header is now included.
-  This source-level portability fix still awaits a new exact-head Linux run.
-- The same replacement head's Python 3.13 matrix passed `3418` tests before one
-  new server test tried to create its short Unix-socket directory under macOS-only
-  `/private/tmp`. The fixture now uses portable `/tmp`, preserving the short-path
-  requirement on both macOS and Linux; the next exact head must re-prove the matrix.
-- Latest head `b689ff8b007b2a34478f8d1d06fee4930a70ca1a` compiled the
-  helpers, then the native fixture could not bind its fixed control socket because
-  CI created `/run/agentbox-waw` as root while only its children belonged to the
-  runner. Ephemeral CI provisioning now assigns the exact parent and child runtime
-  directories to the runner; no product installer or activation path changes.
-- Head `9ddbd71c` progressed into the native integration suite. The first
-  bootstrap correctly rejected CI's cgroup marker because the fixture used a
-  32-character workspace prefix while the production contract requires the full
-  64-character workspace hash; later tmux failures cascaded from that first
-  rejected pane. All three CI cgroup fixture references now use the full hash.
-- Head `bce0d29c` progressed past that identity check; its first isolated bridge
-  then closed before READY. The failure pattern is consistent with Ubuntu 24.04's
-  AppArmor restriction on unprivileged user namespaces. The ephemeral CI host explicitly
-  disables that runner-only restriction before executing the helper as the
-  non-root runner. The setting is not product installation or R12 host evidence.
-- Kernel mount-namespace rules also explain the remaining pre-READY exit: mounts
-  inherited into a less-privileged user-owned namespace are locked and cannot be
-  individually unmounted. `setup_mounts` no longer attempts to detach inherited
-  `/proc`; it stacks the new PID-namespace procfs directly over it with the fixed
-  `nosuid,nodev,noexec,hidepid=2,subset=pid` restrictions. The regression gate
-  forbids reintroducing the invalid detach.
-- Because the same EOF persisted, static inspection no longer identifies a safe
-  second fix. The next exact head uses bounded integer-only stage diagnostics and
-  retains only the first failed pane long enough to read `pane_dead_status`; it
-  does not change READY/WBR, write terminal payload, or relax isolation assertions.
-  These diagnostic branches will be removed after the failing syscall stage is known.
-- The first diagnostic head reached neither launch nor helper execution because
-  tmux 3.4 requires a window-qualified target for the window option. The test now
-  uses exact target `=session:0`; the failed diagnostic run is not native evidence.
-- Window-qualified diagnostic head `8269d85c` reached its failure branch, but
-  `_kill_tmux_server` raised before the intended stage report and masked the
-  integer status. Production-candidate head `ae412c4c` reproduced the original
-  pre-READY EOF. The bounded diagnostic is restored without that masking cleanup;
-  no additional isolation behavior changes until the exact stage is observed.
-- Head `110edb2c` showed the pane was still not retained because
-  `remain-on-exit` requires pane scope. The diagnostic now uses exact pane target
-  `=session:0.0` and `list-panes`; this remains diagnostics-only and carries no
-  payload or protocol changes.
-- Pane-scoped head `ef51061c` finally reported exact status
-  `1:65:agentbox-waw-pane-bootstrap`, proving the failure precedes namespace
-  creation. The bootstrap's previously combined predicate is split into fixed
-  integer stages for parent/tmux/control/launch/identity/cgroup/FD-role checks;
-  every predicate remains fail closed and unchanged.
-- Bootstrap-stage head `577a178c` passed every pre-isolation check and reported
-  exit `95`, the first project descriptor bind-remount. The remount now reads the
-  source mount flags from the held descriptor and preserves locked `RDONLY` and
-  `NOEXEC` while always adding `NOSUID|NODEV`; it no longer implicitly attempts
-  to clear a more-privileged mount's locked restrictions.
-- Sol review identified the remaining locked atime modes and recursive-bind risk.
-  The remount also preserves source `NOATIME`, `NODIRATIME` and `RELATIME`, and
-  the initial descriptor bind is non-recursive so unreviewed nested mounts are
-  not imported. `NOSUID|NODEV` remain mandatory additions.
-- Head `b2523cc` then reported bootstrap stage `87`, the exact cgroup marker,
-  even though the preceding runner had passed it. Before changing production
-  matching, the diagnostic reads pytest, tmux-server and pane cgroup records from
-  `/proc` before launch to distinguish inheritance from runner relocation or path
-  format differences.
-- Head `0c4c593` supplied the exact records: pytest and tmux server remained in
-  the full-hash workload, while systemd-enabled Ubuntu tmux moved the pane to an
-  `app-tmux.slice/tmux-spawn-*.scope`. Production already starts tmux with a
-  five-key fixed environment that contains no DBus/XDG systemd channel. Native
-  tests now use that same environment for every new server and keep the positive
-  pane cgroup assertion; the production cgroup predicate is not weakened.
-- With the pane held in the workload, head `67ca4b2` again reached project
-  bind-remount stage `95`. The classic remount is replaced by Linux 5.12+
-  `mount_setattr`: it only sets `NOSUID|NODEV` and policy `RDONLY`, never clears
-  inherited mount attributes, and fails closed when the syscall is unavailable.
-- Head `8bf1ef2` remained within the project bind stage. The bounded diagnostic
-  now distinguishes descriptor/path construction, initial `MS_BIND`,
-  `mount_setattr`, and unsupported UAPI with non-overlapping integer statuses.
-- Split head `75d8136` reported `112`, the initial project `MS_BIND`, confirming
-  the builder lacked effective `CAP_SYS_ADMIN`. After UID/GID maps are written,
-  existing credentials already appear as inner `1000`; redundant `setresuid` and
-  `setresgid` cleared the new namespace capabilities. They are replaced by exact
-  UID/GID assertions. Mount setup runs with the creation-time capabilities, and
-  the subsequent nonzero-UID exec clears them before the bridge/vendor workload.
-- Independent Sol review passed this lifecycle. The fake vendor now reads its
-  own `/proc/self/status` and requires both `CapPrm` and `CapEff` to be zero,
-  explicitly proving no namespace setup capability crosses the exec boundary.
-- Head `0889a40` still reported initial bind code `112`; the rejected operation
-  is the classic `/proc/self/fd/N` source path on the runner overlay, not the
-  attribute step. Directory mounting now uses descriptor-native `open_tree`,
-  detached `mount_setattr`, and `move_mount` without source path re-resolution,
-  nested mounts, or a temporarily less-restricted attached mount.
-- Descriptor-native clone head `3c783a9` reported `111`, confirming the builder
-  still lacked effective setup capability. The final lifecycle uses
-  `PR_SET_KEEPCAPS`, switches to inner UID/GID 1000, narrows capset v3 to the
-  new user namespace's sole `CAP_SYS_ADMIN`, and exact-reads it back. Before
-  Landlock/seccomp/bridge exec it sets NNP, disables KEEPCAPS, clears all three
-  capability sets and ambient capabilities, and exact-reads zero back.
-- Head `40f2816` no longer returned a staged exit status; tmux reported a dead
-  pane with an empty numeric status, indicating signal termination. The bounded
-  formatter now includes `pane_dead_signal` to distinguish seccomp, parent-death
-  and memory faults before any further implementation change.
-- The apparent blank signal field was later read as status `111`, so no signal
-  fault occurred: U1 still could not clone the host mount while mapped as
-  nonzero UID 1000. The implementation now uses two rootless user namespaces:
-  U1 maps `0` to the outer Runtime UID/GID for fixed namespace/mount setup; U2
-  maps final `1000` to U1's `0`, clears all capabilities with exact read-back,
-  and runs Landlock/seccomp/bridge. U1 retains a pre-overmount `/proc` FD only
-  for the fixed second mapping, then clears capabilities, applies seccomp and
-  only waits/reaps. Root Helper remains outside the terminal path.
-- Independent Sol review found and closed a publication-order issue: U1 now
-  completes NNP, exact capability clearing and seccomp before sending the byte
-  that releases U2, so U2 cannot reach READY if the trusted waiter lockdown
-  fails. U1 also resets PDEATHSIG after its map and closes every inherited FD
-  before entering the wait/reap-only loop.
-- Exact head `0d5d1f5` still returned project status `111`: U1's namespace root
-  could not use `open_tree(OPEN_TREE_CLONE)` on the inherited runner mount. The
-  setup now uses the standard non-recursive rootless `MS_BIND` operation inside
-  U1, followed by the same one-way `mount_setattr` additions. U2 stays blocked
-  until all mounts and the U1 waiter lockdown succeed, so this trusted setup
-  change does not expose a less-restricted mount to the vendor workload.
-- Independent Sol review also moved U1 FD lockdown into that publication gate:
-  after NNP/capability/seccomp lockdown, U1 closes the saved `/proc` and every
-  inherited descriptor except the release pipe before sending the release byte.
-  Any close-range failure keeps U2 blocked and forces its termination.
-- Exact head `023febf` passed the portable native gate but returned project bind
-  status `112` on the real Ubuntu runner; the other native failures were expected
-  diagnostic exit-code differences or cascades from the intentionally retained
-  first pane. A bounded errno map now distinguishes `EPERM`, `EACCES`, path-shape
-  failures, and other initial bind failures without emitting host data.
-- Exact head `2fd59f8` returned `116`, confirming `EINVAL`: the SCM_RIGHTS held
-  FD still referenced the pre-`CLONE_NEWNS` mount, which Linux refuses to copy
-  into the new namespace. The held FD remains authoritative, while its
-  kernel-generated absolute target is now used only as an `openat2` lookup hint
-  inside the new namespace. The reanchored FD must exact-match device, inode,
-  type/mode, visible owner and filesystem mount flags before bind; replacement,
-  changed visible metadata, deleted/truncated hint, or missing UAPI fails closed.
-  R12 must reject idmapped sources and audit mount topology plus per-mount LSM
-  and `nosymfollow` metadata that `fstatvfs` cannot attest. U2 remains behind the
-  existing mount/lockdown/FD publication gate.
-- Exact head `8705712` compiled with strict Linux warnings, passed the portable
-  native gate, and for the first time completed workspace READY through
-  reanchor, all four binds/attributes, U1/U2 lockdown, Landlock/seccomp and
-  vendor exec. The remaining primary failure is isolated to attach before attach
-  READY. A bounded attach-stage status replaces the generic `71` only for this
-  diagnosis; retained-pane cascades remain non-primary.
-- Exact head `5d1b1a2` reports attach status `65`, before fork/exec/query. The
-  bounded entry diagnostics now separate parent-death binding, role-FD
-  validation, three-stream TTY validation, FD lockdown, resource limits and
-  NNP; workspace READY remains proven at this head.
-- Exact head `b62f1bd` reports descriptor-validation status `66`. The next
-  bounded code identifies the exact tmux executable, socket directory, config,
-  or READY descriptor without exposing descriptor values or host paths.
-- Exact head `5f994f9` identifies the tmux executable role (`83`). The Linux
-  test pre-exec mapper could overwrite a later source FD while assigning the
-  low fixed destinations. It now duplicates every source above FD 64 first,
-  then maps the collision-free copies to the exact roles and closes them.
-- Head `a757799` still returned `83`, proving CPython's `pass_fds` keep-set also
-  closed fixed destinations created in `preexec_fn`. A dedicated test exec shim
-  is now the sole mapper: `Popen(pass_fds=exact sources)` starts the shim without
-  changing parent CLOEXEC state or inheriting unrelated FDs; the shim performs
-  collision-free high-FD copies, fixed-role `dup2`, optional `setsid`, and direct
-  `execv`. Each native helper still closes the original source FDs immediately
-  with its existing allowlist.
-- Exact head `6165f9a` passed workspace READY, attach READY, PTY I/O, resize and
-  session exit. The first failure moved to the empty tmux server retaining its
-  socket. The inert config now pins server option `exit-empty=on` instead of
-  relying on a distro/default value; the native gate reads it back exactly.
-- The session and server cleanup checks previously shared one ten-second
-  deadline, so a valid late session exit left no observation budget for the
-  server/socket transition. Each independently bounded transition now receives
-  its own ten-second deadline; the server still must disappear without an
-  explicit test-side kill.
-- Source inspection and Linux evidence established that tmux 3.2a exits its
-  server loop without unlinking a custom `-S` pathname. `exit-empty=on` remains
-  the server-process policy, while Runtime Stop now waits for exact cgroup
-  `populated=0`, revalidates the recorded socket device/inode/type/Runtime UID
-  through its held directory FD, performs fixed-basename `unlinkat`, and reads
-  back `ENOENT`. Identity drift or any unlink/read-back error remains
-  `WAW_STOP_UNCONFIRMED`; Root Helper is not involved.
-- Independent Sol review found that failed Start had the same stale-path risk
-  but no binding through which a caller could invoke Stop. Runtime now records
-  the socket identity before pane acceptance. After any later Start failure it
-  exhausts process/cgroup cleanup, removes only that recorded identity once
-  exact cgroup empty is proven, and still closes cgroup/control/WBR resources if
-  cleanup itself fails. An unrecorded remaining pathname yields
-  `RECONCILIATION_REQUIRED` and is never blindly deleted.
-- A second Sol review found the pane/bootstrap PID comes from `SO_PEERCRED` and
-  is a tmux-server child, so Runtime cannot legally obtain its status with
-  `waitid(P_PIDFD)`. Pane probe/failed-Start/Stop now use poll-only pidfd exit
-  observation and close the pidfd without reaping; `EXITED` permits an explicit
-  unknown `exit_code`. Direct launcher and attach-supervisor children retain
-  poll plus `waitid` reaping. Exact pane exit status would require a future
-  authenticated exit frame and is not synthesized.
-- R12 must prove the tmux socket directory has one Runtime authority writer and
-  that the per-workspace conflict coordinator serializes basename lifecycle.
-  These conditions close the userspace `stat`/`unlinkat` interval; any observed
-  identity drift remains reconciliation-required.
-- Final Sol cleanup review separated every failed-Start stage. A pane cleanup
-  failure cannot skip direct tmux-child signaling; cgroup cleanup always runs;
-  the direct child is reaped after cgroup cleanup with its pidfd closed in a
-  `finally`; socket cleanup and all local control/WBR handles are still attempted.
-  The first cleanup error is retained and chained from the original Start error.
-- Exact head `1662f00` reached `53 passed` in the Linux native job. Its nine
-  failures were the intentionally staged `65/71` diagnostics, one legacy
-  auto-unlink assertion, the resulting launch-listener cascade, and a unit
-  fixture whose replacement socket could reuse the same inode. The production
-  candidate now restores public `65/71` errors, removes retained-pane/status
-  diagnostics, routes detach/reconnect cleanup through identity-bound stale
-  socket removal, and uses a deterministic mismatched-identity negative test.
-- Production-shaped head `8221d52` reached `60 passed` with two failures. The
-  remaining integration failure came from the test cleanup helper invoking
-  tmux `kill-server` when no socket/server existed: tmux 3.2a started and exited
-  a server for that command, leaving an unrecorded stale pathname that production
-  Start correctly rejected. Cleanup now returns immediately when no recorded
-  socket exists, and the session fixture uses that same identity-bound helper.
-- Exact head `1300696` reached `59 passed`; its first failure received the final
-  `TAIL-END` but counted only 94,775 of 100,000 repeated bytes on a live tmux
-  attach client. That client is a coalesced screen-update view, not a raw pane
-  journal. The replacement regression uses a test-only pre-creation tmux config
-  with history 4096 and `remain-on-exit=on`, emits 2,048 numbered deterministic
-  short-line frames (>64 KiB), waits for exact pane exit `7`, captures complete
-  server history, and verifies sequence, payload, byte bound and SHA-256. The
-  packaged config remains independently pinned to history 25/remain-off.
-- Exact head `34fbdfd` reached `61 passed`; the only failure was the last
-  remaining attempt to wait for `TAIL-END` on the live attach redraw stream,
-  even though the pane already proved exact exit `7`. The attach now only sends
-  the command; `TAIL-END` and every integrity assertion are read from the
-  complete server-history capture.
-- The following run showed the normal native step could block when the tail test
-  stopped reading a still-attached client's PTY while tmux emitted redraws.
-  After sending `tail`, the test now immediately terminates and reaps the attach
-  supervisor, then waits for the detached pane's exact exit and captures server
-  history. This removes client backpressure and directly verifies detach-time
-  output retention.
-- Sol review caught that immediate detach could race before tmux forwarded the
-  input. The final gate keeps attach alive and drains its PTY on a test-only
-  reader thread while polling pane `1:7`; only then does it terminate/reap the
-  attach client, join the drainer, and capture history. This proves input
-  delivery without treating redraw bytes as the integrity source.
-- Exact head `8bae10d` reached `61 passed`; pane exit and history capture
-  completed, but tmux's dead-pane notice overwrote the final screen line
-  containing `TAIL-END`.
-  The fake now emits 32 fixed padding lines after the marker, pushing the marker
-  into history before exit without changing the filtered frame digest or byte
-  count.
-- Exact head `1d1de99` again reached `61 passed`; tmux capture retained terminal
-  padding on the marker history row. Marker comparison now strips only terminal
-  whitespace before exact `TAIL-END` equality; all frame integrity checks remain
-  byte-for-byte strict.
-- Exact head `651d3f7` passed the >64 KiB observation threshold but the filtered
-  frame digest differed. The unchanged strict comparison now emits only the
-  frame count and first expected/observed mismatch, enough to distinguish
-  truncation, duplication, ordering and formatting without dumping pane data.
-- Bounded head `8dc9480` proved a contiguous prefix only: 1,830 unique frames,
-  indices `0..1829`, no discontinuity/duplicates, pane `80x24`, history size
-  1,812. Linux Unix98 PTY lacks the driver hooks that would make `tcdrain` or
-  `TIOCOUTQ` prove master consumption. Fixed DSR 5 was also rejected because a
-  delayed vendor DSR could produce the same reply and incomplete DCS states do
-  not honor CAN. The bridge instead generates a 192-bit post-vendor challenge:
-  64 random columns `1..8` on row 1, followed by the exact ordered `CUP + DSR 6`
-  response sequence within one monotonic second. This stays valid across every
-  protocol-legal geometry; incomplete DCS state that absorbs the challenge fails
-  closed with `74`. R11 retains the explicit task of quiescing browser INPUT and
-  WBR resize, and enforcing the outer eight-column/one-row minimum around this
-  final correctness handshake. The challenge gate also requires namespace
-  descendant reap first, so a descendant cannot outlive the generated nonce.
-- Sol review closed the final loop/matcher edges: the relay is an explicit
-  `for (;;)` whose only success break follows descendant reap and parser ACK;
-  the response scanner uses a full prefix table. The tail fixture injects DSR 5
-  plus all eight possible row-1 DSR 6 replies near the suffix, with cursor
-  save/restore, and a separate closed-stdio descendant test exercises the
-  same-poll EOF/reap ordering. A readiness pipe proves the grandchild has closed
-  stdio and installed its SIGTERM handler before the vendor returns. The final
-  test requires its exact one-byte termination canary plus pane `1:7`; the old
-  same-poll bypass would only trigger namespace SIGKILL and leave the canary
-  empty. Overlapping old responses cannot cause false success or timeout.
-- Exact head `55a023b` stopped before native execution because GCC fortify
-  treats a discarded canary-handler `write` result as an error. The async-safe
-  handler now explicitly receives that result; no production code or behavior
-  changed in this correction.
-- Exact head `d0eccb8` passed 63 native tests; only the production-port Stop
-  returned `remaining_members=1` because pidfd exit/cgroup-zero preceded tmux's
-  reap of the pane zombie by a short interval. Stop now uses its existing bound
-  to wait for the exact PGID to disappear before socket cleanup; a live or
-  unreaped group at the deadline still remains unconfirmed.
-- The three Python quality jobs on `34fbdfd` failed only because one unit test
-  monkeypatched the imported module's private `time` name, which mypy correctly
-  rejected as not explicitly exported. The unnecessary sleep monkeypatch is
-  removed; the exact 252-source Linux mypy command now passes locally.
-- The same head reached the standalone launcher fake but returned its diagnostic
-  `90`: that fixture only accepted attach-session argv while the launcher test
-  correctly emits fixed new-session argv. The fake now validates both exact
-  shapes while retaining the attach-only TTY/NNP checks and the exact post-exec
-  FD inventory.
-- The launcher test keeps its bootstrap executable only in the parent Runtime
-  process and passes that original FD number with the parent PID, matching the
-  production `/proc/<runtime-pid>/fd/<bootstrap-fd>` contract. Its fake tmux now
-  opens and validates that exact parent path and uses the launcher-specific
-  post-exec FD inventory (config FD only); attach still requires socket-directory
-  and config FDs.
+  Claude/Codex profiles. Seven fixed descriptor roles, the 64-byte WBR protocol,
+  three native helpers, pre-birth cgroup placement, tmux/PTY attachment, qualified
+  auth probes, local-TTY login and host-wide WAW/legacy conflict coordination are
+  implemented without activating a host or handling a real credential.
+- Rootless isolation uses held-directory authority, in-namespace `openat2`
+  reanchoring, exact metadata/mount-flag comparison, non-recursive binds and a
+  two-level user-namespace lifecycle. Exact Stop proves cgroup empty, pane pidfd
+  exit, process-group disappearance and identity-bound stale-socket cleanup.
+- The bridge exits only after descendants are reaped, the inner PTY reaches EOF,
+  output is empty and tmux returns the exact 192-bit random cursor challenge. R11
+  must quiesce browser INPUT/WBR resize during this final barrier and retain an
+  outer minimum size of eight columns by one row.
+- PR #79 implementation head
+  `6083e6e1aa118b19b548a9070b7e49558988f7e5` completed all `20/20` exact-head
+  checks. Python 3.13 quality ran `3428 passed / 43 skipped`; Linux native ran
+  `66 passed` normally and `24 passed` with sanitizers. Web ran `915`, the
+  extension ran `6`, Chromium E2E ran `64`, release validation ran `143`, and
+  the documentation checker verified `238` relative links.
+- Independent Sol review reports PASS with no remaining P0/P1/P2 in the R10
+  software scope. CI fake-vendor/native evidence is not a real vendor build,
+  installed CRX, account, credential, production binary provenance or host
+  qualification; those remain R12 gates.
+- This documentation commit must itself complete exact-head CI before normal
+  merge. R10 therefore remains `待验证` until PR #79 merge/read-back. Its actual
+  merge SHA and post-main workflow results will be recorded on the R11 branch.
+- Browser locale remains fixed: read only `navigator.languages[0]`; primary
+  language `zh` selects `zh-CN`; every other, missing or malformed value selects
+  English. Technical identifiers remain English. Full cross-page bilingual
+  migration is part of R11/rc9.

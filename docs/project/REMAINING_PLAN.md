@@ -26,14 +26,15 @@ Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实
 ## Verified baseline and reachable behavior
 
 最新 live preflight 已 fetch：R10 branch merge-base 与 `origin/main` 均为 R9
-merge `15a4632f915dd1e1bde19425e313b52ada27166f`。branch HEAD `e3bc440...`
-已推送，工作区包含待提交的 rc5 candidate；仅历史 Draft PR #42 打开，尚无
-R10 PR 或 exact-head CI。当前证据不以旧 snapshot 替代。
+merge `15a4632f915dd1e1bde19425e313b52ada27166f`。本地与远端 branch HEAD
+`6083e6e1aa118b19b548a9070b7e49558988f7e5` 一致；PR #79 为
+`MERGEABLE/CLEAN`，其 20/20 exact-head checks 全部成功。当前文档提交形成新
+head 后仍需完整 CI、正常合并和精确回读；历史 Draft PR #42 不在本轮范围。
 
 | 用户能力 | 已有实现与证据 | 剩余内容 |
 | --- | --- | --- |
 | Project 选择与状态 | Workspace 页面、正式 Project API、metadata controller 与 E2E | 保持既有功能；不得将 metadata ready 当作 terminal admitted |
-| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及本地完成的 fixed profile/descriptor/cgroup/native process chain | R10 Linux CI；R11 controller；R12 real vendor/host qualification |
+| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及经 Linux exact-head CI 验证的 fixed profile/descriptor/cgroup/native process chain | R10 最终文档 head/merge/read-back；R11 controller；R12 real vendor/host qualification |
 | Connect | R6 staged authority、R7 Runtime encrypted stream、R8 API ciphertext relay、R9 trust provider core | R11 browser/API controller composition；R12 real CRX/trustd/host evidence |
 | input/output/resize | 完整 wire/application crypto、Runtime relay、bounded browser tokenizer/model 与 R10 PTY/WBR transport | R11 将真实软件组件接入用户流程并故障注入；R12真实 CLI 验证 |
 | detach/reconnect | fresh admission、lease/recovery、Runtime stream 与 R10 attach/cleanup 软件 | R11 controller/UI 恢复接线；R12 reboot/host evidence |
@@ -76,7 +77,7 @@ R10 PR 或 exact-head CI。当前证据不以旧 snapshot 替代。
 | R7 Runtime encrypted stream | 已完成 | Runtime stream session/server 与有限 executor integration | PR #76 已经 19/19 exact-head CI、正常合并与精确回读；真实 host 证据仍属 R12 |
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
-| R10 fixed interactive process | 待验证 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 本地实现、回归与独立复审已通过；等待 commit/push、Linux exact-head CI、正常合并与精确回读。真实 vendor/host 证据仍属 R12 |
+| R10 fixed interactive process | 待验证 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 实现 head `6083e6e...` 的 20/20 exact-head CI 与独立复审已通过；等待最终文档 head CI、正常合并与精确回读。真实 vendor/host 证据仍属 R12 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
@@ -116,14 +117,16 @@ PR #69 head `9147cace5b554205dfecc20cf8bfb643d4c46761` 经19/19 SUCCESS合并，
 实际 merge `9529da6d5c110b7a09d5972dfa0db5e012727451`；完整 CLI launch/retention profile 仍未冻结，详见
 [assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md)，不得把该基础视为执行接线完成。
 
-R10/rc5 本地候选已完成：manifest v2、exact-six executable、exact-two profile、
+R10/rc5 exact-head 候选已完成：manifest v2、exact-six executable、exact-two profile、
 七个 descriptor role、64-byte WBR、三个 native helper、pre-birth cgroup、真实
 tmux attach READY 检查、Runtime composition、qualified vendor probe、local TTY
 login seam、WAW/legacy conflict coordinator 与 inert policy assets 已实现。聚焦
-Python 回归 `676 passed / 12 Linux-only skipped`，另有 encrypted-server `24 passed`；
-Web `915`、extension `6`、native portable gate、Ruff、Black、Linux mypy、文档链接
-均通过，独立 Sol 复审无 P0/P1/P2。该状态仍等待 Linux exact-head CI、合并和回读，
-不能升级为 host qualification。
+PR #79 implementation head `6083e6e...` 的 Python 3.13 回归为
+`3428 passed / 43 skipped`，Linux native normal/sanitizer 分别为 `66`/`24`
+passed；Web `915`、extension `6`、Chromium E2E `64`、release validation `143`
+及 `238` 个文档链接均通过。20/20 exact-head checks 全部成功，独立 Sol 复审
+无 P0/P1/P2。最终文档 head 仍需 CI、正常合并和回读；不能升级为 host
+qualification。
 
 R2 是独立测量工作；不把未知原因当作其它 slice 的通用阻断。R1 是纯 framing，
 不能因为其编解码成功而跳过 R3/R4 的加密、身份和准入验证。
@@ -180,9 +183,10 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 ## Current resumption point
 
 R0–R9 已完成适用实现、独立审查、exact-head CI、正常合并和精确回读。
-R10/rc5 的本地实现与独立复审已完成，当前只进入交付验证：提交、推送、PR
-Linux CI、正常合并和精确回读。R10 不安装或启用任何 host unit/socket，不使用
-真实 vendor account/credential，也不宣称真实 CLI 或 host qualification。
+R10/rc5 implementation head 的实现、独立复审和 20/20 exact-head CI 已完成；
+当前只剩最终文档 head CI、正常合并和精确回读。R10 不安装或启用任何 host
+unit/socket，不使用真实 vendor account/credential，也不宣称真实 CLI 或 host
+qualification。
 
 R10 交付后立即开始 R11/rc6–rc9：组合 browser/API/Runtime controller，覆盖
 failure/cancel/revoke/restart/cleanup 矩阵，完成 artifact/operation rehearsal，

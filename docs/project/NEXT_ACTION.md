@@ -23,11 +23,11 @@ blocker is resolved. Do not request the same software approval again.
 - R9 is merged as PR #78 after independent PASS, 19/19 exact-head checks,
   normal merge `15a4632f915dd1e1bde19425e313b52ada27166f`, exact read-back and
   six successful standard post-main workflows.
-- R10/rc5 local implementation and independent review are complete: fixed
-  Claude/Codex execution profiles, descriptor-to-exec/PTY/bootstrap/bridge/attach,
-  Runtime composition and inert installer assets are present without host
-  activation or credential handling. The active action is commit/push → PR
-  exact-head Linux CI → normal merge → exact read-back, fixing any CI findings.
+- R10/rc5 implementation head `6083e6e...` completed independent review and all
+  20 exact-head checks. Fixed Claude/Codex profiles, descriptor-to-exec/PTY/
+  bootstrap/bridge/attach, Runtime composition and inert installer assets remain
+  software-only. The active action is final documentation head CI → normal PR
+  #79 merge → exact read-back, fixing any new CI finding before merge.
 - After R10 delivery, begin R11/rc6 browser/API/Runtime controller composition,
   then continue rc7–rc9 failure injection, operational/artifact rehearsal and
   full cross-page bilingual migration. Locale is fixed per document from only
