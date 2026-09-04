@@ -28,7 +28,7 @@ process_calls="$({
     'subprocess' apps packages helper installer || true
 })"
 unexpected_process_calls="$(printf '%s\n' "$process_calls" | grep --invert-match --extended-regexp \
-  '^(packages/agentbox-runtime/src/agentbox_runtime/process\.py:|helper/src/agentbox_helper/actions\.py:|installer/src/agentbox_installer/(build|dependencies|diagnostics|host)\.py:)' || true)"
+  '^(packages/agentbox-runtime/src/agentbox_runtime/(process|waw_vendor_probe)\.py:|helper/src/agentbox_helper/actions\.py:|installer/src/agentbox_installer/(build|dependencies|diagnostics|host)\.py:)' || true)"
 if [[ -n "$unexpected_process_calls" ]]; then
   printf 'Subprocess use escaped the approved controlled-runner boundary:\n%s\n' \
     "$unexpected_process_calls" >&2

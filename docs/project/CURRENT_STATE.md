@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T09:06:27Z"
+verified_at_utc: "2026-09-04T20:21:53Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,22 +9,24 @@ repository: "ForceMind/agentbox"
 
 ## Current authorized implementation
 
-- Live preflight after `git fetch origin --prune`: R9 branch
-  `codex/waw-browser-trust-terminal` and its merge-base are
-  `64d37f9a4d39195930959c53c926a4184877355a`, equal to `origin/main` and the
-  observed R8 merge. Local `main` remains the older R7 merge and is not used as
-  the live trust source. Only historical Draft PR #42 is open.
-- All six workflows for exact R8 main SHA `64d37f9a...` are terminal SUCCESS.
-  R8 PR #77 previously completed 19/19 exact-head checks, normal merge and exact
-  read-back. No remote R9 PR or R9 CI result exists yet.
+- Live preflight after `git fetch origin --prune`: active R10 branch
+  `codex/waw-fixed-interactive-process` has merge-base
+  `15a4632f915dd1e1bde19425e313b52ada27166f`, equal to `origin/main` and the
+  observed R9 merge. Local and remote branch HEAD are exactly
+  `6083e6e1aa118b19b548a9070b7e49558988f7e5` with a clean worktree before this
+  documentation update. Open PRs are R10 PR #79 and historical Draft PR #42.
+- R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
+  all six standard post-main workflows. The separate historical Dependency Graph
+  limitation is addressed on this R10 branch by the `.txt` release input.
 - Owner delegated the remaining software goal/plan/architecture and explicitly
   approved managed Chromium extension + Native Messaging + independent `trustd`,
-  followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 remains on
-  the Mac development branch; real host/key/provider activation remains R12.
-- R9 `0.3.0rc4` implementation, local full matrix and independent review are
-  complete. The working tree is intentionally uncommitted until this evidence
-  snapshot and final visible-version inspection are complete; exact-head CI,
-  merge and read-back are still pending.
+  followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 is delivered;
+  real host/key/provider activation remains R12.
+- R10 `0.3.0rc5` implementation and independent review are complete. PR #79 is
+  `MERGEABLE/CLEAN`; implementation head `6083e6e...` completed 20/20 exact-head
+  checks, including Linux native normal/sanitizer runs. This documentation update
+  will create a new exact head, so final CI, normal merge and exact read-back are
+  still required before R10 is recorded as delivered.
 
 ## Historical live baselines
 
@@ -65,6 +67,7 @@ repository: "ForceMind/agentbox"
 | R6 — staged admission | #75 | `679b2f71ec5917ead7695c3b20cb1118cb46cc76` | `a27621faca0e0d04b529b51993f98138496a75b5` | 19/19 SUCCESS |
 | R7 — Runtime encrypted stream | #76 | `01c716bd4713ef4a6676b71754a4e065ebce3b82` | `4180f0991af97cba108b6e5a707b7abf58a444d2` | 19/19 SUCCESS |
 | R8 — API ciphertext relay | #77 | `a2c0b6afd002455267745d3da4d21bd87943da8a` | `64d37f9a4d39195930959c53c926a4184877355a` | 19/19 SUCCESS |
+| R9 — browser trust + bounded terminal | #78 | `fdf2bd77ac3178ee973d10c5429b1b2d8b7a5051` | `15a4632f915dd1e1bde19425e313b52ada27166f` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -546,10 +549,56 @@ PROPOSED architecture status are preserved.
   in English. Both measured no horizontal overflow, and no terminal payload was
   captured. This is local preview evidence, not a deployed/host-qualified UI.
 - Independent read-only Architecture/Security/Test review reports PASS with no
-  remaining P0/P1/P2. Exact-head CI, normal merge and read-back remain pending;
-  no merge is claimed by this pre-PR snapshot.
+  remaining P0/P1/P2. PR #78 exact head `fdf2bd77...` completed 19/19 checks,
+  then merged normally at `2026-09-04T09:22:07Z`; fetch/read-back observed exact
+  merge `15a4632f...` with parents `64d37f9a...` and `fdf2bd77...`.
+- All six standard post-main workflows for `15a4632f...` are SUCCESS after the
+  Security `frontend-audit` retry recovered from npm advisory API 503/timeouts.
+  GitHub's separate dynamic Dependency Graph job remains a historical
+  `pip-compile` `.lock` include limitation already present before R9; R10 tracks
+  the `.txt` include repair and will require its post-main graph to succeed.
 - Sol/ultra produced the complete R10 read-only plan: distinct fixed interactive
   Claude/Codex profile, host manifest v2, version/auth/env records, descriptor/WBR
   codecs, three native helper binaries, Runtime composition and inert installer
   assets. No CLI/HOME/key/host action occurred; implementation is approved after
   R9 delivery.
+
+## R10 exact-head verified candidate
+
+- Runtime host manifest v2 closes the exact-six executable inventory and exact-two
+  Claude/Codex profiles. Seven fixed descriptor roles, the 64-byte WBR protocol,
+  three native helpers, pre-birth cgroup placement, tmux/PTY attachment, qualified
+  auth probes, local-TTY login and host-wide WAW/legacy conflict coordination are
+  implemented without activating a host or handling a real credential.
+- Rootless isolation uses held-directory authority, in-namespace `openat2`
+  reanchoring, exact metadata/mount-flag comparison, non-recursive binds and a
+  two-level user-namespace lifecycle. Exact Stop proves cgroup empty, pane pidfd
+  exit, process-group disappearance and identity-bound stale-socket cleanup.
+- The bridge exits only after descendants are reaped, the inner PTY reaches EOF,
+  output is empty and tmux returns the exact 192-bit random cursor challenge. R11
+  must quiesce browser INPUT/WBR resize during this final barrier and retain an
+  outer minimum size of eight columns by one row.
+- PR #79 implementation head
+  `6083e6e1aa118b19b548a9070b7e49558988f7e5` completed all `20/20` exact-head
+  checks. Python 3.13 quality ran `3428 passed / 43 skipped`; Linux native ran
+  `66 passed` normally and `24 passed` with sanitizers. Web ran `915`, the
+  extension ran `6`, Chromium E2E ran `64`, release validation ran `143`, and
+  the documentation checker verified `238` relative links.
+- Independent Sol review reports PASS with no remaining P0/P1/P2 in the R10
+  software scope. CI fake-vendor/native evidence is not a real vendor build,
+  installed CRX, account, credential, production binary provenance or host
+  qualification; those remain R12 gates.
+- Documentation-only head `d5d1838...` exposed one sanitizer scheduling flake in
+  the native tail fixture: intentional legacy DSR noise at frame 1900 could be
+  echoed by the canonical inner PTY and alter tmux row 1 while the test treated
+  the rendered grid as a raw log. The fixture now emits all 2,048 strictly
+  ordered/hash-checked frames and its marker/padding before the same complete
+  DSR5/eight-position DSR6 overlap noise. Production bridge code and every strict
+  tail assertion remain unchanged; a new exact-head CI run is required.
+- R10 remains `待验证` until that new head completes CI and PR #79 is merged and
+  read back. Its actual merge SHA and post-main workflow results will be recorded
+  on the R11 branch.
+- Browser locale remains fixed: read only `navigator.languages[0]`; primary
+  language `zh` selects `zh-CN`; every other, missing or malformed value selects
+  English. Technical identifiers remain English. Full cross-page bilingual
+  migration is part of R11/rc9.

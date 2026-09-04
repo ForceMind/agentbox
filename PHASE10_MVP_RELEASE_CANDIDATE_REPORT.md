@@ -158,7 +158,7 @@ inventory, credential, or user path.
 
 ## Third-party Licenses
 
-The builder and CI cross-check `requirements-release.lock`, the actual
+The builder and CI cross-check `requirements-release.txt`, the actual
 wheelhouse, reviewed frontend production inventory, SPDX package entries, and
 `THIRD_PARTY_NOTICES.md`; 33 third-party package identities/versions/licenses
 matched. Observed licenses

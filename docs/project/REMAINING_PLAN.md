@@ -25,23 +25,26 @@ Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实
 
 ## Verified baseline and reachable behavior
 
-本轮开始时工作区干净，`main = origin/main = HEAD = merge-base`：
-`dfb5eb796f8745ee10cd2a9cefe0cdd15de057a9`。六个 exact-main workflow 均 SUCCESS。
-仅历史 Draft PR #42 打开，不在本轮写入范围内。当前证据不以旧 snapshot 替代。
+最新 live preflight 已 fetch：R10 branch merge-base 与 `origin/main` 均为 R9
+merge `15a4632f915dd1e1bde19425e313b52ada27166f`。本地与远端 branch HEAD
+`6083e6e1aa118b19b548a9070b7e49558988f7e5` 一致；PR #79 为
+`MERGEABLE/CLEAN`，其 20/20 exact-head checks 全部成功。当前文档提交形成新
+head 后仍需完整 CI、正常合并和精确回读；历史 Draft PR #42 不在本轮范围。
 
 | 用户能力 | 已有实现与证据 | 剩余内容 |
 | --- | --- | --- |
 | Project 选择与状态 | Workspace 页面、正式 Project API、metadata controller 与 E2E | 保持既有功能；不得将 metadata ready 当作 terminal admitted |
-| Start / exact Stop | Project-scoped HTTP、typed Runtime lifecycle、exact supervisor binding | 正式 interactive CLI profile、生产 Runtime factory 与 host qualification |
-| Connect | ticket/authority 与 handler seam 存在；当前页面按钮 disabled，WS 无 handler 返回 1013 | 信任验证、分阶段准入、真正 Runtime stream 与 API relay |
-| input/output/resize | supervisor、固定 Noise core 和 synthetic stream 测试已完成 | 完整 wire schemas、AWCE application crypto、PTY adapter、真实 browser controller |
-| detach/reconnect | lease/recovery/core fencing 与 fresh-key 基础已完成 | socket/PTY 正向 cleanup、fresh admission、ring re-encryption 与 UI 恢复接线 |
-| 输出安全 | 有协议/安全设计及 bounded core | 浏览器 VT/UTF-8 tokenizer、危险控制序列处理、真实交互验证 |
-| Runtime/API restart | durable epoch/generation/cgroup metadata 基础 | 实际进程恢复、quarantine/cleanup、host reboot evidence |
+| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及经 Linux exact-head CI 验证的 fixed profile/descriptor/cgroup/native process chain | R10 最终文档 head/merge/read-back；R11 controller；R12 real vendor/host qualification |
+| Connect | R6 staged authority、R7 Runtime encrypted stream、R8 API ciphertext relay、R9 trust provider core | R11 browser/API controller composition；R12 real CRX/trustd/host evidence |
+| input/output/resize | 完整 wire/application crypto、Runtime relay、bounded browser tokenizer/model 与 R10 PTY/WBR transport | R11 将真实软件组件接入用户流程并故障注入；R12真实 CLI 验证 |
+| detach/reconnect | fresh admission、lease/recovery、Runtime stream 与 R10 attach/cleanup 软件 | R11 controller/UI 恢复接线；R12 reboot/host evidence |
+| 输出安全 | 固定加密协议、API opaque relay、VT/UTF-8 tokenizer 和 bounded terminal model | R11 renderer/controller integration 与端到端 failure matrix |
+| Runtime/API restart | durable epoch/generation、quarantine、cleanup 与 local process/cgroup implementation | R11组合回归；R12实际 systemd/socket/cgroup/reboot 验证 |
 
-入口事实：`apps/api/src/agentbox_api/main.py` 尚未提供真实 stream handler；
-`WorkspacePage.tsx` 的连接/重连/断开按钮仍关闭；`waw_bootstrap.py` 构造 control
-server，但没有 stream server。已有 core 类不等于可访问的终端功能。
+入口事实：Runtime encrypted server 与 API opaque relay 已由 R7/R8 交付，R9
+交付 browser trust/terminal core，R10 fixed process candidate 本地完成；
+`WorkspacePage.tsx` 尚未将连接/重连/断开接入完整 controller。因此现有 core
+仍不等于用户可访问的真实终端，R11 才完成软件组合。
 
 ## Confirmed issue and unresolved observations
 
@@ -73,8 +76,8 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | R6 staged attachment authority | 已完成 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
 | R7 Runtime encrypted stream | 已完成 | Runtime stream session/server 与有限 executor integration | PR #76 已经 19/19 exact-head CI、正常合并与精确回读；真实 host 证据仍属 R12 |
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
-| R9 browser trust + terminal | 待CI/合并 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | 121 trust、185 terminal、915 Web、64 E2E、provider/extension/bundle gates与独立复审通过；首个浏览器语言为中文时`zh-CN`，其余English；真实安装与controller全链路仍属R11/R12 |
-| R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；须明确 AgentType launch records、vendor state roots、retention/telemetry、official login / Project Trust；正式 argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
+| R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
+| R10 fixed interactive process | 待验证 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 实现 head `6083e6e...` 的 20/20 exact-head CI 与独立复审已通过；等待最终文档 head CI、正常合并与精确回读。真实 vendor/host 证据仍属 R12 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
@@ -113,6 +116,17 @@ R10.1 executable verifier 已通过独立 sol 审查，80 passed / 1 native Linu
 PR #69 head `9147cace5b554205dfecc20cf8bfb643d4c46761` 经19/19 SUCCESS合并，
 实际 merge `9529da6d5c110b7a09d5972dfa0db5e012727451`；完整 CLI launch/retention profile 仍未冻结，详见
 [assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md)，不得把该基础视为执行接线完成。
+
+R10/rc5 exact-head 候选已完成：manifest v2、exact-six executable、exact-two profile、
+七个 descriptor role、64-byte WBR、三个 native helper、pre-birth cgroup、真实
+tmux attach READY 检查、Runtime composition、qualified vendor probe、local TTY
+login seam、WAW/legacy conflict coordinator 与 inert policy assets 已实现。聚焦
+PR #79 implementation head `6083e6e...` 的 Python 3.13 回归为
+`3428 passed / 43 skipped`，Linux native normal/sanitizer 分别为 `66`/`24`
+passed；Web `915`、extension `6`、Chromium E2E `64`、release validation `143`
+及 `238` 个文档链接均通过。20/20 exact-head checks 全部成功，独立 Sol 复审
+无 P0/P1/P2。最终文档 head 仍需 CI、正常合并和回读；不能升级为 host
+qualification。
 
 R2 是独立测量工作；不把未知原因当作其它 slice 的通用阻断。R1 是纯 framing，
 不能因为其编解码成功而跳过 R3/R4 的加密、身份和准入验证。
@@ -168,20 +182,13 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 
 ## Current resumption point
 
-R0/R1/R2/R9.1/R10.1 已完成适用实现、独立审查、CI、合并和回读。Owner 最新
-明确要求继续并委托目标、计划与软件决策；Coding Agent 已接受独立审查通过的
-完整 R3 协议补充。Python/Web R4 实现已通过独立审查、560 Python 回归、148 Web测试、
-双角色互通和62 native/既有E2E，并由PR #73合并。R5完整wire及性能修复
-以279 Python / 274 Web、独立复审和双语言互通通过，并由PR #74合并；R6 staged
-authority与coordinator已复审通过，R7实际Runtime加密流正在实现。后续软件合同由 Coding Agent 决策、记录理由并审查，
-不再等待重复的软件 Owner gate。真实 host、生产 key/Secret 与发布的具体范围
-和真实证据仍保留；完整产品尚未完成。
+R0–R9 已完成适用实现、独立审查、exact-head CI、正常合并和精确回读。
+R10/rc5 implementation head 的实现、独立复审和 20/20 exact-head CI 已完成；
+当前只剩最终文档 head CI、正常合并和精确回读。R10 不安装或启用任何 host
+unit/socket，不使用真实 vendor account/credential，也不宣称真实 CLI 或 host
+qualification。
 
-R3/R4 已由 PR #73 合并：head `df943ecbf37b6c748dc1af73f4270017a3d9f6dc`，19/19
-SUCCESS，实际 merge `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064`。R5 完整 schema/
-trace/互通与性能修复已复审通过，Python279/Web274及组合496回归通过，待CI。
-R6 四项准入/发布/清理审查问题已修复并复审通过，待独立交付；R7 Runtime
-实际加密流实现已启动。R6 authority slot expiry 不替代 R7/R8 的30s stale、60s
-grace、15min idle、8h absolute及10s Runtime health要求。
-
-R5 已由 PR #74 交付：head `62d04adbfa775f3a14ab678c485093f15b1039ed`，19/19 SUCCESS；实际 merge `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6`。R6 四项审查缺陷全部关闭，并由 PR #75 交付：head `679b2f71ec5917ead7695c3b20cb1118cb46cc76`，19/19 SUCCESS；实际 merge `a27621faca0e0d04b529b51993f98138496a75b5`。R7/R8 正并行开发实际网络与加密流接线。
+R10 交付后立即开始 R11/rc6–rc9：组合 browser/API/Runtime controller，覆盖
+failure/cancel/revoke/restart/cleanup 矩阵，完成 artifact/operation rehearsal，
+并把全站用户界面迁移为按浏览器首选语言选择的 `zh-CN`/English。R12 继续保留
+真实 CRX/trustd/vendor CLI/PTY/isolation/reboot 与生产支持边界的授权目标证据。

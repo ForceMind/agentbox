@@ -30,6 +30,11 @@ from agentbox_runtime.process import (
     inspect_executable,
     minimal_runtime_environment,
 )
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWConflictError,
+    WAWConflictLease,
+)
 
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _SUBCOMMAND = re.compile(r"^\s{0,8}([a-z][a-z0-9-]*)\s{2,}", re.MULTILINE)
@@ -560,19 +565,48 @@ class CodexManager:
         *,
         pair_cooldown_seconds: int = 10,
         monotonic: Callable[[], float] = time.monotonic,
+        conflict_coordinator: WAWConflictCoordinator | None = None,
     ) -> None:
         self._adapter = adapter
         self._lock = asyncio.Lock()
         self._pair_cooldown_seconds = pair_cooldown_seconds
         self._monotonic = monotonic
         self._last_pair_request: float | None = None
+        if (
+            conflict_coordinator is not None
+            and type(conflict_coordinator) is not WAWConflictCoordinator
+        ):
+            raise TypeError("conflict_coordinator must be WAWConflictCoordinator")
+        self._conflicts = conflict_coordinator
+
+    @property
+    def conflict_coordinator(self) -> WAWConflictCoordinator | None:
+        return self._conflicts
+
+    def bind_conflict_coordinator(self, coordinator: WAWConflictCoordinator) -> None:
+        """Install the host coordinator once when fixed WAW composition is enabled."""
+
+        if type(coordinator) is not WAWConflictCoordinator:
+            raise TypeError("coordinator must be WAWConflictCoordinator")
+        if self._conflicts is not None:
+            raise RuntimeOperationError(
+                "WAW_CONFLICT_COORDINATOR_BOUND",
+                "Codex conflict coordinator is already bound",
+                category="conflict",
+            )
+        self._conflicts = coordinator
 
     async def status(self) -> CodexStatus:
         return await self._adapter.status()
 
     async def start_remote(self) -> RemoteActionResult:
         async with self._lock:
-            return await self._adapter.start_remote()
+            lease = await self._acquire_conflict_lease()
+            try:
+                return await self._adapter.start_remote()
+            finally:
+                if lease is not None:
+                    lease.release()
 
     async def stop_remote(self) -> RemoteActionResult:
         async with self._lock:
@@ -593,3 +627,31 @@ class CodexManager:
                     )
             self._last_pair_request = now
             return await self._adapter.generate_pair_code()
+
+    async def _acquire_conflict_lease(self) -> WAWConflictLease | None:
+        if self._conflicts is None:
+            return None
+        task = asyncio.create_task(asyncio.to_thread(self._conflicts.acquire_legacy_codex_start))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            lease: WAWConflictLease | None = None
+            while True:
+                try:
+                    lease = await asyncio.shield(task)
+                    break
+                except asyncio.CancelledError:
+                    if task.done():
+                        break
+                    continue
+                except WAWConflictError:
+                    break
+            if lease is not None:
+                lease.release()
+            raise
+        except WAWConflictError as exc:
+            raise RuntimeOperationError(
+                exc.code,
+                "WAW Runtime conflicts with legacy Codex Remote start",
+                category="conflict",
+            ) from exc

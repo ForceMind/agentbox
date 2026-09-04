@@ -3,6 +3,58 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc5] - Unreleased
+
+### Added
+
+- Runtime host manifest v2, exact-six executable and exact-two interactive
+  profiles, descriptor-held launch handles and complete policy cross-pins.
+- Fixed C17 pane-bootstrap/bridge/attach helpers and Runtime PTY/WBR transport
+  with READY, attach/detach/reconnect, bounded relay and cgroup-backed Stop.
+- Version-bound qualified auth probing, local-TTY login/trust seams and one
+  host-wide WAW/legacy start conflict coordinator.
+- Inert WAW `tmux`, sandbox, Claude and Codex policy templates in the Runtime
+  package, including a canonical exact-two Codex TOML policy bundle and fixed
+  package-data/release-inventory checks.
+- WAW native helper source and the reviewed portable/Linux build-check scripts
+  in release artifacts for inspection and later qualification.
+- Browser-trust packaging derives and verifies the numeric MV3 rc5 identity
+  (`0.3.0.5`) from the npm candidate version.
+- The fixed interactive-process contract, including the R10 software boundary
+  and the distinct R11 integration/R12 host-evidence gates.
+
+### Fixed
+
+- Rootless workspace mounts reanchor kernel-derived lookup hints inside U1 and
+  exact-match them to the held directory authority before non-recursive bind;
+  U2 remains blocked until mount, capability, seccomp and FD lockdown complete.
+- Exact Stop removes tmux 3.2a stale socket names only after cgroup empty proof
+  and an identity-bound, dirfd-relative read-back/unlink/read-back sequence.
+- Failed Start records the tmux socket identity before accepting the pane and
+  applies the same cleanup after cgroup empty proof, preserving safe retries.
+- Pane/bootstrap exit is observed through non-child pidfd readiness; only direct
+  launcher and attach-supervisor children use `waitid`, and unknown pane exit
+  status remains explicit instead of raising `ECHILD` or inventing a code.
+- Failed Start exhausts pane observation, direct-child reap, cgroup cleanup,
+  socket cleanup and local FD closure independently while preserving the first
+  cleanup error and its original Start context.
+- Exact Stop gives tmux a bounded interval to reap the observed pane zombie and
+  remove its process group after pidfd exit/cgroup-empty proof.
+- The bridge uses raw outer-terminal input and a bounded 64-position random
+  tmux cursor/DSR acknowledgment before pane exit; delayed vendor queries cannot
+  impersonate the post-exit challenge, and unparsed challenge prefixes fail closed.
+- The Linux tail-integrity fixture keeps all 2,048 digest-checked frames ahead of
+  its intentional DSR overlap noise, so canonical inner-PTY echo can affect only
+  excluded padding and cannot create a sanitizer scheduling flake.
+
+### Known limitations
+
+- The templates and helper source neither install nor enable a unit/socket,
+  production binary, vendor CLI/account, policy enrollment or Secret.
+- Real vendor compatibility, signed/reproducible native binaries and installed
+  host isolation/recovery evidence remain R12; browser/API controller integration
+  and complete cross-page bilingual UI remain R11.
+
 ## [0.3.0rc4] - Unreleased
 
 ### Added

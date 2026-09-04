@@ -89,6 +89,15 @@ agentbox_installer = [
   "assets/systemd/*.socket",
   "assets/tmpfiles.d/*.conf",
 ]
+agentbox_runtime = [
+  "assets/waw-inert/README.md",
+  "assets/waw-inert/tmux.conf",
+  "assets/waw-inert/sandbox-policies.v1.json",
+  "assets/waw-inert/claude/managed-settings.json",
+  "assets/waw-inert/codex/requirements.toml",
+  "assets/waw-inert/codex/managed_config.toml",
+  "assets/waw-inert/codex/policy-bundle.v1.json",
+]
 
 [tool.black]
 line-length = 100

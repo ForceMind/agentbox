@@ -9,21 +9,37 @@ from typing import Any, cast
 import pytest
 import rfc8785
 from agentbox_runtime.waw_manifest_codecs import (
+    RUNTIME_HOST_MANIFEST_SCHEMA_V2,
+    RUNTIME_HOST_MANIFEST_V2_PATHS,
     APIHostAnchor,
+    APIHostAnchorV2,
     CgroupDelegationManifest,
     ProjectRootManifest,
     RuntimeHostManifest,
+    RuntimeHostManifestV2,
     WAWManifestCodecError,
     decode_api_host_anchor,
+    decode_api_host_anchor_v2,
     decode_cgroup_delegation_manifest,
     decode_project_root_manifest,
     decode_runtime_host_manifest,
+    decode_runtime_host_manifest_v2,
     encode_api_host_anchor,
+    encode_api_host_anchor_v2,
     encode_cgroup_delegation_manifest,
     encode_project_root_manifest,
     encode_runtime_host_manifest,
+    encode_runtime_host_manifest_v2,
     manifest_sha256,
     verify_api_host_anchor_cross_manifest,
+    verify_api_host_anchor_v2_cross_manifest,
+)
+from agentbox_runtime.waw_process_profile import (
+    EXECUTABLE_POLICIES_V1,
+    INTERACTIVE_PROFILE_CONSTANTS_V1,
+    encode_codex_managed_policy_bundle_v1,
+    encode_executable_inventory_v1,
+    encode_interactive_profile_bundle_v1,
 )
 
 _HEX_A = "a" * 64
@@ -549,3 +565,176 @@ def test_cross_manifest_pin_rejects_zero_project_digest_before_epoch_use() -> No
         verify_api_host_anchor_cross_manifest(
             encode_api_host_anchor(anchor_data), runtime_raw, project_raw, cgroup_raw
         )
+
+
+def _inventory_v1() -> bytes:
+    entries = []
+    for index, policy in enumerate(EXECUTABLE_POLICIES_V1, start=1):
+        entries.append(
+            {
+                "kind": policy.kind,
+                "path": policy.fixed_path or f"/opt/vendor/{policy.kind}",
+                "sha256": f"{index:x}" * 64,
+                "max_bytes": policy.max_bytes,
+                "version_identity": policy.version_identity,
+                "version_probe_id": policy.version_probe_id,
+            }
+        )
+    return encode_executable_inventory_v1({"executables": entries})
+
+
+def _profiles_v1(claude_policy: bytes, codex_policy: bytes) -> bytes:
+    profiles = []
+    for agent_type in ("claude", "codex"):
+        profile = dict(INTERACTIVE_PROFILE_CONSTANTS_V1[agent_type])
+        profile["managed_policy_digest"] = manifest_sha256(
+            claude_policy if agent_type == "claude" else codex_policy
+        )
+        profiles.append(profile)
+    return encode_interactive_profile_bundle_v1({"profiles": profiles})
+
+
+def _v2_cross_pin_inputs() -> tuple[bytes, ...]:
+    project = encode_project_root_manifest(_project())
+    cgroup = encode_cgroup_delegation_manifest(_cgroup())
+    inventory = _inventory_v1()
+    socket_policy = b'{"schema_version":"waw-socket-policy-v1"}'
+    claude_policy = b'{"schema_version":"claude-managed-policy-v1"}'
+    codex_requirements = b"allow_remote_control = false\n"
+    codex_managed_config = b'[history]\npersistence = "none"\n'
+    codex_policy = encode_codex_managed_policy_bundle_v1(
+        requirements=codex_requirements, managed_config=codex_managed_config
+    )
+    profiles = _profiles_v1(claude_policy, codex_policy)
+    tmux = b"set -g status off\n"
+    sandbox = b'{"schema_version":"waw-sandbox-policies-v1"}'
+    runtime = encode_runtime_host_manifest_v2(
+        {
+            "runtime_host_installation_id": "wri_" + "1" * 32,
+            "runtime_host_installation_revision": "3",
+            "runtime_attestation_x25519_fingerprint": _HEX_A,
+            **RUNTIME_HOST_MANIFEST_V2_PATHS,
+            "project_root_manifest_digest": manifest_sha256(project),
+            "cgroup_delegation_manifest_digest": manifest_sha256(cgroup),
+            "executable_inventory_digest": manifest_sha256(inventory),
+            "interactive_profile_bundle_digest": manifest_sha256(profiles),
+            "tmux_config_digest": manifest_sha256(tmux),
+            "sandbox_policy_bundle_digest": manifest_sha256(sandbox),
+            "socket_policy_digest": manifest_sha256(socket_policy),
+            "enrollment_epoch": "7",
+            "enrollment_state": "steady",
+        }
+    )
+    anchor = encode_api_host_anchor_v2(
+        {
+            "runtime_host_installation_id": "wri_" + "1" * 32,
+            "runtime_host_installation_revision": "3",
+            "runtime_attestation_x25519_fingerprint": _HEX_A,
+            "runtime_manifest_schema": RUNTIME_HOST_MANIFEST_SCHEMA_V2,
+            "host_manifest_digest": manifest_sha256(runtime),
+            "project_root_manifest_digest": manifest_sha256(project),
+            "enrollment_epoch": "7",
+            "enrollment_state": "steady",
+        }
+    )
+    return (
+        anchor,
+        runtime,
+        project,
+        cgroup,
+        inventory,
+        profiles,
+        tmux,
+        sandbox,
+        socket_policy,
+        claude_policy,
+        codex_policy,
+        codex_requirements,
+        codex_managed_config,
+    )
+
+
+def test_v2_records_are_closed_canonical_and_cross_pin_the_complete_bundle() -> None:
+    values = _v2_cross_pin_inputs()
+    anchor = decode_api_host_anchor_v2(values[0])
+    runtime = decode_runtime_host_manifest_v2(values[1])
+    assert isinstance(anchor, APIHostAnchorV2)
+    assert isinstance(runtime, RuntimeHostManifestV2)
+    assert anchor.runtime_manifest_schema == RUNTIME_HOST_MANIFEST_SCHEMA_V2
+    assert (
+        runtime.executable_inventory_path
+        == RUNTIME_HOST_MANIFEST_V2_PATHS["executable_inventory_path"]
+    )
+    pin = verify_api_host_anchor_v2_cross_manifest(*values)
+    assert pin.anchor == anchor
+    assert pin.runtime == runtime
+    assert pin.socket_policy_digest == manifest_sha256(values[8])
+    assert pin.claude_managed_policy_digest == manifest_sha256(values[9])
+    assert pin.codex_managed_policy_digest == manifest_sha256(values[10])
+    assert pin.codex_requirements_policy_digest == manifest_sha256(values[11])
+    assert pin.codex_managed_config_policy_digest == manifest_sha256(values[12])
+
+
+def test_v2_anchor_and_cross_pin_reject_v1_downgrade() -> None:
+    values = _v2_cross_pin_inputs()
+    with pytest.raises(WAWManifestCodecError):
+        decode_api_host_anchor_v2(encode_api_host_anchor(_anchor()))
+    with pytest.raises(WAWManifestCodecError):
+        decode_runtime_host_manifest_v2(encode_runtime_host_manifest(_runtime()))
+    with pytest.raises(WAWManifestCodecError):
+        verify_api_host_anchor_v2_cross_manifest(
+            values[0], encode_runtime_host_manifest(_runtime()), *values[2:]
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("project_root_manifest_path", "/caller/project.json"),
+        ("executable_inventory_digest", "0" * 64),
+        ("socket_policy_digest", "A" * 64),
+    ],
+)
+def test_runtime_v2_rejects_unfixed_paths_and_invalid_digests(field: str, value: object) -> None:
+    runtime = asdict(decode_runtime_host_manifest_v2(_v2_cross_pin_inputs()[1]))
+    runtime[field] = value
+    with pytest.raises(WAWManifestCodecError):
+        encode_runtime_host_manifest_v2(runtime)
+
+
+@pytest.mark.parametrize("field", ["secret", "caller_path", "probe", "profile", "command"])
+def test_runtime_v2_rejects_secret_caller_and_open_ended_fields(field: str) -> None:
+    runtime = asdict(decode_runtime_host_manifest_v2(_v2_cross_pin_inputs()[1]))
+    runtime[field] = "rejected"
+    with pytest.raises(WAWManifestCodecError, match="closed"):
+        encode_runtime_host_manifest_v2(runtime)
+
+
+@pytest.mark.parametrize("index", range(2, 13))
+def test_v2_cross_pin_rejects_each_subordinate_bundle_mutation(index: int) -> None:
+    values = list(_v2_cross_pin_inputs())
+    values[index] += b" "
+    with pytest.raises(WAWManifestCodecError):
+        verify_api_host_anchor_v2_cross_manifest(*values)
+
+
+@pytest.mark.parametrize("index", range(2, 13))
+def test_v2_cross_pin_rejects_mutation_even_when_host_manifest_is_reanchored(index: int) -> None:
+    values = list(_v2_cross_pin_inputs())
+    values[index] += b" "
+    runtime_data = asdict(decode_runtime_host_manifest_v2(values[1]))
+    runtime_data["runtime_host_installation_revision"] = "4"
+    values[1] = encode_runtime_host_manifest_v2(runtime_data)
+    anchor_data = asdict(decode_api_host_anchor_v2(values[0]))
+    anchor_data["runtime_host_installation_revision"] = "4"
+    anchor_data["host_manifest_digest"] = manifest_sha256(values[1])
+    values[0] = encode_api_host_anchor_v2(anchor_data)
+    with pytest.raises(WAWManifestCodecError):
+        verify_api_host_anchor_v2_cross_manifest(*values)
+
+
+def test_v2_cross_pin_rejects_claude_codex_managed_policy_swap() -> None:
+    values = list(_v2_cross_pin_inputs())
+    values[9], values[10] = values[10], values[9]
+    with pytest.raises(WAWManifestCodecError, match="managed policy"):
+        verify_api_host_anchor_v2_cross_manifest(*values)

@@ -1,6 +1,6 @@
 # AgentBox MVP Release Candidate Checklist
 
-Candidate: `0.3.0rc4`; planned tag: `v0.3.0-rc.4`.
+Candidate: `0.3.0rc5`; planned tag: `v0.3.0-rc.5`.
 
 Completing the preparation boxes does not authorize a tag, GitHub Release, or
 stable-support claim. Publication boxes remain manual and require review after
@@ -52,6 +52,10 @@ the Phase 10 PR is merged.
 - [ ] Artifact filename is `agentbox-<version>-linux-x86_64.tar.gz` and size is
       within the documented limit without node_modules, browser, dev venv, test
       cache, source map, database, config, Project, or credential content.
+- [ ] The Runtime wheel contains exactly every reviewed inert WAW template,
+      including the canonical Codex exact-two policy bundle; the artifact
+      contains exactly the reviewed native WAW source and build-check scripts
+      for inspection, but does not claim a production helper binary or toolchain.
 - [ ] `RELEASE_MANIFEST.json` schema, actual source commit/ref kind, target,
       file allowlist, per-file SHA-256, `>=3.11,<3.14` plus cp311/cp312/cp313
       ABI contract, locked build/bootstrap toolchain, migration head,

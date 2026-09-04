@@ -10,9 +10,13 @@ import os
 import socket
 import stat
 import struct
+import threading
+import weakref
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from agentbox_core.waw import AgentType
 from agentbox_protocol.runtime_capabilities import (
     RUNTIME_CAPABILITY_ACTION,
     RuntimeCapabilityQuery,
@@ -32,8 +36,32 @@ from agentbox_runtime.rpc import (
     validate_request_id,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_activation import WAWActivatedSockets
+from agentbox_runtime.waw_auth_probe import (
+    WAWCachedPublicAuthProbe,
+    WAWPublicAuthEvidence,
+    WAWPublicAuthProbe,
+    WAWPublicAuthProbeCache,
+    WAWVendorPublicAuthBinding,
+    WAWVendorPublicAuthProbeAdapter,
+)
+from agentbox_runtime.waw_bootstrap import (
+    WAWFixedRuntimeComposition,
+    build_waw_control_server,
+    create_waw_lifecycle_registry_from_filesystem_bundle,
+)
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWLegacyClaudeState,
+    WAWLegacyCodexState,
+    WAWManagedConflictState,
+)
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
+from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
+from agentbox_runtime.waw_lifecycle import BindingDigestFactory
+from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
+from agentbox_runtime.waw_vendor_probe import WAWVendorProbeRunner
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
 _CODEX_ACTIONS = frozenset(
@@ -68,6 +96,39 @@ _PROJECT_ACTION_KEYS: dict[str, frozenset[str]] = {
     "github.pr.create": frozenset({"project_key", "title", "body", "base"}),
 }
 _ACTIONS |= frozenset(_PROJECT_ACTION_KEYS)
+_CONTROL_SERVER_ISSUES: weakref.WeakKeyDictionary[
+    WAWControlServer, tuple[WAWFixedRuntimeComposition, str]
+] = weakref.WeakKeyDictionary()
+_CONTROL_SERVER_ISSUE_LOCK = threading.Lock()
+
+
+class _RuntimeConflictProbe:
+    """Closed callback composition; callbacks must be bounded synchronous probes."""
+
+    def __init__(
+        self,
+        *,
+        legacy_claude: Callable[[str], WAWLegacyClaudeState],
+        legacy_codex_remote: Callable[[], WAWLegacyCodexState],
+        waw_for_project: Callable[[str], tuple[WAWManagedConflictState, ...]],
+        waw_for_host: Callable[[], tuple[WAWManagedConflictState, ...]],
+    ) -> None:
+        self._legacy_claude = legacy_claude
+        self._legacy_codex_remote = legacy_codex_remote
+        self._waw_for_project = waw_for_project
+        self._waw_for_host = waw_for_host
+
+    def legacy_claude(self, project_id: str) -> WAWLegacyClaudeState:
+        return self._legacy_claude(project_id)
+
+    def legacy_codex_remote(self) -> WAWLegacyCodexState:
+        return self._legacy_codex_remote()
+
+    def waw_for_project(self, project_id: str) -> tuple[WAWManagedConflictState, ...]:
+        return self._waw_for_project(project_id)
+
+    def waw_for_host(self) -> tuple[WAWManagedConflictState, ...]:
+        return self._waw_for_host()
 
 
 class RuntimeExecutorServer:
@@ -86,9 +147,28 @@ class RuntimeExecutorServer:
         trailing_timeout_seconds: float = 0.01,
         waw_epoch_store: WAWRuntimeEpochStore | None = None,
         waw_control_server: WAWControlServer | None = None,
+        enable_waw_fixed_process: bool = False,
+        legacy_claude: Callable[[str], WAWLegacyClaudeState] | None = None,
+        legacy_codex_remote: Callable[[], WAWLegacyCodexState] | None = None,
+        waw_for_project: Callable[[str], tuple[WAWManagedConflictState, ...]] | None = None,
+        waw_for_host: Callable[[], tuple[WAWManagedConflictState, ...]] | None = None,
+        formal_project_id_for_legacy: Callable[[str], str | None] | None = None,
+        waw_vendor_probe_runner: WAWVendorProbeRunner | None = None,
+        waw_vendor_auth_bindings: Mapping[AgentType, WAWVendorPublicAuthBinding] | None = None,
+        waw_auth_probe_cache: WAWPublicAuthProbeCache | None = None,
+        waw_fixed_runtime: WAWFixedRuntimeComposition | None = None,
     ) -> None:
         if read_timeout_seconds <= 0 or write_timeout_seconds <= 0 or trailing_timeout_seconds <= 0:
             raise ValueError("Runtime socket timeouts must be positive")
+        if (
+            waw_fixed_runtime is not None
+            and type(waw_fixed_runtime) is not WAWFixedRuntimeComposition
+        ):
+            raise TypeError("waw_fixed_runtime must be WAWFixedRuntimeComposition")
+        if waw_fixed_runtime is not None and waw_epoch_store is not None:
+            raise ValueError("waw_fixed_runtime and waw_epoch_store are mutually exclusive")
+        if waw_fixed_runtime is not None and not enable_waw_fixed_process:
+            raise ValueError("waw_fixed_runtime requires fixed-process mode")
         self._socket_path = socket_path
         self._manager = manager
         self._claude_manager = claude_manager
@@ -99,9 +179,81 @@ class RuntimeExecutorServer:
         self._read_timeout_seconds = read_timeout_seconds
         self._write_timeout_seconds = write_timeout_seconds
         self._trailing_timeout_seconds = trailing_timeout_seconds
-        self._waw_epoch_store = waw_epoch_store
+        self._waw_epoch_store: WAWRuntimeEpochStore | None = waw_epoch_store
         self._waw_control_server = waw_control_server
+        self._waw_fixed_runtime = waw_fixed_runtime
+        self._waw_public_auth_probe: WAWPublicAuthProbe | None = None
+        self._waw_auth_probe_cache: WAWPublicAuthProbeCache | None = None
+        self._waw_conflict_coordinator: WAWConflictCoordinator | None = None
         self._waw_runtime_epoch: int | None = None
+        if waw_fixed_runtime is not None:
+            if any(
+                value is not None
+                for value in (
+                    legacy_claude,
+                    legacy_codex_remote,
+                    waw_for_project,
+                    waw_for_host,
+                    waw_vendor_probe_runner,
+                    waw_vendor_auth_bindings,
+                    waw_auth_probe_cache,
+                )
+            ):
+                raise ValueError("fixed composition owns conflict and auth providers")
+            coordinator = waw_fixed_runtime.executor.conflict_coordinator
+            auth_probe = waw_fixed_runtime.executor.auth_probe
+            with _CONTROL_SERVER_ISSUE_LOCK:
+                control_issue = (
+                    _CONTROL_SERVER_ISSUES.pop(waw_control_server, None)
+                    if type(waw_control_server) is WAWControlServer
+                    else None
+                )
+            if (
+                type(coordinator) is not WAWConflictCoordinator
+                or type(auth_probe) is not WAWCachedPublicAuthProbe
+                or waw_fixed_runtime.executor.runtime_epoch != waw_fixed_runtime.runtime_epoch
+                or waw_fixed_runtime.executor.execution_authority
+                is not waw_fixed_runtime.execution_authority
+                or control_issue is None
+                or control_issue[0] is not waw_fixed_runtime
+                or control_issue[1] != waw_fixed_runtime.runtime_epoch
+                or not callable(formal_project_id_for_legacy)
+                or type(self._manager) is not CodexManager
+                or type(self._claude_manager) is not ClaudeSessionManager
+                or self._manager.conflict_coordinator is not None
+                or self._claude_manager.conflict_coordinator is not None
+            ):
+                raise RuntimeOperationError(
+                    "WAW_COMPOSITION_MISMATCH",
+                    "Server cannot bind the exact fixed Runtime composition",
+                    category="conflict",
+                )
+            assert waw_control_server is not None
+            self._waw_public_auth_probe = auth_probe
+            self._waw_auth_probe_cache = auth_probe.cache
+            self._waw_conflict_coordinator = coordinator
+            self._manager.bind_conflict_coordinator(coordinator)
+            self._claude_manager.bind_conflict_coordinator(
+                coordinator,
+                formal_project_id_for_legacy=formal_project_id_for_legacy,
+            )
+            self._waw_runtime_epoch = int(waw_fixed_runtime.runtime_epoch)
+        else:
+            self._waw_public_auth_probe, self._waw_auth_probe_cache = self._configure_waw_auth(
+                enable=enable_waw_fixed_process,
+                runner=waw_vendor_probe_runner,
+                bindings=waw_vendor_auth_bindings,
+                cache=waw_auth_probe_cache,
+            )
+            self._waw_conflict_coordinator = self._configure_waw_conflicts(
+                enable=enable_waw_fixed_process,
+                legacy_claude=legacy_claude,
+                legacy_codex_remote=legacy_codex_remote,
+                waw_for_project=waw_for_project,
+                waw_for_host=waw_for_host,
+                formal_project_id_for_legacy=formal_project_id_for_legacy,
+            )
+            self._waw_runtime_epoch = None
         self._server: asyncio.AbstractServer | None = None
 
     @property
@@ -109,6 +261,128 @@ class RuntimeExecutorServer:
         """The immutable epoch consumed before WAW traffic can be served."""
 
         return self._waw_runtime_epoch
+
+    @property
+    def waw_conflict_coordinator(self) -> WAWConflictCoordinator | None:
+        """Return the one coordinator shared by legacy and fixed WAW paths."""
+
+        return self._waw_conflict_coordinator
+
+    @property
+    def waw_fixed_runtime(self) -> WAWFixedRuntimeComposition | None:
+        return self._waw_fixed_runtime
+
+    @property
+    def waw_public_auth_probe(self) -> WAWPublicAuthProbe | None:
+        """The inert adapter configured for fixed-process local composition."""
+
+        return self._waw_public_auth_probe
+
+    @property
+    def waw_auth_probe_cache(self) -> WAWPublicAuthProbeCache | None:
+        return self._waw_auth_probe_cache
+
+    async def refresh_waw_public_auth_evidence(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence | None:
+        """Run the configured local probe; this is not an RPC/Web action."""
+
+        if self._waw_public_auth_probe is None or self._waw_auth_probe_cache is None:
+            return None
+        return await self._waw_public_auth_probe.probe(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+        )
+
+    @staticmethod
+    def _configure_waw_auth(
+        *,
+        enable: bool,
+        runner: WAWVendorProbeRunner | None,
+        bindings: Mapping[AgentType, WAWVendorPublicAuthBinding] | None,
+        cache: WAWPublicAuthProbeCache | None,
+    ) -> tuple[WAWPublicAuthProbe | None, WAWPublicAuthProbeCache | None]:
+        configured = (runner is not None, bindings is not None)
+        if not enable:
+            if any(configured) or cache is not None:
+                raise ValueError("WAW auth probe configuration requires fixed-process mode")
+            return None, None
+        if any(configured) and not all(configured):
+            raise ValueError("WAW vendor runner and bindings must be provided together")
+        if cache is not None and type(cache) is not WAWPublicAuthProbeCache:
+            raise TypeError("waw_auth_probe_cache must be WAWPublicAuthProbeCache")
+        actual_cache = cache or WAWPublicAuthProbeCache()
+        if runner is None or bindings is None:
+            return None, actual_cache
+        adapter = WAWVendorPublicAuthProbeAdapter(runner, bindings)
+        return WAWCachedPublicAuthProbe(adapter, actual_cache), actual_cache
+
+    def _configure_waw_conflicts(
+        self,
+        *,
+        enable: bool,
+        legacy_claude: Callable[[str], WAWLegacyClaudeState] | None,
+        legacy_codex_remote: Callable[[], WAWLegacyCodexState] | None,
+        waw_for_project: Callable[[str], tuple[WAWManagedConflictState, ...]] | None,
+        waw_for_host: Callable[[], tuple[WAWManagedConflictState, ...]] | None,
+        formal_project_id_for_legacy: Callable[[str], str | None] | None,
+    ) -> WAWConflictCoordinator | None:
+        if type(enable) is not bool:
+            raise TypeError("enable_waw_fixed_process must be bool")
+        providers = (
+            legacy_claude,
+            legacy_codex_remote,
+            waw_for_project,
+            waw_for_host,
+            formal_project_id_for_legacy,
+        )
+        if not enable:
+            if any(provider is not None for provider in providers):
+                raise ValueError("WAW conflict providers require fixed-process mode")
+            return None
+        if not all(callable(provider) for provider in providers):
+            raise ValueError("fixed-process mode requires all conflict providers")
+        assert legacy_claude is not None
+        assert legacy_codex_remote is not None
+        assert waw_for_project is not None
+        assert waw_for_host is not None
+        assert formal_project_id_for_legacy is not None
+        if (
+            type(self._manager) is not CodexManager
+            or type(self._claude_manager) is not ClaudeSessionManager
+        ):
+            raise TypeError("fixed-process mode requires concrete legacy managers")
+        if (
+            self._manager.conflict_coordinator is not None
+            or self._claude_manager.conflict_coordinator is not None
+        ):
+            raise RuntimeOperationError(
+                "WAW_CONFLICT_COORDINATOR_BOUND",
+                "Legacy manager conflict coordinator is already bound",
+                category="conflict",
+            )
+        probe = _RuntimeConflictProbe(
+            legacy_claude=legacy_claude,
+            legacy_codex_remote=legacy_codex_remote,
+            waw_for_project=waw_for_project,
+            waw_for_host=waw_for_host,
+        )
+        coordinator = WAWConflictCoordinator(probe)
+        self._manager.bind_conflict_coordinator(coordinator)
+        self._claude_manager.bind_conflict_coordinator(
+            coordinator,
+            formal_project_id_for_legacy=formal_project_id_for_legacy,
+        )
+        return coordinator
 
     async def start(self, *, create_development_parent: bool = False) -> None:
         if self._waw_epoch_store is not None and self._waw_runtime_epoch is None:
@@ -531,6 +805,62 @@ class RuntimeExecutorServer:
         await asyncio.wait_for(writer.drain(), timeout=self._write_timeout_seconds)
 
 
+def build_runtime_server_from_filesystem_v2(
+    *,
+    socket_path: Path,
+    manager: CodexManager,
+    claude_manager: ClaudeSessionManager,
+    allowed_peer_uids: frozenset[int],
+    allowed_peer_gids: frozenset[int],
+    formal_project_id_for_legacy: Callable[[str], str | None],
+    activated_sockets: WAWActivatedSockets,
+    waw_control_peer_uid: int,
+    waw_control_peer_gid: int,
+    runtime_manifest_path: Path,
+    public_directory: Path,
+    expected_runtime_gid: int,
+    epoch_store: WAWRuntimeEpochStore,
+    executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
+    binding_digest_factory: BindingDigestFactory,
+    project_manager: ProjectWorkspaceManager | None = None,
+    capability_collector: RuntimeCapabilityCollector | None = None,
+) -> RuntimeExecutorServer:
+    """Build one R11 server from the sole filesystem-v2 epoch composition."""
+
+    composition = create_waw_lifecycle_registry_from_filesystem_bundle(
+        runtime_manifest_path=runtime_manifest_path,
+        public_directory=public_directory,
+        expected_runtime_gid=expected_runtime_gid,
+        epoch_store=epoch_store,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+    )
+    control_server = build_waw_control_server(
+        sockets=activated_sockets,
+        registry=composition.registry,
+        expected_peer_uid=waw_control_peer_uid,
+        expected_peer_gid=waw_control_peer_gid,
+    )
+    with _CONTROL_SERVER_ISSUE_LOCK:
+        _CONTROL_SERVER_ISSUES[control_server] = (
+            composition,
+            composition.runtime_epoch,
+        )
+    return RuntimeExecutorServer(
+        socket_path,
+        manager,
+        allowed_peer_uids=allowed_peer_uids,
+        allowed_peer_gids=allowed_peer_gids,
+        claude_manager=claude_manager,
+        project_manager=project_manager,
+        capability_collector=capability_collector,
+        waw_control_server=control_server,
+        enable_waw_fixed_process=True,
+        formal_project_id_for_legacy=formal_project_id_for_legacy,
+        waw_fixed_runtime=composition,
+    )
+
+
 async def _main() -> None:
     environment = os.environ.get("AGENTBOX_ENV", "development")
     if environment not in {"development", "test", "production"}:
@@ -576,15 +906,6 @@ async def _main() -> None:
     github = GitHubAdapter(git)
     claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
     codex_manager = CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown)
-    waw_epoch_store = (
-        WAWRuntimeEpochStore(
-            Path("/var/lib/agentbox-waw/runtime-epoch-v1"),
-            expected_uid=os.geteuid(),
-            expected_gid=os.getegid(),
-        )
-        if environment == "production"
-        else None
-    )
     server = RuntimeExecutorServer(
         socket_path,
         codex_manager,
@@ -593,7 +914,6 @@ async def _main() -> None:
         claude_manager=claude_manager,
         project_manager=ProjectWorkspaceManager(project_registry, git, github),
         capability_collector=RuntimeCapabilityCollector(codex_manager, claude_manager),
-        waw_epoch_store=waw_epoch_store,
     )
     await server.start(create_development_parent=environment != "production")
     try:
@@ -604,3 +924,10 @@ async def _main() -> None:
 
 def main() -> None:
     asyncio.run(_main())
+
+
+__all__ = [
+    "RuntimeExecutorServer",
+    "build_runtime_server_from_filesystem_v2",
+    "main",
+]

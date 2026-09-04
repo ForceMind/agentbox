@@ -2,13 +2,19 @@
 
 ## Current maturity
 
-AgentBox source is the `0.3.0rc4` development candidate, advancing from the
+AgentBox source is the `0.3.0rc5` development candidate, advancing from the
 `0.3.0rc1` MVP artifact baseline. It implements authentication,
 typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
 operations, native installation, systemd deployment, staged update, and
 verified rollback for a single-server/single-administrator Linux x86_64 model.
 It is a pre-release—not a production-readiness, penetration-test, or broad
 platform-support claim.
+
+R10 packages inert WAW process-policy templates and native helper source/build
+checks. It does not install or enable a unit/socket, create a native helper
+binary, use a vendor account, or handle a Provider credential, Secret, key or
+host enrollment record. R11 integration and R12 host qualification remain
+separate security boundaries.
 
 The security architecture and completed internal review are documented in
 `docs/SECURITY.md`, `docs/PERMISSIONS.md`, `docs/THREAT_MODEL.md`, and

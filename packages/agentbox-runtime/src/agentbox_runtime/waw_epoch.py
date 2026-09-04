@@ -9,13 +9,16 @@ import os
 import re
 import secrets
 import stat
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
+from typing import TypeVar
 
 MAX_U64 = 2**64 - 1
 _SCHEMA = "waw-runtime-epoch-v1"
 _MAX_BYTES = 4096
 _DECIMAL = re.compile(r"\A(?:[1-9][0-9]{0,19})\Z")
+_T = TypeVar("_T")
 
 
 def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -92,6 +95,40 @@ class WAWRuntimeEpochStore:
             next_epoch = current + 1
             self._replace_epoch(directory_fd, next_epoch)
             return next_epoch
+        finally:
+            with suppress(OSError):
+                fcntl.flock(directory_fd, fcntl.LOCK_UN)
+            os.close(directory_fd)
+
+    def consume_prepared(
+        self,
+        prepare: Callable[[str], _T],
+        validate: Callable[[_T, str], None],
+    ) -> tuple[int, _T]:
+        """Commit the next epoch only after a side-effect-free value validates.
+
+        Production bootstrap uses this for executor construction. ``prepare``
+        must only construct in-memory composition; it must not start processes
+        or publish sockets while the durable epoch lock is held.
+        """
+
+        if not callable(prepare) or not callable(validate):
+            raise TypeError("epoch preparation callbacks must be callable")
+        directory_fd = self._open_directory()
+        try:
+            try:
+                fcntl.flock(directory_fd, fcntl.LOCK_EX)
+            except OSError as exc:
+                raise WAWRuntimeEpochError("epoch directory cannot be locked") from exc
+            current = self._read_epoch(directory_fd)
+            if current == MAX_U64:
+                raise WAWRuntimeEpochError("Runtime epoch sequence is exhausted")
+            next_epoch = current + 1
+            text_epoch = str(next_epoch)
+            prepared = prepare(text_epoch)
+            validate(prepared, text_epoch)
+            self._replace_epoch(directory_fd, next_epoch)
+            return next_epoch, prepared
         finally:
             with suppress(OSError):
                 fcntl.flock(directory_fd, fcntl.LOCK_UN)

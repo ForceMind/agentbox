@@ -4,13 +4,14 @@ This is not a Runtime action, manifest loader or process launcher. Only trusted
 Runtime composition may supply pins; requests can never supply paths or pins.
 The Linux x86_64 ELF header check rejects scripts and foreign formats, but does
 not establish loader/library integrity, vendor version support or runnability.
-Those proofs, immutable installation/namespace policy and the eventual atomic
-descriptor-to-exec handoff remain separate gates. Revalidate immediately before
-any future spawn/attach; a returned identity is only an observation at that time.
+After a strict inventory load, a verified handle can produce one nominal,
+one-shot descriptor handoff while holding the same revalidation lock. Immutable
+installation/namespace policy and actual execution remain separate gates.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import hmac
 import os
@@ -27,6 +28,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agentbox_runtime.waw_process_profile import ExecutableInventoryV1
 
 _close = os.close
 _fstat = os.fstat
@@ -36,6 +41,7 @@ _MAX_BYTES = 256 * 1024 * 1024
 _READ_BYTES = 64 * 1024
 _MAX_COMPONENTS = 128
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
+_LAUNCH_HANDLE_TOKEN = object()
 
 
 class WAWExecutableError(RuntimeError):
@@ -119,6 +125,49 @@ class WAWExecutableInventory:
                 raise WAWExecutableError("executable inventory entry is invalid")
             pin.__post_init__()
         self._pins = copied
+        self._version_records: dict[WAWExecutableKind, tuple[str, str]] = {}
+        self._inventory_digest: str | None = None
+
+    @classmethod
+    def from_manifest(cls, manifest: ExecutableInventoryV1) -> WAWExecutableInventory:
+        """Construct a production exact-six inventory from a strict v1 record."""
+
+        from agentbox_runtime.waw_process_profile import (
+            ExecutableInventoryV1,
+            decode_executable_inventory_v1,
+            encode_executable_inventory_v1,
+        )
+
+        if type(manifest) is not ExecutableInventoryV1:
+            raise WAWExecutableError("strict executable inventory manifest is required")
+        try:
+            checked = decode_executable_inventory_v1(encode_executable_inventory_v1(manifest))
+            pins = {
+                WAWExecutableKind(entry.kind): WAWExecutablePin(
+                    Path(entry.path), entry.sha256, entry.max_bytes
+                )
+                for entry in checked.executables
+            }
+        except (ValueError, TypeError) as exc:
+            raise WAWExecutableError("strict executable inventory manifest is invalid") from exc
+        if tuple(pins) != tuple(WAWExecutableKind):
+            raise WAWExecutableError("executable inventory is not exact-six")
+        result = cls(pins)
+        result._inventory_digest = hashlib.sha256(
+            encode_executable_inventory_v1(checked)
+        ).hexdigest()
+        result._version_records = {
+            WAWExecutableKind(entry.kind): (entry.version_identity, entry.version_probe_id)
+            for entry in checked.executables
+        }
+        return result
+
+    def version_record(self, kind: WAWExecutableKind) -> tuple[str, str]:
+        """Return the fixed version identity/probe pair of a strict inventory."""
+
+        if type(kind) is not WAWExecutableKind or kind not in self._version_records:
+            raise WAWExecutableError("executable kind has no strict version record")
+        return self._version_records[kind]
 
     def open(self, kind: WAWExecutableKind) -> WAWVerifiedExecutable:
         """Open and attest one known pin without executing or exporting its FD."""
@@ -147,7 +196,14 @@ class WAWExecutableInventory:
                 links,
                 pin.sha256,
             )
-            return WAWVerifiedExecutable(pin, identity, tuple(fds), nodes)
+            return WAWVerifiedExecutable(
+                pin,
+                identity,
+                tuple(fds),
+                nodes,
+                inventory_digest=self._inventory_digest,
+                version_record=self._version_records.get(kind),
+            )
         except BaseException as exc:
             _close_fds(fds)
             if isinstance(exc, OSError):
@@ -169,11 +225,16 @@ class WAWVerifiedExecutable:
         identity: WAWExecutableIdentity,
         fds: tuple[int, ...],
         nodes: tuple[_Node, ...],
+        *,
+        inventory_digest: str | None,
+        version_record: tuple[str, str] | None,
     ) -> None:
         self._pin = pin
         self._identity = identity
         self._fds = fds
         self._nodes = nodes
+        self._inventory_digest = inventory_digest
+        self._version_record = version_record
         self._lock = threading.Lock()
         self._finalizer = weakref.finalize(self, _close_fds, fds)
 
@@ -204,6 +265,49 @@ class WAWVerifiedExecutable:
         with self._lock:
             self._finalizer()
 
+    def create_launch_handle(
+        self,
+        *,
+        expected_kind: WAWExecutableKind,
+        profile_digest: str,
+    ) -> WAWExecutableLaunchHandle:
+        """Revalidate and duplicate the held final FD without reopening a path."""
+
+        if type(expected_kind) is not WAWExecutableKind or expected_kind is not self._identity.kind:
+            raise WAWExecutableError("executable launch kind does not match")
+        if (
+            type(profile_digest) is not str
+            or _DIGEST.fullmatch(profile_digest) is None
+            or profile_digest == "0" * 64
+        ):
+            raise WAWExecutableError("executable launch profile digest is invalid")
+        with self._lock:
+            self._require_open()
+            if self._inventory_digest is None or self._version_record is None:
+                raise WAWExecutableError("executable has no strict inventory launch binding")
+            try:
+                _validate_runtime()
+                _verify(self._pin, self._fds, self._nodes)
+                descriptor = fcntl.fcntl(self._fds[-1], fcntl.F_DUPFD_CLOEXEC, 64)
+                _verify_launch_descriptor(descriptor, self._identity)
+            except BaseException as exc:
+                if "descriptor" in locals():
+                    with suppress(OSError):
+                        _close(descriptor)
+                self._finalizer()
+                if isinstance(exc, OSError):
+                    raise WAWExecutableError("executable launch handoff failed") from exc
+                raise
+            return WAWExecutableLaunchHandle(
+                _LAUNCH_HANDLE_TOKEN,
+                descriptor=descriptor,
+                identity=self._identity,
+                inventory_digest=self._inventory_digest,
+                version_identity=self._version_record[0],
+                version_probe_id=self._version_record[1],
+                profile_digest=profile_digest,
+            )
+
     def __enter__(self) -> WAWVerifiedExecutable:
         with self._lock:
             self._require_open()
@@ -220,6 +324,90 @@ class WAWVerifiedExecutable:
     def _require_open(self) -> None:
         if not self._finalizer.alive:
             raise WAWExecutableError("executable handle is closed")
+
+
+class WAWExecutableLaunchHandle:
+    """Nominal, one-shot executable FD handoff for fixed Runtime launch."""
+
+    def __init__(
+        self,
+        token: object,
+        *,
+        descriptor: int,
+        identity: WAWExecutableIdentity,
+        inventory_digest: str,
+        version_identity: str,
+        version_probe_id: str,
+        profile_digest: str,
+    ) -> None:
+        if token is not _LAUNCH_HANDLE_TOKEN:
+            raise WAWExecutableError("executable launch handles are not caller-constructible")
+        self._descriptor = descriptor
+        self._identity = identity
+        self._inventory_digest = inventory_digest
+        self._version_identity = version_identity
+        self._version_probe_id = version_probe_id
+        self._profile_digest = profile_digest
+        self._lock = threading.Lock()
+        self._finalizer = weakref.finalize(self, _close_launch_fd, descriptor)
+
+    @property
+    def identity(self) -> WAWExecutableIdentity:
+        return self._identity
+
+    @property
+    def inventory_digest(self) -> str:
+        return self._inventory_digest
+
+    @property
+    def version_identity(self) -> str:
+        return self._version_identity
+
+    @property
+    def version_probe_id(self) -> str:
+        return self._version_probe_id
+
+    @property
+    def profile_digest(self) -> str:
+        return self._profile_digest
+
+    @property
+    def closed(self) -> bool:
+        with self._lock:
+            return self._descriptor < 0
+
+    def take(self, expected_kind: WAWExecutableKind) -> int:
+        """Transfer the descriptor once after one final inode identity check."""
+
+        if type(expected_kind) is not WAWExecutableKind or expected_kind is not self._identity.kind:
+            raise WAWExecutableError("executable launch kind does not match")
+        with self._lock:
+            if self._descriptor < 0:
+                raise WAWExecutableError("executable launch handle is closed or consumed")
+            try:
+                _verify_launch_descriptor(self._descriptor, self._identity)
+            except BaseException:
+                self._finalizer()
+                self._descriptor = -1
+                raise
+            descriptor = self._descriptor
+            self._finalizer.detach()
+            self._descriptor = -1
+            return descriptor
+
+    def close(self) -> None:
+        with self._lock:
+            if self._descriptor >= 0:
+                self._finalizer()
+                self._descriptor = -1
+
+    def __enter__(self) -> WAWExecutableLaunchHandle:
+        if self.closed:
+            raise WAWExecutableError("executable launch handle is closed or consumed")
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
 
 def _runtime_identity() -> tuple[str, str, int]:
@@ -331,10 +519,35 @@ def _validate_elf_header(header: bytes) -> None:
         raise WAWExecutableError("executable is not a Linux x86_64 ELF image")
 
 
+def _verify_launch_descriptor(descriptor: int, identity: WAWExecutableIdentity) -> None:
+    try:
+        details = _fstat(descriptor)
+    except OSError as exc:
+        raise WAWExecutableError("executable launch descriptor is unavailable") from exc
+    if (
+        not stat.S_ISREG(details.st_mode)
+        or details.st_dev != identity.device
+        or details.st_ino != identity.inode
+        or details.st_uid != identity.uid
+        or details.st_gid != identity.gid
+        or details.st_mode != identity.mode
+        or details.st_size != identity.size
+        or details.st_mtime_ns != identity.modified_ns
+        or details.st_ctime_ns != identity.changed_ns
+        or details.st_nlink != identity.links
+    ):
+        raise WAWExecutableError("executable launch descriptor identity changed")
+
+
 def _close_fds(fds: tuple[int, ...] | list[int]) -> None:
     for fd in reversed(fds):
         with suppress(OSError):
             _close(fd)
+
+
+def _close_launch_fd(descriptor: int) -> None:
+    with suppress(OSError):
+        _close(descriptor)
 
 
 __all__ = [
@@ -342,6 +555,7 @@ __all__ = [
     "WAWExecutableIdentity",
     "WAWExecutableInventory",
     "WAWExecutableKind",
+    "WAWExecutableLaunchHandle",
     "WAWExecutablePin",
     "WAWVerifiedExecutable",
 ]

@@ -12,6 +12,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
+from agentbox_core.waw import validate_project_id as validate_waw_project_id
+
 from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
@@ -35,6 +37,11 @@ from agentbox_runtime.process import (
 )
 from agentbox_runtime.project import ConfiguredProject, ProjectRegistry
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWConflictError,
+    WAWConflictLease,
+)
 
 _ANSI_CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
@@ -293,6 +300,8 @@ class ClaudeSessionManager:
         observe_delay_seconds: float = 0.5,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         max_concurrent_tmux_operations: int = 4,
+        conflict_coordinator: WAWConflictCoordinator | None = None,
+        formal_project_id_for_legacy: Callable[[str], str | None] | None = None,
     ) -> None:
         self._adapter = adapter
         self._tmux = tmux
@@ -302,6 +311,42 @@ class ClaudeSessionManager:
         self._locks: dict[str, asyncio.Lock] = {}
         self._tmux_limiter = asyncio.Semaphore(max_concurrent_tmux_operations)
         self._initialized: set[str] = set()
+        if (
+            conflict_coordinator is not None
+            and type(conflict_coordinator) is not WAWConflictCoordinator
+        ):
+            raise TypeError("conflict_coordinator must be WAWConflictCoordinator")
+        if (conflict_coordinator is None) != (formal_project_id_for_legacy is None):
+            raise ValueError("conflict coordinator and Project identity mapper must be paired")
+        if formal_project_id_for_legacy is not None and not callable(formal_project_id_for_legacy):
+            raise TypeError("formal_project_id_for_legacy must be callable")
+        self._conflicts = conflict_coordinator
+        self._formal_project_id_for_legacy = formal_project_id_for_legacy
+
+    @property
+    def conflict_coordinator(self) -> WAWConflictCoordinator | None:
+        return self._conflicts
+
+    def bind_conflict_coordinator(
+        self,
+        coordinator: WAWConflictCoordinator,
+        *,
+        formal_project_id_for_legacy: Callable[[str], str | None],
+    ) -> None:
+        """Install the host coordinator once when fixed WAW composition is enabled."""
+
+        if type(coordinator) is not WAWConflictCoordinator:
+            raise TypeError("coordinator must be WAWConflictCoordinator")
+        if not callable(formal_project_id_for_legacy):
+            raise TypeError("formal_project_id_for_legacy must be callable")
+        if self._conflicts is not None:
+            raise RuntimeOperationError(
+                "WAW_CONFLICT_COORDINATOR_BOUND",
+                "Claude conflict coordinator is already bound",
+                category="conflict",
+            )
+        self._conflicts = coordinator
+        self._formal_project_id_for_legacy = formal_project_id_for_legacy
 
     async def status(self) -> ClaudeStatus:
         installed, version, authentication, capabilities, diagnostics = (
@@ -405,86 +450,92 @@ class ClaudeSessionManager:
 
     async def start(self, project_id: str) -> ClaudeSessionActionResult:
         project = self._projects.resolve(project_id)
+        formal_project_id = self._mapped_waw_project_id(project.project_id)
         async with self._project_lock(project.project_id), self._tmux_limiter:
-            name = managed_session_name(project.project_id)
-            marker = managed_session_marker(project.project_id)
-            if await self._tmux.has_session(name):
-                if not await self._tmux.is_managed(name, marker):
-                    raise RuntimeOperationError(
-                        "CLAUDE_SESSION_COLLISION",
-                        "A non-AgentBox tmux session uses the managed session name",
-                        category="conflict",
-                    )
-                return ClaudeSessionActionResult(
-                    "already_running", await self._observe(project, name)
-                )
-            installed, _version, authentication, capabilities, _diagnostics = (
-                await self._adapter.inspect()
-            )
-            if not installed or self._adapter.executable() is None:
-                raise RuntimeOperationError(
-                    "CLAUDE_NOT_INSTALLED", "Claude is unavailable", category="unavailable"
-                )
-            if authentication is AuthenticationState.UNAUTHENTICATED:
-                raise RuntimeOperationError(
-                    "CLAUDE_UNAUTHENTICATED",
-                    "Claude authentication is required",
-                    category="unauthenticated",
-                )
-            if capabilities.remote_start is not CapabilityState.SUPPORTED:
-                raise RuntimeOperationError(
-                    "CLAUDE_REMOTE_UNSUPPORTED",
-                    "Claude Remote capability is unsupported or unknown",
-                    category="unsupported",
-                )
-            executable = self._adapter.executable()
-            if executable is None:
-                raise RuntimeOperationError(
-                    "CLAUDE_NOT_INSTALLED", "Claude is unavailable", category="unavailable"
-                )
-            await self._tmux.create_session(
-                name,
-                cwd=project.path,
-                command=executable,
-                managed_marker=marker,
-            )
-            self._initialized.add(project.project_id)
-            await self._sleep(self._observe_delay_seconds)
-            if not await self._tmux.has_session(name):
-                session = self._session_view(
-                    project, name, ClaudeSessionState.BROKEN, tmux_running=False
-                )
-            else:
-                session = await self._observe(project, name)
-                interaction_prepared = False
-                if (
-                    session.workspace_state is WorkspaceState.REQUIRES_USER_CONFIRMATION
-                    and await self._tmux.pane_dead(name)
-                ):
+            lease = await self._acquire_conflict_lease(formal_project_id)
+            try:
+                name = managed_session_name(project.project_id)
+                marker = managed_session_marker(project.project_id)
+                if await self._tmux.has_session(name):
                     if not await self._tmux.is_managed(name, marker):
                         raise RuntimeOperationError(
-                            "CLAUDE_SESSION_UNMANAGED",
-                            "The tmux session is not managed by AgentBox",
-                            category="forbidden",
+                            "CLAUDE_SESSION_COLLISION",
+                            "A non-AgentBox tmux session uses the managed session name",
+                            category="conflict",
                         )
-                    await self._tmux.prepare_workspace_interaction(
-                        name,
-                        cwd=project.path,
-                        command=executable,
+                    return ClaudeSessionActionResult(
+                        "already_running", await self._observe(project, name)
                     )
-                    interaction_prepared = True
-                    await self._sleep(self._observe_delay_seconds)
+                installed, _version, authentication, capabilities, _diagnostics = (
+                    await self._adapter.inspect()
+                )
+                if not installed or self._adapter.executable() is None:
+                    raise RuntimeOperationError(
+                        "CLAUDE_NOT_INSTALLED", "Claude is unavailable", category="unavailable"
+                    )
+                if authentication is AuthenticationState.UNAUTHENTICATED:
+                    raise RuntimeOperationError(
+                        "CLAUDE_UNAUTHENTICATED",
+                        "Claude authentication is required",
+                        category="unauthenticated",
+                    )
+                if capabilities.remote_start is not CapabilityState.SUPPORTED:
+                    raise RuntimeOperationError(
+                        "CLAUDE_REMOTE_UNSUPPORTED",
+                        "Claude Remote capability is unsupported or unknown",
+                        category="unsupported",
+                    )
+                executable = self._adapter.executable()
+                if executable is None:
+                    raise RuntimeOperationError(
+                        "CLAUDE_NOT_INSTALLED", "Claude is unavailable", category="unavailable"
+                    )
+                await self._tmux.create_session(
+                    name,
+                    cwd=project.path,
+                    command=executable,
+                    managed_marker=marker,
+                )
+                self._initialized.add(project.project_id)
+                await self._sleep(self._observe_delay_seconds)
+                if not await self._tmux.has_session(name):
+                    session = self._session_view(
+                        project, name, ClaudeSessionState.BROKEN, tmux_running=False
+                    )
+                else:
                     session = await self._observe(project, name)
-                    if session.state is not ClaudeSessionState.NEEDS_INTERACTION:
-                        session = replace(
-                            session,
-                            state=ClaudeSessionState.NEEDS_INTERACTION,
-                            workspace_state=WorkspaceState.REQUIRES_USER_CONFIRMATION,
-                            remote_readiness="unknown",
+                    interaction_prepared = False
+                    if (
+                        session.workspace_state is WorkspaceState.REQUIRES_USER_CONFIRMATION
+                        and await self._tmux.pane_dead(name)
+                    ):
+                        if not await self._tmux.is_managed(name, marker):
+                            raise RuntimeOperationError(
+                                "CLAUDE_SESSION_UNMANAGED",
+                                "The tmux session is not managed by AgentBox",
+                                category="forbidden",
+                            )
+                        await self._tmux.prepare_workspace_interaction(
+                            name,
+                            cwd=project.path,
+                            command=executable,
                         )
-                if session.state is ClaudeSessionState.UNKNOWN and not interaction_prepared:
-                    session = replace(session, state=ClaudeSessionState.STARTING)
-            return ClaudeSessionActionResult("started", session)
+                        interaction_prepared = True
+                        await self._sleep(self._observe_delay_seconds)
+                        session = await self._observe(project, name)
+                        if session.state is not ClaudeSessionState.NEEDS_INTERACTION:
+                            session = replace(
+                                session,
+                                state=ClaudeSessionState.NEEDS_INTERACTION,
+                                workspace_state=WorkspaceState.REQUIRES_USER_CONFIRMATION,
+                                remote_readiness="unknown",
+                            )
+                    if session.state is ClaudeSessionState.UNKNOWN and not interaction_prepared:
+                        session = replace(session, state=ClaudeSessionState.STARTING)
+                return ClaudeSessionActionResult("started", session)
+            finally:
+                if lease is not None:
+                    lease.release()
 
     async def stop(self, project_id: str) -> ClaudeSessionActionResult:
         project = self._projects.resolve(project_id)
@@ -580,3 +631,59 @@ class ClaudeSessionManager:
             lock = asyncio.Lock()
             self._locks[project_id] = lock
         return lock
+
+    def _mapped_waw_project_id(self, relative_key: str) -> str:
+        if self._conflicts is None:
+            return relative_key
+        mapper = self._formal_project_id_for_legacy
+        if mapper is None:  # pragma: no cover - constructor/binder invariant
+            raise RuntimeOperationError(
+                "PROJECT_RUNTIME_ACTIVE",
+                "WAW Project identity mapping is unavailable",
+                category="conflict",
+            )
+        try:
+            formal_project_id = mapper(relative_key)
+            if formal_project_id is None:
+                raise ValueError("WAW Project identity mapping is unavailable")
+            validate_waw_project_id(formal_project_id)
+        except Exception as exc:
+            raise RuntimeOperationError(
+                "PROJECT_RUNTIME_ACTIVE",
+                "WAW Project identity mapping is unavailable",
+                category="conflict",
+            ) from exc
+        return formal_project_id
+
+    async def _acquire_conflict_lease(self, project_id: str) -> WAWConflictLease | None:
+        if self._conflicts is None:
+            return None
+        task = asyncio.create_task(
+            asyncio.to_thread(
+                self._conflicts.acquire_legacy_claude_start,
+                project_id=project_id,
+            )
+        )
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            lease: WAWConflictLease | None = None
+            while True:
+                try:
+                    lease = await asyncio.shield(task)
+                    break
+                except asyncio.CancelledError:
+                    if task.done():
+                        break
+                    continue
+                except WAWConflictError:
+                    break
+            if lease is not None:
+                lease.release()
+            raise
+        except WAWConflictError as exc:
+            raise RuntimeOperationError(
+                exc.code,
+                "WAW Runtime conflicts with legacy Claude start",
+                category="conflict",
+            ) from exc

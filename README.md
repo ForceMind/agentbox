@@ -6,7 +6,7 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is now the **pre-release `0.3.0rc4` development candidate** for
+AgentBox source is now the **pre-release `0.3.0rc5` development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 This is not a stable-release, production-readiness, penetration-test,
@@ -86,12 +86,16 @@ Secret handling.
 The Web Agent Workspace now has recovery/cursor/lease contracts, Project-scoped
 Claude/Codex control APIs and a Chinese metadata workflow for READY Project and
 AgentType selection, explicit Start and exact Stop. It remains **NOT ADMITTED**:
-real terminal transport, CLI attachment, PTY, Noise/WebSocket and legacy Runtime
-interlocks remain unavailable. Earlier MVP host evidence does not qualify WAW.
+R10 adds fixed, inert process-policy templates and packages the native helper
+source/build checks, but does not ship an enabled helper binary or activate a
+terminal transport, CLI attachment, PTY, or host isolation. R11 integrates the
+software components and R12 supplies actual host evidence. Earlier MVP host
+evidence does not qualify WAW.
 See the [execution plan](docs/project/EXECUTION_PLAN.md),
 [metadata workflow](docs/WORKSPACE_METADATA_WORKFLOW.md),
 [recovery contracts](docs/WAW3_RECOVERY_CONTRACTS.md) and
-[host gates](docs/WAW1_HOST_GATE_CHECKLIST.md).
+[host gates](docs/WAW1_HOST_GATE_CHECKLIST.md), plus the [fixed interactive
+process boundary](docs/WAW_FIXED_INTERACTIVE_PROCESS.md).
 
 ## MVP goal
 
@@ -267,7 +271,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Quickstart](docs/QUICKSTART.md)
 - [MVP acceptance](docs/MVP_ACCEPTANCE.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
-- [0.3.0rc1 release notes](docs/releases/0.3.0rc1.md)
+- [0.3.0rc5 release notes](docs/releases/0.3.0rc5.md)
 - [Installation](docs/INSTALLATION.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Upgrade](docs/UPGRADE.md)

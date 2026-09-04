@@ -316,7 +316,7 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
 ## Phase 10 release-candidate coverage
 
-The independent Release Candidate workflow derives `0.3.0rc4` from the core
+The independent Release Candidate workflow derives `0.3.0rc5` from the core
 version source, builds the production Web once, and creates two release bundles
 from separate staging directories at the same commit and
 `SOURCE_DATE_EPOCH`. Exact tarball, manifest, SBOM, and checksum equality is the
@@ -336,6 +336,14 @@ then exercises fixture fresh install, two idempotent reinstalls, and
 data-preserving uninstall. Existing fault matrices remain the update/rollback
 rehearsal. No CI job writes runner `/etc`/`/opt`, uses production credentials,
 creates a tag/Release, or connects to a real server.
+
+R10 additionally checks that every inert WAW policy template is package data,
+the Codex exact-two TOML policy bundle is canonical and digest-pinned, the fixed
+interactive-process document is release inventory, and native helper source/
+build-check scripts are exact artifact inputs. The artifact scan rejects an
+unexpected or missing WAW wheel asset, native source or build script. These
+checks do not compile or qualify a production helper binary, install a
+unit/socket, invoke a vendor CLI, or provide host evidence.
 
 ## Phase 9 hardening and recovery coverage
 

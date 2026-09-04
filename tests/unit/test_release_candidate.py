@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
 import json
 import tarfile
+import tomllib
 import zipfile
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from agentbox_installer import artifact as artifact_module
@@ -16,6 +19,9 @@ from agentbox_installer.artifact import (
     verify_release,
 )
 from agentbox_installer.build import (
+    RELEASE_DOCUMENTS,
+    RELEASE_NATIVE_BUILD_SCRIPTS,
+    RELEASE_NATIVE_SOURCE_FILES,
     _frontend_package_inventory,
     _python_package_inventory,
     frontend_inventory_from_pnpm,
@@ -32,6 +38,15 @@ def _minimal_wheel(path: Path, version: str, name: str = "agentbox") -> None:
             f"{name}-{version}.dist-info/METADATA",
             f"Metadata-Version: 2.4\nName: {name}\nVersion: {version}\n",
         )
+
+
+def _release_artifact_checker(root: Path) -> ModuleType:
+    path = root / "scripts/check-release-artifact.py"
+    spec = importlib.util.spec_from_file_location("release_artifact_checker", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
@@ -123,8 +138,175 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc4"
-    assert npm_version("0.3.0rc4") == "0.3.0-rc.4"
+    assert verify_version_consistency(root) == "0.3.0rc5"
+    assert npm_version("0.3.0rc5") == "0.3.0-rc.5"
+
+
+def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> None:
+    root = Path(__file__).resolve().parents[2]
+    package_data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
+        "setuptools"
+    ]["package-data"]
+    expected_assets = [
+        "assets/waw-inert/README.md",
+        "assets/waw-inert/tmux.conf",
+        "assets/waw-inert/sandbox-policies.v1.json",
+        "assets/waw-inert/claude/managed-settings.json",
+        "assets/waw-inert/codex/requirements.toml",
+        "assets/waw-inert/codex/managed_config.toml",
+        "assets/waw-inert/codex/policy-bundle.v1.json",
+    ]
+    assert package_data["agentbox_runtime"] == expected_assets
+    assert "docs/WAW_FIXED_INTERACTIVE_PROCESS.md" in RELEASE_DOCUMENTS
+    assert RELEASE_NATIVE_SOURCE_FILES == (
+        "native/waw/include/agentbox_waw_protocol.h",
+        "native/waw/src/attach_supervisor.c",
+        "native/waw/src/bridge.c",
+        "native/waw/src/pane_bootstrap.c",
+        "native/waw/src/waw_isolation.c",
+        "native/waw/src/waw_isolation.h",
+        "native/waw/src/waw_native.c",
+        "native/waw/src/waw_native.h",
+    )
+    assert RELEASE_NATIVE_BUILD_SCRIPTS == (
+        "scripts/build-waw-native.py",
+        "scripts/check-waw-native.py",
+    )
+    assert all((root / name).is_file() for name in RELEASE_NATIVE_SOURCE_FILES)
+    assert [(root / name).is_file() for name in RELEASE_NATIVE_BUILD_SCRIPTS] == [True, True]
+    asset_root = root / "packages/agentbox-runtime/src/agentbox_runtime/assets/waw-inert"
+    assert [
+        (asset_root / asset.removeprefix("assets/waw-inert/")).is_file()
+        for asset in expected_assets
+    ] == [True] * len(expected_assets)
+    assert json.loads((asset_root / "sandbox-policies.v1.json").read_text(encoding="utf-8")) == {
+        "schema_version": "waw-sandbox-policies-v1",
+        "template_state": "inert",
+        "activation": "r12-host-evidence-required",
+        "policy_profiles": ["interactive-sandbox-v1"],
+    }
+    assert json.loads(
+        (asset_root / "claude/managed-settings.json").read_text(encoding="utf-8")
+    ) == {"env": {"CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1"}, "includeCoAuthoredBy": False}
+    codex_defaults = tomllib.loads(
+        (asset_root / "codex/managed_config.toml").read_text(encoding="utf-8")
+    )
+    assert codex_defaults["history"] == {"persistence": "none"}
+    assert codex_defaults["analytics"] == {"enabled": False}
+    assert codex_defaults["feedback"] == {"enabled": False}
+    assert codex_defaults["otel"] == {
+        "exporter": "none",
+        "metrics_exporter": "none",
+        "trace_exporter": "none",
+        "log_user_prompt": False,
+    }
+    codex_requirements = tomllib.loads(
+        (asset_root / "codex/requirements.toml").read_text(encoding="utf-8")
+    )
+    assert codex_requirements["allow_login_shell"] is False
+    assert codex_requirements["allow_managed_hooks_only"] is True
+    assert codex_requirements["allow_remote_control"] is False
+    assert codex_requirements["feedback"] == {"enabled": False}
+    assert all(value is False for value in codex_requirements["features"].values())
+    bundle = json.loads((asset_root / "codex/policy-bundle.v1.json").read_text(encoding="utf-8"))
+    assert [item["name"] for item in bundle["files"]] == [
+        "requirements.toml",
+        "managed_config.toml",
+    ]
+    assert (
+        bundle["files"][0]["sha256"]
+        == hashlib.sha256((asset_root / "codex/requirements.toml").read_bytes()).hexdigest()
+    )
+    assert (
+        bundle["files"][1]["sha256"]
+        == hashlib.sha256((asset_root / "codex/managed_config.toml").read_bytes()).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "unexpected"),
+    [
+        ("native", "native/waw/private.bin"),
+        ("script", "scripts/unreviewed-waw-build.py"),
+        ("wheel", "agentbox_runtime/assets/waw-inert/codex/unreviewed.toml"),
+    ],
+)
+def test_release_artifact_waw_inventory_rejects_unexpected_members(
+    kind: str, unexpected: str
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    checker = _release_artifact_checker(root)
+    native_members = set(RELEASE_NATIVE_SOURCE_FILES)
+    native_scripts = set(RELEASE_NATIVE_BUILD_SCRIPTS)
+    wheel_assets = set(checker.WAW_INERT_WHEEL_ASSETS)
+    checker.verify_waw_release_inventory(native_members, native_scripts, wheel_assets)
+
+    if kind == "native":
+        native_members.add(unexpected)
+    elif kind == "script":
+        native_scripts.add(unexpected)
+    else:
+        wheel_assets.add(unexpected)
+    with pytest.raises(ValueError, match="inventory mismatch"):
+        checker.verify_waw_release_inventory(native_members, native_scripts, wheel_assets)
+
+
+def test_release_artifact_collects_every_tar_native_and_script_member() -> None:
+    root = Path(__file__).resolve().parents[2]
+    checker = _release_artifact_checker(root)
+    output = io.BytesIO()
+    names = [
+        *RELEASE_NATIVE_SOURCE_FILES,
+        *RELEASE_NATIVE_BUILD_SCRIPTS,
+        "scripts/unreviewed-waw-build.py",
+    ]
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        for name in names:
+            info = tarfile.TarInfo(name)
+            info.size = 1
+            archive.addfile(info, io.BytesIO(b"x"))
+    output.seek(0)
+    with tarfile.open(fileobj=output, mode="r:") as archive:
+        native, scripts = checker.collect_waw_release_source_inventory(archive.getmembers())
+    assert native == set(RELEASE_NATIVE_SOURCE_FILES)
+    assert scripts == {*RELEASE_NATIVE_BUILD_SCRIPTS, "scripts/unreviewed-waw-build.py"}
+    with pytest.raises(ValueError, match="build-script inventory mismatch"):
+        checker.verify_waw_release_inventory(native, scripts, set(checker.WAW_INERT_WHEEL_ASSETS))
+
+
+def test_release_artifact_does_not_union_waw_assets_across_wheels() -> None:
+    root = Path(__file__).resolve().parents[2]
+    checker = _release_artifact_checker(root)
+    agentbox_payload = io.BytesIO()
+    dependency_payload = io.BytesIO()
+    missing = "agentbox_runtime/assets/waw-inert/tmux.conf"
+    with zipfile.ZipFile(agentbox_payload, "w") as wheel:
+        for name in checker.WAW_INERT_WHEEL_ASSETS - {missing}:
+            wheel.writestr(name, b"fixture")
+    with zipfile.ZipFile(dependency_payload, "w") as wheel:
+        wheel.writestr(missing, b"must-not-substitute")
+
+    observed: set[str] = set()
+    checker.collect_agentbox_waw_assets(
+        "wheelhouse/dependency-1.0-py3-none-any.whl",
+        dependency_payload.getvalue(),
+        agentbox_wheel_member="wheelhouse/agentbox-0.3.0rc5-py3-none-any.whl",
+        wheel_assets=observed,
+    )
+    checker.collect_agentbox_waw_assets(
+        "wheelhouse/agentbox-0.3.0rc5-py3-none-any.whl",
+        agentbox_payload.getvalue(),
+        agentbox_wheel_member="wheelhouse/agentbox-0.3.0rc5-py3-none-any.whl",
+        wheel_assets=observed,
+    )
+
+    assert missing not in observed
+    with pytest.raises(ValueError, match="inert-asset inventory mismatch"):
+        checker.verify_waw_release_inventory(
+            set(RELEASE_NATIVE_SOURCE_FILES),
+            set(RELEASE_NATIVE_BUILD_SCRIPTS),
+            observed,
+        )
 
 
 def test_release_build_toolchain_is_read_from_the_reviewed_lock() -> None:

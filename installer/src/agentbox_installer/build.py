@@ -45,9 +45,24 @@ RELEASE_DOCUMENTS = (
     "docs/MVP_ACCEPTANCE.md",
     "docs/RELEASE_CHECKLIST.md",
     "docs/WAW_SOFTWARE_READINESS.md",
+    "docs/WAW_FIXED_INTERACTIVE_PROCESS.md",
     "docs/WORKSPACE_METADATA_WORKFLOW.md",
     "docs/WAW3_RECOVERY_CONTRACTS.md",
     "docs/WAW1_HOST_GATE_CHECKLIST.md",
+)
+RELEASE_NATIVE_SOURCE_FILES = (
+    "native/waw/include/agentbox_waw_protocol.h",
+    "native/waw/src/attach_supervisor.c",
+    "native/waw/src/bridge.c",
+    "native/waw/src/pane_bootstrap.c",
+    "native/waw/src/waw_isolation.c",
+    "native/waw/src/waw_isolation.h",
+    "native/waw/src/waw_native.c",
+    "native/waw/src/waw_native.h",
+)
+RELEASE_NATIVE_BUILD_SCRIPTS = (
+    "scripts/build-waw-native.py",
+    "scripts/check-waw-native.py",
 )
 PLATFORM_SUPPORT = (
     {
@@ -149,6 +164,35 @@ def _prepare_wheel_source(source: Path, destination: Path) -> None:
         os.chmod(destination / name, 0o644)
 
 
+def _copy_exact_native_sources(source: Path, destination: Path) -> None:
+    native_root = source / "native/waw"
+    if native_root.is_symlink() or not native_root.is_dir():
+        raise BuildError("required native WAW source root is unavailable")
+    expected = {Path(name).relative_to("native/waw") for name in RELEASE_NATIVE_SOURCE_FILES}
+    expected_directories = {
+        parent for path in expected for parent in path.parents if parent != Path(".")
+    }
+    observed_files: set[Path] = set()
+    observed_directories: set[Path] = set()
+    for item in native_root.rglob("*"):
+        relative = item.relative_to(native_root)
+        if item.is_symlink():
+            raise BuildError("native WAW source contains a symbolic link")
+        if item.is_dir():
+            observed_directories.add(relative)
+        elif item.is_file():
+            observed_files.add(relative)
+        else:
+            raise BuildError("native WAW source contains a special file")
+    if observed_files != expected or observed_directories != expected_directories:
+        raise BuildError("native WAW source inventory is not exact")
+    for relative in sorted(expected):
+        target = destination / "native/waw" / relative
+        target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        shutil.copyfile(native_root / relative, target)
+        os.chmod(target, 0o644)
+
+
 def release_version(source: Path) -> str:
     version_file = source / "packages/agentbox-core/src/agentbox_core/version.py"
     try:
@@ -187,6 +231,9 @@ def verify_version_consistency(source: Path) -> str:
         pyproject = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
         root_package = json.loads((source / "package.json").read_text(encoding="utf-8"))
         web_package = json.loads((source / "apps/web/package.json").read_text(encoding="utf-8"))
+        extension_package = json.loads(
+            (source / "clients/browser-trust/extension/package.json").read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError, tomllib.TOMLDecodeError, json.JSONDecodeError) as exc:
         raise BuildError("version metadata is unavailable") from exc
     if (
@@ -195,6 +242,7 @@ def verify_version_consistency(source: Path) -> str:
         != {"attr": "agentbox_core.version.__version__"}
         or root_package.get("version") != npm_version(version)
         or web_package.get("version") != npm_version(version)
+        or extension_package.get("version") != npm_version(version)
     ):
         raise BuildError("AgentBox version metadata is inconsistent")
     return version
@@ -401,7 +449,7 @@ def build_release_artifact(
                     "--dest",
                     str(wheelhouse),
                     "--requirement",
-                    str(source / "requirements-release.lock"),
+                    str(source / "requirements-release.txt"),
                 ),
                 source,
                 timeout=600,
@@ -428,6 +476,15 @@ def build_release_artifact(
             raise BuildError("AgentBox package version does not match release version")
         _copy_regular_tree(web_dist, release / "web/dist")
         _copy_regular_tree(source / "migrations", release / "migrations")
+        _copy_exact_native_sources(source, release)
+        for name in RELEASE_NATIVE_BUILD_SCRIPTS:
+            source_path = source / name
+            if source_path.is_symlink() or not source_path.is_file():
+                raise BuildError(f"required release input is unavailable: {name}")
+            target = release / name
+            target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+            shutil.copyfile(source_path, target)
+            os.chmod(target, 0o644)
         shutil.copyfile(source / "alembic.ini", release / "alembic.ini")
         os.chmod(release / "alembic.ini", 0o644)
         for source_name, target_name, mode in (
@@ -741,7 +798,7 @@ def _canonical_package_name(value: str) -> str:
 def _verify_runtime_lock_inventory(source: Path, packages: list[dict[str, str]]) -> None:
     expected: set[tuple[str, str]] = set()
     try:
-        lines = (source / "requirements-release.lock").read_text(encoding="utf-8").splitlines()
+        lines = (source / "requirements-release.txt").read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError) as exc:
         raise BuildError("Python release dependency lock is unavailable") from exc
     for line in lines:
@@ -754,7 +811,7 @@ def _verify_runtime_lock_inventory(source: Path, packages: list[dict[str, str]])
         if item["manager"] == "pypi"
     }
     if not expected or observed != expected:
-        raise BuildError("Python wheelhouse inventory drifted from requirements-release.lock")
+        raise BuildError("Python wheelhouse inventory drifted from requirements-release.txt")
 
 
 def _verify_bootstrap_lock_inventory(source: Path, packages: list[dict[str, str]]) -> None:
