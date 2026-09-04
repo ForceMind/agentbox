@@ -99,7 +99,13 @@ def test_running_binding_requires_exact_probe_and_populated_zero_stop() -> None:
     inspector.accept_start(port.start(request), request)
     assert inspector.probe().state is RuntimeProbeState.RUNNING
 
-    port.probe_evidence = replace(port.probe_evidence, generation=8)
+    port.probe_evidence = replace(port.probe_evidence, state=RuntimeProbeState.EXITED)
+    exited = inspector.probe()
+    assert exited.state is RuntimeProbeState.EXITED and exited.exit_code is None
+
+    port.probe_evidence = replace(
+        port.probe_evidence, state=RuntimeProbeState.RUNNING, generation=8
+    )
     with pytest.raises(RuntimeOperationError, match="not exact"):
         inspector.probe()
 

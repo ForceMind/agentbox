@@ -10,6 +10,7 @@ import select
 import shutil
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -351,16 +352,51 @@ def _fixed_identity() -> FixedProcessIdentity:
 
 
 def _kill_tmux_server() -> None:
+    expected = _tmux_socket_identity()
     subprocess.run(
         ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "kill-server"],
         capture_output=True,
         check=False,
     )
     deadline = time.monotonic() + 5.0
-    while TMUX_SOCKET.exists():
+    while _tmux_server_responds():
         if time.monotonic() >= deadline:
-            raise AssertionError("dedicated tmux socket did not disappear")
+            raise AssertionError("dedicated tmux server did not exit")
         time.sleep(0.02)
+    if expected is not None:
+        _unlink_stale_tmux_socket(expected)
+
+
+def _tmux_socket_identity() -> tuple[int, int, int] | None:
+    try:
+        details = TMUX_SOCKET.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISSOCK(details.st_mode) or details.st_uid != os.geteuid():
+        raise AssertionError("dedicated tmux socket identity is invalid")
+    return details.st_dev, details.st_ino, details.st_uid
+
+
+def _tmux_server_responds() -> bool:
+    return (
+        subprocess.run(
+            ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "show-options", "-s", "-v", "exit-empty"],
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _unlink_stale_tmux_socket(expected: tuple[int, int, int]) -> None:
+    observed = _tmux_socket_identity()
+    if observed is None:
+        return
+    if observed != expected:
+        raise AssertionError("dedicated tmux socket identity changed")
+    TMUX_SOCKET.unlink()
+    if _tmux_socket_identity() is not None:
+        raise AssertionError("dedicated tmux socket unlink was not observed")
 
 
 def _begin_real_workspace(
@@ -485,6 +521,9 @@ def _begin_real_workspace(
 
 
 def _wait_session_gone(session: str, timeout: float = 10.0) -> None:
+    expected = _tmux_socket_identity()
+    if expected is None:
+        raise AssertionError("dedicated tmux socket disappeared before session cleanup")
     deadline = time.monotonic() + timeout
     while (
         subprocess.run(
@@ -498,10 +537,11 @@ def _wait_session_gone(session: str, timeout: float = 10.0) -> None:
             raise AssertionError("dedicated tmux session did not exit")
         time.sleep(0.02)
     deadline = time.monotonic() + timeout
-    while TMUX_SOCKET.exists():
+    while _tmux_server_responds():
         if time.monotonic() >= deadline:
             raise AssertionError("dedicated tmux server did not exit")
         time.sleep(0.02)
+    _unlink_stale_tmux_socket(expected)
 
 
 def _wbr_resize(sequence: int, columns: int, rows: int) -> bytes:
@@ -1158,7 +1198,7 @@ def test_python_native_port_reaches_built_helpers_fake_vendor_pty_wbr_and_reap(
         if time.monotonic() >= deadline:
             raise AssertionError("native adapter did not reap the fake vendor")
         time.sleep(0.01)
-    assert probe.exit_code == 7
+    assert probe.exit_code is None
     stopped = port.stop(proof.binding)
     assert stopped.closed and stopped.remaining_members == 0
     port.close()

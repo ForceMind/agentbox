@@ -653,7 +653,6 @@ def test_probe_preserves_input_uncertainty_and_detached_writer_state(
         ("managed_marker", "waw-v1:wri_" + "9" * 32 + ":" + "9" * 32),
         ("state", "RUNNING"),
         ("exit_code", 0),
-        ("state", RuntimeProbeState.EXITED),
     ],
 )
 def test_probe_rejects_ambiguous_or_stale_evidence(
@@ -666,6 +665,22 @@ def test_probe_rejects_ambiguous_or_stale_evidence(
     monkeypatch.setattr(transport, "probe", lambda: evidence)
     with pytest.raises(RuntimeOperationError, match="observation is not exact"):
         supervisor.probe()
+
+
+def test_probe_accepts_observed_exit_without_nonchild_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor, transport, _ = _supervisor(tmp_path)
+    supervisor.start()
+    original = transport.probe
+    monkeypatch.setattr(
+        transport,
+        "probe",
+        lambda: replace(original(), state=RuntimeProbeState.EXITED),
+    )
+    evidence = supervisor.probe()
+    assert evidence.state is RuntimeProbeState.EXITED
+    assert evidence.exit_code is None
 
 
 def test_missing_probe_never_falls_back_to_running_snapshot(

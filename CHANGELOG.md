@@ -23,6 +23,22 @@ versioning for release display and PEP 440 for the Python package.
 - The fixed interactive-process contract, including the R10 software boundary
   and the distinct R11 integration/R12 host-evidence gates.
 
+### Fixed
+
+- Rootless workspace mounts reanchor kernel-derived lookup hints inside U1 and
+  exact-match them to the held directory authority before non-recursive bind;
+  U2 remains blocked until mount, capability, seccomp and FD lockdown complete.
+- Exact Stop removes tmux 3.2a stale socket names only after cgroup empty proof
+  and an identity-bound, dirfd-relative read-back/unlink/read-back sequence.
+- Failed Start records the tmux socket identity before accepting the pane and
+  applies the same cleanup after cgroup empty proof, preserving safe retries.
+- Pane/bootstrap exit is observed through non-child pidfd readiness; only direct
+  launcher and attach-supervisor children use `waitid`, and unknown pane exit
+  status remains explicit instead of raising `ECHILD` or inventing a code.
+- Failed Start exhausts pane observation, direct-child reap, cgroup cleanup,
+  socket cleanup and local FD closure independently while preserving the first
+  cleanup error and its original Start context.
+
 ### Known limitations
 
 - The templates and helper source neither install nor enable a unit/socket,

@@ -651,6 +651,7 @@ class WAWSupervisor:
                 or type(evidence.state) is not RuntimeProbeState
                 or (
                     evidence.state is RuntimeProbeState.EXITED
+                    and evidence.exit_code is not None
                     and (
                         type(evidence.exit_code) is not int or not -128 <= evidence.exit_code <= 255
                     )

@@ -4,6 +4,7 @@ import hashlib
 import os
 import platform
 import socket
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -541,6 +542,120 @@ def test_native_output_over_bound_is_rejected_before_ring_append(tmp_path: Path)
     with pytest.raises(RuntimeOperationError, match="read bound"):
         runtime.produce_output()
     assert runtime.snapshot().buffered_bytes == 0
+
+
+def test_fixed_tmux_socket_cleanup_unlinks_exact_stale_identity() -> None:
+    with tempfile.TemporaryDirectory(prefix="agentbox-sock-", dir="/tmp") as temporary:
+        identity = fixed_identity()
+        path = Path(temporary) / f"{identity.workspace_hash[:32]}.sock"
+        directory_fd = os.open(temporary, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            listener.bind(str(path))
+            details = os.lstat(path)
+            listener.close()
+            assert fixed_subject._remove_fixed_tmux_socket(
+                identity, (details.st_dev, details.st_ino), directory_fd
+            )
+            assert not path.exists()
+            assert fixed_subject._remove_fixed_tmux_socket(
+                identity, (details.st_dev, details.st_ino), directory_fd
+            )
+        finally:
+            listener.close()
+            os.close(directory_fd)
+
+
+def test_fixed_tmux_socket_cleanup_rejects_replaced_inode() -> None:
+    with tempfile.TemporaryDirectory(prefix="agentbox-sock-", dir="/tmp") as temporary:
+        identity = fixed_identity()
+        path = Path(temporary) / f"{identity.workspace_hash[:32]}.sock"
+        directory_fd = os.open(temporary, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        original = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        replacement = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            original.bind(str(path))
+            details = os.lstat(path)
+            original.close()
+            path.unlink()
+            replacement.bind(str(path))
+            with pytest.raises(RuntimeOperationError, match="identity changed"):
+                fixed_subject._remove_fixed_tmux_socket(
+                    identity, (details.st_dev, details.st_ino), directory_fd
+                )
+            assert path.exists()
+        finally:
+            original.close()
+            replacement.close()
+            path.unlink(missing_ok=True)
+            os.close(directory_fd)
+
+
+def _missing_tmux_socket(*_args: object) -> tuple[int, int]:
+    try:
+        raise FileNotFoundError("not created")
+    except FileNotFoundError as exc:
+        raise RuntimeOperationError(
+            "WAW_START_UNCONFIRMED", "not created", category="conflict"
+        ) from exc
+
+
+def test_tmux_socket_wait_retries_only_missing_then_records_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations: list[tuple[int, int] | None] = [None, (11, 12)]
+
+    def verify(*_args: object) -> tuple[int, int]:
+        observed = observations.pop(0)
+        if observed is None:
+            return _missing_tmux_socket()
+        return observed
+
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", verify)
+    monkeypatch.setattr(fixed_subject, "_peek_pidfd", lambda _fd: None)
+    monkeypatch.setattr(fixed_subject.time, "sleep", lambda _seconds: None)
+    assert fixed_subject._wait_for_fixed_tmux_socket(fixed_identity(), -1, -1, 1.0) == (11, 12)
+
+
+def test_tmux_socket_wait_fails_when_launcher_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", _missing_tmux_socket)
+    monkeypatch.setattr(fixed_subject, "_peek_pidfd", lambda _fd: 7)
+    with pytest.raises(RuntimeOperationError, match="exited before socket identity"):
+        fixed_subject._wait_for_fixed_tmux_socket(fixed_identity(), -1, -1, 1.0)
+
+
+def test_tmux_socket_wait_deadline_and_identity_errors_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", _missing_tmux_socket)
+    monkeypatch.setattr(fixed_subject, "_peek_pidfd", lambda _fd: None)
+    with pytest.raises(RuntimeOperationError, match="deadline expired"):
+        fixed_subject._wait_for_fixed_tmux_socket(fixed_identity(), -1, -1, 0.0)
+
+    invalid = RuntimeOperationError(
+        "WAW_START_UNCONFIRMED", "identity is invalid", category="conflict"
+    )
+
+    def reject(*_args: object) -> tuple[int, int]:
+        raise invalid
+
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", reject)
+    with pytest.raises(RuntimeOperationError, match="identity is invalid"):
+        fixed_subject._wait_for_fixed_tmux_socket(fixed_identity(), -1, -1, 1.0)
+
+
+def test_observed_nonchild_termination_closes_pidfd_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[int] = []
+    monkeypatch.setattr(fixed_subject, "_signal_pidfd", lambda _fd, _signal: None)
+    monkeypatch.setattr(fixed_subject, "_pidfd_exit_observed", lambda _fd, _timeout: True)
+    monkeypatch.setattr(fixed_subject, "_close_fd", closed.append)
+    monkeypatch.setattr(os, "killpg", lambda _group, _signal: None)
+    fixed_subject._terminate_observed(41, 1.0, process_group=42)
+    assert closed == [41]
 
 
 def test_unpopulated_stop_remains_fenced_for_exact_destroy_retry(tmp_path: Path) -> None:

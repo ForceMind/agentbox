@@ -773,6 +773,36 @@ PROPOSED architecture status are preserved.
   server/socket transition. Each independently bounded transition now receives
   its own ten-second deadline; the server still must disappear without an
   explicit test-side kill.
+- Source inspection and Linux evidence established that tmux 3.2a exits its
+  server loop without unlinking a custom `-S` pathname. `exit-empty=on` remains
+  the server-process policy, while Runtime Stop now waits for exact cgroup
+  `populated=0`, revalidates the recorded socket device/inode/type/Runtime UID
+  through its held directory FD, performs fixed-basename `unlinkat`, and reads
+  back `ENOENT`. Identity drift or any unlink/read-back error remains
+  `WAW_STOP_UNCONFIRMED`; Root Helper is not involved.
+- Independent Sol review found that failed Start had the same stale-path risk
+  but no binding through which a caller could invoke Stop. Runtime now records
+  the socket identity before pane acceptance. After any later Start failure it
+  exhausts process/cgroup cleanup, removes only that recorded identity once
+  exact cgroup empty is proven, and still closes cgroup/control/WBR resources if
+  cleanup itself fails. An unrecorded remaining pathname yields
+  `RECONCILIATION_REQUIRED` and is never blindly deleted.
+- A second Sol review found the pane/bootstrap PID comes from `SO_PEERCRED` and
+  is a tmux-server child, so Runtime cannot legally obtain its status with
+  `waitid(P_PIDFD)`. Pane probe/failed-Start/Stop now use poll-only pidfd exit
+  observation and close the pidfd without reaping; `EXITED` permits an explicit
+  unknown `exit_code`. Direct launcher and attach-supervisor children retain
+  poll plus `waitid` reaping. Exact pane exit status would require a future
+  authenticated exit frame and is not synthesized.
+- R12 must prove the tmux socket directory has one Runtime authority writer and
+  that the per-workspace conflict coordinator serializes basename lifecycle.
+  These conditions close the userspace `stat`/`unlinkat` interval; any observed
+  identity drift remains reconciliation-required.
+- Final Sol cleanup review separated every failed-Start stage. A pane cleanup
+  failure cannot skip direct tmux-child signaling; cgroup cleanup always runs;
+  the direct child is reaped after cgroup cleanup with its pidfd closed in a
+  `finally`; socket cleanup and all local control/WBR handles are still attempted.
+  The first cleanup error is retained and chained from the original Start error.
 - The same head reached the standalone launcher fake but returned its diagnostic
   `90`: that fixture only accepted attach-session argv while the launcher test
   correctly emits fixed new-session argv. The fake now validates both exact

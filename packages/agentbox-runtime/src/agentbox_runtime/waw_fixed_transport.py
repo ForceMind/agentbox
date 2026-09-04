@@ -723,8 +723,7 @@ class _NativeProcessResources:
     wbr: socket.socket
     cgroup: CgroupControlHandle
     tmux_socket_identity: tuple[int, int]
-    exit_code: int | None = None
-    reaped: bool = False
+    exit_observed: bool = False
 
 
 @dataclass(frozen=True, repr=False)
@@ -1124,6 +1123,12 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
         tmux_socket_identity: tuple[int, int] | None = None
         try:
             tmux_pid, tmux_pidfd = self._start_tmux_session(request.identity, cgroup)
+            tmux_socket_identity = _wait_for_fixed_tmux_socket(
+                request.identity,
+                self._helpers.tmux_socket_directory,
+                tmux_pidfd,
+                NATIVE_LAUNCH_ACCEPT_DEADLINE_SECONDS,
+            )
             control, tmux_exited = _accept_fixed_launch(listener, tmux_pidfd)
             tmux_exit = _wait_pidfd(tmux_pidfd, 0) if tmux_exited else None
             if tmux_exited:
@@ -1165,7 +1170,6 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
                 [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", role_fds))],
             )
             receive_native_ready(control)
-            tmux_socket_identity = _verify_fixed_tmux_socket(request.identity)
             if tmux_exit is None:
                 assert tmux_pidfd is not None
                 tmux_exit = _wait_pidfd(tmux_pidfd, NATIVE_LAUNCH_ACCEPT_DEADLINE_SECONDS)
@@ -1196,30 +1200,89 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
                 )
             listener.close()
             _unlink_fixed_launch_listener(launch_path, listener_identity)
-        except BaseException:
-            if process_pidfd is not None and process_pid is not None:
-                _terminate_spawned(
-                    process_pid,
-                    process_pidfd,
-                    self._stop_timeout,
-                    process_group=process_group,
-                )
-                process_pidfd = None
-            elif process_pid is not None:
-                _terminate_without_pidfd(process_pid)
+        except BaseException as start_error:
+            cleanup_error: BaseException | None = None
+            cgroup_empty = False
+            tmux_reaped = False
+            try:
+                if process_pidfd is not None and process_pid is not None:
+                    observed_pidfd = process_pidfd
+                    process_pidfd = None
+                    _terminate_observed(
+                        observed_pidfd,
+                        self._stop_timeout,
+                        process_group=process_group,
+                    )
+                elif process_pid is not None:
+                    _terminate_without_pidfd(process_pid)
+            except BaseException as exc:
+                cleanup_error = exc
+            finally:
+                if process_pidfd is not None:
+                    _close_fd(process_pidfd)
+                    process_pidfd = None
+            try:
+                if tmux_pidfd is not None:
+                    if _wait_spawned_child(tmux_pidfd, 0.0) is None:
+                        _signal_pidfd(tmux_pidfd, signal.SIGKILL)
+                        if tmux_pid is not None:
+                            with _suppress_process_lookup():
+                                os.killpg(tmux_pid, signal.SIGKILL)
+                    else:
+                        tmux_reaped = True
+            except BaseException as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
+            try:
+                _force_cgroup_empty(cgroup, self._stop_timeout)
+                cgroup_empty = True
+            except BaseException as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
             if tmux_pidfd is not None:
-                if _wait_pidfd(tmux_pidfd, 0) is None and tmux_pid is not None:
-                    _terminate_spawned(tmux_pid, tmux_pidfd, self._stop_timeout)
-                else:
+                try:
+                    if (
+                        not tmux_reaped
+                        and _wait_spawned_child(tmux_pidfd, self._stop_timeout) is None
+                    ):
+                        raise RuntimeOperationError(
+                            "WAW_STOP_UNCONFIRMED",
+                            "Fixed tmux launcher child was not reaped",
+                            category="conflict",
+                        )
+                except BaseException as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+                finally:
                     _close_fd(tmux_pidfd)
-                tmux_pidfd = None
-            _force_cgroup_empty(cgroup, self._stop_timeout)
-            if type(cgroup) is LinuxCgroupControlHandle:
-                cgroup.close()
-            if control is not None:
-                control.close()
-            endpoint.native.close()
-            endpoint.controller.close()
+                    tmux_pidfd = None
+            if cgroup_empty:
+                try:
+                    if tmux_socket_identity is not None:
+                        _remove_fixed_tmux_socket(
+                            request.identity,
+                            tmux_socket_identity,
+                            self._helpers.tmux_socket_directory,
+                        )
+                    else:
+                        _require_fixed_tmux_socket_absent(
+                            request.identity, self._helpers.tmux_socket_directory
+                        )
+                except BaseException as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+            try:
+                if type(cgroup) is LinuxCgroupControlHandle:
+                    cgroup.close()
+                if control is not None:
+                    control.close()
+                endpoint.native.close()
+                endpoint.controller.close()
+            except BaseException as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
+            if cleanup_error is not None:
+                raise cleanup_error from start_error
             raise
         finally:
             listener.close()
@@ -1314,14 +1377,14 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
 
     def probe(self, binding: FixedProcessBinding) -> RuntimeProbeEvidence:
         resources = self._resources(binding)
-        exit_code = _poll_pidfd(resources)
-        state = RuntimeProbeState.RUNNING if exit_code is None else RuntimeProbeState.EXITED
+        exited = _observe_resources_exit(resources, 0.0)
+        state = RuntimeProbeState.EXITED if exited else RuntimeProbeState.RUNNING
         return RuntimeProbeEvidence(
             binding.identity.workspace_id,
             binding.identity.generation,
             binding.identity.managed_marker,
             state,
-            exit_code,
+            None,
         )
 
     def stop(self, binding: FixedProcessBinding) -> RuntimeStopEvidence:
@@ -1333,12 +1396,12 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
                 return self._stop_evidence(binding, False, 1)
             self._attachments.pop(id(binding), None)
         _force_cgroup_empty(resources.cgroup, self._stop_timeout)
-        exit_code = _poll_pidfd(resources)
-        if exit_code is None:
+        exited = _observe_resources_exit(resources, 0.0)
+        if not exited:
             _signal_pidfd(resources.pidfd, signal.SIGKILL)
             with _suppress_process_lookup():
                 os.killpg(resources.process_group, signal.SIGKILL)
-            exit_code = _wait_resources(resources, self._stop_timeout)
+            exited = _observe_resources_exit(resources, self._stop_timeout)
         group_empty = not _process_group_exists(resources.process_group)
         populated = resources.cgroup.populated()
         if type(populated) is not int or populated not in {0, 1}:
@@ -1354,9 +1417,15 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
                 "Native cgroup thaw read-back is invalid",
                 category="conflict",
             )
-        confirmed = exit_code is not None and group_empty and populated == 0
-        tmux_gone = _wait_fixed_tmux_socket_gone(
-            binding.identity, resources.tmux_socket_identity, self._stop_timeout
+        confirmed = exited and group_empty and populated == 0
+        tmux_gone = (
+            _remove_fixed_tmux_socket(
+                binding.identity,
+                resources.tmux_socket_identity,
+                self._helpers.tmux_socket_directory,
+            )
+            if confirmed
+            else False
         )
         confirmed = confirmed and tmux_gone
         if confirmed:
@@ -1652,10 +1721,10 @@ def _verify_fixed_directory_handle(descriptor: int, path: str) -> None:
         )
 
 
-def _verify_fixed_tmux_socket(identity: FixedProcessIdentity) -> tuple[int, int]:
-    path = f"{_NATIVE_RUN_ROOT}/tmux/{identity.workspace_hash[:32]}.sock"
+def _verify_fixed_tmux_socket(identity: FixedProcessIdentity, directory_fd: int) -> tuple[int, int]:
+    basename = f"{identity.workspace_hash[:32]}.sock"
     try:
-        details = os.lstat(path)
+        details = os.stat(basename, dir_fd=directory_fd, follow_symlinks=False)
     except OSError as exc:
         raise RuntimeOperationError(
             "WAW_START_UNCONFIRMED", "Fixed tmux socket is unavailable", category="conflict"
@@ -1665,6 +1734,34 @@ def _verify_fixed_tmux_socket(identity: FixedProcessIdentity) -> tuple[int, int]
             "WAW_START_UNCONFIRMED", "Fixed tmux socket identity is invalid", category="conflict"
         )
     return details.st_dev, details.st_ino
+
+
+def _wait_for_fixed_tmux_socket(
+    identity: FixedProcessIdentity,
+    directory_fd: int,
+    tmux_pidfd: int,
+    timeout: float,
+) -> tuple[int, int]:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return _verify_fixed_tmux_socket(identity, directory_fd)
+        except RuntimeOperationError as exc:
+            if not isinstance(exc.__cause__, FileNotFoundError):
+                raise
+        if _peek_pidfd(tmux_pidfd) is not None:
+            raise RuntimeOperationError(
+                "WAW_START_UNCONFIRMED",
+                "Fixed tmux exited before socket identity was recorded",
+                category="conflict",
+            )
+        if time.monotonic() >= deadline:
+            raise RuntimeOperationError(
+                "WAW_START_UNCONFIRMED",
+                "Fixed tmux socket identity deadline expired",
+                category="conflict",
+            )
+        time.sleep(0.01)
 
 
 def _verify_delegate_root(
@@ -1896,33 +1993,79 @@ def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest)
     )
 
 
-def _wait_fixed_tmux_socket_gone(
+def _remove_fixed_tmux_socket(
     identity: FixedProcessIdentity,
     expected: tuple[int, int],
-    timeout: float,
+    directory_fd: int,
 ) -> bool:
-    path = f"{_NATIVE_RUN_ROOT}/tmux/{identity.workspace_hash[:32]}.sock"
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            details = os.lstat(path)
-        except FileNotFoundError:
-            return True
-        except OSError as exc:
-            raise RuntimeOperationError(
-                "WAW_STOP_UNCONFIRMED",
-                "Fixed tmux socket cleanup is unobservable",
-                category="conflict",
-            ) from exc
-        if (details.st_dev, details.st_ino) != expected or not stat.S_ISSOCK(details.st_mode):
-            raise RuntimeOperationError(
-                "WAW_STOP_UNCONFIRMED",
-                "Fixed tmux socket identity changed during Stop",
-                category="conflict",
-            )
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(0.01)
+    basename = f"{identity.workspace_hash[:32]}.sock"
+    try:
+        details = os.stat(basename, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        raise RuntimeOperationError(
+            "WAW_STOP_UNCONFIRMED",
+            "Fixed tmux socket cleanup is unobservable",
+            category="conflict",
+        ) from exc
+    if (
+        (details.st_dev, details.st_ino) != expected
+        or not stat.S_ISSOCK(details.st_mode)
+        or details.st_uid != os.geteuid()
+    ):
+        raise RuntimeOperationError(
+            "WAW_STOP_UNCONFIRMED",
+            "Fixed tmux socket identity changed during Stop",
+            category="conflict",
+        )
+    try:
+        os.unlink(basename, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        raise RuntimeOperationError(
+            "WAW_STOP_UNCONFIRMED",
+            "Fixed tmux socket cleanup failed",
+            category="conflict",
+        ) from exc
+    try:
+        os.stat(basename, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return True
+    except OSError as exc:
+        raise RuntimeOperationError(
+            "WAW_STOP_UNCONFIRMED",
+            "Fixed tmux socket cleanup read-back failed",
+            category="conflict",
+        ) from exc
+    raise RuntimeOperationError(
+        "WAW_STOP_UNCONFIRMED",
+        "Fixed tmux socket remained after cleanup",
+        category="conflict",
+    )
+
+
+def _require_fixed_tmux_socket_absent(
+    identity: FixedProcessIdentity,
+    directory_fd: int,
+) -> None:
+    basename = f"{identity.workspace_hash[:32]}.sock"
+    try:
+        os.stat(basename, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise RuntimeOperationError(
+            "RECONCILIATION_REQUIRED",
+            "Unrecorded tmux socket cleanup is unobservable",
+            category="conflict",
+        ) from exc
+    raise RuntimeOperationError(
+        "RECONCILIATION_REQUIRED",
+        "Unrecorded tmux socket remains after failed Start",
+        category="conflict",
+    )
 
 
 def _role_fd(value: object, role: str) -> int:
@@ -2144,20 +2287,17 @@ def _spawn_fixed(
         ) from exc
 
 
-def _poll_pidfd(resources: _NativeProcessResources) -> int | None:
-    if resources.reaped:
-        return resources.exit_code
-    return _wait_resources(resources, 0.0)
+def _observe_resources_exit(resources: _NativeProcessResources, timeout: float) -> bool:
+    if resources.exit_observed:
+        return True
+    resources.exit_observed = _pidfd_exit_observed(resources.pidfd, timeout)
+    return resources.exit_observed
 
 
-def _wait_resources(resources: _NativeProcessResources, timeout: float) -> int | None:
-    if resources.reaped:
-        return resources.exit_code
-    result = _wait_pidfd(resources.pidfd, timeout)
-    if result is not None:
-        resources.exit_code = result
-        resources.reaped = True
-    return result
+def _pidfd_exit_observed(pidfd: int, timeout: float) -> bool:
+    poller = select.poll()
+    poller.register(pidfd, select.POLLIN)
+    return bool(poller.poll(max(0, math.ceil(timeout * 1000))))
 
 
 def _wait_pidfd(pidfd: int, timeout: float) -> int | None:
@@ -2169,6 +2309,17 @@ def _wait_pidfd(pidfd: int, timeout: float) -> int | None:
     if result is None:
         return None
     return result.si_status if result.si_code == os.CLD_EXITED else -result.si_status
+
+
+def _wait_spawned_child(pidfd: int, timeout: float) -> int | None:
+    try:
+        return _wait_pidfd(pidfd, timeout)
+    except Exception as exc:
+        raise RuntimeOperationError(
+            "WAW_STOP_UNCONFIRMED",
+            "Fixed native child reap failed",
+            category="conflict",
+        ) from exc
 
 
 def _peek_pidfd(pidfd: int) -> int | None:
@@ -2195,11 +2346,47 @@ def _terminate_spawned(
     *,
     process_group: int | None = None,
 ) -> None:
-    _signal_pidfd(pidfd, signal.SIGKILL)
-    with _suppress_process_lookup():
-        os.killpg(pid if process_group is None else process_group, signal.SIGKILL)
-    _wait_pidfd(pidfd, timeout)
-    _close_fd(pidfd)
+    try:
+        _signal_pidfd(pidfd, signal.SIGKILL)
+        with _suppress_process_lookup():
+            os.killpg(pid if process_group is None else process_group, signal.SIGKILL)
+        if _wait_spawned_child(pidfd, timeout) is None:
+            raise RuntimeOperationError(
+                "WAW_STOP_UNCONFIRMED",
+                "Fixed native child was not reaped",
+                category="conflict",
+            )
+    finally:
+        _close_fd(pidfd)
+
+
+def _terminate_observed(
+    pidfd: int,
+    timeout: float,
+    *,
+    process_group: int | None,
+) -> None:
+    try:
+        _signal_pidfd(pidfd, signal.SIGKILL)
+        if process_group is not None:
+            with _suppress_process_lookup():
+                os.killpg(process_group, signal.SIGKILL)
+        if not _pidfd_exit_observed(pidfd, timeout):
+            raise RuntimeOperationError(
+                "WAW_STOP_UNCONFIRMED",
+                "Observed native process did not exit",
+                category="conflict",
+            )
+    except RuntimeOperationError:
+        raise
+    except Exception as exc:
+        raise RuntimeOperationError(
+            "WAW_STOP_UNCONFIRMED",
+            "Observed native process cleanup failed",
+            category="conflict",
+        ) from exc
+    finally:
+        _close_fd(pidfd)
 
 
 def _terminate_without_pidfd(pid: int) -> None:

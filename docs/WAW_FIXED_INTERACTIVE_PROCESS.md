@@ -41,8 +41,16 @@ R10 packages a closed set of inert templates under
 `agentbox_runtime/assets/waw-inert/`:
 
 - `tmux.conf` limits the tmux status surface and scrollback template;
-- `exit-empty=on` makes the per-workspace tmux server and socket terminate when
-  its sole fixed session ends;
+- `exit-empty=on` makes the per-workspace tmux server terminate when its sole
+  fixed session ends; after cgroup `populated=0`, Runtime removes tmux 3.2a's
+  stale socket only when a dirfd-relative read-back still matches the recorded
+  `(device,inode,type,uid)` identity;
+- Start records that identity before pane acceptance; any later failed Start
+  empties the cgroup and uses the same cleanup, while an unrecorded pathname or
+  identity drift requires reconciliation instead of blind deletion;
+- Runtime treats the tmux pane/bootstrap as an observed non-child: pidfd
+  readiness proves exit, while `exit_code` remains unknown. Only Runtime's
+  direct launcher and attach-supervisor children are reaped with `waitid`;
 - `sandbox-policies.v1.json` carries the `waw-sandbox-policies-v1` template
   schema and `interactive-sandbox-v1` profile identifier;
 - `claude/managed-settings.json` disables prompt-history retention through its
