@@ -120,7 +120,7 @@ R10/rc5 本地候选已完成：manifest v2、exact-six executable、exact-two p
 七个 descriptor role、64-byte WBR、三个 native helper、pre-birth cgroup、真实
 tmux attach READY 检查、Runtime composition、qualified vendor probe、local TTY
 login seam、WAW/legacy conflict coordinator 与 inert policy assets 已实现。聚焦
-Python 回归 `675 passed / 12 Linux-only skipped`，另有 encrypted-server `24 passed`；
+Python 回归 `676 passed / 12 Linux-only skipped`，另有 encrypted-server `24 passed`；
 Web `915`、extension `6`、native portable gate、Ruff、Black、Linux mypy、文档链接
 均通过，独立 Sol 复审无 P0/P1/P2。该状态仍等待 Linux exact-head CI、合并和回读，
 不能升级为 host qualification。

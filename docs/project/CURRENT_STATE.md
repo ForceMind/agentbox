@@ -575,7 +575,7 @@ PROPOSED architecture status are preserved.
 - Inert tmux, sandbox, Claude and Codex policy assets are closed by package and
   release inventories. Codex ships the exact-two TOML inputs plus their canonical
   digest bundle; no policy is installed or activated.
-- Local focused Runtime/release regression passed `675` tests with `12` explicit
+- Local focused Runtime/release regression passed `676` tests with `12` explicit
   Linux-only skips; the encrypted Runtime server passed a separate `24` tests
   outside the macOS socket sandbox. Native portable-source gate built all three
   helpers. Ruff passed, Black left `287` files unchanged, Linux-target mypy passed
@@ -613,3 +613,8 @@ PROPOSED architecture status are preserved.
   CI created `/run/agentbox-waw` as root while only its children belonged to the
   runner. Ephemeral CI provisioning now assigns the exact parent and child runtime
   directories to the runner; no product installer or activation path changes.
+- Head `9ddbd71c` progressed into the native integration suite. The first
+  bootstrap correctly rejected CI's cgroup marker because the fixture used a
+  32-character workspace prefix while the production contract requires the full
+  64-character workspace hash; later tmux failures cascaded from that first
+  rejected pane. All three CI cgroup fixture references now use the full hash.

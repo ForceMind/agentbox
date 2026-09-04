@@ -11,6 +11,8 @@ permissions:
 jobs:
   native:
     runs-on: ubuntu-latest
+    env:
+      WORKSPACE_HASH: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -32,29 +34,24 @@ jobs:
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /var/lib/agentbox-waw/vendor-homes/codex/forbidden-canary
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /var/lib/agentbox-waw/vendor-homes/claude/forbidden-canary
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1/canary
-          sudo mkdir -p "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_PREFIX}-g7/workload"
-        env:
-          WORKSPACE_HASH: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          WORKSPACE_PREFIX: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          sudo mkdir -p "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload"
       - run: python scripts/build-waw-native.py --output build/native/waw
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw --no-build
       - run: |
-          echo $$ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_PREFIX}-g7/workload/cgroup.procs" >/dev/null
+          echo $$ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload/cgroup.procs" >/dev/null
           python -m pytest -q tests/unit/test_waw_native_helpers.py tests/unit/test_waw_fixed_transport.py tests/native/test_waw_native_linux.py
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
-          WORKSPACE_PREFIX: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       - run: python scripts/build-waw-native.py --sanitizers --output build/native/waw-sanitized
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw-sanitized --no-build
       - run: |
-          echo $$ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_PREFIX}-g7/workload/cgroup.procs" >/dev/null
+          echo $$ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload/cgroup.procs" >/dev/null
           python -m pytest -q tests/native/test_waw_native_linux.py
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw-sanitized
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
-          WORKSPACE_PREFIX: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
   quality:
     runs-on: ubuntu-latest

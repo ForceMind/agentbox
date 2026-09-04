@@ -50,6 +50,13 @@ def test_native_ready_header_matches_python_adapter() -> None:
     assert "AGENTBOX_WAW_READY_DEADLINE_MS UINT32_C(1000)" in header
 
 
+def test_linux_ci_uses_the_full_workspace_hash_for_cgroup_identity() -> None:
+    workflow = (ROOT / ".github/workflows/backend.yml").read_text(encoding="utf-8")
+    assert f"WORKSPACE_HASH: {'a' * 64}" in workflow
+    assert "ws-${WORKSPACE_HASH}-g7/workload" in workflow
+    assert "WORKSPACE_PREFIX" not in workflow
+
+
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux-only PTY/pidfd/execveat gate")
 def test_linux_native_runtime_gate_is_collected_separately() -> None:
     assert platform.system() == "Linux"
