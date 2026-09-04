@@ -824,6 +824,15 @@ PROPOSED architecture status are preserved.
   short-line frames (>64 KiB), waits for exact pane exit `7`, captures complete
   server history, and verifies sequence, payload, byte bound and SHA-256. The
   packaged config remains independently pinned to history 25/remain-off.
+- Exact head `34fbdfd` reached `61 passed`; the only failure was the last
+  remaining attempt to wait for `TAIL-END` on the live attach redraw stream,
+  even though the pane already proved exact exit `7`. The attach now only sends
+  the command; `TAIL-END` and every integrity assertion are read from the
+  complete server-history capture.
+- The three Python quality jobs on `34fbdfd` failed only because one unit test
+  monkeypatched the imported module's private `time` name, which mypy correctly
+  rejected as not explicitly exported. The unnecessary sleep monkeypatch is
+  removed; the exact 252-source Linux mypy command now passes locally.
 - The same head reached the standalone launcher fake but returned its diagnostic
   `90`: that fixture only accepted attach-session argv while the launcher test
   correctly emits fixed new-session argv. The fake now validates both exact

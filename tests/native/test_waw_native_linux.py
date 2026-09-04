@@ -788,7 +788,6 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
     attached, master = _spawn_real_attach(native_binaries, "claude")
     _read_fd_until(master, b"READY claude")
     os.write(master, b"tail\n")
-    assert b"TAIL-END" in _read_fd_until(master, b"TAIL-END", timeout=10)
     deadline = time.monotonic() + 5.0
     pane_status = ""
     while pane_status != "1:7":
@@ -837,6 +836,7 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
     payload = "0123456789abcdef0123456789abcdef"
     expected = [f"TAIL {index:04d} {payload}" for index in range(2048)]
     observed = [line for line in captured if re.fullmatch(r"TAIL [0-9]{4} [0-9a-f]{32}", line)]
+    assert "TAIL-END" in captured
     assert sum(len(line) + 1 for line in observed) > 65536
     assert (
         hashlib.sha256("\n".join(observed).encode()).digest()

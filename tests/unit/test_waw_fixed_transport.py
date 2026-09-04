@@ -608,7 +608,6 @@ def test_tmux_socket_wait_retries_only_missing_then_records_identity(
 
     monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", verify)
     monkeypatch.setattr(fixed_subject, "_peek_pidfd", lambda _fd: None)
-    monkeypatch.setattr(fixed_subject.time, "sleep", lambda _seconds: None)
     assert fixed_subject._wait_for_fixed_tmux_socket(fixed_identity(), -1, -1, 1.0) == (11, 12)
 
 
