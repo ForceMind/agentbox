@@ -698,3 +698,7 @@ PROPOSED architecture status are preserved.
   new user namespace's sole `CAP_SYS_ADMIN`, and exact-reads it back. Before
   Landlock/seccomp/bridge exec it sets NNP, disables KEEPCAPS, clears all three
   capability sets and ambient capabilities, and exact-reads zero back.
+- Head `40f2816` no longer returned a staged exit status; tmux reported a dead
+  pane with an empty numeric status, indicating signal termination. The bounded
+  formatter now includes `pane_dead_signal` to distinguish seccomp, parent-death
+  and memory faults before any further implementation change.

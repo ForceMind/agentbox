@@ -486,7 +486,7 @@ def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(
                     "-t",
                     f"={session}:0",
                     "-F",
-                    "#{pane_dead}:#{pane_dead_status}:#{pane_current_command}",
+                    "#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}:#{pane_current_command}",
                 ],
                 check=True,
                 capture_output=True,
