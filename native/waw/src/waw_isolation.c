@@ -130,66 +130,78 @@ static int setup_mounts(const struct agentbox_waw_bridge_config *config) {
     };
     size_t index;
     if (agent == NULL || mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
-        return -1;
+        return 91;
     }
     length = snprintf(workspace_root, sizeof(workspace_root), AGENTBOX_WAW_RUN_ROOT "/tmp/%s",
                       config->workspace_hash);
     if (length < 0 || (size_t)length >= sizeof(workspace_root)) {
-        return -1;
+        return 92;
     }
     length = snprintf(project_target, sizeof(project_target), "%s/project", workspace_root);
     if (length < 0 || (size_t)length >= sizeof(project_target)) {
-        return -1;
+        return 92;
     }
     length = snprintf(temp_target, sizeof(temp_target), "%s/vendor", workspace_root);
     if (length < 0 || (size_t)length >= sizeof(temp_target)) {
-        return -1;
+        return 92;
     }
     length = snprintf(mask_directory, sizeof(mask_directory), "%s/masked", workspace_root);
     if (length < 0 || (size_t)length >= sizeof(mask_directory)) {
-        return -1;
+        return 92;
     }
     length = snprintf(mask_file, sizeof(mask_file), "%s/masked-file", workspace_root);
     if (length < 0 || (size_t)length >= sizeof(mask_file)) {
-        return -1;
+        return 92;
     }
     length = snprintf(home_target, sizeof(home_target), AGENTBOX_WAW_STATE_ROOT "/vendor-homes/%s",
                       agent);
     if (length < 0 || (size_t)length >= sizeof(home_target)) {
-        return -1;
+        return 92;
     }
     length = snprintf(other_home, sizeof(other_home), AGENTBOX_WAW_STATE_ROOT "/vendor-homes/%s",
                       other);
     if (length < 0 || (size_t)length >= sizeof(other_home) ||
         ensure_directory(project_target, 0700) != 0 || ensure_directory(temp_target, 0700) != 0 ||
         ensure_directory(mask_directory, 0700) != 0 || chmod(mask_directory, 0700) != 0) {
-        return -1;
+        return 93;
     }
     if (chmod(mask_file, 0600) != 0 && errno != ENOENT) {
-        return -1;
+        return 93;
     }
     mask_fd = open(mask_file, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
-    if (mask_fd < 0 || close(mask_fd) != 0 ||
-        bind_descriptor(AGENTBOX_WAW_BRIDGE_PROJECT_FD, project_target, 0) != 0 ||
-        bind_descriptor(AGENTBOX_WAW_BRIDGE_HOME_FD, home_target, 0) != 0 ||
-        bind_descriptor(AGENTBOX_WAW_BRIDGE_TEMP_FD, temp_target, 0) != 0 ||
-        bind_descriptor(AGENTBOX_WAW_BRIDGE_POLICY_FD, policy, 1) != 0) {
-        return -1;
+    if (mask_fd < 0 || close(mask_fd) != 0) {
+        return 94;
+    }
+    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_PROJECT_FD, project_target, 0) != 0) {
+        return 95;
+    }
+    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_HOME_FD, home_target, 0) != 0) {
+        return 96;
+    }
+    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_TEMP_FD, temp_target, 0) != 0) {
+        return 97;
+    }
+    if (bind_descriptor(AGENTBOX_WAW_BRIDGE_POLICY_FD, policy, 1) != 0) {
+        return 98;
     }
     for (index = 0; index < sizeof(fixed_masks) / sizeof(fixed_masks[0]); ++index) {
         if (mask_existing(fixed_masks[index], mask_directory, mask_file) != 0) {
-            return -1;
+            return 99;
         }
     }
     length = snprintf(launch_target, sizeof(launch_target), "%s/launch.v1.sock", workspace_root);
     if (length < 0 || (size_t)length >= sizeof(launch_target) ||
         mask_existing(launch_target, mask_directory, mask_file) != 0 ||
-        mask_existing(other_home, mask_directory, mask_file) != 0 ||
-        chmod(mask_directory, 0000) != 0 || chmod(mask_file, 0000) != 0 ||
-        chdir(project_target) != 0 ||
-        mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC,
+        mask_existing(other_home, mask_directory, mask_file) != 0) {
+        return 100;
+    }
+    if (chmod(mask_directory, 0000) != 0 || chmod(mask_file, 0000) != 0 ||
+        chdir(project_target) != 0) {
+        return 101;
+    }
+    if (mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC,
               "hidepid=2,subset=pid") != 0) {
-        return -1;
+        return 102;
     }
     return 0;
 }
@@ -469,18 +481,30 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     }
     if (inner == 0) {
         struct pollfd parent_alive;
+        int setup_status;
         parent_alive.fd = builder_pidfd;
         parent_alive.events = POLLIN;
         parent_alive.revents = 0;
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || poll(&parent_alive, 1U, 0) != 0 ||
-            getpid() != 1 ||
-            setup_mounts(config) != 0 || apply_landlock(config, bridge_executable) != 0 ||
-            agentbox_waw_apply_no_new_privs() != 0 || apply_seccomp() != 0) {
-            _exit(71);
+            getpid() != 1) {
+            _exit(81);
+        }
+        setup_status = setup_mounts(config);
+        if (setup_status != 0) {
+            _exit(setup_status);
+        }
+        if (apply_landlock(config, bridge_executable) != 0) {
+            _exit(82);
+        }
+        if (agentbox_waw_apply_no_new_privs() != 0) {
+            _exit(83);
+        }
+        if (apply_seccomp() != 0) {
+            _exit(84);
         }
         (void)close(builder_pidfd);
         (void)agentbox_waw_exec_held(bridge_executable, argv, envp);
-        _exit(71);
+        _exit(85);
     }
     (void)close(builder_pidfd);
     while (waitpid(inner, &status, 0) < 0) {

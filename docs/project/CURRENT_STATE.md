@@ -637,9 +637,8 @@ PROPOSED architecture status are preserved.
 - The first diagnostic head reached neither launch nor helper execution because
   tmux 3.4 requires a window-qualified target for the window option. The test now
   uses exact target `=session:0`; the failed diagnostic run is not native evidence.
-- Window-qualified diagnostic head `8269d85c` received READY and ran the first
-  interactive path through vendor exit. Its only first-test failure was the
-  intentional `remain-on-exit` retention preventing normal session cleanup, which
-  then caused the familiar cascade. This proves the procfs stack-mount correction
-  closed the pre-READY failure. All temporary stage codes and pane retention are
-  removed; the next exact head is the production candidate to validate.
+- Window-qualified diagnostic head `8269d85c` reached its failure branch, but
+  `_kill_tmux_server` raised before the intended stage report and masked the
+  integer status. Production-candidate head `ae412c4c` reproduced the original
+  pre-READY EOF. The bounded diagnostic is restored without that masking cleanup;
+  no additional isolation behavior changes until the exact stage is observed.
