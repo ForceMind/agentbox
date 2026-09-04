@@ -721,3 +721,7 @@ PROPOSED architecture status are preserved.
   U1, followed by the same one-way `mount_setattr` additions. U2 stays blocked
   until all mounts and the U1 waiter lockdown succeed, so this trusted setup
   change does not expose a less-restricted mount to the vendor workload.
+- Independent Sol review also moved U1 FD lockdown into that publication gate:
+  after NNP/capability/seccomp lockdown, U1 closes the saved `/proc` and every
+  inherited descriptor except the release pipe before sending the release byte.
+  Any close-range failure keeps U2 blocked and forces its termination.

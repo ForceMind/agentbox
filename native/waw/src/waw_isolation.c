@@ -567,6 +567,7 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     int builder_pidfd;
     int release_workload = 1;
     int status;
+    int release_only[1];
     if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
         getppid() != expected_parent ||
         (host_proc = open("/proc", O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)) < 0 ||
@@ -644,17 +645,22 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     if (apply_seccomp() != 0) {
         release_workload = 0;
     }
+    if (close(workload_ready[0]) != 0) {
+        release_workload = 0;
+    }
+    if (close(host_proc) != 0) {
+        release_workload = 0;
+    }
+    release_only[0] = workload_mapped[1];
+    if (agentbox_waw_close_except(release_only, 1U) != 0) {
+        release_workload = 0;
+    }
     if (release_workload != 0 &&
         agentbox_waw_write_exact(workload_mapped[1], &byte, sizeof(byte)) != 0) {
         release_workload = 0;
     }
-    if (release_workload == 0) {
-        (void)kill(inner, SIGKILL);
-    }
-    (void)close(workload_ready[0]);
     (void)close(workload_mapped[1]);
-    (void)close(host_proc);
-    if (agentbox_waw_close_except(NULL, 0U) != 0) {
+    if (release_workload == 0) {
         (void)kill(inner, SIGKILL);
     }
     while (waitpid(inner, &status, 0) < 0) {
