@@ -627,6 +627,12 @@ PROPOSED architecture status are preserved.
   never raw-closes an ownership-unknown socket; accept/start failures, direct
   cancellation and delayed cleanup remain poisoned. Thirteen focused tests pass
   with one Linux-only real-loop skip; independent Sol review reports no P0/P1/P2.
+- PR #80 head `6467a09...` passed the 66-case normal native run; sanitizer reached
+  23 pass / 1 failure because tmux exposed PTY-dead before its child wait status,
+  yielding transient `pane_dead_status` empty. The strict DCS gate now waits on a
+  unique test-only `pane-died → wait-for -S` child-status event and then requires
+  exact `1:74:` (normal exit 74, no signal). Independent Sol review PASS; a new
+  exact-head Linux CI run remains required.
 - Retained control/stream `BoundRuntimePeer`, API authority transfer, redraw and
   application ownership remain active rc6 work. No production WAW path is enabled
   by this foundation.

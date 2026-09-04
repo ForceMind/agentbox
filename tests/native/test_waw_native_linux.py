@@ -1040,8 +1040,13 @@ def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(
 def test_incomplete_vendor_dcs_fails_closed_before_pane_success(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
+    wait_token = "waw-dcs-" + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:32]
     dcs_config = tmp_path / "dcs-tmux.conf"
-    dcs_config.write_bytes(TMUX_CONFIG.read_bytes() + b"\nset-option -g remain-on-exit on\n")
+    dcs_config.write_bytes(
+        TMUX_CONFIG.read_bytes()
+        + b"\nset-option -g remain-on-exit on\n"
+        + f"set-hook -g pane-died 'wait-for -S {wait_token}'\n".encode()
+    )
     session, control, wbr = _begin_real_workspace(
         native_binaries, fake_binaries[0], tmp_path, tmux_config=dcs_config
     )
@@ -1049,27 +1054,29 @@ def test_incomplete_vendor_dcs_fails_closed_before_pane_success(
     attached, master = _spawn_real_attach(native_binaries, "claude")
     _read_fd_until(master, b"READY claude")
     os.write(master, b"dcs-exit\n")
-    deadline = time.monotonic() + 5.0
-    pane_status = ""
-    while pane_status != "1:74":
-        pane_status = subprocess.run(
-            [
-                "/usr/bin/tmux",
-                "-S",
-                str(TMUX_SOCKET),
-                "list-panes",
-                "-t",
-                f"={session}:0.0",
-                "-F",
-                "#{pane_dead}:#{pane_dead_status}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        if time.monotonic() >= deadline:
-            raise AssertionError(f"incomplete DCS did not fail closed: {pane_status}")
-        time.sleep(0.01)
+    subprocess.run(
+        ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "wait-for", wait_token],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=5,
+    )
+    pane_status = subprocess.run(
+        [
+            "/usr/bin/tmux",
+            "-S",
+            str(TMUX_SOCKET),
+            "list-panes",
+            "-t",
+            f"={session}:0.0",
+            "-F",
+            "#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert pane_status == "1:74:"
     attached.send_signal(signal.SIGTERM)
     assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
     os.close(master)
