@@ -651,3 +651,12 @@ PROPOSED architecture status are preserved.
   creation. The bootstrap's previously combined predicate is split into fixed
   integer stages for parent/tmux/control/launch/identity/cgroup/FD-role checks;
   every predicate remains fail closed and unchanged.
+- Bootstrap-stage head `577a178c` passed every pre-isolation check and reported
+  exit `95`, the first project descriptor bind-remount. The remount now reads the
+  source mount flags from the held descriptor and preserves locked `RDONLY` and
+  `NOEXEC` while always adding `NOSUID|NODEV`; it no longer implicitly attempts
+  to clear a more-privileged mount's locked restrictions.
+- Sol review identified the remaining locked atime modes and recursive-bind risk.
+  The remount also preserves source `NOATIME`, `NODIRATIME` and `RELATIME`, and
+  the initial descriptor bind is non-recursive so unreviewed nested mounts are
+  not imported. `NOSUID|NODEV` remain mandatory additions.

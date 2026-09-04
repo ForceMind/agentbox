@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -76,15 +77,35 @@ static int ensure_directory(const char *path, mode_t mode) {
 
 static int bind_descriptor(int fd, const char *target, int read_only) {
     char source[32];
-    unsigned long flags = MS_BIND | MS_REC;
+    struct statvfs source_status;
+    unsigned long flags = MS_BIND;
     int length = snprintf(source, sizeof(source), "/proc/self/fd/%d", fd);
-    if (length < 0 || (size_t)length >= sizeof(source) || mount(source, target, NULL, flags, NULL) != 0) {
+    if (length < 0 || (size_t)length >= sizeof(source) || fstatvfs(fd, &source_status) != 0 ||
+        mount(source, target, NULL, flags, NULL) != 0) {
         return -1;
     }
     flags = MS_BIND | MS_REMOUNT | MS_NOSUID | MS_NODEV;
-    if (read_only != 0) {
+    if (read_only != 0 || (source_status.f_flag & ST_RDONLY) != 0U) {
         flags |= MS_RDONLY;
     }
+    if ((source_status.f_flag & ST_NOEXEC) != 0U) {
+        flags |= MS_NOEXEC;
+    }
+#ifdef ST_NOATIME
+    if ((source_status.f_flag & ST_NOATIME) != 0U) {
+        flags |= MS_NOATIME;
+    }
+#endif
+#ifdef ST_NODIRATIME
+    if ((source_status.f_flag & ST_NODIRATIME) != 0U) {
+        flags |= MS_NODIRATIME;
+    }
+#endif
+#ifdef ST_RELATIME
+    if ((source_status.f_flag & ST_RELATIME) != 0U) {
+        flags |= MS_RELATIME;
+    }
+#endif
     return mount(NULL, target, NULL, flags, NULL);
 }
 
