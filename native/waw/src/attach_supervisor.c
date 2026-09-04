@@ -43,13 +43,16 @@ static int install_signal_handlers(void) {
 }
 
 static int validate_attach_descriptors(void) {
-    return agentbox_waw_validate_executable_fd(AGENTBOX_WAW_ATTACH_TMUX_EXECUTABLE_FD) == 0 &&
-                   agentbox_waw_validate_directory_fd(AGENTBOX_WAW_ATTACH_SOCKET_DIRECTORY_FD) ==
-                       0 &&
-                   agentbox_waw_validate_regular_fd(AGENTBOX_WAW_ATTACH_CONFIG_FD) == 0 &&
-                   agentbox_waw_validate_seqpacket_fd(AGENTBOX_WAW_ATTACH_READY_FD) == 0
-               ? 0
-               : -1;
+    if (agentbox_waw_validate_executable_fd(AGENTBOX_WAW_ATTACH_TMUX_EXECUTABLE_FD) != 0) {
+        return 1;
+    }
+    if (agentbox_waw_validate_directory_fd(AGENTBOX_WAW_ATTACH_SOCKET_DIRECTORY_FD) != 0) {
+        return 2;
+    }
+    if (agentbox_waw_validate_regular_fd(AGENTBOX_WAW_ATTACH_CONFIG_FD) != 0) {
+        return 3;
+    }
+    return agentbox_waw_validate_seqpacket_fd(AGENTBOX_WAW_ATTACH_READY_FD) == 0 ? 0 : 4;
 }
 
 static void attach_failure(int status_fd) {
@@ -254,8 +257,11 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
         getppid() != expected_parent) {
         return 65;
     }
-    if (validate_attach_descriptors() != 0) {
-        return 66;
+    {
+        int descriptor_status = validate_attach_descriptors();
+        if (descriptor_status != 0) {
+            return 82 + descriptor_status;
+        }
     }
     if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) || !isatty(STDERR_FILENO)) {
         return 67;

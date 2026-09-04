@@ -750,3 +750,6 @@ PROPOSED architecture status are preserved.
   bounded entry diagnostics now separate parent-death binding, role-FD
   validation, three-stream TTY validation, FD lockdown, resource limits and
   NNP; workspace READY remains proven at this head.
+- Exact head `b62f1bd` reports descriptor-validation status `66`. The next
+  bounded code identifies the exact tmux executable, socket directory, config,
+  or READY descriptor without exposing descriptor values or host paths.
