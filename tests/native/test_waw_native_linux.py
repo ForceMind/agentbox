@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import errno
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ import stat
 import struct
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -367,6 +369,7 @@ def _kill_tmux_server() -> None:
         ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "kill-server"],
         capture_output=True,
         check=False,
+        timeout=5,
     )
     deadline = time.monotonic() + 5.0
     while _tmux_server_responds():
@@ -787,6 +790,21 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
     assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
     attached, master = _spawn_real_attach(native_binaries, "claude")
     _read_fd_until(master, b"READY claude")
+    drain_errors: list[OSError] = []
+
+    def drain_attach_output() -> None:
+        while True:
+            try:
+                chunk = os.read(master, 65536)
+            except OSError as exc:
+                if exc.errno != errno.EIO:
+                    drain_errors.append(exc)
+                return
+            if not chunk:
+                return
+
+    drainer = threading.Thread(target=drain_attach_output, daemon=True)
+    drainer.start()
     os.write(master, b"tail\n")
     deadline = time.monotonic() + 5.0
     pane_status = ""
@@ -811,6 +829,8 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
         time.sleep(0.01)
     attached.send_signal(signal.SIGTERM)
     assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
+    drainer.join(timeout=5)
+    assert not drainer.is_alive() and not drain_errors
     os.close(master)
     captured = subprocess.run(
         [

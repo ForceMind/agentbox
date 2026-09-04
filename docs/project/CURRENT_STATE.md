@@ -829,6 +829,17 @@ PROPOSED architecture status are preserved.
   even though the pane already proved exact exit `7`. The attach now only sends
   the command; `TAIL-END` and every integrity assertion are read from the
   complete server-history capture.
+- The following run showed the normal native step could block when the tail test
+  stopped reading a still-attached client's PTY while tmux emitted redraws.
+  After sending `tail`, the test now immediately terminates and reaps the attach
+  supervisor, then waits for the detached pane's exact exit and captures server
+  history. This removes client backpressure and directly verifies detach-time
+  output retention.
+- Sol review caught that immediate detach could race before tmux forwarded the
+  input. The final gate keeps attach alive and drains its PTY on a test-only
+  reader thread while polling pane `1:7`; only then does it terminate/reap the
+  attach client, join the drainer, and capture history. This proves input
+  delivery without treating redraw bytes as the integrity source.
 - The three Python quality jobs on `34fbdfd` failed only because one unit test
   monkeypatched the imported module's private `time` name, which mypy correctly
   rejected as not explicitly exported. The unnecessary sleep monkeypatch is
