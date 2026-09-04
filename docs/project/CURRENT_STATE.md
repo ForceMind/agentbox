@@ -764,3 +764,18 @@ PROPOSED architecture status are preserved.
   collision-free high-FD copies, fixed-role `dup2`, optional `setsid`, and direct
   `execv`. Each native helper still closes the original source FDs immediately
   with its existing allowlist.
+- Exact head `6165f9a` passed workspace READY, attach READY, PTY I/O, resize and
+  session exit. The first failure moved to the empty tmux server retaining its
+  socket. The inert config now pins server option `exit-empty=on` instead of
+  relying on a distro/default value; the native gate reads it back exactly.
+- The same head reached the standalone launcher fake but returned its diagnostic
+  `90`: that fixture only accepted attach-session argv while the launcher test
+  correctly emits fixed new-session argv. The fake now validates both exact
+  shapes while retaining the attach-only TTY/NNP checks and the exact post-exec
+  FD inventory.
+- The launcher test keeps its bootstrap executable only in the parent Runtime
+  process and passes that original FD number with the parent PID, matching the
+  production `/proc/<runtime-pid>/fd/<bootstrap-fd>` contract. Its fake tmux now
+  opens and validates that exact parent path and uses the launcher-specific
+  post-exec FD inventory (config FD only); attach still requires socket-directory
+  and config FDs.

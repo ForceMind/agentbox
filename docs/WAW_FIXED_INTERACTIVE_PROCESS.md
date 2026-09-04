@@ -41,6 +41,8 @@ R10 packages a closed set of inert templates under
 `agentbox_runtime/assets/waw-inert/`:
 
 - `tmux.conf` limits the tmux status surface and scrollback template;
+- `exit-empty=on` makes the per-workspace tmux server and socket terminate when
+  its sole fixed session ends;
 - `sandbox-policies.v1.json` carries the `waw-sandbox-policies-v1` template
   schema and `interactive-sandbox-v1` profile identifier;
 - `claude/managed-settings.json` disables prompt-history retention through its
