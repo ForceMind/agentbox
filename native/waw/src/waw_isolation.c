@@ -159,7 +159,24 @@ static int bind_descriptor(int fd, const char *target, int read_only) {
         return 1;
     }
     if (mount(source, target, NULL, MS_BIND, NULL) != 0) {
-        return 2;
+        switch (errno) {
+            case EPERM:
+                return 2;
+            case EACCES:
+                return 3;
+            case ENOENT:
+                return 4;
+            case ENOTDIR:
+                return 5;
+            case EINVAL:
+                return 6;
+            case ELOOP:
+                return 7;
+            case EXDEV:
+                return 8;
+            default:
+                return 9;
+        }
     }
     memset(&attributes, 0, sizeof(attributes));
     attributes.attr_set = MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV;
@@ -169,13 +186,13 @@ static int bind_descriptor(int fd, const char *target, int read_only) {
     return syscall(SYS_mount_setattr, AT_FDCWD, target, 0U, &attributes,
                    MOUNT_ATTR_SIZE_VER0) == 0L
                ? 0
-               : 3;
+               : 10;
 #else
     (void)fd;
     (void)target;
     (void)read_only;
     errno = ENOTSUP;
-    return 4;
+    return 11;
 #endif
 }
 

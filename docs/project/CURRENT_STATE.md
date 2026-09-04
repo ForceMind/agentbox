@@ -725,3 +725,8 @@ PROPOSED architecture status are preserved.
   after NNP/capability/seccomp lockdown, U1 closes the saved `/proc` and every
   inherited descriptor except the release pipe before sending the release byte.
   Any close-range failure keeps U2 blocked and forces its termination.
+- Exact head `023febf` passed the portable native gate but returned project bind
+  status `112` on the real Ubuntu runner; the other native failures were expected
+  diagnostic exit-code differences or cascades from the intentionally retained
+  first pane. A bounded errno map now distinguishes `EPERM`, `EACCES`, path-shape
+  failures, and other initial bind failures without emitting host data.
