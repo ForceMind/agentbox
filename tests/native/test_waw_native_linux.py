@@ -87,14 +87,14 @@ def linux_native_host_gate() -> Iterator[object]:
         Path("/etc/codex"),
     )
     assert all(path.is_dir() for path in required)
-    subprocess.run([tmux, "-S", str(TMUX_SOCKET), "kill-server"], capture_output=True, check=False)
+    _kill_tmux_server()
     control_path = Path("/run/agentbox-waw/workspace-control.sock")
     control_path.unlink(missing_ok=True)
     control = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     control.bind(str(control_path))
     control.listen(1)
     yield {"tmux": tmux, "control": control}
-    subprocess.run([tmux, "-S", str(TMUX_SOCKET), "kill-server"], capture_output=True, check=False)
+    _kill_tmux_server()
     control.close()
     control_path.unlink(missing_ok=True)
 
@@ -353,6 +353,8 @@ def _fixed_identity() -> FixedProcessIdentity:
 
 def _kill_tmux_server() -> None:
     expected = _tmux_socket_identity()
+    if expected is None:
+        return
     subprocess.run(
         ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "kill-server"],
         capture_output=True,

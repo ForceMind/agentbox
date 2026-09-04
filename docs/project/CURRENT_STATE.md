@@ -810,6 +810,12 @@ PROPOSED architecture status are preserved.
   candidate now restores public `65/71` errors, removes retained-pane/status
   diagnostics, routes detach/reconnect cleanup through identity-bound stale
   socket removal, and uses a deterministic mismatched-identity negative test.
+- Production-shaped head `8221d52` reached `60 passed` with two failures. The
+  remaining integration failure came from the test cleanup helper invoking
+  tmux `kill-server` when no socket/server existed: tmux 3.2a started and exited
+  a server for that command, leaving an unrecorded stale pathname that production
+  Start correctly rejected. Cleanup now returns immediately when no recorded
+  socket exists, and the session fixture uses that same identity-bound helper.
 - The same head reached the standalone launcher fake but returned its diagnostic
   `90`: that fixture only accepted attach-session argv while the launcher test
   correctly emits fixed new-session argv. The fake now validates both exact
