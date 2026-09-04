@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -832,6 +833,37 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
     drainer.join(timeout=5)
     assert not drainer.is_alive() and not drain_errors
     os.close(master)
+    pane_metrics = subprocess.run(
+        [
+            "/usr/bin/tmux",
+            "-S",
+            str(TMUX_SOCKET),
+            "list-panes",
+            "-t",
+            f"={session}:0.0",
+            "-F",
+            "#{pane_width}:#{pane_height}:#{history_size}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    history_limit = subprocess.run(
+        [
+            "/usr/bin/tmux",
+            "-S",
+            str(TMUX_SOCKET),
+            "show-options",
+            "-w",
+            "-v",
+            "-t",
+            f"={session}:0",
+            "history-limit",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     captured = subprocess.run(
         [
             "/usr/bin/tmux",
@@ -857,11 +889,41 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
     expected = [f"TAIL {index:04d} {payload}" for index in range(2048)]
     observed = [line for line in captured if re.fullmatch(r"TAIL [0-9]{4} [0-9a-f]{32}", line)]
     assert sum(len(line) + 1 for line in observed) > 65536
+    if observed != expected:
+        indices = [int(line[5:9]) for line in observed]
+        counts = Counter(indices)
+        discontinuity = next(
+            (
+                (position, position, value)
+                for position, value in enumerate(indices)
+                if value != position
+            ),
+            None,
+        )
+        missing = sorted(set(range(2048)) - set(indices))[:5]
+        duplicates = [value for value, count in sorted(counts.items()) if count > 1][:5]
+        mismatch = next(
+            (
+                index
+                for index, pair in enumerate(zip(observed, expected, strict=False))
+                if pair[0] != pair[1]
+            ),
+            min(len(observed), len(expected)),
+        )
+        observed_value = observed[mismatch] if mismatch < len(observed) else "<missing>"
+        expected_value = expected[mismatch] if mismatch < len(expected) else "<none>"
+        pytest.fail(
+            f"tail history mismatch matched={len(observed)} captured={len(captured)} "
+            f"bytes={sum(len(line) + 1 for line in observed)} metrics={pane_metrics} "
+            f"limit={history_limit} first={indices[0] if indices else None} "
+            f"last={indices[-1] if indices else None} unique={len(counts)} "
+            f"discontinuity={discontinuity} missing={missing} duplicates={duplicates} "
+            f"index={mismatch} expected={expected_value!r} observed={observed_value!r}"
+        )
     assert (
         hashlib.sha256("\n".join(observed).encode()).digest()
         == hashlib.sha256("\n".join(expected).encode()).digest()
     )
-    assert observed == expected
     assert any(line.strip() == "TAIL-END" for line in captured)
 
 

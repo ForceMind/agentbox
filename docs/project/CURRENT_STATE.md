@@ -850,6 +850,10 @@ PROPOSED architecture status are preserved.
   padding on the marker history row. Marker comparison now strips only terminal
   whitespace before exact `TAIL-END` equality; all frame integrity checks remain
   byte-for-byte strict.
+- Exact head `651d3f7` passed the >64 KiB observation threshold but the filtered
+  frame digest differed. The unchanged strict comparison now emits only the
+  frame count and first expected/observed mismatch, enough to distinguish
+  truncation, duplication, ordering and formatting without dumping pane data.
 - The three Python quality jobs on `34fbdfd` failed only because one unit test
   monkeypatched the imported module's private `time` name, which mypy correctly
   rejected as not explicitly exported. The unnecessary sleep monkeypatch is
