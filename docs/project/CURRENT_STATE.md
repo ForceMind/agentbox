@@ -594,3 +594,9 @@ PROPOSED architecture status are preserved.
   migration remains an R11 deliverable.
 - Chromium E2E passes `64` desktop/mobile cases and reads back the actual
   Dashboard `0.3.0rc5` / `API v1` text from the built candidate.
+- PR #79 opened at initial exact head `35efb88f412386900a9e4188589f2debca4aa1f1`.
+  Its first `repository-boundaries` run correctly rejected the new fixed vendor
+  probe adapter because the controlled subprocess allowlist had not named that
+  Runtime module. The allowlist now names only `waw_vendor_probe.py` in addition
+  to the existing controlled adapters; the local boundary script and shell syntax
+  checks pass. A replacement exact head and complete CI result are still pending.
