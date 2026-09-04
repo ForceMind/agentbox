@@ -324,6 +324,7 @@ def _begin_real_workspace(
     *,
     agent: str = "claude",
     launch: bytes | None = None,
+    retain_failed_pane: bool = False,
 ) -> tuple[str, socket.socket, socket.socket]:
     _kill_tmux_server()
     launch_path = Path("/run/agentbox-waw/tmp") / HASH / "launch.v1.sock"
@@ -373,6 +374,21 @@ def _begin_real_workspace(
     control, _address = listener.accept()
     control.settimeout(5.0)
     listener.close()
+    if retain_failed_pane:
+        subprocess.run(
+            [
+                "/usr/bin/tmux",
+                "-S",
+                str(TMUX_SOCKET),
+                "set-option",
+                "-w",
+                "-t",
+                f"={session}",
+                "remain-on-exit",
+                "on",
+            ],
+            check=True,
+        )
     control.sendmsg(
         [launch or _launch_record(agent)],
         [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", role_fds))],
@@ -412,8 +428,49 @@ def _wbr_resize(sequence: int, columns: int, rows: int) -> bytes:
 def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    session, control, wbr = _begin_real_workspace(native_binaries, fake_binaries[0], tmp_path)
-    assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
+    session, control, wbr = _begin_real_workspace(
+        native_binaries, fake_binaries[0], tmp_path, retain_failed_pane=True
+    )
+    ready = control.recv(9)
+    if ready != b"AWR1\x01\x01\x00\x00":
+        deadline = time.monotonic() + 5.0
+        status = "not-dead"
+        while time.monotonic() < deadline:
+            observed = subprocess.run(
+                [
+                    "/usr/bin/tmux",
+                    "-S",
+                    str(TMUX_SOCKET),
+                    "display-message",
+                    "-p",
+                    "-t",
+                    f"={session}",
+                    "#{pane_dead}:#{pane_dead_status}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if observed.startswith("1:"):
+                status = observed
+                break
+            time.sleep(0.01)
+        _kill_tmux_server()
+        pytest.fail(f"workspace READY failed with pane status {status}")
+    subprocess.run(
+        [
+            "/usr/bin/tmux",
+            "-S",
+            str(TMUX_SOCKET),
+            "set-option",
+            "-w",
+            "-t",
+            f"={session}",
+            "remain-on-exit",
+            "off",
+        ],
+        check=True,
+    )
     attached, master = _spawn_real_attach(native_binaries, "claude")
     startup = _read_fd_until(master, b"SIZE 80 24")
     assert b"READY claude" in startup

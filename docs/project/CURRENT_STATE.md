@@ -629,3 +629,8 @@ PROPOSED architecture status are preserved.
   `/proc`; it stacks the new PID-namespace procfs directly over it with the fixed
   `nosuid,nodev,noexec,hidepid=2,subset=pid` restrictions. The regression gate
   forbids reintroducing the invalid detach.
+- Because the same EOF persisted, static inspection no longer identifies a safe
+  second fix. The next exact head uses bounded integer-only stage diagnostics and
+  retains only the first failed pane long enough to read `pane_dead_status`; it
+  does not change READY/WBR, write terminal payload, or relax isolation assertions.
+  These diagnostic branches will be removed after the failing syscall stage is known.
