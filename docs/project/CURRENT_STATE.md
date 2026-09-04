@@ -642,3 +642,7 @@ PROPOSED architecture status are preserved.
   integer status. Production-candidate head `ae412c4c` reproduced the original
   pre-READY EOF. The bounded diagnostic is restored without that masking cleanup;
   no additional isolation behavior changes until the exact stage is observed.
+- Head `110edb2c` showed the pane was still not retained because
+  `remain-on-exit` requires pane scope. The diagnostic now uses exact pane target
+  `=session:0.0` and `list-panes`; this remains diagnostics-only and carries no
+  payload or protocol changes.
