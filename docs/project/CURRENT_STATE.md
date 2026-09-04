@@ -618,3 +618,8 @@ PROPOSED architecture status are preserved.
   32-character workspace prefix while the production contract requires the full
   64-character workspace hash; later tmux failures cascaded from that first
   rejected pane. All three CI cgroup fixture references now use the full hash.
+- Head `bce0d29c` progressed past that identity check; its first isolated bridge
+  then closed before READY. The failure pattern is consistent with Ubuntu 24.04's
+  AppArmor restriction on unprivileged user namespaces. The ephemeral CI host explicitly
+  disables that runner-only restriction before executing the helper as the
+  non-root runner. The setting is not product installation or R12 host evidence.

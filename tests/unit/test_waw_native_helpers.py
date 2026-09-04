@@ -55,6 +55,7 @@ def test_linux_ci_uses_the_full_workspace_hash_for_cgroup_identity() -> None:
     assert f"WORKSPACE_HASH: {'a' * 64}" in workflow
     assert "ws-${WORKSPACE_HASH}-g7/workload" in workflow
     assert "WORKSPACE_PREFIX" not in workflow
+    assert "sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0" in workflow
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux-only PTY/pidfd/execveat gate")
