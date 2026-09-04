@@ -332,6 +332,7 @@ def _begin_real_workspace(
     agent: str = "claude",
     launch: bytes | None = None,
     retain_failed_pane: bool = False,
+    delete_policy_after_open: bool = False,
 ) -> tuple[str, socket.socket, socket.socket]:
     _kill_tmux_server()
     launch_path = Path("/run/agentbox-waw/tmp") / HASH / "launch.v1.sock"
@@ -358,6 +359,9 @@ def _begin_real_workspace(
         os.open(policy, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC),
         wbr_child.fileno(),
     ]
+    if delete_policy_after_open:
+        (policy / "policy-mount-canary").unlink()
+        policy.rmdir()
     session = f"agentbox-waw-{agent}-{HASH[:32]}"
     subprocess.run(
         [
@@ -559,6 +563,21 @@ def test_bridge_vendor_exec_failure_never_emits_ready_and_reaps(
     invalid_vendor.write_text("#!/definitely/missing/interpreter\n")
     invalid_vendor.chmod(0o755)
     session, control, wbr = _begin_real_workspace(native_binaries, invalid_vendor, tmp_path)
+    assert control.recv(9) == b""
+    _wait_session_gone(session)
+    control.close()
+    wbr.close()
+
+
+def test_deleted_held_directory_hint_fails_before_ready_and_vendor(
+    native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
+) -> None:
+    session, control, wbr = _begin_real_workspace(
+        native_binaries,
+        fake_binaries[0],
+        tmp_path,
+        delete_policy_after_open=True,
+    )
     assert control.recv(9) == b""
     _wait_session_gone(session)
     control.close()

@@ -40,8 +40,17 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert 'umount2("/proc"' not in source
     assert 'mount("proc", "/proc", "proc"' in source
     assert "SYS_mount_setattr" in source
+    assert "SYS_openat2" in source
+    assert "AGENTBOX_WAW_HAVE_OPENAT2_UAPI" in source
+    assert "__has_include(<linux/openat2.h>)" in source
+    assert "RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS" in source
+    assert "read_descriptor_hint" in source
+    assert "reanchor_descriptor" in source
     assert '"/proc/self/fd/%d"' in source
     assert "mount(source, target, NULL, MS_BIND, NULL)" in source
+    assert "authority_status.st_dev != reopened_status.st_dev" in source
+    assert "authority_status.st_ino != reopened_status.st_ino" in source
+    assert "authority_vfs.f_flag != reopened_vfs.f_flag" in source
     assert "MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV" in source
     assert "MOUNT_ATTR_RDONLY" in source
     assert "MOUNT_ATTR_SIZE_VER0" in source

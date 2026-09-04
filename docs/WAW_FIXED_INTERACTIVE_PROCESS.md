@@ -127,9 +127,23 @@ blocked until every mount is installed and U1 has completed its NNP, capability
 clear, and seccomp lockdown, so the vendor cannot observe the trusted setup
 window. Missing Linux 5.12+ syscall/UAPI support fails closed and is an R12 host
 gate.
+The held directory FD remains the authority across namespace creation. Before
+creating the mount namespace, U1 reads the kernel-generated absolute FD target
+only as a lookup hint and rejects truncation, non-absolute results, and deleted
+targets. Inside the new mount namespace, `openat2` reopens that hint beneath the
+current root with `RESOLVE_IN_ROOT|RESOLVE_NO_MAGICLINKS`. The reopened directory
+must exactly match the authority FD's device, inode, type/mode, visible owner,
+and filesystem mount flags before it may be bound. A rename, replacement,
+or alias only succeeds when lookup still reaches the same verified object with
+the same visible owner and reported mount flags. A changed object or reported
+flag, or unsupported `openat2`, fails closed; the reopened FD pins the verified
+object through the bind.
 R12 must also prove these four source directories contain no nested mounts, or
 audit both the nested mount and the underlying directory that a non-recursive
 clone exposes. The setup owns each fixed target before the vendor starts.
+The R12 host contract additionally rejects idmapped source mounts and audits
+source mount topology plus per-mount security metadata not exposed by
+`fstatvfs`, including LSM and `nosymfollow` policy.
 
 The rootless setup uses two user namespaces. A short-lived U1 maps namespace
 UID/GID 0 to the non-root Runtime identity and owns mount/PID/IPC setup. PID1

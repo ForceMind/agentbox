@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -24,6 +25,15 @@
 #include <linux/landlock.h>
 #include <linux/mount.h>
 #include <linux/seccomp.h>
+#if defined(__has_include)
+#if __has_include(<linux/openat2.h>)
+#include <linux/openat2.h>
+#define AGENTBOX_WAW_HAVE_OPENAT2_UAPI 1
+#endif
+#endif
+#ifndef AGENTBOX_WAW_HAVE_OPENAT2_UAPI
+#define AGENTBOX_WAW_HAVE_OPENAT2_UAPI 0
+#endif
 #include <poll.h>
 #include <sched.h>
 #include <sys/prctl.h>
@@ -149,17 +159,108 @@ static int ensure_directory(const char *path, mode_t mode) {
     return 0;
 }
 
-static int bind_descriptor(int fd, const char *target, int read_only) {
+struct agentbox_waw_descriptor_hints {
+    char project[PATH_MAX + 1U];
+    char home[PATH_MAX + 1U];
+    char temporary[PATH_MAX + 1U];
+    char policy[PATH_MAX + 1U];
+};
+
+static int read_descriptor_hint(int fd, char *hint, size_t capacity) {
+    char source[32];
+    static const char deleted_suffix[] = " (deleted)";
+    int source_length = snprintf(source, sizeof(source), "/proc/self/fd/%d", fd);
+    ssize_t length;
+    size_t suffix_length = sizeof(deleted_suffix) - 1U;
+    if (source_length < 0 || (size_t)source_length >= sizeof(source) || capacity < 2U) {
+        return -1;
+    }
+    length = readlink(source, hint, capacity - 1U);
+    if (length <= 0 || (size_t)length >= capacity - 1U || hint[0] != '/') {
+        return -1;
+    }
+    hint[length] = '\0';
+    if ((size_t)length >= suffix_length &&
+        strcmp(hint + (size_t)length - suffix_length, deleted_suffix) == 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int reanchor_descriptor(int authority_fd, const char *hint) {
+#if AGENTBOX_WAW_HAVE_OPENAT2_UAPI && defined(SYS_openat2) && defined(RESOLVE_IN_ROOT) && \
+    defined(RESOLVE_NO_MAGICLINKS)
+    struct open_how how;
+    struct stat authority_status;
+    struct stat reopened_status;
+    struct statvfs authority_vfs;
+    struct statvfs reopened_vfs;
+    int root = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    int reopened;
+    if (root < 0) {
+        return -1;
+    }
+    memset(&how, 0, sizeof(how));
+    how.flags = O_PATH | O_DIRECTORY | O_CLOEXEC;
+    how.resolve = RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS;
+    reopened = (int)syscall(SYS_openat2, root, hint, &how, sizeof(how));
+    if (reopened < 0) {
+        int open_error = errno;
+        (void)close(root);
+        errno = open_error;
+        return -1;
+    }
+    if (close(root) != 0) {
+        (void)close(reopened);
+        return -1;
+    }
+    if (fstat(authority_fd, &authority_status) != 0 || fstat(reopened, &reopened_status) != 0 ||
+        fstatvfs(authority_fd, &authority_vfs) != 0 || fstatvfs(reopened, &reopened_vfs) != 0) {
+        int stat_error = errno;
+        (void)close(reopened);
+        errno = stat_error;
+        return -1;
+    }
+    if (!S_ISDIR(authority_status.st_mode) || !S_ISDIR(reopened_status.st_mode) ||
+        authority_status.st_dev != reopened_status.st_dev ||
+        authority_status.st_ino != reopened_status.st_ino ||
+        authority_status.st_mode != reopened_status.st_mode ||
+        authority_status.st_uid != reopened_status.st_uid ||
+        authority_status.st_gid != reopened_status.st_gid ||
+        authority_vfs.f_flag != reopened_vfs.f_flag) {
+        (void)close(reopened);
+        errno = EXDEV;
+        return -1;
+    }
+    return reopened;
+#else
+    (void)authority_fd;
+    (void)hint;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+static int bind_descriptor(int authority_fd, const char *hint, const char *target, int read_only) {
 #if defined(SYS_mount_setattr) && defined(MOUNT_ATTR_NOSUID) && \
     defined(MOUNT_ATTR_NODEV) && defined(MOUNT_ATTR_RDONLY) && defined(MOUNT_ATTR_SIZE_VER0)
     struct mount_attr attributes;
     char source[32];
-    int length = snprintf(source, sizeof(source), "/proc/self/fd/%d", fd);
+    int reanchored = reanchor_descriptor(authority_fd, hint);
+    int length;
+    int result;
+    if (reanchored < 0) {
+        return 1;
+    }
+    length = snprintf(source, sizeof(source), "/proc/self/fd/%d", reanchored);
     if (length < 0 || (size_t)length >= sizeof(source)) {
+        (void)close(reanchored);
         return 1;
     }
     if (mount(source, target, NULL, MS_BIND, NULL) != 0) {
-        switch (errno) {
+        int mount_error = errno;
+        (void)close(reanchored);
+        switch (mount_error) {
             case EPERM:
                 return 2;
             case EACCES:
@@ -183,16 +284,21 @@ static int bind_descriptor(int fd, const char *target, int read_only) {
     if (read_only != 0) {
         attributes.attr_set |= MOUNT_ATTR_RDONLY;
     }
-    return syscall(SYS_mount_setattr, AT_FDCWD, target, 0U, &attributes,
-                   MOUNT_ATTR_SIZE_VER0) == 0L
-               ? 0
-               : 10;
+    result = syscall(SYS_mount_setattr, AT_FDCWD, target, 0U, &attributes,
+                     MOUNT_ATTR_SIZE_VER0) == 0L
+                 ? 0
+                 : 10;
+    if (close(reanchored) != 0 && result == 0) {
+        result = 11;
+    }
+    return result;
 #else
-    (void)fd;
+    (void)authority_fd;
+    (void)hint;
     (void)target;
     (void)read_only;
     errno = ENOTSUP;
-    return 11;
+    return 12;
 #endif
 }
 
@@ -206,7 +312,8 @@ static int mask_existing(const char *target, const char *mask_directory, const c
     return mount(source, target, NULL, MS_BIND, NULL);
 }
 
-static int setup_mounts(const struct agentbox_waw_bridge_config *config) {
+static int setup_mounts(const struct agentbox_waw_bridge_config *config,
+                        const struct agentbox_waw_descriptor_hints *hints) {
     const char *agent = agentbox_waw_agent_name((enum agentbox_waw_agent_type)config->agent_type);
     const char *other = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE ? "codex" : "claude";
     const char *policy = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
@@ -281,25 +388,27 @@ static int setup_mounts(const struct agentbox_waw_bridge_config *config) {
         return 94;
     }
     {
-        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_PROJECT_FD, project_target, 0);
+        int bind_status =
+            bind_descriptor(AGENTBOX_WAW_BRIDGE_PROJECT_FD, hints->project, project_target, 0);
         if (bind_status != 0) {
             return 110 + bind_status;
         }
     }
     {
-        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_HOME_FD, home_target, 0);
+        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_HOME_FD, hints->home, home_target, 0);
         if (bind_status != 0) {
             return 120 + bind_status;
         }
     }
     {
-        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_TEMP_FD, temp_target, 0);
+        int bind_status =
+            bind_descriptor(AGENTBOX_WAW_BRIDGE_TEMP_FD, hints->temporary, temp_target, 0);
         if (bind_status != 0) {
             return 130 + bind_status;
         }
     }
     {
-        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_POLICY_FD, policy, 1);
+        int bind_status = bind_descriptor(AGENTBOX_WAW_BRIDGE_POLICY_FD, hints->policy, policy, 1);
         if (bind_status != 0) {
             return 140 + bind_status;
         }
@@ -585,8 +694,16 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     int release_workload = 1;
     int status;
     int release_only[1];
+    struct agentbox_waw_descriptor_hints hints;
     if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
         getppid() != expected_parent ||
+        read_descriptor_hint(AGENTBOX_WAW_BRIDGE_PROJECT_FD, hints.project,
+                             sizeof(hints.project)) != 0 ||
+        read_descriptor_hint(AGENTBOX_WAW_BRIDGE_HOME_FD, hints.home, sizeof(hints.home)) != 0 ||
+        read_descriptor_hint(AGENTBOX_WAW_BRIDGE_TEMP_FD, hints.temporary,
+                             sizeof(hints.temporary)) != 0 ||
+        read_descriptor_hint(AGENTBOX_WAW_BRIDGE_POLICY_FD, hints.policy,
+                             sizeof(hints.policy)) != 0 ||
         (host_proc = open("/proc", O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)) < 0 ||
         unshare(CLONE_NEWUSER) != 0 ||
         agentbox_waw_write_exact(ready_write, &byte, sizeof(byte)) != 0 ||
@@ -620,7 +737,7 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
         if (set_exact_setup_capability() != 0) {
             _exit(80);
         }
-        setup_status = setup_mounts(config);
+        setup_status = setup_mounts(config, &hints);
         if (setup_status != 0) {
             _exit(setup_status);
         }

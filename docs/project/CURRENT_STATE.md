@@ -730,3 +730,13 @@ PROPOSED architecture status are preserved.
   diagnostic exit-code differences or cascades from the intentionally retained
   first pane. A bounded errno map now distinguishes `EPERM`, `EACCES`, path-shape
   failures, and other initial bind failures without emitting host data.
+- Exact head `2fd59f8` returned `116`, confirming `EINVAL`: the SCM_RIGHTS held
+  FD still referenced the pre-`CLONE_NEWNS` mount, which Linux refuses to copy
+  into the new namespace. The held FD remains authoritative, while its
+  kernel-generated absolute target is now used only as an `openat2` lookup hint
+  inside the new namespace. The reanchored FD must exact-match device, inode,
+  type/mode, visible owner and filesystem mount flags before bind; replacement,
+  changed visible metadata, deleted/truncated hint, or missing UAPI fails closed.
+  R12 must reject idmapped sources and audit mount topology plus per-mount LSM
+  and `nosymfollow` metadata that `fstatvfs` cannot attest. U2 remains behind the
+  existing mount/lockdown/FD publication gate.
