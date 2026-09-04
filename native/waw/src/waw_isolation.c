@@ -645,8 +645,13 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
                         (gid_t)AGENTBOX_WAW_INNER_GID, 0U) != 0) {
         release_workload = 0;
     }
-    if (agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0 ||
-        apply_seccomp() != 0) {
+    if (agentbox_waw_apply_no_new_privs() != 0) {
+        release_workload = 0;
+    }
+    if (clear_setup_capability() != 0) {
+        release_workload = 0;
+    }
+    if (apply_seccomp() != 0) {
         release_workload = 0;
     }
     if (release_workload != 0 &&
