@@ -79,6 +79,13 @@ and nonce. It first revokes old capability, Session and INPUT publication,
 preserves any incomplete cleanup fence, and only then publishes the new authority.
 Delayed old frames, PID reuse and a new process presenting the old epoch fail.
 
+Runtime represents an observed connection as a candidate or exact generation
+lease and a bind as a single-use transfer plan. A terminal-authority transfer
+invalidates the old generation before external revocation work. Failure after that
+point permanently poisons the authority; it never restores old publication or
+retries a detached FD number. Foreign-authority leases are rejected before locks,
+and authority-scoped `RuntimePeer` views retain no connection borrow FD.
+
 Runtime connection shutdown observes every cancelled worker. An unfinished
 worker leaves a poisoned/incomplete result; it cannot be reported as clean.
 

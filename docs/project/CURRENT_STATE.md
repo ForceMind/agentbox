@@ -656,6 +656,17 @@ PROPOSED architecture status are preserved.
   close. `poll(0)` supports high pidfds, and uncertain writer cleanup poisons.
   Focused regression passes 115 with one Linux-only peer integration skip; full
   Linux-target mypy checks 254 sources. Independent Sol review reports PASS with
-  no P0/P1/P2. Linux exact-head CI remains required for this uncommitted slice.
-- Runtime-side API authority transfer, redraw and application ownership remain
+  no P0/P1/P2. Commit `3f7c301...` completed all 20 exact-head checks.
+- Runtime `WAWPeerAuthority` now models candidate, connection lease, transfer plan
+  and retained authority generation. It rejects foreign leases before locking,
+  uses authority-to-FD lock order, and exposes an authority-scoped `RuntimePeer`
+  view that survives connection-lease close but not transfer/poison/close.
+- First/exact-repeat bind, live conflicts, terminal transfer, random new epochs,
+  retired replay/capacity and CAS single-winner behavior are closed. Destructive
+  transfer failure permanently poisons; all detached FD close errors are sticky,
+  later close rethrows the first error without retrying an old FD number. Thirty-one
+  focused tests and scoped Ruff/Black/Linux mypy pass; independent Sol review
+  reports no P0/P1/P2. Exact-head CI remains required for this foundation.
+- Runtime peer authority must now be wired through control dispatch, lifecycle
+  bind/transfer and encrypted streams. Redraw and application ownership remain
   active rc6 work. No production WAW path is enabled by this foundation.

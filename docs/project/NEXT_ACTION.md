@@ -38,6 +38,9 @@ blocker is resolved. Do not request the same software approval again.
   `BoundRuntimePeer` is implemented and independently reviewed; next complete its
   Linux exact-head CI, then close Runtime-side API authority transfer and bounded
   redraw before production bootstrap.
+- Runtime peer-authority foundation is implemented and independently reviewed;
+  next replace the three separate control/stream peer callbacks with this single
+  authority in control dispatch, lifecycle transfer and encrypted attachment.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent
