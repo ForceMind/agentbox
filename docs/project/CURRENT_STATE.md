@@ -646,3 +646,8 @@ PROPOSED architecture status are preserved.
   `remain-on-exit` requires pane scope. The diagnostic now uses exact pane target
   `=session:0.0` and `list-panes`; this remains diagnostics-only and carries no
   payload or protocol changes.
+- Pane-scoped head `ef51061c` finally reported exact status
+  `1:65:agentbox-waw-pane-bootstrap`, proving the failure precedes namespace
+  creation. The bootstrap's previously combined predicate is split into fixed
+  integer stages for parent/tmux/control/launch/identity/cgroup/FD-role checks;
+  every predicate remains fail closed and unchanged.

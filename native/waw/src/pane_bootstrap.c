@@ -584,15 +584,35 @@ static int run_bootstrap(const char *workspace_hash, enum agentbox_waw_agent_typ
 #endif
     memset(&launch, 0, sizeof(launch));
     if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
-        getppid() != expected_parent ||
-        validate_tmux_evidence(workspace_hash) != 0 || establish_control(workspace_hash) != 0 ||
-        receive_launch(raw, received) != 0 || parse_launch(raw, &launch) != 0 ||
-        strcmp(workspace_hash, launch.workspace_hash) != 0 || launch.agent != agent ||
-        launch.runtime_uid != (uint32_t)geteuid() || launch.runtime_gid != (uint32_t)getegid() ||
-        validate_cgroup_marker(workspace_hash, launch.generation) != 0 ||
-        validate_roles(received) != 0) {
+        getppid() != expected_parent) {
+        return 81;
+    }
+    if (validate_tmux_evidence(workspace_hash) != 0) {
+        return 82;
+    }
+    if (establish_control(workspace_hash) != 0) {
+        return 83;
+    }
+    if (receive_launch(raw, received) != 0) {
         close_received(received);
-        return 65;
+        return 84;
+    }
+    if (parse_launch(raw, &launch) != 0) {
+        close_received(received);
+        return 85;
+    }
+    if (strcmp(workspace_hash, launch.workspace_hash) != 0 || launch.agent != agent ||
+        launch.runtime_uid != (uint32_t)geteuid() || launch.runtime_gid != (uint32_t)getegid()) {
+        close_received(received);
+        return 86;
+    }
+    if (validate_cgroup_marker(workspace_hash, launch.generation) != 0) {
+        close_received(received);
+        return 87;
+    }
+    if (validate_roles(received) != 0) {
+        close_received(received);
+        return 88;
     }
     for (index = 0; index < (size_t)AGENTBOX_WAW_FD_COUNT; ++index) {
         safe[index] = agentbox_waw_duplicate_high(received[index]);
