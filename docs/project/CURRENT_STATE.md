@@ -671,3 +671,7 @@ PROPOSED architecture status are preserved.
   five-key fixed environment that contains no DBus/XDG systemd channel. Native
   tests now use that same environment for every new server and keep the positive
   pane cgroup assertion; the production cgroup predicate is not weakened.
+- With the pane held in the workload, head `67ca4b2` again reached project
+  bind-remount stage `95`. The classic remount is replaced by Linux 5.12+
+  `mount_setattr`: it only sets `NOSUID|NODEV` and policy `RDONLY`, never clears
+  inherited mount attributes, and fails closed when the syscall is unavailable.

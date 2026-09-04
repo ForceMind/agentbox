@@ -39,10 +39,11 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert "AGENTBOX_WAW_READY_STATUS_RUNNING" in source
     assert 'umount2("/proc"' not in source
     assert 'mount("proc", "/proc", "proc"' in source
-    assert "fstatvfs(fd, &source_status)" in source
-    assert "source_status.f_flag & ST_NOEXEC" in source
-    assert "source_status.f_flag & ST_RELATIME" in source
-    assert "unsigned long flags = MS_BIND;" in source
+    assert "SYS_mount_setattr" in source
+    assert "MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV" in source
+    assert "MOUNT_ATTR_RDONLY" in source
+    assert "MOUNT_ATTR_SIZE_VER0" in source
+    assert "attr_clr" not in source
     assert "MS_BIND | MS_REC" not in source
 
 

@@ -120,6 +120,11 @@ document-fixed browser selection: only `navigator.languages[0]` is read, primary
 Technical identifiers remain English; full cross-page bilingual migration remains
 an R11 task.
 
+Descriptor directory mounts are non-recursive: nested source mounts are not
+imported into the isolated view. Linux `mount_setattr` only adds `NOSUID|NODEV`
+and policy `RDONLY`; it never clears inherited mount restrictions. Missing
+Linux 5.12+ syscall/UAPI support fails closed and is an R12 host gate.
+
 ## Validation
 
 `tests/unit/test_release_candidate.py` verifies the core/Python/npm version

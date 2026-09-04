@@ -12,7 +12,6 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
-#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -22,6 +21,7 @@
 #include <linux/audit.h>
 #include <linux/filter.h>
 #include <linux/landlock.h>
+#include <linux/mount.h>
 #include <linux/seccomp.h>
 #include <poll.h>
 #include <sched.h>
@@ -77,36 +77,28 @@ static int ensure_directory(const char *path, mode_t mode) {
 
 static int bind_descriptor(int fd, const char *target, int read_only) {
     char source[32];
-    struct statvfs source_status;
-    unsigned long flags = MS_BIND;
+    struct mount_attr attributes;
     int length = snprintf(source, sizeof(source), "/proc/self/fd/%d", fd);
-    if (length < 0 || (size_t)length >= sizeof(source) || fstatvfs(fd, &source_status) != 0 ||
-        mount(source, target, NULL, flags, NULL) != 0) {
+    if (length < 0 || (size_t)length >= sizeof(source) ||
+        mount(source, target, NULL, MS_BIND, NULL) != 0) {
         return -1;
     }
-    flags = MS_BIND | MS_REMOUNT | MS_NOSUID | MS_NODEV;
-    if (read_only != 0 || (source_status.f_flag & ST_RDONLY) != 0U) {
-        flags |= MS_RDONLY;
+#if defined(SYS_mount_setattr) && defined(MOUNT_ATTR_NOSUID) && defined(MOUNT_ATTR_NODEV) && \
+    defined(MOUNT_ATTR_RDONLY) && defined(MOUNT_ATTR_SIZE_VER0)
+    memset(&attributes, 0, sizeof(attributes));
+    attributes.attr_set = MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV;
+    if (read_only != 0) {
+        attributes.attr_set |= MOUNT_ATTR_RDONLY;
     }
-    if ((source_status.f_flag & ST_NOEXEC) != 0U) {
-        flags |= MS_NOEXEC;
-    }
-#ifdef ST_NOATIME
-    if ((source_status.f_flag & ST_NOATIME) != 0U) {
-        flags |= MS_NOATIME;
-    }
+    return syscall(SYS_mount_setattr, AT_FDCWD, target, 0U, &attributes,
+                   MOUNT_ATTR_SIZE_VER0) == 0L
+               ? 0
+               : -1;
+#else
+    (void)read_only;
+    errno = ENOTSUP;
+    return -1;
 #endif
-#ifdef ST_NODIRATIME
-    if ((source_status.f_flag & ST_NODIRATIME) != 0U) {
-        flags |= MS_NODIRATIME;
-    }
-#endif
-#ifdef ST_RELATIME
-    if ((source_status.f_flag & ST_RELATIME) != 0U) {
-        flags |= MS_RELATIME;
-    }
-#endif
-    return mount(NULL, target, NULL, flags, NULL);
 }
 
 static int mask_existing(const char *target, const char *mask_directory, const char *mask_file) {
