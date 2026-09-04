@@ -29,8 +29,8 @@
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 
-static int write_file(const char *path, const char *value) {
-    int fd = open(path, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+static int write_file_at(int directory, const char *path, const char *value) {
+    int fd = openat(directory, path, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
     size_t size = strlen(value);
     int result;
     if (fd < 0) {
@@ -43,30 +43,41 @@ static int write_file(const char *path, const char *value) {
     return result;
 }
 
-static int write_user_maps(pid_t child, uid_t host_uid, gid_t host_gid) {
+static int write_user_maps(int proc_directory, pid_t child, uid_t inner_uid, uid_t parent_uid,
+                           gid_t inner_gid, gid_t parent_gid) {
     char path[64];
     char mapping[96];
     int length;
-    length = snprintf(path, sizeof(path), "/proc/%ld/setgroups", (long)child);
-    if (length < 0 || (size_t)length >= sizeof(path) || write_file(path, "deny\n") != 0) {
+    length = snprintf(path, sizeof(path), proc_directory == AT_FDCWD ? "/proc/%ld/setgroups"
+                                                                     : "%ld/setgroups",
+                      (long)child);
+    if (length < 0 || (size_t)length >= sizeof(path) ||
+        write_file_at(proc_directory, path, "deny\n") != 0) {
         return -1;
     }
-    length = snprintf(path, sizeof(path), "/proc/%ld/uid_map", (long)child);
+    length = snprintf(path, sizeof(path), proc_directory == AT_FDCWD ? "/proc/%ld/uid_map"
+                                                                     : "%ld/uid_map",
+                      (long)child);
     if (length < 0 || (size_t)length >= sizeof(path)) {
         return -1;
     }
-    length = snprintf(mapping, sizeof(mapping), "%u %u 1\n", (unsigned int)AGENTBOX_WAW_INNER_UID,
-                      (unsigned int)host_uid);
-    if (length < 0 || (size_t)length >= sizeof(mapping) || write_file(path, mapping) != 0) {
+    length = snprintf(mapping, sizeof(mapping), "%u %u 1\n", (unsigned int)inner_uid,
+                      (unsigned int)parent_uid);
+    if (length < 0 || (size_t)length >= sizeof(mapping) ||
+        write_file_at(proc_directory, path, mapping) != 0) {
         return -1;
     }
-    length = snprintf(path, sizeof(path), "/proc/%ld/gid_map", (long)child);
+    length = snprintf(path, sizeof(path), proc_directory == AT_FDCWD ? "/proc/%ld/gid_map"
+                                                                     : "%ld/gid_map",
+                      (long)child);
     if (length < 0 || (size_t)length >= sizeof(path)) {
         return -1;
     }
-    length = snprintf(mapping, sizeof(mapping), "%u %u 1\n", (unsigned int)AGENTBOX_WAW_INNER_GID,
-                      (unsigned int)host_gid);
-    return length < 0 || (size_t)length >= sizeof(mapping) ? -1 : write_file(path, mapping);
+    length = snprintf(mapping, sizeof(mapping), "%u %u 1\n", (unsigned int)inner_gid,
+                      (unsigned int)parent_gid);
+    return length < 0 || (size_t)length >= sizeof(mapping)
+               ? -1
+               : write_file_at(proc_directory, path, mapping);
 }
 
 static int set_exact_setup_capability(void) {
@@ -558,24 +569,25 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
                               int bridge_executable, char *const argv[], char *const envp[],
                               int ready_write, int mapped_read) {
     unsigned char byte = 1U;
+    int host_proc = -1;
+    int workload_ready[2] = {-1, -1};
+    int workload_mapped[2] = {-1, -1};
     pid_t inner;
     pid_t expected_parent = getppid();
     int builder_pidfd;
+    int release_workload = 1;
     int status;
     if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
         getppid() != expected_parent ||
+        (host_proc = open("/proc", O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)) < 0 ||
         unshare(CLONE_NEWUSER) != 0 ||
-        prctl(PR_SET_KEEPCAPS, 1L, 0L, 0L, 0L) != 0 ||
         agentbox_waw_write_exact(ready_write, &byte, sizeof(byte)) != 0 ||
         agentbox_waw_read_exact(mapped_read, &byte, sizeof(byte)) != 0 || byte != 1U ||
-        setresgid((gid_t)AGENTBOX_WAW_INNER_GID, (gid_t)AGENTBOX_WAW_INNER_GID,
-                  (gid_t)AGENTBOX_WAW_INNER_GID) != 0 ||
-        setresuid((uid_t)AGENTBOX_WAW_INNER_UID, (uid_t)AGENTBOX_WAW_INNER_UID,
-                  (uid_t)AGENTBOX_WAW_INNER_UID) != 0 ||
+        geteuid() != 0U || getegid() != 0U ||
         prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != expected_parent ||
-        set_exact_setup_capability() != 0 ||
         (builder_pidfd = agentbox_waw_pidfd_open((int)getpid())) < 0 ||
-        unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC) != 0) {
+        unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC) != 0 ||
+        pipe2(workload_ready, O_CLOEXEC) != 0 || pipe2(workload_mapped, O_CLOEXEC) != 0) {
         _exit(71);
     }
     (void)close(ready_write);
@@ -587,6 +599,9 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     if (inner == 0) {
         struct pollfd parent_alive;
         int setup_status;
+        (void)close(workload_ready[0]);
+        (void)close(workload_mapped[1]);
+        (void)close(host_proc);
         parent_alive.fd = builder_pidfd;
         parent_alive.events = POLLIN;
         parent_alive.revents = 0;
@@ -594,13 +609,24 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
             getpid() != 1) {
             _exit(81);
         }
+        if (set_exact_setup_capability() != 0) {
+            _exit(80);
+        }
         setup_status = setup_mounts(config);
         if (setup_status != 0) {
             _exit(setup_status);
         }
-        if (agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0) {
+        if (unshare(CLONE_NEWUSER) != 0 ||
+            agentbox_waw_write_exact(workload_ready[1], &byte, sizeof(byte)) != 0 ||
+            agentbox_waw_read_exact(workload_mapped[0], &byte, sizeof(byte)) != 0 || byte != 1U ||
+            geteuid() != (uid_t)AGENTBOX_WAW_INNER_UID ||
+            getegid() != (gid_t)AGENTBOX_WAW_INNER_GID ||
+            prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || poll(&parent_alive, 1U, 0) != 0 ||
+            agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0) {
             _exit(83);
         }
+        (void)close(workload_ready[1]);
+        (void)close(workload_mapped[0]);
         if (apply_landlock(config, bridge_executable) != 0) {
             _exit(82);
         }
@@ -611,7 +637,31 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
         (void)agentbox_waw_exec_held(bridge_executable, argv, envp);
         _exit(85);
     }
+    (void)close(workload_ready[1]);
+    (void)close(workload_mapped[0]);
     (void)close(builder_pidfd);
+    if (agentbox_waw_read_exact(workload_ready[0], &byte, sizeof(byte)) != 0 || byte != 1U ||
+        write_user_maps(host_proc, inner, (uid_t)AGENTBOX_WAW_INNER_UID, 0U,
+                        (gid_t)AGENTBOX_WAW_INNER_GID, 0U) != 0) {
+        release_workload = 0;
+    }
+    if (agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0 ||
+        apply_seccomp() != 0) {
+        release_workload = 0;
+    }
+    if (release_workload != 0 &&
+        agentbox_waw_write_exact(workload_mapped[1], &byte, sizeof(byte)) != 0) {
+        release_workload = 0;
+    }
+    if (release_workload == 0) {
+        (void)kill(inner, SIGKILL);
+    }
+    (void)close(workload_ready[0]);
+    (void)close(workload_mapped[1]);
+    (void)close(host_proc);
+    if (agentbox_waw_close_except(NULL, 0U) != 0) {
+        (void)kill(inner, SIGKILL);
+    }
     while (waitpid(inner, &status, 0) < 0) {
         if (errno != EINTR) {
             _exit(71);
@@ -642,7 +692,7 @@ int agentbox_waw_launch_isolated(const struct agentbox_waw_bridge_config *config
     (void)close(ready_pipe[1]);
     (void)close(mapped_pipe[0]);
     if (agentbox_waw_read_exact(ready_pipe[0], &byte, sizeof(byte)) != 0 || byte != 1U ||
-        write_user_maps(child, geteuid(), getegid()) != 0 ||
+        write_user_maps(AT_FDCWD, child, 0U, geteuid(), 0U, getegid()) != 0 ||
         agentbox_waw_write_exact(mapped_pipe[1], &byte, sizeof(byte)) != 0) {
         (void)kill(child, SIGKILL);
     }

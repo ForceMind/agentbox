@@ -53,6 +53,9 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert "SYS_capset" in source
     assert "SYS_capget" in source
     assert "PR_CAP_AMBIENT_CLEAR_ALL" in source
+    assert source.count("unshare(CLONE_NEWUSER)") == 2
+    assert "write_user_maps(AT_FDCWD, child, 0U" in source
+    assert "write_user_maps(host_proc, inner" in source
 
 
 def test_native_ready_header_matches_python_adapter() -> None:

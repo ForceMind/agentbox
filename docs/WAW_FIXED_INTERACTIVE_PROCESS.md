@@ -129,6 +129,12 @@ R12 must also prove these four source directories contain no nested mounts, or
 audit both the nested mount and the underlying directory that a non-recursive
 clone exposes. The setup owns each fixed target before the vendor starts.
 
+The rootless setup uses two user namespaces. A short-lived U1 maps namespace
+UID/GID 0 to the non-root Runtime identity and owns mount/PID/IPC setup. PID1
+then creates U2, where UID/GID 1000 maps to U1's 0. U2 clears all capabilities
+with exact read-back before Landlock/seccomp and bridge exec. The saved host
+`/proc` descriptor remains only in the fixed U1 map/wait/reap process.
+
 ## Validation
 
 `tests/unit/test_release_candidate.py` verifies the core/Python/npm version

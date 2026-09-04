@@ -702,3 +702,16 @@ PROPOSED architecture status are preserved.
   pane with an empty numeric status, indicating signal termination. The bounded
   formatter now includes `pane_dead_signal` to distinguish seccomp, parent-death
   and memory faults before any further implementation change.
+- The apparent blank signal field was later read as status `111`, so no signal
+  fault occurred: U1 still could not clone the host mount while mapped as
+  nonzero UID 1000. The implementation now uses two rootless user namespaces:
+  U1 maps `0` to the outer Runtime UID/GID for fixed namespace/mount setup; U2
+  maps final `1000` to U1's `0`, clears all capabilities with exact read-back,
+  and runs Landlock/seccomp/bridge. U1 retains a pre-overmount `/proc` FD only
+  for the fixed second mapping, then clears capabilities, applies seccomp and
+  only waits/reaps. Root Helper remains outside the terminal path.
+- Independent Sol review found and closed a publication-order issue: U1 now
+  completes NNP, exact capability clearing and seccomp before sending the byte
+  that releases U2, so U2 cannot reach READY if the trusted waiter lockdown
+  fails. U1 also resets PDEATHSIG after its map and closes every inherited FD
+  before entering the wait/reap-only loop.
