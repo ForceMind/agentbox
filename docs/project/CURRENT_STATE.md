@@ -877,6 +877,10 @@ PROPOSED architecture status are preserved.
   test requires its exact one-byte termination canary plus pane `1:7`; the old
   same-poll bypass would only trigger namespace SIGKILL and leave the canary
   empty. Overlapping old responses cannot cause false success or timeout.
+- Exact head `55a023b` stopped before native execution because GCC fortify
+  treats a discarded canary-handler `write` result as an error. The async-safe
+  handler now explicitly receives that result; no production code or behavior
+  changed in this correction.
 - The three Python quality jobs on `34fbdfd` failed only because one unit test
   monkeypatched the imported module's private `time` name, which mypy correctly
   rejected as not explicitly exported. The unnecessary sleep monkeypatch is

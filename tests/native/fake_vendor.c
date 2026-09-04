@@ -339,9 +339,11 @@ static volatile sig_atomic_t descendant_canary_fd = -1;
 
 static void record_descendant_term(int signal_number) {
     const unsigned char observed = 1U;
+    ssize_t written;
     (void)signal_number;
     if (descendant_canary_fd >= 0) {
-        (void)write((int)descendant_canary_fd, &observed, sizeof(observed));
+        written = write((int)descendant_canary_fd, &observed, sizeof(observed));
+        (void)written;
     }
 }
 
