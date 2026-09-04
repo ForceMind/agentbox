@@ -687,3 +687,8 @@ PROPOSED architecture status are preserved.
 - Independent Sol review passed this lifecycle. The fake vendor now reads its
   own `/proc/self/status` and requires both `CapPrm` and `CapEff` to be zero,
   explicitly proving no namespace setup capability crosses the exec boundary.
+- Head `0889a40` still reported initial bind code `112`; the rejected operation
+  is the classic `/proc/self/fd/N` source path on the runner overlay, not the
+  attribute step. Directory mounting now uses descriptor-native `open_tree`,
+  detached `mount_setattr`, and `move_mount` without source path re-resolution,
+  nested mounts, or a temporarily less-restricted attached mount.

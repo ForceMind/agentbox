@@ -76,30 +76,42 @@ static int ensure_directory(const char *path, mode_t mode) {
 }
 
 static int bind_descriptor(int fd, const char *target, int read_only) {
-    char source[32];
+#if defined(SYS_open_tree) && defined(SYS_mount_setattr) && defined(SYS_move_mount) && \
+    defined(AT_EMPTY_PATH) && \
+    defined(OPEN_TREE_CLONE) && defined(OPEN_TREE_CLOEXEC) && defined(MOUNT_ATTR_NOSUID) && \
+    defined(MOUNT_ATTR_NODEV) && defined(MOUNT_ATTR_RDONLY) && \
+    defined(MOUNT_ATTR_SIZE_VER0) && defined(MOVE_MOUNT_F_EMPTY_PATH)
     struct mount_attr attributes;
-    int length = snprintf(source, sizeof(source), "/proc/self/fd/%d", fd);
-    if (length < 0 || (size_t)length >= sizeof(source)) {
+    int detached = (int)syscall(SYS_open_tree, fd, "",
+                                OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC | AT_EMPTY_PATH);
+    int result;
+    if (detached < 0) {
         return 1;
     }
-    if (mount(source, target, NULL, MS_BIND, NULL) != 0) {
-        return 2;
-    }
-#if defined(SYS_mount_setattr) && defined(MOUNT_ATTR_NOSUID) && defined(MOUNT_ATTR_NODEV) && \
-    defined(MOUNT_ATTR_RDONLY) && defined(MOUNT_ATTR_SIZE_VER0)
     memset(&attributes, 0, sizeof(attributes));
     attributes.attr_set = MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV;
     if (read_only != 0) {
         attributes.attr_set |= MOUNT_ATTR_RDONLY;
     }
-    return syscall(SYS_mount_setattr, AT_FDCWD, target, 0U, &attributes,
-                   MOUNT_ATTR_SIZE_VER0) == 0L
-               ? 0
-               : 3;
+    if (syscall(SYS_mount_setattr, detached, "", AT_EMPTY_PATH, &attributes,
+                MOUNT_ATTR_SIZE_VER0) != 0L) {
+        (void)close(detached);
+        return 2;
+    }
+    result = syscall(SYS_move_mount, detached, "", AT_FDCWD, target, MOVE_MOUNT_F_EMPTY_PATH) ==
+                     0L
+                 ? 0
+                 : 3;
+    if (close(detached) != 0 && result == 0) {
+        result = 4;
+    }
+    return result;
 #else
+    (void)fd;
+    (void)target;
     (void)read_only;
     errno = ENOTSUP;
-    return 4;
+    return 5;
 #endif
 }
 
