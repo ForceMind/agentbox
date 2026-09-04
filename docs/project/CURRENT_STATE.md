@@ -600,3 +600,7 @@ PROPOSED architecture status are preserved.
   Runtime module. The allowlist now names only `waw_vendor_probe.py` in addition
   to the existing controlled adapters; the local boundary script and shell syntax
   checks pass. A replacement exact head and complete CI result are still pending.
+- Replacement head `59a96da9b4e318d6ab28d7ec5385de75e24b963f`
+  passes `repository-boundaries`. Its Linux native compiler found one missing
+  standard `<signal.h>` declaration for `SIGKILL`; the header is now included.
+  This source-level portability fix still awaits a new exact-head Linux run.
