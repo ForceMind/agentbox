@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T03:43:36Z"
+verified_at_utc: "2026-09-04T09:06:27Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,27 +9,22 @@ repository: "ForceMind/agentbox"
 
 ## Current authorized implementation
 
-- New task preflight: clean `HEAD/main/origin/main/merge-base` at
-  `c0a10c78fe1dd86922172f4c433fa1ba976eb017`; six exact-main workflows SUCCESS,
-  only historical Draft #42 open. Fetch/GitHub reads exited 0.
-- Owner explicitly delegated software goals/plans/architecture decisions. Coding
-  Agent accepts the reviewed full protocol supplement; the prior R3 approval
-  blocker is resolved. Current branch: `codex/waw-runtime-encrypted-stream`.
-- Latest stage baseline: `HEAD/main/origin/main/merge-base` at
-  `a27621faca0e0d04b529b51993f98138496a75b5`. R6 merged after all 19 exact-head
-  checks; fetch/read-back/main fast-forward exited 0. R5 post-main six workflows
-  were SUCCESS. R6 post-main six workflows were subsequently read as SUCCESS.
-  Concurrent R7/R8 changes are retained on the R7 branch.
-- Resume preflight before R7's draft: HEAD/main/origin/main/merge-base remained that R6 merge;
-  fetch and GitHub reads exited 0, all six exact-main workflows are SUCCESS and
-  only historical Draft #42 was open. R8 and separate R9 work remain uncommitted.
-- R7 draft PR #76 now has local/remote head
-  `6763509a8244184989ca1e71b3bf4751aced7839`; all 19 exact-head checks are
-  terminal SUCCESS. That old head's independent findings are now repaired locally;
-  its CI cannot be reused for the forthcoming fixed commit.
-- PR #72 documentation head `cd402e69d0550fbc4c7c103894ebaae8f7bae2a4` merged as
-  `c0a10c78fe1dd86922172f4c433fa1ba976eb017` at `2026-09-03T10:42:41Z` after
-  19/19 exact-head checks; merge read-back/fetch/fast-forward exited 0.
+- Live preflight after `git fetch origin --prune`: R9 branch
+  `codex/waw-browser-trust-terminal` and its merge-base are
+  `64d37f9a4d39195930959c53c926a4184877355a`, equal to `origin/main` and the
+  observed R8 merge. Local `main` remains the older R7 merge and is not used as
+  the live trust source. Only historical Draft PR #42 is open.
+- All six workflows for exact R8 main SHA `64d37f9a...` are terminal SUCCESS.
+  R8 PR #77 previously completed 19/19 exact-head checks, normal merge and exact
+  read-back. No remote R9 PR or R9 CI result exists yet.
+- Owner delegated the remaining software goal/plan/architecture and explicitly
+  approved managed Chromium extension + Native Messaging + independent `trustd`,
+  followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 remains on
+  the Mac development branch; real host/key/provider activation remains R12.
+- R9 `0.3.0rc4` implementation, local full matrix and independent review are
+  complete. The working tree is intentionally uncommitted until this evidence
+  snapshot and final visible-version inspection are complete; exact-head CI,
+  merge and read-back are still pending.
 
 ## Historical live baselines
 
@@ -68,6 +63,8 @@ repository: "ForceMind/agentbox"
 | R3/R4 — accepted application crypto | #73 | `df943ecbf37b6c748dc1af73f4270017a3d9f6dc` | `e4a6ecd0bc28de8b3895453cf9160f9a8d4e0064` | 19/19 SUCCESS |
 | R5 — full wire profiles | #74 | `62d04adbfa775f3a14ab678c485093f15b1039ed` | `3b11ebf0b3442c111586fc08df9f6a5a4abb3db6` | 19/19 SUCCESS |
 | R6 — staged admission | #75 | `679b2f71ec5917ead7695c3b20cb1118cb46cc76` | `a27621faca0e0d04b529b51993f98138496a75b5` | 19/19 SUCCESS |
+| R7 — Runtime encrypted stream | #76 | `01c716bd4713ef4a6676b71754a4e065ebce3b82` | `4180f0991af97cba108b6e5a707b7abf58a444d2` | 19/19 SUCCESS |
+| R8 — API ciphertext relay | #77 | `a2c0b6afd002455267745d3da4d21bd87943da8a` | `64d37f9a4d39195930959c53c926a4184877355a` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -489,7 +486,10 @@ PROPOSED architecture status are preserved.
   69 sandbox-compatible relay cases. Main-agent validation passed 539 R8 Python
   cases, 832 Web cases, 50-profile wire interop, Ruff, Black over 232 files,
   Linux-target mypy over 224 files, Web build and all 62 isolated Chromium E2E
-  cases. No R8 PR-head CI or merge is claimed yet.
+  cases. R8 final head `a2c0b6afd002455267745d3da4d21bd87943da8a`
+  passed 19/19 exact-head checks and merged normally as
+  `64d37f9a4d39195930959c53c926a4184877355a` at `2026-09-04T04:11:58Z`.
+  Fetch/read-back exited 0 and all six post-main workflows completed SUCCESS.
 - An optional whole-repository macOS pytest run was stopped at 37% after 1,013
   passed, 184 failed and 2 skipped. The first failures were macOS AF_UNIX path
   length plus Linux/root-owned installer, diagnostics and Secret Store semantics;
@@ -508,6 +508,48 @@ PROPOSED architecture status are preserved.
   passed 62 tests; actual desktop and 390x844 mobile Dashboard views showed
   `0.3.0rc3` / API v1 with no horizontal overflow or overlap. This is local
   preview evidence, not deployment.
-- Sol/ultra read-only plans are complete for the Start lock-order repair, shared
-  INPUT ownership and R9 trust/controller/bounded-renderer work. New implementation
-  and contract changes remain pending confirmation under the latest agreement.
+- The approved Sol/ultra plans for Start lock order and shared INPUT ownership
+  are implemented. R9 trust lifecycle and bounded terminal model implementation
+  is active under the accepted browser decision; real provider qualification
+  remains separate.
+
+## R9 reviewed candidate and R10 plan
+
+- Public trust lifecycle/provider/Chromium repairs pass 121 Web tests and the
+  unchanged PyCA bootstrap/three-signature/nine-mutation vectors. Cumulative
+  latest-ACTIVE checkpoints, strict history prefix/floors/tombstones, revocation,
+  crash-fail-closed store transitions, exact registration/invalidation and the
+  six-second provider request deadline are implemented.
+- The bounded terminal passes 185 tokenizer/model/scheduler tests plus two
+  offline Unicode generator checks. Fixed UCD 13 rules, cooperative five-
+  millisecond work, exact 50 ms fixed-window throttling, 256 KiB/2,000-line
+  cross-layer reservations, UTF-8 carry expansion and resumable maintenance are
+  covered.
+- The managed provider core includes an inert MV3 extension, fixed external/
+  Native Messaging/trustd protocols, service-owned Ed25519 state/floor/time
+  store, DNS policy, deployment cross-pin builder and Web adapter. Python
+  provider/store/native/package tests pass 13 cases; MV3 passes 4. The production
+  build emits the exact six-file inventory and passes a real `dist` to public-only
+  bundle gate. No CRX, real extension ID/Origin, policy or service is installed.
+- Browser locale/controller/Workspace shell passes 41 focused tests. Only
+  `navigator.languages[0]` selects the document locale: primary `zh` maps to
+  `zh-CN`; every other/missing/malformed value maps to English. Technical values
+  remain printable English ASCII with `lang=en`, `dir=ltr`, `translate=no`.
+- Root Web tests pass 915 plus 4 extension tests. Desktop/mobile Chromium E2E
+  passes 64 cases, including Chinese, English, non-Chinese fallback, exact Stop,
+  overflow and 44 px control checks. Build/type/lint/format, Ruff/Black on 264
+  files, Linux-target mypy on 253 sources, 37 focused Python tests, 236 doc links
+  and the real bundle gate pass locally.
+- Main-agent visual inspection used the built rc4 assets with bounded synthetic
+  metadata. The 1280x900 English Dashboard visibly shows `0.3.0rc4` / API v1;
+  the 390x844 `zh-CN` Workspace shows Chinese lifecycle copy and technical values
+  in English. Both measured no horizontal overflow, and no terminal payload was
+  captured. This is local preview evidence, not a deployed/host-qualified UI.
+- Independent read-only Architecture/Security/Test review reports PASS with no
+  remaining P0/P1/P2. Exact-head CI, normal merge and read-back remain pending;
+  no merge is claimed by this pre-PR snapshot.
+- Sol/ultra produced the complete R10 read-only plan: distinct fixed interactive
+  Claude/Codex profile, host manifest v2, version/auth/env records, descriptor/WBR
+  codecs, three native helper binaries, Runtime composition and inert installer
+  assets. No CLI/HOME/key/host action occurred; implementation is approved after
+  R9 delivery.

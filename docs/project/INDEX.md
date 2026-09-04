@@ -34,4 +34,7 @@
 
 - [Runtime encrypted stream](../WAW_RUNTIME_ENCRYPTED_STREAM.md): actual Runtime crypto/session/server, exact cleanup and trusted deployment-port boundaries; current review status is explicit.
 
-- [API ciphertext relay](../WAW_API_CIPHERTEXT_RELAY.md): native WebSocket, Runtime ciphertext relay, active permission/publication fences and shared INPUT/parser budgets.
+- [API ciphertext relay](../WAW_API_CIPHERTEXT_RELAY.md): native WebSocket, Runtime ciphertext relay, active permission/publication fences and current shared-budget status.
+- [Browser trust records](../WAW_BROWSER_TRUST_RECORDS.md): canonical public record/signature foundation and the remaining provider/lifecycle boundary.
+- [Managed browser trust provider](../WAW_BROWSER_TRUST_PROVIDER.md): inert MV3 source build, deployment cross-pins, Native Messaging/trustd authority and qualification boundary.
+- [Browser implementation decision](WAW_BROWSER_IMPLEMENTATION_DECISION.md): accepted R9 trust/controller/bounded-renderer contract and qualification split.

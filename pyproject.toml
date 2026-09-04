@@ -51,10 +51,15 @@ agentbox-install = "agentbox_installer.cli:main"
 agentbox-worker = "agentbox_worker.main:main"
 agentbox-runtime = "agentbox_runtime.server:main"
 agentbox-runtime-provider-secret = "agentbox_runtime.secret_store_cli:main"
+agentbox-browser-trustd = "agentbox_browser_trust.daemon:main"
+agentbox-browser-trust-native = "agentbox_browser_trust.native_host:main"
+agentbox-browser-trustctl = "agentbox_browser_trust.cli:main"
+agentbox-browser-trust-package = "agentbox_browser_trust.packaging:main"
 
 [tool.setuptools]
 packages = [
   "agentbox_api",
+  "agentbox_browser_trust",
   "agentbox_cli",
   "agentbox_core",
   "agentbox_helper",
@@ -69,6 +74,7 @@ version = { attr = "agentbox_core.version.__version__" }
 
 [tool.setuptools.package-dir]
 agentbox_api = "apps/api/src/agentbox_api"
+agentbox_browser_trust = "packages/agentbox-browser-trust/src/agentbox_browser_trust"
 agentbox_cli = "apps/cli/src/agentbox_cli"
 agentbox_core = "packages/agentbox-core/src/agentbox_core"
 agentbox_helper = "helper/src/agentbox_helper"
@@ -103,7 +109,7 @@ strict = true
 warn_unreachable = true
 pretty = true
 exclude = ["apps/web", ".venv"]
-mypy_path = "apps/api/src:apps/cli/src:apps/worker/src:packages/agentbox-core/src:packages/agentbox-protocol/src:packages/agentbox-runtime/src:helper/src:installer/src"
+mypy_path = "apps/api/src:apps/cli/src:apps/worker/src:packages/agentbox-browser-trust/src:packages/agentbox-core/src:packages/agentbox-protocol/src:packages/agentbox-runtime/src:helper/src:installer/src"
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"

@@ -5,6 +5,8 @@ import type { WorkspaceStatusView } from './useWorkspaceStatus'
 export type WorkspaceAgent = 'claude' | 'codex'
 export type WorkspaceProjectChoice = { id: string; displayName: string }
 export type WorkspaceStopTarget = { workspaceId: string; generation: string }
+export type WorkspaceNotice =
+  'START_CONFIRMED' | 'STOP_CONFIRMED' | 'RUNTIME_RECOVERY_REQUIRED'
 
 /** Presentation model for metadata only. It cannot claim stream admission. */
 export type WorkspacePageModel = {
@@ -21,7 +23,7 @@ export type WorkspacePageModel = {
   runtimeView: WorkspaceStatusView
   pending: WorkspaceAction | null
   error: ApiError | null
-  notice: string | null
+  notice: WorkspaceNotice | null
   canStart: boolean
   canStop: boolean
   stopTarget: WorkspaceStopTarget | null

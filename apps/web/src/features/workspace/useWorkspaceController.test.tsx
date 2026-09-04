@@ -275,7 +275,7 @@ describe('Workspace metadata controller', () => {
     )
     expect(result.current.canStart).toBe(false)
     expect(result.current.canStop).toBe(false)
-    expect(result.current.notice).toContain('恢复核对')
+    expect(result.current.notice).toBe('RUNTIME_RECOVERY_REQUIRED')
   })
 
   it('uses only READY Projects and never starts or gets a ticket automatically', async () => {
@@ -316,7 +316,7 @@ describe('Workspace metadata controller', () => {
     await waitFor(() =>
       expect(result.current.runtimeView.status).toBe('loaded'),
     )
-    expect(result.current.notice).toContain('启动请求已确认')
+    expect(result.current.notice).toBe('START_CONFIRMED')
     act(() => result.current.requestStop())
     expect(result.current.stopTarget).toMatchObject({
       workspaceId,
@@ -332,7 +332,7 @@ describe('Workspace metadata controller', () => {
       await result.current.confirmStop()
     })
     await waitFor(() => expect(result.current.lifecycleState).toBe('STOPPED'))
-    expect(result.current.notice).toContain('Git 修改已保留')
+    expect(result.current.notice).toBe('STOP_CONFIRMED')
     expect(
       fetcher.mock.calls.some(([url]) =>
         /attachments|reconnect/.test(url.toString()),

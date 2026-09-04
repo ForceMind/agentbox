@@ -3,6 +3,38 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc4] - Unreleased
+
+### Added
+
+- Closed browser trust record/lifecycle verification with generation-bound
+  invalidation leases and a managed Chromium external-port adapter.
+- An externally inert MV3 bridge, fixed Native Messaging/trustd protocol,
+  service-owned signed trust store, chained revision-floor journal, signed
+  intact-state time high-water and public-only deployment bundle generator.
+- A bounded Unicode 13 terminal model and cooperative scheduler whose tokenizer,
+  model, projection and render work share one five-millisecond callback deadline.
+- Browser-language `zh-CN`/English selection and bilingual Workspace copy; other
+  browser languages fall back to English.
+
+### Fixed
+
+- Trust commits recheck the exact provider registration synchronously, validate
+  every signing predecessor at final trusted time, reject oversized records
+  before copying and retire failed subscriptions exactly once.
+- Bidi/default-ignorable, Hangul and emoji modifier handling no longer relies on
+  browser shaping, and CPU work crossing fixed windows is accounted correctly.
+
+### Known limitations
+
+- Production Connect remains disabled until a reviewed extension ID, managed
+  Chrome policy, Native Host/trustd installation and R12 evidence are supplied.
+- The software time high-water does not resist a privileged consistent rollback
+  of the whole trustd store while an older pin remains time-valid; R12 must
+  qualify or externally anchor it.
+- Full terminal/controller integration and complete cross-page bilingual UI
+  remain R11 work; fixed interactive processes remain R10 work.
+
 ## [0.3.0rc3] - Unreleased
 
 ### Added

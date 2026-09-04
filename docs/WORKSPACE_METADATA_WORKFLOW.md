@@ -47,7 +47,7 @@ Project 及 Claude/Codex。页面按精确 Project/AgentType 查询已注册的 
 | metadata closed decoder | `workspaceMetadata.ts` | `useWorkspaceController.test.tsx`：scope mismatch、多行/未知字段、unsafe generation |
 | 选择、Start、Stop 协调 | `useWorkspaceController.ts` | READY、未注册、显式操作、二次确认、旧 lookup/Start、Runtime recovery/mismatch |
 | Runtime 查询隔离 | `useWorkspaceStatus.ts` | query/auth/reload scope、错 workspace 回包、旧响应与 unmount |
-| 中文页面和原生确认框 | `WorkspacePage.tsx` / `WorkspacePage.css` | unit tests 及真实 Chromium desktop/mobile metadata E2E |
+| 浏览器首选语言驱动的`zh-CN`/English页面和原生确认框 | `WorkspacePage.tsx` / `WorkspacePage.css` | 两种locale的unit tests及真实Chromium desktop/mobile metadata E2E |
 | 项目入口 | `App.tsx` / `ProjectDetailPage.tsx` | route/deep-link tests；URL 无票据 |
 | 浏览器工作流 | `apps/web/e2e/workspace-metadata.spec.ts` | synthetic metadata、CSRF、exact Stop、取消/Escape/焦点、禁用终端、无横溢出、44px controls、无 Web Storage |
 

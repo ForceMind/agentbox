@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "AgentBox WAW Trust Bridge (inert build)",
+  "version": "0.3.0.4",
+  "description": "Managed bridge for an independently administered AgentBox trust provider.",
+  "background": {
+    "service_worker": "serviceWorker.js",
+    "type": "module"
+  },
+  "permissions": ["nativeMessaging", "storage"],
+  "incognito": "not_allowed",
+  "storage": {
+    "managed_schema": "managed_schema.json"
+  }
+}

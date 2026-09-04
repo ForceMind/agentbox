@@ -44,10 +44,10 @@ describe('Workspace routes', () => {
       render(<App />)
 
       expect(
-        await screen.findByRole('heading', { name: '交互式工作区' }),
+        await screen.findByRole('heading', { name: 'Interactive workspace' }),
       ).toBeInTheDocument()
-      expect(screen.getByText('NOT ADMITTED')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: '工作区' })).toHaveAttribute(
+      expect(screen.getByText('Not admitted')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Workspace' })).toHaveAttribute(
         'href',
         '/workspace',
       )
@@ -58,7 +58,7 @@ describe('Workspace routes', () => {
     window.history.replaceState({}, '', '/workspace')
     render(<App />)
     expect(
-      await screen.findByRole('heading', { name: '交互式工作区' }),
+      await screen.findByRole('heading', { name: 'Interactive workspace' }),
     ).toBeInTheDocument()
     expect(
       screen

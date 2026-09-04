@@ -1,6 +1,6 @@
 {
   "name": "agentbox-monorepo",
-  "version": "0.3.0-rc.3",
+  "version": "0.3.0-rc.4",
   "private": true,
   "description": "AgentBox engineering skeleton",
   "license": "Apache-2.0",
@@ -9,11 +9,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @agentbox/web build",
+    "build": "pnpm --filter @agentbox/web build && pnpm --filter @agentbox/browser-trust-extension build",
     "e2e": "node scripts/run-e2e.mjs",
-    "format:check": "pnpm --filter @agentbox/web format:check",
-    "lint": "pnpm --filter @agentbox/web lint",
-    "test": "pnpm --filter @agentbox/web test",
-    "typecheck": "pnpm --filter @agentbox/web typecheck"
+    "format:check": "pnpm --filter @agentbox/web format:check && pnpm --filter @agentbox/browser-trust-extension format:check",
+    "lint": "pnpm --filter @agentbox/web lint && pnpm --filter @agentbox/browser-trust-extension lint",
+    "test": "pnpm --filter @agentbox/web test && pnpm --filter @agentbox/browser-trust-extension test",
+    "typecheck": "pnpm --filter @agentbox/web typecheck && pnpm --filter @agentbox/browser-trust-extension typecheck"
   }
 }

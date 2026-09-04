@@ -22,6 +22,7 @@ htmlcov/
 # Node and frontend
 node_modules/
 apps/web/dist/
+clients/browser-trust/extension/dist/
 apps/web/playwright-report/
 apps/web/test-results/
 coverage/

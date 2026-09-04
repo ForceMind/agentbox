@@ -53,6 +53,31 @@
 
 - `WAW-WIRE-IMPLEMENTATION-2026-09-03`: under delegated software authority, the [wire contract](../WAW_WIRE_CONTRACT.md) records precise early-failure precedence, exact numeric/version handling, retry limits, bounded opaque-source pairing and synchronized sequence acceptance. Independent review and actual parser-budget evidence are recorded separately from authority effects.
 
+- `WAW-BROWSER-BOUNDED-MODEL-2026-09-04`: Owner accepted the
+  [browser implementation decision](WAW_BROWSER_IMPLEMENTATION_DECISION.md).
+  R9 uses a project-owned bounded terminal model over typed tokenizer output,
+  keeps the 32 KiB logical-line count across waits without a wall-clock expiry,
+  retains the 100 ms incomplete carry deadline, and immediately fences ambiguous
+  parser state. xterm is not admitted for this implementation.
+- `WAW-BROWSER-TRUST-PROVIDER-GATE-2026-09-04`: signature/lifecycle consumer
+  software may proceed, but a real independent provider must separately prove
+  bootstrap authority, atomic floors, trusted time, network/origin policy and
+  loss/revocation delivery. Missing provider keeps production Connect closed.
+- `WAW-BROWSER-TRUST-PROVIDER-V1-2026-09-04`: Owner approved a managed MV3
+  Chromium extension, fixed Native Messaging bridge and independent local
+  `trustd`. The ordinary build is externally inert; production Connect requires
+  a CRX-key-derived ID, exact Origin/update policy and R12 installation evidence.
+- `WAW-BROWSER-ROOT-CHECKPOINT-V1-2026-09-04`: a successor accepted while its
+  exact predecessor is valid creates an atomic provider checkpoint binding
+  `accepted_at`, root/signer identity and the complete root-history digest.
+  Later rotations verify the previous exact prefix before advancing this
+  cumulative proof. Restart keeps full history/tombstones, checks the direct
+  signer/root pair at that recorded time and checks current root/pin at final
+  trusted time; missing, late, truncated, forked or rolled-back evidence fails
+  closed.
+- `BROWSER-LOCALE-V1-2026-09-04`: only `navigator.languages[0]` selects UI
+  locale; primary language `zh` maps to `zh-CN`, every other or malformed value
+  maps to English. Technical identifiers and protocol values remain English.
 - `WAW-INPUT-OWNERSHIP-2026-09-04`: one 65536-byte encoded INPUT ledger follows
   ownership from native ready through ASGI/relay pending to Runtime send. Layer
   transitions do not release/reacquire capacity, and first overflow synchronously
