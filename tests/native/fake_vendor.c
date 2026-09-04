@@ -96,6 +96,30 @@ static int bounded_limits(void) {
     return 0;
 }
 
+static int capabilities_are_empty(void) {
+    FILE *status = fopen("/proc/self/status", "r");
+    char line[256];
+    unsigned long long permitted = 1U;
+    unsigned long long effective = 1U;
+    int found = 0;
+    int close_result;
+    if (status == NULL) {
+        return -1;
+    }
+    while (fgets(line, sizeof(line), status) != NULL) {
+        unsigned long long value;
+        if (sscanf(line, "CapPrm:%llx", &value) == 1) {
+            permitted = value;
+            ++found;
+        } else if (sscanf(line, "CapEff:%llx", &value) == 1) {
+            effective = value;
+            ++found;
+        }
+    }
+    close_result = fclose(status);
+    return found == 2 && close_result == 0 && permitted == 0U && effective == 0U ? 0 : -1;
+}
+
 static int expect_open_denied(const char *path) {
     int descriptor;
     errno = 0;
@@ -343,6 +367,7 @@ int main(int argc, char **argv) {
         required_environment() != 0 || !isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) ||
         getsid(0) != getpid() || tcgetsid(STDIN_FILENO) != getpid() ||
         exact_descriptor_inventory() != 0 || bounded_limits() != 0 ||
+        capabilities_are_empty() != 0 ||
         isolation_is_enforced(argv[0]) != 0) {
         return 90;
     }

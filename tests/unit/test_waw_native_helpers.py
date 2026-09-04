@@ -45,6 +45,8 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert "MOUNT_ATTR_SIZE_VER0" in source
     assert "attr_clr" not in source
     assert "MS_BIND | MS_REC" not in source
+    assert "setresuid" not in source
+    assert "setresgid" not in source
 
 
 def test_native_ready_header_matches_python_adapter() -> None:

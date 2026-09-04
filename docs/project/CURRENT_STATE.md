@@ -678,3 +678,12 @@ PROPOSED architecture status are preserved.
 - Head `8bf1ef2` remained within the project bind stage. The bounded diagnostic
   now distinguishes descriptor/path construction, initial `MS_BIND`,
   `mount_setattr`, and unsupported UAPI with non-overlapping integer statuses.
+- Split head `75d8136` reported `112`, the initial project `MS_BIND`, confirming
+  the builder lacked effective `CAP_SYS_ADMIN`. After UID/GID maps are written,
+  existing credentials already appear as inner `1000`; redundant `setresuid` and
+  `setresgid` cleared the new namespace capabilities. They are replaced by exact
+  UID/GID assertions. Mount setup runs with the creation-time capabilities, and
+  the subsequent nonzero-UID exec clears them before the bridge/vendor workload.
+- Independent Sol review passed this lifecycle. The fake vendor now reads its
+  own `/proc/self/status` and requires both `CapPrm` and `CapEff` to be zero,
+  explicitly proving no namespace setup capability crosses the exec boundary.

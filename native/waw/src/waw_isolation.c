@@ -492,10 +492,8 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
         unshare(CLONE_NEWUSER) != 0 ||
         agentbox_waw_write_exact(ready_write, &byte, sizeof(byte)) != 0 ||
         agentbox_waw_read_exact(mapped_read, &byte, sizeof(byte)) != 0 || byte != 1U ||
-        setresgid((gid_t)AGENTBOX_WAW_INNER_GID, (gid_t)AGENTBOX_WAW_INNER_GID,
-                  (gid_t)AGENTBOX_WAW_INNER_GID) != 0 ||
-        setresuid((uid_t)AGENTBOX_WAW_INNER_UID, (uid_t)AGENTBOX_WAW_INNER_UID,
-                  (uid_t)AGENTBOX_WAW_INNER_UID) != 0 ||
+        geteuid() != (uid_t)AGENTBOX_WAW_INNER_UID ||
+        getegid() != (gid_t)AGENTBOX_WAW_INNER_GID ||
         (builder_pidfd = agentbox_waw_pidfd_open((int)getpid())) < 0 ||
         unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC) != 0) {
         _exit(71);
