@@ -963,3 +963,47 @@ def test_repeated_valid_decodes_use_real_clock_with_normal_gc() -> None:
     )
     assert measured["count"] == 5000 and measured["failures"] == [], measured
     assert measured["gc_enabled"] and not measured["strptime_loaded"], measured
+
+
+@pytest.mark.parametrize("leg", list(Leg))
+@pytest.mark.parametrize("admitted", [False, True])
+@pytest.mark.parametrize("retryable", [False, True])
+def test_only_admitted_api_browser_control_limit_is_nonfatal(
+    leg: Leg, admitted: bool, retryable: bool
+) -> None:
+    s, token = session(16 if admitted else 15)
+    data = {
+        "protocol_version": 1,
+        "code": "CONTROL_RATE_LIMITED",
+        "retryable": retryable,
+        "request_id": "wreq_" + "a" * 32,
+    }
+    if leg in (BA, AR):
+        with pytest.raises(WireError):
+            observe(s, token, leg, F.ERROR, data)
+        return
+    observe(s, token, leg, F.ERROR, data)
+    if admitted and leg == AB and retryable:
+        observe(s, token, BA, F.INPUT)
+        observe(s, token, AR, F.INPUT)
+    else:
+        with pytest.raises(WireError):
+            observe(s, token, BA, F.INPUT)
+
+
+def test_retryable_input_error_never_continues_ciphertext_channel() -> None:
+    s, token = session()
+    observe(
+        s,
+        token,
+        AB,
+        F.ERROR,
+        {
+            "protocol_version": 1,
+            "code": "INPUT_RATE_LIMITED",
+            "retryable": True,
+            "request_id": "wreq_" + "a" * 32,
+        },
+    )
+    with pytest.raises(WireError):
+        observe(s, token, BA, F.INPUT)

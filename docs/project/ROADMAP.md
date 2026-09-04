@@ -40,9 +40,11 @@
 
 - Staged ticket authority and admission coordinator merged in PR #75 with 19/19 exact-head checks; four independent review findings were fixed before delivery.
 
+- Runtime encrypted attachment stream and exact socket/Stop publication fences merged in PR #76 with 19/19 exact-head checks; final review deadlock and logical-line findings were repaired before delivery.
+
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 is merged; R6 staged admission is merged as PR #75; R7/R8 Runtime/API integration is active; full R9/R10 decisions and host evidence remain separately tracked.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 is merged; R6 staged admission is merged as PR #75; R7 Runtime integration is merged as PR #76; R8 API relay passed local independent review and awaits exact-head delivery; full R9/R10 implementation and host evidence remain separately tracked.
 
 ## In Progress
 

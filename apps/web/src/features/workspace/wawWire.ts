@@ -1641,9 +1641,16 @@ export class WireSession {
         this.#mustClose.add(leg)
         this.#failed = true
       } else if (kind === 19 || kind === 21) {
+        const nonfatalControlLimit =
+          kind === 19 &&
+          leg === AB &&
+          this.#has(AB, 8) &&
+          r?.code === 'CONTROL_RATE_LIMITED' &&
+          r?.retryable === true
         if (
-          kind === 19 ||
-          (r?.state !== 'RUNNING' &&
+          (kind === 19 && !nonfatalControlLimit) ||
+          (kind === 21 &&
+            r?.state !== 'RUNNING' &&
             (!this.#has(AB, 8) || r?.state !== 'NEEDS_INTERACTION'))
         ) {
           this.#failed = true

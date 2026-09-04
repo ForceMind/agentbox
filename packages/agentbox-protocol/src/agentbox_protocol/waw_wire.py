@@ -1117,8 +1117,17 @@ class WireSession:
                     self._must_close.add(leg)
                     self._failed = True
                 elif kind in (FrameType.ERROR, FrameType.STATE):
-                    if kind == FrameType.ERROR or (
-                        record is not None
+                    nonfatal_control_limit = (
+                        kind == FrameType.ERROR
+                        and leg == _AB
+                        and self._has(_AB, FrameType.ADMITTED)
+                        and record is not None
+                        and record["code"] == "CONTROL_RATE_LIMITED"
+                        and record["retryable"] is True
+                    )
+                    if (kind == FrameType.ERROR and not nonfatal_control_limit) or (
+                        kind == FrameType.STATE
+                        and record is not None
                         and record["state"] != "RUNNING"
                         and (
                             not self._has(_AB, FrameType.ADMITTED)

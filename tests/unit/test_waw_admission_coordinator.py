@@ -6,12 +6,10 @@ No Noise verification or real Runtime/PTY/host qualification is claimed here.
 from __future__ import annotations
 
 import asyncio
-import gc
 from dataclasses import replace
 from typing import Any
 
 import pytest
-from agentbox_api.waw_admission import wire_admission_tuple
 from agentbox_api.waw_admission_coordinator import (
     AdmissionAuditAction as A,
 )
@@ -26,269 +24,18 @@ from agentbox_api.waw_admission_coordinator import (
     RuntimePrepareRequest,
     WAWAdmissionCoordinator,
 )
-from agentbox_core.waw import workspace_id
+from agentbox_api.waw_input_budget import BrowserDelivery
 from agentbox_core.waw_tickets import AdmissionStage as S
 from agentbox_core.waw_tickets import (
-    AttachmentAuthority,
-    AttachmentTuple,
     AuthenticatedAttachmentContext,
 )
 from agentbox_protocol.abws import FrameType as F
+from agentbox_protocol.abws import encode_frame
 from agentbox_protocol.awce import encode_awce_header
-from agentbox_protocol.waw_crypto_context import derive_context
 from agentbox_protocol.waw_wire import Leg, decode_wire_frame, encode_wire_frame
+from support.waw_admission import Audit, Browser, Harness, Runtime
 
 BA, AB, AR, RA = tuple(Leg)
-
-
-class Clock:
-    def __init__(self) -> None:
-        self.ns = 100_000_000_000
-
-    def __call__(self) -> int:
-        return self.ns
-
-
-class Validator:
-    valid = True
-
-    def current(self, claims: AttachmentTuple, context: AuthenticatedAttachmentContext) -> bool:
-        return self.valid
-
-
-class Audit:
-    def __init__(self) -> None:
-        self.events: list[AdmissionAuditEvent] = []
-        self.block: A | None = None
-        self.entered = asyncio.Event()
-        self.resume = asyncio.Event()
-        self.fail: A | None = None
-
-    async def persist(self, event: AdmissionAuditEvent) -> None:
-        if event.action == self.block:
-            self.entered.set()
-            await self.resume.wait()
-        if event.action == self.fail:
-            raise RuntimeError("AUDIT-PRIVATE-CANARY")
-        self.events.append(event)
-        await asyncio.sleep(0)
-
-
-class Browser:
-    def __init__(self, harness: Harness) -> None:
-        self.h = harness
-        self.incoming: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
-        self.sent: list[bytes] = []
-        self.closed: int | None = None
-
-    async def receive(self) -> bytes:
-        return await self.incoming.get()
-
-    async def send_key_frame(self, frame: bytes) -> None:
-        self.sent.append(frame)
-        kind = decode_wire_frame(frame, AB).frame_type
-        if kind == F.KEY_ATTEST:
-            self.incoming.put_nowait(self.h.frame(F.KEY_CONFIRM, BA, 3))
-        await asyncio.sleep(0)
-
-    def close(self, code: int) -> None:
-        self.closed = code
-
-
-class Runtime:
-    def __init__(self, harness: Harness) -> None:
-        self.h = harness
-        self.connection_id = object()
-        self.incoming: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
-        self.sent: list[bytes] = []
-        self.prepares = 0
-        self.commits = 0
-        self.cleanup_requests: list[RuntimeCleanupRequest] = []
-        self.cleanup_positive = True
-        self.cleanup_wrong_tuple = False
-        self.cleanup_wrong_connection = False
-        self.aborted = False
-        self.drop_commits = 0
-        self.reject_commit = False
-        self.extra_outputs = 0
-        self.output_size = 1
-        self.block: F | str | None = None
-        self.entered = asyncio.Event()
-        self.resume = asyncio.Event()
-        self.mutate_response: F | None = None
-
-    async def _barrier(self, action: F | str) -> None:
-        if action == self.block:
-            self.entered.set()
-            await self.resume.wait()
-        await asyncio.sleep(0)
-
-    async def prepare(self, request: RuntimePrepareRequest) -> RuntimePrepared:
-        self.prepares += 1
-        await self._barrier("prepare")
-        return RuntimePrepared(request.claims, request.runtime_epoch, self.connection_id, "c" * 64)
-
-    async def send(self, frame: bytes) -> None:
-        decoded = decode_wire_frame(frame, AR)
-        self.sent.append(frame)
-        await self._barrier(decoded.frame_type)
-        if decoded.frame_type == F.KEY_INIT:
-            self._reply(F.HELLO_ACK, 1)
-            self._reply(F.KEY_ATTEST, 2)
-        elif decoded.frame_type == F.KEY_CONFIRM:
-            self._reply(F.KEY_CONFIRM_ACK, 3)
-        elif decoded.frame_type == F.STREAM_READY:
-            self._reply(F.STREAM_READY_ACK, 4)
-        elif decoded.frame_type == F.ADMISSION_COMMIT:
-            self.commits += 1
-            if self.drop_commits > 0:
-                self.drop_commits -= 1
-                return
-            payload = self.h.payload(F.ADMISSION_COMMIT_ACK)
-            if self.reject_commit:
-                payload.update(result="rejected", reason_code="ATTACHMENT_STALE")
-            self.incoming.put_nowait(encode_wire_frame(F.ADMISSION_COMMIT_ACK, RA, payload, 5))
-            for number in range(self.extra_outputs):
-                raw = encode_awce_header(
-                    crypto_envelope_version=1,
-                    direction_id=2,
-                    flags=0,
-                    crypto_sequence=number + 1,
-                    stream_cursor=number + 1,
-                    context_id=bytes.fromhex("e" * 32),
-                    ciphertext_length=self.output_size + 16,
-                ) + b"x" * (self.output_size + 16)
-                self.incoming.put_nowait(encode_wire_frame(F.OUTPUT, RA, raw, 6 + number))
-
-    def _reply(self, kind: F, seq: int) -> None:
-        payload = self.h.payload(kind)
-        if kind == self.mutate_response:
-            payload["runtime_epoch"] = "999"
-        self.incoming.put_nowait(encode_wire_frame(kind, RA, payload, seq))
-
-    async def receive(self) -> bytes:
-        return await self.incoming.get()
-
-    async def close_and_cleanup(self, request: RuntimeCleanupRequest) -> RuntimeCleanupProof:
-        self.cleanup_requests.append(request)
-        await asyncio.sleep(0)
-        return RuntimeCleanupProof(
-            replace(request.claims, generation=9) if self.cleanup_wrong_tuple else request.claims,
-            request.runtime_epoch,
-            object() if self.cleanup_wrong_connection else request.connection_id,
-            "detached" if self.cleanup_positive else "rejected",
-            "ATTACH_PTY_CLOSED" if self.cleanup_positive else "UNKNOWN",
-        )
-
-    def abort(self) -> None:
-        self.aborted = True
-
-
-class Harness:
-    def __init__(self, *, queue: BoundedAdmissionQueue | None = None) -> None:
-        # Collect prior cyclic fake ports before entering the 5 ms wire CPU budget.
-        gc.collect()
-        self.clock = Clock()
-        self.authority = AttachmentAuthority(
-            clock=lambda: self.clock.ns / 1_000_000_000, authority_epoch=4
-        )
-        self.context = AuthenticatedAttachmentContext(
-            "private-session", "admin", "scope", "https://agentbox.invalid", "2", 3
-        )
-        project = "prj_" + "1" * 32
-        self.ticket = self.authority.issue(
-            workspace_id=workspace_id(project, "codex"),
-            project_id=project,
-            agent_type="codex",
-            attachment_id="att_" + "2" * 32,
-            generation=1,
-            auth_epoch=3,
-            runtime_host_installation_id="wri_" + "a" * 32,
-            runtime_host_installation_revision=1,
-            binding_revision=1,
-            binding_digest="b" * 64,
-            context=self.context,
-        )
-        self.a = wire_admission_tuple(self.ticket.claims)
-        self.c = derive_context(self.a, "2")
-        self.runtime, self.browser, self.audit = Runtime(self), Browser(self), Audit()
-        self.validator = Validator()
-        self.budget = PendingAdmissionBudget()
-        self.coordinator = WAWAdmissionCoordinator(
-            authority=self.authority,
-            claims=self.ticket.claims,
-            context=self.context,
-            runtime=self.runtime,
-            browser=self.browser,
-            audit=self.audit,
-            revalidator=self.validator,
-            budget=self.budget,
-            source="source",
-            started_at_ns=self.clock.ns,
-            clock_ns=self.clock,
-            queue=queue,
-        )
-        self.browser.incoming.put_nowait(self.frame(F.WS_HELLO, BA, 1))
-        self.browser.incoming.put_nowait(self.frame(F.KEY_INIT, BA, 2))
-
-    def payload(self, kind: F) -> dict[str, Any]:
-        base: dict[str, Any] = {"protocol_version": 1}
-        common = {**base, **self.a, "runtime_epoch": "2"}
-        if kind == F.WS_HELLO:
-            return {
-                **common,
-                "ticket": self.ticket.ticket,
-                "resume_cursor": None,
-                "previous_runtime_epoch": None,
-            }
-        if kind in (F.KEY_INIT, F.KEY_ATTEST):
-            extra = (
-                {"browser_ephemeral_public_key": "A" * 43, "noise_message_1": "A" * 43}
-                if kind == F.KEY_INIT
-                else {
-                    "runtime_attestation_x25519_fingerprint": "d" * 64,
-                    "runtime_ephemeral_public_key": "A" * 43,
-                    "noise_message_2": "A" * 171,
-                }
-            )
-            return {
-                **common,
-                "noise_protocol": "Noise_NX_25519_AESGCM_SHA256",
-                "crypto_envelope_version": 1,
-                **extra,
-            }
-        if kind in (F.KEY_CONFIRM, F.KEY_CONFIRM_ACK):
-            return {
-                **base,
-                **self.c,
-                "noise_protocol": "Noise_NX_25519_AESGCM_SHA256",
-                "ciphertext": "A" * 64,
-                **(
-                    {"status": "verified", "transcript_context_hash": "e" * 64}
-                    if kind == F.KEY_CONFIRM_ACK
-                    else {}
-                ),
-            }
-        if kind in (F.HELLO_ACK, F.STREAM_READY_ACK):
-            return {
-                **common,
-                "state": "RUNNING",
-                "output_cursor": "0",
-                **(
-                    {"input_limit": 16384, "output_limit": 32768}
-                    if kind == F.HELLO_ACK
-                    else {"admission_fence": "f" * 64}
-                ),
-            }
-        if kind == F.ADMISSION_COMMIT_ACK:
-            return {**common, "result": "committed", "reason_code": None}
-        raise AssertionError(kind)
-
-    def frame(self, kind: F, leg: Leg, seq: int) -> bytes:
-        return encode_wire_frame(kind, leg, self.payload(kind), seq)
-
-    def active(self) -> bool:
-        return self.authority.is_active(self.ticket.claims, context=self.context)
 
 
 def test_full_flow_publishes_only_after_both_durable_events() -> None:
@@ -374,7 +121,7 @@ def test_revocation_expiry_cancel_and_input_at_every_transition(
             task.cancel()
         else:
             # An early complete frame is never retained or assigned an input ACK.
-            h.browser.incoming.put_nowait(b"PRIVATE-EARLY-INPUT")
+            h.browser.incoming.put_nowait(encode_frame(F.INPUT, b"PRIVATE-EARLY-INPUT", 99))
         target.resume.set()
         with pytest.raises((AdmissionFailure, asyncio.CancelledError)):
             await task
@@ -384,6 +131,7 @@ def test_revocation_expiry_cancel_and_input_at_every_transition(
             decode_wire_frame(frame, AB).frame_type != F.ADMITTED for frame in h.browser.sent
         )
         assert h.budget.count == 0
+        assert h.input_budget.reserved_bytes == h.input_budget.live_count == 0
         assert h.runtime.aborted
         assert len(h.runtime.cleanup_requests) == 1
 
@@ -608,6 +356,7 @@ def test_original_deadline_times_out_blocked_port_without_renewal() -> None:
             budget=h.budget,
             source="source",
             started_at_ns=h.clock.ns - 4_980_000_000,
+            input_budget=h.input_budget,
             clock_ns=h.clock,
         )
         h.runtime.block = "prepare"
@@ -683,7 +432,9 @@ def test_successful_handoff_preserves_next_browser_and_runtime_message() -> None
         assert h.coordinator.queue.read() is not None
         h.browser.incoming.put_nowait(b"NEXT-BROWSER-FRAME")
         h.runtime.incoming.put_nowait(b"NEXT-RUNTIME-FRAME")
-        assert await asyncio.wait_for(h.browser.receive(), 0.1) == b"NEXT-BROWSER-FRAME"
+        assert (
+            await asyncio.wait_for(h.browser.receive(), 0.1)
+        ).wire_bytes == b"NEXT-BROWSER-FRAME"
         assert await asyncio.wait_for(h.runtime.receive(), 0.1) == b"NEXT-RUNTIME-FRAME"
         assert h.active()
         assert not h.runtime.aborted
@@ -711,13 +462,22 @@ def test_new_connection_identity_cannot_receive_commit_retry() -> None:
 def fresh_attempt(
     h: Harness, *, context: AuthenticatedAttachmentContext | None = None
 ) -> WAWAdmissionCoordinator:
-    h.runtime, h.browser, h.audit = Runtime(h), Browser(h), Audit()
+    from agentbox_api.waw_input_budget import InputBudget
+
+    selected_context = h.context if context is None else context
+    h.runtime, h.audit = Runtime(h), Audit()
+    h.input_budget = InputBudget(
+        connection_id=h.runtime.connection_id,
+        attachment_id=h.ticket.claims.attachment_id,
+        runtime_epoch=selected_context.runtime_epoch,
+    )
+    h.browser = Browser(h, h.input_budget)
     h.browser.incoming.put_nowait(h.frame(F.WS_HELLO, BA, 1))
     h.browser.incoming.put_nowait(h.frame(F.KEY_INIT, BA, 2))
     return WAWAdmissionCoordinator(
         authority=h.authority,
         claims=h.ticket.claims,
-        context=h.context if context is None else context,
+        context=selected_context,
         runtime=h.runtime,
         browser=h.browser,
         audit=h.audit,
@@ -725,6 +485,7 @@ def fresh_attempt(
         budget=h.budget,
         source="source",
         started_at_ns=h.clock.ns,
+        input_budget=h.input_budget,
         clock_ns=h.clock,
     )
 
@@ -853,7 +614,7 @@ def test_handoff_waits_for_single_reader_ports_to_finish_cancellation() -> None:
         busy: dict[str, bool] = {"browser": False, "runtime": False}
         originals = {"browser": h.browser.receive, "runtime": h.runtime.receive}
 
-        async def exclusive_receive(name: str) -> bytes:
+        async def exclusive_receive(name: str) -> Any:
             assert not busy[name], "concurrent receive at handoff"
             busy[name] = True
             try:
@@ -870,7 +631,7 @@ def test_handoff_waits_for_single_reader_ports_to_finish_cancellation() -> None:
         assert h.active()
         h.browser.incoming.put_nowait(b"NEXT-BROWSER-FRAME")
         h.runtime.incoming.put_nowait(b"NEXT-RUNTIME-FRAME")
-        assert await h.browser.receive() == b"NEXT-BROWSER-FRAME"
+        assert (await h.browser.receive()).wire_bytes == b"NEXT-BROWSER-FRAME"
         assert await h.runtime.receive() == b"NEXT-RUNTIME-FRAME"
 
     asyncio.run(scenario())
@@ -885,7 +646,7 @@ def test_reader_retirement_remains_quarantined_and_revalidates_before_release(
         original = h.browser.receive
         retiring, finish = asyncio.Event(), asyncio.Event()
 
-        async def retiring_receive() -> bytes:
+        async def retiring_receive() -> BrowserDelivery:
             try:
                 return await original()
             except asyncio.CancelledError:
@@ -949,5 +710,37 @@ def test_runtime_cleanup_failure_still_attempts_required_detached_audit(
         assert not h.active() and h.coordinator.queue.read() is None
         assert h.browser.closed == 1013 and h.runtime.aborted
         assert "PRIVATE" not in repr(failed.value)
+
+    asyncio.run(scenario())
+
+
+def test_close_frame_encode_failure_still_runs_runtime_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        import agentbox_api.waw_admission_coordinator as module
+
+        h = Harness()
+        encode = encode_wire_frame
+        persist = h.audit.persist
+
+        def fail_close(kind: F, *args: Any, **kwargs: Any) -> bytes:
+            if kind == F.CLOSE:
+                raise RuntimeError("PRIVATE-CLOSE-ENCODE-FAILURE")
+            return encode(kind, *args, **kwargs)
+
+        async def fail_admitted(event: AdmissionAuditEvent) -> None:
+            if event.action == A.ADMITTED:
+                monkeypatch.setattr(module, "encode_wire_frame", fail_close)
+                raise RuntimeError("PRIVATE-ADMITTED-AUDIT-FAILURE")
+            await persist(event)
+
+        monkeypatch.setattr(h.audit, "persist", fail_admitted)
+        with pytest.raises(AdmissionFailure):
+            await h.coordinator.run()
+        assert len(h.runtime.cleanup_requests) == 1
+        assert h.runtime.cleanup_requests[0].close_frame is None
+        assert [event.action for event in h.audit.events] == [A.PREPARED, A.DETACHED]
+        assert h.authority.record_count == 0
 
     asyncio.run(scenario())
