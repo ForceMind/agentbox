@@ -588,9 +588,16 @@ PROPOSED architecture status are preserved.
   software scope. CI fake-vendor/native evidence is not a real vendor build,
   installed CRX, account, credential, production binary provenance or host
   qualification; those remain R12 gates.
-- This documentation commit must itself complete exact-head CI before normal
-  merge. R10 therefore remains `待验证` until PR #79 merge/read-back. Its actual
-  merge SHA and post-main workflow results will be recorded on the R11 branch.
+- Documentation-only head `d5d1838...` exposed one sanitizer scheduling flake in
+  the native tail fixture: intentional legacy DSR noise at frame 1900 could be
+  echoed by the canonical inner PTY and alter tmux row 1 while the test treated
+  the rendered grid as a raw log. The fixture now emits all 2,048 strictly
+  ordered/hash-checked frames and its marker/padding before the same complete
+  DSR5/eight-position DSR6 overlap noise. Production bridge code and every strict
+  tail assertion remain unchanged; a new exact-head CI run is required.
+- R10 remains `待验证` until that new head completes CI and PR #79 is merged and
+  read back. Its actual merge SHA and post-main workflow results will be recorded
+  on the R11 branch.
 - Browser locale remains fixed: read only `navigator.languages[0]`; primary
   language `zh` selects `zh-CN`; every other, missing or malformed value selects
   English. Technical identifiers remain English. Full cross-page bilingual

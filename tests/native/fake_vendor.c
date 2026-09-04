@@ -476,20 +476,6 @@ int main(int argc, char **argv) {
         } else if (strcmp(line, "tail\n") == 0 || strcmp(line, "tail\r\n") == 0) {
             size_t index;
             for (index = 0; index < 2048U; ++index) {
-                if (index == 1900U) {
-                    size_t column;
-                    if (printf("\0337\033[5n") < 0) {
-                        return 92;
-                    }
-                    for (column = 1U; column <= 8U; ++column) {
-                        if (printf("\033[1;%zuH\033[6n", column) < 0) {
-                            return 92;
-                        }
-                    }
-                    if (printf("\0338") < 0) {
-                        return 92;
-                    }
-                }
                 if (printf("TAIL %04zu 0123456789abcdef0123456789abcdef\r\n", index) < 0) {
                     return 92;
                 }
@@ -501,6 +487,17 @@ int main(int argc, char **argv) {
                 if (printf("TAIL-PAD %02zu\r\n", index) < 0) {
                     return 92;
                 }
+            }
+            if (printf("\0337\033[5n") < 0) {
+                return 92;
+            }
+            for (index = 1U; index <= 8U; ++index) {
+                if (printf("\033[1;%zuH\033[6n", index) < 0) {
+                    return 92;
+                }
+            }
+            if (printf("\0338TAIL-NOISE-END\r\n") < 0) {
+                return 92;
             }
             return 7;
         } else if (strcmp(line, "dcs-exit\n") == 0 || strcmp(line, "dcs-exit\r\n") == 0) {

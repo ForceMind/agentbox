@@ -200,3 +200,11 @@ validation `143`, and the documentation link check `238`. Independent Sol review
 reported no remaining P0/P1/P2 in this software scope. A later documentation-only
 head must complete its own CI before merge, and none of these counts qualifies a
 real vendor CLI, account, CRX installation, native binary provenance or host.
+
+The next documentation-only head exposed a sanitizer scheduling flake in the
+test fixture rather than a bridge tail loss: canonical inner-PTY echo could apply
+the intentional old DSR replies to tmux row 1 while the test was still recording
+digest frames. The fixture now completes all 2,048 exact ordered/hash-checked
+frames plus marker/padding before injecting the unchanged DSR5 and all eight DSR6
+positions. This retains the overlap/KMP gate and keeps any terminal-grid mutation
+outside the digest set; production bridge code is unchanged.

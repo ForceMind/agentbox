@@ -43,6 +43,9 @@ versioning for release display and PEP 440 for the Python package.
 - The bridge uses raw outer-terminal input and a bounded 64-position random
   tmux cursor/DSR acknowledgment before pane exit; delayed vendor queries cannot
   impersonate the post-exit challenge, and unparsed challenge prefixes fail closed.
+- The Linux tail-integrity fixture keeps all 2,048 digest-checked frames ahead of
+  its intentional DSR overlap noise, so canonical inner-PTY echo can affect only
+  excluded padding and cannot create a sanitizer scheduling flake.
 
 ### Known limitations
 

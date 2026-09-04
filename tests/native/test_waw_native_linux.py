@@ -925,6 +925,7 @@ def test_bridge_flushes_large_vendor_tail_after_child_exit(
         == hashlib.sha256("\n".join(expected).encode()).digest()
     )
     assert any(line.strip() == "TAIL-END" for line in captured)
+    assert any("TAIL-NOISE-END" in line for line in captured)
 
 
 def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(
