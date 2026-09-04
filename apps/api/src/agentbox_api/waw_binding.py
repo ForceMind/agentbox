@@ -29,6 +29,16 @@ class WAWBindTransport(Protocol):
     async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]: ...
 
 
+class RuntimeEpochClassifier(Protocol):
+    def classify_runtime_epoch(
+        self,
+        *,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: int,
+        observed_runtime_epoch: str,
+    ) -> object: ...
+
+
 RequestIdFactory = Callable[[], str | Awaitable[str]]
 
 
@@ -47,6 +57,7 @@ class WAWRuntimeBindCoordinator:
         expected_project_root_manifest_digest: str,
         request_id_factory: RequestIdFactory,
         expected_runtime_epoch: str | None = None,
+        runtime_epoch_classifier: RuntimeEpochClassifier | None = None,
     ) -> None:
         if not isinstance(api_authority_epoch, str) or not api_authority_epoch:
             raise ValueError("api_authority_epoch must be non-empty")
@@ -60,6 +71,7 @@ class WAWRuntimeBindCoordinator:
         self._expected_host_manifest = expected_host_manifest_digest
         self._expected_project_root_manifest = expected_project_root_manifest_digest
         self._expected_runtime_epoch = expected_runtime_epoch
+        self._runtime_epoch_classifier = runtime_epoch_classifier
         self._request_id_factory = request_id_factory
         self._bound_response: dict[str, Any] | None = None
         self._lock = asyncio.Lock()
@@ -120,6 +132,18 @@ class WAWRuntimeBindCoordinator:
                 self._invalidate()
                 await self._reconnect()
             raise
+        runtime_epoch = verified.get("runtime_epoch")
+        if not isinstance(runtime_epoch, str):
+            self._invalidate()
+            raise WAWControlClientError(
+                "RUNTIME_INSTALLATION_MISMATCH", "Runtime bind epoch is unavailable"
+            )
+        if self._runtime_epoch_classifier is not None:
+            self._runtime_epoch_classifier.classify_runtime_epoch(
+                runtime_host_installation_id=self._expected_host_id,
+                runtime_host_installation_revision=int(self._expected_host_revision),
+                observed_runtime_epoch=runtime_epoch,
+            )
         self._bound_response = dict(verified)
         return dict(verified)
 
@@ -176,4 +200,4 @@ class WAWRuntimeBindCoordinator:
             return response
 
 
-__all__ = ["WAWBindTransport", "WAWRuntimeBindCoordinator"]
+__all__ = ["RuntimeEpochClassifier", "WAWBindTransport", "WAWRuntimeBindCoordinator"]

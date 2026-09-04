@@ -69,7 +69,33 @@ class TransportFailureClient(FakeClient):
         self.reconnects += 1
 
 
-def _coordinator(client: FakeClient) -> WAWRuntimeBindCoordinator:
+class EpochClassifier:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[tuple[str, int, str]] = []
+
+    def classify_runtime_epoch(
+        self,
+        *,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: int,
+        observed_runtime_epoch: str,
+    ) -> object:
+        self.calls.append(
+            (
+                runtime_host_installation_id,
+                runtime_host_installation_revision,
+                observed_runtime_epoch,
+            )
+        )
+        if self.error is not None:
+            raise self.error
+        return "api_restart"
+
+
+def _coordinator(
+    client: FakeClient, *, classifier: EpochClassifier | None = None
+) -> WAWRuntimeBindCoordinator:
     return WAWRuntimeBindCoordinator(
         client,
         api_authority_epoch="7",
@@ -80,6 +106,7 @@ def _coordinator(client: FakeClient) -> WAWRuntimeBindCoordinator:
         expected_project_root_manifest_digest="b" * 64,
         expected_runtime_epoch="9",
         request_id_factory=lambda: "wreq_" + "1" * 32,
+        runtime_epoch_classifier=classifier,
     )
 
 
@@ -103,6 +130,33 @@ async def test_failed_attestation_does_not_mark_bound() -> None:
         await coordinator.bind()
     assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
     assert coordinator.bound is False
+
+
+@pytest.mark.anyio
+async def test_bind_classifies_verified_runtime_epoch_before_publication() -> None:
+    client = FakeClient(_response())
+    classifier = EpochClassifier()
+    coordinator = _coordinator(client, classifier=classifier)
+
+    assert await coordinator.bind() == _response()
+    assert classifier.calls == [("wri_" + "2" * 32, 3, "9")]
+    assert coordinator.bound is True
+    await coordinator.bind()
+    assert len(classifier.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_epoch_classification_failure_never_publishes_attestation() -> None:
+    client = FakeClient(_response())
+    classifier = EpochClassifier(error=RuntimeError("database commit failed"))
+    coordinator = _coordinator(client, classifier=classifier)
+
+    with pytest.raises(RuntimeError, match="database commit failed"):
+        await coordinator.bind()
+
+    assert classifier.calls == [("wri_" + "2" * 32, 3, "9")]
+    assert coordinator.bound is False
+    assert coordinator.attestation is None
 
 
 @pytest.mark.anyio

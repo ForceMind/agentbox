@@ -602,3 +602,23 @@ PROPOSED architecture status are preserved.
   language `zh` selects `zh-CN`; every other, missing or malformed value selects
   English. Technical identifiers remain English. Full cross-page bilingual
   migration is part of R11/rc9.
+
+## R11/rc6 foundation in progress
+
+- The accepted rc6–rc9 composition contract is recorded in
+  `WAW_R11_CONTROLLER_COMPOSITION.md`; PR #80 tracks the active rc6 branch.
+- An API-only v2 anchor loader reads the fixed public leaf through a held,
+  root-owned non-writable directory chain and revalidates all identities. It does
+  not open Runtime-private manifest/HOME/Secret state; 21 boundary tests pass.
+- Migration `0008_waw_runtime_epoch_fence` adds nullable canonical decimal TEXT
+  `last_runtime_epoch`. One `BEGIN IMMEDIATE` transaction classifies first/same/
+  greater epochs, preserves terminal rows and atomically fences every nonterminal
+  workspace plus pending Stop operation to reconciliation on Runtime advance.
+- Bind attestation is durably classified before coordinator publication. Focused
+  binding/session/anchor tests pass 49 cases; the complete migration suite passes
+  41. Scoped Ruff, Black and Linux-target mypy pass.
+- Sol review found an additional listener prerequisite: both systemd-inherited
+  Runtime listeners must re-`listen` before readiness or `SO_PEERCRED` identifies
+  systemd rather than Runtime. Retained control/stream `BoundRuntimePeer`, Runtime
+  listener rebind, API authority transfer, redraw and application ownership remain
+  active rc6 work. No production WAW path is enabled by this foundation.

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.exc import IntegrityError
 
 from agentbox_core.clock import Clock
@@ -49,6 +50,8 @@ class WorkspaceStopNotFound(WorkspaceSessionError):
 
 
 _HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
+_DECIMAL_U64 = re.compile(r"\A(?:0|[1-9][0-9]{0,19})\Z")
+_MAX_U64 = 2**64 - 1
 _TERMINAL = frozenset({WorkspaceState.EXITED, WorkspaceState.STOPPED})
 _RESTARTABLE = frozenset(
     {
@@ -59,6 +62,27 @@ _RESTARTABLE = frozenset(
         WorkspaceState.UNKNOWN,
     }
 )
+
+
+class RuntimeEpochClassification(StrEnum):
+    """Durable interpretation of one verified Runtime bind epoch."""
+
+    FIRST_BIND = "first_bind"
+    API_RESTART = "api_restart"
+    RUNTIME_RESTART = "runtime_restart"
+
+
+class RuntimeEpochBindingError(WorkspaceSessionConflict):
+    """The verified Runtime epoch cannot advance the durable host fence."""
+
+
+def _runtime_epoch(value: str) -> int:
+    if not isinstance(value, str) or _DECIMAL_U64.fullmatch(value) is None:
+        raise RuntimeEpochBindingError("Runtime epoch is invalid")
+    parsed = int(value)
+    if parsed == 0 or parsed > _MAX_U64:
+        raise RuntimeEpochBindingError("Runtime epoch is invalid")
+    return parsed
 
 
 class WorkspaceSessionService:
@@ -74,6 +98,80 @@ class WorkspaceSessionService:
             if row is None:
                 raise WorkspaceSessionNotFound(workspace_id_value)
             return row
+
+    def classify_runtime_epoch(
+        self,
+        *,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: int,
+        observed_runtime_epoch: str,
+    ) -> RuntimeEpochClassification:
+        """Persist one verified bind epoch and atomically fence a Runtime restart."""
+
+        observed = _runtime_epoch(observed_runtime_epoch)
+        if (
+            not isinstance(runtime_host_installation_id, str)
+            or type(runtime_host_installation_revision) is not int
+            or runtime_host_installation_revision < 1
+        ):
+            raise RuntimeEpochBindingError("Runtime host identity is invalid")
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            now = self._database.transaction_now(session)
+            host = session.get(RuntimeHostInstallation, runtime_host_installation_id)
+            if host is None or host.revision != runtime_host_installation_revision:
+                raise RuntimeEpochBindingError("Runtime host identity is not current")
+            previous_raw = host.last_runtime_epoch
+            if previous_raw is None:
+                host.last_runtime_epoch = observed_runtime_epoch
+                host.updated_at = now
+                session.flush()
+                return RuntimeEpochClassification.FIRST_BIND
+            previous = _runtime_epoch(previous_raw)
+            if observed < previous:
+                raise RuntimeEpochBindingError("Runtime epoch is stale")
+            host.updated_at = now
+            if observed == previous:
+                session.flush()
+                return RuntimeEpochClassification.API_RESTART
+            host.last_runtime_epoch = observed_runtime_epoch
+            session.execute(
+                update(AgentWorkspaceSessionRecord)
+                .where(
+                    AgentWorkspaceSessionRecord.runtime_host_installation_id
+                    == runtime_host_installation_id,
+                    AgentWorkspaceSessionRecord.runtime_host_installation_revision
+                    == runtime_host_installation_revision,
+                    AgentWorkspaceSessionRecord.state.not_in(
+                        tuple(state.value for state in _TERMINAL)
+                    ),
+                )
+                .values(
+                    state=WorkspaceState.UNKNOWN.value,
+                    reconciliation_state=ReconciliationState.RECONCILIATION_REQUIRED.value,
+                    failure_code="RUNTIME_RESTART",
+                    revision=AgentWorkspaceSessionRecord.revision + 1,
+                    updated_at=now,
+                    last_seen_at=now,
+                )
+            )
+            session.execute(
+                update(WorkspaceStopOperationRecord)
+                .where(
+                    WorkspaceStopOperationRecord.runtime_host_installation_id
+                    == runtime_host_installation_id,
+                    WorkspaceStopOperationRecord.runtime_host_installation_revision
+                    == runtime_host_installation_revision,
+                    WorkspaceStopOperationRecord.result == StopResult.PENDING.value,
+                )
+                .values(
+                    result=StopResult.RECONCILIATION_REQUIRED.value,
+                    failure_code="RUNTIME_RESTART",
+                    updated_at=now,
+                )
+            )
+            session.flush()
+            return RuntimeEpochClassification.RUNTIME_RESTART
 
     def create(
         self,
@@ -328,6 +426,8 @@ class WorkspaceSessionService:
                 or row.runtime_host_installation_id != record.runtime_host_installation_id
                 or row.runtime_host_installation_revision
                 != record.runtime_host_installation_revision
+                or row.state != WorkspaceState.STOPPING.value
+                or row.reconciliation_state != ReconciliationState.STOPPING.value
             ):
                 raise WorkspaceSessionConflict("stop operation binding is stale")
             record.result = outcome.value
@@ -352,6 +452,8 @@ class WorkspaceSessionService:
 
 
 __all__ = [
+    "RuntimeEpochBindingError",
+    "RuntimeEpochClassification",
     "WorkspaceSessionConflict",
     "WorkspaceSessionError",
     "WorkspaceSessionNotFound",

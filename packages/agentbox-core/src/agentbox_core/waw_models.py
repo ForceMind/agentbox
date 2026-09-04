@@ -43,6 +43,15 @@ class RuntimeHostInstallation(Base):
         CheckConstraint(
             "runtime_type = 'agentbox-runtime-linux-v1'", name="ck_waw_runtime_hosts_type"
         ),
+        CheckConstraint(
+            "last_runtime_epoch IS NULL OR ("
+            "length(last_runtime_epoch) BETWEEN 1 AND 20 AND "
+            "last_runtime_epoch NOT GLOB '*[^0-9]*' AND "
+            "substr(last_runtime_epoch,1,1) BETWEEN '1' AND '9' AND "
+            "(length(last_runtime_epoch) < 20 OR "
+            "last_runtime_epoch <= '18446744073709551615'))",
+            name="ck_waw_runtime_hosts_last_epoch",
+        ),
         UniqueConstraint("id", "revision", name="uq_waw_runtime_hosts_identity"),
     )
 
@@ -51,6 +60,7 @@ class RuntimeHostInstallation(Base):
     runtime_type: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_runtime_epoch: Mapped[str | None] = mapped_column(String(20))
 
 
 class AgentWorkspaceSessionRecord(Base):

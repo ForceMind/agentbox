@@ -498,7 +498,7 @@ def test_0005_unsafe_downgrade_rolls_back_schema_and_version(tmp_path: Path) -> 
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0007_waw_host_identity_fence"
+                == "0008_waw_runtime_epoch_fence"
             )
             assert "confirmation_challenges" in inspect(engine).get_table_names()
             assert "auth_epoch" in {
@@ -839,7 +839,7 @@ def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> Non
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(path) as connection:
         expected_revision = (
-            "0007_waw_host_identity_fence"
+            "0008_waw_runtime_epoch_fence"
             if target == "heads"
             else "0005_phase11_control_plane_ownership_approval"
         )

@@ -47,6 +47,20 @@ The first valid `BIND` retains a typed API process lease. A malformed or pre-bin
 connection cannot reserve the singleton. Every control dispatch and stream peer
 must match that exact live lease. A second live API process is rejected.
 
+On the API side, the first control `BIND` retains one Runtime pidfd-backed peer;
+all later control requests and stream sockets borrow that same object. A poisoned,
+closed or terminal peer invalidates the cached attestation. Candidate pidfds are
+closed on cancellation, protocol failure or failed attestation and are published
+atomically with the verified attestation.
+
+An inherited systemd AF_UNIX listener carries the credentials of the process that
+called `listen`. Before readiness, the Runtime process must explicitly call
+`listen(fixed_backlog)` again on both inherited control and stream listeners so
+client `SO_PEERCRED` identifies Runtime rather than systemd. API prefers
+`SO_PEERPIDFD` when the kernel exposes it; the fallback closes the
+`SO_PEERCRED → pidfd_open → response → still-current` window as far as supported
+without inventing stronger responder proof. R12 records the real kernel path.
+
 When the old API pidfd is terminal, Runtime may accept one new authority epoch
 and nonce. It first revokes old capability, Session and INPUT publication,
 preserves any incomplete cleanup fence, and only then publishes the new authority.
@@ -62,13 +76,21 @@ to unsigned 64-bit and updated inside `BEGIN IMMEDIATE`:
 
 - same host/revision and same epoch: API restart; durable Workspace state remains;
 - same host/revision and strictly greater epoch: Runtime restart; all nonterminal
-  Workspace records become `UNKNOWN` with `reconciliation_required` atomically;
+  Workspace records become `UNKNOWN` with `reconciliation_required` and pending
+  Stop operations become `RECONCILIATION_REQUIRED` atomically;
 - lower, reused, malformed or host/revision-mismatched epoch: reject without
   changing state.
 
 Bind-response loss, database commit failure and process-identity drift keep the
 application unavailable. Readiness exposes only a bounded WAW availability code,
 never an anchor path, nonce or PID.
+
+API loads only the fixed public `api-host-anchor.v2.json`: root-to-parent traversal
+uses held `O_DIRECTORY|O_NOFOLLOW` descriptors, every directory is root-owned and
+not group/world writable, the final public directory is mode `0755`, and the leaf
+is a single-link root-owned regular `0444` file. File and directory identities are
+revalidated after the bounded read. The API never opens the Runtime-private
+manifest, Runtime HOME or a Secret.
 
 ## Bounded redraw
 
