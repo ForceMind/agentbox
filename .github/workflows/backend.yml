@@ -22,7 +22,7 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y tmux
-          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /run/agentbox-waw/tmux /run/agentbox-waw/tmp
+          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /run/agentbox-waw /run/agentbox-waw/tmux /run/agentbox-waw/tmp
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "/run/agentbox-waw/tmp/${WORKSPACE_HASH}"
           sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes/claude /var/lib/agentbox-waw/vendor-homes/codex

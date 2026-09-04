@@ -608,3 +608,8 @@ PROPOSED architecture status are preserved.
   new server test tried to create its short Unix-socket directory under macOS-only
   `/private/tmp`. The fixture now uses portable `/tmp`, preserving the short-path
   requirement on both macOS and Linux; the next exact head must re-prove the matrix.
+- Latest head `b689ff8b007b2a34478f8d1d06fee4930a70ca1a` compiled the
+  helpers, then the native fixture could not bind its fixed control socket because
+  CI created `/run/agentbox-waw` as root while only its children belonged to the
+  runner. Ephemeral CI provisioning now assigns the exact parent and child runtime
+  directories to the runner; no product installer or activation path changes.
