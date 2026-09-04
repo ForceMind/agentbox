@@ -49,8 +49,10 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert "MOVE_MOUNT_F_EMPTY_PATH" in source
     assert "attr_clr" not in source
     assert "MS_BIND | MS_REC" not in source
-    assert "setresuid" not in source
-    assert "setresgid" not in source
+    assert "PR_SET_KEEPCAPS" in source
+    assert "SYS_capset" in source
+    assert "SYS_capget" in source
+    assert "PR_CAP_AMBIENT_CLEAR_ALL" in source
 
 
 def test_native_ready_header_matches_python_adapter() -> None:

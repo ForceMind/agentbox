@@ -19,6 +19,7 @@
 #if defined(__linux__) && !defined(AGENTBOX_WAW_PORTABLE_CHECK)
 
 #include <linux/audit.h>
+#include <linux/capability.h>
 #include <linux/filter.h>
 #include <linux/landlock.h>
 #include <linux/mount.h>
@@ -66,6 +67,68 @@ static int write_user_maps(pid_t child, uid_t host_uid, gid_t host_gid) {
     length = snprintf(mapping, sizeof(mapping), "%u %u 1\n", (unsigned int)AGENTBOX_WAW_INNER_GID,
                       (unsigned int)host_gid);
     return length < 0 || (size_t)length >= sizeof(mapping) ? -1 : write_file(path, mapping);
+}
+
+static int set_exact_setup_capability(void) {
+#if defined(SYS_capget) && defined(SYS_capset) && defined(CAP_SYS_ADMIN)
+    struct __user_cap_header_struct header;
+    struct __user_cap_data_struct requested[_LINUX_CAPABILITY_U32S_3];
+    struct __user_cap_data_struct observed[_LINUX_CAPABILITY_U32S_3];
+    const uint32_t mask = UINT32_C(1) << CAP_SYS_ADMIN;
+    size_t index;
+    memset(&header, 0, sizeof(header));
+    memset(requested, 0, sizeof(requested));
+    memset(observed, 0, sizeof(observed));
+    header.version = _LINUX_CAPABILITY_VERSION_3;
+    requested[0].permitted = mask;
+    requested[0].effective = mask;
+    if (syscall(SYS_capset, &header, requested) != 0L ||
+        syscall(SYS_capget, &header, observed) != 0L) {
+        return -1;
+    }
+    for (index = 0; index < (size_t)_LINUX_CAPABILITY_U32S_3; ++index) {
+        const uint32_t expected = index == 0U ? mask : UINT32_C(0);
+        if (observed[index].permitted != expected || observed[index].effective != expected ||
+            observed[index].inheritable != 0U) {
+            errno = EPROTO;
+            return -1;
+        }
+    }
+    return prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0UL, 0UL, 0UL);
+#else
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+static int clear_setup_capability(void) {
+#if defined(SYS_capget) && defined(SYS_capset)
+    struct __user_cap_header_struct header;
+    struct __user_cap_data_struct empty[_LINUX_CAPABILITY_U32S_3];
+    struct __user_cap_data_struct observed[_LINUX_CAPABILITY_U32S_3];
+    size_t index;
+    memset(&header, 0, sizeof(header));
+    memset(empty, 0, sizeof(empty));
+    memset(observed, 0, sizeof(observed));
+    header.version = _LINUX_CAPABILITY_VERSION_3;
+    if (prctl(PR_SET_KEEPCAPS, 0L, 0L, 0L, 0L) != 0 ||
+        syscall(SYS_capset, &header, empty) != 0L ||
+        prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0UL, 0UL, 0UL) != 0 ||
+        syscall(SYS_capget, &header, observed) != 0L) {
+        return -1;
+    }
+    for (index = 0; index < (size_t)_LINUX_CAPABILITY_U32S_3; ++index) {
+        if (observed[index].permitted != 0U || observed[index].effective != 0U ||
+            observed[index].inheritable != 0U) {
+            errno = EPROTO;
+            return -1;
+        }
+    }
+    return 0;
+#else
+    errno = ENOTSUP;
+    return -1;
+#endif
 }
 
 static int ensure_directory(const char *path, mode_t mode) {
@@ -502,10 +565,15 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
         getppid() != expected_parent ||
         unshare(CLONE_NEWUSER) != 0 ||
+        prctl(PR_SET_KEEPCAPS, 1L, 0L, 0L, 0L) != 0 ||
         agentbox_waw_write_exact(ready_write, &byte, sizeof(byte)) != 0 ||
         agentbox_waw_read_exact(mapped_read, &byte, sizeof(byte)) != 0 || byte != 1U ||
-        geteuid() != (uid_t)AGENTBOX_WAW_INNER_UID ||
-        getegid() != (gid_t)AGENTBOX_WAW_INNER_GID ||
+        setresgid((gid_t)AGENTBOX_WAW_INNER_GID, (gid_t)AGENTBOX_WAW_INNER_GID,
+                  (gid_t)AGENTBOX_WAW_INNER_GID) != 0 ||
+        setresuid((uid_t)AGENTBOX_WAW_INNER_UID, (uid_t)AGENTBOX_WAW_INNER_UID,
+                  (uid_t)AGENTBOX_WAW_INNER_UID) != 0 ||
+        prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != expected_parent ||
+        set_exact_setup_capability() != 0 ||
         (builder_pidfd = agentbox_waw_pidfd_open((int)getpid())) < 0 ||
         unshare(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC) != 0) {
         _exit(71);
@@ -530,11 +598,11 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
         if (setup_status != 0) {
             _exit(setup_status);
         }
+        if (agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0) {
+            _exit(83);
+        }
         if (apply_landlock(config, bridge_executable) != 0) {
             _exit(82);
-        }
-        if (agentbox_waw_apply_no_new_privs() != 0) {
-            _exit(83);
         }
         if (apply_seccomp() != 0) {
             _exit(84);

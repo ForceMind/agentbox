@@ -692,3 +692,9 @@ PROPOSED architecture status are preserved.
   attribute step. Directory mounting now uses descriptor-native `open_tree`,
   detached `mount_setattr`, and `move_mount` without source path re-resolution,
   nested mounts, or a temporarily less-restricted attached mount.
+- Descriptor-native clone head `3c783a9` reported `111`, confirming the builder
+  still lacked effective setup capability. The final lifecycle uses
+  `PR_SET_KEEPCAPS`, switches to inner UID/GID 1000, narrows capset v3 to the
+  new user namespace's sole `CAP_SYS_ADMIN`, and exact-reads it back. Before
+  Landlock/seccomp/bridge exec it sets NNP, disables KEEPCAPS, clears all three
+  capability sets and ambient capabilities, and exact-reads zero back.
