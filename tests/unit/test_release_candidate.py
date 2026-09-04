@@ -123,8 +123,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc3"
-    assert npm_version("0.3.0rc3") == "0.3.0-rc.3"
+    assert verify_version_consistency(root) == "0.3.0rc4"
+    assert npm_version("0.3.0rc4") == "0.3.0-rc.4"
 
 
 def test_release_build_toolchain_is_read_from_the_reviewed_lock() -> None:

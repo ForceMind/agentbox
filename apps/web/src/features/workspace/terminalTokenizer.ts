@@ -1,3 +1,8 @@
+import {
+  isTerminalBidiControl,
+  isTerminalDefaultIgnorable,
+} from './terminalUnicodeWidth'
+
 /**
  * Transport-independent Browser Terminal Security tokenizer foundation.
  *
@@ -82,6 +87,8 @@ export class TerminalTokenizerError extends Error {
 export interface TerminalTaskResult {
   readonly tokens: readonly TerminalToken[]
   readonly consumedBytes: number
+  /** Raw LF bytes consumed from this task's copied frame reservation. */
+  readonly consumedLineFeeds: number
   readonly frameComplete: boolean
   readonly state: TerminalTokenizerState
   /** Local metadata only: never an ABWS GAP or an output cursor. */
@@ -130,6 +137,21 @@ export class TerminalTokenizer {
     return this.currentState
   }
 
+  /** Exact allocated copied-frame bytes; consumed slots remain zeroed in place. */
+  get pendingFrameBytes(): number {
+    return this.frame?.byteLength ?? 0
+  }
+
+  /** A carried UTF-8 prefix can add at most four bytes beyond a new raw byte. */
+  get pendingUtf8CarryReservationBytes(): number {
+    return this.utf8Remaining ? 4 : 0
+  }
+
+  /** CSI parameters are bounded by the independent 4 KiB sequence parser budget. */
+  get pendingParserReservationBytes(): number {
+    return this.parameters.length
+  }
+
   get nextDeadlineMs(): number | null {
     if (this.mode !== 'ground') {
       const started = this.utf8Remaining
@@ -145,6 +167,26 @@ export class TerminalTokenizer {
   /** Copies a bounded frame; a pending frame must finish before another begins. */
   beginFrame(bytes: Uint8Array): void {
     this.assertReady()
+    this.beginCheckedFrame(bytes, false)
+  }
+
+  /**
+   * Scheduler-only transfer of its private exact Uint8Array/ArrayBuffer snapshot.
+   * Callers must not retain or mutate this buffer after transfer.
+   */
+  beginOwnedFrame(bytes: Uint8Array): void {
+    this.assertReady()
+    if (
+      Object.getPrototypeOf(bytes) !== Uint8Array.prototype ||
+      !(bytes.buffer instanceof ArrayBuffer) ||
+      bytes.byteOffset !== 0
+    ) {
+      throw new TerminalTokenizerError('TERMINAL_TOKENIZER_INVALID_FRAME')
+    }
+    this.beginCheckedFrame(bytes, true)
+  }
+
+  private beginCheckedFrame(bytes: Uint8Array, owned: boolean): void {
     if (this.frame) throw new TerminalTokenizerError('TERMINAL_TOKENIZER_BUSY')
     if (
       !ArrayBuffer.isView(bytes) ||
@@ -156,13 +198,16 @@ export class TerminalTokenizer {
       this.fail()
       throw new TerminalTokenizerError('TERMINAL_PARSE_LIMIT')
     }
-    this.frame = bytes.length ? new Uint8Array(bytes) : null
+    this.frame = bytes.length ? (owned ? bytes : new Uint8Array(bytes)) : null
     this.offset = 0
     // A carried control sequence also occupies a slot in the new frame.
     this.frameControls = this.mode === 'ground' ? 0 : 1
   }
 
-  runTask(clock: () => number): TerminalTaskResult {
+  runTask(
+    clock: () => number,
+    absoluteDeadlineMs?: number,
+  ): TerminalTaskResult {
     this.assertReady()
     this.running = true
     const output: Output = {
@@ -172,8 +217,20 @@ export class TerminalTokenizer {
       limited: false,
     }
     let consumedBytes = 0
+    let consumedLineFeeds = 0
     try {
       const started = this.readTime(clock)
+      if (
+        absoluteDeadlineMs !== undefined &&
+        (!Number.isFinite(absoluteDeadlineMs) || absoluteDeadlineMs < 0)
+      ) {
+        this.fail()
+        throw new TerminalTokenizerError('TERMINAL_TOKENIZER_INVALID_CLOCK')
+      }
+      const taskDeadline = Math.min(
+        started + TERMINAL_LIMITS.taskMs,
+        absoluteDeadlineMs ?? Number.POSITIVE_INFINITY,
+      )
       let now = started
       while (this.currentState === 'ready') {
         const deadline = this.nextDeadlineMs
@@ -184,13 +241,14 @@ export class TerminalTokenizer {
         if (
           !this.frame ||
           consumedBytes >= TERMINAL_LIMITS.taskBytes ||
-          now - started >= TERMINAL_LIMITS.taskMs
+          now >= taskDeadline
         ) {
           break
         }
         const byte = this.frame[this.offset]
         this.frame[this.offset++] = 0
         consumedBytes++
+        if (byte === 0x0a) consumedLineFeeds++
         if (this.offset === this.frame.length) {
           this.frame = null
           this.offset = 0
@@ -202,6 +260,7 @@ export class TerminalTokenizer {
       return {
         tokens: output.tokens,
         consumedBytes,
+        consumedLineFeeds,
         frameComplete: this.frame === null,
         state: this.currentState,
         status: output.limited ? 'TERMINAL_PARSE_LIMIT' : null,
@@ -499,19 +558,12 @@ export class TerminalTokenizer {
       }
       return
     }
-    if (
-      (value >= 0x200b && value <= 0x200f) ||
-      value === 0x2060 ||
-      value === 0xfeff
-    ) {
-      if (this.countControl(output)) output.discardedControls++
-    } else if (
-      (value >= 0x202a && value <= 0x202e) ||
-      (value >= 0x2066 && value <= 0x2069)
-    ) {
+    if (isTerminalBidiControl(value)) {
       if (!this.suppressOutput) {
         output.text += `\\u{${value.toString(16).toUpperCase()}}`
       }
+    } else if (isTerminalDefaultIgnorable(value)) {
+      if (this.countControl(output)) output.discardedControls++
     } else {
       if (!this.suppressOutput) output.text += String.fromCodePoint(value)
     }

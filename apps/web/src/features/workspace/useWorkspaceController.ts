@@ -13,6 +13,7 @@ import {
 } from './workspaceMetadata'
 import type {
   WorkspaceAgent,
+  WorkspaceNotice,
   WorkspacePageModel,
   WorkspaceStopTarget,
 } from './workspaceView'
@@ -60,7 +61,7 @@ export function useWorkspaceController(options: {
     row: null,
     error: null,
   })
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<WorkspaceNotice | null>(null)
   const [actionError, setActionError] = useState<ApiError | null>(null)
   const [confirmation, setConfirmation] = useState<
     (WorkspaceStopTarget & { key: string; runtimeFingerprint: string }) | null
@@ -336,7 +337,7 @@ export function useWorkspaceController(options: {
           message: '工作区身份已变化，请刷新',
           status: 409,
         })
-      setNotice('启动请求已确认。进程状态与浏览器终端连接状态分别显示。')
+      setNotice('START_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
       if (mounted.current && selectionEpoch.current === epoch)
@@ -383,7 +384,7 @@ export function useWorkspaceController(options: {
           status: 409,
         })
       setConfirmation(null)
-      setNotice('受管进程已停止，项目与 Git 修改已保留。')
+      setNotice('STOP_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
       if (mounted.current && selectionEpoch.current === epoch) {
@@ -421,9 +422,7 @@ export function useWorkspaceController(options: {
       : status.view,
     pending: actions.pending,
     error: actionError ?? currentLookup.error,
-    notice: runtimeNeedsRecovery
-      ? 'Runtime 需要恢复核对，当前操作已暂停。'
-      : notice,
+    notice: runtimeNeedsRecovery ? 'RUNTIME_RECOVERY_REQUIRED' : notice,
     canStart,
     canStop,
     stopTarget:

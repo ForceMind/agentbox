@@ -315,15 +315,36 @@ describe('incremental terminal tokenizer foundation', () => {
     ])
   })
 
-  it('renders every bidi control visibly and removes only the fixed invisible table', () => {
+  it('renders every Bidi_Control visibly and counts every other Default_Ignorable', () => {
     const bidi = [
+      0x061c,
+      0x200e,
+      0x200f,
       ...Array.from({ length: 5 }, (_, i) => 0x202a + i),
       ...Array.from({ length: 4 }, (_, i) => 0x2066 + i),
     ]
-    const invisible = [0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x2060, 0xfeff]
+    const invisible = [
+      0x00ad, 0x034f, 0x180b, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0x2061,
+      0x2062, 0xfe00, 0xfe0f, 0xfeff, 0xe0100,
+    ]
     const text = `项目 שלום${String.fromCodePoint(...bidi)}عربي${String.fromCodePoint(...invisible)}end`
     const expected = `项目 שלום${bidi.map((value) => `\\u{${value.toString(16).toUpperCase()}}`).join('')}عربيend`
     splitEverywhere(utf8(text), [{ kind: 'text', text: expected }])
+    const results = feed(new TerminalTokenizer(), utf8(text))
+    expect(
+      results.reduce((total, result) => total + result.discardedControls, 0),
+    ).toBe(invisible.length)
+  })
+
+  it('applies the 256-control frame bound to Default_Ignorable scalars', () => {
+    const parser = new TerminalTokenizer()
+    parser.beginFrame(utf8('\u00ad'.repeat(257)))
+    const result = parser.runTask(() => 0)
+    expect(result).toMatchObject({
+      discardedControls: 256,
+      state: 'needs-reset',
+      status: 'TERMINAL_PARSE_LIMIT',
+    })
   })
 
   it.each([

@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "provider_installation_key_fingerprint": {
+      "type": "string",
+      "description": "Lowercase SHA-256 fingerprint of the enrolled trustd installation public key."
+    },
+    "allowed_origins": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Exact canonical origins provisioned by the administrator."
+    }
+  }
+}

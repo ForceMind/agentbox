@@ -140,26 +140,20 @@ The MVP does not expose arbitrary shell input, full filesystem browsing, unrestr
 
 ## Product Language Contract
 
-The canonical locale for final ordinary-user-facing AgentBox interfaces is
-Simplified Chinese (`zh-CN`). Navigation, titles, buttons, labels, forms,
-validation and confirmation copy, warnings, errors, status explanations, empty
-states, onboarding, help, tooltips, accessibility labels, and future Provider,
-Secret, activation, rollback, and Runtime-capability UX must default to
-Simplified Chinese. Ordinary-user CLI prose should follow the same default
-where practical.
+Ordinary-user Web interfaces support exactly Simplified Chinese (`zh-CN`) and
+English. A fresh document selects `zh-CN` only when the first browser preference
+has primary language `zh`; all other, missing or malformed preferences select
+English. Navigation, titles, buttons, labels, forms, validation, confirmations,
+warnings, errors, status explanations, empty states, onboarding, help, tooltips
+and accessibility labels follow that immutable document locale. Ordinary-user
+CLI prose remains a separate interface and may follow its deployment locale.
 
 Source identifiers, protocol fields, enum values, database names,
 machine-readable error and Audit codes, branches, commits, technical filenames,
 versions, and external product/protocol proper names remain English where that
-preserves precision. Future UI code must map English machine codes to clear
-Chinese user-facing copy rather than render codes as fallback prose.
-
-Phase 11 Slice 2 records this durable product requirement but does not change
-frontend strings or add an i18n framework. The future Phase 11 Frontend Slice
-must audit existing as well as newly introduced user-visible text. The final
-surface may retain English only for proper nouns, technical identifiers,
-versions, deliberately displayed technical paths, and machine-readable codes;
-accidental English fallback text is a release defect.
+preserves precision. UI code maps stable machine codes to the selected locale and
+never renders server prose as a localization fallback. Each release audits both
+locales; unintended mixed human-facing copy is a release defect.
 
 ## MVP Success Definition
 

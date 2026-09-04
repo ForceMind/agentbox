@@ -82,6 +82,12 @@ jobs:
           agentbox-install verify-version --source .
           python scripts/check-doc-links.py
           pnpm licenses list --prod --json | python scripts/check-frontend-licenses.py --source .
+      - name: Read verified release version
+        id: release-version
+        run: |
+          version="$(agentbox-install verify-version --source .)"
+          test -n "$version"
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Build candidate twice
         run: |
           export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
@@ -125,7 +131,7 @@ jobs:
             tests/unit/test_release_install_script.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: agentbox-0.3.0rc1-linux-x86_64
+          name: agentbox-${{ steps.release-version.outputs.value }}-linux-x86_64
           path: ${{ runner.temp }}/agentbox-rc-a/
           if-no-files-found: error
           retention-days: 7

@@ -1,7 +1,7 @@
 # AgentBox MVP Release Candidate Quickstart
 
 These commands apply to the `0.3.0rc1` pre-release artifact baseline. Source has
-advanced to the unqualified `0.3.0rc3` development candidate; do not substitute
+advanced to the unqualified `0.3.0rc4` development candidate; do not substitute
 that newer version into these commands without a reviewed artifact and new host
 qualification. OpenCloudOS 9 is the only real-host validated baseline platform;
 review [Platform Support](PLATFORM_SUPPORT.md) before installing.

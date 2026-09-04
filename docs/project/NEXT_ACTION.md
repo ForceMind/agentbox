@@ -18,11 +18,12 @@ blocker is resolved. Do not request the same software approval again.
   authority, atomic publication, reader handoff and cleanup/Audit fences delivered.
 - R7 is merged as PR #76 after final independent PASS, 19/19 exact-head checks
   and exact read-back; Runtime encrypted stream/server and publication fences delivered.
-- R8: final independent review is PASS; deliver the native WebSocket/API
-  ciphertext relay, shared parser/INPUT budgets and adapters through exact-head
-  CI, normal merge and exact read-back.
-  After these stages, continue full R9 browser terminal/trust and R10 execution
-  profile, then R11 integration.
+- R8 is merged as PR #77 after independent PASS, 19/19 exact-head checks,
+  normal merge, exact read-back and six successful post-main workflows.
+- R9: implementation, full local matrix and independent review are complete for
+  trust, managed-provider core, bounded terminal and the browser-language
+  `zh-CN`/English Workspace boundary. Complete rc4 visible-version inspection,
+  exact-head CI, normal merge and read-back next; then continue R10.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent

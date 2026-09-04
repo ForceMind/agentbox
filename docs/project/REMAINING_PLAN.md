@@ -72,8 +72,8 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | R5 full wire schemas | 已完成 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
 | R6 staged attachment authority | 已完成 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
 | R7 Runtime encrypted stream | 已完成 | Runtime stream session/server 与有限 executor integration | PR #76 已经 19/19 exact-head CI、正常合并与精确回读；真实 host 证据仍属 R12 |
-| R8 API ciphertext relay | 待交付 | API stream relay/raw transport/auth integration | 本地实现与独立复审 PASS；等待 exact-head CI、正常合并与精确回读；API 无 channel key/plaintext |
-| R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8 + 明确 logical-line deadline duration / post-limit controller recovery；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
+| R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
+| R9 browser trust + terminal | 待CI/合并 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | 121 trust、185 terminal、915 Web、64 E2E、provider/extension/bundle gates与独立复审通过；首个浏览器语言为中文时`zh-CN`，其余English；真实安装与controller全链路仍属R11/R12 |
 | R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；须明确 AgentType launch records、vendor state roots、retention/telemetry、official login / Project Trust；正式 argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |

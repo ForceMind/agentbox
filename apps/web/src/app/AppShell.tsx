@@ -16,23 +16,76 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
 import { useAuth } from '../features/auth/AuthContext'
-import { ApiError } from '../lib/api'
+import { currentLocale, type Locale } from '../i18n'
 
 const navigation = [
-  { label: 'Dashboard', path: '/dashboard', icon: Gauge },
-  { label: 'Codex', path: '/codex', icon: Bot },
-  { label: 'Claude', path: '/claude', icon: Sparkles },
-  { label: '工作区', path: '/workspace', icon: Terminal },
-  { label: 'Projects', path: '/projects', icon: Boxes },
-  { label: 'Doctor', path: '/doctor', icon: Activity },
-  { label: 'Logs', path: '/logs', icon: FileText },
-  { label: 'Settings', path: '/settings', icon: Settings },
+  {
+    labels: { en: 'Dashboard', 'zh-CN': '概览' },
+    path: '/dashboard',
+    icon: Gauge,
+  },
+  { labels: { en: 'Codex', 'zh-CN': 'Codex' }, path: '/codex', icon: Bot },
+  {
+    labels: { en: 'Claude', 'zh-CN': 'Claude' },
+    path: '/claude',
+    icon: Sparkles,
+  },
+  {
+    labels: { en: 'Workspace', 'zh-CN': '工作区' },
+    path: '/workspace',
+    icon: Terminal,
+  },
+  {
+    labels: { en: 'Projects', 'zh-CN': '项目' },
+    path: '/projects',
+    icon: Boxes,
+  },
+  {
+    labels: { en: 'Doctor', 'zh-CN': '诊断' },
+    path: '/doctor',
+    icon: Activity,
+  },
+  { labels: { en: 'Logs', 'zh-CN': '日志' }, path: '/logs', icon: FileText },
+  {
+    labels: { en: 'Settings', 'zh-CN': '设置' },
+    path: '/settings',
+    icon: Settings,
+  },
 ] as const
 
-function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+const COPY = {
+  en: {
+    controlPlane: 'Control Plane',
+    navigation: 'Primary navigation',
+    signedIn: 'Signed in as',
+    signingOut: 'Signing out…',
+    signOut: 'Sign out',
+    logoutFailed: 'Logout could not be completed',
+    openNavigation: 'Open navigation',
+    closeNavigation: 'Close navigation',
+  },
+  'zh-CN': {
+    controlPlane: '控制平面',
+    navigation: '主导航',
+    signedIn: '当前登录用户',
+    signingOut: '正在退出…',
+    signOut: '退出登录',
+    logoutFailed: '无法完成退出登录',
+    openNavigation: '打开导航',
+    closeNavigation: '关闭导航',
+  },
+} as const satisfies Record<Locale, Record<string, string>>
+
+function Navigation({
+  locale,
+  onNavigate,
+}: {
+  locale: Locale
+  onNavigate?: () => void
+}) {
   return (
-    <nav className="primary-nav" aria-label="Primary navigation">
-      {navigation.map(({ label, path, icon: Icon }) => (
+    <nav className="primary-nav" aria-label={COPY[locale].navigation}>
+      {navigation.map(({ labels, path, icon: Icon }) => (
         <NavLink
           className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
           key={path}
@@ -40,7 +93,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
           to={path}
         >
           <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
-          <span>{label}</span>
+          <span>{labels[locale]}</span>
         </NavLink>
       ))}
     </nav>
@@ -53,6 +106,8 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState<string | null>(null)
+  const locale = currentLocale()
+  const copy = COPY[locale]
 
   useEffect(() => setMenuOpen(false), [location.pathname])
 
@@ -61,12 +116,8 @@ export function AppShell() {
     setLogoutError(null)
     try {
       await logout()
-    } catch (error) {
-      setLogoutError(
-        error instanceof ApiError
-          ? error.message
-          : 'Logout could not be completed',
-      )
+    } catch {
+      setLogoutError(copy.logoutFailed)
     } finally {
       setLogoutPending(false)
     }
@@ -81,13 +132,13 @@ export function AppShell() {
           </div>
           <div>
             <strong>AgentBox</strong>
-            <span>Control Plane</span>
+            <span>{copy.controlPlane}</span>
           </div>
         </div>
-        <Navigation />
+        <Navigation locale={locale} />
         <div className="sidebar-footer">
           <ControlPlanePulse />
-          <p>Signed in as</p>
+          <p>{copy.signedIn}</p>
           <strong>{auth?.user.username}</strong>
           <button
             className="secondary-button"
@@ -95,7 +146,7 @@ export function AppShell() {
             onClick={() => void handleLogout()}
             type="button"
           >
-            {logoutPending ? 'Signing out…' : 'Sign out'}
+            {logoutPending ? copy.signingOut : copy.signOut}
           </button>
           {logoutError && (
             <p className="inline-error" role="alert">
@@ -115,7 +166,7 @@ export function AppShell() {
         <button
           aria-controls="mobile-navigation"
           aria-expanded={menuOpen}
-          aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+          aria-label={menuOpen ? copy.closeNavigation : copy.openNavigation}
           className="icon-button"
           onClick={() => setMenuOpen((open) => !open)}
           type="button"
@@ -130,14 +181,14 @@ export function AppShell() {
             <ControlPlanePulse />
             <span>{auth?.user.username}</span>
           </div>
-          <Navigation onNavigate={() => setMenuOpen(false)} />
+          <Navigation locale={locale} onNavigate={() => setMenuOpen(false)} />
           <button
             className="secondary-button mobile-logout"
             disabled={logoutPending}
             onClick={() => void handleLogout()}
             type="button"
           >
-            {logoutPending ? 'Signing out…' : 'Sign out'}
+            {logoutPending ? copy.signingOut : copy.signOut}
           </button>
           {logoutError && (
             <p className="inline-error" role="alert">

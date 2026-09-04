@@ -181,18 +181,20 @@ test('runs the synthetic Codex metadata lifecycle with exact stop confirmation',
   const requests = await mockWorkspaceApi(page)
   await page.goto('/workspace')
 
-  const projectSelect = page.getByLabel('正式 READY Project')
+  const projectSelect = page.getByLabel('Formal READY Project')
   await expect(projectSelect.locator('option[value^="prj_"]')).toHaveCount(1)
   await projectSelect.selectOption(projectId)
   const agentSelect = page.getByLabel('AgentType', { exact: true })
   await agentSelect.selectOption('codex')
-  await expect(page.getByText('启动中')).toBeVisible()
-  await expect(page.getByText('NOT ADMITTED')).toBeVisible()
-  await expect(page.getByRole('button', { name: '连接终端' })).toBeDisabled()
+  await expect(page.getByText('Starting', { exact: true })).toBeVisible()
+  await expect(page.getByText('Not admitted')).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Connect terminal' }),
+  ).toBeDisabled()
 
-  await page.getByRole('button', { name: '启动工作区' }).click()
-  await expect(page.getByText('运行中')).toBeVisible()
-  await expect(page.getByText('NOT ADMITTED')).toBeVisible()
+  await page.getByRole('button', { name: 'Start workspace' }).click()
+  await expect(page.getByText('Running', { exact: true })).toBeVisible()
+  await expect(page.getByText('Not admitted')).toBeVisible()
   const startRequest = requests.find((request) =>
     request.url.endsWith('/workspaces/codex/start'),
   )
@@ -200,7 +202,7 @@ test('runs the synthetic Codex metadata lifecycle with exact stop confirmation',
   expect(startRequest?.body).toBe('{}')
   expect(startRequest?.csrf).toBe('csrf-e2e')
 
-  const stop = page.getByRole('button', { name: '停止工作区' })
+  const stop = page.getByRole('button', { name: 'Stop workspace' })
   const stopCount = () =>
     requests.filter((request) =>
       request.url.endsWith(`/workspaces/${workspaceId}/stop`),
@@ -208,26 +210,26 @@ test('runs the synthetic Codex metadata lifecycle with exact stop confirmation',
   const beforeStop = stopCount()
   await stop.click()
   await expect(
-    page.getByRole('heading', { name: '确认停止工作区' }),
+    page.getByRole('heading', { name: 'Confirm workspace stop' }),
   ).toBeVisible()
   await expect(page.getByRole('dialog').getByText(workspaceId)).toBeVisible()
-  await expect(page.getByText(`Generation：${generation}`)).toBeVisible()
+  await expect(page.getByText(`Generation: ${generation}`)).toBeVisible()
   expect(stopCount()).toBe(beforeStop)
-  await page.getByRole('button', { name: '取消' }).click()
+  await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(
-    page.getByRole('heading', { name: '确认停止工作区' }),
+    page.getByRole('heading', { name: 'Confirm workspace stop' }),
   ).toBeHidden()
   await expect(stop).toBeFocused()
 
   await stop.click()
   await page.keyboard.press('Escape')
   await expect(
-    page.getByRole('heading', { name: '确认停止工作区' }),
+    page.getByRole('heading', { name: 'Confirm workspace stop' }),
   ).toBeHidden()
   await expect(stop).toBeFocused()
   await stop.click()
-  await page.getByRole('button', { name: '确认停止' }).click()
-  await expect(page.getByText('已停止', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm stop' }).click()
+  await expect(page.getByText('Stopped', { exact: true })).toBeVisible()
   expect(stopCount()).toBe(beforeStop + 1)
   const stopRequest = requests.find((request) =>
     request.url.endsWith(`/workspaces/${workspaceId}/stop`),
@@ -243,15 +245,21 @@ test('rejects unregistered AgentType and remains bounded on mobile', async ({
 }) => {
   const requests = await mockWorkspaceApi(page)
   await page.goto('/workspace')
-  await page.getByLabel('正式 READY Project').selectOption(projectId)
+  await page.getByLabel('Formal READY Project').selectOption(projectId)
   await page.getByLabel('AgentType', { exact: true }).selectOption('codex')
-  await expect(page.getByText('启动中')).toBeVisible()
+  await expect(page.getByText('Starting', { exact: true })).toBeVisible()
   await page.getByLabel('AgentType', { exact: true }).selectOption('claude')
   await expect(
-    page.getByText('当前 AgentType 尚未注册，无法启动工作区。'),
+    page.getByText(
+      'This AgentType is not registered and cannot start a workspace.',
+    ),
   ).toBeVisible()
-  await expect(page.getByRole('button', { name: '启动工作区' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: '停止工作区' })).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: 'Start workspace' }),
+  ).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: 'Stop workspace' }),
+  ).toBeDisabled()
   await page.keyboard.press('Escape')
   expect(
     requests.some((request) => request.url.includes('agent_type=claude')),
