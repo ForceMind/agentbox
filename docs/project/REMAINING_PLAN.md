@@ -71,8 +71,8 @@ server，但没有 stream server。已有 core 类不等于可访问的终端功
 | R4 application crypto | 已完成 | `waw_crypto_profile.py`、Web profile、shared vectors/interop | R3；canonical context、confirmation n=0、AWCE n=1、完整 AAD/context mutation、fresh reconnect、destroy/cancel |
 | R5 full wire schemas | 已完成 | Python/Web direction-specific codecs；复用 ABWS framing | R3；27 frame types、四条 leg、严格字段与 decimal strings、唯一合法 retry；可与 R4 并行 |
 | R6 staged attachment authority | 已完成 | authority + admission coordinator + tests | R5；burn/reserve→prepared→commit→queue release→active；pending/writer caps、撤销/过期/cleanup，禁止提前 active |
-| R7 Runtime encrypted stream | 待验证 | Runtime stream session/server 与有限 executor integration | R4/R5/R6；capability once、同锁 process recheck、ring 先选再加密、partial input ACK、exit/cleanup barrier |
-| R8 API ciphertext relay | 审查未通过 | API stream relay/raw transport/auth integration | R5/R6/R7；Origin/path/session、hop mapping、bounded queues、Audit、watchdog、native control budgets；API 无 channel key/plaintext |
+| R7 Runtime encrypted stream | 已完成 | Runtime stream session/server 与有限 executor integration | PR #76 已经 19/19 exact-head CI、正常合并与精确回读；真实 host 证据仍属 R12 |
+| R8 API ciphertext relay | 待交付 | API stream relay/raw transport/auth integration | 本地实现与独立复审 PASS；等待 exact-head CI、正常合并与精确回读；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 进行中 | trust adapter/pin verifier/tokenizer/terminal/controller | R3 trust clarification + R4/R8 + 明确 logical-line deadline duration / post-limit controller recovery；Owner trust、rollback/expiry、canary+ADMITTED gate、键盘/paste/resize/reconnect、实际 desktop/mobile 画面 |
 | R10 fixed interactive process | 进行中 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 与 R4–R9 可独立推进已明确部分；须明确 AgentType launch records、vendor state roots、retention/telemetry、official login / Project Trust；正式 argv/env/隔离/legacy conflict、positive cleanup，禁止把 legacy tmux 改名冒充完成 |
 | R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |

@@ -316,7 +316,7 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
 ## Phase 10 release-candidate coverage
 
-The independent Release Candidate workflow derives `0.3.0rc2` from the core
+The independent Release Candidate workflow derives `0.3.0rc3` from the core
 version source, builds the production Web once, and creates two release bundles
 from separate staging directories at the same commit and
 `SOURCE_DATE_EPOCH`. Exact tarball, manifest, SBOM, and checksum equality is the

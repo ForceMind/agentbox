@@ -46,6 +46,7 @@ from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
+from agentbox_api.waw_websocket_protocol import NATIVE_SCOPE_KEY, WAWWebSocketProtocol
 from agentbox_api.workspaces import project_workspaces_router
 from agentbox_api.workspaces import router as workspaces_router
 
@@ -246,7 +247,8 @@ def create_app(
             await websocket.close(code=1008)
             return
         handler = getattr(application.state, "waw_stream_handler", None)
-        if not callable(handler):
+        native = websocket.scope.get("extensions", {}).get(NATIVE_SCOPE_KEY)
+        if not callable(handler) or type(native) is not WAWWebSocketProtocol:
             await websocket.close(code=1013)
             return
         await handler(websocket)
@@ -303,4 +305,7 @@ def run() -> None:
         host=settings.bind_host,
         port=settings.bind_port,
         access_log=False,
+        ws=WAWWebSocketProtocol,
+        ws_per_message_deflate=False,
+        proxy_headers=False,
     )

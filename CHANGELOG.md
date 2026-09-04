@@ -3,6 +3,31 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc3] - Unreleased
+
+### Added
+
+- Native bounded WebSocket admission and API ciphertext relay over the exact
+  Runtime encrypted attachment stream.
+- A shared 65,536-byte encoded INPUT ownership ledger from native ready through
+  Runtime send, plus the independent 128-slot/8 MiB parser allocation pool.
+
+### Fixed
+
+- Terminal/output, pending-PING and first-ciphertext-drop paths synchronously
+  fence authority and actual publication before late data can continue.
+- Runtime failure metadata uses fresh browser-leg correlation identifiers and
+  revalidates authorization before every emitted failure frame.
+- Relay and admission cleanup remain single-task and cancellation-resistant;
+  authority-fence or CLOSE-encoding failures cannot skip Runtime cleanup, Audit
+  or local transport closure, and cannot release an unproven authority record.
+
+### Known limitations
+
+- R8 requires exact-head CI and merge before delivery.
+- Browser trust, terminal/controller, fixed interactive CLI and host qualification
+  remain later stages.
+
 ## [0.3.0rc2] - Unreleased
 
 ### Added
@@ -17,7 +42,7 @@ versioning for release display and PEP 440 for the Python package.
 
 ### Known limitations
 
-- R7 software review is complete; exact-head CI/merge and R8 remain separate.
+- R7 was delivered by PR #76; its real-host qualification remains separate.
 - Browser terminal/controller, independent trust provider, fixed interactive
   CLI execution, Linux isolation and real-host qualification remain unfinished.
 

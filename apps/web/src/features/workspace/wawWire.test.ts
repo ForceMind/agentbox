@@ -1452,3 +1452,39 @@ it('releases bounded records only after the exact relay', () => {
   }
   expect(s.closed).toBe(false)
 })
+
+it('only keeps admitted API browser retryable control-limit errors nonfatal', () => {
+  for (const leg of Object.values(Leg)) {
+    for (const admitted of [false, true]) {
+      for (const retryable of [false, true]) {
+        const [trace, id] = session(admitted ? 16 : 15)
+        const data = {
+          protocol_version: 1,
+          code: 'CONTROL_RATE_LIMITED',
+          retryable,
+          request_id: 'wreq_' + 'a'.repeat(32),
+        }
+        if (leg === BA || leg === AR) {
+          expect(() => observe(trace, id, leg, F.ERROR, data)).toThrow(
+            WireError,
+          )
+          continue
+        }
+        observe(trace, id, leg, F.ERROR, data)
+        if (admitted && leg === AB && retryable) {
+          observe(trace, id, BA, F.INPUT)
+          observe(trace, id, AR, F.INPUT)
+        } else {
+          expect(() => observe(trace, id, BA, F.INPUT)).toThrow(WireError)
+        }
+      }
+    }
+  }
+  const [trace, id] = session()
+  observe(trace, id, AB, F.ERROR, {
+    ...record(F.ERROR, AB),
+    code: 'INPUT_RATE_LIMITED',
+    retryable: true,
+  })
+  expect(() => observe(trace, id, BA, F.INPUT)).toThrow(WireError)
+})

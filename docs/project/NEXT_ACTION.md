@@ -16,9 +16,11 @@ blocker is resolved. Do not request the same software approval again.
   parser failures are fixed without relaxing the 5 ms budget.
 - R6 is merged as PR #75 after 19/19 checks and exact read-back; staged ticket
   authority, atomic publication, reader handoff and cleanup/Audit fences delivered.
-- R7: implement the Runtime encrypted stream/server and fixed integration seams;
-  reuse real R4 crypto and R5 codecs, not the synthetic plaintext bridge.
-- R8: implement the actual native WebSocket/API ciphertext relay and adapters.
+- R7 is merged as PR #76 after final independent PASS, 19/19 exact-head checks
+  and exact read-back; Runtime encrypted stream/server and publication fences delivered.
+- R8: final independent review is PASS; deliver the native WebSocket/API
+  ciphertext relay, shared parser/INPUT budgets and adapters through exact-head
+  CI, normal merge and exact read-back.
   After these stages, continue full R9 browser terminal/trust and R10 execution
   profile, then R11 integration.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,

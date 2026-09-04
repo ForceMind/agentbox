@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import secrets
 import threading
 import time
 from collections import deque
@@ -43,6 +44,11 @@ from agentbox_protocol.waw_wire import (
 )
 
 from agentbox_api.waw_admission import wire_admission_tuple
+from agentbox_api.waw_input_budget import (
+    BrowserDelivery,
+    InputBudget,
+    InputBudgetOwner,
+)
 
 _BA, _AB, _AR, _RA = tuple(Leg)
 _T = TypeVar("_T")
@@ -127,7 +133,7 @@ class AdmissionRuntimePort(Protocol):
 class AdmissionBrowserPort(Protocol):
     """Bounded complete ABWS messages; native WebSocket controls belong to R8."""
 
-    async def receive(self) -> bytes: ...
+    async def receive(self) -> BrowserDelivery: ...
 
     async def send_key_frame(self, frame: bytes) -> None: ...
 
@@ -348,6 +354,7 @@ class WAWAdmissionCoordinator:
         budget: PendingAdmissionBudget,
         source: str,
         started_at_ns: int,
+        input_budget: InputBudget,
         queue: BoundedAdmissionQueue | None = None,
         clock_ns: Callable[[], int] = time.monotonic_ns,
     ) -> None:
@@ -361,8 +368,14 @@ class WAWAdmissionCoordinator:
             revalidator,
         )
         self._budget, self._source = budget, source
-        self._started, self._clock = started_at_ns, clock_ns
         self._connection = runtime.connection_id
+        self._input_budget = input_budget
+        self._input_budget.assert_identity(
+            connection_id=self._connection,
+            attachment_id=claims.attachment_id,
+            runtime_epoch=context.runtime_epoch,
+        )
+        self._started, self._clock = started_at_ns, clock_ns
         self._wire_a = wire_admission_tuple(claims)
         self._wire = WireSession(
             self._wire_a,
@@ -379,7 +392,12 @@ class WAWAdmissionCoordinator:
         self._failed: asyncio.Future[AdmissionFailure] | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
         self._readers: list[asyncio.Task[None]] = []
+        self._cleanup_task: asyncio.Task[None] | None = None
+        self._cleanup_fence_error: BaseException | None = None
         self._last_now = started_at_ns
+        self._runtime_negative: WireFrame | None = None
+        self._browser_published = 0
+        self._browser_writing = self._browser_write_uncertain = False
 
     @property
     def reservation(self) -> StagedAttachment | None:
@@ -449,13 +467,28 @@ class WAWAdmissionCoordinator:
         if self._failed is not None and not self._failed.done():
             self._failed.set_result(error)
         if self._handle is not None:
-            self._authority.fence(self._handle)
+            try:
+                self._authority.fence(self._handle)
+            except BaseException as failure:
+                if self._cleanup_fence_error is None:
+                    self._cleanup_fence_error = failure
+                raise
         self.queue.discard()
+
+    def _admission_bytes(self, delivery: BrowserDelivery) -> bytes:
+        if type(delivery) is not BrowserDelivery or type(delivery.wire_bytes) is not bytes:
+            raise AdmissionFailure()
+        if delivery.input_token is not None:
+            self._input_budget.release(
+                delivery.input_token, owner=InputBudgetOwner.BROWSER_DELIVERY
+            )
+            raise AdmissionFailure("ATTACHMENT_NOT_READY", 4400)
+        return delivery.wire_bytes
 
     async def _read_browser(self) -> None:
         try:
             while True:
-                raw = await self._browser.receive()
+                raw = self._admission_bytes(await self._browser.receive())
                 expected = self._browser_expected
                 if expected is None:
                     raise AdmissionFailure("ATTACHMENT_NOT_READY", 4400)
@@ -473,7 +506,13 @@ class WAWAdmissionCoordinator:
         try:
             while True:
                 frame = self._observe(_RA, await self._runtime.receive())
-                if frame.frame_type in (F.OUTPUT, F.GAP) and self._wire.committed:
+                if frame.frame_type in (F.ERROR, F.STATE):
+                    # Only a fully validated negative frame may become browser
+                    # metadata. Signal immediately; never await another Runtime
+                    # frame while ownership is still an admission reservation.
+                    self._runtime_negative = frame
+                    raise AdmissionFailure("RUNTIME_UNAVAILABLE", 1013)
+                elif frame.frame_type in (F.OUTPUT, F.GAP) and self._wire.committed:
                     self.queue.append_runtime(frame)
                 elif frame.frame_type in (
                     F.HELLO_ACK,
@@ -486,6 +525,7 @@ class WAWAdmissionCoordinator:
                         frame.json_payload is not None
                         and frame.json_payload.get("result") == "rejected"
                     ):
+                        self._runtime_negative = frame
                         raise AdmissionFailure("ADMITTED_DELIVERY_FAILED", 1013)
                     self._runtime_frames.put_nowait(frame)
                 else:
@@ -526,7 +566,103 @@ class WAWAdmissionCoordinator:
     async def _send_browser(self, source: WireFrame) -> None:
         raw = forward_wire_frame(source, _AB, self._wire.expected_sequence(_AB))
         self._observe(_AB, raw)
-        await self._await(lambda: self._browser.send_key_frame(raw))
+        await self._await(lambda: self._publish_browser(raw))
+
+    async def _publish_browser(self, raw: bytes) -> None:
+        self._browser_writing = True
+        try:
+            await self._browser.send_key_frame(raw)
+            self._browser_published += 1
+        except BaseException:
+            # ASGI cancellation does not prove that no bytes were written.
+            self._browser_write_uncertain = True
+            raise
+        finally:
+            self._browser_writing = False
+
+    async def _publish_runtime_failure(self, cleanup_deadline: float) -> None:
+        """Best-effort fixed metadata, never a new publication/admission grant.
+
+        A partially written key frame or a writer that has not retired permits
+        only native close. The notification shares the cleanup deadline and is
+        additionally capped at 100 ms; it cannot displace exact cleanup/Audit.
+        """
+        source, self._runtime_negative = self._runtime_negative, None
+        if source is None or self._browser_writing or self._browser_write_uncertain:
+            return
+
+        def permitted() -> int:
+            now = self._clock()
+            if (
+                type(now) is not int
+                or now < self._last_now
+                or now - self._started >= ADMISSION_TIMEOUT_NS
+                or self._runtime.connection_id is not self._connection
+                or self._validator.current(self._claims, self._context) is not True
+                or self._wire.expected_sequence(_AB) != self._browser_published + 1
+                or self._browser_writing
+                or self._browser_write_uncertain
+            ):
+                raise AdmissionFailure("ATTACHMENT_STALE", 4403)
+            self._last_now = now
+            return now
+
+        now = permitted()
+        body = source.json_payload
+        assert body is not None
+        attested = self._browser_published >= 1
+        kind = F.STATE if source.frame_type == F.STATE and attested else F.ERROR
+        state = "UNKNOWN"
+        if kind == F.STATE:
+            payload = {name: value for name, value in body.items() if name != "runtime_epoch"}
+            state = body["state"]
+        elif source.frame_type == F.ERROR:
+            # Correlation identifiers are hop-local metadata, unlike immutable
+            # key/ciphertext payloads. Never expose the Runtime/caller ID.
+            payload = {**body, "request_id": "wreq_" + secrets.token_hex(16)}
+        else:
+            payload = {
+                "protocol_version": 1,
+                "code": (
+                    "ADMITTED_DELIVERY_FAILED"
+                    if source.frame_type == F.ADMISSION_COMMIT_ACK
+                    else "RUNTIME_UNAVAILABLE"
+                ),
+                "retryable": False,
+                "request_id": "wreq_" + secrets.token_hex(16),
+            }
+
+        async def notify() -> None:
+            checked_at = permitted()
+            raw = encode_wire_frame(kind, _AB, payload, self._browser_published + 1)
+            self._wire.accept(_AB, raw, stream_id=self._connection, now=checked_at)
+            await self._publish_browser(raw)
+            if attested:
+                checked_at = permitted()
+                raw = encode_wire_frame(
+                    F.CLOSE,
+                    _AB,
+                    {
+                        "protocol_version": 1,
+                        "code": "RUNTIME_UNAVAILABLE",
+                        "workspace_state_at_close": state,
+                    },
+                    self._browser_published + 1,
+                )
+                self._wire.accept(_AB, raw, stream_id=self._connection, now=checked_at)
+                await self._publish_browser(raw)
+
+        task = self._spawn(notify())
+        timeout = min(
+            0.1,
+            max(0.0, cleanup_deadline - asyncio.get_running_loop().time()),
+            (ADMISSION_TIMEOUT_NS - (now - self._started)) / 1_000_000_000,
+        )
+        done, _ = await asyncio.wait((task,), timeout=timeout)
+        if task in done:
+            task.result()
+        else:
+            task.cancel()
 
     def _advance(self, stage: AdmissionStage) -> None:
         assert self._handle is not None
@@ -569,7 +705,9 @@ class WAWAdmissionCoordinator:
             # trusted tuple/epoch happen atomically with the authority's pop.
             # A bound WireSession check here would leave mismatched tickets live.
             hello = decode_wire_frame(
-                await self._await(self._browser.receive), _BA, trusted_context=False
+                self._admission_bytes(await self._await(self._browser.receive)),
+                _BA,
+                trusted_context=False,
             )
             if hello.frame_type != F.WS_HELLO or hello.hop_sequence != 1:
                 raise AdmissionFailure()
@@ -693,20 +831,58 @@ class WAWAdmissionCoordinator:
                 self._budget.release(permit)
 
     async def _cleanup(self, error: AdmissionFailure) -> None:
-        self._signal(error)
+        if self._cleanup_task is None:
+            self._cleanup_task = asyncio.create_task(self._cleanup_once(error))
+
+            def consume(task: asyncio.Task[None]) -> None:
+                if not task.cancelled():
+                    task.exception()
+
+            self._cleanup_task.add_done_callback(consume)
+        task = self._cleanup_task
+        while True:
+            try:
+                await asyncio.shield(task)
+                break
+            except asyncio.CancelledError:
+                if task.cancelled():
+                    raise
+
+    async def _cleanup_once(self, error: AdmissionFailure) -> None:
+        try:
+            self._signal(error)
+        except BaseException as failure:
+            if self._cleanup_fence_error is None:
+                self._cleanup_fence_error = failure
+        with suppress(BaseException):
+            self.queue.discard()
         for task in tuple(self._tasks):
-            task.cancel()
+            with suppress(BaseException):
+                task.cancel()
         proof: RuntimeCleanupProof | None = None
         audited = False
         # Cleanup has its separate one-second bound, never a renewed admission.
         deadline = asyncio.get_running_loop().time() + 1.0
         try:
+            # Let cancelled writers publish their cancellation/uncertainty before
+            # deciding whether a final fixed response can safely follow them.
+            with suppress(BaseException):
+                await asyncio.sleep(0)
+                notification_task = self._spawn(self._publish_runtime_failure(deadline))
+                notification_done, _ = await asyncio.wait(
+                    (notification_task,),
+                    timeout=min(0.1, max(0.0, deadline - asyncio.get_running_loop().time())),
+                )
+                if notification_task in notification_done:
+                    notification_task.result()
+                else:
+                    notification_task.cancel()
             # Runtime proof failure does not excuse the independent mandatory
             # failure Audit attempt. Neither operation gets a fresh deadline.
-            with suppress(BaseException):
-                if self._handle is not None and self._runtime_attempted:
-                    close_frame = None
-                    if self._runtime_hello:
+            if self._handle is not None and self._runtime_attempted:
+                close_frame = None
+                if self._runtime_hello:
+                    with suppress(BaseException):
                         close_frame = encode_wire_frame(
                             F.CLOSE,
                             _AR,
@@ -717,6 +893,7 @@ class WAWAdmissionCoordinator:
                             },
                             self._wire.expected_sequence(_AR),
                         )
+                with suppress(BaseException):
                     request = RuntimeCleanupRequest(
                         self._claims, self._context.runtime_epoch, self._connection, close_frame
                     )
@@ -748,27 +925,30 @@ class WAWAdmissionCoordinator:
                 self._runtime.abort()
             with suppress(BaseException):
                 self._browser.close(error.close_code)
-            self._wire.close()
+            with suppress(BaseException):
+                self._input_budget.close()
+            with suppress(BaseException):
+                self._wire.close()
         if (
             self._handle is not None
+            and self._cleanup_fence_error is None
             and audited
             and not any(not task.done() for task in self._tasks)
+            and type(proof) is RuntimeCleanupProof
+            and proof.claims == self._claims
+            and proof.runtime_epoch == self._context.runtime_epoch
+            and proof.connection_id is self._connection
+            and proof.result in ("detached", "already_detached")
+            and proof.cleanup_state == "ATTACH_PTY_CLOSED"
         ):
-            positive = (
-                type(proof) is RuntimeCleanupProof
-                and proof.claims == self._claims
-                and proof.runtime_epoch == self._context.runtime_epoch
-                and proof.connection_id is self._connection
-                and proof.result in ("detached", "already_detached")
-                and proof.cleanup_state == "ATTACH_PTY_CLOSED"
+            self._authority.acknowledge_staged_cleanup(
+                self._handle,
+                connection_id=self._connection,
+                cleanup_state="ATTACH_PTY_CLOSED",
+                failure_audited=True,
             )
-            if positive or not self._runtime_attempted:
-                self._authority.acknowledge_staged_cleanup(
-                    self._handle,
-                    connection_id=self._connection,
-                    cleanup_state="ATTACH_PTY_CLOSED",
-                    failure_audited=True,
-                )
+        if self._cleanup_fence_error is not None:
+            raise self._cleanup_fence_error
 
 
 def _normalized(error: BaseException) -> AdmissionFailure:

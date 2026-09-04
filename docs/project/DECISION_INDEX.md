@@ -52,3 +52,8 @@
 - `SOFTWARE-DECISION-DELEGATION-2026-09-03`: Owner explicitly permits the Coding Agent to decide goals, plans and software architecture for the ongoing objective. See GOVERNANCE for scope; resolve software choices with evidence/review without repeatedly requesting the same authorization.
 
 - `WAW-WIRE-IMPLEMENTATION-2026-09-03`: under delegated software authority, the [wire contract](../WAW_WIRE_CONTRACT.md) records precise early-failure precedence, exact numeric/version handling, retry limits, bounded opaque-source pairing and synchronized sequence acceptance. Independent review and actual parser-budget evidence are recorded separately from authority effects.
+
+- `WAW-INPUT-OWNERSHIP-2026-09-04`: one 65536-byte encoded INPUT ledger follows
+  ownership from native ready through ASGI/relay pending to Runtime send. Layer
+  transitions do not release/reacquire capacity, and first overflow synchronously
+  fences I/O. The 128-slot/8 MiB parser pool remains a separate budget.

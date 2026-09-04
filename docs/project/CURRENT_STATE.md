@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-03T16:52:57Z"
+verified_at_utc: "2026-09-04T03:43:36Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -458,7 +458,7 @@ PROPOSED architecture status are preserved.
   ten owned files passed scoped lint/format/Linux-target type checks. Final
   independent R7 review found P1 map/supervisor lock inversion during a new Start
   and late old registry.open, plus P2 retaining 2001 logical lines by omitting a
-  trailing non-LF line. Both are repaired in the current worktree; no merge occurred.
+  trailing non-LF line. Both were repaired before merge.
 - Independent R7 review ran 11 targeted tests and four actual UDS writability
   delay/cleanup/revoke/health/Stop cases, all exit 0. Its deadlock and line-count
   reproductions also exited 0 and confirmed the defects. These results do not
@@ -466,16 +466,35 @@ PROPOSED architecture status are preserved.
 - Repaired R7 matrix: 170 passed; focused lock/state/cancellation set 16 passed;
   PTY set 17 passed. All ten R7 files passed lint/format/Linux-target mypy.
   Independent re-review PASS: 10 deadlock/state tests plus all 17 PTY tests,
-  with exact repair hashes matched. New exact-head CI is still required.
+  with exact repair hashes matched. R7 final head
+  `01c716bd4713ef4a6676b71754a4e065ebce3b82` passed 19/19 exact-head checks
+  and merged as `4180f0991af97cba108b6e5a707b7abf58a444d2` at
+  `2026-09-03T17:46:25Z`. Fetch/main fast-forward/read-back exited 0; all six
+  exact-main workflows subsequently completed SUCCESS.
 - R8 repairs cover terminal queue authorization, actual send guards, pending PING
   deadlines and fresh browser-leg correlation IDs. Shared 128 partial slots /
   8 MiB parser accounting and synchronous first-ciphertext-drop fencing are now
-  implemented: the latest related matrix passed 505 cases; lint/format and
-  Linux-target mypy over 223 files passed. Independent direct replays closed the
-  terminal, pending-PING and first-drop findings. Overall R8 remains unaccepted:
-  native-ready plus relay-pending INPUT has no shared 65536-byte budget; one
-  ACTIVE attachment reproduced 65872 retained encoded bytes. No R8 PR-head CI
-  or merge is claimed; the ownership repair is awaiting plan confirmation.
+  implemented. A shared INPUT ownership ledger now spans native-ready,
+  browser-delivery, relay-pending and Runtime-send-inflight without releasing
+  capacity at layer transitions. Its expanded matrix passed 604 cases; full
+  lint/format and Linux-target mypy over 224 files passed. Independent direct
+  replays closed the
+  terminal, pending-PING, first-drop and former 65872-byte INPUT findings.
+  Final R8 review found and closed a relay P2 and an admission-coordinator P1:
+  `authority.fence` and CLOSE-frame encoding failures no longer skip Runtime
+  cleanup, detached Audit or local transport/budget/wire closure. Cleanup is
+  single-task and cancellation-resistant; first fence errors propagate only
+  after cleanup, and authority release still requires exact positive proof.
+  Independent re-review PASS: 12 directed cases, 126 admission unit cases and
+  69 sandbox-compatible relay cases. Main-agent validation passed 539 R8 Python
+  cases, 832 Web cases, 50-profile wire interop, Ruff, Black over 232 files,
+  Linux-target mypy over 224 files, Web build and all 62 isolated Chromium E2E
+  cases. No R8 PR-head CI or merge is claimed yet.
+- An optional whole-repository macOS pytest run was stopped at 37% after 1,013
+  passed, 184 failed and 2 skipped. The first failures were macOS AF_UNIX path
+  length plus Linux/root-owned installer, diagnostics and Secret Store semantics;
+  it is neither a pass nor R8 regression evidence. The exact-head Ubuntu matrix
+  remains the authoritative full-suite gate.
 - The R6 admission-negative integration seam is a separate uncommitted R8 change:
   17 new tests pass; independent review closed both correlation and per-frame
   revocation findings, with 26 focused coordinator/wire tests and direct replay.
@@ -483,11 +502,12 @@ PROPOSED architecture status are preserved.
   interruption; unfinished checks were retained as unverified. A separate
   Sol/ultra role is doing only the new R9 read-only plan under the updated working
   agreement, with no execution delegation or file writes from that role.
-- The visible version plan is approved and the worktree single source is now
-  `0.3.0rc2`; root/Web package metadata and release documents agree. Version
-  consistency, TypeScript, lint and format passed. The isolated complete browser
-  suite passed 64 tests in 58.3s; desktop/mobile `0.3.0rc2` card crops were
-  inspected with no overflow. This is local preview evidence, not deployment.
+- The visible version plan is approved. R7 delivered `0.3.0rc2`; the R8 worktree
+  is now `0.3.0rc3`, with root/Web metadata and release documents aligned. Version
+  consistency, TypeScript, lint and format passed. The R8 isolated browser suite
+  passed 62 tests; actual desktop and 390x844 mobile Dashboard views showed
+  `0.3.0rc3` / API v1 with no horizontal overflow or overlap. This is local
+  preview evidence, not deployment.
 - Sol/ultra read-only plans are complete for the Start lock-order repair, shared
   INPUT ownership and R9 trust/controller/bounded-renderer work. New implementation
   and contract changes remain pending confirmation under the latest agreement.

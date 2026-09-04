@@ -2,7 +2,7 @@
 
 ## Current maturity
 
-AgentBox source is the `0.3.0rc2` development candidate, advancing from the
+AgentBox source is the `0.3.0rc3` development candidate, advancing from the
 `0.3.0rc1` MVP artifact baseline. It implements authentication,
 typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
 operations, native installation, systemd deployment, staged update, and

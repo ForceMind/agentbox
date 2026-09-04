@@ -33,3 +33,5 @@
 - [Staged admission](../WAW_STAGED_ADMISSION.md): ticket burn/reservation, required Audit, atomic publication, reader handoff, cleanup and the distinct active-lifecycle obligations.
 
 - [Runtime encrypted stream](../WAW_RUNTIME_ENCRYPTED_STREAM.md): actual Runtime crypto/session/server, exact cleanup and trusted deployment-port boundaries; current review status is explicit.
+
+- [API ciphertext relay](../WAW_API_CIPHERTEXT_RELAY.md): native WebSocket, Runtime ciphertext relay, active permission/publication fences and shared INPUT/parser budgets.
