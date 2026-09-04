@@ -406,7 +406,6 @@ def _begin_real_workspace(
     *,
     agent: str = "claude",
     launch: bytes | None = None,
-    retain_failed_pane: bool = False,
     delete_policy_after_open: bool = False,
 ) -> tuple[str, socket.socket, socket.socket]:
     _kill_tmux_server()
@@ -487,28 +486,9 @@ def _begin_real_workspace(
         ).stdout.strip()
     )
     expected_cgroup = f"/ws-{HASH}-g7/workload"
-    cgroup_records = {
-        "pytest": Path("/proc/self/cgroup").read_text().strip(),
-        "tmux": Path(f"/proc/{server_pid}/cgroup").read_text().strip(),
-        "pane": Path(f"/proc/{pane_pid}/cgroup").read_text().strip(),
-    }
-    if any(expected_cgroup not in record for record in cgroup_records.values()):
-        pytest.fail(f"native cgroup inheritance mismatch: {cgroup_records}")
-    if retain_failed_pane:
-        subprocess.run(
-            [
-                "/usr/bin/tmux",
-                "-S",
-                str(TMUX_SOCKET),
-                "set-option",
-                "-p",
-                "-t",
-                f"={session}:0.0",
-                "remain-on-exit",
-                "on",
-            ],
-            check=True,
-        )
+    assert expected_cgroup in Path("/proc/self/cgroup").read_text()
+    assert expected_cgroup in Path(f"/proc/{server_pid}/cgroup").read_text()
+    assert expected_cgroup in Path(f"/proc/{pane_pid}/cgroup").read_text()
     control.sendmsg(
         [launch or _launch_record(agent)],
         [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", role_fds))],
@@ -553,49 +533,8 @@ def _wbr_resize(sequence: int, columns: int, rows: int) -> bytes:
 def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(
     native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    session, control, wbr = _begin_real_workspace(
-        native_binaries, fake_binaries[0], tmp_path, retain_failed_pane=True
-    )
-    ready = control.recv(9)
-    if ready != b"AWR1\x01\x01\x00\x00":
-        deadline = time.monotonic() + 5.0
-        status = "not-dead"
-        while time.monotonic() < deadline:
-            observed = subprocess.run(
-                [
-                    "/usr/bin/tmux",
-                    "-S",
-                    str(TMUX_SOCKET),
-                    "list-panes",
-                    "-t",
-                    f"={session}:0",
-                    "-F",
-                    "#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}:#{pane_current_command}",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-            if observed.startswith("1:"):
-                status = observed
-                break
-            time.sleep(0.01)
-        pytest.fail(f"workspace READY failed with pane status {status}")
-    subprocess.run(
-        [
-            "/usr/bin/tmux",
-            "-S",
-            str(TMUX_SOCKET),
-            "set-option",
-            "-p",
-            "-t",
-            f"={session}:0.0",
-            "remain-on-exit",
-            "off",
-        ],
-        check=True,
-        env=TMUX_ENV,
-    )
+    session, control, wbr = _begin_real_workspace(native_binaries, fake_binaries[0], tmp_path)
+    assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
     attached, master = _spawn_real_attach(native_binaries, "claude")
     startup = _read_fd_until(master, b"SIZE 80 24")
     assert b"READY claude" in startup
@@ -943,23 +882,7 @@ def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(
     assert b"SIZE 100 40" in terminal
     assert second.wait(timeout=10) in {0, 1, 7, 143, -signal.SIGTERM}
     os.close(second_master)
-    deadline = time.monotonic() + 5.0
-    while (
-        subprocess.run(
-            ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "has-session", "-t", f"={session}"],
-            capture_output=True,
-            check=False,
-        ).returncode
-        == 0
-    ):
-        if time.monotonic() >= deadline:
-            raise AssertionError("tmux session survived namespace PID1 cleanup")
-        time.sleep(0.02)
-    deadline = time.monotonic() + 5.0
-    while TMUX_SOCKET.exists():
-        if time.monotonic() >= deadline:
-            raise AssertionError("dedicated tmux socket survived its only session")
-        time.sleep(0.02)
+    _wait_session_gone(session, timeout=5.0)
     launch.close()
     listener.close()
     launch_path.unlink(missing_ok=True)

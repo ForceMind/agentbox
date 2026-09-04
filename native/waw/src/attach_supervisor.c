@@ -260,35 +260,35 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
     {
         int descriptor_status = validate_attach_descriptors();
         if (descriptor_status != 0) {
-            return 82 + descriptor_status;
+            return 65;
         }
     }
     if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) || !isatty(STDERR_FILENO)) {
-        return 67;
+        return 65;
     }
     if (agentbox_waw_close_except(kept, sizeof(kept) / sizeof(kept[0])) != 0) {
-        return 68;
+        return 65;
     }
     if (agentbox_waw_apply_basic_limits() != 0) {
-        return 69;
+        return 65;
     }
     if (agentbox_waw_apply_no_new_privs() != 0) {
-        return 70;
+        return 65;
     }
     if (getsid(0) != getpid() && setsid() < 0) {
-        return 72;
+        return 71;
     }
     if (ioctl(STDIN_FILENO, TIOCSCTTY, 0) != 0 && errno != EPERM) {
-        return 73;
+        return 71;
     }
     if (pipe2(exec_status, O_CLOEXEC) != 0) {
-        return 74;
+        return 71;
     }
     child = fork();
     if (child < 0) {
         (void)close(exec_status[0]);
         (void)close(exec_status[1]);
-        return 75;
+        return 71;
     }
     if (child == 0) {
         (void)close(exec_status[0]);
@@ -300,27 +300,27 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
     if (pidfd < 0) {
         agentbox_waw_terminate_and_reap((int)child, -1);
         (void)close(exec_status[0]);
-        return 76;
+        return 71;
     }
     if (install_signal_handlers() != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 77;
+        return 71;
     }
     if (agentbox_waw_confirm_exec_timeout(exec_status[0], pidfd, 200) != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 78;
+        return 71;
     }
     if (close(exec_status[0]) != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 79;
+        return 71;
     }
     if (confirm_attached_client(workspace_hash, agent, child, pidfd) != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 80;
+        return 71;
     }
     if (agentbox_waw_send_ready(AGENTBOX_WAW_ATTACH_READY_FD) != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 81;
+        return 71;
     }
     (void)close(AGENTBOX_WAW_ATTACH_TMUX_EXECUTABLE_FD);
     (void)close(AGENTBOX_WAW_ATTACH_SOCKET_DIRECTORY_FD);

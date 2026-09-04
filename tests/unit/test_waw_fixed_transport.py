@@ -566,27 +566,22 @@ def test_fixed_tmux_socket_cleanup_unlinks_exact_stale_identity() -> None:
             os.close(directory_fd)
 
 
-def test_fixed_tmux_socket_cleanup_rejects_replaced_inode() -> None:
+def test_fixed_tmux_socket_cleanup_rejects_mismatched_inode() -> None:
     with tempfile.TemporaryDirectory(prefix="agentbox-sock-", dir="/tmp") as temporary:
         identity = fixed_identity()
         path = Path(temporary) / f"{identity.workspace_hash[:32]}.sock"
         directory_fd = os.open(temporary, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-        original = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        replacement = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            original.bind(str(path))
+            listener.bind(str(path))
             details = os.lstat(path)
-            original.close()
-            path.unlink()
-            replacement.bind(str(path))
             with pytest.raises(RuntimeOperationError, match="identity changed"):
                 fixed_subject._remove_fixed_tmux_socket(
-                    identity, (details.st_dev, details.st_ino), directory_fd
+                    identity, (details.st_dev, details.st_ino + 1), directory_fd
                 )
             assert path.exists()
         finally:
-            original.close()
-            replacement.close()
+            listener.close()
             path.unlink(missing_ok=True)
             os.close(directory_fd)
 

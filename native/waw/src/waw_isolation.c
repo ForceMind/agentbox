@@ -732,14 +732,14 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
         parent_alive.revents = 0;
         if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || poll(&parent_alive, 1U, 0) != 0 ||
             getpid() != 1) {
-            _exit(81);
+            _exit(71);
         }
         if (set_exact_setup_capability() != 0) {
-            _exit(80);
+            _exit(71);
         }
         setup_status = setup_mounts(config, &hints);
         if (setup_status != 0) {
-            _exit(setup_status);
+            _exit(71);
         }
         if (unshare(CLONE_NEWUSER) != 0 ||
             agentbox_waw_write_exact(workload_ready[1], &byte, sizeof(byte)) != 0 ||
@@ -748,19 +748,19 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
             getegid() != (gid_t)AGENTBOX_WAW_INNER_GID ||
             prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || poll(&parent_alive, 1U, 0) != 0 ||
             agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0) {
-            _exit(83);
+            _exit(71);
         }
         (void)close(workload_ready[1]);
         (void)close(workload_mapped[0]);
         if (apply_landlock(config, bridge_executable) != 0) {
-            _exit(82);
+            _exit(71);
         }
         if (apply_seccomp() != 0) {
-            _exit(84);
+            _exit(71);
         }
         (void)close(builder_pidfd);
         (void)agentbox_waw_exec_held(bridge_executable, argv, envp);
-        _exit(85);
+        _exit(71);
     }
     (void)close(workload_ready[1]);
     (void)close(workload_mapped[0]);
