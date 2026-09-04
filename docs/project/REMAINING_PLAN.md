@@ -25,16 +25,16 @@ Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实
 
 ## Verified baseline and reachable behavior
 
-最新 live preflight 已 fetch：R10 branch merge-base 与 `origin/main` 均为 R9
-merge `15a4632f915dd1e1bde19425e313b52ada27166f`。本地与远端 branch HEAD
-`6083e6e1aa118b19b548a9070b7e49558988f7e5` 一致；PR #79 为
-`MERGEABLE/CLEAN`，其 20/20 exact-head checks 全部成功。当前文档提交形成新
-head 后仍需完整 CI、正常合并和精确回读；历史 Draft PR #42 不在本轮范围。
+最新 live preflight 已 fetch：local `main` 与 `origin/main` 均为 R10 merge
+`341a69bf855f48f90cbecfb5c6872c3bf8c28360`；R11 branch 从该提交创建。
+PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精确
+父提交回读、六组 post-main workflows 和 dynamic Dependency Graph 均成功。
+历史 Draft PR #42 不在本轮范围。
 
 | 用户能力 | 已有实现与证据 | 剩余内容 |
 | --- | --- | --- |
 | Project 选择与状态 | Workspace 页面、正式 Project API、metadata controller 与 E2E | 保持既有功能；不得将 metadata ready 当作 terminal admitted |
-| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及经 Linux exact-head CI 验证的 fixed profile/descriptor/cgroup/native process chain | R10 最终文档 head/merge/read-back；R11 controller；R12 real vendor/host qualification |
+| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及经 Linux exact-head CI 验证并合并的 fixed profile/descriptor/cgroup/native process chain | R11 controller；R12 real vendor/host qualification |
 | Connect | R6 staged authority、R7 Runtime encrypted stream、R8 API ciphertext relay、R9 trust provider core | R11 browser/API controller composition；R12 real CRX/trustd/host evidence |
 | input/output/resize | 完整 wire/application crypto、Runtime relay、bounded browser tokenizer/model 与 R10 PTY/WBR transport | R11 将真实软件组件接入用户流程并故障注入；R12真实 CLI 验证 |
 | detach/reconnect | fresh admission、lease/recovery、Runtime stream 与 R10 attach/cleanup 软件 | R11 controller/UI 恢复接线；R12 reboot/host evidence |
@@ -77,8 +77,8 @@ head 后仍需完整 CI、正常合并和精确回读；历史 Draft PR #42 不�
 | R7 Runtime encrypted stream | 已完成 | Runtime stream session/server 与有限 executor integration | PR #76 已经 19/19 exact-head CI、正常合并与精确回读；真实 host 证据仍属 R12 |
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
-| R10 fixed interactive process | 待验证 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | 实现 head `6083e6e...` 的 20/20 exact-head CI 与独立复审已通过；等待最终文档 head CI、正常合并与精确回读。真实 vendor/host 证据仍属 R12 |
-| R11 software integration | 未开始 | 全链路故障注入、E2E、artifact 与操作文档 | R4–R10；真实软件组件组合、无持久 payload/key、audit/commit/queue/exit/revoke/cancel 矩阵、CI和独立审查 |
+| R10 fixed interactive process | 已完成 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | PR #79 final head `0d9e7c7...` 经20/20 CI、正常合并`341a69bf...`、精确回读、六组post-main和Dependency Graph SUCCESS。真实 vendor/host 证据仍属 R12 |
+| R11 software integration | 进行中 | 全链路 controller、故障注入、E2E、artifact、操作文档与全页面双语 | R4–R10；先闭合API public anchor、同一Runtime peer/pidfd与durable epoch、Runtime redraw capture，再组合browser/API/Runtime；无持久 payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
 ```mermaid
@@ -183,12 +183,8 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 ## Current resumption point
 
 R0–R9 已完成适用实现、独立审查、exact-head CI、正常合并和精确回读。
-R10/rc5 implementation head 的实现、独立复审和 20/20 exact-head CI 已完成；
-当前只剩最终文档 head CI、正常合并和精确回读。R10 不安装或启用任何 host
-unit/socket，不使用真实 vendor account/credential，也不宣称真实 CLI 或 host
-qualification。
-
-R10 交付后立即开始 R11/rc6–rc9：组合 browser/API/Runtime controller，覆盖
+R10/rc5 已由 PR #79 完成 exact-head CI、正常合并、精确回读及 post-main。
+现在执行 R11/rc6–rc9：组合 browser/API/Runtime controller，覆盖
 failure/cancel/revoke/restart/cleanup 矩阵，完成 artifact/operation rehearsal，
 并把全站用户界面迁移为按浏览器首选语言选择的 `zh-CN`/English。R12 继续保留
 真实 CRX/trustd/vendor CLI/PTY/isolation/reboot 与生产支持边界的授权目标证据。

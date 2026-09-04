@@ -23,14 +23,14 @@ blocker is resolved. Do not request the same software approval again.
 - R9 is merged as PR #78 after independent PASS, 19/19 exact-head checks,
   normal merge `15a4632f915dd1e1bde19425e313b52ada27166f`, exact read-back and
   six successful standard post-main workflows.
-- R10/rc5 implementation head `6083e6e...` completed independent review and all
-  20 exact-head checks. Fixed Claude/Codex profiles, descriptor-to-exec/PTY/
-  bootstrap/bridge/attach, Runtime composition and inert installer assets remain
-  software-only. The active action is final documentation head CI → normal PR
-  #79 merge → exact read-back, fixing any new CI finding before merge.
-- After R10 delivery, begin R11/rc6 browser/API/Runtime controller composition,
-  then continue rc7–rc9 failure injection, operational/artifact rehearsal and
-  full cross-page bilingual migration. Locale is fixed per document from only
+- R10/rc5 is delivered by PR #79: final head `0d9e7c7...` completed 20/20
+  exact-head checks and merged as `341a69bf...`; exact parent read-back, all six
+  post-main workflows and dynamic Dependency Graph completed SUCCESS.
+- Active R11/rc6 first closes the public API host-anchor loader, same-live-Runtime
+  control/stream pidfd binding, durable runtime-epoch reconciliation and Runtime
+  redraw capture. It then composes the browser/API/Runtime controller. rc7–rc9
+  add failure injection, operational/artifact rehearsal and full cross-page
+  bilingual migration. Locale is fixed per document from only
   `navigator.languages[0]`: primary `zh` → `zh-CN`; all other/missing/malformed
   values → English; technical identifiers remain English.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,

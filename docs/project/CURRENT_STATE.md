@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T20:21:53Z"
+verified_at_utc: "2026-09-04T20:43:46Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,12 +9,10 @@ repository: "ForceMind/agentbox"
 
 ## Current authorized implementation
 
-- Live preflight after `git fetch origin --prune`: active R10 branch
-  `codex/waw-fixed-interactive-process` has merge-base
-  `15a4632f915dd1e1bde19425e313b52ada27166f`, equal to `origin/main` and the
-  observed R9 merge. Local and remote branch HEAD are exactly
-  `6083e6e1aa118b19b548a9070b7e49558988f7e5` with a clean worktree before this
-  documentation update. Open PRs are R10 PR #79 and historical Draft PR #42.
+- Live preflight after `git fetch origin --prune`: local `main` and `origin/main`
+  equal R10 merge `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active R11 branch
+  `codex/waw-production-controller-rc6` starts exactly there with a clean tree
+  before this documentation update. Historical Draft PR #42 is the only open PR.
 - R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
   all six standard post-main workflows. The separate historical Dependency Graph
   limitation is addressed on this R10 branch by the `.txt` release input.
@@ -22,11 +20,11 @@ repository: "ForceMind/agentbox"
   approved managed Chromium extension + Native Messaging + independent `trustd`,
   followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 is delivered;
   real host/key/provider activation remains R12.
-- R10 `0.3.0rc5` implementation and independent review are complete. PR #79 is
-  `MERGEABLE/CLEAN`; implementation head `6083e6e...` completed 20/20 exact-head
-  checks, including Linux native normal/sanitizer runs. This documentation update
-  will create a new exact head, so final CI, normal merge and exact read-back are
-  still required before R10 is recorded as delivered.
+- R10 `0.3.0rc5` is delivered by PR #79: final exact head `0d9e7c7...` completed
+  20/20 checks and merged normally at `2026-09-04T20:37:51Z`. Fetch/read-back
+  observed merge `341a69bf...` with exact parents `15a4632f...` and `0d9e7c7...`.
+  All six standard post-main workflows and the dynamic Dependency Graph update
+  completed SUCCESS. R11/rc6 software composition is now active.
 
 ## Historical live baselines
 
@@ -68,6 +66,7 @@ repository: "ForceMind/agentbox"
 | R7 — Runtime encrypted stream | #76 | `01c716bd4713ef4a6676b71754a4e065ebce3b82` | `4180f0991af97cba108b6e5a707b7abf58a444d2` | 19/19 SUCCESS |
 | R8 — API ciphertext relay | #77 | `a2c0b6afd002455267745d3da4d21bd87943da8a` | `64d37f9a4d39195930959c53c926a4184877355a` | 19/19 SUCCESS |
 | R9 — browser trust + bounded terminal | #78 | `fdf2bd77ac3178ee973d10c5429b1b2d8b7a5051` | `15a4632f915dd1e1bde19425e313b52ada27166f` | 19/19 SUCCESS |
+| R10 — fixed interactive process | #79 | `0d9e7c7f2abdd7a19dabc611fd1d2c8d01d3d013` | `341a69bf855f48f90cbecfb5c6872c3bf8c28360` | 20/20 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -563,7 +562,7 @@ PROPOSED architecture status are preserved.
   assets. No CLI/HOME/key/host action occurred; implementation is approved after
   R9 delivery.
 
-## R10 exact-head verified candidate
+## R10 delivered fixed interactive process
 
 - Runtime host manifest v2 closes the exact-six executable inventory and exact-two
   Claude/Codex profiles. Seven fixed descriptor roles, the 64-byte WBR protocol,
@@ -595,9 +594,10 @@ PROPOSED architecture status are preserved.
   ordered/hash-checked frames and its marker/padding before the same complete
   DSR5/eight-position DSR6 overlap noise. Production bridge code and every strict
   tail assertion remain unchanged; a new exact-head CI run is required.
-- R10 remains `待验证` until that new head completes CI and PR #79 is merged and
-  read back. Its actual merge SHA and post-main workflow results will be recorded
-  on the R11 branch.
+- Final exact head `0d9e7c7f2abdd7a19dabc611fd1d2c8d01d3d013` completed
+  all 20 checks, including native normal/sanitizer. PR #79 merged normally as
+  `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; exact parent read-back, all six
+  post-main workflows and the dynamic Dependency Graph update are SUCCESS.
 - Browser locale remains fixed: read only `navigator.languages[0]`; primary
   language `zh` selects `zh-CN`; every other, missing or malformed value selects
   English. Technical identifiers remain English. Full cross-page bilingual
