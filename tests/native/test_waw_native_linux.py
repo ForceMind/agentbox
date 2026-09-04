@@ -1036,6 +1036,90 @@ def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(
     wbr_parent.close()
 
 
+def test_incomplete_vendor_dcs_fails_closed_before_pane_success(
+    native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
+) -> None:
+    dcs_config = tmp_path / "dcs-tmux.conf"
+    dcs_config.write_bytes(TMUX_CONFIG.read_bytes() + b"\nset-option -g remain-on-exit on\n")
+    session, control, wbr = _begin_real_workspace(
+        native_binaries, fake_binaries[0], tmp_path, tmux_config=dcs_config
+    )
+    assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
+    attached, master = _spawn_real_attach(native_binaries, "claude")
+    _read_fd_until(master, b"READY claude")
+    os.write(master, b"dcs-exit\n")
+    deadline = time.monotonic() + 5.0
+    pane_status = ""
+    while pane_status != "1:74":
+        pane_status = subprocess.run(
+            [
+                "/usr/bin/tmux",
+                "-S",
+                str(TMUX_SOCKET),
+                "list-panes",
+                "-t",
+                f"={session}:0.0",
+                "-F",
+                "#{pane_dead}:#{pane_dead_status}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"incomplete DCS did not fail closed: {pane_status}")
+        time.sleep(0.01)
+    attached.send_signal(signal.SIGTERM)
+    assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
+    os.close(master)
+    control.close()
+    wbr.close()
+    _kill_tmux_server()
+
+
+def test_closed_stdio_descendant_is_reaped_before_successful_drain_ack(
+    native_binaries: Path, fake_binaries: tuple[Path, Path], tmp_path: Path
+) -> None:
+    descendant_config = tmp_path / "descendant-tmux.conf"
+    descendant_config.write_bytes(TMUX_CONFIG.read_bytes() + b"\nset-option -g remain-on-exit on\n")
+    session, control, wbr = _begin_real_workspace(
+        native_binaries, fake_binaries[0], tmp_path, tmux_config=descendant_config
+    )
+    assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
+    attached, master = _spawn_real_attach(native_binaries, "claude")
+    _read_fd_until(master, b"READY claude")
+    os.write(master, b"closed-descendant\n")
+    assert b"CLOSED-SPAWNED" in _read_fd_until(master, b"CLOSED-SPAWNED")
+    deadline = time.monotonic() + 5.0
+    pane_status = ""
+    while pane_status != "1:7":
+        pane_status = subprocess.run(
+            [
+                "/usr/bin/tmux",
+                "-S",
+                str(TMUX_SOCKET),
+                "list-panes",
+                "-t",
+                f"={session}:0.0",
+                "-F",
+                "#{pane_dead}:#{pane_dead_status}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"closed-stdio descendant was not reaped: {pane_status}")
+        time.sleep(0.01)
+    assert (tmp_path / "temp" / ".descendant-term-canary").read_bytes() == b"\x01"
+    attached.send_signal(signal.SIGTERM)
+    assert attached.wait(timeout=5) in {0, 1, 143, -signal.SIGTERM}
+    os.close(master)
+    control.close()
+    wbr.close()
+    _kill_tmux_server()
+
+
 def test_attach_supervisor_rejects_missing_tmux_session(native_binaries: Path) -> None:
     _kill_tmux_server()
     process, master = _spawn_real_attach(native_binaries, "claude", expect_ready=False)

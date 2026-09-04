@@ -161,6 +161,25 @@ then creates U2, where UID/GID 1000 maps to U1's 0. U2 clears all capabilities
 with exact read-back before Landlock/seccomp and bridge exec. The saved host
 `/proc` descriptor remains only in the fixed U1 map/wait/reap process.
 
+The bridge configures its outer tmux pane terminal as raw before READY. After
+the vendor and namespace descendants exit, the inner PTY reaches EOF, and the
+bridge's final output buffer is empty, the bridge generates a 192-bit challenge
+as 64 random columns in the fixed protocol-safe range `1..8` on row 1, resets
+origin/margins, and sends each `CUP + DSR 6` pair as one ordered byte stream. It exits
+only after tmux returns the exact random coordinate
+sequence within one monotonic second. Because the challenge is generated after
+vendor exit, delayed vendor queries cannot satisfy it; an incomplete terminal
+sequence that prevents tmux from parsing the challenge, including incomplete
+DCS handler/escape state, yields the fixed fail-closed system status instead of
+a false success. R11 must quiesce the single browser INPUT writer and WBR resize
+path during this final handshake so user input cannot imitate the random
+responses or consume the one-second acknowledgment window; it must also keep
+the outer pane at the protocol minimum of at least eight columns and one row.
+The response scanner uses a prefix table, so delayed vendor DSR replies that
+overlap the beginning of the random sequence cannot hide the real response.
+Namespace descendants are reaped before entropy generation and the parser
+challenge is the only successful relay-loop exit.
+
 ## Validation
 
 `tests/unit/test_release_candidate.py` verifies the core/Python/npm version

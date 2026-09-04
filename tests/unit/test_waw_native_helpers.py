@@ -60,6 +60,15 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert "SYS_capset" in source
     assert "SYS_capget" in source
     assert "PR_CAP_AMBIENT_CLEAR_ALL" in source
+    assert "cfmakeraw" in source
+    assert "confirm_outer_terminal_drain" in source
+    assert "tcflush(STDIN_FILENO, TCIFLUSH)" in source
+    assert "getrandom((unsigned char *)random_values" in source
+    assert "GRND_NONBLOCK" in source
+    assert "challenge_count = 64" in source
+    assert '"\\033[%u;%uH\\033[6n"' in source
+    assert '"\\033[%u;%uR"' in source
+    assert "response_prefix[matched - 1U]" in source
     assert source.count("unshare(CLONE_NEWUSER)") == 2
     assert "write_user_maps(AT_FDCWD, child, 0U" in source
     assert "write_user_maps(host_proc, inner" in source

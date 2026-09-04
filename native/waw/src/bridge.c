@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stddef.h>
@@ -14,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -49,6 +51,32 @@ static int install_signal_handlers(void) {
     }
     action.sa_handler = SIG_IGN;
     return sigaction(SIGPIPE, &action, NULL);
+}
+
+static int configure_outer_terminal(void) {
+    struct termios settings;
+    sigset_t blocked;
+    sigset_t previous;
+    int result;
+    int saved;
+    if (sigemptyset(&blocked) != 0 || sigaddset(&blocked, SIGTTOU) != 0 ||
+        sigprocmask(SIG_BLOCK, &blocked, &previous) != 0) {
+        return -1;
+    }
+    result = !isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) || !isatty(STDERR_FILENO) ||
+                     tcgetattr(STDIN_FILENO, &settings) != 0
+                 ? -1
+                 : 0;
+    if (result == 0) {
+        cfmakeraw(&settings);
+        result = tcsetattr(STDIN_FILENO, TCSANOW, &settings);
+    }
+    saved = errno;
+    if (sigprocmask(SIG_SETMASK, &previous, NULL) != 0) {
+        return -1;
+    }
+    errno = saved;
+    return result;
 }
 
 static uint64_t from_network_u64(const unsigned char *bytes) {
@@ -251,6 +279,175 @@ static int buffer_write(int fd, struct relay_buffer *buffer) {
     return -1;
 }
 
+static int deadline_milliseconds(const struct timespec *deadline) {
+    struct timespec now;
+    int64_t nanoseconds;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return -1;
+    }
+    nanoseconds = ((int64_t)deadline->tv_sec - (int64_t)now.tv_sec) * INT64_C(1000000000) +
+                  (int64_t)(deadline->tv_nsec - now.tv_nsec);
+    if (nanoseconds <= 0) {
+        return 0;
+    }
+    nanoseconds = (nanoseconds + INT64_C(999999)) / INT64_C(1000000);
+    return nanoseconds > (int64_t)INT_MAX ? INT_MAX : (int)nanoseconds;
+}
+
+static int confirm_outer_terminal_drain(void) {
+    enum { challenge_count = 64 };
+    uint32_t random_values[challenge_count];
+    char request[1024];
+    char response[1024];
+    size_t response_prefix[1024];
+    struct winsize geometry;
+    struct timespec deadline;
+    sigset_t blocked;
+    sigset_t previous;
+    size_t request_size = 0U;
+    size_t response_size = 0U;
+    size_t random_offset = 0U;
+    size_t sent = 0U;
+    size_t matched = 0U;
+    size_t challenge;
+    ssize_t random_size;
+    int flush_result;
+    int saved;
+    int length;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &geometry) != 0 || geometry.ws_row < 1U ||
+        geometry.ws_col < 8U || clock_gettime(CLOCK_MONOTONIC, &deadline) != 0) {
+        return -1;
+    }
+    deadline.tv_sec += 1;
+    while (random_offset < sizeof(random_values)) {
+        if (deadline_milliseconds(&deadline) <= 0 || stop_requested != 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        random_size = getrandom((unsigned char *)random_values + random_offset,
+                                sizeof(random_values) - random_offset, GRND_NONBLOCK);
+        if (random_size > 0) {
+            random_offset += (size_t)random_size;
+        } else if (random_size == 0) {
+            errno = EIO;
+            return -1;
+        } else if (errno != EINTR) {
+            return -1;
+        }
+    }
+    length = snprintf(request, sizeof(request), "\033[?6l\033[?69l\033[r");
+    if (length < 0 || (size_t)length >= sizeof(request)) {
+        return -1;
+    }
+    request_size = (size_t)length;
+    for (challenge = 0U; challenge < (size_t)challenge_count; ++challenge) {
+        const unsigned int row = 1U;
+        const unsigned int column = (unsigned int)(random_values[challenge] % 8U + 1U);
+        length = snprintf(request + request_size, sizeof(request) - request_size,
+                          "\033[%u;%uH\033[6n", row, column);
+        if (length < 0 || (size_t)length >= sizeof(request) - request_size) {
+            return -1;
+        }
+        request_size += (size_t)length;
+        length = snprintf(response + response_size, sizeof(response) - response_size,
+                          "\033[%u;%uR", row, column);
+        if (length < 0 || (size_t)length >= sizeof(response) - response_size) {
+            return -1;
+        }
+        response_size += (size_t)length;
+    }
+    response_prefix[0] = 0U;
+    for (challenge = 1U; challenge < response_size; ++challenge) {
+        size_t prefix = response_prefix[challenge - 1U];
+        while (prefix > 0U && response[challenge] != response[prefix]) {
+            prefix = response_prefix[prefix - 1U];
+        }
+        if (response[challenge] == response[prefix]) {
+            ++prefix;
+        }
+        response_prefix[challenge] = prefix;
+    }
+    if (sigemptyset(&blocked) != 0 || sigaddset(&blocked, SIGTTOU) != 0 ||
+        sigprocmask(SIG_BLOCK, &blocked, &previous) != 0) {
+        return -1;
+    }
+    flush_result = tcflush(STDIN_FILENO, TCIFLUSH);
+    saved = errno;
+    if (sigprocmask(SIG_SETMASK, &previous, NULL) != 0) {
+        return -1;
+    }
+    errno = saved;
+    if (flush_result != 0) {
+        return -1;
+    }
+    while (sent < request_size) {
+        struct pollfd output;
+        int timeout = deadline_milliseconds(&deadline);
+        int polled;
+        ssize_t written;
+        if (timeout <= 0 || stop_requested != 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        output.fd = STDOUT_FILENO;
+        output.events = POLLOUT;
+        output.revents = 0;
+        polled = poll(&output, 1U, timeout);
+        if (polled < 0 && errno == EINTR) {
+            continue;
+        }
+        if (polled <= 0 || (output.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            errno = polled == 0 ? ETIMEDOUT : EIO;
+            return -1;
+        }
+        written = write(STDOUT_FILENO, request + sent, request_size - sent);
+        if (written > 0) {
+            sent += (size_t)written;
+        } else if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+            return -1;
+        }
+    }
+    while (matched < response_size) {
+        struct pollfd input;
+        unsigned char bytes[64];
+        int timeout = deadline_milliseconds(&deadline);
+        int polled;
+        ssize_t received;
+        size_t index;
+        if (timeout <= 0 || stop_requested != 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+        input.fd = STDIN_FILENO;
+        input.events = POLLIN;
+        input.revents = 0;
+        polled = poll(&input, 1U, timeout);
+        if (polled < 0 && errno == EINTR) {
+            continue;
+        }
+        if (polled <= 0 || (input.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            errno = polled == 0 ? ETIMEDOUT : EIO;
+            return -1;
+        }
+        received = read(STDIN_FILENO, bytes, sizeof(bytes));
+        if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+            continue;
+        }
+        if (received <= 0) {
+            return -1;
+        }
+        for (index = 0U; index < (size_t)received && matched < response_size; ++index) {
+            while (matched > 0U && bytes[index] != (unsigned char)response[matched]) {
+                matched = response_prefix[matched - 1U];
+            }
+            if (bytes[index] == (unsigned char)response[matched]) {
+                ++matched;
+            }
+        }
+    }
+    return 0;
+}
+
 static int reap_namespace_descendants(void) {
     struct timespec pause = {0, 10000000L};
     int status;
@@ -365,7 +562,7 @@ static int relay_until_exit(int master, int wbr, int pid, int pidfd,
         return -1;
     }
     memset(&drain_deadline, 0, sizeof(drain_deadline));
-    while (child_exited == 0 || terminal_eof == 0 || from_vendor.begin != from_vendor.end) {
+    for (;;) {
         struct pollfd watched[6];
         nfds_t count = 0;
         int result;
@@ -444,7 +641,8 @@ static int relay_until_exit(int master, int wbr, int pid, int pidfd,
                 if ((events & POLLNVAL) != 0) {
                     return -1;
                 }
-                if (watched[index].fd == STDIN_FILENO && (events & (POLLIN | POLLHUP)) != 0 &&
+                if (watched[index].fd == STDIN_FILENO && input_eof == 0 &&
+                    (events & (POLLIN | POLLHUP)) != 0 &&
                     buffer_read(STDIN_FILENO, &to_vendor, &input_eof) != 0) {
                     return -1;
                 }
@@ -488,7 +686,11 @@ static int relay_until_exit(int master, int wbr, int pid, int pidfd,
                 return -1;
             }
         }
-        if (child_exited != 0 && terminal_eof != 0 && from_vendor.begin == from_vendor.end) {
+        if (child_exited != 0 && descendants_reaped != 0 && terminal_eof != 0 &&
+            from_vendor.begin == from_vendor.end) {
+            if (confirm_outer_terminal_drain() != 0) {
+                return -1;
+            }
             break;
         }
     }
@@ -514,7 +716,8 @@ static int run_bridge(void) {
         read(AGENTBOX_WAW_BRIDGE_CONFIG_FD, &trailing, 1U) != 0 || validate_config(&config) != 0 ||
         validate_bridge_descriptors() != 0 || agentbox_waw_apply_basic_limits() != 0 ||
         agentbox_waw_apply_no_new_privs() != 0 || prctl(PR_SET_CHILD_SUBREAPER, 1UL) != 0 ||
-        open_terminal(&config, &master, &slave) != 0 || pipe2(exec_status, O_CLOEXEC) != 0) {
+        configure_outer_terminal() != 0 || open_terminal(&config, &master, &slave) != 0 ||
+        pipe2(exec_status, O_CLOEXEC) != 0) {
         return 65;
     }
     child = fork();

@@ -38,6 +38,9 @@ versioning for release display and PEP 440 for the Python package.
 - Failed Start exhausts pane observation, direct-child reap, cgroup cleanup,
   socket cleanup and local FD closure independently while preserving the first
   cleanup error and its original Start context.
+- The bridge uses raw outer-terminal input and a bounded 64-position random
+  tmux cursor/DSR acknowledgment before pane exit; delayed vendor queries cannot
+  impersonate the post-exit challenge, and unparsed challenge prefixes fail closed.
 
 ### Known limitations
 

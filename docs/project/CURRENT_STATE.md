@@ -854,6 +854,29 @@ PROPOSED architecture status are preserved.
   frame digest differed. The unchanged strict comparison now emits only the
   frame count and first expected/observed mismatch, enough to distinguish
   truncation, duplication, ordering and formatting without dumping pane data.
+- Bounded head `8dc9480` proved a contiguous prefix only: 1,830 unique frames,
+  indices `0..1829`, no discontinuity/duplicates, pane `80x24`, history size
+  1,812. Linux Unix98 PTY lacks the driver hooks that would make `tcdrain` or
+  `TIOCOUTQ` prove master consumption. Fixed DSR 5 was also rejected because a
+  delayed vendor DSR could produce the same reply and incomplete DCS states do
+  not honor CAN. The bridge instead generates a 192-bit post-vendor challenge:
+  64 random columns `1..8` on row 1, followed by the exact ordered `CUP + DSR 6`
+  response sequence within one monotonic second. This stays valid across every
+  protocol-legal geometry; incomplete DCS state that absorbs the challenge fails
+  closed with `74`. R11 retains the explicit task of quiescing browser INPUT and
+  WBR resize, and enforcing the outer eight-column/one-row minimum around this
+  final correctness handshake. The challenge gate also requires namespace
+  descendant reap first, so a descendant cannot outlive the generated nonce.
+- Sol review closed the final loop/matcher edges: the relay is an explicit
+  `for (;;)` whose only success break follows descendant reap and parser ACK;
+  the response scanner uses a full prefix table. The tail fixture injects DSR 5
+  plus all eight possible row-1 DSR 6 replies near the suffix, with cursor
+  save/restore, and a separate closed-stdio descendant test exercises the
+  same-poll EOF/reap ordering. A readiness pipe proves the grandchild has closed
+  stdio and installed its SIGTERM handler before the vendor returns. The final
+  test requires its exact one-byte termination canary plus pane `1:7`; the old
+  same-poll bypass would only trigger namespace SIGKILL and leave the canary
+  empty. Overlapping old responses cannot cause false success or timeout.
 - The three Python quality jobs on `34fbdfd` failed only because one unit test
   monkeypatched the imported module's private `time` name, which mypy correctly
   rejected as not explicitly exported. The unnecessary sleep monkeypatch is

@@ -335,13 +335,52 @@ static int isolation_is_enforced(const char *agent) {
     return 0;
 }
 
-static int spawn_stubborn_descendant(void) {
-    pid_t child = fork();
+static volatile sig_atomic_t descendant_canary_fd = -1;
+
+static void record_descendant_term(int signal_number) {
+    const unsigned char observed = 1U;
+    (void)signal_number;
+    if (descendant_canary_fd >= 0) {
+        (void)write((int)descendant_canary_fd, &observed, sizeof(observed));
+    }
+}
+
+static int spawn_stubborn_descendant(int close_stdio) {
+    char canary_path[PATH_MAX];
+    int canary_fd = -1;
+    int ready[2] = {-1, -1};
+    pid_t child;
+    if (close_stdio != 0) {
+        const char *temporary = getenv("TMPDIR");
+        int length = temporary == NULL
+                         ? -1
+                         : snprintf(canary_path, sizeof(canary_path),
+                                    "%s/.descendant-term-canary", temporary);
+        if (length < 0 || (size_t)length >= sizeof(canary_path) ||
+            (canary_fd = open(canary_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600)) < 0) {
+            return -1;
+        }
+        if (pipe2(ready, O_CLOEXEC) != 0) {
+            (void)close(canary_fd);
+            return -1;
+        }
+    }
+    child = fork();
     if (child < 0) {
+        if (canary_fd >= 0) {
+            (void)close(canary_fd);
+        }
+        if (ready[0] >= 0) {
+            (void)close(ready[0]);
+            (void)close(ready[1]);
+        }
         return -1;
     }
     if (child == 0) {
         pid_t grandchild;
+        if (ready[0] >= 0) {
+            (void)close(ready[0]);
+        }
         if (setsid() < 0) {
             _exit(95);
         }
@@ -350,12 +389,43 @@ static int spawn_stubborn_descendant(void) {
             _exit(95);
         }
         if (grandchild > 0) {
+            if (canary_fd >= 0) {
+                (void)close(canary_fd);
+            }
+            if (ready[1] >= 0) {
+                (void)close(ready[1]);
+            }
             _exit(0);
         }
-        (void)signal(SIGTERM, SIG_IGN);
+        if (close_stdio != 0) {
+            (void)close(STDIN_FILENO);
+            (void)close(STDOUT_FILENO);
+            (void)close(STDERR_FILENO);
+            descendant_canary_fd = (sig_atomic_t)canary_fd;
+            if (signal(SIGTERM, record_descendant_term) == SIG_ERR ||
+                write(ready[1], "1", 1U) != 1) {
+                _exit(95);
+            }
+            (void)close(ready[1]);
+        } else {
+            (void)signal(SIGTERM, SIG_IGN);
+        }
         for (;;) {
             (void)pause();
         }
+    }
+    if (canary_fd >= 0) {
+        (void)close(canary_fd);
+    }
+    if (ready[1] >= 0) {
+        unsigned char observed;
+        ssize_t received;
+        (void)close(ready[1]);
+        do {
+            received = read(ready[0], &observed, sizeof(observed));
+        } while (received < 0 && errno == EINTR);
+        (void)close(ready[0]);
+        return received == 1 && observed == (unsigned char)'1' ? 0 : -1;
     }
     return 0;
 }
@@ -386,9 +456,15 @@ int main(int argc, char **argv) {
                 return 92;
             }
         } else if (strcmp(line, "spawn\n") == 0 || strcmp(line, "spawn\r\n") == 0) {
-            if (spawn_stubborn_descendant() != 0 || printf("SPAWNED\r\n") < 0) {
+            if (spawn_stubborn_descendant(0) != 0 || printf("SPAWNED\r\n") < 0) {
                 return 92;
             }
+        } else if (strcmp(line, "closed-descendant\n") == 0 ||
+                   strcmp(line, "closed-descendant\r\n") == 0) {
+            if (spawn_stubborn_descendant(1) != 0 || printf("CLOSED-SPAWNED\r\n") < 0) {
+                return 92;
+            }
+            return 7;
         } else if (strcmp(line, "controls\n") == 0 || strcmp(line, "controls\r\n") == 0) {
             if (printf("\033]52;c;FORBIDDEN-CLIPBOARD\a"
                        "\033Ptmux;\033\033]52;c;FORBIDDEN-PASSTHROUGH\a\033\\"
@@ -398,6 +474,20 @@ int main(int argc, char **argv) {
         } else if (strcmp(line, "tail\n") == 0 || strcmp(line, "tail\r\n") == 0) {
             size_t index;
             for (index = 0; index < 2048U; ++index) {
+                if (index == 1900U) {
+                    size_t column;
+                    if (printf("\0337\033[5n") < 0) {
+                        return 92;
+                    }
+                    for (column = 1U; column <= 8U; ++column) {
+                        if (printf("\033[1;%zuH\033[6n", column) < 0) {
+                            return 92;
+                        }
+                    }
+                    if (printf("\0338") < 0) {
+                        return 92;
+                    }
+                }
                 if (printf("TAIL %04zu 0123456789abcdef0123456789abcdef\r\n", index) < 0) {
                     return 92;
                 }
@@ -409,6 +499,11 @@ int main(int argc, char **argv) {
                 if (printf("TAIL-PAD %02zu\r\n", index) < 0) {
                     return 92;
                 }
+            }
+            return 7;
+        } else if (strcmp(line, "dcs-exit\n") == 0 || strcmp(line, "dcs-exit\r\n") == 0) {
+            if (printf("\033Ptmux;unterminated") < 0) {
+                return 92;
             }
             return 7;
         } else if (strcmp(line, "exit7\n") == 0 || strcmp(line, "exit7\r\n") == 0) {
