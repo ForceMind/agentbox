@@ -259,19 +259,19 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
         return 65;
     }
     if (getsid(0) != getpid() && setsid() < 0) {
-        return 71;
+        return 72;
     }
     if (ioctl(STDIN_FILENO, TIOCSCTTY, 0) != 0 && errno != EPERM) {
-        return 71;
+        return 73;
     }
     if (pipe2(exec_status, O_CLOEXEC) != 0) {
-        return 71;
+        return 74;
     }
     child = fork();
     if (child < 0) {
         (void)close(exec_status[0]);
         (void)close(exec_status[1]);
-        return 71;
+        return 75;
     }
     if (child == 0) {
         (void)close(exec_status[0]);
@@ -283,15 +283,27 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
     if (pidfd < 0) {
         agentbox_waw_terminate_and_reap((int)child, -1);
         (void)close(exec_status[0]);
-        return 71;
+        return 76;
     }
-    if (install_signal_handlers() != 0 ||
-        agentbox_waw_confirm_exec_timeout(exec_status[0], pidfd, 200) != 0 ||
-        close(exec_status[0]) != 0 ||
-        confirm_attached_client(workspace_hash, agent, child, pidfd) != 0 ||
-        agentbox_waw_send_ready(AGENTBOX_WAW_ATTACH_READY_FD) != 0) {
+    if (install_signal_handlers() != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 71;
+        return 77;
+    }
+    if (agentbox_waw_confirm_exec_timeout(exec_status[0], pidfd, 200) != 0) {
+        agentbox_waw_terminate_and_reap((int)child, pidfd);
+        return 78;
+    }
+    if (close(exec_status[0]) != 0) {
+        agentbox_waw_terminate_and_reap((int)child, pidfd);
+        return 79;
+    }
+    if (confirm_attached_client(workspace_hash, agent, child, pidfd) != 0) {
+        agentbox_waw_terminate_and_reap((int)child, pidfd);
+        return 80;
+    }
+    if (agentbox_waw_send_ready(AGENTBOX_WAW_ATTACH_READY_FD) != 0) {
+        agentbox_waw_terminate_and_reap((int)child, pidfd);
+        return 81;
     }
     (void)close(AGENTBOX_WAW_ATTACH_TMUX_EXECUTABLE_FD);
     (void)close(AGENTBOX_WAW_ATTACH_SOCKET_DIRECTORY_FD);

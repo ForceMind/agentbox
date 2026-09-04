@@ -252,7 +252,11 @@ def _spawn_real_attach(
     ready_child.close()
     ready_parent.settimeout(5.0)
     ready = ready_parent.recv(9)
-    assert ready == (b"AWR1\x01\x01\x00\x00" if expect_ready else b"")
+    expected_ready = b"AWR1\x01\x01\x00\x00" if expect_ready else b""
+    if ready != expected_ready:
+        status = process.wait(timeout=5)
+        os.close(master)
+        pytest.fail(f"attach READY failed with status {status}")
     ready_parent.close()
     return process, master
 

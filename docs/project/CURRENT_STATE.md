@@ -740,3 +740,9 @@ PROPOSED architecture status are preserved.
   R12 must reject idmapped sources and audit mount topology plus per-mount LSM
   and `nosymfollow` metadata that `fstatvfs` cannot attest. U2 remains behind the
   existing mount/lockdown/FD publication gate.
+- Exact head `8705712` compiled with strict Linux warnings, passed the portable
+  native gate, and for the first time completed workspace READY through
+  reanchor, all four binds/attributes, U1/U2 lockdown, Landlock/seccomp and
+  vendor exec. The remaining primary failure is isolated to attach before attach
+  READY. A bounded attach-stage status replaces the generic `71` only for this
+  diagnosis; retained-pane cascades remain non-primary.
