@@ -660,3 +660,8 @@ PROPOSED architecture status are preserved.
   The remount also preserves source `NOATIME`, `NODIRATIME` and `RELATIME`, and
   the initial descriptor bind is non-recursive so unreviewed nested mounts are
   not imported. `NOSUID|NODEV` remain mandatory additions.
+- Head `b2523cc` then reported bootstrap stage `87`, the exact cgroup marker,
+  even though the preceding runner had passed it. Before changing production
+  matching, the diagnostic reads pytest, tmux-server and pane cgroup records from
+  `/proc` before launch to distinguish inheritance from runner relocation or path
+  format differences.

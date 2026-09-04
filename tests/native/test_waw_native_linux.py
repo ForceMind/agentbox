@@ -374,6 +374,39 @@ def _begin_real_workspace(
     control, _address = listener.accept()
     control.settimeout(5.0)
     listener.close()
+    server_pid = int(
+        subprocess.run(
+            ["/usr/bin/tmux", "-S", str(TMUX_SOCKET), "display-message", "-p", "#{pid}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    pane_pid = int(
+        subprocess.run(
+            [
+                "/usr/bin/tmux",
+                "-S",
+                str(TMUX_SOCKET),
+                "list-panes",
+                "-t",
+                f"={session}:0",
+                "-F",
+                "#{pane_pid}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    expected_cgroup = f"/ws-{HASH}-g7/workload"
+    cgroup_records = {
+        "pytest": Path("/proc/self/cgroup").read_text().strip(),
+        "tmux": Path(f"/proc/{server_pid}/cgroup").read_text().strip(),
+        "pane": Path(f"/proc/{pane_pid}/cgroup").read_text().strip(),
+    }
+    if any(expected_cgroup not in record for record in cgroup_records.values()):
+        pytest.fail(f"native cgroup inheritance mismatch: {cgroup_records}")
     if retain_failed_pane:
         subprocess.run(
             [
