@@ -401,7 +401,7 @@ def build_release_artifact(
                     "--dest",
                     str(wheelhouse),
                     "--requirement",
-                    str(source / "requirements-release.lock"),
+                    str(source / "requirements-release.txt"),
                 ),
                 source,
                 timeout=600,
@@ -741,7 +741,7 @@ def _canonical_package_name(value: str) -> str:
 def _verify_runtime_lock_inventory(source: Path, packages: list[dict[str, str]]) -> None:
     expected: set[tuple[str, str]] = set()
     try:
-        lines = (source / "requirements-release.lock").read_text(encoding="utf-8").splitlines()
+        lines = (source / "requirements-release.txt").read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError) as exc:
         raise BuildError("Python release dependency lock is unavailable") from exc
     for line in lines:
@@ -754,7 +754,7 @@ def _verify_runtime_lock_inventory(source: Path, packages: list[dict[str, str]])
         if item["manager"] == "pypi"
     }
     if not expected or observed != expected:
-        raise BuildError("Python wheelhouse inventory drifted from requirements-release.lock")
+        raise BuildError("Python wheelhouse inventory drifted from requirements-release.txt")
 
 
 def _verify_bootstrap_lock_inventory(source: Path, packages: list[dict[str, str]]) -> None:

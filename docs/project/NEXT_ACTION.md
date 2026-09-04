@@ -20,10 +20,12 @@ blocker is resolved. Do not request the same software approval again.
   and exact read-back; Runtime encrypted stream/server and publication fences delivered.
 - R8 is merged as PR #77 after independent PASS, 19/19 exact-head checks,
   normal merge, exact read-back and six successful post-main workflows.
-- R9: implementation, full local matrix and independent review are complete for
-  trust, managed-provider core, bounded terminal and the browser-language
-  `zh-CN`/English Workspace boundary. Complete rc4 visible-version inspection,
-  exact-head CI, normal merge and read-back next; then continue R10.
+- R9 is merged as PR #78 after independent PASS, 19/19 exact-head checks,
+  normal merge `15a4632f915dd1e1bde19425e313b52ada27166f`, exact read-back and
+  six successful standard post-main workflows.
+- R10/rc5 is active: deliver the fixed Claude/Codex execution-profile manifest,
+  descriptor-to-exec/PTY/bootstrap/bridge/attach software, Runtime composition
+  and inert installer assets without activating a host or handling credentials.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent

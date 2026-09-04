@@ -44,13 +44,18 @@
 
 - Native WebSocket/API ciphertext relay, shared parser/INPUT budgets and cancellation-resistant cleanup merged in PR #77 with 19/19 exact-head checks; all six post-main workflows succeeded.
 
+- Managed Chromium/Native Messaging/trustd browser trust, cumulative root checkpoints,
+  bounded browser terminal model and `zh-CN`/English Workspace boundary merged in
+  PR #78 with 19/19 exact-head checks and exact read-back.
+
 ## Current reassessment
 
 See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 is merged; R6 staged admission is merged as PR #75; R7 Runtime integration is merged as PR #76; R8 API relay is merged as PR #77; full R9/R10 implementation and host evidence remain separately tracked.
 
 ## In Progress
 
-- Mac remains the development platform. F1.1/F1.2/F1.3 are complete software increments; the overall terminal product is incomplete. Application profile contract is accepted and implementation is active under delegated software decision authority.
+- Mac remains the development platform. R9 is delivered; R10 fixed interactive
+  process/profile implementation is active under delegated software decision authority.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

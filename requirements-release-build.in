@@ -1,6 +1,6 @@
 # Reviewed inputs for the isolated Release Candidate build/test environment.
 # Compile with the documented pip-tools command in docs/RELEASE_CHECKLIST.md.
--r requirements-release.lock
+-r requirements-release.txt
 
 black==26.5.1
 httpx==0.28.1

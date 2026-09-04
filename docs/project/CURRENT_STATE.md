@@ -65,6 +65,7 @@ repository: "ForceMind/agentbox"
 | R6 — staged admission | #75 | `679b2f71ec5917ead7695c3b20cb1118cb46cc76` | `a27621faca0e0d04b529b51993f98138496a75b5` | 19/19 SUCCESS |
 | R7 — Runtime encrypted stream | #76 | `01c716bd4713ef4a6676b71754a4e065ebce3b82` | `4180f0991af97cba108b6e5a707b7abf58a444d2` | 19/19 SUCCESS |
 | R8 — API ciphertext relay | #77 | `a2c0b6afd002455267745d3da4d21bd87943da8a` | `64d37f9a4d39195930959c53c926a4184877355a` | 19/19 SUCCESS |
+| R9 — browser trust + bounded terminal | #78 | `fdf2bd77ac3178ee973d10c5429b1b2d8b7a5051` | `15a4632f915dd1e1bde19425e313b52ada27166f` | 19/19 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -546,8 +547,14 @@ PROPOSED architecture status are preserved.
   in English. Both measured no horizontal overflow, and no terminal payload was
   captured. This is local preview evidence, not a deployed/host-qualified UI.
 - Independent read-only Architecture/Security/Test review reports PASS with no
-  remaining P0/P1/P2. Exact-head CI, normal merge and read-back remain pending;
-  no merge is claimed by this pre-PR snapshot.
+  remaining P0/P1/P2. PR #78 exact head `fdf2bd77...` completed 19/19 checks,
+  then merged normally at `2026-09-04T09:22:07Z`; fetch/read-back observed exact
+  merge `15a4632f...` with parents `64d37f9a...` and `fdf2bd77...`.
+- All six standard post-main workflows for `15a4632f...` are SUCCESS after the
+  Security `frontend-audit` retry recovered from npm advisory API 503/timeouts.
+  GitHub's separate dynamic Dependency Graph job remains a historical
+  `pip-compile` `.lock` include limitation already present before R9; R10 tracks
+  the `.txt` include repair and will require its post-main graph to succeed.
 - Sol/ultra produced the complete R10 read-only plan: distinct fixed interactive
   Claude/Codex profile, host manifest v2, version/auth/env records, descriptor/WBR
   codecs, three native helper binaries, Runtime composition and inert installer
