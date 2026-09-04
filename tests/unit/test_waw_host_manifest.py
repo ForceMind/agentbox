@@ -8,19 +8,29 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+import agentbox_runtime.waw_host_manifest as subject
 import pytest
 from agentbox_runtime.waw_host_manifest import (
+    WAW_PUBLIC_MANIFEST_FILENAMES_V2,
     WAWCanonicalManifestBundle,
+    WAWCanonicalManifestBundleV2,
     WAWRuntimeHostManifestDevelopmentOnlyError,
     WAWRuntimeHostManifestError,
     decode_canonical_waw_runtime_host_manifest,
+    decode_canonical_waw_runtime_host_manifest_v2,
     load_canonical_waw_manifest_bundle,
+    load_canonical_waw_manifest_bundle_v2,
     load_canonical_waw_runtime_host_manifest,
+    load_canonical_waw_runtime_host_manifest_v2,
+    load_verified_canonical_waw_manifest_bundle_v2,
     load_waw_runtime_host_manifest_development_only,
 )
 from agentbox_runtime.waw_manifest_codecs import (
+    RUNTIME_HOST_MANIFEST_V2_PATHS,
     RuntimeHostManifest,
+    RuntimeHostManifestV2,
     encode_runtime_host_manifest,
+    encode_runtime_host_manifest_v2,
 )
 
 
@@ -469,3 +479,165 @@ def test_strict_loader_rejects_weak_mode_policy(
             expected_host_manifest_digest=hashlib.sha256(raw).hexdigest(),
             trusted_root=tmp_path,
         )
+
+
+def _strict_runtime_v2_bytes() -> bytes:
+    return encode_runtime_host_manifest_v2(
+        {
+            "runtime_host_installation_id": "wri_" + "1" * 32,
+            "runtime_host_installation_revision": "1",
+            "runtime_attestation_x25519_fingerprint": "a" * 64,
+            **RUNTIME_HOST_MANIFEST_V2_PATHS,
+            "project_root_manifest_digest": "b" * 64,
+            "cgroup_delegation_manifest_digest": "c" * 64,
+            "executable_inventory_digest": "d" * 64,
+            "interactive_profile_bundle_digest": "e" * 64,
+            "tmux_config_digest": "f" * 64,
+            "sandbox_policy_bundle_digest": "1" * 64,
+            "socket_policy_digest": "2" * 64,
+            "enrollment_epoch": "1",
+            "enrollment_state": "steady",
+        }
+    )
+
+
+def test_v2_decoder_and_filesystem_loader_reject_v1_downgrade(tmp_path: Path) -> None:
+    v1 = _strict_runtime_bytes()
+    v2 = _strict_runtime_v2_bytes()
+    assert isinstance(decode_canonical_waw_runtime_host_manifest_v2(v2), RuntimeHostManifestV2)
+    with pytest.raises(WAWRuntimeHostManifestError):
+        decode_canonical_waw_runtime_host_manifest_v2(v1)
+
+    parent = tmp_path / "var" / "lib" / "agentbox-waw"
+    parent.mkdir(parents=True)
+    parent.chmod(0o750)
+    path = parent / "runtime-host-installation.v2.json"
+    path.write_bytes(v2)
+    path.chmod(0o440)
+    loaded = load_canonical_waw_runtime_host_manifest_v2(
+        path,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+        expected_host_manifest_digest=hashlib.sha256(v2).hexdigest(),
+        trusted_root=tmp_path,
+    )
+    assert isinstance(loaded, RuntimeHostManifestV2)
+
+    path.chmod(0o600)
+    path.write_bytes(v1)
+    path.chmod(0o440)
+    with pytest.raises(WAWRuntimeHostManifestError, match="v2 codec"):
+        load_canonical_waw_runtime_host_manifest_v2(
+            path,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            expected_host_manifest_digest=hashlib.sha256(v1).hexdigest(),
+            trusted_root=tmp_path,
+        )
+
+
+def _write_public_v2_bundle(root: Path) -> tuple[Path, dict[str, bytes]]:
+    directory = root / "usr" / "share" / "agentbox" / "waw"
+    directory.mkdir(parents=True)
+    directory.chmod(0o755)
+    payloads = {name: f"fixed:{name}".encode("ascii") for name in WAW_PUBLIC_MANIFEST_FILENAMES_V2}
+    for name, payload in payloads.items():
+        path = directory / name
+        path.write_bytes(payload)
+        path.chmod(0o444)
+    return directory, payloads
+
+
+def test_v2_public_bundle_loader_reads_only_the_exact_file_set(tmp_path: Path) -> None:
+    directory, payloads = _write_public_v2_bundle(tmp_path)
+    loaded = load_canonical_waw_manifest_bundle_v2(
+        directory,
+        expected_uid=os.geteuid(),
+        expected_gid=os.getegid(),
+    )
+    assert loaded == WAWCanonicalManifestBundleV2(
+        *(payloads[name] for name in WAW_PUBLIC_MANIFEST_FILENAMES_V2)
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra"])
+def test_v2_public_bundle_loader_rejects_missing_or_extra_files(
+    tmp_path: Path, mutation: str
+) -> None:
+    directory, _payloads = _write_public_v2_bundle(tmp_path)
+    if mutation == "missing":
+        (directory / WAW_PUBLIC_MANIFEST_FILENAMES_V2[-1]).unlink()
+    else:
+        extra = directory / "caller-controlled.json"
+        extra.write_bytes(b"rejected")
+        extra.chmod(0o444)
+    with pytest.raises(WAWRuntimeHostManifestError, match="file set is not exact"):
+        load_canonical_waw_manifest_bundle_v2(
+            directory,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+        )
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "sandbox-policies.v1.json",
+        "socket-policy.v1.json",
+        "claude-managed-policy.v1.json",
+        "codex-managed-policy.v1.json",
+    ],
+)
+def test_v2_public_bundle_loader_never_follows_policy_symlinks(
+    tmp_path: Path, filename: str
+) -> None:
+    directory, _payloads = _write_public_v2_bundle(tmp_path)
+    target = directory / filename
+    target.unlink()
+    outside = tmp_path / f"outside-{filename}"
+    outside.write_bytes(b"substitution")
+    outside.chmod(0o444)
+    target.symlink_to(outside)
+    with pytest.raises(WAWRuntimeHostManifestError, match="cannot be read"):
+        load_canonical_waw_manifest_bundle_v2(
+            directory,
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+        )
+
+
+def test_verified_v2_loader_passes_all_exact_policy_bytes_to_cross_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory, payloads = _write_public_v2_bundle(tmp_path)
+    anchor = type("Anchor", (), {"host_manifest_digest": "a" * 64})()
+    runtime = object()
+    sentinel = object()
+    observed: list[tuple[object, ...]] = []
+    monkeypatch.setattr(subject, "decode_api_host_anchor_v2", lambda raw: anchor)
+    monkeypatch.setattr(
+        subject, "load_canonical_waw_runtime_host_manifest_v2", lambda *a, **k: runtime
+    )
+
+    def verify(*values: object) -> object:
+        observed.append(values)
+        return sentinel
+
+    monkeypatch.setattr(subject, "verify_api_host_anchor_v2_cross_manifest", verify)
+    assert (
+        load_verified_canonical_waw_manifest_bundle_v2(
+            tmp_path / "runtime-host-installation.v2.json",
+            directory,
+            expected_runtime_gid=os.getegid(),
+            expected_public_uid=os.geteuid(),
+            expected_public_gid=os.getegid(),
+        )
+        is sentinel
+    )
+    assert observed == [
+        (
+            anchor,
+            runtime,
+            *(payloads[name] for name in WAW_PUBLIC_MANIFEST_FILENAMES_V2[1:]),
+        )
+    ]

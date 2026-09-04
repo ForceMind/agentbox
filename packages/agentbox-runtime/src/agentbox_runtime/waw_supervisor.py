@@ -26,6 +26,7 @@ from agentbox_core.waw import (
 from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 
 from agentbox_runtime.models import RuntimeOperationError
+from agentbox_runtime.waw_auth_probe import WAWPublicAuthEvidence
 from agentbox_runtime.waw_managed_command import (
     WAWManagedCommand,
     managed_command_agent_type,
@@ -99,6 +100,7 @@ class RuntimeAttachmentCleanupEvidence:
 
 class SupervisorState(StrEnum):
     ADMITTED = "ADMITTED"
+    STARTING = "STARTING"
     RUNNING = "RUNNING"
     NEEDS_INTERACTION = "NEEDS_INTERACTION"
     TRUST_REQUIRED = "TRUST_REQUIRED"
@@ -281,6 +283,23 @@ class WAWSupervisor:
                 attachment_id=(self._attachment.attachment_id if self._attachment else None),
             )
 
+    def fixed_executable_fingerprint(self) -> str:
+        """Return only the fixed transport's public executable fingerprint."""
+
+        with self._lock:
+            value = getattr(self._transport, "executable_fingerprint", None)
+            if (
+                type(value) is not str
+                or len(value) != 64
+                or any(char not in "0123456789abcdef" for char in value)
+            ):
+                raise RuntimeOperationError(
+                    "RUNTIME_UNAVAILABLE",
+                    "Fixed executable fingerprint is unavailable",
+                    category="unavailable",
+                )
+            return value
+
     @contextmanager
     def stopped_generation_guard(self, operation: WorkspaceStopOperation) -> Iterator[None]:
         """Hold an exact positive STOPPED fence through an executor map commit."""
@@ -333,7 +352,70 @@ class WAWSupervisor:
                     "WAW_START_FAILED", "Runtime transport could not start", category="unavailable"
                 ) from exc
             self._output_source = OutputSource()
+            bind_output_sink = getattr(self._transport, "bind_output_sink", None)
+            if callable(bind_output_sink):
+                source = self._output_source
+                try:
+                    bind_output_sink(lambda payload: self.append_encrypted_output(source, payload))
+                except Exception as exc:
+                    self._state = SupervisorState.BROKEN
+                    raise RuntimeOperationError(
+                        "WAW_START_FAILED",
+                        "Runtime output producer could not be admitted",
+                        category="unavailable",
+                    ) from exc
             self._state = evidence.state
+            return self.snapshot()
+
+    def resume_after_login(self, evidence: WAWPublicAuthEvidence) -> SupervisorSnapshot:
+        """CAS one LOGIN_REQUIRED generation into its first process spawn."""
+
+        with self._lock:
+            if self._state is not SupervisorState.LOGIN_REQUIRED:
+                raise RuntimeOperationError(
+                    "WAW_RESUME_INVALID", "Workspace is not waiting for login", category="conflict"
+                )
+            resume = getattr(self._transport, "resume_after_login", None)
+            if not callable(resume):
+                raise RuntimeOperationError(
+                    "RUNTIME_UNAVAILABLE",
+                    "Fixed login resume port is unavailable",
+                    category="unavailable",
+                )
+            validate_resume = getattr(self._transport, "validate_resume_evidence", None)
+            if callable(validate_resume):
+                validate_resume(evidence)
+            self._state = SupervisorState.STARTING
+            try:
+                resumed = resume(evidence)
+                if (
+                    type(resumed) is not RuntimeStartEvidence
+                    or resumed.workspace_id != self._workspace_id
+                    or resumed.generation != self._generation
+                    or resumed.managed_marker != self._command.managed_marker
+                    or not resumed.ready
+                    or resumed.state
+                    not in {
+                        SupervisorState.RUNNING,
+                        SupervisorState.NEEDS_INTERACTION,
+                        SupervisorState.TRUST_REQUIRED,
+                    }
+                ):
+                    raise RuntimeOperationError(
+                        "WAW_RESUME_UNCONFIRMED",
+                        "Runtime resume evidence is not admissible",
+                        category="conflict",
+                    )
+            except Exception as exc:
+                self._state = SupervisorState.RECONCILIATION_REQUIRED
+                if isinstance(exc, RuntimeOperationError):
+                    raise
+                raise RuntimeOperationError(
+                    "WAW_RESUME_FAILED",
+                    "Runtime could not resume after login",
+                    category="unavailable",
+                ) from exc
+            self._state = resumed.state
             return self.snapshot()
 
     def attach(self, attachment: AttachmentLease) -> SupervisorSnapshot:
@@ -397,6 +479,45 @@ class WAWSupervisor:
                         raise RuntimeOperationError(
                             "WAW_ATTACH_UNCONFIRMED",
                             "Runtime process could not be reconciled for reconnect",
+                            category="conflict",
+                        ) from exc
+            if isinstance(attachment, RuntimeAttachmentLease):
+                open_attachment = getattr(self._transport, "open_attachment", None)
+                if not callable(open_attachment):
+                    if getattr(self._transport, "requires_commit_attachment", False) is True:
+                        raise RuntimeOperationError(
+                            "RUNTIME_UNAVAILABLE",
+                            "Exact fixed PTY attachment port is unavailable",
+                            category="unavailable",
+                        )
+                else:
+                    try:
+                        opened = open_attachment(attachment, self._geometry)
+                        if (
+                            type(opened) is not RuntimeStartEvidence
+                            or opened.workspace_id != self._workspace_id
+                            or opened.generation != self._generation
+                            or opened.managed_marker != self._command.managed_marker
+                            or opened.state is not SupervisorState.RUNNING
+                            or opened.ready is not True
+                        ):
+                            raise RuntimeOperationError(
+                                "WAW_ATTACH_UNCONFIRMED",
+                                "Fixed PTY attachment evidence is not exact",
+                                category="conflict",
+                            )
+                    except Exception as exc:
+                        # A failed attach fences only this reservation. Positive
+                        # typed cleanup releases it; uncertainty retains the
+                        # reconciliation fence without declaring the process broken.
+                        cleaned = self.cleanup_runtime_attachment(attachment)
+                        if not cleaned:
+                            self._state = SupervisorState.RECONCILIATION_REQUIRED
+                        if isinstance(exc, RuntimeOperationError):
+                            raise
+                        raise RuntimeOperationError(
+                            "WAW_ATTACH_UNCONFIRMED",
+                            "Fixed PTY attachment could not be committed",
                             category="conflict",
                         ) from exc
             self._attachment = attachment
@@ -551,6 +672,14 @@ class WAWSupervisor:
     def detach(self, attachment: AttachmentLease) -> SupervisorSnapshot:
         with self._lock:
             self._require_attachment(attachment)
+            if isinstance(attachment, RuntimeAttachmentLease):
+                if not self.cleanup_runtime_attachment(attachment):
+                    raise RuntimeOperationError(
+                        "WAW_DETACH_UNCONFIRMED",
+                        "Runtime did not prove attach-child/PTY closure",
+                        category="conflict",
+                    )
+                return self.snapshot()
             try:
                 detached = self._transport.detach()
             except Exception as exc:
@@ -626,12 +755,46 @@ class WAWSupervisor:
             try:
                 self._transport.resize(geometry)
             except Exception as exc:
-                self._state = SupervisorState.BROKEN
+                if isinstance(attachment, RuntimeAttachmentLease):
+                    cleaned = self.cleanup_runtime_attachment(attachment)
+                else:
+                    try:
+                        cleaned = self._transport.detach() is True
+                    except Exception:
+                        cleaned = False
+                    if cleaned:
+                        self._last_attachment_id = attachment.attachment_id
+                        self._attachment = None
+                        self._state = SupervisorState.DETACHED
+                if not cleaned:
+                    self._state = SupervisorState.RECONCILIATION_REQUIRED
                 raise RuntimeOperationError(
-                    "WAW_RESIZE_FAILED", "Runtime could not resize the PTY", category="broken"
+                    "WAW_RESIZE_FAILED",
+                    "Runtime could not resize and retain the PTY attachment",
+                    category="conflict",
                 ) from exc
             self._geometry = geometry
             return self.snapshot()
+
+    def produce_output(self) -> int:
+        """Run one fixed nonblocking producer read through the admitted sink."""
+
+        with self._lock:
+            producer = getattr(self._transport, "produce_output", None)
+            if not callable(producer):
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_INVALID",
+                    "Fixed output producer is unavailable",
+                    category="conflict",
+                )
+            produced = producer()
+            if type(produced) is not int or produced < 0:
+                raise RuntimeOperationError(
+                    "WAW_OUTPUT_INVALID",
+                    "Fixed output producer returned invalid evidence",
+                    category="broken",
+                )
+            return produced
 
     def output_source(self) -> OutputSource:
         """Return the current Runtime-only output admission handle."""
@@ -699,6 +862,16 @@ class WAWSupervisor:
                     "Output cursor belongs to a different Runtime epoch",
                     category="conflict",
                 )
+            if self._attachment is not None:
+                producer = getattr(self._transport, "produce_output", None)
+                if callable(producer):
+                    produced = producer()
+                    if type(produced) is not int or produced < 0:
+                        raise RuntimeOperationError(
+                            "WAW_OUTPUT_INVALID",
+                            "Fixed output producer returned invalid evidence",
+                            category="broken",
+                        )
             return self._ring.replay(after_cursor)
 
     def stop(self, attachment: AttachmentLease) -> SupervisorSnapshot:

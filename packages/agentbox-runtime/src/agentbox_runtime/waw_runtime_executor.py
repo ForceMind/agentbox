@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -27,7 +27,28 @@ from agentbox_core.waw import (
 from agentbox_core.waw_tickets import ActiveAttachment, AttachmentTuple
 
 from agentbox_runtime.models import RuntimeOperationError
-from agentbox_runtime.project import ConfiguredProject, ProjectRegistry
+from agentbox_runtime.project import (
+    ConfiguredProject,
+    ProjectRegistry,
+)
+from agentbox_runtime.project import (
+    validate_project_id as validate_relative_project_key,
+)
+from agentbox_runtime.waw_auth_probe import (
+    WAWPublicAuthEvidence,
+    WAWPublicAuthProbe,
+    WAWPublicAuthResult,
+    validate_waw_public_auth_probe_evidence,
+)
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWConflictError,
+    WAWConflictLease,
+)
+from agentbox_runtime.waw_fixed_transport import (
+    WAWFixedTransport,
+    WAWVerifiedExecutionAuthority,
+)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleObservation,
@@ -38,6 +59,7 @@ from agentbox_runtime.waw_managed_command import (
     managed_command_agent_type,
     validate_managed_command,
 )
+from agentbox_runtime.waw_process_inspector import FixedProcessBinding
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_stream_bridge import WAWStreamBridge
 from agentbox_runtime.waw_supervisor import (
@@ -67,6 +89,13 @@ class _StartSnapshot:
     prior: tuple[tuple[_SupervisorKey, WAWSupervisor], ...]
 
 
+@dataclass(frozen=True)
+class _PreparedStart:
+    snapshot: _StartSnapshot
+    supervisor: WAWSupervisor
+    transport: WAWTransport
+
+
 CommandFactory = Callable[[WAWLifecycleIdentity, ConfiguredProject], WAWManagedCommand]
 TransportFactory = Callable[[WAWLifecycleIdentity, WAWManagedCommand], WAWTransport]
 _T = TypeVar("_T")
@@ -85,6 +114,9 @@ class WAWSupervisorExecutor:
         geometry: PtyGeometry,
         clock: Callable[[], float],
         attachment_validator: Callable[[ActiveAttachment], bool],
+        conflict_coordinator: WAWConflictCoordinator | None = None,
+        execution_authority: WAWVerifiedExecutionAuthority | None = None,
+        auth_probe: WAWPublicAuthProbe | None = None,
     ) -> None:
         if (
             not isinstance(runtime_epoch, str)
@@ -103,6 +135,20 @@ class WAWSupervisorExecutor:
         self._geometry = geometry
         self._clock = clock
         self._attachment_validator = attachment_validator
+        if (
+            conflict_coordinator is not None
+            and type(conflict_coordinator) is not WAWConflictCoordinator
+        ):
+            raise TypeError("conflict_coordinator must be WAWConflictCoordinator")
+        self._conflicts = conflict_coordinator
+        if execution_authority is not None and (
+            type(execution_authority) is not WAWVerifiedExecutionAuthority
+        ):
+            raise TypeError("execution_authority must be verified")
+        self._execution_authority = execution_authority
+        if auth_probe is not None and not isinstance(auth_probe, WAWPublicAuthProbe):
+            raise TypeError("auth_probe must implement WAWPublicAuthProbe")
+        self._auth_probe = auth_probe
         self._supervisors: dict[_SupervisorKey, WAWSupervisor] = {}
         self._bindings: dict[str, tuple[WAWProjectBinding, ConfiguredProject]] = {}
         self._map_lock = threading.RLock()
@@ -111,6 +157,23 @@ class WAWSupervisorExecutor:
         self._inflight_tokens: dict[str, object] = {}
         self._binding_inflight: dict[str, asyncio.Task[Any]] = {}
         self._binding_reserved: set[str] = set()
+        self._restart_quarantine: dict[_SupervisorKey, WAWFixedTransport] = {}
+
+    @property
+    def runtime_epoch(self) -> str:
+        return self._runtime_epoch
+
+    @property
+    def conflict_coordinator(self) -> WAWConflictCoordinator | None:
+        return self._conflicts
+
+    @property
+    def execution_authority(self) -> WAWVerifiedExecutionAuthority | None:
+        return self._execution_authority
+
+    @property
+    def auth_probe(self) -> WAWPublicAuthProbe | None:
+        return self._auth_probe
 
     async def register_project_binding(self, binding: WAWProjectBinding) -> None:
         """Resolve and commit one Runtime Project binding without wire changes."""
@@ -186,29 +249,75 @@ class WAWSupervisorExecutor:
             self._binding_reserved.discard(project_id)
         self._consume_binding_task(project_id, task)
 
+    def formal_project_id_for_legacy(self, relative_key: str) -> str | None:
+        """Map one exact current Runtime key to its unique formal Project ID."""
+
+        try:
+            validated = validate_relative_project_key(relative_key)
+        except RuntimeOperationError:
+            return None
+        with self._map_lock:
+            candidates = [
+                project_id
+                for project_id, (binding, _project) in self._bindings.items()
+                if binding.relative_key == validated
+                and project_id not in self._binding_reserved
+                and project_id not in self._binding_inflight
+                and project_id not in self._inflight_project_ids.values()
+                and not any(key.project_id == project_id for key in self._restart_quarantine)
+            ]
+            return candidates[0] if len(candidates) == 1 else None
+
     async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         key = self._key(identity)
         operation_token = object()
 
         def operation() -> WAWLifecycleObservation:
-            start_snapshot = self._start_snapshot(key, operation_token)
-            command = self._command(identity, start_snapshot.binding)
-            transport = self._transport_factory(identity, command)
-            supervisor = WAWSupervisor(
-                workspace_id=key.workspace_id,
-                generation=int(key.generation),
-                command=command,
-                transport=transport,
-                geometry=self._geometry,
-                clock=self._clock,
-                attachment_validator=self._attachment_validator,
-                stop_binding=self._stop_binding(identity),
-                runtime_epoch=self._runtime_epoch,
-            )
-            self._commit_start(key, supervisor, start_snapshot, operation_token)
-            snapshot = supervisor.start()
-            return self._start_observation(snapshot.state)
+            lease = self._acquire_conflict_lease(key)
+            try:
+                prepared = self._prepare_start(key, identity, operation_token)
+                return self._finish_start(key, prepared, operation_token)
+            finally:
+                if lease is not None:
+                    lease.release()
 
+        if self._auth_probe is not None:
+
+            async def authorized_operation() -> WAWLifecycleObservation:
+                lease = await self._acquire_conflict_lease_async(key)
+                prepared: _PreparedStart | None = None
+                try:
+                    prepared = await asyncio.to_thread(
+                        self._prepare_start, key, identity, operation_token
+                    )
+                    if type(prepared.transport) is not WAWFixedTransport:
+                        raise RuntimeOperationError(
+                            "RUNTIME_UNAVAILABLE",
+                            "Auth-gated start requires the fixed transport",
+                            category="unavailable",
+                        )
+                    evidence = await self._fresh_auth(
+                        key, prepared.transport.executable_fingerprint
+                    )
+                    prepared.transport.set_initial_auth_evidence(evidence)
+                    return await asyncio.to_thread(
+                        self._finish_start, key, prepared, operation_token
+                    )
+                except BaseException:
+                    if (
+                        prepared is not None
+                        and prepared.supervisor.state is SupervisorState.ADMITTED
+                        and type(prepared.transport) is WAWFixedTransport
+                    ):
+                        prepared.transport.abort_unstarted()
+                    raise
+                finally:
+                    if lease is not None:
+                        await asyncio.to_thread(lease.release)
+
+            return await self._submit_async(
+                key, authorized_operation, operation_token=operation_token
+            )
         return await self._submit(key, operation, operation_token=operation_token)
 
     async def status(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
@@ -217,12 +326,84 @@ class WAWSupervisorExecutor:
     async def reconcile(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         return await self._probe(identity)
 
+    def register_restart_quarantine(
+        self,
+        identity: WAWLifecycleIdentity,
+        transport: WAWFixedTransport,
+        binding: FixedProcessBinding | None,
+    ) -> None:
+        """Register old-epoch authenticated handles without adopting them."""
+
+        key = self._key(identity)
+        if type(transport) is not WAWFixedTransport or (
+            transport.process_identity.runtime_epoch != self._runtime_epoch
+        ):
+            raise RuntimeOperationError(
+                "WAW_RUNTIME_EPOCH_INVALID",
+                "Restart quarantine transport does not use the current epoch",
+                category="validation",
+            )
+        with self._map_lock:
+            if (
+                any(item.workspace_id == key.workspace_id for item in self._supervisors)
+                or any(item.workspace_id == key.workspace_id for item in self._restart_quarantine)
+                or key.workspace_id in self._inflight
+            ):
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED",
+                    "Workspace already has Runtime state",
+                    category="conflict",
+                )
+            transport.quarantine_restart(binding)
+            self._restart_quarantine[key] = transport
+
+    async def destroy_fenced(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+        """Destroy only a registered authenticated old-epoch process binding."""
+
+        key = self._key(identity)
+
+        def operation() -> WAWLifecycleObservation:
+            with self._map_lock:
+                transport = self._restart_quarantine.get(key)
+            if transport is None:
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED",
+                    "No authenticated fenced process binding exists",
+                    category="conflict",
+                )
+            evidence = transport.destroy_fenced()
+            if not evidence.closed or evidence.remaining_members != 0:
+                raise RuntimeOperationError(
+                    "WAW_STOP_UNCONFIRMED",
+                    "Fenced destroy did not prove populated=0",
+                    category="conflict",
+                )
+            with self._map_lock:
+                if self._restart_quarantine.get(key) is not transport:
+                    raise RuntimeOperationError(
+                        "RECONCILIATION_REQUIRED",
+                        "Restart quarantine changed during destroy",
+                        category="conflict",
+                    )
+                self._restart_quarantine.pop(key)
+            return self._observation(SupervisorState.STOPPED, process_state="STOPPED")
+
+        return await self._submit(key, operation)
+
     async def stop(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         key = self._key(identity)
 
         def operation() -> WAWLifecycleObservation:
             with self._map_lock:
                 supervisor = self._supervisors.get(key)
+                fenced = self._restart_quarantine.get(key)
+            if fenced is not None:
+                return WAWLifecycleObservation(
+                    state="UNKNOWN",
+                    reconciliation_state="reconciliation_required",
+                    process_state="UNKNOWN",
+                    runtime_epoch=self._runtime_epoch,
+                )
             if supervisor is None:
                 raise RuntimeOperationError(
                     "WAW_WORKSPACE_NOT_FOUND",
@@ -238,6 +419,74 @@ class WAWSupervisorExecutor:
                 )
             return self._observation(SupervisorState.STOPPED, process_state="STOPPED")
 
+        return await self._submit(key, operation)
+
+    async def resume_after_login(
+        self,
+        identity: WAWLifecycleIdentity,
+        evidence: WAWPublicAuthEvidence | None = None,
+    ) -> WAWLifecycleObservation:
+        """Resume the existing LOGIN_REQUIRED generation without allocating one."""
+
+        key = self._key(identity)
+
+        def operation() -> WAWLifecycleObservation:
+            if evidence is None:
+                raise RuntimeOperationError(
+                    "RUNTIME_UNAVAILABLE",
+                    "Development resume evidence is unavailable",
+                    category="unavailable",
+                )
+            lease = self._acquire_conflict_lease(key)
+            try:
+                with self._map_lock:
+                    supervisor = self._supervisors.get(key)
+                if supervisor is None:
+                    raise RuntimeOperationError(
+                        "WAW_WORKSPACE_NOT_FOUND",
+                        "Exact workspace supervisor is unavailable",
+                        category="conflict",
+                    )
+                snapshot = supervisor.resume_after_login(evidence)
+                return self._start_observation(snapshot.state)
+            finally:
+                if lease is not None:
+                    lease.release()
+
+        if self._auth_probe is not None:
+
+            async def authorized_operation() -> WAWLifecycleObservation:
+                lease = await self._acquire_conflict_lease_async(key)
+                try:
+                    with self._map_lock:
+                        supervisor = self._supervisors.get(key)
+                    if supervisor is None:
+                        raise RuntimeOperationError(
+                            "WAW_WORKSPACE_NOT_FOUND",
+                            "Exact workspace supervisor is unavailable",
+                            category="conflict",
+                        )
+                    fingerprint = supervisor.fixed_executable_fingerprint()
+                    fresh = await self._fresh_auth(key, fingerprint)
+                    if fresh.result is not WAWPublicAuthResult.AUTHENTICATED:
+                        raise RuntimeOperationError(
+                            "WORKSPACE_AUTH_REQUIRED",
+                            "Fresh authentication is required for resume",
+                            category="conflict",
+                        )
+                    snapshot = await asyncio.to_thread(supervisor.resume_after_login, fresh)
+                    return self._start_observation(snapshot.state)
+                finally:
+                    if lease is not None:
+                        await asyncio.to_thread(lease.release)
+
+            return await self._submit_async(key, authorized_operation)
+        if evidence is None:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Development resume evidence is unavailable",
+                category="unavailable",
+            )
         return await self._submit(key, operation)
 
     def bridge(
@@ -316,6 +565,14 @@ class WAWSupervisorExecutor:
         def operation() -> WAWLifecycleObservation:
             with self._map_lock:
                 supervisor = self._supervisors.get(key)
+                fenced = self._restart_quarantine.get(key)
+            if fenced is not None:
+                return WAWLifecycleObservation(
+                    state="UNKNOWN",
+                    reconciliation_state="reconciliation_required",
+                    process_state="UNKNOWN",
+                    runtime_epoch=self._runtime_epoch,
+                )
             if supervisor is None:
                 raise RuntimeOperationError(
                     "WAW_WORKSPACE_NOT_FOUND",
@@ -353,6 +610,41 @@ class WAWSupervisorExecutor:
                 category="conflict",
             )
         return project
+
+    def _acquire_conflict_lease(self, key: _SupervisorKey) -> WAWConflictLease | None:
+        if self._conflicts is None:
+            return None
+        try:
+            return self._conflicts.acquire_waw_start(
+                project_id=key.project_id, agent_type=AgentType(key.agent_type)
+            )
+        except WAWConflictError as exc:
+            raise RuntimeOperationError(
+                exc.code, "Legacy Runtime conflicts with WAW start", category="conflict"
+            ) from exc
+
+    async def _acquire_conflict_lease_async(self, key: _SupervisorKey) -> WAWConflictLease | None:
+        """Finish a background lock acquire and release it after caller cancellation."""
+
+        task = asyncio.create_task(asyncio.to_thread(self._acquire_conflict_lease, key))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except BaseException:
+                    break
+            if not task.cancelled():
+                try:
+                    lease = task.result()
+                except BaseException:
+                    lease = None
+                if lease is not None:
+                    lease.release()
+            raise
 
     def _project_has_live_supervisor(self, project_id: str) -> bool:
         with self._map_lock:
@@ -424,6 +716,108 @@ class WAWSupervisorExecutor:
                 category="validation",
             )
         return command
+
+    def _prepare_start(
+        self,
+        key: _SupervisorKey,
+        identity: WAWLifecycleIdentity,
+        operation_token: object,
+    ) -> _PreparedStart:
+        start_snapshot = self._start_snapshot(key, operation_token)
+        command = self._command(identity, start_snapshot.binding)
+        transport = self._transport_factory(identity, command)
+        try:
+            if self._execution_authority is not None and (
+                type(transport) is not WAWFixedTransport
+                or transport.execution_authority is not self._execution_authority
+                or not transport.production_qualified
+            ):
+                raise RuntimeOperationError(
+                    "RUNTIME_UNAVAILABLE",
+                    "Runtime transport is not bound to the execution authority",
+                    category="unavailable",
+                )
+            supervisor = WAWSupervisor(
+                workspace_id=key.workspace_id,
+                generation=int(key.generation),
+                command=command,
+                transport=transport,
+                geometry=self._geometry,
+                clock=self._clock,
+                attachment_validator=self._attachment_validator,
+                stop_binding=self._stop_binding(identity),
+                runtime_epoch=self._runtime_epoch,
+            )
+        except BaseException:
+            if type(transport) is WAWFixedTransport:
+                transport.abort_unstarted()
+            raise
+        return _PreparedStart(start_snapshot, supervisor, transport)
+
+    def _finish_start(
+        self,
+        key: _SupervisorKey,
+        prepared: _PreparedStart,
+        operation_token: object,
+    ) -> WAWLifecycleObservation:
+        try:
+            self._commit_start(key, prepared.supervisor, prepared.snapshot, operation_token)
+        except BaseException:
+            if type(prepared.transport) is WAWFixedTransport:
+                prepared.transport.abort_unstarted()
+            raise
+        snapshot = prepared.supervisor.start()
+        return self._start_observation(snapshot.state)
+
+    async def _fresh_auth(
+        self, key: _SupervisorKey, executable_fingerprint: str
+    ) -> WAWPublicAuthEvidence:
+        probe = self._auth_probe
+        if probe is None:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE", "Public auth probe is unavailable", category="unavailable"
+            )
+        checked_at = self._clock()
+        if isinstance(checked_at, bool) or not isinstance(checked_at, (int, float)):
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth clock is invalid", category="conflict"
+            )
+        try:
+            evidence = await probe.probe(
+                agent_type=AgentType(key.agent_type),
+                runtime_host_installation_id=key.runtime_host_installation_id,
+                runtime_host_installation_revision=key.runtime_host_installation_revision,
+                executable_fingerprint=executable_fingerprint,
+                checked_at_monotonic=float(checked_at),
+            )
+            validated = validate_waw_public_auth_probe_evidence(
+                evidence,
+                agent_type=AgentType(key.agent_type),
+                runtime_host_installation_id=key.runtime_host_installation_id,
+                runtime_host_installation_revision=key.runtime_host_installation_revision,
+                executable_fingerprint=executable_fingerprint,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth probe failed closed", category="conflict"
+            ) from exc
+        if validated.checked_at_monotonic != float(checked_at):
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth evidence sample is stale", category="conflict"
+            )
+        if validated.result is WAWPublicAuthResult.UNKNOWN:
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth state is unknown", category="conflict"
+            )
+        if validated.result is WAWPublicAuthResult.UNSUPPORTED:
+            raise RuntimeOperationError(
+                "WAW_PROFILE_UNSUPPORTED",
+                "Vendor auth profile is unsupported",
+                category="conflict",
+            )
+        return validated
 
     def _stop_binding(self, identity: WAWLifecycleIdentity) -> WorkspaceStopOperation:
         return WorkspaceStopOperation(
@@ -510,6 +904,36 @@ class WAWSupervisorExecutor:
         except asyncio.CancelledError:
             # Keep the worker alive until its bounded operation finishes; a
             # cancellation must never permit overlapping transport effects.
+            task.add_done_callback(lambda finished: self._clear_inflight(workspace_id, finished))
+            raise
+        finally:
+            if task.done():
+                self._clear_inflight(workspace_id, task)
+
+    async def _submit_async(
+        self,
+        key: _SupervisorKey,
+        operation: Callable[[], Coroutine[Any, Any, _T]],
+        *,
+        operation_token: object | None = None,
+    ) -> _T:
+        workspace_id = key.workspace_id
+        token = object() if operation_token is None else operation_token
+        with self._map_lock:
+            existing = self._inflight.get(workspace_id)
+            if existing is not None and not existing.done():
+                raise RuntimeOperationError(
+                    "WAW_OPERATION_BUSY",
+                    "Workspace operation is already in progress",
+                    category="conflict",
+                )
+            task: asyncio.Task[_T] = asyncio.create_task(operation())
+            self._inflight[workspace_id] = task
+            self._inflight_project_ids[workspace_id] = key.project_id
+            self._inflight_tokens[workspace_id] = token
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
             task.add_done_callback(lambda finished: self._clear_inflight(workspace_id, finished))
             raise
         finally:
@@ -614,6 +1038,12 @@ class WAWSupervisorExecutor:
                 self._supervisors[key] = supervisor
 
     def _assert_start_map_locked(self, key: _SupervisorKey) -> None:
+        if any(item.workspace_id == key.workspace_id for item in self._restart_quarantine):
+            raise RuntimeOperationError(
+                "RECONCILIATION_REQUIRED",
+                "Workspace has unresolved restart quarantine",
+                category="conflict",
+            )
         if key.project_id in self._binding_reserved or key.project_id in self._binding_inflight:
             raise RuntimeOperationError(
                 "WAW_OPERATION_BUSY",

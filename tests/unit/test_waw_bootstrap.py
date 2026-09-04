@@ -3,14 +3,25 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
+from agentbox_runtime.models import RuntimeOperationError
+from agentbox_runtime.project import ProjectRegistry
+from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
 from agentbox_runtime.waw_bootstrap import (
     create_waw_lifecycle_registry_development_only,
-    create_waw_lifecycle_registry_from_filesystem_bundle,
-    create_waw_lifecycle_registry_from_loaded_manifest_bundle,
-    create_waw_lifecycle_registry_from_manifest_bundle,
-    create_waw_lifecycle_registry_from_manifest_bytes,
+    create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat,
+    create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only,
+    create_waw_lifecycle_registry_from_loaded_manifest_bundle_v1_compat,
+    create_waw_lifecycle_registry_from_manifest_bundle_v1_compat,
+    create_waw_lifecycle_registry_from_manifest_bytes_v1_compat,
+)
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWLegacyClaudeState,
+    WAWLegacyCodexState,
+    WAWManagedConflictState,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
@@ -22,8 +33,10 @@ from agentbox_runtime.waw_lifecycle import WAWLifecycleIdentity, WAWLifecycleObs
 from agentbox_runtime.waw_manifest_codecs import (
     APIHostAnchor,
     CgroupDelegationManifest,
+    CrossManifestPinV2,
     ProjectRootManifest,
     RuntimeHostManifest,
+    RuntimeHostManifestV2,
     WAWManifestCodecError,
     decode_runtime_host_manifest,
     encode_api_host_anchor,
@@ -32,6 +45,8 @@ from agentbox_runtime.waw_manifest_codecs import (
     encode_runtime_host_manifest,
     manifest_sha256,
 )
+from agentbox_runtime.waw_pty import PtyGeometry
+from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 
 HOST = "wri_" + "1" * 32
 PROJECT = "prj_" + "2" * 32
@@ -254,11 +269,11 @@ def test_bootstrap_advances_epoch_counter_without_reuse(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_production_bootstrap_decodes_strict_manifest_bytes(tmp_path: Path) -> None:
+async def test_v1_compat_bootstrap_decodes_strict_manifest_bytes(tmp_path: Path) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
     raw_manifest = _strict_manifest_bytes()
-    registry, epoch = create_waw_lifecycle_registry_from_manifest_bytes(
+    registry, epoch = create_waw_lifecycle_registry_from_manifest_bytes_v1_compat(
         raw_manifest=raw_manifest,
         expected_host_manifest_digest=manifest_sha256(raw_manifest),
         epoch_store=store,
@@ -280,11 +295,11 @@ async def test_production_bootstrap_decodes_strict_manifest_bytes(tmp_path: Path
 
 
 @pytest.mark.parametrize("raw", [b"{}", b'{"schema_version":"waw-runtime-host-installation-v1"}'])
-def test_production_bootstrap_rejects_unverified_manifest_bytes(tmp_path: Path, raw: bytes) -> None:
+def test_v1_compat_bootstrap_rejects_unverified_manifest_bytes(tmp_path: Path, raw: bytes) -> None:
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
     with pytest.raises(WAWRuntimeHostManifestError):
-        create_waw_lifecycle_registry_from_manifest_bytes(
+        create_waw_lifecycle_registry_from_manifest_bytes_v1_compat(
             raw_manifest=raw,
             expected_host_manifest_digest="a" * 64,
             epoch_store=store,
@@ -293,7 +308,7 @@ def test_production_bootstrap_rejects_unverified_manifest_bytes(tmp_path: Path, 
         )
 
 
-def test_production_bootstrap_rejects_digest_mismatch_without_consuming_epoch(
+def test_v1_compat_bootstrap_rejects_digest_mismatch_without_consuming_epoch(
     tmp_path: Path,
 ) -> None:
     from agentbox_runtime.waw_manifest_codecs import WAWManifestCodecError
@@ -302,7 +317,7 @@ def test_production_bootstrap_rejects_digest_mismatch_without_consuming_epoch(
     assert store.bootstrap() == 1
     raw_manifest = _strict_manifest_bytes()
     with pytest.raises(WAWManifestCodecError, match="digest mismatch"):
-        create_waw_lifecycle_registry_from_manifest_bytes(
+        create_waw_lifecycle_registry_from_manifest_bytes_v1_compat(
             raw_manifest=raw_manifest,
             expected_host_manifest_digest="a" * 64,
             epoch_store=store,
@@ -313,7 +328,7 @@ def test_production_bootstrap_rejects_digest_mismatch_without_consuming_epoch(
     assert store.consume() == 2
 
 
-def test_production_bootstrap_rejects_replayed_manifest_against_new_anchor(
+def test_v1_compat_bootstrap_rejects_replayed_manifest_against_new_anchor(
     tmp_path: Path,
 ) -> None:
     from agentbox_runtime.waw_manifest_codecs import WAWManifestCodecError
@@ -325,7 +340,7 @@ def test_production_bootstrap_rejects_replayed_manifest_against_new_anchor(
     # A later anchor is intentionally different: replaying the old bytes is
     # rejected before the epoch trust root is touched.
     with pytest.raises(WAWManifestCodecError, match="digest mismatch"):
-        create_waw_lifecycle_registry_from_manifest_bytes(
+        create_waw_lifecycle_registry_from_manifest_bytes_v1_compat(
             raw_manifest=raw_manifest,
             expected_host_manifest_digest="b" * 64,
             epoch_store=store,
@@ -336,7 +351,7 @@ def test_production_bootstrap_rejects_replayed_manifest_against_new_anchor(
     assert store.consume() == 2
 
 
-def test_production_bootstrap_rejects_invalid_expected_digest_without_consuming_epoch(
+def test_v1_compat_bootstrap_rejects_invalid_expected_digest_without_consuming_epoch(
     tmp_path: Path,
 ) -> None:
     from agentbox_runtime.waw_manifest_codecs import WAWManifestCodecError
@@ -345,7 +360,7 @@ def test_production_bootstrap_rejects_invalid_expected_digest_without_consuming_
     assert store.bootstrap() == 1
     raw_manifest = _strict_manifest_bytes()
     with pytest.raises(WAWManifestCodecError, match="expected host manifest digest"):
-        create_waw_lifecycle_registry_from_manifest_bytes(
+        create_waw_lifecycle_registry_from_manifest_bytes_v1_compat(
             raw_manifest=raw_manifest,
             expected_host_manifest_digest="A" * 64,
             epoch_store=store,
@@ -362,7 +377,7 @@ async def test_bundle_bootstrap_verifies_cross_manifest_pin_before_epoch_consume
     store = _epoch_store(tmp_path)
     assert store.bootstrap() == 1
     anchor_raw, runtime_raw, project_raw, cgroup_raw = _strict_manifest_bundle()
-    registry, epoch = create_waw_lifecycle_registry_from_manifest_bundle(
+    registry, epoch = create_waw_lifecycle_registry_from_manifest_bundle_v1_compat(
         raw_api_host_anchor=anchor_raw,
         raw_runtime_host_manifest=runtime_raw,
         raw_project_root_manifest=project_raw,
@@ -396,7 +411,7 @@ def test_loaded_bundle_bootstrap_preserves_single_bundle_boundary(tmp_path: Path
         project_root=project_raw,
         cgroup_delegation=cgroup_raw,
     )
-    _registry, epoch = create_waw_lifecycle_registry_from_loaded_manifest_bundle(
+    _registry, epoch = create_waw_lifecycle_registry_from_loaded_manifest_bundle_v1_compat(
         bundle=bundle,
         epoch_store=store,
         executor=FakeExecutor(),
@@ -422,7 +437,7 @@ def test_filesystem_bundle_bootstrap_loads_and_pins_before_epoch(tmp_path: Path)
         path.write_bytes(raw)
         path.chmod(0o440)
 
-    _registry, epoch = create_waw_lifecycle_registry_from_filesystem_bundle(
+    _registry, epoch = create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat(
         directory=directory,
         expected_api_host_anchor_digest=manifest_sha256(anchor_raw),
         expected_uid=os.geteuid(),
@@ -454,7 +469,7 @@ def test_filesystem_bundle_bootstrap_rejects_external_anchor_mismatch_without_ep
         path.chmod(0o440)
 
     with pytest.raises(WAWManifestCodecError, match="anchor digest mismatch"):
-        create_waw_lifecycle_registry_from_filesystem_bundle(
+        create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat(
             directory=directory,
             expected_api_host_anchor_digest="f" * 64,
             expected_uid=os.geteuid(),
@@ -482,7 +497,7 @@ def test_bundle_bootstrap_rejects_cross_manifest_mismatch_without_epoch_consume(
         enrollment_state="steady",
     )
     with pytest.raises(WAWManifestCodecError, match="does not pin"):
-        create_waw_lifecycle_registry_from_manifest_bundle(
+        create_waw_lifecycle_registry_from_manifest_bundle_v1_compat(
             raw_api_host_anchor=encode_api_host_anchor(anchor),
             raw_runtime_host_manifest=runtime_raw,
             raw_project_root_manifest=project_raw,
@@ -508,7 +523,7 @@ def test_bundle_bootstrap_rejects_each_manifest_mutation_before_epoch_consume(
     # malformed.  The bundle boundary must reject it before consuming epoch 2.
     bundle[manifest_index] = raw[:-1] + b" "
     with pytest.raises(WAWManifestCodecError):
-        create_waw_lifecycle_registry_from_manifest_bundle(
+        create_waw_lifecycle_registry_from_manifest_bundle_v1_compat(
             raw_api_host_anchor=bundle[0],
             raw_runtime_host_manifest=bundle[1],
             raw_project_root_manifest=bundle[2],
@@ -523,12 +538,149 @@ def test_bundle_bootstrap_rejects_each_manifest_mutation_before_epoch_consume(
 def test_bundle_bootstrap_is_exported_from_runtime_package() -> None:
     import agentbox_runtime
     from agentbox_runtime import (
-        CrossManifestPin,
+        WAWFixedRuntimeComposition,
         create_waw_lifecycle_registry_from_filesystem_bundle,
-        create_waw_lifecycle_registry_from_loaded_manifest_bundle,
     )
 
     assert create_waw_lifecycle_registry_from_filesystem_bundle is not None
-    assert create_waw_lifecycle_registry_from_loaded_manifest_bundle is not None
-    assert CrossManifestPin is not None
+    assert WAWFixedRuntimeComposition is not None
+    assert not hasattr(
+        agentbox_runtime, "create_waw_lifecycle_registry_from_loaded_manifest_bundle"
+    )
     assert not hasattr(agentbox_runtime, "create_waw_lifecycle_registry_from_manifest_bundle")
+    assert not hasattr(agentbox_runtime, "create_waw_lifecycle_registry_from_manifest_bytes")
+    assert not hasattr(agentbox_runtime, "load_canonical_waw_manifest_bundle")
+    assert not hasattr(agentbox_runtime, "RuntimeHostManifest")
+    assert not hasattr(
+        agentbox_runtime, "create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat"
+    )
+
+
+def _verified_v2_pin() -> CrossManifestPinV2:
+    runtime = RuntimeHostManifestV2(
+        runtime_host_installation_id=HOST,
+        runtime_host_installation_revision="3",
+        runtime_attestation_x25519_fingerprint="c" * 64,
+        project_root_manifest_path="/usr/share/agentbox/waw/project-root.v1.json",
+        project_root_manifest_digest="b" * 64,
+        cgroup_delegation_manifest_path="/usr/share/agentbox/waw/cgroup-delegation.v1.json",
+        cgroup_delegation_manifest_digest="4" * 64,
+        executable_inventory_path="/usr/share/agentbox/waw/executable-inventory.v1.json",
+        executable_inventory_digest="5" * 64,
+        interactive_profile_bundle_path="/usr/share/agentbox/waw/interactive-profiles.v1.json",
+        interactive_profile_bundle_digest="6" * 64,
+        tmux_config_path="/usr/share/agentbox/waw/tmux.conf",
+        tmux_config_digest="7" * 64,
+        sandbox_policy_bundle_path="/usr/share/agentbox/waw/sandbox-policies.v1.json",
+        sandbox_policy_bundle_digest="8" * 64,
+        socket_policy_digest="9" * 64,
+        enrollment_epoch="4",
+        enrollment_state="steady",
+    )
+    opaque = cast(Any, object())
+    return CrossManifestPinV2(
+        anchor=opaque,
+        runtime=runtime,
+        project_root=opaque,
+        cgroup=opaque,
+        executable_inventory=opaque,
+        interactive_profiles=opaque,
+        runtime_manifest_digest="a" * 64,
+        project_root_manifest_digest="b" * 64,
+        cgroup_manifest_digest="4" * 64,
+        executable_inventory_digest="5" * 64,
+        interactive_profile_bundle_digest="6" * 64,
+        tmux_config_digest="7" * 64,
+        sandbox_policy_bundle_digest="8" * 64,
+        socket_policy_digest="9" * 64,
+        claude_managed_policy_digest="d" * 64,
+        codex_managed_policy_digest="e" * 64,
+        codex_requirements_policy_digest="f" * 64,
+        codex_managed_config_policy_digest="1" * 64,
+    )
+
+
+def _fixed_executor(tmp_path: Path, epoch: str, authority: Any = None) -> WAWSupervisorExecutor:
+    root = tmp_path / f"projects-{epoch}"
+    root.mkdir(exist_ok=True)
+
+    def unused(*_args: Any) -> Any:
+        raise AssertionError("composition must not start a process")
+
+    class EmptyConflictProbe:
+        def legacy_claude(self, _project_id: str) -> WAWLegacyClaudeState:
+            return WAWLegacyClaudeState.ABSENT
+
+        def legacy_codex_remote(self) -> WAWLegacyCodexState:
+            return WAWLegacyCodexState.ABSENT
+
+        def waw_for_project(self, _project_id: str) -> tuple[WAWManagedConflictState, ...]:
+            return ()
+
+        def waw_for_host(self) -> tuple[WAWManagedConflictState, ...]:
+            return ()
+
+    return WAWSupervisorExecutor(
+        runtime_epoch=epoch,
+        project_registry=ProjectRegistry(root),
+        command_factory=unused,
+        transport_factory=unused,
+        geometry=PtyGeometry(80, 24),
+        clock=lambda: 0.0,
+        attachment_validator=lambda _attachment: True,
+        conflict_coordinator=WAWConflictCoordinator(EmptyConflictProbe()),
+        execution_authority=authority,
+        auth_probe=object.__new__(WAWCachedPublicAuthProbe),
+    )
+
+
+def test_v2_loaded_test_only_composition_uses_consumed_epoch_once(tmp_path: Path) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    calls: list[str] = []
+
+    def factory(epoch: str, authority: Any) -> WAWSupervisorExecutor:
+        calls.append(epoch)
+        return _fixed_executor(tmp_path, epoch, authority)
+
+    composition = create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only(
+        manifest=_verified_v2_pin(),
+        epoch_store=store,
+        executor_factory=factory,
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    assert calls == ["2"]
+    assert composition.runtime_epoch == "2"
+    assert composition.executor.runtime_epoch == "2"
+    assert composition.executor.execution_authority is composition.execution_authority
+    assert composition.registry is not None
+
+
+def test_v2_composition_rejects_executor_epoch_downgrade_without_consuming_epoch(
+    tmp_path: Path,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    with pytest.raises(RuntimeOperationError, match="exact execution authority"):
+        create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only(
+            manifest=_verified_v2_pin(),
+            epoch_store=store,
+            executor_factory=lambda _epoch, authority: _fixed_executor(tmp_path, "1", authority),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    assert store.consume() == 2
+
+
+def test_v2_composition_rejects_unbound_executor_without_consuming_epoch(
+    tmp_path: Path,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    with pytest.raises(RuntimeOperationError, match="exact execution authority"):
+        create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only(
+            manifest=_verified_v2_pin(),
+            epoch_store=store,
+            executor_factory=lambda epoch, _authority: _fixed_executor(tmp_path, epoch),
+            binding_digest_factory=lambda _request: "a" * 64,
+        )
+    assert store.consume() == 2

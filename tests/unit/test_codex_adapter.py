@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -20,9 +21,16 @@ from agentbox_runtime.models import (
     RuntimeOperationError,
 )
 from agentbox_runtime.process import ExecutableIdentity, ProcessResult
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWLegacyClaudeState,
+    WAWLegacyCodexState,
+    WAWManagedConflictState,
+)
 
 FIXTURES = Path("tests/fixtures/codex")
 CANARY = "PAIR-SECRET-CANARY-UNIT-7K3M"
+FORMAL_PROJECT = "prj_" + "1" * 32
 
 
 class FakeRunner:
@@ -52,6 +60,27 @@ class FakeInspector:
     def is_remote_running(self, executable: Path) -> bool:
         del executable
         return self.running
+
+
+class ConflictProbe:
+    def __init__(self, states: tuple[WAWManagedConflictState, ...] = ()) -> None:
+        self.states = states
+        self.calls: list[str] = []
+
+    def legacy_claude(self, project_id: str) -> WAWLegacyClaudeState:
+        del project_id
+        return WAWLegacyClaudeState.ABSENT
+
+    def legacy_codex_remote(self) -> WAWLegacyCodexState:
+        return WAWLegacyCodexState.ABSENT
+
+    def waw_for_project(self, project_id: str) -> tuple[WAWManagedConflictState, ...]:
+        self.calls.append(project_id)
+        return self.states
+
+    def waw_for_host(self) -> tuple[WAWManagedConflictState, ...]:
+        self.calls.append("host")
+        return self.states
 
 
 def result(
@@ -359,6 +388,66 @@ async def test_remote_action_failure_and_timeout_are_safe(tmp_path: Path) -> Non
         with pytest.raises(RuntimeOperationError) as raised:
             await adapter.start_remote()
         assert raised.value.code == expected
+
+
+@pytest.mark.anyio
+async def test_bound_waw_rows_block_codex_remote_before_start(tmp_path: Path) -> None:
+    codex = tmp_path / "bin/codex"
+    make_executable(codex)
+    runner = FakeRunner(base_responses())
+    adapter = CodexAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(codex.parent)},
+        runner=runner,  # type: ignore[arg-type]
+        process_inspector=FakeInspector(),  # type: ignore[arg-type]
+    )
+    probe = ConflictProbe((WAWManagedConflictState.RUNNING,))
+    manager = CodexManager(adapter, conflict_coordinator=WAWConflictCoordinator(probe))
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await manager.start_remote()
+
+    assert raised.value.code == "CODEX_REMOTE_CONFLICT"
+    assert probe.calls == ["host"]
+    assert runner.calls == []
+
+
+@pytest.mark.anyio
+async def test_codex_remote_holds_host_lease_through_command_completion(tmp_path: Path) -> None:
+    codex = tmp_path / "bin/codex"
+    make_executable(codex)
+    responses = base_responses()
+    responses[("remote-control", "start")] = result(("remote-control", "start"))
+    runner = FakeRunner(responses)
+    original_run = runner.run
+    entered_start = asyncio.Event()
+    release_start = asyncio.Event()
+
+    async def paused_run(
+        executable: ExecutableIdentity, arguments: tuple[str, ...], **kwargs: Any
+    ) -> ProcessResult:
+        if arguments == ("remote-control", "start"):
+            entered_start.set()
+            await release_start.wait()
+        return await original_run(executable, arguments, **kwargs)
+
+    runner.run = paused_run  # type: ignore[method-assign]
+    adapter = CodexAdapter(
+        environment={"HOME": str(tmp_path), "PATH": str(codex.parent)},
+        runner=runner,  # type: ignore[arg-type]
+        process_inspector=FakeInspector(),  # type: ignore[arg-type]
+    )
+    coordinator = WAWConflictCoordinator(ConflictProbe())
+    manager = CodexManager(adapter, conflict_coordinator=coordinator)
+    start = asyncio.create_task(manager.start_remote())
+    await asyncio.wait_for(entered_start.wait(), timeout=1)
+    competing = asyncio.create_task(
+        asyncio.to_thread(coordinator.acquire_legacy_claude_start, project_id=FORMAL_PROJECT)
+    )
+    await asyncio.sleep(0.02)
+    assert not competing.done()
+    release_start.set()
+    assert (await start).outcome == "started"
+    (await competing).release()
 
 
 def test_pair_parser_is_conservative_and_discards_raw_output() -> None:

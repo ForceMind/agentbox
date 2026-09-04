@@ -3,6 +3,34 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc5] - Unreleased
+
+### Added
+
+- Runtime host manifest v2, exact-six executable and exact-two interactive
+  profiles, descriptor-held launch handles and complete policy cross-pins.
+- Fixed C17 pane-bootstrap/bridge/attach helpers and Runtime PTY/WBR transport
+  with READY, attach/detach/reconnect, bounded relay and cgroup-backed Stop.
+- Version-bound qualified auth probing, local-TTY login/trust seams and one
+  host-wide WAW/legacy start conflict coordinator.
+- Inert WAW `tmux`, sandbox, Claude and Codex policy templates in the Runtime
+  package, including a canonical exact-two Codex TOML policy bundle and fixed
+  package-data/release-inventory checks.
+- WAW native helper source and the reviewed portable/Linux build-check scripts
+  in release artifacts for inspection and later qualification.
+- Browser-trust packaging derives and verifies the numeric MV3 rc5 identity
+  (`0.3.0.5`) from the npm candidate version.
+- The fixed interactive-process contract, including the R10 software boundary
+  and the distinct R11 integration/R12 host-evidence gates.
+
+### Known limitations
+
+- The templates and helper source neither install nor enable a unit/socket,
+  production binary, vendor CLI/account, policy enrollment or Secret.
+- Real vendor compatibility, signed/reproducible native binaries and installed
+  host isolation/recovery evidence remain R12; browser/API controller integration
+  and complete cross-page bilingual UI remain R11.
+
 ## [0.3.0rc4] - Unreleased
 
 ### Added

@@ -19,20 +19,43 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentbox_runtime.waw_manifest_codecs import (
+    CrossManifestPinV2,
+    WAWManifestCodecError,
+    decode_api_host_anchor_v2,
+    decode_runtime_host_manifest,
+    decode_runtime_host_manifest_v2,
+    verify_api_host_anchor_v2_cross_manifest,
+)
+from agentbox_runtime.waw_manifest_codecs import (
     RuntimeHostManifest as StrictRuntimeHostManifest,
 )
 from agentbox_runtime.waw_manifest_codecs import (
-    WAWManifestCodecError,
-    decode_runtime_host_manifest,
+    RuntimeHostManifestV2 as StrictRuntimeHostManifestV2,
 )
 
 _DEFAULT_PATH = Path("/var/lib/agentbox-waw/runtime-host-installation.json")
+_DEFAULT_V2_PATH = Path("/var/lib/agentbox-waw/runtime-host-installation.v2.json")
 _DEFAULT_BUNDLE_DIRECTORY = Path("/var/lib/agentbox-waw")
+_DEFAULT_PUBLIC_V2_DIRECTORY = Path("/usr/share/agentbox/waw")
 _BUNDLE_FILENAMES = (
     "api-host-anchor.v1",
     "runtime-host-installation.v1",
     "project-root.v1",
     "cgroup-delegation.v1",
+)
+WAW_PUBLIC_MANIFEST_FILENAMES_V2 = (
+    "api-host-anchor.v2.json",
+    "project-root.v1.json",
+    "cgroup-delegation.v1.json",
+    "executable-inventory.v1.json",
+    "interactive-profiles.v1.json",
+    "tmux.conf",
+    "sandbox-policies.v1.json",
+    "socket-policy.v1.json",
+    "claude-managed-policy.v1.json",
+    "codex-managed-policy.v1.json",
+    "codex-requirements.toml",
+    "codex-managed-config.toml",
 )
 _SCHEMA = "waw-runtime-host-installation-v1"
 _MAX_BYTES = 64 * 1024
@@ -85,6 +108,24 @@ class WAWCanonicalManifestBundle:
     runtime_host_installation: bytes
     project_root: bytes
     cgroup_delegation: bytes
+
+
+@dataclass(frozen=True)
+class WAWCanonicalManifestBundleV2:
+    """Exact root-owned public v2 artifact set, held as verified bytes."""
+
+    api_host_anchor: bytes
+    project_root: bytes
+    cgroup_delegation: bytes
+    executable_inventory: bytes
+    interactive_profiles: bytes
+    tmux_config: bytes
+    sandbox_policy_bundle: bytes
+    socket_policy: bytes
+    claude_managed_policy: bytes
+    codex_managed_policy: bytes
+    codex_requirements_policy: bytes
+    codex_managed_config_policy: bytes
 
 
 @dataclass(frozen=True)
@@ -238,6 +279,22 @@ def decode_canonical_waw_runtime_host_manifest(raw: bytes) -> StrictRuntimeHostM
         ) from exc
 
 
+def decode_canonical_waw_runtime_host_manifest_v2(raw: bytes) -> StrictRuntimeHostManifestV2:
+    """Decode only the production Runtime host manifest v2 schema.
+
+    This explicit entry point is the downgrade fence for R10 production
+    composition.  The separate v1 decoder remains available only so existing
+    stored records and development tests can be inspected during migration.
+    """
+
+    try:
+        return decode_runtime_host_manifest_v2(raw)
+    except WAWManifestCodecError as exc:
+        raise WAWRuntimeHostManifestError(
+            "WAW Runtime host manifest v2 codec validation failed"
+        ) from exc
+
+
 def _directory_provenance(
     details: os.stat_result,
     *,
@@ -370,8 +427,8 @@ def _open_ancestor_chain(
         raise WAWRuntimeHostManifestError("WAW manifest ancestor cannot be opened") from exc
 
 
-def load_canonical_waw_runtime_host_manifest(
-    path: Path = _DEFAULT_PATH,
+def _load_canonical_waw_runtime_host_manifest(
+    path: Path,
     *,
     expected_uid: int = 0,
     expected_gid: int,
@@ -380,8 +437,9 @@ def load_canonical_waw_runtime_host_manifest(
     expected_file_mode: int = 0o440,
     expected_max_bytes: int = _MAX_BYTES,
     expected_host_manifest_digest: str,
+    require_v2: bool,
     trusted_root: Path | None = None,
-) -> StrictRuntimeHostManifest:
+) -> StrictRuntimeHostManifest | StrictRuntimeHostManifestV2:
     """Read and verify an installer-owned canonical Runtime host manifest.
 
     The file is opened only through descriptor-relative, ``O_NOFOLLOW``
@@ -489,7 +547,11 @@ def load_canonical_waw_runtime_host_manifest(
 
     raw = bytes(payload)
     try:
-        manifest = decode_runtime_host_manifest(raw)
+        manifest = (
+            decode_runtime_host_manifest_v2(raw)
+            if require_v2
+            else decode_runtime_host_manifest(raw)
+        )
         actual_digest = hashlib.sha256(raw).hexdigest()
         if not hmac.compare_digest(actual_digest, expected_host_manifest_digest):
             raise WAWRuntimeHostManifestError("WAW manifest digest mismatch")
@@ -498,23 +560,89 @@ def load_canonical_waw_runtime_host_manifest(
         raise
     except WAWManifestCodecError as exc:
         raise WAWRuntimeHostManifestError(
-            "WAW Runtime host manifest codec validation failed"
+            "WAW Runtime host manifest v2 codec validation failed"
+            if require_v2
+            else "WAW Runtime host manifest codec validation failed"
         ) from exc
     except (TypeError, ValueError) as exc:
         raise WAWRuntimeHostManifestError("WAW Runtime host manifest validation failed") from exc
 
 
-def load_canonical_waw_manifest_bundle(
-    directory: Path = _DEFAULT_BUNDLE_DIRECTORY,
+def load_canonical_waw_runtime_host_manifest(
+    path: Path = _DEFAULT_PATH,
     *,
+    expected_uid: int = 0,
+    expected_gid: int,
+    expected_ancestor_mode: int | None = None,
+    expected_parent_mode: int = 0o750,
+    expected_file_mode: int = 0o440,
+    expected_max_bytes: int = _MAX_BYTES,
+    expected_host_manifest_digest: str,
+    trusted_root: Path | None = None,
+) -> StrictRuntimeHostManifest:
+    """Load the compatibility v1 record; production R10 must call the v2 loader."""
+
+    result = _load_canonical_waw_runtime_host_manifest(
+        path,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_parent_mode=expected_parent_mode,
+        expected_file_mode=expected_file_mode,
+        expected_max_bytes=expected_max_bytes,
+        expected_host_manifest_digest=expected_host_manifest_digest,
+        require_v2=False,
+        trusted_root=trusted_root,
+    )
+    if type(result) is not StrictRuntimeHostManifest:
+        raise WAWRuntimeHostManifestError("WAW Runtime host manifest schema dispatch failed")
+    return result
+
+
+def load_canonical_waw_runtime_host_manifest_v2(
+    path: Path = _DEFAULT_V2_PATH,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int,
+    expected_ancestor_mode: int | None = None,
+    expected_parent_mode: int = 0o750,
+    expected_file_mode: int = 0o440,
+    expected_max_bytes: int = _MAX_BYTES,
+    expected_host_manifest_digest: str,
+    trusted_root: Path | None = None,
+) -> StrictRuntimeHostManifestV2:
+    """Load the installer-owned v2 record and reject every v1 downgrade."""
+
+    result = _load_canonical_waw_runtime_host_manifest(
+        path,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_parent_mode=expected_parent_mode,
+        expected_file_mode=expected_file_mode,
+        expected_max_bytes=expected_max_bytes,
+        expected_host_manifest_digest=expected_host_manifest_digest,
+        require_v2=True,
+        trusted_root=trusted_root,
+    )
+    if type(result) is not StrictRuntimeHostManifestV2:
+        raise WAWRuntimeHostManifestError("WAW Runtime host manifest v2 schema dispatch failed")
+    return result
+
+
+def _load_canonical_waw_bundle_files(
+    directory: Path,
+    *,
+    filenames: tuple[str, ...],
+    require_exact_set: bool,
     expected_uid: int = 0,
     expected_gid: int,
     expected_ancestor_mode: int | None = None,
     expected_directory_mode: int = 0o750,
     expected_file_mode: int = 0o440,
     expected_max_bytes: int = _MAX_BYTES,
-) -> WAWCanonicalManifestBundle:
-    """Read the four fixed WAW manifests from one installer-owned directory.
+) -> tuple[bytes, ...]:
+    """Read fixed files from one installer-owned descriptor-held directory.
 
     The directory is opened once through the existing descriptor-relative
     ``O_NOFOLLOW`` traversal.  Each fixed filename is then opened relative to
@@ -550,7 +678,7 @@ def load_canonical_waw_manifest_bundle(
     # and its exact final-parent provenance.  The placeholder name is never
     # opened; all actual reads below use fixed basenames and dir_fd.
     directory_fd, _ = _open_ancestor_chain(
-        directory / _BUNDLE_FILENAMES[0],
+        directory / filenames[0],
         expected_uid=uid,
         expected_gid=gid,
         expected_ancestor_mode=expected_ancestor_mode,
@@ -566,11 +694,21 @@ def load_canonical_waw_manifest_bundle(
             expected_mode=directory_mode,
             require_expected_owner=True,
         )
+        if require_exact_set:
+            observed_names = os.listdir(directory_fd)
+            if len(observed_names) != len(filenames) or set(observed_names) != set(filenames):
+                raise WAWRuntimeHostManifestError(
+                    "WAW manifest bundle directory file set is not exact"
+                )
         payloads: list[bytes] = []
-        for filename in _BUNDLE_FILENAMES:
+        for filename in filenames:
             fd: int | None = None
             try:
-                fd = os.open(filename, _OPEN_FLAGS | os.O_NOFOLLOW, dir_fd=directory_fd)
+                fd = os.open(
+                    filename,
+                    _OPEN_FLAGS | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=directory_fd,
+                )
                 first = os.fstat(fd)
                 if (
                     not stat.S_ISREG(first.st_mode)
@@ -640,13 +778,130 @@ def load_canonical_waw_manifest_bundle(
     finally:
         with suppress(OSError):
             os.close(directory_fd)
+    return tuple(payloads)
+
+
+def load_canonical_waw_manifest_bundle(
+    directory: Path = _DEFAULT_BUNDLE_DIRECTORY,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int,
+    expected_ancestor_mode: int | None = None,
+    expected_directory_mode: int = 0o750,
+    expected_file_mode: int = 0o440,
+    expected_max_bytes: int = _MAX_BYTES,
+) -> WAWCanonicalManifestBundle:
+    """Read the compatibility v1 four-file bundle without changing its behavior."""
+
+    payloads = _load_canonical_waw_bundle_files(
+        directory,
+        filenames=_BUNDLE_FILENAMES,
+        require_exact_set=False,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_directory_mode=expected_directory_mode,
+        expected_file_mode=expected_file_mode,
+        expected_max_bytes=expected_max_bytes,
+    )
     return WAWCanonicalManifestBundle(*payloads)
+
+
+def load_canonical_waw_manifest_bundle_v2(
+    directory: Path = _DEFAULT_PUBLIC_V2_DIRECTORY,
+    *,
+    expected_uid: int = 0,
+    expected_gid: int = 0,
+    expected_ancestor_mode: int | None = None,
+    expected_directory_mode: int = 0o755,
+    expected_file_mode: int = 0o444,
+    expected_max_bytes: int = _MAX_BYTES,
+) -> WAWCanonicalManifestBundleV2:
+    """Read the exact public v2 artifact set with descriptor-held provenance."""
+
+    payloads = _load_canonical_waw_bundle_files(
+        directory,
+        filenames=WAW_PUBLIC_MANIFEST_FILENAMES_V2,
+        require_exact_set=True,
+        expected_uid=expected_uid,
+        expected_gid=expected_gid,
+        expected_ancestor_mode=expected_ancestor_mode,
+        expected_directory_mode=expected_directory_mode,
+        expected_file_mode=expected_file_mode,
+        expected_max_bytes=expected_max_bytes,
+    )
+    return WAWCanonicalManifestBundleV2(*payloads)
+
+
+def load_verified_canonical_waw_manifest_bundle_v2(
+    runtime_manifest_path: Path = _DEFAULT_V2_PATH,
+    public_directory: Path = _DEFAULT_PUBLIC_V2_DIRECTORY,
+    *,
+    expected_runtime_uid: int = 0,
+    expected_runtime_gid: int,
+    expected_public_uid: int = 0,
+    expected_public_gid: int = 0,
+    runtime_trusted_root: Path | None = None,
+    expected_runtime_parent_mode: int = 0o750,
+    expected_runtime_file_mode: int = 0o440,
+    expected_public_directory_mode: int = 0o755,
+    expected_public_file_mode: int = 0o444,
+    expected_max_bytes: int = _MAX_BYTES,
+) -> CrossManifestPinV2:
+    """Load both v2 trust roots and return only a completely cross-pinned bundle."""
+
+    bundle = load_canonical_waw_manifest_bundle_v2(
+        public_directory,
+        expected_uid=expected_public_uid,
+        expected_gid=expected_public_gid,
+        expected_directory_mode=expected_public_directory_mode,
+        expected_file_mode=expected_public_file_mode,
+        expected_max_bytes=expected_max_bytes,
+    )
+    try:
+        anchor = decode_api_host_anchor_v2(bundle.api_host_anchor)
+    except WAWManifestCodecError as exc:
+        raise WAWRuntimeHostManifestError("WAW API host anchor v2 is invalid") from exc
+    runtime = load_canonical_waw_runtime_host_manifest_v2(
+        runtime_manifest_path,
+        expected_uid=expected_runtime_uid,
+        expected_gid=expected_runtime_gid,
+        expected_parent_mode=expected_runtime_parent_mode,
+        expected_file_mode=expected_runtime_file_mode,
+        expected_max_bytes=expected_max_bytes,
+        expected_host_manifest_digest=anchor.host_manifest_digest,
+        trusted_root=runtime_trusted_root,
+    )
+    try:
+        return verify_api_host_anchor_v2_cross_manifest(
+            anchor,
+            runtime,
+            bundle.project_root,
+            bundle.cgroup_delegation,
+            bundle.executable_inventory,
+            bundle.interactive_profiles,
+            bundle.tmux_config,
+            bundle.sandbox_policy_bundle,
+            bundle.socket_policy,
+            bundle.claude_managed_policy,
+            bundle.codex_managed_policy,
+            bundle.codex_requirements_policy,
+            bundle.codex_managed_config_policy,
+        )
+    except WAWManifestCodecError as exc:
+        raise WAWRuntimeHostManifestError("WAW manifest v2 cross-pin validation failed") from exc
 
 
 __all__ = [
     "WAWCanonicalManifestBundle",
+    "WAWCanonicalManifestBundleV2",
+    "WAW_PUBLIC_MANIFEST_FILENAMES_V2",
     "WAWRuntimeHostManifestError",
     "decode_canonical_waw_runtime_host_manifest",
+    "decode_canonical_waw_runtime_host_manifest_v2",
     "load_canonical_waw_manifest_bundle",
+    "load_canonical_waw_manifest_bundle_v2",
     "load_canonical_waw_runtime_host_manifest",
+    "load_canonical_waw_runtime_host_manifest_v2",
+    "load_verified_canonical_waw_manifest_bundle_v2",
 ]

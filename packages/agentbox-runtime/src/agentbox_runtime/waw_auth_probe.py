@@ -1,15 +1,15 @@
-"""Non-secret public vendor-auth probe evidence and freshness fence.
+"""Non-secret public vendor-auth probe adapter and freshness fence.
 
-This module deliberately does not execute a vendor command or read credential
-files.  A separately reviewed Runtime adapter supplies the result of a bounded
-public probe; this cache only validates the evidence tuple and its short
-monotonic freshness window before Start/Attach admission.
+The nominal adapter delegates only to the separately reviewed bounded isolation
+runner and retains metadata-only evidence. It never reads credential files or
+exposes argv, environment, raw output, or credential material to callers.
 """
 
 from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
@@ -17,8 +17,16 @@ from typing import Protocol, runtime_checkable
 
 from agentbox_core.waw import AgentType, validate_runtime_host_installation_id
 
+from agentbox_runtime.waw_process_profile import INTERACTIVE_PROFILE_CONSTANTS_V1
+from agentbox_runtime.waw_vendor_probe import (
+    WAWVendorProbeEvidence,
+    WAWVendorProbeResult,
+    WAWVendorProbeRunner,
+)
+
 _DECIMAL = re.compile(r"\A[1-9][0-9]{0,19}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
+_VERSION = re.compile(r"\A[!-~]{1,96}\Z")
 _MAX_U64 = 2**64 - 1
 
 
@@ -44,7 +52,7 @@ class WAWPublicAuthProbe(Protocol):
     environment, credential, or probe-output field.
     """
 
-    def probe(
+    async def probe(
         self,
         *,
         agent_type: AgentType,
@@ -54,6 +62,107 @@ class WAWPublicAuthProbe(Protocol):
         checked_at_monotonic: float,
     ) -> WAWPublicAuthEvidence:
         """Return one bounded evidence record for the exact requested tuple."""
+
+
+@dataclass(frozen=True)
+class WAWVendorPublicAuthBinding:
+    """Trusted installation/profile identity used by one vendor probe."""
+
+    agent_type: AgentType
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+    executable_fingerprint: str
+    profile_id: str
+    vendor_version: str
+
+    def __post_init__(self) -> None:
+        _validate_probe_request(
+            agent_type=self.agent_type,
+            runtime_host_installation_id=self.runtime_host_installation_id,
+            runtime_host_installation_revision=self.runtime_host_installation_revision,
+            executable_fingerprint=self.executable_fingerprint,
+            checked_at_monotonic=0.0,
+        )
+        expected = INTERACTIVE_PROFILE_CONSTANTS_V1[self.agent_type.value]
+        if self.profile_id != expected["profile_id"]:
+            raise WAWPublicAuthProbeError("probe profile ID does not match AgentType")
+        if type(self.vendor_version) is not str or _VERSION.fullmatch(self.vendor_version) is None:
+            raise WAWPublicAuthProbeError("probe vendor version is invalid")
+
+
+class WAWVendorPublicAuthProbeAdapter:
+    """Adapt the bounded vendor runner to exact public-auth evidence."""
+
+    def __init__(
+        self,
+        runner: WAWVendorProbeRunner,
+        bindings: Mapping[AgentType, WAWVendorPublicAuthBinding],
+    ) -> None:
+        if type(runner) is not WAWVendorProbeRunner:
+            raise TypeError("runner must be WAWVendorProbeRunner")
+        if not isinstance(bindings, Mapping):
+            raise TypeError("bindings must be a mapping")
+        copied = dict(bindings)
+        if set(copied) != set(AgentType):
+            raise WAWPublicAuthProbeError("one public-auth binding per AgentType is required")
+        for agent_type, binding in copied.items():
+            if type(agent_type) is not AgentType or type(binding) is not WAWVendorPublicAuthBinding:
+                raise WAWPublicAuthProbeError("public-auth binding is invalid")
+            binding.__post_init__()
+            if binding.agent_type is not agent_type:
+                raise WAWPublicAuthProbeError("public-auth binding key does not match AgentType")
+        self._runner = runner
+        self._bindings = copied
+
+    async def probe(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        _validate_probe_request(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+        )
+        binding = self._bindings[agent_type]
+        if (
+            binding.runtime_host_installation_id != runtime_host_installation_id
+            or binding.runtime_host_installation_revision != runtime_host_installation_revision
+            or binding.executable_fingerprint != executable_fingerprint
+        ):
+            raise WAWPublicAuthProbeError("probe installation identity does not match binding")
+        vendor = await self._runner.probe(
+            agent_type=agent_type,
+            observed_vendor_version=binding.vendor_version,
+        )
+        self._validate_vendor_evidence(vendor, binding)
+        return WAWPublicAuthEvidence(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+            result=WAWPublicAuthResult(vendor.result.value),
+        )
+
+    @staticmethod
+    def _validate_vendor_evidence(
+        evidence: WAWVendorProbeEvidence, binding: WAWVendorPublicAuthBinding
+    ) -> None:
+        if (
+            type(evidence) is not WAWVendorProbeEvidence
+            or evidence.agent_type is not binding.agent_type
+            or evidence.profile_id != binding.profile_id
+            or evidence.vendor_version != binding.vendor_version
+            or type(evidence.result) is not WAWVendorProbeResult
+        ):
+            raise WAWPublicAuthProbeError("vendor probe evidence does not match binding")
 
 
 def validate_waw_public_auth_probe_evidence(
@@ -158,9 +267,19 @@ class WAWPublicAuthProbeCache:
         if not isinstance(evidence, WAWPublicAuthEvidence):
             raise TypeError("evidence must be WAWPublicAuthEvidence")
         with self._lock:
+            current = self._entries.get(evidence.agent_type)
+            if current is not None:
+                if evidence.checked_at_monotonic < current.checked_at_monotonic:
+                    return
+                if evidence.checked_at_monotonic == current.checked_at_monotonic:
+                    if evidence != current:
+                        # Equal samples cannot establish completion order. Drop
+                        # conflicting evidence rather than choosing a winner.
+                        self._entries.pop(evidence.agent_type, None)
+                    return
             self._entries[evidence.agent_type] = evidence
 
-    def refresh_from_probe(
+    async def refresh_from_probe(
         self,
         probe: WAWPublicAuthProbe,
         *,
@@ -187,7 +306,7 @@ class WAWPublicAuthProbeCache:
             executable_fingerprint=executable_fingerprint,
             checked_at_monotonic=checked_at_monotonic,
         )
-        evidence = probe.probe(
+        evidence = await probe.probe(
             agent_type=agent_type,
             runtime_host_installation_id=runtime_host_installation_id,
             runtime_host_installation_revision=runtime_host_installation_revision,
@@ -250,11 +369,52 @@ class WAWPublicAuthProbeCache:
             self._entries.clear()
 
 
+class WAWCachedPublicAuthProbe:
+    """Nominal production seam that live-refreshes and records every probe."""
+
+    def __init__(
+        self,
+        adapter: WAWVendorPublicAuthProbeAdapter,
+        cache: WAWPublicAuthProbeCache,
+    ) -> None:
+        if type(adapter) is not WAWVendorPublicAuthProbeAdapter:
+            raise TypeError("adapter must be WAWVendorPublicAuthProbeAdapter")
+        if type(cache) is not WAWPublicAuthProbeCache:
+            raise TypeError("cache must be WAWPublicAuthProbeCache")
+        self._adapter = adapter
+        self._cache = cache
+
+    @property
+    def cache(self) -> WAWPublicAuthProbeCache:
+        return self._cache
+
+    async def probe(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        return await self._cache.refresh_from_probe(
+            self._adapter,
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+        )
+
+
 __all__ = [
+    "WAWCachedPublicAuthProbe",
     "WAWPublicAuthEvidence",
     "WAWPublicAuthProbe",
     "WAWPublicAuthProbeCache",
     "WAWPublicAuthProbeError",
     "WAWPublicAuthResult",
+    "WAWVendorPublicAuthBinding",
+    "WAWVendorPublicAuthProbeAdapter",
     "validate_waw_public_auth_probe_evidence",
 ]

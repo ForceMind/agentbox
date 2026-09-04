@@ -1,0 +1,18 @@
+# R10 inert managed defaults. It includes no account, endpoint, credential or key.
+allow_login_shell = false
+file_opener = "none"
+
+[analytics]
+enabled = false
+
+[feedback]
+enabled = false
+
+[history]
+persistence = "none"
+
+[otel]
+exporter = "none"
+metrics_exporter = "none"
+trace_exporter = "none"
+log_user_prompt = false

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
+from agentbox_core.waw import AgentType
 from agentbox_runtime import (
     AuthenticationState,
     CapabilityState,
@@ -18,6 +20,14 @@ from agentbox_runtime import (
 )
 from agentbox_runtime.models import DiagnosticFinding
 from agentbox_runtime.process import ExecutableIdentity, inspect_executable
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWLegacyClaudeState,
+    WAWLegacyCodexState,
+    WAWManagedConflictState,
+)
+
+FORMAL_PROJECT = "prj_" + "1" * 32
 
 
 class FakeClaudeAdapter(ClaudeAdapter):
@@ -118,6 +128,26 @@ class FakeTmuxAdapter(TmuxAdapter):
         return True
 
 
+class ConflictProbe:
+    def __init__(self, states: tuple[WAWManagedConflictState, ...] = ()) -> None:
+        self.states = states
+        self.calls: list[str] = []
+
+    def legacy_claude(self, project_id: str) -> WAWLegacyClaudeState:
+        del project_id
+        return WAWLegacyClaudeState.ABSENT
+
+    def legacy_codex_remote(self) -> WAWLegacyCodexState:
+        return WAWLegacyCodexState.ABSENT
+
+    def waw_for_project(self, project_id: str) -> tuple[WAWManagedConflictState, ...]:
+        self.calls.append(project_id)
+        return self.states
+
+    def waw_for_host(self) -> tuple[WAWManagedConflictState, ...]:
+        return self.states
+
+
 def binary(path: Path) -> ExecutableIdentity:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("#!/bin/sh\nexit 0\n")
@@ -167,6 +197,108 @@ async def test_start_is_project_scoped_duplicate_safe_and_restart_discoverable(
     assert discovered.managed is True
     assert discovered.tmux_running is True
     assert discovered.state is ClaudeSessionState.UNKNOWN
+
+
+@pytest.mark.anyio
+async def test_bound_waw_rows_block_legacy_claude_before_spawn(tmp_path: Path) -> None:
+    sessions, tmux, _project = manager(tmp_path)
+    probe = ConflictProbe((WAWManagedConflictState.LOGIN_REQUIRED,))
+    sessions.bind_conflict_coordinator(
+        WAWConflictCoordinator(probe),
+        formal_project_id_for_legacy=lambda relative_key: (
+            FORMAL_PROJECT if relative_key == "project-a" else ""
+        ),
+    )
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await sessions.start("project-a")
+
+    assert raised.value.code == "PROJECT_RUNTIME_ACTIVE"
+    assert probe.calls == [FORMAL_PROJECT]
+    assert tmux.created == []
+
+
+@pytest.mark.anyio
+async def test_missing_formal_project_mapping_fails_closed_before_host_probe(
+    tmp_path: Path,
+) -> None:
+    sessions, tmux, _project = manager(tmp_path)
+    probe = ConflictProbe()
+    sessions.bind_conflict_coordinator(
+        WAWConflictCoordinator(probe),
+        formal_project_id_for_legacy=lambda _relative_key: None,
+    )
+
+    with pytest.raises(RuntimeOperationError) as raised:
+        await sessions.start("project-a")
+
+    assert raised.value.code == "PROJECT_RUNTIME_ACTIVE"
+    assert probe.calls == []
+    assert tmux.created == []
+
+
+@pytest.mark.anyio
+async def test_legacy_claude_holds_host_lease_through_spawn_readback(tmp_path: Path) -> None:
+    sessions, tmux, _project = manager(tmp_path)
+    probe = ConflictProbe()
+    coordinator = WAWConflictCoordinator(probe)
+    sessions.bind_conflict_coordinator(
+        coordinator,
+        formal_project_id_for_legacy=lambda relative_key: (
+            FORMAL_PROJECT if relative_key == "project-a" else ""
+        ),
+    )
+    entered_create = asyncio.Event()
+    release_create = asyncio.Event()
+    original_create = tmux.create_session
+
+    async def paused_create(*args: object, **kwargs: object) -> None:
+        entered_create.set()
+        await release_create.wait()
+        await original_create(*args, **kwargs)  # type: ignore[arg-type]
+
+    tmux.create_session = paused_create  # type: ignore[method-assign]
+    start = asyncio.create_task(sessions.start("project-a"))
+    await asyncio.wait_for(entered_create.wait(), timeout=1)
+    competing = asyncio.create_task(
+        asyncio.to_thread(
+            coordinator.acquire_legacy_codex_start,
+        )
+    )
+    await asyncio.sleep(0.02)
+    assert not competing.done()
+    release_create.set()
+    assert (await start).outcome == "started"
+    (await competing).release()
+
+
+@pytest.mark.anyio
+async def test_cancelled_legacy_claude_lock_wait_cannot_leak_host_lease(tmp_path: Path) -> None:
+    sessions, _tmux, _project = manager(tmp_path)
+    probe = ConflictProbe()
+    coordinator = WAWConflictCoordinator(probe)
+    sessions.bind_conflict_coordinator(
+        coordinator,
+        formal_project_id_for_legacy=lambda _relative_key: FORMAL_PROJECT,
+    )
+    holder = coordinator.acquire_waw_start(
+        project_id=FORMAL_PROJECT,
+        agent_type=AgentType.CLAUDE,
+    )
+    pending = asyncio.create_task(sessions.start("project-a"))
+    await asyncio.sleep(0.02)
+    pending.cancel()
+    await asyncio.sleep(0.02)
+    assert not pending.done()
+    holder.release()
+
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    replacement = await asyncio.wait_for(
+        asyncio.to_thread(coordinator.acquire_legacy_codex_start),
+        timeout=1,
+    )
+    replacement.release()
 
 
 @pytest.mark.anyio

@@ -1,0 +1,20 @@
+# R10 inert admin-enforced requirements. R12 validates the exact Codex build,
+# effective precedence, filesystem placement and these pinned bytes before use.
+allow_login_shell = false
+allow_managed_hooks_only = true
+allow_remote_control = false
+
+[feedback]
+enabled = false
+
+[features]
+browser_use = false
+browser_use_external = false
+browser_use_full_cdp_access = false
+computer_use = false
+in_app_browser = false
+in_app_updates = false
+memories = false
+plugins = false
+remote_plugin = false
+workspace_dependencies = false

@@ -13,11 +13,14 @@ from __future__ import annotations
 import hmac
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from agentbox_core.waw_tickets import AttachmentTuple
 
+from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_activation import WAWActivatedSockets
+from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
 from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_encrypted_server import PeerVerifier, WAWEncryptedServer
@@ -28,11 +31,16 @@ from agentbox_runtime.waw_encrypted_stream import (
     WAWEncryptedRegistry,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
+from agentbox_runtime.waw_fixed_transport import (
+    WAWVerifiedExecutionAuthority,
+    _issue_verified_execution_authority,
+)
 from agentbox_runtime.waw_host_manifest import (
     WAWCanonicalManifestBundle,
     WAWRuntimeHostManifestDevelopmentOnly,
     decode_canonical_waw_runtime_host_manifest,
     load_canonical_waw_manifest_bundle,
+    load_verified_canonical_waw_manifest_bundle_v2,
 )
 from agentbox_runtime.waw_lifecycle import (
     BindingDigestFactory,
@@ -41,10 +49,13 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleRegistry,
 )
 from agentbox_runtime.waw_manifest_codecs import (
+    CrossManifestPinV2,
     RuntimeHostManifest,
+    RuntimeHostManifestV2,
     WAWManifestCodecError,
     manifest_sha256,
     verify_api_host_anchor_cross_manifest,
+    verify_api_host_anchor_v2_cross_manifest,
 )
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
@@ -63,11 +74,9 @@ def create_waw_lifecycle_registry_development_only(
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Development/test-only compatibility bootstrap for the legacy record.
 
-    Production entrypoints must call
-    :func:`create_waw_lifecycle_registry_from_manifest_bytes`, which performs
-    strict ``runtime-host-installation.v1`` decoding first.  Keeping this
-    helper available avoids breaking synthetic fixtures while making its
-    non-production status explicit.
+    Production entrypoints must call the full-v2 bundle or filesystem
+    composition below.  Keeping this helper available avoids breaking
+    synthetic fixtures while making its non-production status explicit.
 
     ``manifest`` and ``epoch_store`` must already have passed their respective
     descriptor/provenance checks.  This helper is intentionally explicit about
@@ -104,7 +113,7 @@ def create_waw_lifecycle_registry_development_only(
     return registry, consumed_epoch
 
 
-def create_waw_lifecycle_registry_from_manifest_bytes(
+def create_waw_lifecycle_registry_from_manifest_bytes_v1_compat(
     *,
     raw_manifest: bytes,
     expected_host_manifest_digest: str,
@@ -116,11 +125,11 @@ def create_waw_lifecycle_registry_from_manifest_bytes(
     cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
     cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
-    """Bootstrap from a strict, canonical ``runtime-host-installation.v1``.
+    """Compatibility bootstrap from ``runtime-host-installation.v1``.
 
-    This is the production-facing data boundary.  Raw bytes are decoded and
-    codec-validated before any Runtime registry is created; malformed,
-    noncanonical, or legacy seven-field records are rejected closed.  The
+    This historical test seam is not a production-facing data boundary.  Raw
+    bytes are decoded and codec-validated before any Runtime registry is
+    created; malformed or noncanonical records are rejected closed.  The
     caller must supply the expected digest from an external, already-validated
     host anchor.  The digest is checked against the canonical bytes before the
     epoch is consumed, so malformed input, stale/replayed input, and digest
@@ -154,7 +163,7 @@ def create_waw_lifecycle_registry_from_manifest_bytes(
     )
 
 
-def create_waw_lifecycle_registry_from_manifest_bundle(
+def create_waw_lifecycle_registry_from_manifest_bundle_v1_compat(
     *,
     raw_api_host_anchor: bytes,
     raw_runtime_host_manifest: bytes,
@@ -207,7 +216,7 @@ def create_waw_lifecycle_registry_from_manifest_bundle(
     )
 
 
-def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
+def create_waw_lifecycle_registry_from_loaded_manifest_bundle_v1_compat(
     *,
     bundle: WAWCanonicalManifestBundle,
     epoch_store: WAWRuntimeEpochStore,
@@ -220,7 +229,7 @@ def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
 ) -> tuple[WAWLifecycleRegistry, str]:
     """Bootstrap from the exact raw bytes returned by the filesystem loader.
 
-    Production callers should pass the value returned by
+    Historical test callers should pass the value returned by
     :func:`load_canonical_waw_manifest_bundle` as one object, rather than
     independently selecting four byte strings.  This preserves the loader's
     bundle boundary through cross-pin verification.  The operation remains a
@@ -230,7 +239,7 @@ def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
 
     if not isinstance(bundle, WAWCanonicalManifestBundle):
         raise TypeError("bundle must be a WAWCanonicalManifestBundle")
-    return create_waw_lifecycle_registry_from_manifest_bundle(
+    return create_waw_lifecycle_registry_from_manifest_bundle_v1_compat(
         raw_api_host_anchor=bundle.api_host_anchor,
         raw_runtime_host_manifest=bundle.runtime_host_installation,
         raw_project_root_manifest=bundle.project_root,
@@ -245,7 +254,7 @@ def create_waw_lifecycle_registry_from_loaded_manifest_bundle(
     )
 
 
-def create_waw_lifecycle_registry_from_filesystem_bundle(
+def create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat(
     *,
     directory: Path,
     expected_api_host_anchor_digest: str,
@@ -263,13 +272,12 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
     cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
     cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> tuple[WAWLifecycleRegistry, str]:
-    """Load, pin, and bootstrap one installer-owned manifest bundle.
+    """Load and bootstrap one historical installer-owned v1 test bundle.
 
     The loader establishes descriptor-relative filesystem provenance, then the
     external API-anchor digest is checked before strict cross-manifest decode
     and durable Runtime epoch consumption.  This is still a non-activating
-    bootstrap boundary: host enrollment/attestation and socket/service startup
-    remain explicit host-gated operations owned by the Runtime entrypoint.
+    compatibility boundary and cannot be used by the top-level production API.
     """
 
     if (
@@ -290,7 +298,7 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
     actual_anchor_digest = manifest_sha256(bundle.api_host_anchor)
     if not hmac.compare_digest(actual_anchor_digest, expected_api_host_anchor_digest):
         raise WAWManifestCodecError("API host anchor digest mismatch")
-    return create_waw_lifecycle_registry_from_loaded_manifest_bundle(
+    return create_waw_lifecycle_registry_from_loaded_manifest_bundle_v1_compat(
         bundle=bundle,
         epoch_store=epoch_store,
         executor=executor,
@@ -302,9 +310,198 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
     )
 
 
+@dataclass(frozen=True)
+class WAWFixedRuntimeComposition:
+    """One v2 manifest trust root, epoch, executor and lifecycle registry."""
+
+    registry: WAWLifecycleRegistry
+    executor: WAWSupervisorExecutor
+    runtime_epoch: str
+    execution_authority: WAWVerifiedExecutionAuthority
+
+
+def create_waw_lifecycle_registry_from_manifest_bundle_test_only(
+    *,
+    raw_api_host_anchor: bytes,
+    raw_runtime_host_manifest: bytes,
+    raw_project_root_manifest: bytes,
+    raw_cgroup_delegation_manifest: bytes,
+    raw_executable_inventory: bytes,
+    raw_interactive_profiles: bytes,
+    raw_tmux_config: bytes,
+    raw_sandbox_policy_bundle: bytes,
+    raw_socket_policy: bytes,
+    raw_claude_managed_policy: bytes,
+    raw_codex_managed_policy: bytes,
+    raw_codex_requirements_policy: bytes,
+    raw_codex_managed_config_policy: bytes,
+    epoch_store: WAWRuntimeEpochStore,
+    executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
+    binding_digest_factory: BindingDigestFactory,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
+) -> WAWFixedRuntimeComposition:
+    """Verify the complete production v2 byte bundle before consuming an epoch."""
+
+    pin = verify_api_host_anchor_v2_cross_manifest(
+        raw_api_host_anchor,
+        raw_runtime_host_manifest,
+        raw_project_root_manifest,
+        raw_cgroup_delegation_manifest,
+        raw_executable_inventory,
+        raw_interactive_profiles,
+        raw_tmux_config,
+        raw_sandbox_policy_bundle,
+        raw_socket_policy,
+        raw_claude_managed_policy,
+        raw_codex_managed_policy,
+        raw_codex_requirements_policy,
+        raw_codex_managed_config_policy,
+    )
+    return create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only(
+        manifest=pin,
+        epoch_store=epoch_store,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+        attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
+    )
+
+
+def create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only(
+    *,
+    manifest: CrossManifestPinV2,
+    epoch_store: WAWRuntimeEpochStore,
+    executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
+    binding_digest_factory: BindingDigestFactory,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
+) -> WAWFixedRuntimeComposition:
+    """Compose from one already verified v2 bundle without selecting it again."""
+
+    if type(manifest) is not CrossManifestPinV2:
+        raise TypeError("manifest must be a verified CrossManifestPinV2")
+    authority = _issue_verified_execution_authority(manifest)
+    return _compose_verified_v2(
+        manifest=manifest,
+        authority=authority,
+        epoch_store=epoch_store,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+        attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
+    )
+
+
+def create_waw_lifecycle_registry_from_filesystem_bundle(
+    *,
+    runtime_manifest_path: Path,
+    public_directory: Path,
+    expected_runtime_gid: int,
+    epoch_store: WAWRuntimeEpochStore,
+    executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
+    binding_digest_factory: BindingDigestFactory,
+    expected_runtime_uid: int = 0,
+    expected_public_uid: int = 0,
+    expected_public_gid: int = 0,
+    runtime_trusted_root: Path | None = None,
+    expected_runtime_parent_mode: int = 0o750,
+    expected_runtime_file_mode: int = 0o440,
+    expected_public_directory_mode: int = 0o755,
+    expected_public_file_mode: int = 0o444,
+    expected_max_bytes: int = 64 * 1024,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
+) -> WAWFixedRuntimeComposition:
+    """Load the full v2 production bundle and compose one exact Runtime epoch."""
+
+    manifest = load_verified_canonical_waw_manifest_bundle_v2(
+        runtime_manifest_path,
+        public_directory,
+        expected_runtime_uid=expected_runtime_uid,
+        expected_runtime_gid=expected_runtime_gid,
+        expected_public_uid=expected_public_uid,
+        expected_public_gid=expected_public_gid,
+        runtime_trusted_root=runtime_trusted_root,
+        expected_runtime_parent_mode=expected_runtime_parent_mode,
+        expected_runtime_file_mode=expected_runtime_file_mode,
+        expected_public_directory_mode=expected_public_directory_mode,
+        expected_public_file_mode=expected_public_file_mode,
+        expected_max_bytes=expected_max_bytes,
+    )
+    authority = _issue_verified_execution_authority(manifest)
+    return _compose_verified_v2(
+        manifest=manifest,
+        authority=authority,
+        epoch_store=epoch_store,
+        executor_factory=executor_factory,
+        binding_digest_factory=binding_digest_factory,
+        attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
+    )
+
+
+def _compose_verified_v2(
+    *,
+    manifest: CrossManifestPinV2,
+    authority: WAWVerifiedExecutionAuthority,
+    epoch_store: WAWRuntimeEpochStore,
+    executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
+    binding_digest_factory: BindingDigestFactory,
+    attestation_store: WAWWorkspaceAttestationStore | None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None,
+) -> WAWFixedRuntimeComposition:
+    """Prepare and validate exact authority binding before epoch commit."""
+
+    if not callable(executor_factory):
+        raise TypeError("executor_factory must be callable")
+
+    def prepare(runtime_epoch: str) -> WAWSupervisorExecutor:
+        return executor_factory(runtime_epoch, authority)
+
+    def validate(executor: WAWSupervisorExecutor, runtime_epoch: str) -> None:
+        if (
+            type(executor) is not WAWSupervisorExecutor
+            or executor.runtime_epoch != runtime_epoch
+            or executor.conflict_coordinator is None
+            or executor.execution_authority is not authority
+            or type(executor.auth_probe) is not WAWCachedPublicAuthProbe
+        ):
+            raise RuntimeOperationError(
+                "WAW_RUNTIME_EPOCH_INVALID",
+                "Fixed executor is not bound to the exact execution authority",
+                category="validation",
+            )
+
+    consumed, executor = epoch_store.consume_prepared(prepare, validate)
+    runtime_epoch = str(consumed)
+    registry = WAWLifecycleRegistry(
+        runtime_host_installation_id=manifest.runtime.runtime_host_installation_id,
+        runtime_host_installation_revision=manifest.runtime.runtime_host_installation_revision,
+        host_manifest_digest=manifest.runtime_manifest_digest,
+        project_root_manifest_digest=manifest.runtime.project_root_manifest_digest,
+        enrollment_epoch=manifest.runtime.enrollment_epoch,
+        enrollment_state=manifest.runtime.enrollment_state,
+        executor=executor,
+        binding_digest_factory=binding_digest_factory,
+        runtime_epoch=runtime_epoch,
+        attestation_store=attestation_store,
+        cgroup_attestation_store=cgroup_attestation_store,
+        cgroup_attestation_factory=cgroup_attestation_factory,
+    )
+    return WAWFixedRuntimeComposition(registry, executor, runtime_epoch, authority)
+
+
 def _create_registry_from_verified_manifest(
     *,
-    manifest: RuntimeHostManifest,
+    manifest: RuntimeHostManifest | RuntimeHostManifestV2,
     host_manifest_digest: str,
     epoch_store: WAWRuntimeEpochStore,
     executor: WAWLifecycleExecutor | None = None,
@@ -449,8 +646,13 @@ def build_waw_encrypted_servers(
 
 
 __all__ = [
+    "WAWFixedRuntimeComposition",
     "build_waw_control_server",
     "create_waw_lifecycle_registry_from_filesystem_bundle",
-    "create_waw_lifecycle_registry_from_loaded_manifest_bundle",
-    "create_waw_lifecycle_registry_from_manifest_bytes",
+    "create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat",
+    "create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only",
+    "create_waw_lifecycle_registry_from_loaded_manifest_bundle_v1_compat",
+    "create_waw_lifecycle_registry_from_manifest_bundle_test_only",
+    "create_waw_lifecycle_registry_from_manifest_bundle_v1_compat",
+    "create_waw_lifecycle_registry_from_manifest_bytes_v1_compat",
 ]

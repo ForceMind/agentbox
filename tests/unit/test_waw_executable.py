@@ -8,6 +8,7 @@ Open/no-follow/pread/rename/close operations use actual OS file descriptors.
 
 from __future__ import annotations
 
+import fcntl
 import gc
 import hashlib
 import os
@@ -18,9 +19,9 @@ import sys
 import threading
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import FrozenInstanceError, dataclass, field
+from dataclasses import FrozenInstanceError, dataclass, field, replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from agentbox_runtime import waw_executable as subject
@@ -28,7 +29,13 @@ from agentbox_runtime.waw_executable import (
     WAWExecutableError,
     WAWExecutableInventory,
     WAWExecutableKind,
+    WAWExecutableLaunchHandle,
     WAWExecutablePin,
+)
+from agentbox_runtime.waw_process_profile import (
+    EXECUTABLE_POLICIES_V1,
+    ExecutableInventoryEntryV1,
+    ExecutableInventoryV1,
 )
 
 
@@ -207,6 +214,172 @@ def test_inventory_rejects_untyped_entries() -> None:
     ):
         with pytest.raises(WAWExecutableError):
             WAWExecutableInventory(cast(dict[WAWExecutableKind, WAWExecutablePin], pins))
+
+
+def _strict_inventory_manifest() -> ExecutableInventoryV1:
+    return ExecutableInventoryV1(
+        tuple(
+            ExecutableInventoryEntryV1(
+                kind=policy.kind,
+                path=policy.fixed_path or f"/opt/vendor/{policy.kind}",
+                sha256=f"{index:x}" * 64,
+                max_bytes=policy.max_bytes,
+                version_identity=policy.version_identity,
+                version_probe_id=policy.version_probe_id,
+            )
+            for index, policy in enumerate(EXECUTABLE_POLICIES_V1, start=1)
+        )
+    )
+
+
+def test_strict_manifest_constructs_exact_six_inventory_and_version_records() -> None:
+    manifest = _strict_inventory_manifest()
+    inventory = WAWExecutableInventory.from_manifest(manifest)
+    for entry, kind in zip(manifest.executables, WAWExecutableKind, strict=True):
+        assert inventory.version_record(kind) == (entry.version_identity, entry.version_probe_id)
+    with pytest.raises(WAWExecutableError):
+        inventory.version_record(cast(WAWExecutableKind, "codex"))
+
+
+def test_strict_manifest_is_revalidated_and_partial_constructor_has_no_version_authority() -> None:
+    manifest = _strict_inventory_manifest()
+    changed = replace(
+        manifest,
+        executables=(
+            replace(manifest.executables[0], version_probe_id="caller-probe"),
+            *manifest.executables[1:],
+        ),
+    )
+    with pytest.raises(WAWExecutableError, match="invalid"):
+        WAWExecutableInventory.from_manifest(changed)
+    partial = WAWExecutableInventory(
+        {WAWExecutableKind.CODEX: WAWExecutablePin(Path("/opt/vendor/codex"), "a" * 64)}
+    )
+    with pytest.raises(WAWExecutableError, match="strict version"):
+        partial.version_record(WAWExecutableKind.CODEX)
+
+
+def _strict_tree_inventory(tree: _SyntheticTree) -> WAWExecutableInventory:
+    manifest = _strict_inventory_manifest()
+    entries = list(manifest.executables)
+    index = list(WAWExecutableKind).index(WAWExecutableKind.CODEX)
+    entries[index] = replace(
+        entries[index],
+        path=str(tree.path),
+        sha256=hashlib.sha256(tree.original).hexdigest(),
+    )
+    return WAWExecutableInventory.from_manifest(replace(manifest, executables=tuple(entries)))
+
+
+def _track_launch_duplicates(tree: _SyntheticTree, monkeypatch: pytest.MonkeyPatch) -> None:
+    original = fcntl.fcntl
+
+    def tracked(descriptor: int, operation: int, argument: int = 0) -> int:
+        result = original(descriptor, operation, argument)
+        if operation == fcntl.F_DUPFD_CLOEXEC:
+            tree.live.add(result)
+        return result
+
+    monkeypatch.setattr(fcntl, "fcntl", tracked)
+
+
+def test_launch_handle_is_one_shot_kind_bound_and_independent_of_source_close(
+    synthetic_tree: _SyntheticTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _track_launch_duplicates(synthetic_tree, monkeypatch)
+    verified = _strict_tree_inventory(synthetic_tree).open(WAWExecutableKind.CODEX)
+    launch = verified.create_launch_handle(
+        expected_kind=WAWExecutableKind.CODEX, profile_digest="f" * 64
+    )
+    assert launch.identity is verified.identity
+    assert launch.profile_digest == "f" * 64
+    assert not launch.closed
+    verified.close()
+    descriptor = launch.take(WAWExecutableKind.CODEX)
+    assert os.fstat(descriptor).st_ino == synthetic_tree.path.stat().st_ino
+    subject._close(descriptor)
+    with pytest.raises(WAWExecutableError, match="consumed"):
+        launch.take(WAWExecutableKind.CODEX)
+
+
+def test_launch_handle_wrong_kind_does_not_consume_and_close_is_idempotent(
+    synthetic_tree: _SyntheticTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _track_launch_duplicates(synthetic_tree, monkeypatch)
+    with _strict_tree_inventory(synthetic_tree).open(WAWExecutableKind.CODEX) as verified:
+        launch = verified.create_launch_handle(
+            expected_kind=WAWExecutableKind.CODEX, profile_digest="f" * 64
+        )
+    with pytest.raises(WAWExecutableError, match="kind"):
+        launch.take(WAWExecutableKind.CLAUDE)
+    assert not launch.closed
+    launch.close()
+    launch.close()
+    assert launch.closed
+
+
+def test_launch_handoff_serializes_with_source_close(
+    synthetic_tree: _SyntheticTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _track_launch_duplicates(synthetic_tree, monkeypatch)
+    verified = _strict_tree_inventory(synthetic_tree).open(WAWExecutableKind.CODEX)
+    entered = threading.Event()
+    release = threading.Event()
+    original = subject._verify_launch_descriptor
+
+    def blocked(descriptor: int, identity: object) -> None:
+        entered.set()
+        assert release.wait(5)
+        original(descriptor, cast(Any, identity))
+
+    monkeypatch.setattr(subject, "_verify_launch_descriptor", blocked)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        created = pool.submit(
+            verified.create_launch_handle,
+            expected_kind=WAWExecutableKind.CODEX,
+            profile_digest="f" * 64,
+        )
+        assert entered.wait(5)
+        closed = pool.submit(verified.close)
+        assert not closed.done()
+        release.set()
+        launch = created.result(timeout=5)
+        closed.result(timeout=5)
+    launch.close()
+
+
+def test_launch_handoff_rejects_path_replacement_before_duplication(
+    synthetic_tree: _SyntheticTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _track_launch_duplicates(synthetic_tree, monkeypatch)
+    verified = _strict_tree_inventory(synthetic_tree).open(WAWExecutableKind.CODEX)
+    replacement = synthetic_tree.path.with_name("replacement")
+    replacement.write_bytes(_elf())
+    replacement.chmod(0o755)
+    os.replace(replacement, synthetic_tree.path)
+    with pytest.raises(WAWExecutableError):
+        verified.create_launch_handle(
+            expected_kind=WAWExecutableKind.CODEX, profile_digest="f" * 64
+        )
+    assert verified.closed
+
+
+def test_launch_handle_cannot_be_constructed_or_rekinded_by_caller(
+    synthetic_tree: _SyntheticTree,
+) -> None:
+    with (
+        synthetic_tree.inventory().open(WAWExecutableKind.CODEX) as verified,
+        pytest.raises(WAWExecutableError, match="caller-constructible"),
+    ):
+        WAWExecutableLaunchHandle(
+            object(),
+            descriptor=-1,
+            identity=verified.identity,
+            inventory_digest="a" * 64,
+            version_identity="codex-version-v1",
+            version_probe_id="codex-probe-v1",
+            profile_digest="f" * 64,
+        )
 
 
 @pytest.mark.parametrize(

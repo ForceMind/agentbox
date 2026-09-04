@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import os
+import socket
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,18 +23,39 @@ from agentbox_protocol.waw_wire import Leg, encode_wire_frame
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.process import inspect_executable
 from agentbox_runtime.project import ProjectRegistry
+from agentbox_runtime.waw_auth_probe import WAWPublicAuthEvidence, WAWPublicAuthResult
 from agentbox_runtime.waw_codex_command import WAWCodexCommand
 from agentbox_runtime.waw_command import WAWClaudeCommand
+from agentbox_runtime.waw_conflicts import (
+    WAWConflictCoordinator,
+    WAWConflictError,
+    WAWLegacyClaudeState,
+    WAWLegacyCodexState,
+    WAWManagedConflictState,
+)
 from agentbox_runtime.waw_encrypted_stream import (
     BoundedRedraw,
     RuntimePeer,
     WAWEncryptedRegistry,
     admission_fields,
 )
+from agentbox_runtime.waw_fixed_transport import (
+    LinuxCgroupControlHandle,
+    NativeWBREndpoint,
+    WAWFixedTransport,
+)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleRegistry,
     WAWProjectBinding,
+)
+from agentbox_runtime.waw_process_inspector import (
+    FixedLaunchHandles,
+    FixedLaunchRequest,
+    FixedProcessBinding,
+    FixedProcessIdentity,
+    FixedStartProof,
+    FixedStartState,
 )
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
@@ -815,6 +838,733 @@ async def test_cross_generation_binding_and_host_fail_closed(tmp_path: Path) -> 
     assert transport.starts == 1
 
 
+@pytest.mark.anyio
+async def test_same_generation_resume_after_login_uses_existing_supervisor_cas(
+    tmp_path: Path,
+) -> None:
+    executor, identity, transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    await executor.register_project_binding(binding())
+    original_start = transport.start
+
+    def login_required(command: Any, geometry: PtyGeometry) -> RuntimeStartEvidence:
+        started = original_start(command, geometry)
+        return replace(started, state=SupervisorState.LOGIN_REQUIRED)
+
+    transport.start = login_required  # type: ignore[method-assign]
+    resume_calls: list[WAWPublicAuthEvidence] = []
+
+    def resume(evidence: WAWPublicAuthEvidence) -> RuntimeStartEvidence:
+        resume_calls.append(evidence)
+        return RuntimeStartEvidence(
+            identity.workspace_id,
+            int(identity.generation),
+            transport.marker,
+            SupervisorState.RUNNING,
+            True,
+        )
+
+    transport.resume_after_login = resume  # type: ignore[attr-defined]
+    started = await executor.start(identity)
+    assert started.state == "LOGIN_REQUIRED"
+    evidence = WAWPublicAuthEvidence(
+        AgentType.CODEX,
+        HOST,
+        "1",
+        "c" * 64,
+        0.0,
+        WAWPublicAuthResult.AUTHENTICATED,
+    )
+    resumed = await executor.resume_after_login(identity, evidence)
+    assert resumed.state == "RUNNING"
+    assert resume_calls == [evidence]
+    assert transport.starts == 1
+    with pytest.raises(RuntimeOperationError, match="not waiting"):
+        await executor.resume_after_login(identity, evidence)
+
+
+@pytest.mark.anyio
+async def test_concurrent_login_resume_is_fenced_by_workspace_operation_slot(
+    tmp_path: Path,
+) -> None:
+    executor, identity, transport, _ = setup(tmp_path, AgentType.CLAUDE, epoch="2")
+    await executor.register_project_binding(binding())
+    original_start = transport.start
+
+    def login_required(command: Any, geometry: PtyGeometry) -> RuntimeStartEvidence:
+        return replace(original_start(command, geometry), state=SupervisorState.LOGIN_REQUIRED)
+
+    transport.start = login_required  # type: ignore[method-assign]
+    entered = threading.Event()
+    release = threading.Event()
+
+    def resume(_evidence: WAWPublicAuthEvidence) -> RuntimeStartEvidence:
+        entered.set()
+        release.wait(timeout=5)
+        return RuntimeStartEvidence(
+            identity.workspace_id,
+            1,
+            transport.marker,
+            SupervisorState.RUNNING,
+            True,
+        )
+
+    transport.resume_after_login = resume  # type: ignore[attr-defined]
+    await executor.start(identity)
+    evidence = WAWPublicAuthEvidence(
+        AgentType.CLAUDE,
+        HOST,
+        "1",
+        "c" * 64,
+        0.0,
+        WAWPublicAuthResult.AUTHENTICATED,
+    )
+    pending = asyncio.create_task(executor.resume_after_login(identity, evidence))
+    assert await asyncio.to_thread(entered.wait, 2)
+    with pytest.raises(RuntimeOperationError, match="already in progress"):
+        await executor.resume_after_login(identity, evidence)
+    release.set()
+    assert (await pending).state == "RUNNING"
+
+
 def _replace(identity: WAWLifecycleIdentity, **changes: str) -> WAWLifecycleIdentity:
     values = identity.__dict__ | changes
     return WAWLifecycleIdentity(**values)
+
+
+@dataclass
+class _ConflictProbe:
+    claude: WAWLegacyClaudeState = WAWLegacyClaudeState.ABSENT
+    codex: WAWLegacyCodexState = WAWLegacyCodexState.ABSENT
+    project_waw: tuple[WAWManagedConflictState, ...] = ()
+    calls: list[str] = field(default_factory=list)
+
+    def legacy_claude(self, project_id: str) -> WAWLegacyClaudeState:
+        assert project_id == PROJECT
+        self.calls.append("claude")
+        return self.claude
+
+    def legacy_codex_remote(self) -> WAWLegacyCodexState:
+        self.calls.append("codex")
+        return self.codex
+
+    def waw_for_project(self, project_id: str) -> tuple[WAWManagedConflictState, ...]:
+        assert project_id == PROJECT
+        return self.project_waw
+
+    def waw_for_host(self) -> tuple[WAWManagedConflictState, ...]:
+        return self.project_waw
+
+
+@pytest.mark.anyio
+async def test_executor_conflict_check_preserves_claude_precedence(tmp_path: Path) -> None:
+    executor, identity, transport, _ = setup(tmp_path, AgentType.CODEX)
+    await executor.register_project_binding(binding())
+    probe = _ConflictProbe(
+        claude=WAWLegacyClaudeState.RUNNING,
+        codex=WAWLegacyCodexState.RUNNING,
+    )
+    executor._conflicts = WAWConflictCoordinator(probe)
+    with pytest.raises(RuntimeOperationError) as raised:
+        await executor.start(identity)
+    assert raised.value.code == "PROJECT_RUNTIME_ACTIVE"
+    assert probe.calls == ["claude"]
+    assert transport.starts == 0
+
+
+@pytest.mark.anyio
+async def test_executor_holds_shared_host_lease_through_transport_start_and_readback(
+    tmp_path: Path,
+) -> None:
+    executor, identity, transport, _ = setup(tmp_path, AgentType.CLAUDE)
+    await executor.register_project_binding(binding())
+    probe = _ConflictProbe(project_waw=(WAWManagedConflictState.RUNNING,))
+    executor._conflicts = WAWConflictCoordinator(probe)
+    legacy = WAWConflictCoordinator(probe)
+    gate = threading.Event()
+    transport.start_gate = gate
+    pending = asyncio.create_task(executor.start(identity))
+    for _ in range(100):
+        if transport.starts:
+            break
+        await asyncio.sleep(0.001)
+    assert transport.starts == 1
+    finished = threading.Event()
+    outcomes: list[str] = []
+
+    def racing_legacy() -> None:
+        try:
+            legacy.acquire_legacy_claude_start(project_id=PROJECT).release()
+            outcomes.append("allowed")
+        except WAWConflictError as exc:
+            outcomes.append(exc.code)
+        finished.set()
+
+    thread = threading.Thread(target=racing_legacy)
+    thread.start()
+    assert not finished.wait(timeout=0.05)
+    gate.set()
+    assert (await pending).state == "RUNNING"
+    assert finished.wait(timeout=1)
+    thread.join(timeout=1)
+    assert outcomes == ["PROJECT_RUNTIME_ACTIVE"]
+
+
+@pytest.mark.anyio
+async def test_cancelled_background_conflict_acquire_releases_late_lease(
+    tmp_path: Path,
+) -> None:
+    executor, identity, _transport, _ = setup(tmp_path, AgentType.CLAUDE)
+    probe = _ConflictProbe()
+    coordinator = WAWConflictCoordinator(probe)
+    executor._conflicts = coordinator
+    blocking = WAWConflictCoordinator(probe).acquire_legacy_codex_start()
+    pending = asyncio.create_task(executor._acquire_conflict_lease_async(executor._key(identity)))
+    await asyncio.sleep(0.02)
+    pending.cancel()
+    blocking.release()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    # If the cancelled background thread leaked its eventual WAW lease, this
+    # independent coordinator would block forever on the module host lock.
+    acquired = await asyncio.wait_for(
+        asyncio.to_thread(WAWConflictCoordinator(probe).acquire_legacy_codex_start),
+        timeout=1,
+    )
+    acquired.release()
+
+
+class _RestartNativePort:
+    def start(self, request: FixedLaunchRequest) -> FixedStartProof:
+        raise AssertionError("restart quarantine must not start or adopt")
+
+    def open_attachment(self, _request: Any) -> Any:
+        raise AssertionError("restart quarantine must not attach")
+
+    def probe(self, _binding: FixedProcessBinding) -> RuntimeProbeEvidence:
+        raise AssertionError("restart quarantine must not probe or adopt")
+
+    def stop(self, _binding: FixedProcessBinding) -> RuntimeStopEvidence:
+        raise AssertionError("restart quarantine must use destroy_fenced")
+
+    def destroy_fenced(self, binding: FixedProcessBinding) -> RuntimeStopEvidence:
+        item = binding.identity
+        return RuntimeStopEvidence(item.workspace_id, item.generation, item.managed_marker, True, 0)
+
+
+class _AuthNativePort(_RestartNativePort):
+    def __init__(self) -> None:
+        self.starts = 0
+
+    def start(self, request: FixedLaunchRequest) -> FixedStartProof:
+        self.starts += 1
+        return FixedStartProof(
+            request,
+            FixedStartState.RUNNING,
+            FixedProcessBinding(request.identity, object(), object(), object()),
+            1,
+        )
+
+    def probe(self, binding: FixedProcessBinding) -> RuntimeProbeEvidence:
+        item = binding.identity
+        return RuntimeProbeEvidence(
+            item.workspace_id, item.generation, item.managed_marker, RuntimeProbeState.RUNNING
+        )
+
+    def stop(self, binding: FixedProcessBinding) -> RuntimeStopEvidence:
+        item = binding.identity
+        return RuntimeStopEvidence(item.workspace_id, item.generation, item.managed_marker, True, 0)
+
+
+class _AuthProbe:
+    def __init__(self, result: WAWPublicAuthResult) -> None:
+        self.result = result
+        self.calls: list[tuple[AgentType, str, str, str, float]] = []
+
+    async def probe(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        self.calls.append(
+            (
+                agent_type,
+                runtime_host_installation_id,
+                runtime_host_installation_revision,
+                executable_fingerprint,
+                checked_at_monotonic,
+            )
+        )
+        return WAWPublicAuthEvidence(
+            agent_type,
+            runtime_host_installation_id,
+            runtime_host_installation_revision,
+            executable_fingerprint,
+            checked_at_monotonic,
+            self.result,
+        )
+
+
+class _BlockingAuthProbe(_AuthProbe):
+    def __init__(self) -> None:
+        super().__init__(WAWPublicAuthResult.AUTHENTICATED)
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    async def probe(
+        self,
+        *,
+        agent_type: AgentType,
+        runtime_host_installation_id: str,
+        runtime_host_installation_revision: str,
+        executable_fingerprint: str,
+        checked_at_monotonic: float,
+    ) -> WAWPublicAuthEvidence:
+        self.entered.set()
+        assert await asyncio.to_thread(self.release.wait, 5)
+        return await super().probe(
+            agent_type=agent_type,
+            runtime_host_installation_id=runtime_host_installation_id,
+            runtime_host_installation_revision=runtime_host_installation_revision,
+            executable_fingerprint=executable_fingerprint,
+            checked_at_monotonic=checked_at_monotonic,
+        )
+
+
+def _install_fixed_auth_transport(
+    executor: WAWSupervisorExecutor,
+    lifecycle: WAWLifecycleIdentity,
+    probe: _AuthProbe,
+) -> _AuthNativePort:
+    native = _AuthNativePort()
+
+    def fixed_factory(_identity: WAWLifecycleIdentity, command: Any) -> WAWFixedTransport:
+        item = FixedProcessIdentity(
+            lifecycle.workspace_id,
+            lifecycle.project_id,
+            AgentType(lifecycle.agent_type),
+            int(lifecycle.generation),
+            "d" * 64,
+            command.managed_marker,
+            "b" * 64,
+            lifecycle.runtime_host_installation_id,
+            lifecycle.runtime_host_installation_revision,
+            "2",
+        )
+        return WAWFixedTransport.development_only(
+            identity=item,
+            handles=FixedLaunchHandles(
+                project_directory=object(),
+                selected_home_directory=object(),
+                temp_directory=object(),
+                bridge_executable=object(),
+                vendor_executable=object(),
+                policy_directory=object(),
+                wbr_endpoint=object(),
+                cgroup=object(),
+            ),
+            executable_fingerprint="c" * 64,
+            port=native,
+            clock=lambda: 0.0,
+        )
+
+    executor._transport_factory = fixed_factory
+    executor._auth_probe = probe
+    executor._conflicts = WAWConflictCoordinator(_ConflictProbe())
+    return native
+
+
+@pytest.mark.anyio
+async def test_restart_quarantine_returns_unknown_without_adopt_then_exact_destroy(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    item = FixedProcessIdentity(
+        lifecycle.workspace_id,
+        lifecycle.project_id,
+        AgentType.CODEX,
+        1,
+        "d" * 64,
+        managed_marker(
+            runtime_host_installation_id=HOST,
+            runtime_host_installation_revision=1,
+            project_id=PROJECT,
+            agent_type=AgentType.CODEX,
+            workspace_id_value=lifecycle.workspace_id,
+            generation=1,
+            binding_revision=1,
+            binding_digest=DIGEST,
+        ),
+        "b" * 64,
+        HOST,
+        "1",
+        "2",
+    )
+    port = _RestartNativePort()
+    fixed = WAWFixedTransport.development_only(
+        identity=item,
+        handles=FixedLaunchHandles(
+            project_directory=object(),
+            selected_home_directory=object(),
+            temp_directory=object(),
+            bridge_executable=object(),
+            vendor_executable=object(),
+            policy_directory=object(),
+            wbr_endpoint=object(),
+            cgroup=object(),
+        ),
+        executable_fingerprint="c" * 64,
+        port=port,
+        clock=lambda: 0.0,
+    )
+    old = replace(item, runtime_epoch="1")
+    old_binding = FixedProcessBinding(old, object(), object(), object())
+    executor.register_restart_quarantine(lifecycle, fixed, old_binding)
+    observed = await executor.status(lifecycle)
+    assert observed.state == "UNKNOWN"
+    assert observed.reconciliation_state == "reconciliation_required"
+    with pytest.raises(RuntimeOperationError, match="restart quarantine"):
+        await executor.start(lifecycle)
+    destroyed = await executor.destroy_fenced(lifecycle)
+    assert destroyed.state == "STOPPED"
+
+
+@pytest.mark.anyio
+async def test_fresh_auth_gate_spawns_only_authenticated_and_resumes_same_generation(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    await executor.register_project_binding(binding())
+    probe = _AuthProbe(WAWPublicAuthResult.UNAUTHENTICATED)
+    native = _install_fixed_auth_transport(executor, lifecycle, probe)
+    login = await executor.start(lifecycle)
+    assert login.state == "LOGIN_REQUIRED" and login.process_state == "NOT_STARTED"
+    assert native.starts == 0
+    probe.result = WAWPublicAuthResult.AUTHENTICATED
+    resumed = await executor.resume_after_login(lifecycle)
+    assert resumed.state == "RUNNING" and resumed.process_state == "RUNNING"
+    assert native.starts == 1
+    assert [call[3] for call in probe.calls] == ["c" * 64, "c" * 64]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("result", "code"),
+    [
+        (WAWPublicAuthResult.UNKNOWN, "WAW_AUTH_UNKNOWN"),
+        (WAWPublicAuthResult.UNSUPPORTED, "WAW_PROFILE_UNSUPPORTED"),
+    ],
+)
+async def test_unknown_or_unsupported_auth_fails_before_process_and_map_commit(
+    tmp_path: Path, result: WAWPublicAuthResult, code: str
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CLAUDE, epoch="2")
+    await executor.register_project_binding(binding())
+    probe = _AuthProbe(result)
+    native = _install_fixed_auth_transport(executor, lifecycle, probe)
+    with pytest.raises(RuntimeOperationError) as raised:
+        await executor.start(lifecycle)
+    assert raised.value.code == code
+    assert native.starts == 0
+    with pytest.raises(RuntimeOperationError):
+        executor.encrypted_supervisor(attachment(lifecycle).claims)
+
+
+@pytest.mark.anyio
+async def test_repeated_auth_failure_or_cancellation_aborts_every_unstarted_fd(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    await executor.register_project_binding(binding())
+    native = _AuthNativePort()
+    opened: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+
+    def fixed_factory(_identity: WAWLifecycleIdentity, command: Any) -> WAWFixedTransport:
+        pipes = tuple(os.pipe() for _ in range(4))
+        reads = tuple(pair[0] for pair in pipes)
+        writes = tuple(pair[1] for pair in pipes)
+        opened.append((reads, writes))
+        item = FixedProcessIdentity(
+            lifecycle.workspace_id,
+            lifecycle.project_id,
+            AgentType.CODEX,
+            1,
+            "d" * 64,
+            command.managed_marker,
+            "b" * 64,
+            HOST,
+            "1",
+            "2",
+        )
+        return WAWFixedTransport.development_only(
+            identity=item,
+            handles=FixedLaunchHandles(
+                project_directory=reads[0],
+                selected_home_directory=reads[1],
+                temp_directory=reads[2],
+                bridge_executable=object(),
+                vendor_executable=object(),
+                policy_directory=reads[3],
+                wbr_endpoint=object(),
+                cgroup=object(),
+            ),
+            executable_fingerprint="c" * 64,
+            port=native,
+            clock=lambda: 0.0,
+        )
+
+    class CyclingProbe(_AuthProbe):
+        async def probe(
+            self,
+            *,
+            agent_type: AgentType,
+            runtime_host_installation_id: str,
+            runtime_host_installation_revision: str,
+            executable_fingerprint: str,
+            checked_at_monotonic: float,
+        ) -> WAWPublicAuthEvidence:
+            index = len(opened) - 1
+            if index % 3 == 2:
+                raise asyncio.CancelledError
+            self.result = (
+                WAWPublicAuthResult.UNKNOWN if index % 3 == 0 else WAWPublicAuthResult.UNSUPPORTED
+            )
+            return await super().probe(
+                agent_type=agent_type,
+                runtime_host_installation_id=runtime_host_installation_id,
+                runtime_host_installation_revision=runtime_host_installation_revision,
+                executable_fingerprint=executable_fingerprint,
+                checked_at_monotonic=checked_at_monotonic,
+            )
+
+    executor._transport_factory = fixed_factory
+    executor._auth_probe = CyclingProbe(WAWPublicAuthResult.UNKNOWN)
+    executor._conflicts = WAWConflictCoordinator(_ConflictProbe())
+    for index in range(100):
+        expected = asyncio.CancelledError if index % 3 == 2 else RuntimeOperationError
+        with pytest.raises(expected):
+            await executor.start(lifecycle)
+        reads, writes = opened[-1]
+        for descriptor in reads:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+        for descriptor in writes:
+            os.close(descriptor)
+    assert native.starts == 0
+
+
+@pytest.mark.anyio
+async def test_stale_valid_marker_aborts_transport_construction_ownership(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    await executor.register_project_binding(binding())
+    original_factory = executor._command_factory
+    stale_marker = managed_marker(
+        runtime_host_installation_id=HOST,
+        runtime_host_installation_revision=1,
+        project_id=PROJECT,
+        agent_type=AgentType.CODEX,
+        workspace_id_value=lifecycle.workspace_id,
+        generation=2,
+        binding_revision=1,
+        binding_digest=DIGEST,
+    )
+
+    def stale_command(item: WAWLifecycleIdentity, configured: Any) -> WAWCodexCommand:
+        command = original_factory(item, configured)
+        assert type(command) is WAWCodexCommand
+        return replace(command, managed_marker=stale_marker)
+
+    baseline = len(os.listdir("/dev/fd"))
+    owned: list[int] = []
+    write_ends: list[int] = []
+    constructed: list[tuple[WAWFixedTransport, LinuxCgroupControlHandle]] = []
+    native = _AuthNativePort()
+
+    def fixed_factory(_identity: WAWLifecycleIdentity, command: Any) -> WAWFixedTransport:
+        pipes = tuple(os.pipe() for _ in range(4))
+        owned.extend(pair[0] for pair in pipes)
+        write_ends.extend(pair[1] for pair in pipes)
+        endpoint_source, endpoint_controller = socket.socketpair()
+        endpoint = object.__new__(NativeWBREndpoint)
+        object.__setattr__(endpoint, "native", endpoint_source)
+        object.__setattr__(endpoint, "controller", endpoint_controller)
+        cgroup_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+        owned.extend((endpoint_source.fileno(), endpoint_controller.fileno(), cgroup_fd))
+        identity = FixedProcessIdentity(
+            lifecycle.workspace_id,
+            lifecycle.project_id,
+            AgentType.CODEX,
+            1,
+            "d" * 64,
+            command.managed_marker,
+            "b" * 64,
+            HOST,
+            "1",
+            "2",
+        )
+        cgroup = object.__new__(LinuxCgroupControlHandle)
+        cgroup._descriptor = cgroup_fd
+        cgroup._authority = cast(Any, object())
+        cgroup._identity = identity
+        cgroup._closed = False
+        cgroup._consumed = False
+        cgroup._lock = threading.RLock()
+        transport = WAWFixedTransport.development_only(
+            identity=identity,
+            handles=FixedLaunchHandles(
+                project_directory=pipes[0][0],
+                selected_home_directory=pipes[1][0],
+                temp_directory=pipes[2][0],
+                bridge_executable=object(),
+                vendor_executable=object(),
+                policy_directory=pipes[3][0],
+                wbr_endpoint=endpoint,
+                cgroup=cgroup,
+            ),
+            executable_fingerprint="c" * 64,
+            port=native,
+            clock=lambda: 0.0,
+        )
+        constructed.append((transport, cgroup))
+        return transport
+
+    executor._command_factory = stale_command
+    executor._transport_factory = fixed_factory
+    try:
+        with pytest.raises(RuntimeOperationError) as raised:
+            await executor.start(lifecycle)
+        assert raised.value.code == "WAW_BINDING_MISMATCH"
+        transport, cgroup = constructed[0]
+        assert transport._aborted_unstarted and transport._closed
+        assert cgroup._closed and not cgroup.consumed
+        assert native.starts == 0
+        for descriptor in owned:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+    finally:
+        for descriptor in write_ends:
+            os.close(descriptor)
+    assert len(os.listdir("/dev/fd")) == baseline
+
+
+@pytest.mark.anyio
+async def test_auth_probe_await_holds_shared_conflict_lease_until_start_readback(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    await executor.register_project_binding(binding())
+    auth = _BlockingAuthProbe()
+    _install_fixed_auth_transport(executor, lifecycle, auth)
+    conflicts = _ConflictProbe(project_waw=(WAWManagedConflictState.RUNNING,))
+    executor._conflicts = WAWConflictCoordinator(conflicts)
+    legacy = WAWConflictCoordinator(conflicts)
+    pending = asyncio.create_task(executor.start(lifecycle))
+    assert await asyncio.to_thread(auth.entered.wait, 2)
+    finished = threading.Event()
+    outcomes: list[str] = []
+
+    def legacy_start() -> None:
+        try:
+            legacy.acquire_legacy_claude_start(project_id=PROJECT).release()
+            outcomes.append("allowed")
+        except WAWConflictError as exc:
+            outcomes.append(exc.code)
+        finished.set()
+
+    thread = threading.Thread(target=legacy_start)
+    thread.start()
+    assert not finished.wait(0.05)
+    auth.release.set()
+    assert (await pending).state == "RUNNING"
+    assert finished.wait(1)
+    thread.join(timeout=1)
+    assert outcomes == ["PROJECT_RUNTIME_ACTIVE"]
+
+
+def _mark_conflict_acquire(executor: WAWSupervisorExecutor) -> threading.Event:
+    entered = threading.Event()
+    original = executor._acquire_conflict_lease
+
+    def marked(key: Any) -> Any:
+        entered.set()
+        return original(key)
+
+    executor._acquire_conflict_lease = marked  # type: ignore[method-assign]
+    return entered
+
+
+@pytest.mark.anyio
+async def test_cancelled_auth_start_lock_wait_releases_eventual_host_lease(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CODEX, epoch="2")
+    await executor.register_project_binding(binding())
+    auth = _AuthProbe(WAWPublicAuthResult.AUTHENTICATED)
+    _install_fixed_auth_transport(executor, lifecycle, auth)
+    holder = WAWConflictCoordinator(_ConflictProbe()).acquire_legacy_codex_start()
+    entered = _mark_conflict_acquire(executor)
+    pending = asyncio.create_task(executor.start(lifecycle))
+    assert await asyncio.to_thread(entered.wait, 2)
+    internal = executor._inflight[lifecycle.workspace_id]
+    internal.cancel()
+    await asyncio.sleep(0.02)
+    assert not internal.done()
+    holder.release()
+
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert (await executor.start(lifecycle)).state == "RUNNING"
+
+
+@pytest.mark.anyio
+async def test_cancelled_auth_resume_lock_wait_releases_eventual_host_lease(
+    tmp_path: Path,
+) -> None:
+    executor, lifecycle, _transport, _ = setup(tmp_path, AgentType.CLAUDE, epoch="2")
+    await executor.register_project_binding(binding())
+    auth = _AuthProbe(WAWPublicAuthResult.UNAUTHENTICATED)
+    _install_fixed_auth_transport(executor, lifecycle, auth)
+    assert (await executor.start(lifecycle)).state == "LOGIN_REQUIRED"
+    auth.result = WAWPublicAuthResult.AUTHENTICATED
+    holder = WAWConflictCoordinator(_ConflictProbe()).acquire_legacy_codex_start()
+    entered = _mark_conflict_acquire(executor)
+    pending = asyncio.create_task(executor.resume_after_login(lifecycle))
+    assert await asyncio.to_thread(entered.wait, 2)
+    internal = executor._inflight[lifecycle.workspace_id]
+    internal.cancel()
+    await asyncio.sleep(0.02)
+    assert not internal.done()
+    holder.release()
+
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert (await executor.resume_after_login(lifecycle)).state == "RUNNING"
+
+
+@pytest.mark.anyio
+async def test_legacy_project_mapper_requires_one_current_unambiguous_binding(
+    tmp_path: Path,
+) -> None:
+    executor, _identity, _transport, _ = setup(tmp_path, AgentType.CLAUDE)
+    await executor.register_project_binding(binding())
+    assert executor.formal_project_id_for_legacy("project-a") == PROJECT
+    assert executor.formal_project_id_for_legacy("../project-a") is None
+
+    current = executor._bindings.pop(PROJECT)
+    assert executor.formal_project_id_for_legacy("project-a") is None
+    executor._bindings[PROJECT] = current
+    other = "prj_" + "9" * 32
+    executor._bindings[other] = (replace(current[0], project_id=other), current[1])
+    assert executor.formal_project_id_for_legacy("project-a") is None
+    executor._bindings.pop(other)
+
+    executor._binding_reserved.add(PROJECT)
+    assert executor.formal_project_id_for_legacy("project-a") is None
+    executor._binding_reserved.clear()
+    executor._inflight_project_ids["other-workspace"] = PROJECT
+    assert executor.formal_project_id_for_legacy("project-a") is None

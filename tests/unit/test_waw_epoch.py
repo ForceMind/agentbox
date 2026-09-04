@@ -92,3 +92,37 @@ def test_concurrent_consumers_do_not_reuse_epoch(tmp_path: Path) -> None:
     with ThreadPoolExecutor(max_workers=2) as executor:
         values = sorted(executor.map(lambda _item: store.consume(), range(2)))
     assert values == [2, 3]
+
+
+@pytest.mark.parametrize("failure", ["prepare", "validate"])
+def test_prepared_consume_does_not_commit_an_invalid_executor(tmp_path: Path, failure: str) -> None:
+    store = _store(tmp_path)
+
+    def prepare(epoch: str) -> tuple[str, object]:
+        if failure == "prepare":
+            raise ValueError("unbound factory")
+        return epoch, object()
+
+    def validate(_prepared: tuple[str, object], _epoch: str) -> None:
+        if failure == "validate":
+            raise ValueError("unbound executor")
+
+    with pytest.raises(ValueError, match="unbound"):
+        store.consume_prepared(prepare, validate)
+    assert store.consume() == 2
+
+
+def test_prepared_consume_commits_the_exact_constructed_epoch(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    observed: list[str] = []
+
+    def prepare(epoch: str) -> list[str]:
+        observed.append(epoch)
+        return observed
+
+    value, prepared = store.consume_prepared(
+        prepare, lambda result, epoch: result.append(f"validated-{epoch}")
+    )
+    assert value == 2
+    assert prepared == ["2", "validated-2"]
+    assert store.consume() == 3

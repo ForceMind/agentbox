@@ -50,16 +50,22 @@
 
 ## Current reassessment
 
-See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0 and R1 are merged. R10.1 executable provenance is merged; R9.1 browser tokenizer foundation is merged. The complete wire/admission/trust supplement has passed independent review and is accepted under the Owner's explicit software decision delegation. R2 diagnostics and R9.1 tokenizer are merged. R4 is merged; R5 is merged; R6 staged admission is merged as PR #75; R7 Runtime integration is merged as PR #76; R8 API relay is merged as PR #77; full R9/R10 implementation and host evidence remain separately tracked.
+See [REMAINING_PLAN.md](REMAINING_PLAN.md). R0–R9 are delivered through PR #78.
+R10.1 executable provenance is merged, and full R10/rc5 local implementation plus
+independent review are complete. Linux exact-head CI, merge and read-back remain
+before R10 delivery; host evidence remains separately tracked in R12.
 
 ## In Progress
 
-- Mac remains the development platform. R9 is delivered; R10 fixed interactive
-  process/profile implementation is active under delegated software decision authority.
+- Mac remains the development platform. R10 fixed interactive process/profile is
+  locally complete and `待验证` under delegated software decision authority.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- F1: continue remaining software implementation on Mac and validate through local tests plus Linux CI.
-- F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and product acceptance remain independently gated.
+- F1: deliver R10 through Linux exact-head CI, merge and read-back; then execute
+  R11 rc6–rc9 controller integration, failure injection, operations and full
+  browser-selected Chinese/English UI.
+- F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and
+  product acceptance remain independently gated.

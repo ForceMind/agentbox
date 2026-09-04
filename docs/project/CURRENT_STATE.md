@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T09:06:27Z"
+verified_at_utc: "2026-09-04T13:22:47Z"
 verified_by: "codex-live-reconciliation"
 repository: "ForceMind/agentbox"
 ---
@@ -9,22 +9,22 @@ repository: "ForceMind/agentbox"
 
 ## Current authorized implementation
 
-- Live preflight after `git fetch origin --prune`: R9 branch
-  `codex/waw-browser-trust-terminal` and its merge-base are
-  `64d37f9a4d39195930959c53c926a4184877355a`, equal to `origin/main` and the
-  observed R8 merge. Local `main` remains the older R7 merge and is not used as
-  the live trust source. Only historical Draft PR #42 is open.
-- All six workflows for exact R8 main SHA `64d37f9a...` are terminal SUCCESS.
-  R8 PR #77 previously completed 19/19 exact-head checks, normal merge and exact
-  read-back. No remote R9 PR or R9 CI result exists yet.
+- Live preflight after `git fetch origin --prune`: active R10 branch
+  `codex/waw-fixed-interactive-process` has merge-base
+  `15a4632f915dd1e1bde19425e313b52ada27166f`, equal to `origin/main` and the
+  observed R9 merge. Branch HEAD `e3bc440bcce8b141cb4b7d9e20891282c5f246b0`
+  contains the Dependency Graph input repair and R9 read-back documentation.
+  Only historical Draft PR #42 is open; no R10 PR or exact-head CI exists yet.
+- R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
+  all six standard post-main workflows. The separate historical Dependency Graph
+  limitation is addressed on this R10 branch by the `.txt` release input.
 - Owner delegated the remaining software goal/plan/architecture and explicitly
   approved managed Chromium extension + Native Messaging + independent `trustd`,
-  followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 remains on
-  the Mac development branch; real host/key/provider activation remains R12.
-- R9 `0.3.0rc4` implementation, local full matrix and independent review are
-  complete. The working tree is intentionally uncommitted until this evidence
-  snapshot and final visible-version inspection are complete; exact-head CI,
-  merge and read-back are still pending.
+  followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 is delivered;
+  real host/key/provider activation remains R12.
+- R10 `0.3.0rc5` implementation and local review are complete in the working
+  tree. Commit/push, PR exact-head Linux CI, normal merge and exact read-back are
+  still pending, so R10 remains `待验证` rather than delivered.
 
 ## Historical live baselines
 
@@ -560,3 +560,37 @@ PROPOSED architecture status are preserved.
   codecs, three native helper binaries, Runtime composition and inert installer
   assets. No CLI/HOME/key/host action occurred; implementation is approved after
   R9 delivery.
+
+## R10 reviewed local candidate
+
+- Runtime host manifest v2 closes the exact-six executable inventory and exact-two
+  Claude/Codex profiles. Descriptor-held launch authority carries seven fixed FD
+  roles, and WBR resize/ack uses the fixed 64-byte network-order protocol.
+- Three C17 Linux helpers implement pane bootstrap, PTY relay and attach supervision.
+  Runtime composition adds one-shot pre-birth cgroup authority, exact tmux/process
+  inspection, bounded output/input/resize/detach/reconnect cleanup and exact Stop.
+- Vendor auth probes require qualified isolation evidence. Local login/trust uses
+  a held foreground TTY, and the host-wide conflict coordinator serializes WAW and
+  legacy Claude/Codex starts without making the default legacy-only server active.
+- Inert tmux, sandbox, Claude and Codex policy assets are closed by package and
+  release inventories. Codex ships the exact-two TOML inputs plus their canonical
+  digest bundle; no policy is installed or activated.
+- Local focused Runtime/release regression passed `675` tests with `12` explicit
+  Linux-only skips; the encrypted Runtime server passed a separate `24` tests
+  outside the macOS socket sandbox. Native portable-source gate built all three
+  helpers. Ruff passed, Black left `287` files unchanged, Linux-target mypy passed
+  `252` sources, and the documentation checker passed `238` relative links.
+- With the repository Node option, Web passed `915` tests and the extension passed
+  `6`; typecheck, lint, format and production builds passed. A deliberately broad
+  macOS run remains invalid host evidence because Linux socket/peer-credential and
+  temporary-path assumptions fail on this platform.
+- Independent Sol review reports PASS with no P0/P1/P2 after closing constructor-
+  time transport ownership and release inventory findings. Linux namespace,
+  cgroup, tmux and sanitizer checks remain exact-head CI evidence; real vendor CLI,
+  account, CRX installation and host qualification remain R12.
+- Browser locale remains document-fixed: only `navigator.languages[0]` is read;
+  primary `zh` selects `zh-CN`, while every other, missing or malformed value
+  selects English. Technical identifiers stay English. Full cross-page bilingual
+  migration remains an R11 deliverable.
+- Chromium E2E passes `64` desktop/mobile cases and reads back the actual
+  Dashboard `0.3.0rc5` / `API v1` text from the built candidate.

@@ -15,9 +15,21 @@ import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 import rfc8785
+
+from agentbox_runtime.waw_process_profile import (
+    ExecutableInventoryV1,
+    InteractiveProfileBundleV1,
+    WAWProcessProfileError,
+    decode_executable_inventory_v1,
+    decode_interactive_profile_bundle_v1,
+    encode_executable_inventory_v1,
+    encode_interactive_profile_bundle_v1,
+    verify_codex_managed_policy_bundle_v1,
+)
 
 _MAX_BYTES = 64 * 1024
 _MAX_STRING = 512
@@ -112,6 +124,53 @@ class RuntimeHostManifest:
 
 
 @dataclass(frozen=True)
+class APIHostAnchorV2:
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+    runtime_attestation_x25519_fingerprint: str
+    runtime_manifest_schema: str
+    host_manifest_digest: str
+    project_root_manifest_digest: str
+    enrollment_epoch: str
+    enrollment_state: str
+
+
+@dataclass(frozen=True)
+class RuntimeHostManifestV2:
+    runtime_host_installation_id: str
+    runtime_host_installation_revision: str
+    runtime_attestation_x25519_fingerprint: str
+    project_root_manifest_path: str
+    project_root_manifest_digest: str
+    cgroup_delegation_manifest_path: str
+    cgroup_delegation_manifest_digest: str
+    executable_inventory_path: str
+    executable_inventory_digest: str
+    interactive_profile_bundle_path: str
+    interactive_profile_bundle_digest: str
+    tmux_config_path: str
+    tmux_config_digest: str
+    sandbox_policy_bundle_path: str
+    sandbox_policy_bundle_digest: str
+    socket_policy_digest: str
+    enrollment_epoch: str
+    enrollment_state: str
+
+
+RUNTIME_HOST_MANIFEST_SCHEMA_V2 = "waw-runtime-host-installation-v2"
+RUNTIME_HOST_MANIFEST_V2_PATHS = MappingProxyType(
+    {
+        "project_root_manifest_path": "/usr/share/agentbox/waw/project-root.v1.json",
+        "cgroup_delegation_manifest_path": "/usr/share/agentbox/waw/cgroup-delegation.v1.json",
+        "executable_inventory_path": "/usr/share/agentbox/waw/executable-inventory.v1.json",
+        "interactive_profile_bundle_path": "/usr/share/agentbox/waw/interactive-profiles.v1.json",
+        "tmux_config_path": "/usr/share/agentbox/waw/tmux.conf",
+        "sandbox_policy_bundle_path": "/usr/share/agentbox/waw/sandbox-policies.v1.json",
+    }
+)
+
+
+@dataclass(frozen=True)
 class CrossManifestPin:
     """The strictly decoded records validated by a cross-manifest pin.
 
@@ -129,12 +188,36 @@ class CrossManifestPin:
     cgroup_manifest_digest: str
 
 
+@dataclass(frozen=True)
+class CrossManifestPinV2:
+    anchor: APIHostAnchorV2
+    runtime: RuntimeHostManifestV2
+    project_root: ProjectRootManifest
+    cgroup: CgroupDelegationManifest
+    executable_inventory: ExecutableInventoryV1
+    interactive_profiles: InteractiveProfileBundleV1
+    runtime_manifest_digest: str
+    project_root_manifest_digest: str
+    cgroup_manifest_digest: str
+    executable_inventory_digest: str
+    interactive_profile_bundle_digest: str
+    tmux_config_digest: str
+    sandbox_policy_bundle_digest: str
+    socket_policy_digest: str
+    claude_managed_policy_digest: str
+    codex_managed_policy_digest: str
+    codex_requirements_policy_digest: str
+    codex_managed_config_policy_digest: str
+
+
 _T = TypeVar("_T")
 _SCHEMAS: dict[type[Any], str] = {
     ProjectRootManifest: "waw-project-root-v1",
     CgroupDelegationManifest: "waw-cgroup-delegation-v1",
     APIHostAnchor: "waw-api-host-anchor-v1",
     RuntimeHostManifest: "waw-runtime-host-installation-v1",
+    APIHostAnchorV2: "waw-api-host-anchor-v2",
+    RuntimeHostManifestV2: RUNTIME_HOST_MANIFEST_SCHEMA_V2,
 }
 
 _FIELD_NAMES: dict[type[Any], tuple[str, ...]] = {
@@ -193,6 +276,36 @@ _FIELD_NAMES: dict[type[Any], tuple[str, ...]] = {
         "project_root_manifest_digest",
         "socket_digest",
         "config_digest",
+        "enrollment_epoch",
+        "enrollment_state",
+    ),
+    APIHostAnchorV2: (
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "runtime_manifest_schema",
+        "host_manifest_digest",
+        "project_root_manifest_digest",
+        "enrollment_epoch",
+        "enrollment_state",
+    ),
+    RuntimeHostManifestV2: (
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "project_root_manifest_path",
+        "project_root_manifest_digest",
+        "cgroup_delegation_manifest_path",
+        "cgroup_delegation_manifest_digest",
+        "executable_inventory_path",
+        "executable_inventory_digest",
+        "interactive_profile_bundle_path",
+        "interactive_profile_bundle_digest",
+        "tmux_config_path",
+        "tmux_config_digest",
+        "sandbox_policy_bundle_path",
+        "sandbox_policy_bundle_digest",
+        "socket_policy_digest",
         "enrollment_epoch",
         "enrollment_state",
     ),
@@ -443,6 +556,45 @@ def _validate_runtime(value: Mapping[str, Any]) -> None:
         raise WAWManifestCodecError("invalid enrollment state")
 
 
+def _validate_anchor_v2(value: Mapping[str, Any]) -> None:
+    _runtime_id(value["runtime_host_installation_id"])
+    _u64(value["runtime_host_installation_revision"], positive=True)
+    _digest(
+        value["runtime_attestation_x25519_fingerprint"], "runtime_attestation_x25519_fingerprint"
+    )
+    if value["runtime_manifest_schema"] != RUNTIME_HOST_MANIFEST_SCHEMA_V2:
+        raise WAWManifestCodecError("API anchor does not require Runtime manifest v2")
+    _digest(value["host_manifest_digest"], "host_manifest_digest")
+    _digest(value["project_root_manifest_digest"], "project_root_manifest_digest")
+    _u64(value["enrollment_epoch"], positive=True)
+    if value["enrollment_state"] not in _STATES:
+        raise WAWManifestCodecError("invalid enrollment state")
+
+
+def _validate_runtime_v2(value: Mapping[str, Any]) -> None:
+    _runtime_id(value["runtime_host_installation_id"])
+    _u64(value["runtime_host_installation_revision"], positive=True)
+    _digest(
+        value["runtime_attestation_x25519_fingerprint"], "runtime_attestation_x25519_fingerprint"
+    )
+    for path_field, expected in RUNTIME_HOST_MANIFEST_V2_PATHS.items():
+        if _absolute_path(value[path_field]) != expected:
+            raise WAWManifestCodecError(f"Runtime manifest path is not fixed: {path_field}")
+    for digest_field in (
+        "project_root_manifest_digest",
+        "cgroup_delegation_manifest_digest",
+        "executable_inventory_digest",
+        "interactive_profile_bundle_digest",
+        "tmux_config_digest",
+        "sandbox_policy_bundle_digest",
+        "socket_policy_digest",
+    ):
+        _digest(value[digest_field], digest_field)
+    _u64(value["enrollment_epoch"], positive=True)
+    if value["enrollment_state"] not in _STATES:
+        raise WAWManifestCodecError("invalid enrollment state")
+
+
 def encode_project_root_manifest(value: ProjectRootManifest | Mapping[str, Any]) -> bytes:
     return _encode(value, ProjectRootManifest, _validate_project)
 
@@ -475,6 +627,22 @@ def decode_runtime_host_manifest(raw: bytes) -> RuntimeHostManifest:
     return _decode(raw, RuntimeHostManifest, _validate_runtime)
 
 
+def encode_api_host_anchor_v2(value: APIHostAnchorV2 | Mapping[str, Any]) -> bytes:
+    return _encode(value, APIHostAnchorV2, _validate_anchor_v2)
+
+
+def decode_api_host_anchor_v2(raw: bytes) -> APIHostAnchorV2:
+    return _decode(raw, APIHostAnchorV2, _validate_anchor_v2)
+
+
+def encode_runtime_host_manifest_v2(value: RuntimeHostManifestV2 | Mapping[str, Any]) -> bytes:
+    return _encode(value, RuntimeHostManifestV2, _validate_runtime_v2)
+
+
+def decode_runtime_host_manifest_v2(raw: bytes) -> RuntimeHostManifestV2:
+    return _decode(raw, RuntimeHostManifestV2, _validate_runtime_v2)
+
+
 def _strict_record_bytes(
     value: object,
     record_type: type[_T],
@@ -490,12 +658,15 @@ def _strict_record_bytes(
     identity validation from the record decoder.
     """
 
-    if isinstance(value, bytes):
-        record = decoder(value)
-        return record, value
-    if isinstance(value, record_type):
-        raw = encoder(value)
-        return decoder(raw), raw
+    try:
+        if isinstance(value, bytes):
+            record = decoder(value)
+            return record, value
+        if isinstance(value, record_type):
+            raw = encoder(value)
+            return decoder(raw), raw
+    except WAWProcessProfileError as exc:
+        raise WAWManifestCodecError("cross-manifest profile codec validation failed") from exc
     raise WAWManifestCodecError("cross-manifest pin requires typed records or bytes")
 
 
@@ -569,6 +740,150 @@ def verify_api_host_anchor_cross_manifest(
     )
 
 
+def verify_api_host_anchor_v2_cross_manifest(
+    anchor: APIHostAnchorV2 | bytes,
+    runtime: RuntimeHostManifestV2 | bytes,
+    project_root: ProjectRootManifest | bytes,
+    cgroup_delegation: CgroupDelegationManifest | bytes,
+    executable_inventory: ExecutableInventoryV1 | bytes,
+    interactive_profiles: InteractiveProfileBundleV1 | bytes,
+    tmux_config: bytes,
+    sandbox_policy_bundle: bytes,
+    socket_policy: bytes,
+    claude_managed_policy: bytes,
+    codex_managed_policy: bytes,
+    codex_requirements_policy: bytes,
+    codex_managed_config_policy: bytes,
+) -> CrossManifestPinV2:
+    """Verify all v2 identity, schema and whole-byte bundle cross-pins."""
+
+    anchor_record, _anchor_raw = _strict_record_bytes(
+        anchor, APIHostAnchorV2, encode_api_host_anchor_v2, decode_api_host_anchor_v2
+    )
+    runtime_record, runtime_raw = _strict_record_bytes(
+        runtime,
+        RuntimeHostManifestV2,
+        encode_runtime_host_manifest_v2,
+        decode_runtime_host_manifest_v2,
+    )
+    project_record, project_raw = _strict_record_bytes(
+        project_root,
+        ProjectRootManifest,
+        encode_project_root_manifest,
+        decode_project_root_manifest,
+    )
+    cgroup_record, cgroup_raw = _strict_record_bytes(
+        cgroup_delegation,
+        CgroupDelegationManifest,
+        encode_cgroup_delegation_manifest,
+        decode_cgroup_delegation_manifest,
+    )
+    inventory_record, inventory_raw = _strict_record_bytes(
+        executable_inventory,
+        ExecutableInventoryV1,
+        encode_executable_inventory_v1,
+        decode_executable_inventory_v1,
+    )
+    profiles_record, profiles_raw = _strict_record_bytes(
+        interactive_profiles,
+        InteractiveProfileBundleV1,
+        encode_interactive_profile_bundle_v1,
+        decode_interactive_profile_bundle_v1,
+    )
+    try:
+        verify_codex_managed_policy_bundle_v1(
+            codex_managed_policy,
+            requirements=codex_requirements_policy,
+            managed_config=codex_managed_config_policy,
+        )
+    except WAWProcessProfileError as exc:
+        raise WAWManifestCodecError("Codex managed policy bundle is invalid") from exc
+    digests = {
+        "runtime_manifest_digest": manifest_sha256(runtime_raw),
+        "project_root_manifest_digest": manifest_sha256(project_raw),
+        "cgroup_manifest_digest": manifest_sha256(cgroup_raw),
+        "executable_inventory_digest": manifest_sha256(inventory_raw),
+        "interactive_profile_bundle_digest": manifest_sha256(profiles_raw),
+        "tmux_config_digest": manifest_sha256(tmux_config),
+        "sandbox_policy_bundle_digest": manifest_sha256(sandbox_policy_bundle),
+        "socket_policy_digest": manifest_sha256(socket_policy),
+        "claude_managed_policy_digest": manifest_sha256(claude_managed_policy),
+        "codex_managed_policy_digest": manifest_sha256(codex_managed_policy),
+        "codex_requirements_policy_digest": manifest_sha256(codex_requirements_policy),
+        "codex_managed_config_policy_digest": manifest_sha256(codex_managed_config_policy),
+    }
+    expected_pins = (
+        (anchor_record.host_manifest_digest, digests["runtime_manifest_digest"], "host manifest"),
+        (
+            anchor_record.project_root_manifest_digest,
+            digests["project_root_manifest_digest"],
+            "anchor ProjectRoot",
+        ),
+        (
+            runtime_record.project_root_manifest_digest,
+            digests["project_root_manifest_digest"],
+            "Runtime ProjectRoot",
+        ),
+        (
+            runtime_record.cgroup_delegation_manifest_digest,
+            digests["cgroup_manifest_digest"],
+            "cgroup delegation",
+        ),
+        (
+            runtime_record.executable_inventory_digest,
+            digests["executable_inventory_digest"],
+            "executable inventory",
+        ),
+        (
+            runtime_record.interactive_profile_bundle_digest,
+            digests["interactive_profile_bundle_digest"],
+            "interactive profile bundle",
+        ),
+        (runtime_record.tmux_config_digest, digests["tmux_config_digest"], "tmux config"),
+        (
+            runtime_record.sandbox_policy_bundle_digest,
+            digests["sandbox_policy_bundle_digest"],
+            "sandbox policy bundle",
+        ),
+        (
+            runtime_record.socket_policy_digest,
+            digests["socket_policy_digest"],
+            "socket policy",
+        ),
+        (
+            profiles_record.profiles[0].managed_policy_digest,
+            digests["claude_managed_policy_digest"],
+            "Claude managed policy",
+        ),
+        (
+            profiles_record.profiles[1].managed_policy_digest,
+            digests["codex_managed_policy_digest"],
+            "Codex managed policy",
+        ),
+    )
+    for pinned, actual, name in expected_pins:
+        if not hmac.compare_digest(pinned, actual):
+            raise WAWManifestCodecError(f"v2 manifest does not pin {name} bytes")
+    for field in (
+        "runtime_host_installation_id",
+        "runtime_host_installation_revision",
+        "runtime_attestation_x25519_fingerprint",
+        "enrollment_epoch",
+        "enrollment_state",
+    ):
+        if getattr(anchor_record, field) != getattr(runtime_record, field):
+            raise WAWManifestCodecError(f"v2 cross-manifest identity mismatch: {field}")
+    return CrossManifestPinV2(
+        anchor_record,
+        runtime_record,
+        project_record,
+        cgroup_record,
+        inventory_record,
+        profiles_record,
+        **digests,
+    )
+
+
 def manifest_sha256(raw: bytes) -> str:
     """Return the digest of already-canonical manifest bytes."""
 
@@ -579,19 +894,29 @@ def manifest_sha256(raw: bytes) -> str:
 
 __all__ = [
     "APIHostAnchor",
+    "APIHostAnchorV2",
     "CgroupDelegationManifest",
     "CrossManifestPin",
+    "CrossManifestPinV2",
     "ProjectRootManifest",
     "RuntimeHostManifest",
+    "RuntimeHostManifestV2",
+    "RUNTIME_HOST_MANIFEST_SCHEMA_V2",
+    "RUNTIME_HOST_MANIFEST_V2_PATHS",
     "WAWManifestCodecError",
     "decode_api_host_anchor",
+    "decode_api_host_anchor_v2",
     "decode_cgroup_delegation_manifest",
     "decode_project_root_manifest",
     "decode_runtime_host_manifest",
+    "decode_runtime_host_manifest_v2",
     "encode_api_host_anchor",
+    "encode_api_host_anchor_v2",
     "encode_cgroup_delegation_manifest",
     "encode_project_root_manifest",
     "encode_runtime_host_manifest",
+    "encode_runtime_host_manifest_v2",
     "manifest_sha256",
     "verify_api_host_anchor_cross_manifest",
+    "verify_api_host_anchor_v2_cross_manifest",
 ]

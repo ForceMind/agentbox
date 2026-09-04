@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pytest
 from agentbox_installer.build import (
+    RELEASE_NATIVE_SOURCE_FILES,
     WHEEL_SOURCE_DIRECTORIES,
     WHEEL_SOURCE_FILES,
     BuildError,
     _build_command_label,
+    _copy_exact_native_sources,
     _copy_regular_tree,
     _migration_head,
     _prepare_wheel_source,
@@ -78,6 +80,22 @@ def test_wheel_build_uses_an_isolated_allowlisted_source(tmp_path: Path) -> None
     assert all((destination / name).exists() for name in WHEEL_SOURCE_DIRECTORIES)
     assert all((destination / name).is_file() for name in WHEEL_SOURCE_FILES)
     assert not (destination / "build").exists()
+
+
+def test_native_release_source_inventory_is_exact(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "release"
+    for name in RELEASE_NATIVE_SOURCE_FILES:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("reviewed native source\n", encoding="utf-8")
+    _copy_exact_native_sources(source, destination)
+    assert all((destination / name).is_file() for name in RELEASE_NATIVE_SOURCE_FILES)
+
+    extra = source / "native/waw/private.bin"
+    extra.write_bytes(b"private")
+    with pytest.raises(BuildError, match="inventory is not exact"):
+        _copy_exact_native_sources(source, tmp_path / "rejected")
 
 
 def test_build_failure_labels_are_bounded_and_do_not_include_paths() -> None:
