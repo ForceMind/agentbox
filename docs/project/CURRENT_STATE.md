@@ -634,3 +634,6 @@ PROPOSED architecture status are preserved.
   retains only the first failed pane long enough to read `pane_dead_status`; it
   does not change READY/WBR, write terminal payload, or relax isolation assertions.
   These diagnostic branches will be removed after the failing syscall stage is known.
+- The first diagnostic head reached neither launch nor helper execution because
+  tmux 3.4 requires a window-qualified target for the window option. The test now
+  uses exact target `=session:0`; the failed diagnostic run is not native evidence.
