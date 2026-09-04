@@ -757,3 +757,10 @@ PROPOSED architecture status are preserved.
   test pre-exec mapper could overwrite a later source FD while assigning the
   low fixed destinations. It now duplicates every source above FD 64 first,
   then maps the collision-free copies to the exact roles and closes them.
+- Head `a757799` still returned `83`, proving CPython's `pass_fds` keep-set also
+  closed fixed destinations created in `preexec_fn`. A dedicated test exec shim
+  is now the sole mapper: `Popen(pass_fds=exact sources)` starts the shim without
+  changing parent CLOEXEC state or inheriting unrelated FDs; the shim performs
+  collision-free high-FD copies, fixed-role `dup2`, optional `setsid`, and direct
+  `execv`. Each native helper still closes the original source FDs immediately
+  with its existing allowlist.

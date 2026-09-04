@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import array
-import fcntl
 import json
 import os
 import platform
@@ -162,18 +161,51 @@ def _launch_record(agent: str = "claude", *, extra: bool = False) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def _map_fds(mapping: dict[int, int], *, make_session: bool = False) -> None:
-    if make_session:
-        os.setsid()
-    duplicated: list[tuple[int, int]] = []
-    try:
-        for source, destination in mapping.items():
-            duplicated.append((fcntl.fcntl(source, fcntl.F_DUPFD_CLOEXEC, 64), destination))
-        for source, destination in duplicated:
-            os.dup2(source, destination, inheritable=True)
-    finally:
-        for source, _destination in duplicated:
-            os.close(source)
+_FD_EXEC_SHIM = """
+import fcntl
+import os
+import sys
+
+make_session = sys.argv[1] == "1"
+separator = sys.argv.index("--", 2)
+mapping = [tuple(map(int, item.split(":"))) for item in sys.argv[2:separator]]
+arguments = sys.argv[separator + 1:]
+if make_session:
+    os.setsid()
+duplicated = []
+try:
+    for source, destination in mapping:
+        duplicated.append((fcntl.fcntl(source, fcntl.F_DUPFD_CLOEXEC, 64), destination))
+    for source, destination in duplicated:
+        os.dup2(source, destination, inheritable=True)
+finally:
+    for source, _destination in duplicated:
+        os.close(source)
+os.execv(arguments[0], arguments)
+"""
+
+
+def _popen_with_fd_mapping(
+    arguments: list[str],
+    mapping: dict[int, int],
+    *,
+    make_session: bool = False,
+    **kwargs: Any,
+) -> subprocess.Popen[bytes]:
+    mapping_arguments = [f"{source}:{destination}" for source, destination in mapping.items()]
+    return subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _FD_EXEC_SHIM,
+            "1" if make_session else "0",
+            *mapping_arguments,
+            "--",
+            *arguments,
+        ],
+        pass_fds=tuple(mapping),
+        **kwargs,
+    )
 
 
 def _read_fd_until(descriptor: int, needle: bytes, timeout: float = 5.0) -> bytes:
@@ -229,7 +261,7 @@ def _spawn_real_attach(
     config_fd = os.open(TMUX_CONFIG, os.O_RDONLY | os.O_CLOEXEC)
     ready_parent, ready_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     master, slave = pty.openpty()
-    process = subprocess.Popen(
+    process = _popen_with_fd_mapping(
         [
             str(native_binaries / "agentbox-waw-attach-supervisor"),
             "--workspace-hash",
@@ -237,19 +269,16 @@ def _spawn_real_attach(
             "--agent-type",
             agent,
         ],
+        {
+            executable_fd: 3,
+            directory_fd: 4,
+            config_fd: 5,
+            ready_child.fileno(): 6,
+        },
+        make_session=True,
         stdin=slave,
         stdout=slave,
         stderr=slave,
-        pass_fds=(executable_fd, directory_fd, config_fd, ready_child.fileno()),
-        preexec_fn=lambda: _map_fds(
-            {
-                executable_fd: 3,
-                directory_fd: 4,
-                config_fd: 5,
-                ready_child.fileno(): 6,
-            },
-            make_session=True,
-        ),
     )
     os.close(slave)
     os.close(executable_fd)
@@ -596,7 +625,7 @@ def test_deleted_held_directory_hint_fails_before_ready_and_vendor(
 
 def test_bootstrap_rejects_forged_tmux_environment(native_binaries: Path) -> None:
     control_parent, control_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-    process = subprocess.Popen(
+    process = _popen_with_fd_mapping(
         [
             str(native_binaries / "agentbox-waw-pane-bootstrap"),
             "--workspace-hash",
@@ -604,8 +633,7 @@ def test_bootstrap_rejects_forged_tmux_environment(native_binaries: Path) -> Non
             "--agent-type",
             "claude",
         ],
-        pass_fds=(control_child.fileno(),),
-        preexec_fn=lambda: _map_fds({control_child.fileno(): 3}),
+        {control_child.fileno(): 3},
         env={"TMUX": "/run/forged,1,0", "TMUX_PANE": "%1"},
     )
     control_child.close()
@@ -915,7 +943,7 @@ def test_attach_supervisor_rejects_fake_elf_that_does_not_attach(
     config_fd = os.open(config, os.O_RDONLY)
     ready_parent, ready_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     master, slave = pty.openpty()
-    process = subprocess.Popen(
+    process = _popen_with_fd_mapping(
         [
             str(native_binaries / "agentbox-waw-attach-supervisor"),
             "--workspace-hash",
@@ -923,19 +951,16 @@ def test_attach_supervisor_rejects_fake_elf_that_does_not_attach(
             "--agent-type",
             "codex",
         ],
+        {
+            executable_fd: 3,
+            directory_fd: 4,
+            config_fd: 5,
+            ready_child.fileno(): 6,
+        },
+        make_session=True,
         stdin=slave,
         stdout=slave,
         stderr=slave,
-        pass_fds=(executable_fd, directory_fd, config_fd, ready_child.fileno()),
-        preexec_fn=lambda: _map_fds(
-            {
-                executable_fd: 3,
-                directory_fd: 4,
-                config_fd: 5,
-                ready_child.fileno(): 6,
-            },
-            make_session=True,
-        ),
     )
     os.close(slave)
     os.close(executable_fd)
@@ -964,7 +989,7 @@ def test_attach_supervisor_exec_failure_never_emits_ready_and_reaps(
     config_fd = os.open(config, os.O_RDONLY)
     ready_parent, ready_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     master, slave = pty.openpty()
-    process = subprocess.Popen(
+    process = _popen_with_fd_mapping(
         [
             str(native_binaries / "agentbox-waw-attach-supervisor"),
             "--workspace-hash",
@@ -972,19 +997,16 @@ def test_attach_supervisor_exec_failure_never_emits_ready_and_reaps(
             "--agent-type",
             "claude",
         ],
+        {
+            executable_fd: 3,
+            directory_fd: 4,
+            config_fd: 5,
+            ready_child.fileno(): 6,
+        },
+        make_session=True,
         stdin=slave,
         stdout=slave,
         stderr=slave,
-        pass_fds=(executable_fd, directory_fd, config_fd, ready_child.fileno()),
-        preexec_fn=lambda: _map_fds(
-            {
-                executable_fd: 3,
-                directory_fd: 4,
-                config_fd: 5,
-                ready_child.fileno(): 6,
-            },
-            make_session=True,
-        ),
     )
     os.close(slave)
     os.close(executable_fd)
@@ -1013,7 +1035,7 @@ def test_native_launcher_places_itself_before_held_tmux_exec(
     tmux_fd = os.open(fake_binaries[1], os.O_RDONLY | os.O_CLOEXEC)
     config_fd = os.open(config, os.O_RDONLY | os.O_CLOEXEC)
     ready_parent, ready_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-    process = subprocess.Popen(
+    process = _popen_with_fd_mapping(
         [
             str(native_binaries / "agentbox-waw-pane-bootstrap"),
             "--launch-tmux",
@@ -1026,19 +1048,16 @@ def test_native_launcher_places_itself_before_held_tmux_exec(
             "--bootstrap-fd",
             "7",
         ],
+        {
+            bootstrap_fd: 7,
+            cgroup_fd: 3,
+            tmux_fd: 4,
+            config_fd: 5,
+            ready_child.fileno(): 6,
+        },
+        make_session=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        pass_fds=(bootstrap_fd, cgroup_fd, tmux_fd, config_fd, ready_child.fileno()),
-        preexec_fn=lambda: _map_fds(
-            {
-                bootstrap_fd: 7,
-                cgroup_fd: 3,
-                tmux_fd: 4,
-                config_fd: 5,
-                ready_child.fileno(): 6,
-            },
-            make_session=True,
-        ),
     )
     ready_child.close()
     ready_parent.settimeout(5)
