@@ -638,7 +638,13 @@ PROPOSED architecture status are preserved.
   gates now share one test-only unique `pane-died → wait-for -S` barrier and
   strictly require `1:7:`, `1:74:`, and `1:7:` respectively. Tail order/hash and
   descendant termination-canary assertions remain unchanged; another exact-head
-  native normal/sanitizer run is required.
+  native normal/sanitizer run was required.
+- Head `6916406...` passed native normal/sanitizer. Python 3.11 alone then exposed
+  a unit-test observation race: the intentionally failing close worker could
+  finish and its done callback could clear `_close_operation` before the test
+  captured it. The test now captures the synchronously created operation before
+  its first await; sticky failure/direct-cancel assertions remain unchanged.
+  Python 3.12/3.13 and the other 19 checks passed; a new exact head is required.
 - Retained control/stream `BoundRuntimePeer`, API authority transfer, redraw and
   application ownership remain active rc6 work. No production WAW path is enabled
   by this foundation.

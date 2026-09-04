@@ -245,9 +245,9 @@ async def test_close_worker_failure_or_direct_cancellation_is_sticky(
 
     cast(Any, server)._perform_close = failed_close
     waiter = asyncio.create_task(server.close())
-    await asyncio.wait_for(close_entered.wait(), timeout=1)
     operation = server._close_operation
     assert operation is not None
+    await asyncio.wait_for(close_entered.wait(), timeout=1)
     if direct_cancel:
         operation.cancel()
 
