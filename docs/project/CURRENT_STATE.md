@@ -753,3 +753,7 @@ PROPOSED architecture status are preserved.
 - Exact head `b62f1bd` reports descriptor-validation status `66`. The next
   bounded code identifies the exact tmux executable, socket directory, config,
   or READY descriptor without exposing descriptor values or host paths.
+- Exact head `5f994f9` identifies the tmux executable role (`83`). The Linux
+  test pre-exec mapper could overwrite a later source FD while assigning the
+  low fixed destinations. It now duplicates every source above FD 64 first,
+  then maps the collision-free copies to the exact roles and closes them.

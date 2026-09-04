@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import fcntl
 import json
 import os
 import platform
@@ -164,10 +165,15 @@ def _launch_record(agent: str = "claude", *, extra: bool = False) -> bytes:
 def _map_fds(mapping: dict[int, int], *, make_session: bool = False) -> None:
     if make_session:
         os.setsid()
-    for source, destination in mapping.items():
-        if source != destination:
-            os.dup2(source, destination)
-        os.set_inheritable(destination, True)
+    duplicated: list[tuple[int, int]] = []
+    try:
+        for source, destination in mapping.items():
+            duplicated.append((fcntl.fcntl(source, fcntl.F_DUPFD_CLOEXEC, 64), destination))
+        for source, destination in duplicated:
+            os.dup2(source, destination, inheritable=True)
+    finally:
+        for source, _destination in duplicated:
+            os.close(source)
 
 
 def _read_fd_until(descriptor: int, needle: bytes, timeout: float = 5.0) -> bytes:
@@ -1018,13 +1024,14 @@ def test_native_launcher_places_itself_before_held_tmux_exec(
             "--runtime-pid",
             str(os.getpid()),
             "--bootstrap-fd",
-            str(bootstrap_fd),
+            "7",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         pass_fds=(bootstrap_fd, cgroup_fd, tmux_fd, config_fd, ready_child.fileno()),
         preexec_fn=lambda: _map_fds(
             {
+                bootstrap_fd: 7,
                 cgroup_fd: 3,
                 tmux_fd: 4,
                 config_fd: 5,
