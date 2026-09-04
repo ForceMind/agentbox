@@ -15,7 +15,7 @@ import socket
 import struct
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
@@ -34,6 +34,7 @@ from agentbox_runtime.waw_encrypted_stream import (
 
 PeerVerifier = Callable[[Any], RuntimePeer | None]
 _HEADER = struct.Struct("!4sBBHIQI")
+FIXED_BACKLOG = 64
 
 
 class _SocketPublication:
@@ -154,6 +155,10 @@ class WAWEncryptedServer:
         self._peers: set[socket.socket] = set()
         self._closing = False
         self._poisoned = False
+        self._closed = False
+        self._close_operation: asyncio.Task[None] | None = None
+        self._close_complete = False
+        self._close_failure: RuntimeError | None = None
 
     @classmethod
     def from_activated(
@@ -175,10 +180,41 @@ class WAWEncryptedServer:
         return self._poisoned
 
     async def start(self) -> None:
-        if self._accept_task is not None or self._closing or self._poisoned:
+        if self._closing or self._poisoned or self._closed or self._close_operation is not None:
             raise RuntimeError("WAW stream listener is unavailable")
-        self._socket.setblocking(False)
-        self._accept_task = asyncio.create_task(self._accept())
+        if self._accept_task is not None:
+            if not self._accept_task.done():
+                return
+            with contextlib.suppress(BaseException):
+                self._accept_task.result()
+            self._fail_start()
+            raise RuntimeError("WAW stream listener is unavailable")
+        try:
+            self._socket.listen(FIXED_BACKLOG)
+            self._socket.setblocking(False)
+            self._accept_task = asyncio.create_task(self._accept())
+            self._accept_task.add_done_callback(self._accept_done)
+        except (OSError, RuntimeError, ValueError):
+            self._fail_start()
+            raise RuntimeError("WAW stream listener activation failed") from None
+        except BaseException:
+            self._fail_start()
+            raise
+
+    def _fail_start(self) -> None:
+        self._poisoned = True
+        self._closing = True
+        self._closed = True
+        with contextlib.suppress(Exception):
+            self._registry.invalidate()
+        with contextlib.suppress(OSError):
+            self._socket.close()
+
+    def _accept_done(self, task: asyncio.Task[None]) -> None:
+        with contextlib.suppress(BaseException):
+            task.result()
+        if self._accept_task is task and not self._closing and not self._closed:
+            self._poison()
 
     async def _accept(self) -> None:
         loop = asyncio.get_running_loop()
@@ -214,8 +250,10 @@ class WAWEncryptedServer:
 
     def _poison(self) -> None:
         self._poisoned = self._closing = True
-        self._registry.invalidate()
-        self._socket.close()
+        with contextlib.suppress(Exception):
+            self._registry.invalidate()
+        with contextlib.suppress(OSError):
+            self._socket.close()
         if self._accept_task is not None:
             self._accept_task.cancel()
         for session in tuple(self._sessions):
@@ -407,13 +445,70 @@ class WAWEncryptedServer:
             self._peers.discard(peer_socket)
             self._connections.discard(task)
 
-    async def close(self) -> None:
+    def close(self) -> Coroutine[Any, Any, None]:
         self._closing = True
-        self._socket.close()
+        self._closed = True
+        if self._close_failure is not None:
+            return self._raise_close_failure()
+        operation = self._close_operation
+        if operation is None:
+            if self._close_complete:
+                return self._completed_close()
+            operation = asyncio.create_task(self._perform_close())
+            self._close_operation = operation
+            operation.add_done_callback(self._close_done)
+        return self._await_close(operation)
+
+    async def _completed_close(self) -> None:
+        return None
+
+    async def _raise_close_failure(self) -> None:
+        raise RuntimeError("WAW stream listener close failed") from None
+
+    async def _await_close(self, operation: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            if operation.cancelled():
+                self._record_close_failure()
+                raise RuntimeError("WAW stream listener close failed") from None
+            raise
+        except BaseException:
+            self._record_close_failure()
+            raise RuntimeError("WAW stream listener close failed") from None
+        if self._close_failure is not None:
+            raise RuntimeError("WAW stream listener close failed") from None
+
+    def _close_done(self, task: asyncio.Task[None]) -> None:
+        if self._close_operation is task:
+            self._close_operation = None
+        try:
+            task.result()
+        except BaseException:
+            self._record_close_failure()
+        else:
+            self._close_complete = True
+
+    def _record_close_failure(self) -> None:
+        if self._close_failure is not None:
+            return
+        self._close_failure = RuntimeError("WAW stream listener close failed")
+        self._closed = True
+        self._poison()
+
+    async def _perform_close(self) -> None:
+        self._closing = True
+        self._closed = True
+        with contextlib.suppress(OSError):
+            self._socket.close()
         if self._accept_task is not None:
             self._accept_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._accept_task
+            done, _ = await asyncio.wait({self._accept_task}, timeout=1.0)
+            if self._accept_task in done:
+                with contextlib.suppress(BaseException):
+                    self._accept_task.result()
+            else:
+                self._poison()
         for session in tuple(self._sessions):
             session.invalidate()
         for peer in tuple(self._peers):

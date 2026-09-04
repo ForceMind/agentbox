@@ -33,9 +33,10 @@ blocker is resolved. Do not request the same software approval again.
   bilingual migration. Locale is fixed per document from only
   `navigator.languages[0]`: primary `zh` → `zh-CN`; all other/missing/malformed
   values → English; technical identifiers remain English.
-- The public API anchor loader and durable epoch transaction are implemented and
-  locally verified; next close retained `BoundRuntimePeer`, Runtime listener
-  re-`listen`/API authority transfer and bounded redraw before production bootstrap.
+- The public API anchor loader, durable epoch transaction and fixed-backlog Runtime
+  listener re-`listen` are implemented and locally verified; next close retained
+  `BoundRuntimePeer`, API authority transfer and bounded redraw before production
+  bootstrap.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent

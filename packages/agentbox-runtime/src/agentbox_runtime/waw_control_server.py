@@ -15,7 +15,8 @@ import re
 import socket
 import struct
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
+from enum import Enum
 from typing import Any, cast
 
 from agentbox_protocol.waw_control import (
@@ -27,6 +28,7 @@ from agentbox_protocol.waw_control import (
 )
 
 _REQUEST_ID = re.compile(rb"wreq_[0-9a-f]{32}")
+FIXED_BACKLOG = 64
 
 
 class WAWControlDispatchError(RuntimeError):
@@ -43,6 +45,12 @@ Dispatch = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 class _WAWControlDispatchPoisoned(TimeoutError):
     """The dispatcher did not stop within the bounded cancellation grace."""
+
+
+class _SocketOwnership(Enum):
+    RAW = "RAW"
+    IN_FLIGHT = "IN_FLIGHT"
+    TRANSFERRED = "TRANSFERRED"
 
 
 class WAWControlServer:
@@ -93,6 +101,9 @@ class WAWControlServer:
         self._server: asyncio.AbstractServer | None = None
         self._poisoned = False
         self._closing = False
+        self._closed = False
+        self._socket_ownership = _SocketOwnership.RAW
+        self._raw_socket_closed = False
         self._connection_tasks: set[asyncio.Task[Any]] = set()
         self._writers: set[asyncio.StreamWriter] = set()
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
@@ -105,28 +116,92 @@ class WAWControlServer:
         # half way through (or make a later close report a false clean
         # state).
         self._close_operation: asyncio.Task[None] | None = None
+        self._start_operation: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        if self._server is not None:
-            raise RuntimeError("WAW control server is already started")
         if self._poisoned:
             raise RuntimeError("WAW control server is poisoned")
-        self._closing = False
-        self._sock.setblocking(False)
-        self._server = await asyncio.start_unix_server(
-            self._handle,
-            sock=self._sock,
-            start_serving=True,
-            limit=MAX_CONTROL_LINE + 1,
-        )
+        if self._closing or self._closed or self._close_operation is not None:
+            raise RuntimeError("WAW control server is unavailable")
+        if self._server is not None:
+            return
+        operation = self._start_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_start())
+            self._start_operation = operation
+            operation.add_done_callback(self._consume_start_operation)
+        await asyncio.shield(operation)
 
-    async def close(self) -> None:
+    async def _perform_start(self) -> None:
+        if self._poisoned or self._closing or self._closed:
+            raise RuntimeError("WAW control server is unavailable")
+        if self._server is not None:
+            return
+        self._closing = False
+        try:
+            self._sock.listen(FIXED_BACKLOG)
+            self._sock.setblocking(False)
+            self._socket_ownership = _SocketOwnership.IN_FLIGHT
+            server = await asyncio.start_unix_server(
+                self._handle,
+                sock=self._sock,
+                backlog=FIXED_BACKLOG,
+                start_serving=True,
+                limit=MAX_CONTROL_LINE + 1,
+            )
+            self._socket_ownership = _SocketOwnership.TRANSFERRED
+            if self._closing or self._closed:
+                server.close()
+                with contextlib.suppress(OSError):
+                    await server.wait_closed()
+                raise RuntimeError("WAW control server closed during activation")
+            self._server = server
+        except asyncio.CancelledError:
+            self._fail_start()
+            raise
+        except (OSError, RuntimeError, ValueError):
+            self._fail_start()
+            raise RuntimeError("WAW control listener activation failed") from None
+        except BaseException:
+            self._fail_start()
+            raise
+
+    def _consume_start_operation(self, task: asyncio.Task[None]) -> None:
+        if self._start_operation is task:
+            self._start_operation = None
+        with contextlib.suppress(BaseException):
+            task.result()
+
+    def _fail_start(self) -> None:
+        self._poisoned = True
+        self._closing = True
+        self._closed = True
+        if self._server is not None:
+            with contextlib.suppress(OSError):
+                self._server.close()
+            self._server = None
+        if self._socket_ownership is _SocketOwnership.RAW:
+            self._close_raw_socket()
+
+    def _close_raw_socket(self) -> None:
+        if self._raw_socket_closed or self._socket_ownership is not _SocketOwnership.RAW:
+            return
+        self._raw_socket_closed = True
+        with contextlib.suppress(OSError, AttributeError):
+            self._sock.close()
+
+    def close(self) -> Coroutine[Any, Any, None]:
+        self._closing = True
+        self._closed = True
         operation = self._close_operation
         if operation is None or operation.done():
             operation = asyncio.create_task(self._perform_close())
             self._close_operation = operation
             self._cleanup_tasks.add(operation)
             operation.add_done_callback(self._consume_cleanup_task)
+        return self._await_close(operation)
+
+    async def _await_close(self, operation: asyncio.Task[None]) -> None:
         try:
             # Shield the operation from cancellation of this caller.  The
             # operation owns all cleanup and remains observable through the
@@ -169,6 +244,19 @@ class WAWControlServer:
 
     async def _perform_close_body(self) -> None:
         self._closing = True
+        self._closed = True
+        start_operation = self._start_operation
+        start_pending = False
+        if start_operation is not None and not start_operation.done():
+            done, _ = await asyncio.wait(
+                {start_operation}, timeout=self._cancellation_grace_seconds
+            )
+            start_pending = start_operation not in done
+            if start_pending:
+                self._poison_listener(exclude={start_operation})
+            else:
+                with contextlib.suppress(BaseException):
+                    start_operation.result()
         if self._server is not None:
             self._server.close()
             try:
@@ -186,6 +274,8 @@ class WAWControlServer:
                 self._poison_listener()
                 raise
             self._server = None
+        elif not start_pending and self._socket_ownership is _SocketOwnership.RAW:
+            self._close_raw_socket()
         # Close and cancellation are deliberately bounded.  A dispatcher
         # which refuses cancellation is poisoned and is never admitted again.
         current = asyncio.current_task()
@@ -235,6 +325,7 @@ class WAWControlServer:
         # observer returned while a detached child is still alive.
         if (
             self._poisoned
+            or start_pending
             or self._connection_tasks
             or self._dispatch_tasks
             or self._io_tasks
@@ -564,4 +655,4 @@ class WAWControlServer:
             task.result()
 
 
-__all__ = ["Dispatch", "WAWControlDispatchError", "WAWControlServer"]
+__all__ = ["Dispatch", "FIXED_BACKLOG", "WAWControlDispatchError", "WAWControlServer"]

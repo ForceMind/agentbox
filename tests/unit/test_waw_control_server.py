@@ -4,12 +4,14 @@ import asyncio
 import contextlib
 import os
 import socket
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from agentbox_protocol.waw_control import decode_control_response
+from agentbox_runtime import waw_control_server as subject
 from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
     WAWControlServer,
@@ -53,6 +55,249 @@ async def _empty_response() -> dict[str, object]:
 
 
 Dispatch = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
+
+
+class _RecordingListeningSocket:
+    family = socket.AF_UNIX
+    type = socket.SOCK_STREAM
+
+    def __init__(self, events: list[object], *, fail_listen: bool = False) -> None:
+        self.events = events
+        self.fail_listen = fail_listen
+        self.closed = False
+
+    def getsockopt(self, _level: int, option: int) -> int:
+        assert option == socket.SO_ACCEPTCONN
+        return 1
+
+    def get_inheritable(self) -> bool:
+        return False
+
+    def listen(self, backlog: int) -> None:
+        self.events.append(("listen", backlog))
+        if self.fail_listen:
+            raise OSError("synthetic listen failure")
+
+    def setblocking(self, enabled: bool) -> None:
+        self.events.append(("blocking", enabled))
+
+    def close(self) -> None:
+        self.closed = True
+        self.events.append("socket-close")
+
+
+class _RecordingAsyncServer:
+    def __init__(self, events: list[object]) -> None:
+        self.events = events
+
+    def close(self) -> None:
+        self.events.append("server-close")
+
+    async def wait_closed(self) -> None:
+        self.events.append("server-wait-closed")
+
+
+@pytest.mark.anyio
+async def test_start_relistens_fixed_backlog_before_readiness_and_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events)
+    async_server = _RecordingAsyncServer(events)
+
+    async def start_unix_server(*_args: object, **kwargs: object) -> _RecordingAsyncServer:
+        events.append(("readiness", kwargs["backlog"]))
+        return async_server
+
+    monkeypatch.setattr(asyncio, "start_unix_server", start_unix_server)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+
+    await server.start()
+    await server.start()
+    assert events[:3] == [
+        ("listen", subject.FIXED_BACKLOG),
+        ("blocking", False),
+        ("readiness", subject.FIXED_BACKLOG),
+    ]
+    assert events.count(("listen", subject.FIXED_BACKLOG)) == 1
+
+    await server.close()
+    await server.close()
+    assert events.count("server-close") == 1
+    assert "socket-close" not in events
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await server.start()
+
+
+@pytest.mark.anyio
+async def test_concurrent_start_callers_share_one_socket_transfer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events)
+    async_server = _RecordingAsyncServer(events)
+    readiness_entered = asyncio.Event()
+    release_readiness = asyncio.Event()
+
+    async def start_unix_server(*_args: object, **kwargs: object) -> _RecordingAsyncServer:
+        events.append(("readiness", kwargs["backlog"]))
+        readiness_entered.set()
+        await release_readiness.wait()
+        return async_server
+
+    monkeypatch.setattr(asyncio, "start_unix_server", start_unix_server)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+
+    first = asyncio.create_task(server.start())
+    await asyncio.wait_for(readiness_entered.wait(), timeout=1)
+    operation = server._start_operation
+    second = asyncio.create_task(server.start())
+    await asyncio.sleep(0)
+    assert operation is not None and server._start_operation is operation
+    assert events.count(("listen", subject.FIXED_BACKLOG)) == 1
+    release_readiness.set()
+    await asyncio.gather(first, second)
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_close_before_start_closes_inherited_descriptor() -> None:
+    events: list[object] = []
+    read_fd, write_fd = os.pipe()
+
+    class FDListeningSocket(_RecordingListeningSocket):
+        def close(self) -> None:
+            super().close()
+            os.close(read_fd)
+
+    server = WAWControlServer(
+        cast(Any, FDListeningSocket(events)),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+    try:
+        await server.close()
+        with pytest.raises(OSError):
+            os.fstat(read_fd)
+        await server.close()
+    finally:
+        os.close(write_fd)
+
+
+@pytest.mark.anyio
+async def test_close_while_listener_registered_but_server_not_returned_preserves_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events)
+    async_server = _RecordingAsyncServer(events)
+    readiness_entered = asyncio.Event()
+    release_readiness = asyncio.Event()
+
+    async def delayed_server_return(*_args: object, **_kwargs: object) -> _RecordingAsyncServer:
+        events.append("listener-registered")
+        readiness_entered.set()
+        await release_readiness.wait()
+        return async_server
+
+    monkeypatch.setattr(asyncio, "start_unix_server", delayed_server_return)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=0.01,
+    )
+    start_call = asyncio.create_task(server.start())
+    await asyncio.wait_for(readiness_entered.wait(), timeout=1)
+    close_wait = server.close()
+    assert server._closing and server._closed and server._close_operation is not None
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await server.start()
+
+    await close_wait
+    assert server._poisoned and server._closing
+    assert server._start_operation is not None and not server._start_operation.done()
+    assert "socket-close" not in events
+    release_readiness.set()
+    with pytest.raises(RuntimeError, match="activation failed"):
+        await start_call
+    assert events.index("listener-registered") < events.index("server-close")
+    assert events.count("server-close") == 1
+    assert events.count("server-wait-closed") == 1
+    assert "socket-close" not in events
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux AF_UNIX peer lifecycle")
+@pytest.mark.anyio
+async def test_real_loop_close_transferred_socket_has_no_stale_reader(tmp_path: Path) -> None:
+    path = tmp_path / "control.sock"
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.bind(str(path))
+    sock.listen(1)
+    server = WAWControlServer(
+        sock,
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+    await server.start()
+    reader, writer = await asyncio.open_unix_connection(path)
+    try:
+        for _ in range(100):
+            if server._connection_tasks:
+                break
+            await asyncio.sleep(0)
+        assert server._connection_tasks
+        await server.close()
+        async with asyncio.timeout(1):
+            assert await reader.read() == b""
+        assert server._server is None
+        assert server._connection_tasks == set()
+        with pytest.raises(OSError):
+            await asyncio.open_unix_connection(path)
+    finally:
+        writer.close()
+        with contextlib.suppress(OSError, ConnectionError):
+            await writer.wait_closed()
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_relisten_failure_closes_without_entering_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events, fail_listen=True)
+
+    async def forbidden_readiness(*_args: object, **_kwargs: object) -> None:
+        events.append("unexpected-readiness")
+
+    monkeypatch.setattr(asyncio, "start_unix_server", forbidden_readiness)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+
+    with pytest.raises(RuntimeError, match="activation failed") as raised:
+        await server.start()
+    assert "synthetic" not in str(raised.value)
+    assert events == [("listen", subject.FIXED_BACKLOG), "socket-close"]
+    assert sock.closed and server._poisoned and server._closed
+    await server.close()
 
 
 async def _running_server(

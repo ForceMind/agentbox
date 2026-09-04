@@ -61,6 +61,13 @@ client `SO_PEERCRED` identifies Runtime rather than systemd. API prefers
 `SO_PEERCRED → pidfd_open → response → still-current` window as far as supported
 without inventing stronger responder proof. R12 records the real kernel path.
 
+Listener startup and shutdown share one operation per phase. Control socket
+ownership advances only through `RAW`, `IN_FLIGHT`, and `TRANSFERRED`; close may
+directly close only a confirmed `RAW` descriptor, while an in-flight transfer is
+poisoned and left to the eventual `AbstractServer` owner. Stream accept failure
+poisons immediately, and a cancelled/failed close is sticky rather than later
+reported as successful.
+
 When the old API pidfd is terminal, Runtime may accept one new authority epoch
 and nonce. It first revokes old capability, Session and INPUT publication,
 preserves any incomplete cleanup fence, and only then publishes the new authority.

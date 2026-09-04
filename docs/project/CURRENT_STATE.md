@@ -616,9 +616,17 @@ PROPOSED architecture status are preserved.
   workspace plus pending Stop operation to reconciliation on Runtime advance.
 - Bind attestation is durably classified before coordinator publication. Focused
   binding/session/anchor tests pass 49 cases; the complete migration suite passes
-  41. Scoped Ruff, Black and Linux-target mypy pass.
-- Sol review found an additional listener prerequisite: both systemd-inherited
-  Runtime listeners must re-`listen` before readiness or `SO_PEERCRED` identifies
-  systemd rather than Runtime. Retained control/stream `BoundRuntimePeer`, Runtime
-  listener rebind, API authority transfer, redraw and application ownership remain
-  active rc6 work. No production WAW path is enabled by this foundation.
+  41. Scoped Ruff, Black and Linux-target mypy pass. Commit `4f27409...` completed
+  all 20 exact-head checks in PR #80.
+- Both systemd-inherited Runtime listeners now re-`listen` with fixed backlog 64
+  before readiness/accept so client `SO_PEERCRED` can bind Runtime rather than the
+  socket activator. Re-listen failure closes and poisons the inherited listener;
+  four deterministic lifecycle tests pass. Real systemd credentials remain R12.
+- Listener lifecycle now uses shared start/close operations, sticky close failure
+  and explicit control-socket ownership `RAW → IN_FLIGHT → TRANSFERRED`. Close
+  never raw-closes an ownership-unknown socket; accept/start failures, direct
+  cancellation and delayed cleanup remain poisoned. Thirteen focused tests pass
+  with one Linux-only real-loop skip; independent Sol review reports no P0/P1/P2.
+- Retained control/stream `BoundRuntimePeer`, API authority transfer, redraw and
+  application ownership remain active rc6 work. No production WAW path is enabled
+  by this foundation.
