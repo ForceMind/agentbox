@@ -715,3 +715,9 @@ PROPOSED architecture status are preserved.
   that releases U2, so U2 cannot reach READY if the trusted waiter lockdown
   fails. U1 also resets PDEATHSIG after its map and closes every inherited FD
   before entering the wait/reap-only loop.
+- Exact head `0d5d1f5` still returned project status `111`: U1's namespace root
+  could not use `open_tree(OPEN_TREE_CLONE)` on the inherited runner mount. The
+  setup now uses the standard non-recursive rootless `MS_BIND` operation inside
+  U1, followed by the same one-way `mount_setattr` additions. U2 stays blocked
+  until all mounts and the U1 waiter lockdown succeed, so this trusted setup
+  change does not expose a less-restricted mount to the vendor workload.

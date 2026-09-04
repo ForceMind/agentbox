@@ -120,11 +120,13 @@ document-fixed browser selection: only `navigator.languages[0]` is read, primary
 Technical identifiers remain English; full cross-page bilingual migration remains
 an R11 task.
 
-Descriptor directory mounts use non-recursive `open_tree` clones: nested source
-mounts are not imported into the isolated view. Linux `mount_setattr` only adds
-`NOSUID|NODEV` and policy `RDONLY`; `move_mount` attaches the already-restricted
-clone without a path reparse or less-restricted window. Missing Linux 5.12+
-syscall/UAPI support fails closed and is an R12 host gate.
+Descriptor directory mounts use non-recursive rootless `MS_BIND` inside U1, so
+nested source mounts are not imported into the isolated view. Linux
+`mount_setattr` then only adds `NOSUID|NODEV` and policy `RDONLY`. U2 remains
+blocked until every mount is installed and U1 has completed its NNP, capability
+clear, and seccomp lockdown, so the vendor cannot observe the trusted setup
+window. Missing Linux 5.12+ syscall/UAPI support fails closed and is an R12 host
+gate.
 R12 must also prove these four source directories contain no nested mounts, or
 audit both the nested mount and the underlying directory that a non-recursive
 clone exposes. The setup owns each fixed target before the vendor starts.

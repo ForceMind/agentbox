@@ -40,13 +40,11 @@ def test_native_source_inventory_has_no_shell_or_path_lookup_execution() -> None
     assert 'umount2("/proc"' not in source
     assert 'mount("proc", "/proc", "proc"' in source
     assert "SYS_mount_setattr" in source
-    assert "SYS_open_tree" in source
-    assert "SYS_move_mount" in source
+    assert '"/proc/self/fd/%d"' in source
+    assert "mount(source, target, NULL, MS_BIND, NULL)" in source
     assert "MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV" in source
     assert "MOUNT_ATTR_RDONLY" in source
     assert "MOUNT_ATTR_SIZE_VER0" in source
-    assert "OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC | AT_EMPTY_PATH" in source
-    assert "MOVE_MOUNT_F_EMPTY_PATH" in source
     assert "attr_clr" not in source
     assert "MS_BIND | MS_REC" not in source
     assert "PR_SET_KEEPCAPS" in source
