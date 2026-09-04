@@ -57,6 +57,13 @@ TMUX_CONFIG = (
     / "waw-inert"
     / "tmux.conf"
 )
+TMUX_ENV = {
+    "HOME": "/nonexistent",
+    "PATH": "/usr/bin",
+    "LANG": "C.UTF-8",
+    "LC_CTYPE": "C.UTF-8",
+    "TERM": "xterm-256color",
+}
 
 pytestmark = pytest.mark.skipif(
     not LINUX or not HOST_GATE, reason="dedicated Linux native helper host gate"
@@ -370,6 +377,7 @@ def _begin_real_workspace(
             agent,
         ],
         check=True,
+        env=TMUX_ENV,
     )
     control, _address = listener.accept()
     control.settimeout(5.0)
@@ -502,6 +510,7 @@ def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(
             "off",
         ],
         check=True,
+        env=TMUX_ENV,
     )
     attached, master = _spawn_real_attach(native_binaries, "claude")
     startup = _read_fd_until(master, b"SIZE 80 24")
@@ -592,6 +601,7 @@ def test_bootstrap_rejects_correct_socket_from_non_tmux_parent(native_binaries: 
             "3600",
         ],
         check=True,
+        env=TMUX_ENV,
     )
     process = subprocess.run(
         [
@@ -625,6 +635,7 @@ def test_real_tmux_server_has_exact_inert_options_and_no_key_tables() -> None:
             "3600",
         ],
         check=True,
+        env=TMUX_ENV,
     )
     expected = {
         ("-g", "prefix"): "None",
@@ -777,6 +788,7 @@ def test_real_tmux_detach_reattach_preserves_vendor_pid_and_reaps_descendants(
             "claude",
         ],
         check=True,
+        env=TMUX_ENV,
     )
     listener.settimeout(5.0)
     launch, _address = listener.accept()

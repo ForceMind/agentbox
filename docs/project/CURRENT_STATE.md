@@ -665,3 +665,9 @@ PROPOSED architecture status are preserved.
   matching, the diagnostic reads pytest, tmux-server and pane cgroup records from
   `/proc` before launch to distinguish inheritance from runner relocation or path
   format differences.
+- Head `0c4c593` supplied the exact records: pytest and tmux server remained in
+  the full-hash workload, while systemd-enabled Ubuntu tmux moved the pane to an
+  `app-tmux.slice/tmux-spawn-*.scope`. Production already starts tmux with a
+  five-key fixed environment that contains no DBus/XDG systemd channel. Native
+  tests now use that same environment for every new server and keep the positive
+  pane cgroup assertion; the production cgroup predicate is not weakened.
