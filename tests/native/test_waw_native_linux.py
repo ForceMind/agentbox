@@ -497,6 +497,7 @@ def _wait_session_gone(session: str, timeout: float = 10.0) -> None:
         if time.monotonic() >= deadline:
             raise AssertionError("dedicated tmux session did not exit")
         time.sleep(0.02)
+    deadline = time.monotonic() + timeout
     while TMUX_SOCKET.exists():
         if time.monotonic() >= deadline:
             raise AssertionError("dedicated tmux server did not exit")

@@ -768,6 +768,11 @@ PROPOSED architecture status are preserved.
   session exit. The first failure moved to the empty tmux server retaining its
   socket. The inert config now pins server option `exit-empty=on` instead of
   relying on a distro/default value; the native gate reads it back exactly.
+- The session and server cleanup checks previously shared one ten-second
+  deadline, so a valid late session exit left no observation budget for the
+  server/socket transition. Each independently bounded transition now receives
+  its own ten-second deadline; the server still must disappear without an
+  explicit test-side kill.
 - The same head reached the standalone launcher fake but returned its diagnostic
   `90`: that fixture only accepted attach-session argv while the launcher test
   correctly emits fixed new-session argv. The fake now validates both exact
