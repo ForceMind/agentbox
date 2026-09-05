@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T20:21:53Z"
-verified_by: "codex-live-reconciliation"
+verified_at_utc: "2026-09-05T22:26:11Z"
+verified_by: "codex-r11-rc6-browser-renderer-ci"
 repository: "ForceMind/agentbox"
 ---
 
@@ -9,12 +9,58 @@ repository: "ForceMind/agentbox"
 
 ## Current authorized implementation
 
-- Live preflight after `git fetch origin --prune`: active R10 branch
-  `codex/waw-fixed-interactive-process` has merge-base
-  `15a4632f915dd1e1bde19425e313b52ada27166f`, equal to `origin/main` and the
-  observed R9 merge. Local and remote branch HEAD are exactly
-  `6083e6e1aa118b19b548a9070b7e49558988f7e5` with a clean worktree before this
-  documentation update. Open PRs are R10 PR #79 and historical Draft PR #42.
+- Live revalidation on 2026-09-05: `git fetch origin --prune` exited `0`;
+  `main`, `origin/main` and the branch merge-base equal
+  `341a69bf855f48f90cbecfb5c6872c3bf8c28360`. The upstream rc6 branch head was
+  `9bf5e8d1defa4704b521d6c67a4725740c0f5fd4` before this checkpoint. The exact
+  head `029378e...` completed 17/20 checks; all three Backend Python jobs exposed
+  the same Linux inode-reuse flaw in the Runtime Project verifier. Repair head
+  `bbdd67c...` completed the fresh exact-head 20/20 matrix, including native and
+  Python 3.11/3.12/3.13. Later documentation head `801a494...` failed only native
+  attach READY status 71; `af4d43e...` passed native, while `2381171...` quality
+  failed only because its new Python test needed Black formatting. `9d078b4...`
+  plus `4222242...` completed the fresh exact-head 20/20 matrix.
+- The active, reviewed execution order is `docs/WAW_R11_EXECUTION_PLAN.md`.
+  The rc6-B first-use contract and local evidence are recorded in
+  `docs/WAW_R11_RC6_FIRST_USE.md`; this is not a claim that rc6, rc7, rc8, rc9
+  or R12 is complete.
+- Local commit `9c12ab3fd1f4f369e90f710a8ab6cec1f187edea` implements rc6-B
+  deterministic binding replay: eager Runtime `bindings-v1` restoration,
+  ordered API replay, closed inventory finalization, Project/binding drift
+  fences, and the private installer boundary. Its affected-scope matrix is
+  346 passed / 2 Linux-host skips; Black, Ruff, Linux-target mypy and
+  `git diff --check` pass. Two independent Sol reviews found two P1/two P2 and
+  then no remaining P0/P1/P2 after repair. The final exact head
+  `854cf87774f3de22bd3a37bf74576dcfc29177ee` completed 20/20 CI. A fixture typing
+  repair (`3341c13`) and faulthandler-only CI diagnostic (`854cf87`) preceded
+  that terminal result; two abnormal non-terminal Python 3.12 runner attempts
+  are not counted as evidence. The checkpoint is still not rc6-B completion or
+  host evidence.
+- Commit `ea0ac844c1f2e52fc8cdc51a0ec7d90645094338` hardens the rc6-C browser
+  controller before production page composition: fresh redraw only, renderer
+  gated cursor, context/trust publication checks, terminal-input uncertainty
+  fence and exact control-operation lifecycle. Its controller scope has 28
+  dedicated tests, an independent Sol PASS with no P0/P1/P2 and 20/20
+  exact-head CI. It does not yet create a production DOM renderer or wire a
+  terminal into `WorkspacePage`.
+- Commit `f4d868e` adds the bounded `DocumentFragment`/`textContent` terminal
+  renderer with clear fallback, cancellation and reentrancy fences. Its final
+  documentation head `48850bab3a7822d22114dd46b14ba4362f004f32` completed
+  20/20 CI. Renderer code still has no production page owner, ticket flow or
+  browser control UI.
+- Earlier paragraphs labeled “current uncommitted” are retained historical
+  checkpoints. The branch/CI status in this opening section and the rc6 current
+  composition checkpoint supersede them.
+- The first rc9 foundation increment is commit
+  `184781cca3010e36fb979ad0490566363b0816cc`: typed bilingual catalog domains,
+  English/Chinese key parity, known API-code localization and the route/state
+  migration manifest. Its exact head completed 20/20 checks on PR #80. It does
+  not migrate every page or claim rc9 is complete.
+
+- Live preflight after `git fetch origin --prune`: local `main` and `origin/main`
+  equal R10 merge `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active R11 branch
+  `codex/waw-production-controller-rc6` starts exactly there with a clean tree
+  before this documentation update. Historical Draft PR #42 is the only open PR.
 - R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
   all six standard post-main workflows. The separate historical Dependency Graph
   limitation is addressed on this R10 branch by the `.txt` release input.
@@ -22,11 +68,11 @@ repository: "ForceMind/agentbox"
   approved managed Chromium extension + Native Messaging + independent `trustd`,
   followed by R8 rc3 → R9/provider rc4 → R10 rc5 → R11 rc6–rc9. R9 is delivered;
   real host/key/provider activation remains R12.
-- R10 `0.3.0rc5` implementation and independent review are complete. PR #79 is
-  `MERGEABLE/CLEAN`; implementation head `6083e6e...` completed 20/20 exact-head
-  checks, including Linux native normal/sanitizer runs. This documentation update
-  will create a new exact head, so final CI, normal merge and exact read-back are
-  still required before R10 is recorded as delivered.
+- R10 `0.3.0rc5` is delivered by PR #79: final exact head `0d9e7c7...` completed
+  20/20 checks and merged normally at `2026-09-04T20:37:51Z`. Fetch/read-back
+  observed merge `341a69bf...` with exact parents `15a4632f...` and `0d9e7c7...`.
+  All six standard post-main workflows and the dynamic Dependency Graph update
+  completed SUCCESS. R11/rc6 software composition is now active.
 
 ## Historical live baselines
 
@@ -68,6 +114,7 @@ repository: "ForceMind/agentbox"
 | R7 — Runtime encrypted stream | #76 | `01c716bd4713ef4a6676b71754a4e065ebce3b82` | `4180f0991af97cba108b6e5a707b7abf58a444d2` | 19/19 SUCCESS |
 | R8 — API ciphertext relay | #77 | `a2c0b6afd002455267745d3da4d21bd87943da8a` | `64d37f9a4d39195930959c53c926a4184877355a` | 19/19 SUCCESS |
 | R9 — browser trust + bounded terminal | #78 | `fdf2bd77ac3178ee973d10c5429b1b2d8b7a5051` | `15a4632f915dd1e1bde19425e313b52ada27166f` | 19/19 SUCCESS |
+| R10 — fixed interactive process | #79 | `0d9e7c7f2abdd7a19dabc611fd1d2c8d01d3d013` | `341a69bf855f48f90cbecfb5c6872c3bf8c28360` | 20/20 SUCCESS |
 
 PR #61 merged at `2026-09-03T05:47:57Z`. Every listed merge was followed by a
 GitHub merge read-back and `git fetch origin --prune`; commands exited `0`.
@@ -563,7 +610,7 @@ PROPOSED architecture status are preserved.
   assets. No CLI/HOME/key/host action occurred; implementation is approved after
   R9 delivery.
 
-## R10 exact-head verified candidate
+## R10 delivered fixed interactive process
 
 - Runtime host manifest v2 closes the exact-six executable inventory and exact-two
   Claude/Codex profiles. Seven fixed descriptor roles, the 64-byte WBR protocol,
@@ -595,10 +642,159 @@ PROPOSED architecture status are preserved.
   ordered/hash-checked frames and its marker/padding before the same complete
   DSR5/eight-position DSR6 overlap noise. Production bridge code and every strict
   tail assertion remain unchanged; a new exact-head CI run is required.
-- R10 remains `待验证` until that new head completes CI and PR #79 is merged and
-  read back. Its actual merge SHA and post-main workflow results will be recorded
-  on the R11 branch.
+- Final exact head `0d9e7c7f2abdd7a19dabc611fd1d2c8d01d3d013` completed
+  all 20 checks, including native normal/sanitizer. PR #79 merged normally as
+  `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; exact parent read-back, all six
+  post-main workflows and the dynamic Dependency Graph update are SUCCESS.
 - Browser locale remains fixed: read only `navigator.languages[0]`; primary
   language `zh` selects `zh-CN`; every other, missing or malformed value selects
   English. Technical identifiers remain English. Full cross-page bilingual
   migration is part of R11/rc9.
+
+## R11/rc6 foundation in progress
+
+- The accepted rc6–rc9 composition contract is recorded in
+  `WAW_R11_CONTROLLER_COMPOSITION.md`; PR #80 tracks the active rc6 branch.
+- An API-only v2 anchor loader reads the fixed public leaf through a held,
+  root-owned non-writable directory chain and revalidates all identities. It does
+  not open Runtime-private manifest/HOME/Secret state; 21 boundary tests pass.
+- Migration `0008_waw_runtime_epoch_fence` adds nullable canonical decimal TEXT
+  `last_runtime_epoch`. One `BEGIN IMMEDIATE` transaction classifies first/same/
+  greater epochs, preserves terminal rows and atomically fences every nonterminal
+  workspace plus pending Stop operation to reconciliation on Runtime advance.
+- Bind attestation is durably classified before coordinator publication. Focused
+  binding/session/anchor tests pass 49 cases; the complete migration suite passes
+  41. Scoped Ruff, Black and Linux-target mypy pass. Commit `4f27409...` completed
+  all 20 exact-head checks in PR #80.
+- Both systemd-inherited Runtime listeners now re-`listen` with fixed backlog 64
+  before readiness/accept so client `SO_PEERCRED` can bind Runtime rather than the
+  socket activator. Re-listen failure closes and poisons the inherited listener;
+  four deterministic lifecycle tests pass. Real systemd credentials remain R12.
+- Listener lifecycle now uses shared start/close operations, sticky close failure
+  and explicit control-socket ownership `RAW → IN_FLIGHT → TRANSFERRED`. Close
+  never raw-closes an ownership-unknown socket; accept/start failures, direct
+  cancellation and delayed cleanup remain poisoned. Thirteen focused tests pass
+  with one Linux-only real-loop skip; independent Sol review reports no P0/P1/P2.
+- PR #80 head `6467a09...` passed the 66-case normal native run; sanitizer reached
+  23 pass / 1 failure because tmux exposed PTY-dead before its child wait status,
+  yielding transient `pane_dead_status` empty. The strict DCS gate now waits on a
+  unique test-only `pane-died → wait-for -S` child-status event and then requires
+  exact `1:74:` (normal exit 74, no signal). Independent Sol review PASS; a new
+  exact-head Linux CI run remained required.
+- Head `5b4237e...` proved that DCS gate, then the same PTY-dead/status-publication
+  race appeared in the closed-descendant status check. All three `remain-on-exit`
+  gates now share one test-only unique `pane-died → wait-for -S` barrier and
+  strictly require `1:7:`, `1:74:`, and `1:7:` respectively. Tail order/hash and
+  descendant termination-canary assertions remain unchanged; another exact-head
+  native normal/sanitizer run was required.
+- Head `6916406...` passed native normal/sanitizer. Python 3.11 alone then exposed
+  a unit-test observation race: the intentionally failing close worker could
+  finish and its done callback could clear `_close_operation` before the test
+  captured it. The test now captures the synchronously created operation before
+  its first await; sticky failure/direct-cancel assertions remain unchanged.
+  Python 3.12/3.13 and the other 19 checks passed. Head `4059474...` then completed
+  all 20 exact-head checks, including Python 3.11 and native normal/sanitizer.
+- API control bind now publishes one retained `BoundRuntimePeer` only after full
+  response/EOF, anchor attestation and durable epoch classification. Every later
+  control request and stream connection borrows only a duplicate of that retained
+  pidfd with exact peer credentials, owner identity and generation checks.
+- Coordinator/client close synchronously fence new bind/request/borrow work;
+  candidate publication rechecks the fence. Poison and close are irreversible;
+  a retired client can issue only one replacement after a successful terminal
+  close. `poll(0)` supports high pidfds, and uncertain writer cleanup poisons.
+  Focused regression passes 115 with one Linux-only peer integration skip; full
+  Linux-target mypy checks 254 sources. Independent Sol review reports PASS with
+  no P0/P1/P2. Commit `3f7c301...` completed all 20 exact-head checks.
+- Runtime `WAWPeerAuthority` now models candidate, connection lease, transfer plan
+  and retained authority generation. It rejects foreign leases before locking,
+  uses authority-to-FD lock order, and exposes an authority-scoped `RuntimePeer`
+  view that survives connection-lease close but not transfer/poison/close.
+- First/exact-repeat bind, live conflicts, terminal transfer, random new epochs,
+  retired replay/capacity and CAS single-winner behavior are closed. Destructive
+  transfer failure permanently poisons; all detached FD close errors are sticky,
+  later close rethrows the first error without retrying an old FD number. Thirty-one
+  focused tests and scoped Ruff/Black/Linux mypy pass; independent Sol review
+  reports no P0/P1/P2. Exact-head CI remains required for this foundation.
+- Runtime peer authority must now be wired through control dispatch, lifecycle
+  bind/transfer and encrypted streams. Redraw and application ownership remain
+  active rc6 work. No production WAW path is enabled by this foundation.
+
+## R11/rc6 current composition checkpoint
+
+- The upstream rc6 branch head before this documentation checkpoint is
+  `9bf5e8d...`; it contains the API owner, browser-controller foundation and
+  Runtime durable binding-store checkpoints. Its exact-head CI must be read from
+  GitHub rather than inferred from older PR #80 evidence.
+- Commit `708acd8...` adds the first Project Start path, closed typed executable
+  evidence action, exact bound-host/epoch checks, response-loss fencing and
+  concurrent first-use convergence. Its `029378e...` exact-head run failed 3
+  Python matrix jobs on one shared Runtime verifier inode-reuse assertion; the
+  other 17 checks passed.
+- Repair `3ba85cb...` retains at most 256 verified Project descriptors for the
+  Runtime epoch and rejects replacement before inode reuse can alias an existing
+  binding. Local scope validation is 169 passed with one Linux-only skipped
+  control-path test; Ruff, Black and Linux-target mypy pass. The resulting
+  `bbdd67c...` exact head completed 20/20 checks; independent rc6 review remains
+  pending.
+- Documentation-only head `801a494...` then failed native attach READY status 71,
+  with the other 19 checks passing. `af4d43e...` replaces fixed short client
+  polling with one bounded monotonic READY deadline while preserving exact
+  PID/session validation; Linux native passed. `2381171...` then exposed only a
+  Black format failure in the new Python test, repaired by `9d078b4...`; its full
+  CI completed 20/20 at `4222242...`.
+- The next rc6 order is the attachment/page lifecycle hook and bilingual
+  `WorkspacePage` composition. Normal merge/read-back follows the complete rc6
+  acceptance set; rc7–rc9 and the R12 real-host boundary remain unchanged.
+- Integration commit `e210d749...` completed 17/20 exact-head checks; all three
+  Backend Python quality jobs failed on the same preserved non-fixed server
+  restart contract. The reviewed follow-up restores restart only after a clean,
+  successful non-fixed shutdown with no control server, poison or owned resource;
+  fixed WAW composition remains terminal and the consumed Runtime epoch is not
+  reset. `test_runtime_server.py` completed 23 cases, full static gates pass and
+  independent Sol review reports PASS. Follow-up `c534fe437...` completed 20/20
+  exact-head checks, including Linux native and Backend Python 3.11/3.12/3.13;
+  each Backend matrix reported 3577 passed and 43 host-gated skips.
+- The current bounded-redraw continuation is uncommitted. A neutral contract
+  retains at most 24 physical rows and 60 KiB, using row 25 and byte 61,441 only
+  as discarded sentinels. Held-FD tmux capture verifies socket, pane and retained
+  pidfd identity both before and after one shared one-second deadline. The
+  supervisor now owns one atomic capture/cursor/baseline publication, and the
+  registry, attachment service and bootstrap no longer accept a production capture
+  callback. The unified focused matrix completed 341 tests with 9 Linux-only
+  skips and 2 local UDS cases deselected. Independent Sol/xhigh review reports
+  PASS with no P0/P1/P2. The new real Linux native case awaits exact-head CI;
+  28 broader local UDS cases remain unverified after `PermissionError` during
+  socket setup.
+- First bounded-redraw head `adf44fc0...` reached the real Linux native capture
+  assertion and completed 72 native cases, but the 73rd failed only in test
+  teardown: the test explicitly killed the tmux server and then called a helper
+  that requires its socket to remain present. The local follow-up removes that
+  contradictory post-kill assertion; implementation capture evidence passed in
+  the failed run. A fresh exact-head result is still required.
+- Bounded-redraw follow-up `f37f92d9...` completed 20/20 exact-head checks.
+  Linux native completed 73 cases, including held-FD real tmux capture; Backend
+  Python 3.11 completed 3629 passed/44 skipped, and the 3.12/3.13 matrix also
+  completed successfully. The bounded-redraw slice is verified; the next rc6
+  scope is `WAWRuntimeApplication` production composition.
+- The current `WAWRuntimeApplication` slice is uncommitted. Typed Runtime
+  key/executor providers and activated sockets transfer through distinct one-shot
+  owners; shared start/close tasks compose stream, gated control, gated legacy and
+  one final application-gate commit. Partial production builders are private and
+  weak-map provenance is replaced by an unforgeable one-use binding. Incomplete
+  construction exposes a typed, reachable cleanup owner for retry. Shutdown
+  evidence keeps the provider until stream/control/lifecycle/legacy are all clean.
+  No production main, real key/provider or host is enabled. Independent Sol/xhigh
+  review reports PASS with no P0/P1/P2; Linux-target mypy covers 260 sources.
+- `WAWRuntimeApplication` head `628e9c00...` completed 20/20 exact-head checks,
+  including Linux native, E2E and Backend Python 3.11/3.12/3.13. This top-level
+  Runtime ownership slice is verified. API singleton/lifespan ownership is the
+  next rc6 scope; production main and real key/provider activation remain closed.
+- The uncommitted API-singleton continuation adds `AttachmentAuthority.begin_shutdown()`.
+  Pending tickets are burned; active and staged records retain exact cleanup/Audit
+  obligations through `invalidate_all()`. New admission operations fail after
+  shutdown, while exact positive cleanup remains admissible. Focused tests completed
+  66 cases and independent Sol/xhigh review reports PASS with no P0/P1/P2.
+- The same continuation now gives `WAWRuntimeBindCoordinator` and
+  `WAWControlClient` strict shutdown evidence. Retained/candidate pidfd close
+  failures are sticky, never retry an old FD number, invalidate bind state and
+  permanently prevent false-clean. Independent Sol/xhigh review is PASS.

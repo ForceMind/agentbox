@@ -115,6 +115,20 @@ class OutputRing:
             self._dropped_until = removed.end_cursor
         return frame
 
+    def append_batch(self, payloads: tuple[bytes, ...]) -> tuple[OutputFrame, ...]:
+        """Validate a bounded batch completely before allocating any cursor."""
+
+        if type(payloads) is not tuple:
+            raise WAWPTYError("output batch must be a tuple")
+        total = 0
+        for payload in payloads:
+            if type(payload) is not bytes or not payload or len(payload) > MAX_OUTPUT_FRAME_BYTES:
+                raise WAWPTYError("output batch contains an invalid frame")
+            total += len(payload)
+        if total > self._capacity or self._next_cursor + total - 1 > MAX_OUTPUT_CURSOR:
+            raise WAWPTYError("output batch cannot be retained atomically")
+        return tuple(self.append(payload) for payload in payloads)
+
     def _retained_line_count(self) -> int:
         """Count LF-delimited lines plus one unterminated stream tail."""
 

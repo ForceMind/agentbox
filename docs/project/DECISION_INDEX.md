@@ -82,3 +82,9 @@
   ownership from native ready through ASGI/relay pending to Runtime send. Layer
   transitions do not release/reacquire capacity, and first overflow synchronously
   fences I/O. The 128-slot/8 MiB parser pool remains a separate budget.
+- `WAW-R11-COMPOSITION-2026-09-05`: R11 executes serially as rc6 controller
+  composition, rc7 deterministic composed failure injection, rc8 artifact/ops
+  rehearsal and rc9 full bilingual UI. rc6 first binds control/stream to the same
+  pidfd-backed API/Runtime peers, persists Runtime epoch classification, adds
+  bounded Runtime redraw and single application ownership. See
+  [WAW_R11_CONTROLLER_COMPOSITION](../WAW_R11_CONTROLLER_COMPOSITION.md).

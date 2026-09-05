@@ -144,6 +144,16 @@ from agentbox_runtime.waw_process_inspector import (
     NativeProcessPort,
     WAWProcessInspector,
 )
+from agentbox_runtime.waw_runtime_application import (
+    WAWRuntimeApplication,
+    WAWRuntimeApplicationBuildError,
+    WAWRuntimeApplicationState,
+    WAWRuntimeConstructionCleanup,
+    WAWRuntimeExecutorProvider,
+    WAWRuntimeShutdownEvidence,
+    WAWRuntimeStaticKeyPort,
+    build_waw_runtime_application_from_filesystem_v2,
+)
 from agentbox_runtime.waw_stream_bridge import WAWStreamBridge, WAWStreamSnapshot, WAWStreamState
 from agentbox_runtime.waw_supervisor import (
     OutputSource,
@@ -244,6 +254,14 @@ __all__ = [
     "WAWProcessInspector",
     "WAWRuntimeEpochError",
     "WAWRuntimeEpochStore",
+    "WAWRuntimeApplication",
+    "WAWRuntimeApplicationBuildError",
+    "WAWRuntimeApplicationState",
+    "WAWRuntimeConstructionCleanup",
+    "WAWRuntimeExecutorProvider",
+    "WAWRuntimeShutdownEvidence",
+    "WAWRuntimeStaticKeyPort",
+    "build_waw_runtime_application_from_filesystem_v2",
     "WAWCanonicalManifestBundleV2",
     "WAWRuntimeHostManifestError",
     "WAWWorkspaceAttestation",

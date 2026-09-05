@@ -23,6 +23,18 @@
 - [Interactive CLI assessment](../WAW_INTERACTIVE_PROFILE_ASSESSMENT.md): current code/vendor documentation gaps requiring a complete execution-profile contract.
 - [Fixed interactive process](../WAW_FIXED_INTERACTIVE_PROCESS.md): R10 inert
   packaging inputs, digest-pinned policy boundary, and R11/R12 separation.
+- [R11 production integration](../WAW_R11_CONTROLLER_COMPOSITION.md): accepted
+  rc6–rc9 composition, failure, artifact/operations and bilingual UI contract.
+- [R11 execution plan](../WAW_R11_EXECUTION_PLAN.md): active rc6–rc9 work-unit
+  ownership, state-machine, Project binding, controller and acceptance plan.
+- [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md): typed Project binding,
+  generation-one creation and Runtime executable-evidence checkpoint, with its
+  verification and remaining boundaries.
+- [R11 rc6 binding replay](../WAW_R11_RC6_BINDING_REPLAY.md): exact API/Runtime
+  replay, inventory-finalization gate, drift fences, installer boundary and
+  explicit Linux/host evidence limits.
+- [R11 rc6 browser controller](../WAW_R11_RC6_BROWSER_CONTROLLER.md): controller
+  cursor/input/control fences, fresh-redraw contract and page-composition limits.
 
 - [Authentication timing diagnostic](../AUTH_TIMING_DIAGNOSTIC.md): isolated numeric observations, failure/privacy rules, regression evidence and unknown historical latency cause.
 

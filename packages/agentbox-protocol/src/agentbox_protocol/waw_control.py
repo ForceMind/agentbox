@@ -9,10 +9,12 @@ layers are admitted.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import re
 import unicodedata
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 WAW_CONTROL_PROTOCOL_VERSION = 1
@@ -32,6 +34,17 @@ _NONCE = re.compile(r"\A[0-9a-f]{32}\Z")
 _DECIMAL = re.compile(r"\A(?:0|[1-9][0-9]{0,19})\Z")
 _CAPABILITY = re.compile(r"\A[0-9a-f]{64}\Z")
 _RELATIVE_KEY = re.compile(r"\A[^/\\.][^/\\]*\Z")
+_BINDING_INVENTORY_FIELDS = (
+    "project_id",
+    "relative_key",
+    "project_revision",
+    "binding_revision",
+    "previous_binding_revision",
+    "previous_binding_digest",
+    "binding_digest",
+    "runtime_host_installation_id",
+    "runtime_host_installation_revision",
+)
 
 _ERROR_CODES = frozenset(
     {
@@ -62,6 +75,8 @@ _ERROR_CODES = frozenset(
         "WORKSPACE_STOPPED",
         "RECONCILIATION_REQUIRED",
         "BINDING_BOOTSTRAP_REQUIRED",
+        "BINDING_INVENTORY_MISMATCH",
+        "BINDING_REPLAY_INCOMPLETE",
         "PROJECT_PATH_UNSUPPORTED",
         "PROJECT_RUNTIME_ACTIVE",
         "PROJECT_IDENTITY_CHANGED",
@@ -189,7 +204,9 @@ def _common(value: dict[str, Any], action: str) -> None:
         raise WAWControlError("action is invalid")
 
 
-def _relative_key(value: Any) -> str:
+def validate_relative_key(value: Any) -> str:
+    """Validate the one-component WAW Project key shared by wire and ledger."""
+
     key = _string(value, name="relative_key")
     if (
         len(key) > 80
@@ -206,6 +223,70 @@ def _relative_key(value: Any) -> str:
     if any(not (char.isalnum() or char in {"-", "_", ".", " "}) for char in key):
         raise WAWControlError("relative_key contains unsupported characters")
     return key
+
+
+def _relative_key(value: Any) -> str:
+    """Compatibility wrapper for callers predating the public validator."""
+
+    return validate_relative_key(value)
+
+
+def binding_inventory_digest(items: Sequence[Mapping[str, Any]]) -> tuple[str, str]:
+    """Return the closed canonical count and digest for a replay inventory.
+
+    Each item is one selected Project binding. The projection excludes paths,
+    commands, process data, terminal data and secrets. Project order is
+    normalized here so the API and Runtime cannot diverge through local JSON.
+    """
+
+    if len(items) > 256:
+        raise WAWControlError("binding inventory exceeds 256 entries")
+    projection: list[tuple[str, str, str, str, str | None, str | None, str, str, str]] = []
+    for item in items:
+        if not isinstance(item, Mapping) or set(item) != set(_BINDING_INVENTORY_FIELDS):
+            raise WAWControlError("binding inventory item fields are not exact")
+        project_id = _string(item["project_id"], name="project_id", pattern=_PROJECT_ID)
+        relative_key = validate_relative_key(item["relative_key"])
+        project_revision = _decimal_u64(item["project_revision"], name="project_revision")
+        binding_revision = _decimal_u64(item["binding_revision"], name="binding_revision")
+        previous_revision = item["previous_binding_revision"]
+        previous_digest = item["previous_binding_digest"]
+        if binding_revision == "1":
+            if previous_revision is not None or previous_digest is not None:
+                raise WAWControlError("first inventory binding cannot have a predecessor")
+        else:
+            _decimal_u64(previous_revision, name="previous_binding_revision")
+            _string(previous_digest, name="previous_binding_digest", pattern=_DIGEST)
+            if int(previous_revision) + 1 != int(binding_revision):
+                raise WAWControlError("inventory predecessor must be exact")
+        binding_digest = _string(item["binding_digest"], name="binding_digest", pattern=_DIGEST)
+        host_id = _string(
+            item["runtime_host_installation_id"],
+            name="runtime_host_installation_id",
+            pattern=_HOST_ID,
+        )
+        host_revision = _decimal_u64(
+            item["runtime_host_installation_revision"],
+            name="runtime_host_installation_revision",
+        )
+        projection.append(
+            (
+                project_id,
+                relative_key,
+                project_revision,
+                binding_revision,
+                previous_revision,
+                previous_digest,
+                binding_digest,
+                host_id,
+                host_revision,
+            )
+        )
+    projection.sort(key=lambda item: item[0])
+    if any(left[0] == right[0] for left, right in zip(projection, projection[1:], strict=False)):
+        raise WAWControlError("binding inventory project_id is duplicated")
+    encoded = json.dumps(projection, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    return str(len(projection)), hashlib.sha256(encoded).hexdigest()
 
 
 def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
@@ -227,6 +308,8 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
             "runtime_host_installation_id",
             "runtime_host_installation_revision",
         },
+        "workspace.project_binding.inventory.finalize.v1": common
+        | {"runtime_epoch", "binding_count", "inventory_digest"},
         "workspace.workspace.start": common
         | {
             "workspace_id",
@@ -270,6 +353,18 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
             "binding_digest",
             "runtime_host_installation_id",
             "runtime_host_installation_revision",
+        },
+        "workspace.workspace.executable_evidence.v1": common
+        | {
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
         },
         "workspace.attach.prepare": common
         | {
@@ -319,7 +414,7 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         return value
     if action == "workspace.project_binding.register":
         _string(value["project_id"], name="project_id", pattern=_PROJECT_ID)
-        _relative_key(value["relative_key"])
+        validate_relative_key(value["relative_key"])
         for name in ("project_revision", "binding_revision", "runtime_host_installation_revision"):
             _u64(value[name], name=name)
         previous = value["previous_binding_revision"]
@@ -339,6 +434,11 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
             name="runtime_host_installation_id",
             pattern=_HOST_ID,
         )
+        return value
+    if action == "workspace.project_binding.inventory.finalize.v1":
+        _decimal_u64(value["runtime_epoch"], name="runtime_epoch")
+        _decimal_u64(value["binding_count"], name="binding_count", allow_zero=True)
+        _string(value["inventory_digest"], name="inventory_digest", pattern=_DIGEST)
         return value
     _string(value["workspace_id"], name="workspace_id", pattern=_WORKSPACE_ID)
     _string(value["project_id"], name="project_id", pattern=_PROJECT_ID)
@@ -365,6 +465,8 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
                 _decimal_u64(value["resume_cursor"], name="resume_cursor", allow_zero=True)
             if value["previous_runtime_epoch"] is not None:
                 _decimal_u64(value["previous_runtime_epoch"], name="previous_runtime_epoch")
+    elif action == "workspace.workspace.executable_evidence.v1":
+        _decimal_u64(value["runtime_epoch"], name="runtime_epoch")
     return value
 
 
@@ -524,10 +626,12 @@ def _validate_response(
     supported_actions = {
         "workspace.api_authority.bind",
         "workspace.project_binding.register",
+        "workspace.project_binding.inventory.finalize.v1",
         "workspace.workspace.start",
         "workspace.workspace.stop",
         "workspace.workspace.status",
         "workspace.workspace.reconcile",
+        "workspace.workspace.executable_evidence.v1",
         "workspace.attach.prepare",
         "workspace.attach.detach",
     }
@@ -556,6 +660,8 @@ def _validate_response(
             "runtime_host_installation_id",
             "runtime_host_installation_revision",
         },
+        "workspace.project_binding.inventory.finalize.v1": _COMMON_RESPONSE
+        | {"runtime_epoch", "binding_count", "inventory_digest"},
         "workspace.workspace.start": _COMMON_RESPONSE
         | {
             "workspace_id",
@@ -594,6 +700,19 @@ def _validate_response(
             "runtime_epoch",
             "state",
             "reconciliation_state",
+        },
+        "workspace.workspace.executable_evidence.v1": _COMMON_RESPONSE
+        | {
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+            "executable_fingerprint",
         },
         "workspace.attach.prepare": _COMMON_RESPONSE
         | _TUPLE_RESPONSE
@@ -645,6 +764,12 @@ def _validate_response(
         _decimal_u64(
             value["runtime_host_installation_revision"], name="runtime_host_installation_revision"
         )
+    elif action == "workspace.project_binding.inventory.finalize.v1":
+        if status not in {"FINALIZED", "ALREADY_FINALIZED"}:
+            raise WAWControlError("response status is invalid")
+        _decimal_u64(value["runtime_epoch"], name="runtime_epoch")
+        _decimal_u64(value["binding_count"], name="binding_count", allow_zero=True)
+        _string(value["inventory_digest"], name="inventory_digest", pattern=_DIGEST)
     elif action in {"workspace.workspace.start", "workspace.workspace.stop"}:
         allowed = (
             {"STARTED", "ALREADY_RUNNING", "START_IN_PROGRESS"}
@@ -710,6 +835,24 @@ def _validate_response(
             or value["reconciliation_state"] not in _RECONCILIATION_STATES
         ):
             raise WAWControlError("reconciliation state is invalid")
+    elif action == "workspace.workspace.executable_evidence.v1":
+        if status != "EXECUTABLE_EVIDENCE":
+            raise WAWControlError("response status is invalid")
+        _response_identity(value)
+        for name in (
+            "generation",
+            "binding_revision",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+        ):
+            _decimal_u64(value[name], name=name)
+        _string(value["binding_digest"], name="binding_digest", pattern=_DIGEST)
+        _string(
+            value["runtime_host_installation_id"],
+            name="runtime_host_installation_id",
+            pattern=_HOST_ID,
+        )
+        _string(value["executable_fingerprint"], name="executable_fingerprint", pattern=_DIGEST)
     elif action == "workspace.attach.prepare":
         if status not in {
             "PREPARED",
@@ -784,8 +927,10 @@ __all__ = [
     "MAX_U64",
     "WAW_CONTROL_PROTOCOL_VERSION",
     "WAWControlError",
+    "binding_inventory_digest",
     "decode_control_request",
     "decode_control_response",
     "encode_control_request",
     "encode_control_response",
+    "validate_relative_key",
 ]

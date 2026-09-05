@@ -8,17 +8,27 @@ import json
 import os
 import socket
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import agentbox_api.waw_control_client as control_subject
 import pytest
 from agentbox_api.waw_admission_coordinator import AdmissionAuditAction as A
 from agentbox_api.waw_admission_coordinator import RuntimeCleanupRequest, RuntimePrepareRequest
-from agentbox_api.waw_control_client import WAWControlClient
+from agentbox_api.waw_application import WAWWorkLedger
+from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
+from agentbox_api.waw_control_client import (
+    BoundRuntimePeer,
+    RuntimePeerBorrow,
+    WAWControlClient,
+    WAWSocketPathIdentity,
+)
 from agentbox_api.waw_input_budget import InputBudgetOverflow, InputBudgetOwner
 from agentbox_api.waw_relay import (
     DurableAdmissionAudit,
     FailedAdmissionBudget,
+    ReadOnlySessionValidator,
     RelayFailure,
     RuntimeSocketTrust,
     UnixRuntimePort,
@@ -27,8 +37,11 @@ from agentbox_api.waw_relay import (
     _canonical_origin,
 )
 from agentbox_core.configuration import Settings
-from agentbox_core.models import AuditEvent, ControlPlaneSession
+from agentbox_core.models import AuditEvent, ControlPlaneSession, Project
 from agentbox_core.services import ControlPlaneServices
+from agentbox_core.waw import AgentType
+from agentbox_core.waw_models import RuntimeHostInstallation
+from agentbox_core.waw_tickets import AttachmentAuthority, AuthenticatedAttachmentContext
 from agentbox_protocol.abws import FrameType as F
 from agentbox_protocol.abws import encode_frame
 from agentbox_protocol.awce import encode_awce_header
@@ -41,6 +54,27 @@ from sqlalchemy import select
 from support.waw_admission import Harness
 
 BA, AB, AR, RA = tuple(Leg)
+
+
+def _published_runtime_peer() -> tuple[BoundRuntimePeer, int, dict[str, object]]:
+    retained, writer = os.pipe()
+    peer = BoundRuntimePeer(
+        control_subject._RuntimePeerObservation(
+            pid=7331,
+            uid=os.getuid(),
+            gid=os.getgid(),
+            pidfd=retained,
+        ),
+        WAWSocketPathIdentity(3, 5),
+    )
+    owner: dict[str, object] = {"peer": peer, "generation": 1}
+    peer._publish(
+        generation=1,
+        owner_current=lambda candidate, generation: (
+            owner["peer"] is candidate and owner["generation"] == generation
+        ),
+    )
+    return peer, writer, owner
 
 
 def relay(h: Harness) -> WAWCiphertextRelay:
@@ -535,16 +569,30 @@ def test_uds_read_handoff_preserves_partial_frame_and_fixed_cleanup(
             expected_socket_uid=os.lstat(control_path).st_uid,
             expected_socket_gid=os.lstat(control_path).st_gid,
         )
-        # Linux peer/pidfd and root ownership remain independent host gates.
-        monkeypatch.setattr(client, "_peer_pidfd", lambda writer: os.open(os.devnull, os.O_RDONLY))
+        # This test isolates reader handoff. Production peer ownership is tested
+        # through the bound coordinator/control-path suites.
+        peer_reader, peer_writer = os.pipe()
+        monkeypatch.setattr(
+            client,
+            "_capture_unbound_peer",
+            lambda _socket: control_subject._RuntimePeerObservation(
+                pid=os.getpid(),
+                uid=os.getuid(),
+                gid=os.getgid(),
+                pidfd=os.dup(peer_reader),
+            ),
+        )
 
         class Control:
             attestation = {"runtime_epoch": "2"}
 
+            def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+                raise AssertionError("reader-handoff fixture bypasses stream connect")
+
             async def request_lifecycle(
                 self, action: str, request: dict[str, Any]
             ) -> dict[str, Any]:
-                return await client.request(action, request)
+                return await client._request_unbound_test_only(action, request)
 
         port = UnixRuntimePort(Control(), RuntimeSocketTrust(os.getgid(), os.getuid(), os.getgid()))
 
@@ -578,6 +626,8 @@ def test_uds_read_handoff_preserves_partial_frame_and_fixed_cleanup(
         stream_server.close()
         await server.wait_closed()
         await stream_server.wait_closed()
+        os.close(peer_reader)
+        os.close(peer_writer)
         directory.cleanup()
 
     asyncio.run(run())
@@ -654,8 +704,135 @@ def test_failed_attempt_budget_bounded_without_bearer_keys() -> None:
     assert len(budget._failures) == 0
 
 
-def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
+def test_session_validator_fences_ticket_and_publication_after_project_binding_drift(
     services: ControlPlaneServices, settings: Settings
+) -> None:
+    password = "relay binding drift test password"
+    services.admin.initialize("admin", password)
+    issued = services.auth.login(
+        username="admin", password=password, source_identifier="fixture", request_id=None
+    )
+    authenticated = services.sessions.authenticate(issued.token)
+    project_id = "prj_" + "3" * 32
+    host_id = "wri_" + "4" * 32
+    digest = "a" * 64
+    fingerprint = "b" * 64
+    now = datetime(2026, 9, 5)
+    with services.database.transaction() as session:
+        session.add(
+            Project(
+                id=project_id,
+                slug="relay-binding-drift",
+                display_name="Relay binding drift",
+                relative_path="relay-binding-drift",
+                source_type="empty",
+                repository_url=None,
+                default_branch=None,
+                state="ready",
+                archived_at=None,
+                revision=1,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            RuntimeHostInstallation(
+                id=host_id,
+                revision=1,
+                runtime_type="agentbox-runtime-linux-v1",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    attempt = services.project_bindings.reserve(
+        project_id=project_id,
+        expected_project_revision=1,
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        expected_head_revision=None,
+        expected_head_digest=None,
+    )
+    services.project_bindings.commit(
+        project_id=project_id,
+        binding_revision=attempt.binding_revision,
+        expected_project_revision=1,
+        binding_digest=digest,
+    )
+    workspace = services.workspaces.create(
+        project_id=project_id,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=digest,
+        executable_fingerprint=fingerprint,
+    )
+    workspace = services.workspaces.record_executable_evidence(
+        workspace.id,
+        expected_revision=workspace.revision,
+        generation=workspace.generation,
+        runtime_epoch="2",
+        executable_fingerprint=fingerprint,
+    )
+    services.workspaces.transition(
+        workspace.id, expected_revision=workspace.revision, state="RUNNING"
+    )
+    authority = AttachmentAuthority(clock=lambda: 10.0, authority_epoch=7)
+    context = AuthenticatedAttachmentContext(
+        authenticated.session_id,
+        authenticated.user_id,
+        "admin",
+        "https://example.test",
+        "2",
+        authenticated.auth_epoch,
+    )
+    claims = authority.issue(
+        workspace_id=workspace.id,
+        project_id=project_id,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "5" * 32,
+        generation=workspace.generation,
+        auth_epoch=authenticated.auth_epoch,
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=digest,
+        origin=context.origin,
+        context=context,
+    ).claims
+
+    class Control:
+        attestation = {"runtime_epoch": "2"}
+
+        def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+            raise AssertionError("validator fixture never borrows the Runtime peer")
+
+        async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError((action, request))
+
+    validator = ReadOnlySessionValidator(
+        services,
+        settings,
+        Control(),
+        SingleAdminWorkspacePolicy(),
+        authenticated,
+    )
+    assert validator.current(claims, context)
+    assert validator.publication_current(claims, context)
+
+    services.projects.mark_error(project_id, expected_revision=1)
+
+    assert not validator.current(claims, context)
+    assert not validator.publication_current(claims, context)
+
+
+@pytest.mark.parametrize(
+    "revocation",
+    ("pre_hello_project", "active_project", "active_auth"),
+)
+def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
+    services: ControlPlaneServices, settings: Settings, revocation: str
 ) -> None:
     async def run() -> None:
         import base64
@@ -706,6 +883,20 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
                     updated_at=now,
                 )
             )
+        attempt = services.project_bindings.reserve(
+            project_id=c.project_id,
+            expected_project_revision=1,
+            runtime_host_installation_id=c.runtime_host_installation_id,
+            runtime_host_installation_revision=1,
+            expected_head_revision=None,
+            expected_head_digest=None,
+        )
+        services.project_bindings.commit(
+            project_id=c.project_id,
+            binding_revision=attempt.binding_revision,
+            expected_project_revision=1,
+            binding_digest=c.binding_digest,
+        )
         workspace = services.workspaces.create(
             project_id=c.project_id,
             agent_type=AgentType.CODEX,
@@ -714,6 +905,13 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             runtime_host_installation_revision=1,
             binding_revision=1,
             binding_digest=c.binding_digest,
+            executable_fingerprint="d" * 64,
+        )
+        workspace = services.workspaces.record_executable_evidence(
+            workspace.id,
+            expected_revision=workspace.revision,
+            generation=workspace.generation,
+            runtime_epoch="2",
             executable_fingerprint="d" * 64,
         )
         with services.database.transaction() as session:
@@ -744,19 +942,23 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
         class Control:
             attestation = {"runtime_epoch": "2"}
 
+            def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+                raise AssertionError("backpressure fixture uses an installed socket")
+
             async def request_lifecycle(
                 self, action: str, request: dict[str, Any]
             ) -> dict[str, Any]:
                 raise AssertionError("synthetic admission port owns this test Runtime")
 
         active_settings = settings.model_copy(update={"allowed_origins": ("http://localhost",)})
-        handler = WAWStreamHandler(
+        handler = WAWStreamHandler.test_only(
             services=services,
             settings=active_settings,
             authority=authority,
             control=Control(),
             policy=SingleAdminWorkspacePolicy(),
-            runtime_factory=lambda: h.runtime,
+            work_ledger=WAWWorkLedger(),
+            runtime_factory=lambda _control: h.runtime,
         )
         app = create_app(
             active_settings,
@@ -813,6 +1015,13 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             )
             response = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 3)
             assert response.startswith(b"HTTP/1.1 101")
+            if revocation == "pre_hello_project":
+                services.projects.mark_error(c.project_id, expected_revision=1)
+                send(h.frame(F.WS_HELLO, BA, 1))
+                opcode, raw = await receive()
+                assert opcode == 8 and int.from_bytes(raw, "big") == 4403
+                assert authority.active_count == 0
+                return
             send(h.frame(F.WS_HELLO, BA, 1))
             send(h.frame(F.KEY_INIT, BA, 2))
             opcode, raw = await receive()
@@ -821,10 +1030,13 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             assert decode_wire_frame((await receive())[1], AB).frame_type == F.KEY_CONFIRM_ACK
             assert decode_wire_frame((await receive())[1], AB).frame_type == F.ADMITTED
             assert authority.active_count == 1
-            with services.database.transaction() as session:
-                stored_session = session.get(ControlPlaneSession, issued.session_id)
-                assert stored_session is not None
-                stored_session.auth_epoch += 1
+            if revocation == "active_project":
+                services.projects.mark_error(c.project_id, expected_revision=1)
+            else:
+                with services.database.transaction() as session:
+                    stored_session = session.get(ControlPlaneSession, issued.session_id)
+                    assert stored_session is not None
+                    stored_session.auth_epoch += 1
             envelope = (
                 encode_awce_header(
                     crypto_envelope_version=1,
@@ -1202,6 +1414,9 @@ def test_uds_backpressure_rechecks_guard_before_resuming_kernel_write(
         class Control:
             attestation = {"runtime_epoch": "2"}
 
+            def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+                raise AssertionError("backpressure fixture uses an installed socket")
+
             async def request_lifecycle(
                 self, action: str, request: dict[str, Any]
             ) -> dict[str, Any]:
@@ -1444,3 +1659,71 @@ def test_native_close_blocks_queued_runtime_input_before_reader_cleanup(
         await r.close(RelayFailure("ATTACHMENT_STALE", 4403))
 
     asyncio.run(run())
+
+
+def test_stream_abort_closes_only_its_bound_peer_borrow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer, writer, _owner = _published_runtime_peer()
+    monkeypatch.setattr(
+        control_subject,
+        "_peer_credentials",
+        lambda _socket: (7331, os.getuid(), os.getgid()),
+    )
+
+    class Control:
+        attestation = {"runtime_epoch": "2"}
+
+        def borrow_runtime_peer(self, peer_socket: object) -> RuntimePeerBorrow:
+            return peer.borrow(peer_socket)
+
+        async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError((action, request))
+
+    port = UnixRuntimePort(Control(), RuntimeSocketTrust(os.getgid(), os.getuid(), os.getgid()))
+    borrow = peer.borrow(object())
+    left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    port._peer_borrow = borrow
+    port._socket = left
+
+    port.abort()
+    port.abort()
+
+    assert not borrow.current()
+    assert peer.current()
+    right.close()
+    peer.close()
+    os.close(writer)
+
+
+def test_control_rebind_generation_immediately_fences_old_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer, writer, owner = _published_runtime_peer()
+    monkeypatch.setattr(
+        control_subject,
+        "_peer_credentials",
+        lambda _socket: (7331, os.getuid(), os.getgid()),
+    )
+
+    class Control:
+        attestation = {"runtime_epoch": "2"}
+
+        def borrow_runtime_peer(self, peer_socket: object) -> RuntimePeerBorrow:
+            return peer.borrow(peer_socket)
+
+        async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError((action, request))
+
+    port = UnixRuntimePort(Control(), RuntimeSocketTrust(os.getgid(), os.getuid(), os.getgid()))
+    port._peer_borrow = peer.borrow(object())
+    owner["peer"] = object()
+    owner["generation"] = 2
+
+    with pytest.raises(RelayFailure) as raised:
+        port._current()
+
+    assert raised.value.code == "RUNTIME_UNAVAILABLE"
+    port.abort()
+    peer.close()
+    os.close(writer)

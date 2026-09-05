@@ -298,6 +298,7 @@ class AttachmentAuthority:
         self._staged: dict[str, _StagedRecord] = {}
         self._replayed: deque[bytes] = deque(maxlen=replay_cache_size)
         self._lock = RLock()
+        self._shutdown_started = False
 
     @property
     def authority_epoch(self) -> int:
@@ -320,6 +321,52 @@ class AttachmentAuthority:
                 self._active.keys() | self._cleanup_pending.keys() | self._staged.keys()
             )
 
+    @property
+    def shutdown_clean(self) -> bool:
+        """Whether shutdown has observed every authority record terminate."""
+
+        with self._lock:
+            return (
+                self._shutdown_started
+                and not self._pending
+                and not self._active
+                and not self._staged
+                and not self._cleanup_pending
+                and not self._cleanup_contexts
+            )
+
+    def begin_shutdown(self) -> None:
+        """Synchronously fence issuance and retain every cleanup obligation."""
+
+        with self._lock:
+            if self._shutdown_started:
+                return
+            self._shutdown_started = True
+            self._burn_pending_and_fence_live_records()
+
+    def _reject_shutdown(self) -> None:
+        if self._shutdown_started:
+            raise TicketAuthorityError(
+                TicketErrorCode.STALE, "attachment authority is shutting down"
+            )
+
+    def _burn_pending_and_fence_live_records(self) -> None:
+        """Retain every live writer record until its exact cleanup proof arrives."""
+
+        for digest in self._pending:
+            self._replayed.append(digest)
+        self._pending.clear()
+        for workspace, active in tuple(self._active.items()):
+            if workspace in self._staged:
+                self.fence(self._staged[workspace].handle)
+            else:
+                del self._active[workspace]
+                self._cleanup_pending[workspace] = active.claims
+                self._cleanup_contexts[workspace] = active.context
+        for record in tuple(self._staged.values()):
+            if record.stage is not AdmissionStage.FENCED:
+                self.fence(record.handle)
+
     def issue(
         self,
         *,
@@ -340,6 +387,7 @@ class AttachmentAuthority:
         """Reserve one pending ticket without acquiring the writer slot."""
 
         with self._lock:
+            self._reject_shutdown()
             now = self._clock()
             self.sweep(now=now)
             staged = self._staged.get(workspace_id)
@@ -414,6 +462,7 @@ class AttachmentAuthority:
         """
 
         with self._lock:
+            self._reject_shutdown()
             current = self._clock() if now is None else now
             digest = _ticket_digest(ticket)
             pending = self._pending.pop(digest, None)
@@ -490,6 +539,7 @@ class AttachmentAuthority:
         No Runtime effect is authorized by merely possessing the returned handle.
         """
         with self._lock:
+            self._reject_shutdown()
             current = self._clock() if now is None else now
             digest = _ticket_digest(ticket)
             pending = self._pending.pop(digest, None)
@@ -577,6 +627,7 @@ class AttachmentAuthority:
     ) -> None:
         """Record one coordinator-proven phase, never skip a required phase."""
         with self._lock:
+            self._reject_shutdown()
             record = self._check_reserved(handle, self._clock() if now is None else now)
             stages = tuple(AdmissionStage)
             if (
@@ -597,6 +648,7 @@ class AttachmentAuthority:
     ) -> ActiveAttachment:
         """Linearize ACTIVE and the exact bounded queue release under one lock."""
         with self._lock:
+            self._reject_shutdown()
             current = self._clock() if now is None else now
             record = self._check_reserved(handle, current)
             if record.stage != AdmissionStage.ADMITTED_AUDITED:
@@ -715,6 +767,7 @@ class AttachmentAuthority:
         """Renew an exact active lease without changing its lease number."""
 
         with self._lock:
+            self._reject_shutdown()
             current = self._clock() if now is None else now
             active = self._active.get(expected.workspace_id)
             if (
@@ -864,19 +917,10 @@ class AttachmentAuthority:
         return tuple(revoked)
 
     def invalidate_all(self) -> None:
-        """Invalidate all volatile authority state on API restart/shutdown."""
+        """Burn tickets and retain all live writer cleanup obligations."""
 
         with self._lock:
-            for digest in self._pending:
-                self._replayed.append(digest)
-            self._pending.clear()
-            self._active.clear()
-            self._cleanup_pending.clear()
-            self._cleanup_contexts.clear()
-            # Staged Runtime effects cannot be forgotten on local shutdown.
-            # Actual process restart must independently reconcile Runtime epoch.
-            for record in tuple(self._staged.values()):
-                self.fence(record.handle)
+            self._burn_pending_and_fence_live_records()
 
     def sweep(self, *, now: float | None = None) -> tuple[str, ...]:
         """Remove expired pending tickets and leases without evicting live records."""

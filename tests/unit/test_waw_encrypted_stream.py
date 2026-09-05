@@ -25,6 +25,7 @@ from agentbox_runtime.waw_supervisor import (
     RuntimeAttachmentLease,
     RuntimeProbeState,
     SupervisorState,
+    WAWSupervisor,
 )
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from test_waw_supervisor import _attachment, _supervisor
@@ -66,6 +67,7 @@ class Harness:
             runtime_epoch="1", static_key=lambda: KEY, clock=lambda: self.now
         )
         self.redraw = BoundedRedraw(redraw, truncated)
+        self.transport.redraw = self.redraw
         self.admission = admission_fields(self.claims)
         self.bound: dict[str, Any] = {"protocol_version": 1, **self.admission, "runtime_epoch": "1"}
         self.browser = BrowserCryptoProfile(self.admission, "1", PIN, clock=lambda: self.now)
@@ -78,7 +80,6 @@ class Harness:
             peer=self.peer,
             claims=kwargs.pop("claims", self.claims),
             supervisor=self.supervisor,
-            capture=lambda: self.redraw,
             current=lambda: self.valid,
             **kwargs,
         )
@@ -378,6 +379,49 @@ def test_premature_output_and_shared_deadline_fail_closed(tmp_path: Path) -> Non
     assert h.session.closed
 
 
+@pytest.mark.parametrize(
+    "code",
+    ["WAW_ATTACHMENT_REVOKED", "WAW_ATTACHMENT_EXPIRED", "WAW_PROBE_UNCONFIRMED"],
+)
+def test_fresh_redraw_preserves_attachment_and_probe_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+) -> None:
+    def fail(_self: WAWSupervisor, _lease: RuntimeAttachmentLease) -> Any:
+        raise RuntimeOperationError(code, "synthetic exact failure", category="conflict")
+
+    monkeypatch.setattr(WAWSupervisor, "publish_fresh_redraw", fail)
+    with pytest.raises(RuntimeOperationError) as raised:
+        Harness(tmp_path)
+    assert raised.value.code == code
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("WAW_REDRAW_TIMEOUT", "OUTPUT_BACKPRESSURE"),
+        ("WAW_REDRAW_CAPTURE_FAILED", "OUTPUT_BACKPRESSURE"),
+        ("WAW_REDRAW_LIMIT_INVALID", "OUTPUT_BACKPRESSURE"),
+        ("WAW_REDRAW_UNAVAILABLE", "RUNTIME_UNAVAILABLE"),
+        ("WAW_REDRAW_IDENTITY_UNCONFIRMED", "RECONCILIATION_REQUIRED"),
+    ],
+)
+def test_fresh_redraw_maps_only_closed_redraw_error_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+    expected: str,
+) -> None:
+    def fail(_self: WAWSupervisor, _lease: RuntimeAttachmentLease) -> Any:
+        raise RuntimeOperationError(code, "synthetic redraw failure", category="conflict")
+
+    monkeypatch.setattr(WAWSupervisor, "publish_fresh_redraw", fail)
+    with pytest.raises(EncryptedStreamError) as raised:
+        Harness(tmp_path)
+    assert raised.value.code == expected
+
+
 def test_no_api_context_or_payload_repr(tmp_path: Path) -> None:
     h = Harness(tmp_path)
     assert "ses_1" not in repr(h.session)
@@ -453,7 +497,6 @@ def test_bound_control_service_random_prepare_and_real_detach(tmp_path: Path) ->
         h.registry,
         peer=lambda: h.peer,
         supervisor=lambda _: h.supervisor,
-        capture=lambda _: h.redraw,
         current=lambda _: h.valid,
     )
     service.bind_authority({"api_authority_epoch": "1", "authority_nonce": "a" * 32})
@@ -495,7 +538,6 @@ def test_authority_bind_does_not_accept_different_peer_or_nonce(tmp_path: Path) 
         h.registry,
         peer=lambda: h.peer,
         supervisor=lambda _: h.supervisor,
-        capture=lambda _: h.redraw,
         current=lambda _: h.valid,
     )
     bind = {"api_authority_epoch": "1", "authority_nonce": "a" * 32}
@@ -506,6 +548,212 @@ def test_authority_bind_does_not_accept_different_peer_or_nonce(tmp_path: Path) 
     h.peer = RuntimePeer(object(), "1", lambda: True)
     with pytest.raises(EncryptedStreamError):
         service.bind_authority(bind)
+
+
+def test_authority_revoke_burns_prepared_capability_and_allows_new_peer(
+    tmp_path: Path,
+) -> None:
+    from agentbox_runtime.waw_encrypted_stream import WAWEncryptedAttachmentService
+
+    h = Harness(tmp_path)
+    assert h.session.close().confirmed
+    old_identity = object()
+    old_peer = RuntimePeer(old_identity, "1", lambda: True)
+
+    def legacy_peer_provider() -> RuntimePeer:
+        raise AssertionError("explicit authority must be the only peer truth")
+
+    service = WAWEncryptedAttachmentService(
+        h.registry,
+        peer=legacy_peer_provider,
+        supervisor=lambda _: h.supervisor,
+        current=lambda _: h.valid,
+    )
+    service.bind_authority(
+        {"api_authority_epoch": "1", "authority_nonce": "a" * 32},
+        old_peer,
+    )
+    old_claims = replace(h.claims, attachment_id="att_" + "8" * 32, lease_number=2)
+    old_request = {
+        "protocol_version": 1,
+        "request_id": "wreq_" + "1" * 32,
+        "action": "workspace.attach.prepare",
+        **admission_fields(old_claims),
+        "runtime_epoch": "1",
+        "resume_cursor": None,
+        "previous_runtime_epoch": None,
+    }
+    old_capability = service.prepare(old_request, old_peer)["capability"]
+
+    class EqualIdentity:
+        def __eq__(self, other: object) -> bool:
+            return other is old_identity
+
+    assert service.revoke_authority(EqualIdentity())
+    assert h.registry.count == 1
+    assert service.revoke_authority(old_identity)
+    assert h.registry.count == 0
+    assert all(entry[1] is not old_identity for entry in h.registry._completed.values())
+    old_hello = encode_wire_frame(
+        F.RUNTIME_HELLO,
+        AR,
+        {
+            "protocol_version": 1,
+            **admission_fields(old_claims),
+            "runtime_epoch": "1",
+            "capability": old_capability,
+            "resume_cursor": None,
+            "previous_runtime_epoch": None,
+        },
+        1,
+    )
+    with pytest.raises(EncryptedStreamError, match="ATTACHMENT_STALE"):
+        h.registry.open(RuntimePeer(old_identity, "1", lambda: True), old_hello)
+
+    new_identity = object()
+    new_peer = RuntimePeer(new_identity, "2", lambda: True)
+    service.bind_authority(
+        {"api_authority_epoch": "2", "authority_nonce": "b" * 32},
+        new_peer,
+    )
+    new_claims = replace(
+        old_claims,
+        attachment_id="att_" + "9" * 32,
+        lease_number=3,
+        api_authority_epoch=2,
+    )
+    new_request = {
+        **old_request,
+        "request_id": "wreq_" + "2" * 32,
+        **admission_fields(new_claims),
+    }
+    assert service.prepare(new_request, new_peer)["status"] == "PREPARED"
+    with pytest.raises(EncryptedStreamError, match="RUNTIME_PEER_FORBIDDEN"):
+        service.prepare(
+            {
+                **new_request,
+                "request_id": "wreq_" + "3" * 32,
+                "attachment_id": "att_" + "a" * 32,
+                "lease_number": "4",
+            },
+            old_peer,
+        )
+
+    detach = {
+        key: value
+        for key, value in new_request.items()
+        if key not in {"resume_cursor", "previous_runtime_epoch"}
+    }
+    detach["action"] = "workspace.attach.detach"
+    detach["request_id"] = "wreq_" + "4" * 32
+    assert service.detach(detach, new_peer)["cleanup_state"] == "ATTACH_PTY_CLOSED"
+    assert service._detach_requests
+    assert service.revoke_authority(new_identity)
+    assert not service._detach_requests
+    assert all(entry[1] is not new_identity for entry in h.registry._completed.values())
+
+
+def test_authority_revoke_fences_active_session_before_cleanup(tmp_path: Path) -> None:
+    h = Harness(tmp_path, redraw=b"sensitive output")
+    h.admit()
+    h.send(F.INPUT, h.browser.encrypt_input(b"queued input"))
+
+    class Publication:
+        def __init__(self) -> None:
+            self.fences = 0
+
+        def fence(self) -> bool:
+            self.fences += 1
+            return True
+
+        def send(self, data: memoryview) -> int:
+            raise AssertionError("revoked publication must not send")
+
+    publication = Publication()
+    h.session._publication = publication
+    h.session._publication_fenced = False
+
+    assert h.registry.revoke_authority(h.peer.identity)
+    assert publication.fences == 1
+    assert h.session.closed and not h.session._input and not h.session._baseline_records
+    assert h.session.cleanup_proof is not None and h.session.cleanup_proof.confirmed
+    assert h.registry.count == 0
+    with pytest.raises(EncryptedStreamError, match="ATTACHMENT_STALE"):
+        h.send(
+            F.RESIZE,
+            {
+                "protocol_version": 1,
+                "attachment_id": h.claims.attachment_id,
+                "lease_number": str(h.claims.lease_number),
+                "columns": 80,
+                "rows": 24,
+            },
+        )
+
+
+def test_authority_revoke_retains_uncertain_cleanup_and_burns_capability(
+    tmp_path: Path,
+) -> None:
+    h = Harness(tmp_path)
+    assert h.session.close().confirmed
+    claims = replace(h.claims, attachment_id="att_" + "8" * 32, lease_number=2)
+    capability = h.prepare(claims=claims)
+    h.transport.detach_confirmed = False
+
+    assert not h.registry.revoke_authority(h.peer.identity)
+    assert h.registry.count == 1
+    raw_hello = encode_wire_frame(
+        F.RUNTIME_HELLO,
+        AR,
+        {
+            "protocol_version": 1,
+            **admission_fields(claims),
+            "runtime_epoch": "1",
+            "capability": capability,
+            "resume_cursor": None,
+            "previous_runtime_epoch": None,
+        },
+        1,
+    )
+    with pytest.raises(EncryptedStreamError, match="ATTACHMENT_STALE"):
+        h.registry.open(h.peer, raw_hello)
+    with pytest.raises(EncryptedStreamError, match="WORKSPACE_WRITER_BUSY"):
+        h.prepare(claims=replace(claims, attachment_id="att_" + "9" * 32, lease_number=3))
+
+    h.transport.detach_confirmed = True
+    assert h.registry.revoke_authority(h.peer.identity)
+    assert h.registry.count == 0
+
+
+def test_authority_revoke_requires_publication_and_pty_confirmation(tmp_path: Path) -> None:
+    h = Harness(tmp_path)
+    h.admit()
+
+    class Publication:
+        def __init__(self) -> None:
+            self.confirmed = False
+            self.fences = 0
+
+        def fence(self) -> bool:
+            self.fences += 1
+            return self.confirmed
+
+        def send(self, data: memoryview) -> int:
+            raise AssertionError("revoked publication must not send")
+
+    publication = Publication()
+    h.session._publication = publication
+    h.session._publication_fenced = False
+
+    assert not h.registry.revoke_authority(h.peer.identity)
+    assert publication.fences == 1
+    assert h.registry.count == 1
+    assert h.supervisor.snapshot().attachment_id is None
+
+    publication.confirmed = True
+    assert h.registry.revoke_authority(h.peer.identity)
+    assert publication.fences == 2
+    assert h.registry.count == 0
 
 
 def test_postdecrypt_authority_rejection_has_ack_and_no_write(tmp_path: Path) -> None:

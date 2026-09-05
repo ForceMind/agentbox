@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import math
 import re
@@ -21,7 +22,9 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from agentbox_core.waw import AgentType
 from agentbox_core.waw_recovery import RecoveryError, ResumeHint
+from agentbox_protocol.waw_control import WAWControlError, binding_inventory_digest
 
+from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupAttestation,
     verify_waw_cgroup_attestation_context,
@@ -33,7 +36,23 @@ from agentbox_runtime.waw_cgroup_attestation_store import (
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_encrypted_stream import (
     EncryptedStreamError,
+    RuntimePeer,
     WAWEncryptedAttachmentService,
+)
+from agentbox_runtime.waw_peer_authority import (
+    WAWPeerAuthority,
+    WAWPeerAuthorityError,
+    WAWPeerBindStatus,
+    WAWPeerCandidate,
+    WAWPeerLease,
+    WAWPeerTransferPlan,
+)
+from agentbox_runtime.waw_project_binding_store import (
+    WAWDurableProjectBinding,
+    WAWProjectBindingStore,
+    WAWProjectBindingStoreError,
+    WAWProjectBindingVerifier,
+    WAWProjectBindingVerifierError,
 )
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
@@ -42,10 +61,12 @@ from agentbox_runtime.waw_workspace_attestation import (
 
 _BIND = "workspace.api_authority.bind"
 _REGISTER = "workspace.project_binding.register"
+_FINALIZE_INVENTORY = "workspace.project_binding.inventory.finalize.v1"
 _START = "workspace.workspace.start"
 _STOP = "workspace.workspace.stop"
 _STATUS = "workspace.workspace.status"
 _RECONCILE = "workspace.workspace.reconcile"
+_EVIDENCE = "workspace.workspace.executable_evidence.v1"
 _ATTACH_PREPARE = "workspace.attach.prepare"
 _ATTACH_DETACH = "workspace.attach.detach"
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
@@ -82,6 +103,7 @@ _PROCESS_STATES = _STATES | {"NOT_STARTED"}
 _MAX_U64 = 2**64 - 1
 _MAX_DETACHED_CLEANUPS = 32
 _SUPPORTED_AGENT_TYPES = frozenset(agent.value for agent in AgentType)
+_BOOTSTRAP_ACTIONS = frozenset({_BIND, _REGISTER, _FINALIZE_INVENTORY})
 
 # Runtime observations are deliberately stricter than the underlying provider
 # API.  An ambiguous process/lifecycle pair must never be exposed as healthy.
@@ -173,6 +195,13 @@ class WAWProjectBindingConsumer(Protocol):
     async def register_project_binding(self, binding: WAWProjectBinding) -> None: ...
 
 
+@runtime_checkable
+class WAWExecutableEvidenceProvider(Protocol):
+    """Return an exact Runtime-observed executable fingerprint for one generation."""
+
+    async def executable_evidence(self, identity: WAWLifecycleIdentity) -> str: ...
+
+
 class WAWLifecycleRegistry:
     """Serialize and fence Runtime lifecycle dispatch for one host instance."""
 
@@ -187,12 +216,15 @@ class WAWLifecycleRegistry:
         enrollment_state: str = "steady",
         executor: WAWLifecycleExecutor | None = None,
         binding_digest_factory: BindingDigestFactory | None = None,
+        binding_verifier: WAWProjectBindingVerifier | None = None,
+        binding_store: WAWProjectBindingStore | None = None,
         runtime_epoch: str = "1",
         attestation_store: WAWWorkspaceAttestationStore | None = None,
         cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
         cgroup_attestation_factory: CgroupAttestationFactory | None = None,
         cgroup_attestation_timeout_seconds: float = 2.0,
         cleanup_timeout_seconds: float = 2.0,
+        peer_authority: WAWPeerAuthority | None = None,
     ) -> None:
         if not isinstance(runtime_epoch, str) or _POS_DECIMAL.fullmatch(runtime_epoch) is None:
             raise ValueError("runtime_epoch must be a canonical positive decimal")
@@ -206,7 +238,14 @@ class WAWLifecycleRegistry:
         self._enrollment_state = enrollment_state
         self._runtime_epoch = runtime_epoch
         self._executor = executor
+        if (binding_verifier is None) != (binding_store is None):
+            raise ValueError("binding verifier and durable store must be provided together")
+        if binding_verifier is not None and binding_digest_factory is not None:
+            raise ValueError("binding verifier replaces the digest factory")
         self._binding_digest_factory = binding_digest_factory
+        self._binding_verifier = binding_verifier
+        self._binding_store = binding_store
+        self._binding_resources_closed = binding_verifier is None
         self._attestation_store = attestation_store
         if (cgroup_attestation_store is None) != (cgroup_attestation_factory is None):
             raise ValueError(
@@ -230,11 +269,16 @@ class WAWLifecycleRegistry:
         ):
             raise ValueError("cleanup_timeout_seconds must be positive")
         self._cleanup_timeout_seconds = float(cleanup_timeout_seconds)
+        if peer_authority is not None and type(peer_authority) is not WAWPeerAuthority:
+            raise TypeError("peer_authority must be WAWPeerAuthority")
+        self._peer_authority = peer_authority
         self._detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self._detached_cleanup_identities: dict[asyncio.Task[Any], WAWLifecycleIdentity] = {}
         self._cleanup_quarantine: set[str] = set()
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, WAWProjectBinding] = {}
+        self._durable_bindings: dict[str, WAWDurableProjectBinding] = {}
+        self._hydrated_bindings: set[str] = set()
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
         self._attachments: dict[str, dict[str, Any]] = {}
         self._generation_floor: dict[str, int] = {}
@@ -243,6 +287,19 @@ class WAWLifecycleRegistry:
         self._lock = asyncio.Lock()
         self._encrypted_attachments: WAWEncryptedAttachmentService | None = None
         self._encrypted_operations: set[asyncio.Task[dict[str, Any]]] = set()
+        self._peer_authority_identity: object | None = None
+        self._authority_quarantined = False
+        self._authority_quarantine_identities: list[object] = []
+        self._shutting_down = False
+        self._begin_shutdown_operation: asyncio.Task[None] | None = None
+        self._wait_shutdown_operation: asyncio.Task[None] | None = None
+        self._shutdown_failure: WAWControlDispatchError | None = None
+        self._shutdown_cause: BaseException | None = None
+        self._application_gate_required = False
+        self._application_gate_open = True
+        self._binding_replay_operation: asyncio.Task[None] | None = None
+        self._binding_replay_complete = binding_store is None
+        self._binding_inventory_finalized: tuple[tuple[str, str], str, str] | None = None
 
     def configure_encrypted_attachments(self, service: WAWEncryptedAttachmentService) -> None:
         """Install the real fixed service before serving; never replace live wiring."""
@@ -255,13 +312,307 @@ class WAWLifecycleRegistry:
             raise ValueError("encrypted attachment service cannot be installed")
         self._encrypted_attachments = service
 
-    async def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
+    @property
+    def peer_authority(self) -> WAWPeerAuthority | None:
+        return self._peer_authority
+
+    @property
+    def shutdown_clean(self) -> bool:
+        begin = self._begin_shutdown_operation
+        wait = self._wait_shutdown_operation
+        authority = self._peer_authority
+        return (
+            self._shutting_down
+            and self._shutdown_failure is None
+            and begin is not None
+            and begin.done()
+            and not begin.cancelled()
+            and begin.exception() is None
+            and wait is not None
+            and wait.done()
+            and not wait.cancelled()
+            and wait.exception() is None
+            and not self._encrypted_operations
+            and not self._detached_cleanup_tasks
+            and (self._binding_replay_operation is None or self._binding_replay_operation.done())
+            and not self._authority_quarantine_identities
+            and self._authority is None
+            and self._peer_authority_identity is None
+            and self._binding_resources_closed
+            and (authority is None or authority.shutdown_clean)
+        )
+
+    def configure_peer_authority(self, authority: WAWPeerAuthority) -> None:
+        """Install the sole API process authority before any control mutation."""
+
+        if (
+            type(authority) is not WAWPeerAuthority
+            or self._peer_authority is not None
+            or self._authority is not None
+            or self._request_cache
+            or self._attachments
+        ):
+            raise ValueError("peer authority cannot be installed")
+        self._peer_authority = authority
+
+    def configure_application_gate(self) -> None:
+        """Require an application-level startup commit before control mutation."""
+
+        if (
+            self._application_gate_required
+            or self._authority is not None
+            or self._request_cache
+            or self._attachments
+            or self._shutting_down
+        ):
+            raise ValueError("application gate cannot be configured")
+        self._application_gate_required = True
+        self._application_gate_open = False
+
+    def open_application_gate(self) -> None:
+        if not self._application_gate_required or self._shutting_down:
+            raise RuntimeError("application gate cannot be opened")
+        if self._binding_store is not None and self._binding_inventory_finalized is None:
+            raise RuntimeError("binding inventory is not finalized")
+        self._application_gate_open = True
+
+    def close_application_gate(self) -> None:
+        if self._application_gate_required:
+            self._application_gate_open = False
+
+    def _fence_binding_inventory(self, *, replay_incomplete: bool = False) -> None:
+        if not self.binding_inventory_finalize_required:
+            return
+        self._application_gate_open = False
+        self._binding_inventory_finalized = None
+        if replay_incomplete:
+            self._binding_replay_complete = False
+
+    @property
+    def application_gate_open(self) -> bool:
+        return not self._application_gate_required or self._application_gate_open
+
+    @property
+    def binding_inventory_finalize_required(self) -> bool:
+        """Whether production startup awaits an exact API inventory commitment."""
+
+        return self._application_gate_required and self._binding_store is not None
+
+    async def restore_project_binding_inventory(self) -> None:
+        """Validate and replay the complete durable inventory exactly once.
+
+        This operation runs before the Runtime listeners start.  It deliberately
+        performs descriptor and executor work outside the registry mutation lock,
+        then publishes the validated set atomically.  Shutdown can therefore
+        fence publication and boundedly observe a cancellation-resistant executor.
+        """
+
+        operation = self._binding_replay_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_binding_inventory_replay())
+            self._binding_replay_operation = operation
+            operation.add_done_callback(self._consume_binding_replay)
+        await asyncio.shield(operation)
+
+    async def _perform_binding_inventory_replay(self) -> None:
+        store = self._binding_store
+        verifier = self._binding_verifier
+        if store is None:
+            self._binding_replay_complete = True
+            return
+        if verifier is None:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+        try:
+            durable_values = tuple(sorted(store.list_current(), key=lambda item: item.project_id))
+        except WAWProjectBindingStoreError as exc:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+
+        bindings: dict[str, WAWProjectBinding] = {}
+        durable_bindings: dict[str, WAWDurableProjectBinding] = {}
+        for durable in durable_values:
+            if durable.project_id in bindings:
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            if (
+                durable.runtime_host_installation_id != self._host_id
+                or durable.runtime_host_installation_revision != self._host_revision
+            ):
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            try:
+                digest = verifier.binding_digest(
+                    {
+                        "project_id": durable.project_id,
+                        "relative_key": durable.relative_key,
+                        "project_revision": durable.project_revision,
+                    }
+                )
+            except WAWProjectBindingVerifierError as exc:
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH") from exc
+            if not hmac.compare_digest(digest, durable.binding_digest):
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            binding = self._binding_from_durable(durable)
+            try:
+                await self._register_executor_binding(binding)
+            except asyncio.CancelledError:
+                raise
+            except BaseException as exc:
+                raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+            bindings[durable.project_id] = binding
+            durable_bindings[durable.project_id] = durable
+
+        try:
+            binding_inventory_digest(
+                [self._binding_inventory_item(value) for value in durable_values]
+            )
+        except WAWControlError as exc:
+            raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH") from exc
+        async with self._lock:
+            if self._shutting_down:
+                raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+            self._bindings = bindings
+            self._durable_bindings = durable_bindings
+            self._hydrated_bindings = set(bindings)
+            self._binding_replay_complete = True
+
+    @staticmethod
+    def _consume_binding_replay(operation: asyncio.Task[None]) -> None:
+        with suppress(BaseException):
+            operation.result()
+
+    async def begin_shutdown(self) -> None:
+        """Fence dispatch and revoke authority state without closing its pidfd owner."""
+
+        self._shutting_down = True
+        operation = self._begin_shutdown_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_begin_shutdown())
+            self._begin_shutdown_operation = operation
+            operation.add_done_callback(self._shutdown_done)
+        await self._await_shutdown_operation(operation)
+
+    async def wait_shutdown_workers(self) -> None:
+        """Observe all lifecycle workers after the application closes peer authority."""
+
+        self._shutting_down = True
+        operation = self._wait_shutdown_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_wait_shutdown_workers())
+            self._wait_shutdown_operation = operation
+            operation.add_done_callback(self._shutdown_done)
+        await self._await_shutdown_operation(operation)
+
+    async def _perform_begin_shutdown(self) -> None:
+        first_error: BaseException | None = None
+        async with self._lock:
+            identities: list[object] = []
+            if self._peer_authority_identity is not None:
+                identities.append(self._peer_authority_identity)
+            for identity in self._authority_quarantine_identities:
+                if not any(current is identity for current in identities):
+                    identities.append(identity)
+            service = self._encrypted_attachments
+            for identity in identities:
+                confirmed = service is None
+                if service is not None:
+                    try:
+                        confirmed = service.revoke_authority(identity)
+                    except Exception as exc:
+                        if first_error is None:
+                            first_error = exc
+                        confirmed = False
+                if confirmed:
+                    self._release_quarantined_authority_identity(identity)
+                else:
+                    self._quarantine_authority_identity(identity)
+                    if first_error is None:
+                        first_error = WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+            self._clear_peer_authority_caches()
+        if first_error is not None:
+            failure = self._record_shutdown_failure(first_error)
+            raise failure from self._shutdown_cause
+
+    async def _perform_wait_shutdown_workers(self) -> None:
+        async with self._lock:
+            workers = {
+                task
+                for task in self._encrypted_operations | self._detached_cleanup_tasks
+                if not task.done()
+            }
+            replay = self._binding_replay_operation
+            if replay is not None and not replay.done():
+                workers.add(replay)
+        if workers:
+            _done, pending = await asyncio.wait(
+                workers,
+                timeout=self._cleanup_timeout_seconds,
+            )
+            if pending:
+                self._authority_quarantined = True
+                self._record_shutdown_failure(
+                    WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+                )
+        if self._shutdown_failure is None:
+            try:
+                self._close_binding_resources()
+            except BaseException as exc:
+                self._record_shutdown_failure(exc)
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure from self._shutdown_cause
+
+    def _close_binding_resources(self) -> None:
+        verifier, self._binding_verifier = self._binding_verifier, None
+        store, self._binding_store = self._binding_store, None
+        try:
+            if verifier is not None:
+                verifier.close()
+            if store is not None:
+                store.close()
+        except (WAWProjectBindingStoreError, WAWProjectBindingVerifierError) as exc:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+        self._binding_resources_closed = True
+
+    async def _await_shutdown_operation(self, operation: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            if operation.cancelled():
+                failure = self._record_shutdown_failure()
+                raise failure from self._shutdown_cause
+            raise
+        except BaseException as exc:
+            failure = self._record_shutdown_failure(exc)
+            raise failure from self._shutdown_cause
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure from self._shutdown_cause
+
+    def _shutdown_done(self, task: asyncio.Task[None]) -> None:
+        try:
+            task.result()
+        except BaseException as exc:
+            self._record_shutdown_failure(exc)
+
+    def _record_shutdown_failure(
+        self, error: BaseException | None = None
+    ) -> WAWControlDispatchError:
+        self._authority_quarantined = True
+        if self._shutdown_failure is None:
+            self._shutdown_failure = WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+            self._shutdown_cause = error
+        return self._shutdown_failure
+
+    async def dispatch(
+        self,
+        request: dict[str, Any],
+        peer: WAWPeerCandidate | WAWPeerLease | None = None,
+    ) -> dict[str, Any]:
         """Dispatch one decoded control request; all mutations are serialized."""
 
         action = request.get("action")
         if not isinstance(action, str):
             raise WAWControlDispatchError("PROTOCOL_INVALID")
+        self._require_dispatch_open(action)
         async with self._lock:
+            self._require_dispatch_open(action)
+            runtime_peer = self._validate_control_peer(action, peer)
             request_id = request.get("request_id")
             if not isinstance(request_id, str):
                 raise WAWControlDispatchError("PROTOCOL_INVALID")
@@ -269,39 +620,51 @@ class WAWLifecycleRegistry:
                 request, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             )
             cached = self._request_cache.get(request_id)
-            if cached is not None and not (
-                self._encrypted_attachments is not None
-                and action in {_BIND, _ATTACH_PREPARE, _ATTACH_DETACH}
+            if (
+                cached is not None
+                and action != _BIND
+                and not (
+                    self._encrypted_attachments is not None
+                    and action in {_ATTACH_PREPARE, _ATTACH_DETACH}
+                )
             ):
                 if cached[0] != fingerprint:
                     raise WAWControlDispatchError("PROTOCOL_INVALID")
                 return dict(cached[1])
             if action == _BIND:
-                response = self._bind(request)
+                response = self._bind(request, peer)
             elif action == _REGISTER:
                 response = await self._register(request)
+            elif action == _FINALIZE_INVENTORY:
+                response = self._finalize_binding_inventory(request)
             elif action == _ATTACH_PREPARE:
                 response = (
-                    self._attach_prepare(request)
+                    self._attach_prepare(request, runtime_peer)
                     if self._encrypted_attachments is None
-                    else await self._encrypted_call(self._attach_prepare, request)
+                    else await self._encrypted_call(
+                        lambda value: self._attach_prepare(value, runtime_peer), request
+                    )
                 )
             elif action == _ATTACH_DETACH:
                 response = (
-                    self._attach_detach(request)
+                    self._attach_detach(request, runtime_peer)
                     if self._encrypted_attachments is None
-                    else await self._encrypted_call(self._attach_detach, request)
+                    else await self._encrypted_call(
+                        lambda value: self._attach_detach(value, runtime_peer), request
+                    )
                 )
+            elif action == _EVIDENCE:
+                response = await self._executable_evidence(request)
             elif action in {_START, _STOP, _STATUS, _RECONCILE}:
                 response = await self._lifecycle(request, action)
             else:
                 raise WAWControlDispatchError("PROTOCOL_INVALID")
             # A real PREPARED bearer is owned only by the capability authority;
             # never retain it in the generic request cache past burn/expiry.
-            if self._encrypted_attachments is not None and action in {
-                _ATTACH_PREPARE,
-                _ATTACH_DETACH,
-            }:
+            if action == _BIND or (
+                self._encrypted_attachments is not None
+                and action in {_ATTACH_PREPARE, _ATTACH_DETACH}
+            ):
                 return response
             self._request_cache[request_id] = (fingerprint, dict(response))
             self._request_cache.move_to_end(request_id)
@@ -329,7 +692,15 @@ class WAWLifecycleRegistry:
         with suppress(BaseException):
             task.result()
 
-    def _bind(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _bind(
+        self,
+        request: dict[str, Any],
+        peer: WAWPeerCandidate | WAWPeerLease | None,
+    ) -> dict[str, Any]:
+        if self._peer_authority is not None:
+            if type(peer) not in {WAWPeerCandidate, WAWPeerLease}:
+                raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN")
+            return self._bind_peer_authority(request, cast(WAWPeerCandidate | WAWPeerLease, peer))
         if self._encrypted_attachments is not None:
             try:
                 self._encrypted_attachments.bind_authority(request)
@@ -355,8 +726,140 @@ class WAWLifecycleRegistry:
             "enrollment_state": self._enrollment_state,
         }
 
+    def _bind_peer_authority(
+        self,
+        request: dict[str, Any],
+        peer: WAWPeerCandidate | WAWPeerLease,
+    ) -> dict[str, Any]:
+        authority = self._peer_authority
+        assert authority is not None
+        digest = hashlib.sha256(request["authority_nonce"].encode("ascii")).digest()
+        plan: WAWPeerTransferPlan | None = None
+        committed = False
+        commit_attempted = False
+        committed_identity = peer.runtime_peer.identity if type(peer) is WAWPeerLease else None
+        possibly_published_identity: object | None = None
+        try:
+            plan = authority.prepare_bind(
+                peer,
+                api_authority_epoch=request["api_authority_epoch"],
+                nonce_digest=digest,
+            )
+            if plan.revocation_required:
+                if self._encrypted_operations:
+                    raise WAWPeerAuthorityError("REVOCATION_INCOMPLETE")
+                if (
+                    self._encrypted_attachments is not None
+                    and plan.replaces_identity is not None
+                    and not self._encrypted_attachments.revoke_authority(plan.replaces_identity)
+                ):
+                    raise WAWPeerAuthorityError("REVOCATION_INCOMPLETE")
+                self._clear_peer_authority_caches()
+            if plan.status is WAWPeerBindStatus.ALREADY_BOUND:
+                possibly_published_identity = committed_identity
+            commit_attempted = True
+            status = authority.commit_bind(plan)
+            committed = True
+            lease = authority.borrow()
+            if lease is None:
+                raise WAWPeerAuthorityError("PEER_NOT_CURRENT")
+            committed_identity = lease.runtime_peer.identity
+            bind_error: Exception | None = None
+            try:
+                if self._encrypted_attachments is not None:
+                    self._encrypted_attachments.bind_authority(request, lease.runtime_peer)
+            except Exception as exc:
+                bind_error = exc
+            try:
+                lease.close()
+            except Exception as exc:
+                if bind_error is None:
+                    bind_error = exc
+            if bind_error is not None:
+                raise bind_error
+        except Exception as exc:
+            if plan is not None and not committed:
+                with suppress(WAWPeerAuthorityError):
+                    authority.fail_bind(plan)
+                if plan.revocation_required:
+                    self._quarantine_authority_identity(plan.replaces_identity)
+                    self._clear_peer_authority_caches()
+            if committed or commit_attempted:
+                self._authority_quarantined = True
+                cleanup_identity = committed_identity if committed else possibly_published_identity
+                revoked = self._encrypted_attachments is None or cleanup_identity is None
+                if self._encrypted_attachments is not None and cleanup_identity is not None:
+                    try:
+                        revoked = self._encrypted_attachments.revoke_authority(cleanup_identity)
+                    except Exception:
+                        revoked = False
+                if revoked:
+                    self._release_quarantined_authority_identity(cleanup_identity)
+                else:
+                    self._quarantine_authority_identity(cleanup_identity)
+                self._clear_peer_authority_caches()
+                with suppress(WAWPeerAuthorityError):
+                    authority.close()
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from None
+            if not isinstance(exc, (WAWPeerAuthorityError, EncryptedStreamError)):
+                raise
+            code = exc.code
+            if code in {
+                "AUTHORITY_POISONED",
+                "AUTHORITY_CLOSED",
+                "RETIRED_EPOCHS_FULL",
+                "REVOCATION_INCOMPLETE",
+                "PEER_CLOSE_FAILED",
+            }:
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from None
+            if code in {"EPOCH_RETIRED", "AUTHORITY_CONFLICT"}:
+                raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH") from None
+            raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN") from None
+        self._peer_authority_identity = committed_identity
+        epoch = request["api_authority_epoch"]
+        nonce = digest.hex()
+        self._authority = (epoch, nonce)
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status.value,
+            "api_authority_epoch": epoch,
+            "runtime_epoch": self._runtime_epoch,
+            "runtime_host_installation_id": self._host_id,
+            "runtime_host_installation_revision": self._host_revision,
+            "host_manifest_digest": self._host_manifest_digest,
+            "project_root_manifest_digest": self._project_root_manifest_digest,
+            "enrollment_epoch": self._enrollment_epoch,
+            "enrollment_state": self._enrollment_state,
+        }
+
+    def _clear_peer_authority_caches(self) -> None:
+        self._authority = None
+        self._peer_authority_identity = None
+        self._attachments.clear()
+        self._request_cache.clear()
+        if self.binding_inventory_finalize_required:
+            self._application_gate_open = False
+            self._binding_inventory_finalized = None
+
+    def _quarantine_authority_identity(self, identity: object | None) -> None:
+        self._authority_quarantined = True
+        if identity is not None and not any(
+            current is identity for current in self._authority_quarantine_identities
+        ):
+            self._authority_quarantine_identities.append(identity)
+
+    def _release_quarantined_authority_identity(self, identity: object | None) -> None:
+        if identity is None:
+            return
+        self._authority_quarantine_identities = [
+            current for current in self._authority_quarantine_identities if current is not identity
+        ]
+
     async def _register(self, request: dict[str, Any]) -> dict[str, Any]:
         self._require_authority()
+        if self.binding_inventory_finalize_required and not self._binding_replay_complete:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
         if (
             request["runtime_host_installation_id"] != self._host_id
             or request["runtime_host_installation_revision"] != self._host_revision
@@ -364,12 +867,18 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         project_id = request["project_id"]
         previous = self._bindings.get(project_id)
+        if previous is None:
+            previous = self._hydrate_durable_binding(project_id)
         if previous is None and (
             request["binding_revision"] != "1"
             or request["previous_binding_revision"] is not None
             or request["previous_binding_digest"] is not None
         ):
-            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+            raise WAWControlDispatchError(
+                "BINDING_BOOTSTRAP_REQUIRED"
+                if self._binding_store is not None
+                else "PROJECT_IDENTITY_CHANGED"
+            )
         if (
             previous is not None
             and request["binding_revision"] != previous.binding_revision
@@ -379,19 +888,37 @@ class WAWLifecycleRegistry:
             )
         ):
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
-        if self._binding_digest_factory is None:
-            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
-        digest = self._binding_digest_factory(request)
-        if isinstance(digest, Awaitable):
-            digest = await digest
-        if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+        digest_value: object
+        try:
+            if self._binding_verifier is not None:
+                digest_value = self._binding_verifier.binding_digest(request)
+            elif self._binding_digest_factory is not None:
+                digest_value = self._binding_digest_factory(request)
+                if isinstance(digest_value, Awaitable):
+                    digest_value = await digest_value
+            else:
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        except WAWProjectBindingVerifierError as exc:
+            self._fence_binding_inventory(replay_incomplete=True)
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if not isinstance(digest_value, str) or not _DIGEST.fullmatch(digest_value):
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        digest = digest_value
         if previous is not None and request["binding_revision"] == previous.binding_revision:
             if (
                 request["relative_key"] == previous.relative_key
                 and request["project_revision"] == previous.project_revision
                 and digest == previous.binding_digest
             ):
+                try:
+                    await self._register_executor_binding(previous)
+                except asyncio.CancelledError:
+                    self._fence_binding_inventory(replay_incomplete=True)
+                    raise
+                except BaseException as exc:
+                    self._fence_binding_inventory(replay_incomplete=True)
+                    raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+                self._hydrated_bindings.add(project_id)
                 return {
                     "protocol_version": 1,
                     "request_id": request["request_id"],
@@ -412,10 +939,34 @@ class WAWLifecycleRegistry:
             runtime_host_installation_id=self._host_id,
             runtime_host_installation_revision=self._host_revision,
         )
-        consumer = cast(object, self._executor)
-        if isinstance(consumer, WAWProjectBindingConsumer):
-            await consumer.register_project_binding(binding)
+        durable_binding = WAWDurableProjectBinding(
+            project_id=binding.project_id,
+            relative_key=binding.relative_key,
+            project_revision=binding.project_revision,
+            binding_revision=binding.binding_revision,
+            binding_digest=binding.binding_digest,
+            previous_binding_revision=request["previous_binding_revision"],
+            previous_binding_digest=request["previous_binding_digest"],
+            runtime_host_installation_id=binding.runtime_host_installation_id,
+            runtime_host_installation_revision=binding.runtime_host_installation_revision,
+        )
+        try:
+            await self._register_executor_binding(binding)
+        except asyncio.CancelledError:
+            self._fence_binding_inventory(replay_incomplete=True)
+            raise
+        except BaseException as exc:
+            self._fence_binding_inventory(replay_incomplete=True)
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+        if self._binding_store is not None:
+            try:
+                durable_binding = self._binding_store.commit(durable_binding)
+            except WAWProjectBindingStoreError as exc:
+                self._fence_binding_inventory(replay_incomplete=True)
+                raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
         self._bindings[project_id] = binding
+        self._durable_bindings[project_id] = durable_binding
+        self._hydrated_bindings.add(project_id)
         return {
             "protocol_version": 1,
             "request_id": request["request_id"],
@@ -425,6 +976,172 @@ class WAWLifecycleRegistry:
             "binding_digest": digest,
             "runtime_host_installation_id": self._host_id,
             "runtime_host_installation_revision": self._host_revision,
+        }
+
+    def _hydrate_durable_binding(self, project_id: str) -> WAWProjectBinding | None:
+        store = self._binding_store
+        if store is None:
+            return None
+        try:
+            durable = store.get(project_id)
+        except WAWProjectBindingStoreError as exc:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+        if durable is None:
+            return None
+        if (
+            durable.runtime_host_installation_id != self._host_id
+            or durable.runtime_host_installation_revision != self._host_revision
+        ):
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        binding = WAWProjectBinding(
+            project_id=durable.project_id,
+            relative_key=durable.relative_key,
+            project_revision=durable.project_revision,
+            binding_revision=durable.binding_revision,
+            binding_digest=durable.binding_digest,
+            runtime_host_installation_id=durable.runtime_host_installation_id,
+            runtime_host_installation_revision=durable.runtime_host_installation_revision,
+        )
+        self._bindings[project_id] = binding
+        self._durable_bindings[project_id] = durable
+        return binding
+
+    @staticmethod
+    def _binding_from_durable(durable: WAWDurableProjectBinding) -> WAWProjectBinding:
+        return WAWProjectBinding(
+            project_id=durable.project_id,
+            relative_key=durable.relative_key,
+            project_revision=durable.project_revision,
+            binding_revision=durable.binding_revision,
+            binding_digest=durable.binding_digest,
+            runtime_host_installation_id=durable.runtime_host_installation_id,
+            runtime_host_installation_revision=durable.runtime_host_installation_revision,
+        )
+
+    @staticmethod
+    def _binding_inventory_item(durable: WAWDurableProjectBinding) -> dict[str, str | None]:
+        return {
+            "project_id": durable.project_id,
+            "relative_key": durable.relative_key,
+            "project_revision": durable.project_revision,
+            "binding_revision": durable.binding_revision,
+            "previous_binding_revision": durable.previous_binding_revision,
+            "previous_binding_digest": durable.previous_binding_digest,
+            "binding_digest": durable.binding_digest,
+            "runtime_host_installation_id": durable.runtime_host_installation_id,
+            "runtime_host_installation_revision": durable.runtime_host_installation_revision,
+        }
+
+    def _finalize_binding_inventory(self, request: dict[str, Any]) -> dict[str, Any]:
+        self._require_authority()
+        if request["runtime_epoch"] != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        if not self._binding_replay_complete:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+        if (
+            set(self._bindings) != set(self._durable_bindings)
+            or set(self._bindings) != self._hydrated_bindings
+            or any(
+                self._bindings[project_id] != self._binding_from_durable(durable)
+                for project_id, durable in self._durable_bindings.items()
+            )
+        ):
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+        try:
+            count, digest = binding_inventory_digest(
+                [
+                    self._binding_inventory_item(self._durable_bindings[project_id])
+                    for project_id in sorted(self._durable_bindings)
+                ]
+            )
+        except WAWControlError as exc:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+        if request["binding_count"] != count or not hmac.compare_digest(
+            request["inventory_digest"], digest
+        ):
+            self._fence_binding_inventory()
+            raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+        authority = self._authority
+        assert authority is not None
+        expected = (authority, count, digest)
+        current = self._binding_inventory_finalized
+        if current is not None:
+            if current != expected:
+                self._fence_binding_inventory()
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            status = "ALREADY_FINALIZED"
+        else:
+            self._binding_inventory_finalized = expected
+            try:
+                if self._application_gate_required:
+                    self.open_application_gate()
+            except BaseException:
+                self._binding_inventory_finalized = None
+                raise
+            status = "FINALIZED"
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status,
+            "runtime_epoch": self._runtime_epoch,
+            "binding_count": count,
+            "inventory_digest": digest,
+        }
+
+    async def _register_executor_binding(self, binding: WAWProjectBinding) -> None:
+        consumer = cast(object, self._executor)
+        if isinstance(consumer, WAWProjectBindingConsumer):
+            await consumer.register_project_binding(binding)
+
+    async def _executable_evidence(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Return a typed fingerprint only for an exact currently-started binding."""
+
+        self._require_authority()
+        if request.get("runtime_epoch") != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        identity = WAWLifecycleIdentity(
+            workspace_id=request["workspace_id"],
+            project_id=request["project_id"],
+            agent_type=request["agent_type"],
+            generation=request["generation"],
+            binding_revision=request["binding_revision"],
+            binding_digest=request["binding_digest"],
+            runtime_host_installation_id=request["runtime_host_installation_id"],
+            runtime_host_installation_revision=request["runtime_host_installation_revision"],
+        )
+        self._hydrate_durable_generation_floor(identity.workspace_id)
+        self._check_identity(identity)
+        current = self._workspaces.get(identity.workspace_id)
+        if (
+            current is None
+            or current[0] != identity
+            or current[1].state
+            not in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}
+        ):
+            raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
+        provider = cast(object, self._executor)
+        if not isinstance(provider, WAWExecutableEvidenceProvider):
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        try:
+            fingerprint = await provider.executable_evidence(identity)
+        except RuntimeOperationError as exc:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+        if not isinstance(fingerprint, str) or _DIGEST.fullmatch(fingerprint) is None:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "EXECUTABLE_EVIDENCE",
+            "workspace_id": identity.workspace_id,
+            "project_id": identity.project_id,
+            "agent_type": identity.agent_type,
+            "generation": identity.generation,
+            "binding_revision": identity.binding_revision,
+            "binding_digest": identity.binding_digest,
+            "runtime_host_installation_id": identity.runtime_host_installation_id,
+            "runtime_host_installation_revision": identity.runtime_host_installation_revision,
+            "runtime_epoch": self._runtime_epoch,
+            "executable_fingerprint": fingerprint,
         }
 
     async def _lifecycle(self, request: dict[str, Any], action: str) -> dict[str, Any]:
@@ -691,7 +1408,9 @@ class WAWLifecycleRegistry:
             return self._status_response(request, observation)
         return self._reconcile_response(request, observation)
 
-    def _attach_prepare(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _attach_prepare(
+        self, request: dict[str, Any], runtime_peer: RuntimePeer | None = None
+    ) -> dict[str, Any]:
         """Reserve one tuple-bound attachment after Runtime liveness checks.
 
         This synthetic control-plane contract intentionally returns only a
@@ -728,7 +1447,7 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
         if self._encrypted_attachments is not None:
             try:
-                return self._encrypted_attachments.prepare(request)
+                return self._encrypted_attachments.prepare(request, runtime_peer)
             except EncryptedStreamError as exc:
                 raise WAWControlDispatchError(exc.code) from None
         attachment_id = request["attachment_id"]
@@ -791,7 +1510,9 @@ class WAWLifecycleRegistry:
             "capability": capability,
         }
 
-    def _attach_detach(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _attach_detach(
+        self, request: dict[str, Any], runtime_peer: RuntimePeer | None = None
+    ) -> dict[str, Any]:
         """Close one prepared attachment and return positive cleanup proof."""
 
         self._require_authority()
@@ -801,7 +1522,7 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         if self._encrypted_attachments is not None:
             try:
-                return self._encrypted_attachments.detach(request)
+                return self._encrypted_attachments.detach(request, runtime_peer)
             except EncryptedStreamError as exc:
                 raise WAWControlDispatchError(exc.code) from None
         current = self._attachments.get(request["attachment_id"])
@@ -1062,6 +1783,32 @@ class WAWLifecycleRegistry:
     def _require_authority(self) -> None:
         if self._authority is None:
             raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
+
+    def _require_dispatch_open(self, action: str) -> None:
+        if self._shutting_down or (
+            self._application_gate_required
+            and not self._application_gate_open
+            and action not in _BOOTSTRAP_ACTIONS
+        ):
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+
+    def _validate_control_peer(
+        self,
+        action: str,
+        peer: WAWPeerCandidate | WAWPeerLease | None,
+    ) -> RuntimePeer | None:
+        authority = self._peer_authority
+        if authority is None:
+            return None
+        if action == _BIND:
+            if type(peer) not in {WAWPeerCandidate, WAWPeerLease}:
+                raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN")
+            return peer.runtime_peer if type(peer) is WAWPeerLease else None
+        if type(peer) is not WAWPeerLease or not peer.current():
+            raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
+        if self._authority is None or peer.api_authority_epoch != self._authority[0]:
+            raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN")
+        return peer.runtime_peer
 
     def _check_identity(self, identity: WAWLifecycleIdentity) -> None:
         self._validate_generation(identity.generation)

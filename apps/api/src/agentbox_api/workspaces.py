@@ -9,13 +9,21 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Annotated, Literal, Protocol, cast
 
+from agentbox_core.configuration import Environment
 from agentbox_core.errors import AgentBoxError, RecentAuthenticationRequired, RuntimeGatewayError
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
 from agentbox_core.waw import AgentType, StopResult
-from agentbox_core.waw_models import AgentWorkspaceSessionRecord
+from agentbox_core.waw_models import AgentWorkspaceSessionRecord, ProjectBindingRecord
+from agentbox_core.waw_project_bindings import (
+    ProjectBindingConflict,
+    ProjectBindingNotFound,
+    ProjectBindingNotReady,
+    ProjectBindingStatus,
+)
 from agentbox_core.waw_sessions import (
     WorkspaceSessionConflict,
     WorkspaceSessionNotFound,
+    WorkspaceSessionNotReady,
 )
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
@@ -36,6 +44,12 @@ from agentbox_api.waw_admission import (
     WAWRuntimeReadiness,
     prepare_attachment,
 )
+from agentbox_api.waw_application import (
+    WAW_APPLICATION_SCOPE_KEY,
+    WAWAPIApplication,
+    WAWAPIApplicationError,
+    WAWMode,
+)
 from agentbox_api.waw_authorization import (
     SingleAdminWorkspacePolicy,
     WorkspaceAuthorizationPolicy,
@@ -46,6 +60,10 @@ router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 project_workspaces_router = APIRouter(prefix="/api/v1/projects", tags=["workspaces"])
 _WORKSPACE_ID = re.compile(r"\Aaws_[0-9a-f]{32}\Z")
 _PROJECT_ID = re.compile(r"\Aprj_[0-9a-f]{32}\Z")
+_HOST_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
+_DECIMAL_U64 = re.compile(r"\A[1-9][0-9]{0,19}\Z")
+_DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
+_MAX_U64 = 2**64 - 1
 
 
 class _WAWLifecycleRequester(Protocol):
@@ -224,6 +242,31 @@ def _waw_request_id() -> str:
 
 
 def _workspace_policy(request: Request) -> WorkspaceAuthorizationPolicy:
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            return owner.authorization_policy
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code=exc.code,
+                category="unavailable",
+                message="WAW API application is unavailable",
+                retryable=True,
+            ) from exc
+    mode = getattr(request.app.state, "waw_mode", None)
+    if mode is WAWMode.DISABLED and request.app.state.settings.env is Environment.PRODUCTION:
+        raise RuntimeGatewayError(
+            code="WAW_DISABLED",
+            category="unavailable",
+            message="WAW is disabled",
+        )
+    if mode is WAWMode.FILESYSTEM_V2:
+        raise RuntimeGatewayError(
+            code="WAW_API_UNAVAILABLE",
+            category="unavailable",
+            message="WAW API application is unavailable",
+            retryable=True,
+        )
     configured = getattr(request.app.state, "waw_authorization_policy", None)
     if configured is None:
         return SingleAdminWorkspacePolicy()
@@ -254,7 +297,16 @@ def _authorize_workspace(
 
 
 def _waw_coordinator(request: Request) -> _WAWLifecycleRequester:
-    coordinator = getattr(request.app.state, "waw_bind_coordinator", None)
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            coordinator: object | None = owner.bind_coordinator
+        except WAWAPIApplicationError as exc:
+            raise WAWControlClientError(
+                "RUNTIME_UNAVAILABLE", "WAW API application is unavailable", retryable=True
+            ) from exc
+    else:
+        coordinator = getattr(request.app.state, "waw_bind_coordinator", None)
     if coordinator is None or not callable(getattr(coordinator, "request_lifecycle", None)):
         raise WAWControlClientError(
             "RUNTIME_INSTALLATION_UNTRUSTED",
@@ -297,6 +349,411 @@ def _runtime_error(exc: WAWControlClientError) -> RuntimeGatewayError:
         message="WAW Runtime request failed",
         retryable=exc.retryable,
     )
+
+
+def _require_current_executable_evidence(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+    coordinator: _WAWLifecycleRequester,
+) -> tuple[dict[str, object], str]:
+    """Require one verified executable observation for the bound Runtime epoch."""
+
+    try:
+        attestation, runtime_epoch = _bound_workspace_runtime_identity(row, coordinator)
+    except WAWControlClientError as exc:
+        raise _runtime_error(exc) from exc
+    try:
+        current = _services(request).workspaces.executable_evidence_is_current(
+            row, runtime_epoch=runtime_epoch
+        )
+    except Exception:
+        current = False
+    if current is not True:
+        raise RuntimeGatewayError(
+            code="WORKSPACE_NOT_READY",
+            category="conflict",
+            message="Workspace is not ready",
+            retryable=True,
+        )
+    return attestation, runtime_epoch
+
+
+def _bound_runtime_attestation(
+    coordinator: _WAWLifecycleRequester,
+) -> tuple[dict[str, object], str]:
+    attestation = coordinator.attestation
+    runtime_epoch = attestation.get("runtime_epoch") if isinstance(attestation, dict) else None
+    if (
+        not isinstance(attestation, dict)
+        or not isinstance(runtime_epoch, str)
+        or _DECIMAL_U64.fullmatch(runtime_epoch) is None
+        or int(runtime_epoch) > _MAX_U64
+    ):
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_UNTRUSTED",
+            "WAW Runtime attestation is unavailable",
+            retryable=True,
+        )
+    return attestation, runtime_epoch
+
+
+def _bound_runtime_identity(
+    coordinator: _WAWLifecycleRequester,
+) -> tuple[dict[str, object], str, str, int]:
+    """Read one bound Runtime host identity without trusting request data."""
+
+    attestation, runtime_epoch = _bound_runtime_attestation(coordinator)
+    runtime_host_id = attestation.get("runtime_host_installation_id")
+    runtime_host_revision = attestation.get("runtime_host_installation_revision")
+    if (
+        not isinstance(runtime_host_id, str)
+        or _HOST_ID.fullmatch(runtime_host_id) is None
+        or not isinstance(runtime_host_revision, str)
+        or _DECIMAL_U64.fullmatch(runtime_host_revision) is None
+        or int(runtime_host_revision) > _MAX_U64
+    ):
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_UNTRUSTED",
+            "WAW Runtime host identity is unavailable",
+            retryable=True,
+        )
+    return attestation, runtime_epoch, runtime_host_id, int(runtime_host_revision)
+
+
+def _bound_workspace_runtime_identity(
+    row: AgentWorkspaceSessionRecord,
+    coordinator: _WAWLifecycleRequester,
+) -> tuple[dict[str, object], str]:
+    """Require the bound Runtime peer to match the durable workspace host tuple."""
+
+    attestation, runtime_epoch, host_id, host_revision = _bound_runtime_identity(coordinator)
+    if (
+        host_id != row.runtime_host_installation_id
+        or host_revision != row.runtime_host_installation_revision
+    ):
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH",
+            "WAW Runtime host identity does not match the workspace",
+        )
+    return attestation, runtime_epoch
+
+
+def _project_binding_payload(
+    binding: ProjectBindingRecord,
+) -> dict[str, object]:
+    """Build the sole typed Project-binding request from a durable attempt."""
+
+    return {
+        "protocol_version": 1,
+        "request_id": _waw_request_id(),
+        "action": "workspace.project_binding.register",
+        "project_id": binding.project_id,
+        "relative_key": binding.relative_key,
+        "project_revision": str(binding.project_revision),
+        "binding_revision": str(binding.binding_revision),
+        "previous_binding_revision": (
+            None
+            if binding.previous_binding_revision is None
+            else str(binding.previous_binding_revision)
+        ),
+        "previous_binding_digest": binding.previous_binding_digest,
+        "schema_version": "waw-project-binding-v1",
+        "runtime_host_installation_id": binding.runtime_host_installation_id,
+        "runtime_host_installation_revision": str(binding.runtime_host_installation_revision),
+    }
+
+
+def _validate_project_binding_response(
+    response: Mapping[str, object],
+    binding: ProjectBindingRecord,
+) -> str:
+    """Accept only the Runtime registration result for this exact ledger row."""
+
+    digest = response.get("binding_digest")
+    expected = {
+        "project_id": binding.project_id,
+        "binding_revision": str(binding.binding_revision),
+        "runtime_host_installation_id": binding.runtime_host_installation_id,
+        "runtime_host_installation_revision": str(binding.runtime_host_installation_revision),
+    }
+    if (
+        response.get("status") not in {"REGISTERED", "ALREADY_CURRENT"}
+        or any(response.get(field) != value for field, value in expected.items())
+        or not isinstance(digest, str)
+        or _DIGEST.fullmatch(digest) is None
+    ):
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH",
+            "WAW Project binding response identity is stale",
+        )
+    return digest
+
+
+def _require_binding_reconciliation(
+    request: Request,
+    binding: ProjectBindingRecord,
+) -> None:
+    """Leave any ambiguous Runtime registration on the durable fail-closed path."""
+
+    with suppress(ProjectBindingConflict, ProjectBindingNotFound):
+        _services(request).project_bindings.require_reconciliation(
+            project_id=binding.project_id,
+            binding_revision=binding.binding_revision,
+            expected_binding_digest=binding.binding_digest,
+        )
+
+
+def _require_workspace_current_binding(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+) -> None:
+    """Fence new Start/Attach effects to one current Control Plane binding."""
+
+    services = _services(request)
+    try:
+        project = services.projects.get(row.project_id, ready=True)
+        binding = services.project_bindings.get_head(row.project_id)
+    except (AgentBoxError, ProjectBindingNotFound) as exc:
+        raise RuntimeGatewayError(
+            code="RECONCILIATION_REQUIRED",
+            category="conflict",
+            message="Workspace binding is not current",
+        ) from exc
+    if (
+        binding.status != ProjectBindingStatus.CURRENT.value
+        or binding.binding_digest is None
+        or binding.project_revision != project.revision
+        or binding.relative_key != project.relative_path
+        or binding.binding_revision != row.binding_revision
+        or binding.binding_digest != row.binding_digest
+        or binding.runtime_host_installation_id != row.runtime_host_installation_id
+        or binding.runtime_host_installation_revision != row.runtime_host_installation_revision
+    ):
+        raise RuntimeGatewayError(
+            code="RECONCILIATION_REQUIRED",
+            category="conflict",
+            message="Workspace binding is not current",
+        )
+
+
+async def _ensure_current_project_binding(
+    request: Request,
+    *,
+    project_id: str,
+    project_revision: int,
+    coordinator: _WAWLifecycleRequester,
+) -> ProjectBindingRecord:
+    """Reserve, Runtime-register and commit one exact Project binding head.
+
+    A repeated first-use request converges through the durable pending row and
+    Runtime's idempotent ``ALREADY_CURRENT`` response.  No browser-selected
+    path, digest or Runtime identity participates in the operation.
+    """
+
+    services = _services(request)
+    try:
+        current = services.project_bindings.get_head(project_id)
+    except ProjectBindingNotFound:
+        current = None
+
+    try:
+        _attestation, _runtime_epoch, host_id, host_revision = _bound_runtime_identity(coordinator)
+        if current is None:
+            binding = services.project_bindings.reserve(
+                project_id=project_id,
+                expected_project_revision=project_revision,
+                runtime_host_installation_id=host_id,
+                runtime_host_installation_revision=host_revision,
+                expected_head_revision=None,
+                expected_head_digest=None,
+            )
+            commit_required = True
+        else:
+            if (
+                current.status != ProjectBindingStatus.CURRENT.value
+                or current.project_revision != project_revision
+                or current.runtime_host_installation_id != host_id
+                or current.runtime_host_installation_revision != host_revision
+                or current.binding_digest is None
+            ):
+                _require_binding_reconciliation(request, current)
+                raise WAWControlClientError(
+                    "RECONCILIATION_REQUIRED",
+                    "WAW Project binding is not current",
+                )
+            binding = current
+            commit_required = False
+    except ProjectBindingNotReady as exc:
+        raise WAWControlClientError(
+            "WORKSPACE_NOT_READY", "WAW Project binding is not ready"
+        ) from exc
+    except ProjectBindingConflict as exc:
+        raise WAWControlClientError(
+            "RECONCILIATION_REQUIRED", "WAW Project binding is fenced"
+        ) from exc
+
+    try:
+        response = await coordinator.request_lifecycle(
+            "workspace.project_binding.register", _project_binding_payload(binding)
+        )
+        digest = _validate_project_binding_response(response, binding)
+        if commit_required:
+            return services.project_bindings.commit(
+                project_id=project_id,
+                binding_revision=binding.binding_revision,
+                expected_project_revision=project_revision,
+                binding_digest=digest,
+            )
+        if digest != binding.binding_digest:
+            raise WAWControlClientError(
+                "RUNTIME_INSTALLATION_MISMATCH",
+                "WAW Project binding digest differs from the Control Plane",
+            )
+        return binding
+    except (ProjectBindingConflict, ProjectBindingNotReady) as exc:
+        _require_binding_reconciliation(request, binding)
+        raise WAWControlClientError(
+            "RECONCILIATION_REQUIRED", "WAW Project binding commit is fenced"
+        ) from exc
+    except WAWControlClientError:
+        _require_binding_reconciliation(request, binding)
+        raise
+
+
+async def _create_first_workspace_from_current_binding(
+    request: Request,
+    *,
+    project_id: str,
+    project_revision: int,
+    agent_type: AgentType,
+    coordinator: _WAWLifecycleRequester,
+) -> AgentWorkspaceSessionRecord:
+    """Create/replay the deterministic generation-one workspace after binding."""
+
+    binding = await _ensure_current_project_binding(
+        request,
+        project_id=project_id,
+        project_revision=project_revision,
+        coordinator=coordinator,
+    )
+    try:
+        return _services(request).workspaces.create_from_current_binding(
+            project_id=project_id,
+            agent_type=agent_type,
+            authorization_scope="admin",
+        )
+    except WorkspaceSessionConflict as conflict:
+        # Concurrent first-use requests must converge on the deterministic
+        # Project/AgentType row rather than creating a second generation.
+        try:
+            row = _services(request).workspaces.get(_workspace_id_for(project_id, agent_type.value))
+        except WorkspaceSessionNotFound as exc:
+            raise WAWControlClientError(
+                "RECONCILIATION_REQUIRED", "WAW workspace creation did not converge"
+            ) from exc
+        if row.project_id == project_id and row.agent_type == agent_type.value:
+            return row
+        raise WAWControlClientError(
+            "PROJECT_IDENTITY_CHANGED", "WAW workspace identity changed"
+        ) from conflict
+    except WorkspaceSessionNotReady as exc:
+        _require_binding_reconciliation(request, binding)
+        raise WAWControlClientError(
+            "RECONCILIATION_REQUIRED", "WAW Project binding is not current"
+        ) from exc
+
+
+def _fence_ambiguous_workspace_start(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+) -> None:
+    """Fence an unconfirmed Start only while this request still owns its row."""
+
+    with suppress(WorkspaceSessionConflict, WorkspaceSessionNotFound):
+        current = _services(request).workspaces.get(row.id)
+        if current.revision != row.revision or current.state != "STARTING":
+            return
+        _services(request).workspaces.transition(
+            current.id,
+            expected_revision=current.revision,
+            state="UNKNOWN",
+            reconciliation_state="reconciliation_required",
+            failure_code="START_UNCONFIRMED",
+        )
+
+
+async def _record_runtime_executable_evidence(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+    coordinator: _WAWLifecycleRequester,
+    *,
+    expected_runtime_epoch: str,
+) -> AgentWorkspaceSessionRecord:
+    """Persist an exact Runtime fingerprint before confirming a first Start."""
+
+    _attestation, runtime_epoch = _bound_workspace_runtime_identity(row, coordinator)
+    if runtime_epoch != expected_runtime_epoch:
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH",
+            "WAW Runtime epoch changed during workspace Start",
+        )
+    response = await coordinator.request_lifecycle(
+        "workspace.workspace.executable_evidence.v1",
+        {
+            **_lifecycle_payload(
+                row,
+                request,
+                action="workspace.workspace.executable_evidence.v1",
+            ),
+            "runtime_epoch": runtime_epoch,
+        },
+    )
+    expected = {
+        "workspace_id": row.id,
+        "project_id": row.project_id,
+        "agent_type": row.agent_type,
+        "generation": str(row.generation),
+        "binding_revision": str(row.binding_revision),
+        "binding_digest": row.binding_digest,
+        "runtime_host_installation_id": row.runtime_host_installation_id,
+        "runtime_host_installation_revision": str(row.runtime_host_installation_revision),
+        "runtime_epoch": runtime_epoch,
+    }
+    fingerprint = response.get("executable_fingerprint")
+    if (
+        response.get("status") != "EXECUTABLE_EVIDENCE"
+        or any(response.get(field) != value for field, value in expected.items())
+        or not isinstance(fingerprint, str)
+        or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+    ):
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH",
+            "WAW executable evidence identity is stale",
+        )
+    try:
+        return _services(request).workspaces.record_executable_evidence(
+            row.id,
+            expected_revision=row.revision,
+            generation=row.generation,
+            runtime_epoch=runtime_epoch,
+            executable_fingerprint=fingerprint,
+        )
+    except WorkspaceSessionConflict as exc:
+        with suppress(WorkspaceSessionNotFound):
+            current = _services(request).workspaces.get(row.id)
+            if (
+                current.project_id == row.project_id
+                and current.agent_type == row.agent_type
+                and current.generation == row.generation
+                and _services(request).workspaces.executable_evidence_is_current(
+                    current, runtime_epoch=runtime_epoch
+                )
+            ):
+                return current
+        raise WAWControlClientError(
+            "RUNTIME_INSTALLATION_MISMATCH",
+            "WAW executable evidence could not be committed",
+        ) from exc
 
 
 def _admission_error(exc: WAWAdmissionError) -> RuntimeGatewayError:
@@ -508,9 +965,10 @@ async def start_workspace(
 ) -> WorkspaceStartResponse:
     """Start one exact Project/AgentType workspace generation.
 
-    The route intentionally requires a pre-registered durable workspace.  A
-    future installer/Runtime binding flow may create that row, but the API
-    never invents executable or filesystem provenance in a browser request.
+    First use persists a typed binding attempt, asks the bound Runtime to
+    attest it, commits that attestation, and only then creates generation one.
+    The browser still supplies neither filesystem provenance nor executable
+    evidence.
     """
 
     _validate_origin(request)
@@ -531,22 +989,37 @@ async def start_workspace(
         raise RuntimeGatewayError(
             code="WORKSPACE_NOT_READY", category="conflict", message="Project is not ready"
         ) from exc
+    coordinator = _waw_coordinator(request)
     workspace_id_value = _workspace_id_for(project.id, agent_type)
     try:
         row = _services(request).workspaces.get(workspace_id_value)
-    except WorkspaceSessionNotFound as exc:
-        raise RuntimeGatewayError(
-            code="WORKSPACE_NOT_READY",
-            category="conflict",
-            message="Workspace binding is not registered",
-        ) from exc
+    except WorkspaceSessionNotFound:
+        try:
+            row = await _create_first_workspace_from_current_binding(
+                request,
+                project_id=project.id,
+                project_revision=project.revision,
+                agent_type=AgentType(agent_type),
+                coordinator=coordinator,
+            )
+        except WAWControlClientError as binding_exc:
+            raise _runtime_error(binding_exc) from binding_exc
     if row.project_id != project.id or row.agent_type != agent_type:
         raise RuntimeGatewayError(
             code="PROJECT_IDENTITY_CHANGED",
             category="conflict",
             message="Workspace identity changed",
         )
+    _require_workspace_current_binding(request, row)
+    _authorize_workspace(request, authenticated, row)
+    try:
+        _bound_attestation, bound_runtime_epoch = _bound_workspace_runtime_identity(
+            row, coordinator
+        )
+    except WAWControlClientError as exc:
+        raise _runtime_error(exc) from exc
     if row.state == "RUNNING":
+        _require_current_executable_evidence(request, row, coordinator)
         response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
         return WorkspaceStartResponse(
             request_id=_request_id(request),
@@ -570,14 +1043,14 @@ async def start_workspace(
         expected_revision = row.revision
     payload = _lifecycle_payload(row, request, action="workspace.workspace.start")
     try:
-        runtime = await _waw_coordinator(request).request_lifecycle(
-            "workspace.workspace.start", payload
-        )
+        runtime = await coordinator.request_lifecycle("workspace.workspace.start", payload)
     except WAWControlClientError as exc:
+        _fence_ambiguous_workspace_start(request, row)
         raise _runtime_error(exc) from exc
     try:
-        _validate_lifecycle_response_identity(runtime, row)
+        _validate_lifecycle_response_identity(runtime, row, require_runtime_host=True)
     except WAWControlClientError as exc:
+        _fence_ambiguous_workspace_start(request, row)
         raise RuntimeGatewayError(
             code="RUNTIME_INSTALLATION_MISMATCH",
             category="unavailable",
@@ -590,10 +1063,56 @@ async def start_workspace(
         "TRUST_REQUIRED",
         "LOGIN_REQUIRED",
     }:
+        _fence_ambiguous_workspace_start(request, row)
         raise RuntimeGatewayError(
             code="RUNTIME_INSTALLATION_MISMATCH",
             category="unavailable",
             message="Invalid Runtime state",
+        )
+    try:
+        _require_workspace_current_binding(request, row)
+    except RuntimeGatewayError:
+        _fence_ambiguous_workspace_start(request, row)
+        raise
+    try:
+        if not _services(request).workspaces.executable_evidence_is_current(
+            row,
+            runtime_epoch=bound_runtime_epoch,
+        ):
+            row = await _record_runtime_executable_evidence(
+                request,
+                row,
+                coordinator,
+                expected_runtime_epoch=bound_runtime_epoch,
+            )
+            expected_revision = row.revision
+    except WAWControlClientError as exc:
+        with suppress(Exception):
+            _services(request).workspaces.transition(
+                row.id,
+                expected_revision=row.revision,
+                state="UNKNOWN",
+                reconciliation_state="reconciliation_required",
+                failure_code="EXECUTABLE_EVIDENCE_UNAVAILABLE",
+            )
+        raise _runtime_error(exc) from exc
+    try:
+        _require_workspace_current_binding(request, row)
+    except RuntimeGatewayError:
+        _fence_ambiguous_workspace_start(request, row)
+        raise
+    if row.state in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}:
+        # A concurrent first-use retry may have committed the same exact
+        # evidence and Runtime generation before this request reaches its
+        # final transition.  Return only that current durable result.
+        response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
+        return WorkspaceStartResponse(
+            request_id=_request_id(request),
+            workspace_id=row.id,
+            project_id=row.project_id,
+            agent_type=cast(Literal["claude", "codex"], row.agent_type),
+            state=row.state,
+            generation=str(row.generation),
         )
     try:
         row = _services(request).workspaces.transition(
@@ -603,11 +1122,31 @@ async def start_workspace(
             reconciliation_state="authoritative",
         )
     except WorkspaceSessionConflict as exc:
-        raise RuntimeGatewayError(
-            code="PROJECT_IDENTITY_CHANGED",
-            category="conflict",
-            message="Workspace revision is stale",
-        ) from exc
+        with suppress(WorkspaceSessionNotFound):
+            current = _services(request).workspaces.get(row.id)
+            if (
+                current.project_id == row.project_id
+                and current.agent_type == row.agent_type
+                and current.generation == row.generation
+                and current.state
+                in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}
+                and _services(request).workspaces.executable_evidence_is_current(
+                    current, runtime_epoch=bound_runtime_epoch
+                )
+            ):
+                row = current
+            else:
+                raise RuntimeGatewayError(
+                    code="PROJECT_IDENTITY_CHANGED",
+                    category="conflict",
+                    message="Workspace revision is stale",
+                ) from exc
+        if row.state not in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}:
+            raise RuntimeGatewayError(
+                code="PROJECT_IDENTITY_CHANGED",
+                category="conflict",
+                message="Workspace revision is stale",
+            ) from exc
     response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
     return WorkspaceStartResponse(
         request_id=_request_id(request),
@@ -637,22 +1176,16 @@ async def issue_attachment_ticket(
     except WorkspaceSessionNotFound as exc:
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
     _authorize_workspace(request, authenticated, row)
+    _require_workspace_current_binding(request, row)
     coordinator = _waw_coordinator(request)
-    attestation = coordinator.attestation
-    if not isinstance(attestation, dict):
-        raise RuntimeGatewayError(
-            code="RUNTIME_INSTALLATION_UNTRUSTED",
-            category="unavailable",
-            message="Runtime is not bound",
-            retryable=True,
-        )
+    attestation, runtime_epoch = _require_current_executable_evidence(request, row, coordinator)
     try:
         runtime = WAWRuntimeReadiness(
             runtime_host_installation_id=str(attestation["runtime_host_installation_id"]),
             runtime_host_installation_revision=int(
                 cast(str, attestation["runtime_host_installation_revision"])
             ),
-            runtime_epoch=str(attestation["runtime_epoch"]),
+            runtime_epoch=runtime_epoch,
             ready=True,
         )
         origin = request.headers.get("origin", "")
@@ -662,7 +1195,7 @@ async def issue_attachment_ticket(
             policy=_workspace_policy(request),
             recent_authenticator=_recent_authenticator(request),
             runtime=runtime,
-            bound_runtime_epoch=str(attestation["runtime_epoch"]),
+            bound_runtime_epoch=runtime_epoch,
             authority=_attachment_authority(request),
             origin=origin,
             allowed_origins=request.app.state.settings.allowed_origins,
@@ -907,9 +1440,7 @@ async def detach_workspace(
                 auth_epoch=authenticated.auth_epoch,
             ),
         )
-        operations = getattr(request.app.state, "waw_detach_operations", None)
-        if isinstance(operations, dict):
-            operations[operation_key] = (operation_id, True)
+        _mark_detached(request, operation_key, operation_id)
     except WAWControlClientError as exc:
         raise _runtime_error(exc) from exc
     except TicketAuthorityError as exc:
@@ -943,7 +1474,10 @@ def _workspace_id_for(project_id: str, agent_type: str) -> str:
 
 
 def _validate_lifecycle_response_identity(
-    runtime: Mapping[str, object], row: AgentWorkspaceSessionRecord
+    runtime: Mapping[str, object],
+    row: AgentWorkspaceSessionRecord,
+    *,
+    require_runtime_host: bool = False,
 ) -> None:
     """Require Runtime lifecycle replies to echo the exact durable identity."""
 
@@ -953,6 +1487,13 @@ def _validate_lifecycle_response_identity(
         "agent_type": row.agent_type,
         "generation": str(row.generation),
     }
+    if require_runtime_host:
+        expected.update(
+            {
+                "runtime_host_installation_id": row.runtime_host_installation_id,
+                "runtime_host_installation_revision": str(row.runtime_host_installation_revision),
+            }
+        )
     if any(runtime.get(field) != value for field, value in expected.items()):
         raise WAWControlClientError(
             "RUNTIME_INSTALLATION_MISMATCH", "WAW lifecycle response identity is stale"
@@ -978,7 +1519,19 @@ def _lifecycle_payload(
 
 
 def _attachment_authority(request: Request) -> AttachmentAuthority:
-    authority = getattr(request.app.state, "waw_attachment_authority", None)
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            authority: object | None = owner.attachment_authority
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code="ATTACHMENT_TICKET_UNAVAILABLE",
+                category="unavailable",
+                message="WAW attachment authority is unavailable",
+                retryable=True,
+            ) from exc
+    else:
+        authority = getattr(request.app.state, "waw_attachment_authority", None)
     if not isinstance(authority, AttachmentAuthority):
         raise RuntimeGatewayError(
             code="ATTACHMENT_TICKET_UNAVAILABLE",
@@ -999,6 +1552,24 @@ def _detach_operation(request: Request, key: tuple[object, ...]) -> tuple[str, b
     the Runtime and lease checks.
     """
 
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            return owner.detach_operation(key)
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code=exc.code,
+                category="unavailable",
+                message="WAW detach operation is unavailable",
+                retryable=True,
+            ) from exc
+        except Exception as exc:
+            raise RuntimeGatewayError(
+                code="RANDOMNESS_UNAVAILABLE",
+                category="unavailable",
+                message="secure detach operation randomness is unavailable",
+                retryable=True,
+            ) from exc
     operations = getattr(request.app.state, "waw_detach_operations", None)
     if not isinstance(operations, dict):
         operations = {}
@@ -1021,3 +1592,21 @@ def _detach_operation(request: Request, key: tuple[object, ...]) -> tuple[str, b
         # a replay still has to present a live lease and current tuple.
         operations.pop(next(iter(operations)))
     return operation_id, False
+
+
+def _mark_detached(request: Request, key: tuple[object, ...], operation_id: str) -> None:
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            owner.mark_detached(key, operation_id)
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code=exc.code,
+                category="unavailable",
+                message="WAW detach operation is unavailable",
+                retryable=True,
+            ) from exc
+        return
+    operations = getattr(request.app.state, "waw_detach_operations", None)
+    if isinstance(operations, dict):
+        operations[key] = (operation_id, True)

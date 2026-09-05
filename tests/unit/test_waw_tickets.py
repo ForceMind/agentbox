@@ -407,13 +407,80 @@ def test_authority_restart_invalidation_rejects_all_old_bearers_and_leases() -> 
     issued = _issue(authority)
     authority.consume(issued.ticket, _tuple(issued))
     authority.invalidate_all()
-    assert authority.record_count == 0
+    assert authority.record_count == 1
     with pytest.raises(TicketAuthorityError) as replay:
         authority.consume(issued.ticket, _tuple(issued))
     assert replay.value.code is TicketErrorCode.REPLAYED
     with pytest.raises(TicketAuthorityError) as mismatch:
         authority.heartbeat(issued.claims)
     assert mismatch.value.code is TicketErrorCode.LEASE_MISMATCH
+    authority.acknowledge_cleanup(issued.claims, cleanup_state="ATTACH_PTY_CLOSED")
+
+
+def test_begin_shutdown_burns_pending_fences_active_and_waits_for_exact_cleanup() -> None:
+    clock = FakeMonotonic()
+    authority = _authority(clock)
+    active_ticket = _issue(authority)
+    active = authority.consume(active_ticket.ticket, active_ticket.claims)
+    pending = _issue(authority, attachment_id="att_" + "3" * 32)
+
+    authority.begin_shutdown()
+
+    assert authority.pending_count == authority.active_count == 0
+    assert authority.record_count == 1
+    assert not authority.shutdown_clean
+    authority.invalidate_all()
+    assert authority.record_count == 1
+    assert not authority.shutdown_clean
+    for operation in (
+        lambda: _issue(authority, attachment_id="att_" + "4" * 32),
+        lambda: authority.consume(pending.ticket, pending.claims),
+        lambda: authority.heartbeat(active.claims),
+    ):
+        with pytest.raises(TicketAuthorityError) as rejected:
+            operation()
+        assert rejected.value.code is TicketErrorCode.STALE
+
+    authority.acknowledge_cleanup(active.claims, cleanup_state="ATTACH_PTY_CLOSED")
+    assert cast(Any, authority).shutdown_clean
+    authority.begin_shutdown()
+    assert cast(Any, authority).shutdown_clean
+    with pytest.raises(TicketAuthorityError):
+        authority.acknowledge_cleanup(active.claims, cleanup_state="ATTACH_PTY_CLOSED")
+
+
+def test_shutdown_begin_and_active_cleanup_ack_have_one_locked_winner() -> None:
+    authority = _authority(FakeMonotonic())
+    issued = _issue(authority)
+    active = authority.consume(issued.ticket, issued.claims)
+    barrier = Barrier(3)
+    results: list[str] = []
+
+    def begin() -> None:
+        barrier.wait()
+        authority.begin_shutdown()
+        results.append("shutdown")
+
+    def acknowledge() -> None:
+        barrier.wait()
+        try:
+            authority.acknowledge_cleanup(active.claims, cleanup_state="ATTACH_PTY_CLOSED")
+        except TicketAuthorityError:
+            results.append("ack-before-fence")
+        else:
+            results.append("ack-after-fence")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(begin)
+        second = pool.submit(acknowledge)
+        barrier.wait()
+        first.result()
+        second.result()
+
+    assert "shutdown" in results
+    if not authority.shutdown_clean:
+        authority.acknowledge_cleanup(active.claims, cleanup_state="ATTACH_PTY_CLOSED")
+    assert cast(Any, authority).shutdown_clean
 
 
 def test_invalid_ticket_and_invalid_tuple_fail_closed() -> None:

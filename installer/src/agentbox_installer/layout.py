@@ -31,6 +31,15 @@ DIRECTORIES = (
         "agentbox-runtime",
         0o700,
     ),
+    # Durable Project binding records are Runtime-only state.  They share the
+    # epoch counter's private ownership model but remain a separately
+    # versioned store so a Runtime never needs write access to its parent.
+    DirectorySpec(
+        "/var/lib/agentbox-waw/bindings-v1",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+    ),
     DirectorySpec("/var/log/agentbox", "agentbox", "agentbox", 0o750),
     # setgid keeps socket group ownership stable; sticky prevents either IPC
     # peer from unlinking a socket owned by the other identity.

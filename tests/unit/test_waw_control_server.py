@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import socket
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from agentbox_protocol.waw_control import decode_control_response
+from agentbox_runtime import waw_control_server as subject
 from agentbox_runtime.waw_control_server import (
     WAWControlDispatchError,
     WAWControlServer,
@@ -53,6 +56,587 @@ async def _empty_response() -> dict[str, object]:
 
 
 Dispatch = Callable[[dict[str, object]], Awaitable[dict[str, object]]]
+
+
+class _RecordingListeningSocket:
+    family = socket.AF_UNIX
+    type = socket.SOCK_STREAM
+
+    def __init__(self, events: list[object], *, fail_listen: bool = False) -> None:
+        self.events = events
+        self.fail_listen = fail_listen
+        self.closed = False
+
+    def getsockopt(self, _level: int, option: int) -> int:
+        assert option == socket.SO_ACCEPTCONN
+        return 1
+
+    def get_inheritable(self) -> bool:
+        return False
+
+    def listen(self, backlog: int) -> None:
+        self.events.append(("listen", backlog))
+        if self.fail_listen:
+            raise OSError("synthetic listen failure")
+
+    def setblocking(self, enabled: bool) -> None:
+        self.events.append(("blocking", enabled))
+
+    def close(self) -> None:
+        self.closed = True
+        self.events.append("socket-close")
+
+
+class _RecordingAsyncServer:
+    def __init__(self, events: list[object]) -> None:
+        self.events = events
+
+    def close(self) -> None:
+        self.events.append("server-close")
+
+    async def wait_closed(self) -> None:
+        self.events.append("server-wait-closed")
+
+
+class _PeerContext:
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+class _FailingPeerContext(_PeerContext):
+    def close(self) -> None:
+        super().close()
+        raise OSError("synthetic peer context close failure")
+
+
+class _MemoryWriter:
+    def __init__(self) -> None:
+        self.output = bytearray()
+        self.closed = False
+
+    def write(self, data: bytes) -> None:
+        self.output.extend(data)
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        return None
+
+    def get_extra_info(self, _name: str) -> None:
+        return None
+
+
+def _reader(raw: bytes) -> asyncio.StreamReader:
+    reader = asyncio.StreamReader()
+    reader.feed_data(raw)
+    reader.feed_eof()
+    return reader
+
+
+def _unit_server(dispatch: Any, authorizer: Any = None) -> WAWControlServer:
+    return WAWControlServer(
+        cast(Any, _RecordingListeningSocket([])),
+        dispatch,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        peer_authorizer=authorizer,
+        timeout_seconds=0.05,
+        cancellation_grace_seconds=0.01,
+    )
+
+
+@pytest.mark.anyio
+async def test_peer_authorizer_runs_after_full_framing_and_dispatch_receives_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer = _PeerContext()
+    authorized: list[tuple[int, int, int, int]] = []
+    dispatched: list[tuple[dict[str, object], _PeerContext]] = []
+
+    def authorize(pid: int, uid: int, gid: int, pidfd: int) -> _PeerContext:
+        authorized.append((pid, uid, gid, pidfd))
+        return peer
+
+    async def dispatch(request: dict[str, object], context: _PeerContext) -> dict[str, object]:
+        dispatched.append((request, context))
+        return _response(cast(str, request["request_id"]))
+
+    server = _unit_server(dispatch, authorize)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    writer = _MemoryWriter()
+    raw = json.dumps(_request(), separators=(",", ":")).encode() + b"\n"
+    try:
+        await server._handle(_reader(raw), cast(Any, writer))
+        assert authorized == [(os.getpid(), os.geteuid(), os.getegid(), pidfd)]
+        assert dispatched == [(_request(), peer)]
+        assert peer.close_calls == 1
+        assert writer.closed and writer.output
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_peer_context_close_failure_never_returns_dispatch_success() -> None:
+    peer = _FailingPeerContext()
+
+    async def dispatch(request: dict[str, object], context: _PeerContext) -> dict[str, object]:
+        assert context is peer
+        return _response(cast(str, request["request_id"]))
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    with pytest.raises(WAWControlDispatchError) as raised:
+        await server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 1,
+            peer_context=peer,
+        )
+    assert raised.value.code == "CONTROL_UNAVAILABLE"
+    assert raised.value.retryable
+    assert peer.close_calls == 1
+    assert server._poisoned
+    await server.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"{}\n",
+        json.dumps(_request(), separators=(",", ":")).encode() + b"\ntrailing",
+    ],
+)
+async def test_malformed_or_trailing_request_never_calls_peer_authorizer(
+    raw: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def authorize(*_args: object) -> _PeerContext:
+        nonlocal calls
+        calls += 1
+        return _PeerContext()
+
+    async def forbidden_dispatch(*_args: object) -> dict[str, object]:
+        raise AssertionError("invalid framing must not dispatch")
+
+    server = _unit_server(forbidden_dispatch, authorize)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    try:
+        await server._handle(_reader(raw), cast(Any, _MemoryWriter()))
+        assert calls == 0
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("decision", [None, True, "raise"])
+async def test_peer_authorizer_rejection_or_exception_fails_closed_without_poison(
+    decision: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dispatch_calls = 0
+
+    def authorize(*_args: object) -> object:
+        if decision == "raise":
+            raise RuntimeError("private authority failure")
+        return decision
+
+    async def forbidden_dispatch(*_args: object) -> dict[str, object]:
+        nonlocal dispatch_calls
+        dispatch_calls += 1
+        return {}
+
+    server = _unit_server(forbidden_dispatch, authorize)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    raw = json.dumps(_request(), separators=(",", ":")).encode() + b"\n"
+    try:
+        await server._handle(_reader(raw), cast(Any, _MemoryWriter()))
+        assert dispatch_calls == 0
+        assert not server._poisoned
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_resistant_dispatch_owns_peer_until_its_actual_terminal_state() -> None:
+    peer = _PeerContext()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def dispatch(_request: dict[str, object], context: _PeerContext) -> dict[str, object]:
+        assert context is peer
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+            return _response(cast(str, _request["request_id"]))
+        raise AssertionError("unreachable")
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    call = asyncio.create_task(
+        server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 0.01,
+            peer_context=peer,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    with pytest.raises(_WAWControlDispatchPoisoned):
+        await call
+    assert peer.close_calls == 0
+    release.set()
+    for _ in range(10):
+        if peer.close_calls:
+            break
+        await asyncio.sleep(0)
+    assert peer.close_calls == 1
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_promptly_cancelled_timeout_closes_peer_exactly_once() -> None:
+    peer = _PeerContext()
+
+    async def dispatch(_request: dict[str, object], _context: _PeerContext) -> dict[str, object]:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    with pytest.raises(TimeoutError):
+        await server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 0.01,
+            peer_context=peer,
+        )
+    assert peer.close_calls == 1
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_dispatch_cancelled_before_first_step_closes_peer_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer = _PeerContext()
+    body_entered = False
+
+    async def dispatch(_request: dict[str, object], _context: _PeerContext) -> dict[str, object]:
+        nonlocal body_entered
+        body_entered = True
+        return _response(cast(str, _request["request_id"]))
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    real_create_task = asyncio.create_task
+
+    def cancel_before_step(coroutine: Any) -> asyncio.Task[Any]:
+        task = real_create_task(coroutine)
+        task.cancel()
+        return task
+
+    monkeypatch.setattr(asyncio, "create_task", cancel_before_step)
+    with pytest.raises(asyncio.CancelledError):
+        await server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 1,
+            peer_context=peer,
+        )
+    assert not body_entered
+    assert peer.close_calls == 1
+    monkeypatch.setattr(asyncio, "create_task", real_create_task)
+    await server.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["error", "cancel"])
+async def test_writer_cleanup_failure_still_closes_raw_pidfd_once(
+    failure: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        return {}
+
+    server = _unit_server(dispatch)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+
+    async def failed_writer_cleanup(_writer: asyncio.StreamWriter) -> None:
+        if failure == "cancel":
+            raise asyncio.CancelledError
+        raise RuntimeError("private writer cleanup failure")
+
+    monkeypatch.setattr(server, "_close_writer", failed_writer_cleanup)
+    try:
+        if failure == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await server._handle(_reader(b"{}\n"), cast(Any, _MemoryWriter()))
+        else:
+            with pytest.raises(RuntimeError, match="writer cleanup"):
+                await server._handle(_reader(b"{}\n"), cast(Any, _MemoryWriter()))
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_raw_pidfd_close_error_poisons_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        return {}
+
+    server = _unit_server(dispatch)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    real_close = os.close
+    calls = 0
+
+    def failed_raw_close(descriptor: int) -> None:
+        nonlocal calls
+        if descriptor == pidfd:
+            calls += 1
+            raise OSError("private raw close failure")
+        real_close(descriptor)
+
+    monkeypatch.setattr(os, "close", failed_raw_close)
+    try:
+        await server._handle(_reader(b"{}\n"), cast(Any, _MemoryWriter()))
+        assert server._poisoned and calls == 1
+        await server.close()
+        assert calls == 1
+    finally:
+        real_close(pidfd)
+        real_close(write_fd)
+
+
+@pytest.mark.anyio
+async def test_start_relistens_fixed_backlog_before_readiness_and_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events)
+    async_server = _RecordingAsyncServer(events)
+
+    async def start_unix_server(*_args: object, **kwargs: object) -> _RecordingAsyncServer:
+        events.append(("readiness", kwargs["backlog"]))
+        return async_server
+
+    monkeypatch.setattr(asyncio, "start_unix_server", start_unix_server)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+
+    await server.start()
+    await server.start()
+    assert events[:3] == [
+        ("listen", subject.FIXED_BACKLOG),
+        ("blocking", False),
+        ("readiness", subject.FIXED_BACKLOG),
+    ]
+    assert events.count(("listen", subject.FIXED_BACKLOG)) == 1
+
+    await server.close()
+    await server.close()
+    assert server.shutdown_clean
+    assert events.count("server-close") == 1
+    assert "socket-close" not in events
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await server.start()
+
+
+@pytest.mark.anyio
+async def test_concurrent_start_callers_share_one_socket_transfer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events)
+    async_server = _RecordingAsyncServer(events)
+    readiness_entered = asyncio.Event()
+    release_readiness = asyncio.Event()
+
+    async def start_unix_server(*_args: object, **kwargs: object) -> _RecordingAsyncServer:
+        events.append(("readiness", kwargs["backlog"]))
+        readiness_entered.set()
+        await release_readiness.wait()
+        return async_server
+
+    monkeypatch.setattr(asyncio, "start_unix_server", start_unix_server)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+
+    first = asyncio.create_task(server.start())
+    await asyncio.wait_for(readiness_entered.wait(), timeout=1)
+    operation = server._start_operation
+    second = asyncio.create_task(server.start())
+    await asyncio.sleep(0)
+    assert operation is not None and server._start_operation is operation
+    assert events.count(("listen", subject.FIXED_BACKLOG)) == 1
+    release_readiness.set()
+    await asyncio.gather(first, second)
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_close_before_start_closes_inherited_descriptor() -> None:
+    events: list[object] = []
+    read_fd, write_fd = os.pipe()
+
+    class FDListeningSocket(_RecordingListeningSocket):
+        def close(self) -> None:
+            super().close()
+            os.close(read_fd)
+
+    server = WAWControlServer(
+        cast(Any, FDListeningSocket(events)),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+    try:
+        await server.close()
+        with pytest.raises(OSError):
+            os.fstat(read_fd)
+        await server.close()
+    finally:
+        os.close(write_fd)
+
+
+@pytest.mark.anyio
+async def test_close_while_listener_registered_but_server_not_returned_preserves_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events)
+    async_server = _RecordingAsyncServer(events)
+    readiness_entered = asyncio.Event()
+    release_readiness = asyncio.Event()
+
+    async def delayed_server_return(*_args: object, **_kwargs: object) -> _RecordingAsyncServer:
+        events.append("listener-registered")
+        readiness_entered.set()
+        await release_readiness.wait()
+        return async_server
+
+    monkeypatch.setattr(asyncio, "start_unix_server", delayed_server_return)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        cancellation_grace_seconds=0.01,
+    )
+    start_call = asyncio.create_task(server.start())
+    await asyncio.wait_for(readiness_entered.wait(), timeout=1)
+    close_wait = server.close()
+    assert server._closing and server._closed and server._close_operation is not None
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await server.start()
+
+    await close_wait
+    assert server._poisoned and server._closing
+    assert server._start_operation is not None and not server._start_operation.done()
+    assert "socket-close" not in events
+    release_readiness.set()
+    with pytest.raises(RuntimeError, match="activation failed"):
+        await start_call
+    assert events.index("listener-registered") < events.index("server-close")
+    assert events.count("server-close") == 1
+    assert events.count("server-wait-closed") == 1
+    assert "socket-close" not in events
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux AF_UNIX peer lifecycle")
+@pytest.mark.anyio
+async def test_real_loop_close_transferred_socket_has_no_stale_reader(tmp_path: Path) -> None:
+    path = tmp_path / "control.sock"
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.bind(str(path))
+    sock.listen(1)
+    server = WAWControlServer(
+        sock,
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+    await server.start()
+    reader, writer = await asyncio.open_unix_connection(path)
+    try:
+        for _ in range(100):
+            if server._connection_tasks:
+                break
+            await asyncio.sleep(0)
+        assert server._connection_tasks
+        await server.close()
+        async with asyncio.timeout(1):
+            assert await reader.read() == b""
+        assert server._server is None
+        assert server._connection_tasks == set()
+        with pytest.raises(OSError):
+            await asyncio.open_unix_connection(path)
+    finally:
+        writer.close()
+        with contextlib.suppress(OSError, ConnectionError):
+            await writer.wait_closed()
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_relisten_failure_closes_without_entering_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+    sock = _RecordingListeningSocket(events, fail_listen=True)
+
+    async def forbidden_readiness(*_args: object, **_kwargs: object) -> None:
+        events.append("unexpected-readiness")
+
+    monkeypatch.setattr(asyncio, "start_unix_server", forbidden_readiness)
+    server = WAWControlServer(
+        cast(Any, sock),
+        lambda _request: _empty_response(),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+    )
+
+    with pytest.raises(RuntimeError, match="activation failed") as raised:
+        await server.start()
+    assert "synthetic" not in str(raised.value)
+    assert events == [("listen", subject.FIXED_BACKLOG), "socket-close"]
+    assert sock.closed and server._poisoned and server._closed
+    await server.close()
 
 
 async def _running_server(
@@ -113,6 +697,7 @@ async def test_dispatches_valid_request_and_closes_connection(tmp_path: Path) ->
         assert seen == [_request()]
     finally:
         await server.close()
+        assert server.shutdown_clean
         sock.close()
 
 
@@ -325,6 +910,7 @@ async def test_close_while_dispatching_is_bounded_and_poisoned(tmp_path: Path) -
         close_task = asyncio.create_task(server.close())
         await asyncio.wait_for(close_task, timeout=1)
         assert server._poisoned is True
+        assert not server.shutdown_clean
         release.set()
         assert await asyncio.wait_for(call, timeout=1) == b""
     finally:

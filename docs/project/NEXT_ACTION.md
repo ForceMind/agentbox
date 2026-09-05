@@ -10,6 +10,30 @@ blocker is resolved. Do not request the same software approval again.
 
 ## Active implementation
 
+- Execute the 2026-09-05 R11 work-unit plan in
+  `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
+  persistence/first use and rc6-C browser controller; only then proceed to rc7,
+  rc8 and rc9. Commit `708acd8...` implements the rc6-B first-use path and
+  closed Runtime executable evidence action; its first CI run found one shared
+  Linux inode-reuse verifier failure across Python 3.11/3.12/3.13. Repair
+  `3ba85cb...` retains verified descriptors, and `bbdd67c...` completed a fresh
+  20/20 exact-head matrix. A later native status-71 READY timing failure is fixed
+  by `af4d43e...` and passed native; `9d078b4...` repairs its test-format gate and
+  `4222242...` completed the fresh 20/20 CI. Commit `9c12ab3...` now implements
+  deterministic startup/restart replay, inventory finalization and drift fences;
+  its 346-pass local matrix and independent Sol follow-up review are recorded in
+  `docs/WAW_R11_RC6_BINDING_REPLAY.md`. Its final `854cf87...` exact head has
+  completed 20/20 CI. Controller safety commit `ea0ac84...` has an independent
+  Sol PASS and 20/20 CI. Renderer commit `f4d868e...` and documentation head
+  `48850ba...` also completed 20/20 CI; implement the attachment/page lifecycle
+  hook and bilingual page composition next. The full rc6 independent review and
+  acceptance set remain due.
+- Historical paragraphs below that say “current uncommitted” are prior rc6
+  checkpoints; the top active-implementation status is authoritative.
+- rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
+  shared catalog, error-code mapper and route-state manifest are available for
+  page owners. The page migration and bilingual visual matrix remain pending.
+
 - Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
 - R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.
 - R5 is merged as PR #74 after 19/19 checks and exact read-back. Cold-start/GC
@@ -23,16 +47,71 @@ blocker is resolved. Do not request the same software approval again.
 - R9 is merged as PR #78 after independent PASS, 19/19 exact-head checks,
   normal merge `15a4632f915dd1e1bde19425e313b52ada27166f`, exact read-back and
   six successful standard post-main workflows.
-- R10/rc5 implementation head `6083e6e...` completed independent review and all
-  20 exact-head checks. Fixed Claude/Codex profiles, descriptor-to-exec/PTY/
-  bootstrap/bridge/attach, Runtime composition and inert installer assets remain
-  software-only. The active action is final documentation head CI → normal PR
-  #79 merge → exact read-back, fixing any new CI finding before merge.
-- After R10 delivery, begin R11/rc6 browser/API/Runtime controller composition,
-  then continue rc7–rc9 failure injection, operational/artifact rehearsal and
-  full cross-page bilingual migration. Locale is fixed per document from only
-  `navigator.languages[0]`: primary `zh` → `zh-CN`; all other/missing/malformed
-  values → English; technical identifiers remain English.
+- R10/rc5 is delivered by PR #79: final head `0d9e7c7...` completed 20/20
+  exact-head checks and merged as `341a69bf...`; exact parent read-back, all six
+  post-main workflows and dynamic Dependency Graph completed SUCCESS.
+- PR #80 repair head `bbdd67c...` has terminal 20/20 CI after fixing the shared
+  descriptor-release/inode-reuse issue. It verifies the current first-use/
+  evidence checkpoint. Native/format follow-ups completed in `4222242...` 20/20
+  CI. Do not merge before replay, controller composition and the remaining rc6
+  acceptance set.
+- Current evidence: the final local core matrix completed 216 plus 5 focused
+  cases; independent Sol/xhigh review completed 244 cases with 1 Linux-only skip
+  and 9 deselected, plus 8 encrypted-server non-UDS cases. Review is PASS with no
+  remaining P0/P1/P2. Twenty-eight real-UDS cases are locally unverified because
+  this environment returned `PermissionError` during socket setup. Ruff, Black,
+  Linux-target mypy (256 sources), doc links (240) and `git diff --check` pass.
+- The current uncommitted bounded-redraw slice has a neutral 24-row/60 KiB
+  contract with row 25 and byte 61,441 as discarded sentinels. Held-FD tmux
+  capture proves socket/pane/retained-pidfd identity before and after one shared
+  one-second deadline; supervisor capture/cursor/baseline publication is atomic,
+  and production capture callbacks are removed from registry/service/bootstrap.
+  The unified focused matrix completed 341 tests with 9 Linux-only skips and 2
+  local UDS cases deselected; independent Sol/xhigh review reports PASS with no
+  P0/P1/P2. The new Linux native case requires exact-head CI; local UDS setup
+  remains unverified after `PermissionError`.
+- Head `adf44fc0...` ran the new real Linux capture successfully, then failed the
+  native job at teardown because the test killed tmux before calling a helper
+  that expects the tmux socket. The test-only follow-up removes that invalid
+  cleanup assertion. Commit/push it and require a fresh exact-head native/full
+  Backend pass before recording bounded redraw complete.
+- Follow-up `f37f92d9...` completed the required 20/20 exact-head matrix. Linux
+  native completed 73 cases; Backend Python 3.11 completed 3629 passed/44 skipped,
+  with 3.12/3.13 also successful. Treat bounded redraw as verified and continue
+  with `WAWRuntimeApplication` production composition and singleton ownership.
+- The current `WAWRuntimeApplication` composition is uncommitted: typed Runtime
+  key/executor providers and activated sockets have distinct one-shot ownership;
+  stream, control and legacy share application start/close tasks and one dispatch
+  gate. Partial production builders are private and weak-map provenance is gone.
+  Incomplete construction retains a typed retryable owner. Provider closure waits
+  for stream/control/lifecycle/legacy clean evidence. Independent Sol/xhigh review
+  reports PASS with no P0/P1/P2; Linux-target mypy covers 260 sources. Production
+  main, real key/provider and host activation remain disabled.
+- `WAWRuntimeApplication` head `628e9c00...` completed 20/20 exact-head checks.
+  Continue rc6 with the API singleton, one attachment/bind/control/relay owner and
+  lifespan shutdown ordering; keep real key/provider and production activation in
+  their existing host-gated scope.
+- `AttachmentAuthority` shutdown fencing is implemented and independently reviewed:
+  pending tickets burn, cleanup obligations survive invalidation, and only exact
+  cleanup/Audit ACK reaches clean. Commit and exact-head verify this foundation,
+  then implement the process lock and single bind/control/relay lifespan owner.
+- Bind/control shutdown evidence is also complete locally: pending exchange,
+  detached task, retained peer or uncertain FD close prevents clean. Commit and
+  exact-head verify it, then continue process lock and stream-owner composition.
+- Implement the attachment/page lifecycle hook and bilingual page composition.
+  Normal merge and exact read-back follow the complete rc6 acceptance set. After
+  rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
+  and rc9 full UI localization/visual E2E.
+- First integration head `e210d749...` completed 17/20 checks. Three Backend
+  matrix jobs exposed one shared legacy regression: a clean non-fixed server could
+  no longer restart without consuming a second epoch. The local reviewed fix
+  restores only that compatible restart; fixed/control/poisoned/incomplete shutdown
+  stays terminal. Follow-up `c534fe437...` completed the fresh exact-head 20/20
+  matrix. Continue the remaining rc6 controller composition; do not merge rc6 until the full
+  controller composition and rc6 acceptance set are complete.
+- Locale remains fixed per document from only `navigator.languages[0]`: primary
+  `zh` → `zh-CN`; all other, missing or malformed values → English. Technical
+  identifiers remain English.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent

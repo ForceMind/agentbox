@@ -7,10 +7,31 @@ from types import SimpleNamespace
 
 import pytest
 from agentbox_runtime.waw_activation import (
+    WAWActivatedSockets,
     WAWActivationError,
     _validate_socket,
     load_waw_activated_sockets,
 )
+
+
+def test_activated_socket_take_moves_descriptors_once() -> None:
+    control, control_peer = socket.socketpair()
+    stream, stream_peer = socket.socketpair()
+    source = WAWActivatedSockets(control, stream)
+    try:
+        owned = source.take()
+        assert source.control.fileno() == source.stream.fileno() == -1
+        assert owned.control.fileno() >= 0 and owned.stream.fileno() >= 0
+        source.close()
+        owned.control.send(b"c")
+        owned.stream.send(b"s")
+        assert control_peer.recv(1) == b"c" and stream_peer.recv(1) == b"s"
+        with pytest.raises(WAWActivationError, match="already consumed"):
+            source.take()
+        owned.close()
+    finally:
+        control_peer.close()
+        stream_peer.close()
 
 
 def _listener(path: Path, *, mode: int = 0o660) -> socket.socket:

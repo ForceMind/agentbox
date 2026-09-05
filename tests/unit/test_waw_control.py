@@ -5,10 +5,12 @@ import json
 import pytest
 from agentbox_protocol.waw_control import (
     WAWControlError,
+    binding_inventory_digest,
     decode_control_request,
     decode_control_response,
     encode_control_request,
     encode_control_response,
+    validate_relative_key,
 )
 
 
@@ -109,6 +111,73 @@ def test_register_requires_null_predecessor_for_first_revision() -> None:
         encode_control_request(skipped)
 
 
+def test_binding_inventory_finalize_has_an_exact_closed_schema() -> None:
+    action = "workspace.project_binding.inventory.finalize.v1"
+    request = _request(
+        action,
+        runtime_epoch="9",
+        binding_count="0",
+        inventory_digest="a" * 64,
+    )
+    assert decode_control_request(encode_control_request(request)) == request
+    with pytest.raises(WAWControlError):
+        encode_control_request({**request, "project_id": "prj_" + "3" * 32})
+    with pytest.raises(WAWControlError):
+        encode_control_request({**request, "binding_count": "01"})
+
+    response = {
+        "protocol_version": 1,
+        "request_id": request["request_id"],
+        "status": "FINALIZED",
+        "runtime_epoch": "9",
+        "binding_count": "0",
+        "inventory_digest": "a" * 64,
+    }
+    assert decode_control_response(encode_control_response(response, action), action) == response
+    with pytest.raises(WAWControlError):
+        encode_control_response({**response, "status": "REGISTERED"}, action)
+
+
+def test_binding_inventory_errors_are_closed() -> None:
+    for error_code in ("BINDING_INVENTORY_MISMATCH", "BINDING_REPLAY_INCOMPLETE"):
+        response = {
+            "protocol_version": 1,
+            "request_id": "wreq_" + "1" * 32,
+            "status": "ERROR",
+            "error_code": error_code,
+            "retryable": False,
+        }
+        assert (
+            decode_control_response(
+                encode_control_response(
+                    response, "workspace.project_binding.inventory.finalize.v1"
+                ),
+                "workspace.project_binding.inventory.finalize.v1",
+            )
+            == response
+        )
+
+
+def test_binding_inventory_digest_normalizes_project_order_and_rejects_drift() -> None:
+    first = {
+        "project_id": "prj_" + "1" * 32,
+        "relative_key": "one",
+        "project_revision": "1",
+        "binding_revision": "1",
+        "previous_binding_revision": None,
+        "previous_binding_digest": None,
+        "binding_digest": "a" * 64,
+        "runtime_host_installation_id": "wri_" + "2" * 32,
+        "runtime_host_installation_revision": "1",
+    }
+    second = {**first, "project_id": "prj_" + "0" * 32, "relative_key": "zero"}
+    assert binding_inventory_digest([first, second]) == binding_inventory_digest([second, first])
+    with pytest.raises(WAWControlError, match="duplicated"):
+        binding_inventory_digest([first, first])
+    with pytest.raises(WAWControlError, match="binding_digest"):
+        binding_inventory_digest([{**first, "binding_digest": None}])
+
+
 def test_decoder_rejects_duplicate_keys_constants_and_trailing_data() -> None:
     duplicate = b'{"protocol_version":1,"protocol_version":1}\n'
     with pytest.raises(WAWControlError, match="duplicate"):
@@ -171,6 +240,44 @@ def test_start_response_round_trips_decimal_uint64_and_rejects_extra_fields() ->
         encode_control_response({**response, "path": "/tmp"}, "workspace.workspace.start")
     with pytest.raises(WAWControlError):
         encode_control_response({**response, "generation": 1}, "workspace.workspace.start")
+
+
+def test_executable_evidence_action_has_closed_request_and_response() -> None:
+    action = "workspace.workspace.executable_evidence.v1"
+    request = _request(
+        action,
+        workspace_id="aws_" + "2" * 32,
+        project_id="prj_" + "3" * 32,
+        agent_type="claude",
+        generation="1",
+        binding_revision="1",
+        binding_digest="a" * 64,
+        runtime_host_installation_id="wri_" + "4" * 32,
+        runtime_host_installation_revision="1",
+        runtime_epoch="7",
+    )
+    assert decode_control_request(encode_control_request(request)) == request
+    with pytest.raises(WAWControlError):
+        encode_control_request({**request, "runtime_epoch": "0"})
+
+    response = {
+        "protocol_version": 1,
+        "request_id": request["request_id"],
+        "status": "EXECUTABLE_EVIDENCE",
+        "workspace_id": request["workspace_id"],
+        "project_id": request["project_id"],
+        "agent_type": request["agent_type"],
+        "generation": request["generation"],
+        "binding_revision": request["binding_revision"],
+        "binding_digest": request["binding_digest"],
+        "runtime_host_installation_id": request["runtime_host_installation_id"],
+        "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+        "runtime_epoch": request["runtime_epoch"],
+        "executable_fingerprint": "b" * 64,
+    }
+    assert decode_control_response(encode_control_response(response, action), action) == response
+    with pytest.raises(WAWControlError):
+        encode_control_response({**response, "executable_fingerprint": "b" * 63}, action)
 
 
 def test_attach_prepare_response_capability_and_error_shape() -> None:
@@ -317,6 +424,15 @@ def test_protocol_version_requires_json_integer_and_relative_key_nfc() -> None:
     )
     with pytest.raises(WAWControlError):
         encode_control_request({**binding, "relative_key": "Å"})
+
+
+@pytest.mark.parametrize(
+    "value",
+    ("Å", "bad/path", "bad\\path", ".", "..", " leading", "trailing ", "bad\x00key"),
+)
+def test_public_relative_key_validator_matches_control_codec(value: str) -> None:
+    with pytest.raises(WAWControlError):
+        validate_relative_key(value)
 
 
 def test_control_decoder_rejects_crlf() -> None:

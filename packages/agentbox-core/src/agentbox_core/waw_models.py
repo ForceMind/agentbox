@@ -20,6 +20,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +29,8 @@ from agentbox_core.models import Base
 _AGENT_TYPES = "('claude','codex')"
 _WORKSPACE_STATES = "('STARTING','RUNNING','NEEDS_INTERACTION','TRUST_REQUIRED','LOGIN_REQUIRED','STOPPING','EXITED','STOPPED','MISSING','COLLISION','BROKEN','UNKNOWN')"
 _RECONCILIATION_STATES = "('authoritative','stopping','missing','collision','exited','reconciliation_required','unknown')"
+_BINDING_STATES = "('PENDING','CURRENT','RECONCILIATION_REQUIRED','SUPERSEDED')"
+_EXECUTABLE_EVIDENCE_STATES = "('UNOBSERVED','VERIFIED','STALE')"
 
 
 class RuntimeHostInstallation(Base):
@@ -43,6 +46,15 @@ class RuntimeHostInstallation(Base):
         CheckConstraint(
             "runtime_type = 'agentbox-runtime-linux-v1'", name="ck_waw_runtime_hosts_type"
         ),
+        CheckConstraint(
+            "last_runtime_epoch IS NULL OR ("
+            "length(last_runtime_epoch) BETWEEN 1 AND 20 AND "
+            "last_runtime_epoch NOT GLOB '*[^0-9]*' AND "
+            "substr(last_runtime_epoch,1,1) BETWEEN '1' AND '9' AND "
+            "(length(last_runtime_epoch) < 20 OR "
+            "last_runtime_epoch <= '18446744073709551615'))",
+            name="ck_waw_runtime_hosts_last_epoch",
+        ),
         UniqueConstraint("id", "revision", name="uq_waw_runtime_hosts_identity"),
     )
 
@@ -51,6 +63,7 @@ class RuntimeHostInstallation(Base):
     runtime_type: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_runtime_epoch: Mapped[str | None] = mapped_column(String(20))
 
 
 class AgentWorkspaceSessionRecord(Base):
@@ -94,8 +107,38 @@ class AgentWorkspaceSessionRecord(Base):
         ),
         CheckConstraint("length(runtime_marker) BETWEEN 1 AND 192", name="ck_waw_sessions_marker"),
         CheckConstraint(
-            "length(executable_fingerprint)=64 AND executable_fingerprint NOT GLOB '*[^0-9a-f]*'",
+            "executable_fingerprint IS NULL OR (length(executable_fingerprint)=64 AND executable_fingerprint NOT GLOB '*[^0-9a-f]*')",
             name="ck_waw_sessions_executable_fingerprint",
+        ),
+        CheckConstraint(
+            f"executable_evidence_state IN {_EXECUTABLE_EVIDENCE_STATES}",
+            name="ck_waw_sessions_executable_evidence_state",
+        ),
+        CheckConstraint(
+            "executable_evidence_generation IS NULL OR executable_evidence_generation >= 1",
+            name="ck_waw_sessions_executable_evidence_generation",
+        ),
+        CheckConstraint(
+            "executable_evidence_runtime_epoch IS NULL OR ("
+            "length(executable_evidence_runtime_epoch) BETWEEN 1 AND 20 AND "
+            "executable_evidence_runtime_epoch NOT GLOB '*[^0-9]*' AND "
+            "substr(executable_evidence_runtime_epoch,1,1) BETWEEN '1' AND '9' AND "
+            "(length(executable_evidence_runtime_epoch) < 20 OR "
+            "executable_evidence_runtime_epoch <= '18446744073709551615'))",
+            name="ck_waw_sessions_executable_evidence_epoch",
+        ),
+        CheckConstraint(
+            "(executable_evidence_state = 'UNOBSERVED' AND executable_fingerprint IS NULL "
+            "AND executable_evidence_generation IS NULL "
+            "AND executable_evidence_runtime_epoch IS NULL) OR "
+            "(executable_evidence_state = 'VERIFIED' AND executable_fingerprint IS NOT NULL "
+            "AND executable_evidence_generation = generation "
+            "AND executable_evidence_runtime_epoch IS NOT NULL) OR "
+            "(executable_evidence_state = 'STALE' AND ("
+            "(executable_evidence_generation IS NULL AND executable_evidence_runtime_epoch IS NULL) OR "
+            "(executable_fingerprint IS NOT NULL AND executable_evidence_generation IS NOT NULL "
+            "AND executable_evidence_runtime_epoch IS NOT NULL)))",
+            name="ck_waw_sessions_executable_evidence_consistency",
         ),
         CheckConstraint(
             "exit_code IS NULL OR exit_code BETWEEN -128 AND 255", name="ck_waw_sessions_exit_code"
@@ -136,7 +179,7 @@ class AgentWorkspaceSessionRecord(Base):
     state: Mapped[str] = mapped_column(String(24), nullable=False)
     runtime_session_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     runtime_marker: Mapped[str] = mapped_column(String(192), nullable=False)
-    executable_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    executable_fingerprint: Mapped[str | None] = mapped_column(String(64))
     generation: Mapped[int] = mapped_column(Integer, nullable=False)
     binding_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     binding_digest: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -147,6 +190,116 @@ class AgentWorkspaceSessionRecord(Base):
     exit_code: Mapped[int | None] = mapped_column(Integer)
     failure_code: Mapped[str | None] = mapped_column(String(64))
     reconciliation_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    executable_evidence_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="UNOBSERVED"
+    )
+    executable_evidence_generation: Mapped[int | None] = mapped_column(Integer)
+    executable_evidence_runtime_epoch: Mapped[str | None] = mapped_column(String(20))
+
+
+class ProjectBindingRecord(Base):
+    """Immutable Control Plane registration ledger for one formal Project."""
+
+    __tablename__ = "waw_project_bindings"
+    __table_args__ = (
+        CheckConstraint(
+            "length(project_id)=36 AND substr(project_id,1,4)='prj_' "
+            "AND substr(project_id,5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_project_bindings_project_id",
+        ),
+        CheckConstraint(
+            "length(relative_key) BETWEEN 1 AND 80 AND relative_key = trim(relative_key) "
+            "AND relative_key NOT IN ('.','..') AND instr(relative_key,'/')=0 "
+            "AND instr(relative_key, char(92))=0",
+            name="ck_waw_project_bindings_relative_key",
+        ),
+        CheckConstraint("project_revision >= 1", name="ck_waw_project_bindings_project_revision"),
+        CheckConstraint("binding_revision >= 1", name="ck_waw_project_bindings_binding_revision"),
+        CheckConstraint(
+            "binding_digest IS NULL OR (length(binding_digest)=64 "
+            "AND binding_digest NOT GLOB '*[^0-9a-f]*')",
+            name="ck_waw_project_bindings_digest",
+        ),
+        CheckConstraint(
+            "(binding_revision=1 AND previous_binding_revision IS NULL "
+            "AND previous_binding_digest IS NULL) OR "
+            "(binding_revision>1 AND previous_binding_revision=binding_revision-1 "
+            "AND length(previous_binding_digest)=64 "
+            "AND previous_binding_digest NOT GLOB '*[^0-9a-f]*')",
+            name="ck_waw_project_bindings_predecessor",
+        ),
+        CheckConstraint(
+            "length(runtime_host_installation_id)=36 "
+            "AND substr(runtime_host_installation_id,1,4)='wri_' "
+            "AND substr(runtime_host_installation_id,5) NOT GLOB '*[^0-9a-f]*'",
+            name="ck_waw_project_bindings_host_id",
+        ),
+        CheckConstraint(
+            "runtime_host_installation_revision >= 1",
+            name="ck_waw_project_bindings_host_revision",
+        ),
+        CheckConstraint(f"status IN {_BINDING_STATES}", name="ck_waw_project_bindings_status"),
+        CheckConstraint(
+            "status NOT IN ('CURRENT','SUPERSEDED') OR binding_digest IS NOT NULL",
+            name="ck_waw_project_bindings_attested_status",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "binding_revision",
+            "binding_digest",
+            name="uq_waw_project_bindings_attested_identity",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "previous_binding_revision", "previous_binding_digest"],
+            [
+                "waw_project_bindings.project_id",
+                "waw_project_bindings.binding_revision",
+                "waw_project_bindings.binding_digest",
+            ],
+            ondelete="RESTRICT",
+            name="fk_waw_project_bindings_predecessor",
+        ),
+        ForeignKeyConstraint(
+            ["runtime_host_installation_id", "runtime_host_installation_revision"],
+            [
+                "waw_runtime_host_installations.id",
+                "waw_runtime_host_installations.revision",
+            ],
+            ondelete="RESTRICT",
+            name="fk_waw_project_bindings_runtime_host_identity",
+        ),
+        Index(
+            "uq_waw_project_bindings_open_attempt",
+            "project_id",
+            unique=True,
+            sqlite_where=text(
+                "status='PENDING' OR (status='RECONCILIATION_REQUIRED' AND binding_digest IS NULL)"
+            ),
+        ),
+        Index(
+            "uq_waw_project_bindings_head",
+            "project_id",
+            unique=True,
+            sqlite_where=text(
+                "status='CURRENT' OR (status='RECONCILIATION_REQUIRED' AND binding_digest IS NOT NULL)"
+            ),
+        ),
+    )
+
+    project_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("projects.id", ondelete="RESTRICT"), primary_key=True
+    )
+    binding_revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    relative_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    binding_digest: Mapped[str | None] = mapped_column(String(64))
+    previous_binding_revision: Mapped[int | None] = mapped_column(Integer)
+    previous_binding_digest: Mapped[str | None] = mapped_column(String(64))
+    runtime_host_installation_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    runtime_host_installation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class WorkspaceStopOperationRecord(Base):
@@ -210,6 +363,7 @@ class WorkspaceStopOperationRecord(Base):
 
 __all__ = [
     "AgentWorkspaceSessionRecord",
+    "ProjectBindingRecord",
     "RuntimeHostInstallation",
     "WorkspaceStopOperationRecord",
 ]
