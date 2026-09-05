@@ -117,9 +117,10 @@ key. The resulting `bbdd67c` exact head completed 20/20 checks. The exact
 contract, failure fences, replay requirements and local validation are recorded
 in [R11 rc6 first use](WAW_R11_RC6_FIRST_USE.md). Follow-up `af4d43e` repairs a
 native attach READY timing failure found on a later documentation-only CI head
-and passed Linux native; format-only follow-up `9d078b4` awaits a fresh complete
-matrix. This is not completion of rc6-B: deterministic startup/restart replay
-and the remaining rc6 acceptance evidence are still due.
+and passed Linux native; format-only follow-up `9d078b4` completed in the
+`4222242` 20/20 exact-head matrix. This is not completion of rc6-B:
+deterministic startup/restart replay and the remaining rc6 acceptance evidence
+are still due.
 
 ### C. Browser controller and exact Stop
 

@@ -6,8 +6,8 @@
 `bbdd67c` exact head 已完成 20/20。随后纯文档 head `801a494` 的 Linux native
 attach READY 确认未通过固定短轮询，修复 `af4d43e` 改为受同一单调 1 秒 deadline
 约束的精确身份确认；其 native CI 已通过。随后 `2381171` 的 Python quality 只因
-回归测试未格式化而失败，格式修复 `9d078b4` 等待新的 CI。rc6-B 的启动 replay、
-独立审查、完整 rc6 合并和真实主机证据仍未完成。
+回归测试未格式化而失败，格式修复 `9d078b4` 与文档 head `4222242` 已完成新的
+20/20 CI。rc6-B 的启动 replay、独立审查、完整 rc6 合并和真实主机证据仍未完成。
 
 本文件只定义 rc6-B 的已实现控制面路径。它不激活主机、不读取 Runtime HOME、
 不处理 Provider Secret，也不把合成 Runtime 测试当作可用终端。
@@ -86,7 +86,7 @@ Runtime 只会针对当前已启动的精确 supervisor 返回该值。
   `2381171` 的 Linux native 已通过；portable C17 gate 与 native helper 单测通过。
 - 同一 `2381171` head 的三组 Python quality 在 Black format gate 失败，唯一差异
   是 `test_waw_native_helpers.py` 的一行未按 Black 收束；`9d078b4` 只格式化该行，
-  本地 Black/Ruff/pytest 已通过，等待 fresh CI。
+  本地 Black/Ruff/pytest 已通过，随 `4222242` exact head 完成 20/20 CI。
 - `ruff check`：12 个受影响 API、Protocol、Runtime 与测试文件通过。
 - `black --check`：同一文件集通过。
 - `mypy --platform linux`：10 个受影响 source/test 文件通过。
@@ -122,6 +122,5 @@ drift 组合证据；rc6-C browser controller 页面接线也尚未完成。
 
 ## 后续边界
 
-本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步先读取 `9d078b4` 的
-exact-head 结果，再实现并验证上述启动时 deterministic binding replay；它完成前
-不得把 rc6-B 或完整 rc6 标为完成。
+本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步实现并验证上述启动时
+deterministic binding replay；它完成前不得把 rc6-B 或完整 rc6 标为完成。
