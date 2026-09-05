@@ -3,8 +3,10 @@
 状态：CI 验证检查点。首次使用代码提交
 `708acd8aa9dc2af945f5664a7ba983c192affde4` 的第一次 exact-head CI 有 17/20
 通过、3 个 Backend Python matrix 失败；descriptor 修复 `3ba85cb` 与本文件的
-`bbdd67c` exact head 已完成 20/20。rc6-B 的启动 replay、独立审查、完整 rc6
-合并和真实主机证据仍未完成。
+`bbdd67c` exact head 已完成 20/20。随后纯文档 head `801a494` 的 Linux native
+attach READY 确认未通过固定短轮询，修复 `af4d43e` 改为受同一单调 1 秒 deadline
+约束的精确身份确认并等待新的 CI。rc6-B 的启动 replay、独立审查、完整 rc6 合并
+和真实主机证据仍未完成。
 
 本文件只定义 rc6-B 的已实现控制面路径。它不激活主机、不读取 Runtime HOME、
 不处理 Provider Secret，也不把合成 Runtime 测试当作可用终端。
@@ -76,6 +78,11 @@ Runtime 只会针对当前已启动的精确 supervisor 返回该值。
   所有 owned descriptors。新的 inode-reuse 与 descriptor-capacity 回归均通过。
 - 修复后的 `bbdd67c` exact-head CI 为 20/20 `SUCCESS`，包括 Linux native、E2E、
   release-candidate、installer、安全检查和 Python 3.11/3.12/3.13 Backend matrix。
+- 后续 `801a494` exact head 的唯一失败是 native attach READY 的 status 71；当时
+  生产代码与 `bbdd67c` 相同，其余 19 项检查通过。`af4d43e` 不依赖外层测试
+  重试，也不放宽 tmux client identity，而是用 `AGENTBOX_WAW_READY_DEADLINE_MS` 的统一
+  `CLOCK_MONOTONIC` deadline 限制 exec、query、PID 存活复核和 20ms 轮询。
+  portable C17 gate 与 native helper 单测通过；Linux host-gate 留给 fresh CI。
 - `ruff check`：12 个受影响 API、Protocol、Runtime 与测试文件通过。
 - `black --check`：同一文件集通过。
 - `mypy --platform linux`：10 个受影响 source/test 文件通过。
@@ -111,5 +118,6 @@ drift 组合证据；rc6-C browser controller 页面接线也尚未完成。
 
 ## 后续边界
 
-本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步实现并验证上述启动时
-deterministic binding replay；它完成前不得把 rc6-B 或完整 rc6 标为完成。
+本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步先读取 `af4d43e` 的 native
+exact-head 结果，再实现并验证上述启动时 deterministic binding replay；它完成前
+不得把 rc6-B 或完整 rc6 标为完成。

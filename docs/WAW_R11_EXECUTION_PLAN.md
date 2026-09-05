@@ -115,9 +115,11 @@ failed only because the existing Project verifier released a descriptor before a
 Linux inode-reuse check; fix `3ba85cb` retains a bounded descriptor per verified
 key. The resulting `bbdd67c` exact head completed 20/20 checks. The exact
 contract, failure fences, replay requirements and local validation are recorded
-in [R11 rc6 first use](WAW_R11_RC6_FIRST_USE.md). This is not completion of
-rc6-B: deterministic startup/restart replay and the remaining rc6 acceptance
-evidence are still due.
+in [R11 rc6 first use](WAW_R11_RC6_FIRST_USE.md). Follow-up `af4d43e` repairs a
+native attach READY timing failure found on a later documentation-only CI head
+and awaits its own Linux exact-head result. This is not completion of rc6-B:
+deterministic startup/restart replay and the remaining rc6 acceptance evidence
+are still due.
 
 ### C. Browser controller and exact Stop
 

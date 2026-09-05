@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T17:53:32Z"
+verified_at_utc: "2026-09-05T18:09:26Z"
 verified_by: "codex-r11-rc6-first-use-checkpoint"
 repository: "ForceMind/agentbox"
 ---
@@ -16,7 +16,8 @@ repository: "ForceMind/agentbox"
   head `029378e...` completed 17/20 checks; all three Backend Python jobs exposed
   the same Linux inode-reuse flaw in the Runtime Project verifier. Repair head
   `bbdd67c...` completed the fresh exact-head 20/20 matrix, including native and
-  Python 3.11/3.12/3.13.
+  Python 3.11/3.12/3.13. Later documentation head `801a494...` failed only native
+  attach READY status 71; `af4d43e...` is the local timing repair awaiting CI.
 - The active, reviewed execution order is `docs/WAW_R11_EXECUTION_PLAN.md`.
   The rc6-B first-use contract and local evidence are recorded in
   `docs/WAW_R11_RC6_FIRST_USE.md`; this is not a claim that rc6, rc7, rc8, rc9
@@ -709,7 +710,12 @@ PROPOSED architecture status are preserved.
   control-path test; Ruff, Black and Linux-target mypy pass. The resulting
   `bbdd67c...` exact head completed 20/20 checks; independent rc6 review remains
   pending.
-- Next rc6 order is deterministic startup/restart binding replay and browser page
+- Documentation-only head `801a494...` then failed native attach READY status 71,
+  with the other 19 checks passing. `af4d43e...` replaces fixed short client
+  polling with one bounded monotonic READY deadline while preserving exact
+  PID/session validation; portable native checks pass and Linux CI is pending.
+- Next rc6 order after this native repair's CI is deterministic startup/restart
+  binding replay and browser page
   composition. Normal merge/read-back follows the complete rc6 acceptance set.
   rc7–rc9 and the R12 real-host boundary remain unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
