@@ -169,6 +169,12 @@ tests with 9 Linux-only skips and 2 local UDS cases deselected. Independent
 Sol/xhigh review reports PASS with no P0/P1/P2. The newly added real Linux native
 capture case awaits exact-head CI; local UDS setup is blocked by `PermissionError`.
 
+The first bounded-redraw head `adf44fc0...` completed the real Linux capture
+assertions and 72 native cases, then failed only in the new test's teardown: it
+killed tmux and subsequently called a helper that requires the socket to remain.
+The test-only follow-up removes that contradictory post-kill assertion; a fresh
+exact-head native/full Backend result remains required.
+
 ## Browser controller
 
 - Connect uses an exact same-origin WebSocket URL, subprotocol

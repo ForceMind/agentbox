@@ -46,6 +46,11 @@ blocker is resolved. Do not request the same software approval again.
   local UDS cases deselected; independent Sol/xhigh review reports PASS with no
   P0/P1/P2. The new Linux native case requires exact-head CI; local UDS setup
   remains unverified after `PermissionError`.
+- Head `adf44fc0...` ran the new real Linux capture successfully, then failed the
+  native job at teardown because the test killed tmux before calling a helper
+  that expects the tmux socket. The test-only follow-up removes that invalid
+  cleanup assertion. Commit/push it and require a fresh exact-head native/full
+  Backend pass before recording bounded redraw complete.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
   then continue the remaining production controller composition. Normal merge and
   exact read-back follow the complete rc6 acceptance set. After

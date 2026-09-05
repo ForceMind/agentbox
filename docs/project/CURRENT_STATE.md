@@ -711,3 +711,9 @@ PROPOSED architecture status are preserved.
   PASS with no P0/P1/P2. The new real Linux native case awaits exact-head CI;
   28 broader local UDS cases remain unverified after `PermissionError` during
   socket setup.
+- First bounded-redraw head `adf44fc0...` reached the real Linux native capture
+  assertion and completed 72 native cases, but the 73rd failed only in test
+  teardown: the test explicitly killed the tmux server and then called a helper
+  that requires its socket to remain present. The local follow-up removes that
+  contradictory post-kill assertion; implementation capture evidence passed in
+  the failed run. A fresh exact-head result is still required.

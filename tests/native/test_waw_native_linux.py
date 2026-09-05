@@ -621,7 +621,7 @@ def test_held_tmux_redraw_captures_only_exact_live_pane(
     fake_binaries: tuple[Path, Path],
     tmp_path: Path,
 ) -> None:
-    session, control, wbr = _begin_real_workspace(
+    _session, control, wbr = _begin_real_workspace(
         native_binaries,
         fake_binaries[0],
         tmp_path,
@@ -671,7 +671,6 @@ def test_held_tmux_redraw_captures_only_exact_live_pane(
             os.close(descriptor)
         control.close()
         wbr.close()
-        _wait_session_gone(session)
 
 
 def test_codex_fixed_profile_uses_same_isolated_native_path(
