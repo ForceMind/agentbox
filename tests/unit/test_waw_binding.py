@@ -118,6 +118,8 @@ def _coordinator(
         expected_host_manifest_digest="a" * 64,
         expected_project_root_manifest_digest="b" * 64,
         expected_runtime_epoch="9",
+        expected_enrollment_epoch="1",
+        expected_enrollment_state="steady",
         request_id_factory=lambda: "wreq_" + "1" * 32,
         runtime_epoch_classifier=classifier,
     )
@@ -155,6 +157,8 @@ def _production_coordinator(
         expected_host_manifest_digest="a" * 64,
         expected_project_root_manifest_digest="b" * 64,
         expected_runtime_epoch="9",
+        expected_enrollment_epoch="1",
+        expected_enrollment_state="steady",
         request_id_factory=lambda: "wreq_" + "1" * 32,
         runtime_epoch_classifier=classifier,
     )
@@ -639,5 +643,53 @@ async def test_concrete_close_retains_sticky_peer_fd_failure(
         assert coordinator.attestation is None and coordinator._bound_peer is None
         assert not coordinator.shutdown_clean
     finally:
+        monkeypatch.setattr(os, "close", original_close)
+        original_close(retained)
+        original_close(writer)
+
+
+@pytest.mark.anyio
+async def test_invalidate_retains_sticky_peer_fd_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = WAWControlClient(
+        Path("/unused/control.sock"),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        expected_socket_uid=os.geteuid(),
+        expected_socket_gid=os.getegid(),
+    )
+    exchange, _candidate, writer = _production_exchange(client)
+
+    async def bind_exchange(_action: str, _request: dict[str, Any]) -> RuntimeBindExchange:
+        return exchange
+
+    monkeypatch.setattr(client, "bind_exchange", bind_exchange)
+    coordinator = _production_coordinator(client, classifier=EpochClassifier())
+    await coordinator.bind()
+    peer = coordinator._bound_peer
+    assert peer is not None
+    retained = peer._pidfd
+    original_close = os.close
+    attempts: list[int] = []
+
+    def fail_close(descriptor: int) -> None:
+        if descriptor == retained:
+            attempts.append(descriptor)
+            raise OSError("synthetic invalidate close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_close)
+    try:
+        coordinator._invalidate()
+        with pytest.raises(WAWControlClientError) as bind_failure:
+            await coordinator.bind()
+        with pytest.raises(WAWControlClientError) as close_failure:
+            await coordinator.close()
+        assert bind_failure.value is close_failure.value
+        assert attempts == [retained]
+        assert not coordinator.shutdown_clean
+    finally:
+        monkeypatch.setattr(os, "close", original_close)
         original_close(retained)
         original_close(writer)

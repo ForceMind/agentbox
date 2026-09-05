@@ -22,7 +22,7 @@ import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from agentbox_protocol.waw_control import (
     MAX_CONTROL_ENVELOPE,
@@ -43,6 +43,14 @@ class WAWControlClientError(RuntimeError):
 
 
 _MAX_CANCELLATION_GRACE_SECONDS = 1.0
+
+
+class BackgroundWorkOwner(Protocol):
+    """Process owner which observes cancellation-resistant transport work."""
+
+    def track_background(self, future: asyncio.Future[Any]) -> None: ...
+
+
 _MAX_DETACHED_TASKS = 32
 
 
@@ -184,6 +192,7 @@ class RuntimePeerBorrow:
         self._pidfd = pidfd
         self._generation = generation
         self._lock = threading.Lock()
+        self._close_failure: WAWControlClientError | None = None
 
     @property
     def parent(self) -> BoundRuntimePeer:
@@ -198,6 +207,7 @@ class RuntimePeerBorrow:
             pidfd = self._pidfd
             return (
                 pidfd >= 0
+                and self._close_failure is None
                 and self._parent.current(generation=self._generation)
                 and _pidfd_current(pidfd)
             )
@@ -205,6 +215,27 @@ class RuntimePeerBorrow:
     def close(self) -> None:
         with self._lock:
             pidfd, self._pidfd = self._pidfd, -1
+            failure = self._close_failure
+        if failure is not None:
+            raise failure
+        if pidfd >= 0:
+            try:
+                os.close(pidfd)
+            except OSError as exc:
+                failure = WAWControlClientError(
+                    "RUNTIME_UNAVAILABLE", "WAW Runtime peer borrow pidfd close failed"
+                )
+                with self._lock:
+                    if self._close_failure is None:
+                        self._close_failure = failure
+                    failure = self._close_failure
+                self._parent._borrow_close_failed(failure)
+                raise failure from exc
+
+    def fence_after_fork(self) -> None:
+        """Close a pidfd inherited by an unsupported post-start fork child."""
+
+        pidfd, self._pidfd = self._pidfd, -1
         if pidfd >= 0:
             with contextlib.suppress(OSError):
                 os.close(pidfd)
@@ -306,6 +337,14 @@ class BoundRuntimePeer:
             raise failure from exc
         self._raise_close_failure()
 
+    def _borrow_close_failed(self, failure: WAWControlClientError) -> None:
+        with self._lock:
+            if self._close_failure is None:
+                self._close_failure = failure
+            self._poisoned = True
+            pidfd, self._pidfd = self._pidfd, -1
+        self._close_detached_pidfd(pidfd)
+
     def _publish(
         self,
         *,
@@ -405,6 +444,18 @@ class BoundRuntimePeer:
                 pidfd, self._pidfd = self._pidfd, -1
         self._close_detached_pidfd(pidfd)
 
+    def fence_after_fork(self) -> None:
+        """Close the inherited pidfd in a post-lifespan fork child."""
+
+        # at-fork child callbacks must not acquire locks which may have been
+        # held by a vanished thread in the parent.
+        pidfd, self._pidfd = self._pidfd, -1
+        self._closed = True
+        self._poisoned = True
+        if pidfd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(pidfd)
+
 
 class RuntimeBindExchange:
     """Unpublished bind response and candidate pidfd owned by one client."""
@@ -445,13 +496,23 @@ class RuntimeBindExchange:
         try:
             self._owner._publish_exchange(self)
             candidate._publish(generation=generation, owner_current=owner_current)
-        except BaseException:
-            candidate.close()
+        except BaseException as original:
             self._candidate = None
-            self._owner._publication_failed()
+            close_failure: WAWControlClientError | None = None
+            try:
+                candidate.close()
+            except WAWControlClientError as exc:
+                self._close_failure = close_failure = exc
+                self._owner._record_close_failure(exc)
+            finally:
+                self._owner._release_inflight_peer_fd(candidate)
+                self._owner._publication_failed()
+            if close_failure is not None:
+                raise close_failure from original
             raise
         self._candidate = None
         self._published = True
+        self._owner._release_inflight_peer_fd(candidate)
         return candidate
 
     def invalidate(self) -> None:
@@ -463,6 +524,8 @@ class RuntimeBindExchange:
             self._close_failure = exc
             raise
         finally:
+            if candidate is not None:
+                self._owner._release_inflight_peer_fd(candidate)
             self._owner._invalidate_exchange(self)
 
     def close(self) -> None:
@@ -476,7 +539,18 @@ class RuntimeBindExchange:
             self._close_failure = exc
             raise
         finally:
+            if candidate is not None:
+                self._owner._release_inflight_peer_fd(candidate)
             self._owner._close_exchange(self)
+
+    def fence_after_fork(self) -> None:
+        """Discard an unpublished candidate inherited by a child process."""
+
+        candidate, self._candidate = self._candidate, None
+        self._closed = True
+        if candidate is not None:
+            candidate.fence_after_fork()
+            self._owner._release_inflight_peer_fd(candidate)
 
 
 def validate_runtime_bind_attestation(
@@ -487,6 +561,8 @@ def validate_runtime_bind_attestation(
     expected_host_manifest_digest: str,
     expected_project_root_manifest_digest: str,
     expected_runtime_epoch: str | None = None,
+    expected_enrollment_epoch: str | None = None,
+    expected_enrollment_state: str | None = None,
 ) -> dict[str, Any]:
     """Require a bind response to match the locally trusted host anchor."""
 
@@ -514,6 +590,17 @@ def validate_runtime_bind_attestation(
             raise WAWControlClientError(
                 "RUNTIME_INSTALLATION_MISMATCH", "Runtime epoch does not match anchor"
             )
+    for enrollment_field, enrollment_expected in (
+        ("enrollment_epoch", expected_enrollment_epoch),
+        ("enrollment_state", expected_enrollment_state),
+    ):
+        if enrollment_expected is not None:
+            actual = response.get(enrollment_field)
+            if not isinstance(actual, str) or not hmac.compare_digest(actual, enrollment_expected):
+                raise WAWControlClientError(
+                    "RUNTIME_INSTALLATION_MISMATCH",
+                    "Runtime enrollment does not match anchor",
+                )
     return response
 
 
@@ -561,6 +648,7 @@ class WAWControlClient:
         timeout_seconds: float = 2.0,
         cancellation_grace_seconds: float = 0.05,
         monotonic: Callable[[], float] = time.monotonic,
+        background_owner: BackgroundWorkOwner | None = None,
     ) -> None:
         if not isinstance(socket_path, Path):
             raise TypeError("socket_path must be a Path")
@@ -587,11 +675,14 @@ class WAWControlClient:
         self._timeout_seconds = timeout_seconds
         self._cancellation_grace_seconds = cancellation_grace_seconds
         self._monotonic = monotonic
+        self._background_owner = background_owner
         self._poisoned = False
         self._closing = False
         self._closed = False
         self._request_lock = asyncio.Lock()
         self._detached_tasks: set[asyncio.Future[Any]] = set()
+        self._inflight_sockets: set[socket.socket] = set()
+        self._inflight_peer_fds: set[BoundRuntimePeer | RuntimePeerBorrow] = set()
         self._pending_exchange: RuntimeBindExchange | None = None
         self._close_operation: asyncio.Task[None] | None = None
         self._replacement_issued = False
@@ -628,6 +719,8 @@ class WAWControlClient:
             and self._close_failure is None
             and self._pending_exchange is None
             and not self._detached_tasks
+            and not self._inflight_sockets
+            and not self._inflight_peer_fds
             and operation is not None
             and operation.done()
             and not operation.cancelled()
@@ -657,7 +750,10 @@ class WAWControlClient:
             try:
                 self._require_open()
             except BaseException:
-                candidate.close()
+                try:
+                    candidate.close()
+                finally:
+                    self._release_inflight_peer_fd(candidate)
                 raise
             exchange = RuntimeBindExchange(self, response, candidate)
             self._pending_exchange = exchange
@@ -691,7 +787,10 @@ class WAWControlClient:
                 bound_peer.poison()
                 raise
             if candidate is not None:
-                candidate.close()
+                try:
+                    candidate.close()
+                finally:
+                    self._release_inflight_peer_fd(candidate)
                 bound_peer.poison()
                 self._poison()
                 raise WAWControlClientError(
@@ -709,7 +808,10 @@ class WAWControlClient:
             self._require_open()
             response, candidate = await self._request(action, request, bound_peer=None)
             if candidate is not None:
-                candidate.close()
+                try:
+                    candidate.close()
+                finally:
+                    self._release_inflight_peer_fd(candidate)
             return response
 
     def _require_open(self) -> None:
@@ -775,12 +877,10 @@ class WAWControlClient:
             raise
         reader: asyncio.StreamReader
         writer: asyncio.StreamWriter
+        transport_socket: socket.socket | None = None
         result: tuple[dict[str, Any], BoundRuntimePeer | None] | None = None
         try:
-            reader, writer = await self._with_deadline(
-                asyncio.open_unix_connection(self._socket_path, limit=MAX_CONTROL_LINE + 1),
-                deadline,
-            )
+            reader, writer, transport_socket = await self._open_registered_connection(deadline)
         except (OSError, TimeoutError) as exc:
             self._poison()
             if bound_peer is not None:
@@ -812,8 +912,10 @@ class WAWControlClient:
                     raise WAWControlClientError(
                         "RUNTIME_PEER_FORBIDDEN", "WAW Runtime bind peer is invalid"
                     ) from exc
+                self._register_inflight_peer_fd(candidate)
             else:
                 borrow = bound_peer.borrow(peer_socket)
+                self._register_inflight_peer_fd(borrow)
             writer.write(encoded)
             await self._with_deadline(writer.drain(), deadline)
             try:
@@ -880,12 +982,21 @@ class WAWControlClient:
             try:
                 await self._close_writer(writer)
             finally:
-                if borrow is not None:
-                    borrow.close()
-                if self._poisoned and candidate is not None:
-                    candidate.poison()
-                if self._poisoned and bound_peer is not None:
-                    bound_peer.poison()
+                if transport_socket is not None:
+                    self._release_inflight_socket(transport_socket)
+                try:
+                    if borrow is not None:
+                        borrow.close()
+                finally:
+                    if borrow is not None:
+                        self._release_inflight_peer_fd(borrow)
+                    if self._poisoned and candidate is not None:
+                        try:
+                            candidate.poison()
+                        finally:
+                            self._release_inflight_peer_fd(candidate)
+                    if self._poisoned and bound_peer is not None:
+                        bound_peer.poison()
         if self._poisoned:
             if candidate is not None:
                 candidate.poison()
@@ -914,6 +1025,22 @@ class WAWControlClient:
                 "RUNTIME_UNAVAILABLE", "WAW Runtime bind exchange owner is unavailable"
             )
         self._pending_exchange = None
+
+    def _register_inflight_socket(self, transport_socket: socket.socket) -> None:
+        """Make a live transport descriptor reachable by the at-fork fence."""
+
+        self._inflight_sockets.add(transport_socket)
+
+    def _release_inflight_socket(self, transport_socket: socket.socket) -> None:
+        self._inflight_sockets.discard(transport_socket)
+        with contextlib.suppress(OSError):
+            transport_socket.close()
+
+    def _register_inflight_peer_fd(self, owner: BoundRuntimePeer | RuntimePeerBorrow) -> None:
+        self._inflight_peer_fds.add(owner)
+
+    def _release_inflight_peer_fd(self, owner: BoundRuntimePeer | RuntimePeerBorrow) -> None:
+        self._inflight_peer_fds.discard(owner)
 
     def _invalidate_exchange(self, exchange: RuntimeBindExchange) -> None:
         if self._pending_exchange is exchange:
@@ -979,6 +1106,13 @@ class WAWControlClient:
                 _done, pending = await asyncio.wait(tasks, timeout=self._cancellation_grace_seconds)
                 if pending:
                     self._poison()
+            if self._inflight_sockets or self._inflight_peer_fds:
+                self._record_close_failure(
+                    WAWControlClientError(
+                        "RUNTIME_UNAVAILABLE",
+                        "WAW Runtime control descriptors remain in flight",
+                    )
+                )
             if self._close_failure is not None:
                 raise self._close_failure
 
@@ -1013,6 +1147,7 @@ class WAWControlClient:
             timeout_seconds=self._timeout_seconds,
             cancellation_grace_seconds=self._cancellation_grace_seconds,
             monotonic=self._monotonic,
+            background_owner=self._background_owner,
         )
 
     def _track_task(self, task: asyncio.Future[Any]) -> None:
@@ -1028,7 +1163,27 @@ class WAWControlClient:
                 retryable=True,
             )
         self._detached_tasks.add(task)
+        if self._background_owner is not None:
+            self._background_owner.track_background(task)
         task.add_done_callback(self._consume_task)
+
+    def fence_after_fork(self) -> None:
+        """Fence a client copied after lifespan startup without using its old loop."""
+
+        self._closing = True
+        self._closed = True
+        self._poisoned = True
+        exchange, self._pending_exchange = self._pending_exchange, None
+        if exchange is not None:
+            exchange.fence_after_fork()
+        for transport_socket in tuple(self._inflight_sockets):
+            with contextlib.suppress(OSError):
+                transport_socket.close()
+        self._inflight_sockets.clear()
+        for owner in tuple(self._inflight_peer_fds):
+            owner.fence_after_fork()
+        self._inflight_peer_fds.clear()
+        self._detached_tasks.clear()
 
     def _forget_task(self, task: asyncio.Future[Any]) -> None:
         self._detached_tasks.discard(task)
@@ -1069,6 +1224,37 @@ class WAWControlClient:
                 task.result()
             except BaseException:
                 self._poison()
+
+    async def _open_registered_connection(
+        self, deadline: float
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, socket.socket]:
+        """Register the AF_UNIX fd before connect and retain it through I/O."""
+
+        transport_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            transport_socket.set_inheritable(False)
+            transport_socket.setblocking(False)
+            self._register_inflight_socket(transport_socket)
+            await self._with_deadline(
+                self._connect_registered_socket(transport_socket),
+                deadline,
+            )
+            reader, writer = await self._with_deadline(
+                asyncio.open_unix_connection(
+                    sock=transport_socket,
+                    limit=MAX_CONTROL_LINE + 1,
+                ),
+                deadline,
+            )
+            return reader, writer, transport_socket
+        except BaseException:
+            self._release_inflight_socket(transport_socket)
+            raise
+
+    async def _connect_registered_socket(self, transport_socket: socket.socket) -> None:
+        await asyncio.get_running_loop().sock_connect(
+            transport_socket, os.fspath(self._socket_path)
+        )
 
     @staticmethod
     def _consume_late_task(task: asyncio.Future[Any]) -> None:

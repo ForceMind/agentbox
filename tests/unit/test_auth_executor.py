@@ -322,3 +322,42 @@ async def test_submission_failure_releases_capacity_without_starting_auth_work(
         await wait_thread(state.jobs["1"].entered)
         state.jobs["1"].release.set()
         assert await asyncio.wait_for(second, timeout=5) is state.jobs["1"].result
+
+
+@pytest.mark.anyio
+async def test_shutdown_rejects_new_work_and_waits_for_actual_worker_completion() -> None:
+    async with harness(1) as state:
+        running = state.start("login", "0")
+        await wait_thread(state.jobs["0"].entered)
+        closing = asyncio.create_task(state.executor.close())
+        await asyncio.sleep(0)
+        assert not closing.done()
+
+        rejected = state.start("reauthenticate", "1")
+        with pytest.raises(RuntimeError, match="closed"):
+            await rejected
+        assert not state.jobs["1"].entered.is_set()
+
+        state.jobs["0"].release.set()
+        assert await running is state.jobs["0"].result
+        await closing
+        assert state.executor.shutdown_clean
+
+
+@pytest.mark.anyio
+async def test_cancelled_shutdown_waiter_cannot_cancel_executor_drain() -> None:
+    async with harness(1) as state:
+        running = state.start("login", "0")
+        await wait_thread(state.jobs["0"].entered)
+        waiter = asyncio.create_task(state.executor.close())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        await asyncio.sleep(0)
+        assert not waiter.done()
+
+        state.jobs["0"].release.set()
+        assert await running is state.jobs["0"].result
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        await state.executor.close()
+        assert state.executor.shutdown_clean

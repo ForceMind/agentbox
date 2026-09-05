@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from contextvars import copy_context
 from functools import partial
 from typing import cast
@@ -39,12 +39,31 @@ class BoundedLoginExecutor:
         self._auth_service = auth_service
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._workers: set[asyncio.Future[IssuedSession]] = set()
+        self._closing = False
+        self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
+
+    @property
+    def shutdown_clean(self) -> bool:
+        operation = self._close_task
+        return (
+            self._closed
+            and not self._workers
+            and operation is not None
+            and operation.done()
+            and not operation.cancelled()
+            and operation.exception() is None
+        )
 
     async def _run(self, operation: Callable[[], IssuedSession]) -> IssuedSession:
         # Admit before submitting to the default pool; queued requests remain
         # coroutines. Copy the caller context just as asyncio.to_thread does.
+        if self._closing or self._closed:
+            raise RuntimeError("login executor is closed")
         await self._semaphore.acquire()
         try:
+            if self._closing or self._closed:
+                raise RuntimeError("login executor is closed")
             loop = asyncio.get_running_loop()
             completed: asyncio.Future[None] = loop.create_future()
             worker = loop.run_in_executor(None, copy_context().run, operation)
@@ -59,6 +78,30 @@ class BoundedLoginExecutor:
         # late worker exceptions even when our callback already retrieved them.
         await asyncio.shield(completed)
         return worker.result()
+
+    def close(self) -> Coroutine[object, object, None]:
+        self._closing = True
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._perform_close())
+        return self._await_close(self._close_task)
+
+    async def _perform_close(self) -> None:
+        while self._workers:
+            await asyncio.gather(*tuple(self._workers), return_exceptions=True)
+        self._closed = True
+
+    async def _await_close(self, operation: asyncio.Task[None]) -> None:
+        interrupted = False
+        while True:
+            try:
+                await asyncio.shield(operation)
+                break
+            except asyncio.CancelledError:
+                if operation.cancelled():
+                    raise
+                interrupted = True
+        if interrupted:
+            raise asyncio.CancelledError
 
     def _worker_finished(
         self, worker: asyncio.Future[IssuedSession], *, completed: asyncio.Future[None]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Protocol, cast
 
@@ -62,6 +63,8 @@ class WAWRuntimeBindCoordinator:
         expected_project_root_manifest_digest: str,
         request_id_factory: RequestIdFactory,
         expected_runtime_epoch: str | None = None,
+        expected_enrollment_epoch: str | None = None,
+        expected_enrollment_state: str | None = None,
         runtime_epoch_classifier: RuntimeEpochClassifier | None = None,
         _test_only_token: object | None = None,
     ) -> None:
@@ -83,6 +86,8 @@ class WAWRuntimeBindCoordinator:
         self._expected_host_manifest = expected_host_manifest_digest
         self._expected_project_root_manifest = expected_project_root_manifest_digest
         self._expected_runtime_epoch = expected_runtime_epoch
+        self._expected_enrollment_epoch = expected_enrollment_epoch
+        self._expected_enrollment_state = expected_enrollment_state
         self._runtime_epoch_classifier = runtime_epoch_classifier
         self._request_id_factory = request_id_factory
         self._bound_response: dict[str, Any] | None = None
@@ -115,7 +120,10 @@ class WAWRuntimeBindCoordinator:
         if self._client is not None:
             self._client_replacement_required = True
         if peer is not None:
-            peer.poison()
+            try:
+                peer.poison()
+            except WAWControlClientError as exc:
+                self._record_close_failure(exc)
 
     async def _replace_client_locked(self) -> None:
         if self._client is None or not self._client_replacement_required:
@@ -135,6 +143,8 @@ class WAWRuntimeBindCoordinator:
         )
 
     def _require_open(self) -> None:
+        if self._close_failure is not None:
+            raise self._close_failure
         if self._closing or self._closed:
             raise WAWControlClientError(
                 "RUNTIME_UNAVAILABLE", "WAW Runtime binding coordinator is closed"
@@ -188,6 +198,8 @@ class WAWRuntimeBindCoordinator:
                 expected_host_manifest_digest=self._expected_host_manifest,
                 expected_project_root_manifest_digest=self._expected_project_root_manifest,
                 expected_runtime_epoch=self._expected_runtime_epoch,
+                expected_enrollment_epoch=self._expected_enrollment_epoch,
+                expected_enrollment_state=self._expected_enrollment_state,
             )
             if verified.get("api_authority_epoch") != self._epoch:
                 raise WAWControlClientError(
@@ -271,6 +283,18 @@ class WAWRuntimeBindCoordinator:
         if self._client is not None:
             return self._client.shutdown_clean
         return self._test_transport_closed
+
+    def owns_control_client(self, client: WAWControlClient) -> bool:
+        """Confirm exact production client ownership without exposing the client."""
+
+        return self._client is client
+
+    def owns_authority_identity(self, authority_epoch: str, authority_nonce: str) -> bool:
+        """Confirm the exact owner-generated epoch/nonce without exposing either."""
+
+        return hmac.compare_digest(self._epoch, authority_epoch) and hmac.compare_digest(
+            self._nonce, authority_nonce
+        )
 
     def borrow_runtime_peer(self, peer_socket: Any) -> RuntimePeerBorrow:
         """Borrow the exact published Runtime pidfd for one stream connection."""
@@ -359,6 +383,19 @@ class WAWRuntimeBindCoordinator:
             operation = asyncio.create_task(self._perform_close())
             self._close_operation = operation
         return self._await_close(operation)
+
+    def fence_after_fork(self) -> None:
+        """Fence and close process-identity descriptors inherited by a child."""
+
+        self._closing = True
+        self._closed = True
+        peer, self._bound_peer = self._bound_peer, None
+        self._bound_response = None
+        self._peer_generation += 1
+        if peer is not None:
+            peer.fence_after_fork()
+        if self._client is not None:
+            self._client.fence_after_fork()
 
     async def _await_close(self, operation: asyncio.Task[None]) -> None:
         await asyncio.shield(operation)

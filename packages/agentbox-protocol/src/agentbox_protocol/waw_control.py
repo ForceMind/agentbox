@@ -189,7 +189,9 @@ def _common(value: dict[str, Any], action: str) -> None:
         raise WAWControlError("action is invalid")
 
 
-def _relative_key(value: Any) -> str:
+def validate_relative_key(value: Any) -> str:
+    """Validate the one-component WAW Project key shared by wire and ledger."""
+
     key = _string(value, name="relative_key")
     if (
         len(key) > 80
@@ -206,6 +208,12 @@ def _relative_key(value: Any) -> str:
     if any(not (char.isalnum() or char in {"-", "_", ".", " "}) for char in key):
         raise WAWControlError("relative_key contains unsupported characters")
     return key
+
+
+def _relative_key(value: Any) -> str:
+    """Compatibility wrapper for callers predating the public validator."""
+
+    return validate_relative_key(value)
 
 
 def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
@@ -319,7 +327,7 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
         return value
     if action == "workspace.project_binding.register":
         _string(value["project_id"], name="project_id", pattern=_PROJECT_ID)
-        _relative_key(value["relative_key"])
+        validate_relative_key(value["relative_key"])
         for name in ("project_revision", "binding_revision", "runtime_host_installation_revision"):
             _u64(value[name], name=name)
         previous = value["previous_binding_revision"]
@@ -788,4 +796,5 @@ __all__ = [
     "decode_control_response",
     "encode_control_request",
     "encode_control_response",
+    "validate_relative_key",
 ]

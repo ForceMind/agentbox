@@ -14,9 +14,13 @@ from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType, workspace_id
-from agentbox_core.waw_models import RuntimeHostInstallation
+from agentbox_core.waw_models import AgentWorkspaceSessionRecord, RuntimeHostInstallation
 from agentbox_core.waw_tickets import AttachmentAuthority
-from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
+from conftest import (  # type: ignore[import-not-found]
+    FakeClaudeRuntime,
+    FakeCodexRuntime,
+    FakeProjectRuntime,
+)
 
 PASSWORD = "a sufficiently long passphrase"
 HOST_ID = "wri_" + "a" * 32
@@ -130,6 +134,7 @@ def _seed_workspace(
     *,
     scope: str = "admin",
     agent_type: AgentType = AgentType.CLAUDE,
+    verified: bool = True,
 ) -> str:
     with services.database.transaction() as session:
         session.add(_project(PROJECT_ID))
@@ -144,6 +149,14 @@ def _seed_workspace(
         binding_digest=DIGEST,
         executable_fingerprint=FINGERPRINT,
     )
+    if verified:
+        services.workspaces.record_executable_evidence(
+            workspace.id,
+            expected_revision=workspace.revision,
+            generation=workspace.generation,
+            runtime_epoch="7",
+            executable_fingerprint=FINGERPRINT,
+        )
     return workspace.id
 
 
@@ -166,6 +179,19 @@ def _seed_many(
             binding_digest=f"{index + 1:064x}",
             executable_fingerprint=FINGERPRINT,
         )
+
+
+def _set_executable_evidence_state(
+    services: ControlPlaneServices, workspace_id_value: str, state: str
+) -> None:
+    with services.database.transaction() as session:
+        row = session.get(AgentWorkspaceSessionRecord, workspace_id_value)
+        assert row is not None
+        if state == "UNOBSERVED":
+            row.executable_fingerprint = None
+        row.executable_evidence_state = state
+        row.executable_evidence_generation = None
+        row.executable_evidence_runtime_epoch = None
 
 
 async def _login(client: httpx.AsyncClient, origin_headers: dict[str, str]) -> None:
@@ -453,6 +479,50 @@ async def test_waw_start_stop_routes_are_csrf_and_generation_fenced(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("evidence_state", ["UNOBSERVED", "STALE"])
+async def test_waw_start_rejects_noncurrent_executable_evidence_before_runtime(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+    evidence_state: str,
+) -> None:
+    _seed_workspace(initialized_services, verified=False)
+    _set_executable_evidence_state(initialized_services, WORKSPACE_ID, evidence_state)
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        response = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+            json={},
+            headers={
+                **origin_headers,
+                "x-csrf-token": login.json()["data"]["csrf_token"],
+            },
+        )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "WORKSPACE_NOT_READY"
+    assert evidence_state not in response.text
+    assert coordinator.actions == []
+
+
+@pytest.mark.anyio
 async def test_waw_codex_project_start_ticket_reconnect_and_exact_stop(
     settings: Any,
     initialized_services: ControlPlaneServices,
@@ -641,7 +711,10 @@ async def test_waw_attachment_ticket_is_transient_and_no_store(
     project_runtime: FakeProjectRuntime,
 ) -> None:
     _seed_workspace(initialized_services)
-    initialized_services.workspaces.transition(WORKSPACE_ID, expected_revision=1, state="RUNNING")
+    row = initialized_services.workspaces.get(WORKSPACE_ID)
+    initialized_services.workspaces.transition(
+        WORKSPACE_ID, expected_revision=row.revision, state="RUNNING"
+    )
     coordinator = FakeLifecycleCoordinator()
     app = create_app(
         settings,
@@ -672,3 +745,53 @@ async def test_waw_attachment_ticket_is_transient_and_no_store(
     assert ticket.headers["cache-control"] == "no-store"
     assert ticket.json()["ticket"].startswith("wat_")
     assert "terminal" not in ticket.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("evidence_state", ["UNOBSERVED", "STALE"])
+async def test_waw_ticket_rejects_noncurrent_executable_evidence_without_issuance(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+    evidence_state: str,
+) -> None:
+    _seed_workspace(initialized_services, verified=False)
+    _set_executable_evidence_state(initialized_services, WORKSPACE_ID, evidence_state)
+    row = initialized_services.workspaces.get(WORKSPACE_ID)
+    initialized_services.workspaces.transition(
+        WORKSPACE_ID, expected_revision=row.revision, state="RUNNING"
+    )
+    coordinator = FakeLifecycleCoordinator()
+    authority = AttachmentAuthority(clock=lambda: 100.0, authority_epoch=7, lease_seed=9)
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+        waw_attachment_authority=authority,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        response = await client.post(
+            f"/api/v1/workspaces/{WORKSPACE_ID}/attachments",
+            json={"mode": "writer"},
+            headers={
+                **origin_headers,
+                "x-csrf-token": login.json()["data"]["csrf_token"],
+            },
+        )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "WORKSPACE_NOT_READY"
+    assert evidence_state not in response.text
+    assert authority.record_count == 0

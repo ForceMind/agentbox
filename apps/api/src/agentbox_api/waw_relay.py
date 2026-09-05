@@ -18,7 +18,7 @@ import struct
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
@@ -140,6 +140,26 @@ class RuntimeControl(Protocol):
     def borrow_runtime_peer(self, peer_socket: Any) -> RuntimePeerBorrow: ...
 
 
+class BackgroundWorkOwner(Protocol):
+    def track_background(self, future: asyncio.Future[Any]) -> None: ...
+
+
+class WAWRouteWorkOwner(BackgroundWorkOwner, Protocol):
+    @property
+    def active_count(self) -> int: ...
+
+    @property
+    def routes_drained(self) -> bool: ...
+
+    def register_route(self, task: asyncio.Task[Any]) -> bool: ...
+
+    def unregister_route(self, task: asyncio.Task[Any]) -> None: ...
+
+    def begin_shutdown(self) -> None: ...
+
+    def drain_routes(self) -> Coroutine[Any, Any, None]: ...
+
+
 @dataclass(frozen=True)
 class RuntimeSocketTrust:
     """Locally provisioned, non-secret DAC/peer expectations; no caller path."""
@@ -183,19 +203,26 @@ class UnixRuntimePort:
     def connection_id(self) -> object:
         return self._connection
 
-    def _path_identity(self) -> tuple[int, int]:
-        parent, details = os.lstat(_STREAM_PATH.parent), os.lstat(_STREAM_PATH)
+    @staticmethod
+    def validate_fixed_socket(trust: RuntimeSocketTrust) -> tuple[int, int]:
+        try:
+            parent, details = os.lstat(_STREAM_PATH.parent), os.lstat(_STREAM_PATH)
+        except OSError:
+            raise RelayFailure("RUNTIME_UNAVAILABLE", 1013) from None
         if (
             not stat.S_ISDIR(parent.st_mode)
             or parent.st_uid != 0
             or parent.st_mode & 0o022
             or not stat.S_ISSOCK(details.st_mode)
             or details.st_uid != 0
-            or details.st_gid != self._trust.socket_gid
+            or details.st_gid != trust.socket_gid
             or stat.S_IMODE(details.st_mode) != 0o660
         ):
             raise RelayFailure("RUNTIME_UNAVAILABLE", 1013)
         return details.st_dev, details.st_ino
+
+    def _path_identity(self) -> tuple[int, int]:
+        return self.validate_fixed_socket(self._trust)
 
     async def _connect(self) -> None:
         before = self._path_identity()
@@ -428,6 +455,17 @@ class UnixRuntimePort:
             self._receive_task.cancel()
         if self._peer_borrow is not None:
             self._peer_borrow.close()
+            self._peer_borrow = None
+
+    def fence_after_fork(self) -> None:
+        """Close stream identity descriptors inherited by a fork child."""
+
+        self._aborted = True
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+        if self._peer_borrow is not None:
+            self._peer_borrow.fence_after_fork()
             self._peer_borrow = None
 
 
@@ -1470,8 +1508,14 @@ class DurableAdmissionAudit:
 
     _capacity = threading.BoundedSemaphore(32)
 
-    def __init__(self, services: ControlPlaneServices, user_id: str) -> None:
+    def __init__(
+        self,
+        services: ControlPlaneServices,
+        user_id: str,
+        background_owner: BackgroundWorkOwner | None = None,
+    ) -> None:
         self.services, self.user_id = services, user_id
+        self._background_owner = background_owner
 
     async def persist(self, event: AdmissionAuditEvent) -> None:
         if not self._capacity.acquire(blocking=False):
@@ -1488,6 +1532,8 @@ class DurableAdmissionAudit:
         except BaseException:
             self._capacity.release()
             raise
+        if self._background_owner is not None:
+            self._background_owner.track_background(future)
         future.add_done_callback(_consume_result)
         await asyncio.shield(future)
 
@@ -1576,6 +1622,9 @@ class ReadOnlySessionValidator:
                 and self.policy.allows(self.authenticated, workspace)
                 and attestation is not None
                 and attestation.get("runtime_epoch") == context.runtime_epoch
+                and self.services.workspaces.executable_evidence_is_current(
+                    workspace, runtime_epoch=context.runtime_epoch
+                )
                 and all(
                     getattr(workspace, key if key != "workspace_id" else "id") == value
                     for key, value in (
@@ -1671,7 +1720,9 @@ class WAWStreamHandler:
         authority: AttachmentAuthority,
         control: RuntimeControl,
         policy: WorkspaceAuthorizationPolicy,
-        runtime_factory: Callable[[], AdmissionRuntimePort],
+        work_ledger: WAWRouteWorkOwner,
+        socket_trust: RuntimeSocketTrust | None = None,
+        runtime_factory: Callable[[RuntimeControl], AdmissionRuntimePort] | None = None,
     ) -> None:
         (
             self.services,
@@ -1679,10 +1730,151 @@ class WAWStreamHandler:
             self.authority,
             self.control,
             self.policy,
-            self.runtime_factory,
-        ) = (services, settings, authority, control, policy, runtime_factory)
+            self.work_ledger,
+        ) = (services, settings, authority, control, policy, work_ledger)
+        if (socket_trust is None) == (runtime_factory is None):
+            raise ValueError("WAW stream handler requires one exact Runtime port source")
+        self._socket_trust = socket_trust
+        self._test_runtime_factory = runtime_factory
         self.pending = PendingAdmissionBudget()
         self.failures = FailedAdmissionBudget()
+        self._handler_lock = threading.RLock()
+        self._accepting = True
+        self._close_task: asyncio.Task[None] | None = None
+        self._close_failure: BaseException | None = None
+        self._closed = False
+        self._runtime_ports: set[UnixRuntimePort] = set()
+
+    @classmethod
+    def production(
+        cls,
+        *,
+        services: ControlPlaneServices,
+        settings: Settings,
+        authority: AttachmentAuthority,
+        control: RuntimeControl,
+        policy: WorkspaceAuthorizationPolicy,
+        work_ledger: WAWRouteWorkOwner,
+        socket_trust: RuntimeSocketTrust,
+    ) -> WAWStreamHandler:
+        UnixRuntimePort.validate_fixed_socket(socket_trust)
+        return cls(
+            services=services,
+            settings=settings,
+            authority=authority,
+            control=control,
+            policy=policy,
+            work_ledger=work_ledger,
+            socket_trust=socket_trust,
+        )
+
+    @classmethod
+    def test_only(
+        cls,
+        *,
+        services: ControlPlaneServices,
+        settings: Settings,
+        authority: AttachmentAuthority,
+        control: RuntimeControl,
+        policy: WorkspaceAuthorizationPolicy,
+        work_ledger: WAWRouteWorkOwner,
+        runtime_factory: Callable[[RuntimeControl], AdmissionRuntimePort],
+    ) -> WAWStreamHandler:
+        return cls(
+            services=services,
+            settings=settings,
+            authority=authority,
+            control=control,
+            policy=policy,
+            work_ledger=work_ledger,
+            runtime_factory=runtime_factory,
+        )
+
+    @property
+    def accepting(self) -> bool:
+        with self._handler_lock:
+            return self._accepting and not self._closed
+
+    @property
+    def active_count(self) -> int:
+        return self.work_ledger.active_count
+
+    @property
+    def shutdown_clean(self) -> bool:
+        with self._handler_lock:
+            operation = self._close_task
+            return (
+                self._closed
+                and not self._accepting
+                and self.work_ledger.routes_drained
+                and not self._runtime_ports
+                and self._close_failure is None
+                and operation is not None
+                and operation.done()
+                and not operation.cancelled()
+                and operation.exception() is None
+            )
+
+    def begin_shutdown(self) -> None:
+        """Synchronously reject new admissions before any shutdown await."""
+
+        with self._handler_lock:
+            self._accepting = False
+        self.work_ledger.begin_shutdown()
+
+    def _register(self, task: asyncio.Task[Any]) -> bool:
+        with self._handler_lock:
+            if not self._accepting or self._closed:
+                return False
+        return self.work_ledger.register_route(task)
+
+    def _unregister(self, task: asyncio.Task[Any]) -> None:
+        self.work_ledger.unregister_route(task)
+
+    def track_background(self, future: asyncio.Future[Any]) -> None:
+        self.work_ledger.track_background(future)
+
+    def close(self) -> Coroutine[Any, Any, None]:
+        self.begin_shutdown()
+        with self._handler_lock:
+            if self._close_task is None:
+                self._close_task = asyncio.create_task(self._close_active())
+                self._close_task.add_done_callback(_consume_result)
+            operation = self._close_task
+        return self._await_close(operation)
+
+    async def _await_close(self, operation: asyncio.Task[None]) -> None:
+        interrupted = False
+        while True:
+            try:
+                await asyncio.shield(operation)
+                break
+            except asyncio.CancelledError:
+                if operation.cancelled():
+                    raise
+                interrupted = True
+        if interrupted:
+            raise asyncio.CancelledError
+
+    async def _close_active(self) -> None:
+        try:
+            await self.work_ledger.drain_routes()
+        except BaseException as exc:
+            with self._handler_lock:
+                if self._close_failure is None:
+                    self._close_failure = exc
+            raise
+        with self._handler_lock:
+            self._closed = True
+
+    def fence_after_fork(self) -> None:
+        """Fence active production stream ports without touching the old event loop."""
+
+        self._accepting = False
+        self._closed = True
+        for runtime in tuple(self._runtime_ports):
+            runtime.fence_after_fork()
+        self._runtime_ports.clear()
 
     def _authenticate(self, raw: str) -> AuthenticatedSession:
         digest = keyed_digest(self.settings.secret_key.get_secret_value(), "session-token", raw)
@@ -1723,10 +1915,15 @@ class WAWStreamHandler:
         if type(native) is not WAWWebSocketProtocol:
             await websocket.close(code=1013)
             return
+        active_task = asyncio.current_task()
+        if active_task is None or not self._register(active_task):
+            await websocket.close(code=1013)
+            return
         started = time.monotonic_ns()
         source = ""
         session_key = ""
         permit = None
+        runtime: AdmissionRuntimePort | None = None
         try:
             peer = ipaddress.ip_address(
                 native.peer_address[0] if native.peer_address is not None else "invalid"
@@ -1814,7 +2011,14 @@ class WAWStreamHandler:
             validator = ReadOnlySessionValidator(
                 self.services, self.settings, self.control, self.policy, authenticated
             )
-            runtime = self.runtime_factory()
+            if self._socket_trust is not None:
+                concrete_runtime = UnixRuntimePort(self.control, self._socket_trust)
+                runtime = concrete_runtime
+                with self._handler_lock:
+                    self._runtime_ports.add(concrete_runtime)
+            else:
+                assert self._test_runtime_factory is not None
+                runtime = self._test_runtime_factory(self.control)
             input_budget = InputBudget(
                 connection_id=runtime.connection_id,
                 attachment_id=claims.attachment_id,
@@ -1822,7 +2026,7 @@ class WAWStreamHandler:
             )
             native.install_input_budget(input_budget)
             browser = WebSocketBrowserPort(websocket, native, first, input_budget)
-            audit = DurableAdmissionAudit(self.services, authenticated.user_id)
+            audit = DurableAdmissionAudit(self.services, authenticated.user_id, self)
             # Transfer the already-held pre-upgrade permit without double count.
             self.pending.release(permit)
             permit = None
@@ -1865,3 +2069,9 @@ class WAWStreamHandler:
         finally:
             if permit is not None:
                 self.pending.release(permit)
+            if type(runtime) is UnixRuntimePort:
+                with suppress(BaseException):
+                    runtime.abort()
+                with self._handler_lock:
+                    self._runtime_ports.discard(runtime)
+            self._unregister(active_task)

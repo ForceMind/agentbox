@@ -58,6 +58,7 @@ from agentbox_core.security import (
     source_fingerprint,
 )
 from agentbox_core.utc import aware_utc
+from agentbox_core.waw_project_bindings import ProjectBindingService
 from agentbox_core.waw_sessions import WorkspaceSessionService
 
 
@@ -1397,6 +1398,7 @@ class ControlPlaneServices:
     jobs: JobService
     retention: RetentionService
     workspaces: WorkspaceSessionService
+    project_bindings: ProjectBindingService
 
 
 def build_services(
@@ -1452,6 +1454,7 @@ def build_services(
     jobs = JobService(database, settings, actual_clock)
     retention = RetentionService(database, settings, actual_clock, rate_limiter)
     workspaces = WorkspaceSessionService(database, actual_clock)
+    project_bindings = ProjectBindingService(database, actual_clock)
     return ControlPlaneServices(
         database=database,
         admin=admin,
@@ -1466,6 +1469,7 @@ def build_services(
         jobs=jobs,
         retention=retention,
         workspaces=workspaces,
+        project_bindings=project_bindings,
     )
 
 

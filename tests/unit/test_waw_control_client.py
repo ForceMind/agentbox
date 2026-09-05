@@ -4,10 +4,12 @@ import asyncio
 import contextlib
 import os
 import select
+import socket
 import tempfile
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import agentbox_api.waw_control_client as control_subject
 import pytest
@@ -508,6 +510,8 @@ def test_bind_attestation_is_pinned_to_expected_anchor() -> None:
             expected_host_manifest_digest="a" * 64,
             expected_project_root_manifest_digest="b" * 64,
             expected_runtime_epoch="2",
+            expected_enrollment_epoch="1",
+            expected_enrollment_state="steady",
         )
         == response
     )
@@ -519,6 +523,26 @@ def test_bind_attestation_is_pinned_to_expected_anchor() -> None:
             expected_runtime_host_installation_revision="1",
             expected_host_manifest_digest="a" * 64,
             expected_project_root_manifest_digest="b" * 64,
+        )
+    assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("enrollment_epoch", "2"), ("enrollment_state", "rotation")],
+)
+def test_bind_attestation_rejects_enrollment_drift(field: str, value: str) -> None:
+    response = _bind_response()
+    response[field] = value
+    with pytest.raises(WAWControlClientError) as raised:
+        validate_runtime_bind_attestation(
+            response,
+            expected_runtime_host_installation_id="wri_" + "4" * 32,
+            expected_runtime_host_installation_revision="1",
+            expected_host_manifest_digest="a" * 64,
+            expected_project_root_manifest_digest="b" * 64,
+            expected_enrollment_epoch="1",
+            expected_enrollment_state="steady",
         )
     assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
 
@@ -676,6 +700,165 @@ def test_bound_peer_close_failure_is_sticky_after_detaching_fd(
         assert attempts == [retained]
         assert peer.poisoned and peer.close_failure is first.value
     finally:
+        monkeypatch.setattr(os, "close", original_close)
+        original_close(retained)
+        original_close(writer)
+
+
+@pytest.mark.anyio
+async def test_client_registers_cancellation_resistant_work_with_process_owner(
+    tmp_path: Path,
+) -> None:
+    tracked: list[asyncio.Future[Any]] = []
+
+    class Owner:
+        def track_background(self, future: asyncio.Future[Any]) -> None:
+            tracked.append(future)
+
+    client = WAWControlClient(
+        tmp_path / "unused.sock",
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        expected_socket_uid=os.geteuid(),
+        expected_socket_gid=os.getegid(),
+        background_owner=Owner(),
+    )
+    task = asyncio.create_task(asyncio.sleep(0))
+    client._track_task(task)
+    assert tracked == [task]
+    await task
+    await asyncio.sleep(0)
+    await client.close()
+    assert client.shutdown_clean
+
+
+@pytest.mark.anyio
+async def test_connect_fd_is_registered_before_first_transport_await(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entered = asyncio.Event()
+    transport = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client = _client(tmp_path / "control.sock")
+
+    async def paused_connect(_transport: object) -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(socket, "socket", lambda *_args: transport)
+    monkeypatch.setattr(client, "_connect_registered_socket", paused_connect)
+    opening = asyncio.create_task(client._open_registered_connection(time.monotonic() + 2))
+    await entered.wait()
+    assert tuple(client._inflight_sockets) == (transport,)
+
+    client.fence_after_fork()
+    assert transport.fileno() == -1
+    assert not client._inflight_sockets
+    opening.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await opening
+
+
+def test_after_fork_fence_synchronously_closes_transport_candidate_and_borrow_fds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(tmp_path / "control.sock")
+    transport, transport_peer = socket.socketpair()
+    peer, retained, writer, _owner = _published_peer()
+    monkeypatch.setattr(
+        control_subject, "_peer_credentials", lambda _socket: (4242, os.geteuid(), os.getegid())
+    )
+    borrow = peer.borrow(object())
+    borrowed = borrow._pidfd
+    client._register_inflight_socket(transport)
+    client._register_inflight_peer_fd(peer)
+    client._register_inflight_peer_fd(borrow)
+
+    client.fence_after_fork()
+
+    assert transport.fileno() == -1
+    for descriptor in (retained, borrowed):
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    assert not client._inflight_peer_fds
+    assert client.closed and client.poisoned and not client.shutdown_clean
+    transport_peer.close()
+    os.close(writer)
+
+
+def test_borrow_close_failure_poisons_parent_and_is_sticky(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer, _retained, writer, _owner = _published_peer()
+    monkeypatch.setattr(
+        control_subject, "_peer_credentials", lambda _socket: (4242, os.geteuid(), os.getegid())
+    )
+    borrow = peer.borrow(object())
+    borrowed = borrow._pidfd
+    original_close = os.close
+    attempts: list[int] = []
+
+    def fail_close(descriptor: int) -> None:
+        if descriptor == borrowed:
+            attempts.append(descriptor)
+            raise OSError("synthetic borrow close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_close)
+    try:
+        with pytest.raises(WAWControlClientError) as first:
+            borrow.close()
+        with pytest.raises(WAWControlClientError) as repeated:
+            borrow.close()
+        with pytest.raises(WAWControlClientError) as parent:
+            peer.close()
+        assert first.value is repeated.value is parent.value
+        assert attempts == [borrowed]
+        assert peer.poisoned and not peer.current()
+    finally:
+        monkeypatch.setattr(os, "close", original_close)
+        original_close(borrowed)
+        original_close(writer)
+
+
+@pytest.mark.anyio
+async def test_publish_rollback_close_failure_poison_is_not_lost(
+    socket_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(socket_dir / "unused.sock")
+    retained, writer = os.pipe()
+    os.set_inheritable(retained, False)
+    candidate = BoundRuntimePeer(
+        control_subject._RuntimePeerObservation(4242, os.geteuid(), os.getegid(), retained),
+        WAWSocketPathIdentity(1, 2),
+    )
+    exchange = control_subject.RuntimeBindExchange(client, _bind_response(), candidate)
+    client._pending_exchange = exchange
+    monkeypatch.setattr(
+        candidate,
+        "_publish",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("publication failed")),
+    )
+    original_close = os.close
+    attempts: list[int] = []
+
+    def fail_close(descriptor: int) -> None:
+        if descriptor == retained:
+            attempts.append(descriptor)
+            raise OSError("synthetic rollback close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_close)
+    try:
+        with pytest.raises(WAWControlClientError) as first:
+            exchange.publish(generation=1, owner_current=lambda _peer, _generation: True)
+        with pytest.raises(WAWControlClientError) as repeated:
+            await client.close()
+        assert first.value is repeated.value
+        assert attempts == [retained]
+        assert client.poisoned and not client.shutdown_clean
+        assert exchange._candidate is None
+    finally:
+        monkeypatch.setattr(os, "close", original_close)
         original_close(retained)
         original_close(writer)
 
@@ -713,5 +896,6 @@ async def test_client_close_failure_is_sticky_after_candidate_fd_detaches(
         assert attempts == [retained]
         assert not client.shutdown_clean and candidate.close_failure is first.value
     finally:
+        monkeypatch.setattr(os, "close", original_close)
         original_close(retained)
         original_close(writer)

@@ -15,6 +15,7 @@ import agentbox_api.waw_control_client as control_subject
 import pytest
 from agentbox_api.waw_admission_coordinator import AdmissionAuditAction as A
 from agentbox_api.waw_admission_coordinator import RuntimeCleanupRequest, RuntimePrepareRequest
+from agentbox_api.waw_application import WAWWorkLedger
 from agentbox_api.waw_control_client import (
     BoundRuntimePeer,
     RuntimePeerBorrow,
@@ -796,13 +797,14 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
                 raise AssertionError("synthetic admission port owns this test Runtime")
 
         active_settings = settings.model_copy(update={"allowed_origins": ("http://localhost",)})
-        handler = WAWStreamHandler(
+        handler = WAWStreamHandler.test_only(
             services=services,
             settings=active_settings,
             authority=authority,
             control=Control(),
             policy=SingleAdminWorkspacePolicy(),
-            runtime_factory=lambda: h.runtime,
+            work_ledger=WAWWorkLedger(),
+            runtime_factory=lambda _control: h.runtime,
         )
         app = create_app(
             active_settings,

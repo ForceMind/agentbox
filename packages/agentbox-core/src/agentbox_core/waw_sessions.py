@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import text, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from agentbox_core.clock import Clock
 from agentbox_core.database import Database
@@ -24,6 +26,7 @@ from agentbox_core.waw import (
 )
 from agentbox_core.waw_models import (
     AgentWorkspaceSessionRecord,
+    ProjectBindingRecord,
     RuntimeHostInstallation,
     WorkspaceStopOperationRecord,
 )
@@ -42,6 +45,10 @@ class WorkspaceSessionConflict(WorkspaceSessionError):
 
 
 class WorkspaceSessionNotReady(WorkspaceSessionError):
+    pass
+
+
+class WorkspaceExecutableEvidenceRequired(WorkspaceSessionNotReady):
     pass
 
 
@@ -70,6 +77,14 @@ class RuntimeEpochClassification(StrEnum):
     FIRST_BIND = "first_bind"
     API_RESTART = "api_restart"
     RUNTIME_RESTART = "runtime_restart"
+
+
+class ExecutableEvidenceState(StrEnum):
+    """Trust state for a Runtime-observed executable fingerprint."""
+
+    UNOBSERVED = "UNOBSERVED"
+    VERIFIED = "VERIFIED"
+    STALE = "STALE"
 
 
 class RuntimeEpochBindingError(WorkspaceSessionConflict):
@@ -150,6 +165,7 @@ class WorkspaceSessionService:
                     state=WorkspaceState.UNKNOWN.value,
                     reconciliation_state=ReconciliationState.RECONCILIATION_REQUIRED.value,
                     failure_code="RUNTIME_RESTART",
+                    executable_evidence_state=ExecutableEvidenceState.STALE.value,
                     revision=AgentWorkspaceSessionRecord.revision + 1,
                     updated_at=now,
                     last_seen_at=now,
@@ -183,7 +199,7 @@ class WorkspaceSessionService:
         runtime_host_installation_revision: int,
         binding_revision: int,
         binding_digest: str,
-        executable_fingerprint: str,
+        executable_fingerprint: str | None = None,
     ) -> AgentWorkspaceSessionRecord:
         """Create the first-generation STARTING row after Project readiness checks."""
 
@@ -191,7 +207,7 @@ class WorkspaceSessionService:
         agent = AgentType(agent_type)
         if not authorization_scope or len(authorization_scope) > 128:
             raise WAWDomainError("authorization_scope is invalid")
-        if not _HEX64.fullmatch(executable_fingerprint):
+        if executable_fingerprint is not None and not _HEX64.fullmatch(executable_fingerprint):
             raise WAWDomainError("executable_fingerprint must be lowercase SHA-256")
         workspace = AgentWorkspaceSession(
             project_id=project_id,
@@ -210,44 +226,120 @@ class WorkspaceSessionService:
             host = session.get(RuntimeHostInstallation, runtime_host_installation_id)
             if host is None or host.revision != runtime_host_installation_revision:
                 raise WorkspaceSessionConflict("runtime host identity is not current")
-            row = AgentWorkspaceSessionRecord(
-                id=workspace.workspace_id,
-                project_id=project_id,
+            return self._insert_workspace(
+                session,
+                now=now,
+                workspace=workspace,
+                agent=agent,
                 authorization_scope=authorization_scope,
-                runtime_host_installation_id=runtime_host_installation_id,
-                runtime_host_installation_revision=runtime_host_installation_revision,
-                runtime_type="agentbox-runtime-linux-v1",
-                agent_type=agent.value,
-                state=WorkspaceState.STARTING.value,
-                runtime_session_name=managed_session_name(project_id, agent),
-                runtime_marker=managed_marker(
-                    runtime_host_installation_id=runtime_host_installation_id,
-                    runtime_host_installation_revision=runtime_host_installation_revision,
-                    project_id=project_id,
-                    agent_type=agent,
-                    workspace_id_value=workspace.workspace_id,
-                    generation=1,
-                    binding_revision=binding_revision,
-                    binding_digest=binding_digest,
-                ),
                 executable_fingerprint=executable_fingerprint,
-                generation=1,
-                binding_revision=binding_revision,
-                binding_digest=binding_digest,
-                revision=1,
-                created_at=now,
-                updated_at=now,
-                last_seen_at=now,
-                reconciliation_state=ReconciliationState.AUTHORITATIVE.value,
             )
-            try:
-                session.add(row)
-                session.flush()
-            except IntegrityError as exc:
-                raise WorkspaceSessionConflict(
-                    "Project/AgentType workspace already exists"
-                ) from exc
-            return row
+
+    def create_from_current_binding(
+        self,
+        *,
+        project_id: str,
+        agent_type: AgentType | str,
+        authorization_scope: str,
+    ) -> AgentWorkspaceSessionRecord:
+        """Create generation 1 only from the exact committed binding head."""
+
+        agent = AgentType(agent_type)
+        if not authorization_scope or len(authorization_scope) > 128:
+            raise WAWDomainError("authorization_scope is invalid")
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            project = session.get(Project, project_id)
+            if project is None or project.archived_at is not None or project.state != "ready":
+                raise WorkspaceSessionNotReady(project_id)
+            binding = session.scalar(
+                select(ProjectBindingRecord).where(
+                    ProjectBindingRecord.project_id == project_id,
+                    ProjectBindingRecord.status == "CURRENT",
+                )
+            )
+            if (
+                binding is None
+                or binding.binding_digest is None
+                or binding.project_revision != project.revision
+                or binding.relative_key != project.relative_path
+            ):
+                raise WorkspaceSessionNotReady("Project binding is not current")
+            host = session.get(RuntimeHostInstallation, binding.runtime_host_installation_id)
+            if host is None or host.revision != binding.runtime_host_installation_revision:
+                raise WorkspaceSessionConflict("runtime host identity is not current")
+            workspace = AgentWorkspaceSession(
+                project_id=project_id,
+                agent_type=agent,
+                runtime_host_installation_id=binding.runtime_host_installation_id,
+                runtime_host_installation_revision=binding.runtime_host_installation_revision,
+                binding_revision=binding.binding_revision,
+                binding_digest=binding.binding_digest,
+                generation=1,
+            )
+            return self._insert_workspace(
+                session,
+                now=now,
+                workspace=workspace,
+                agent=agent,
+                authorization_scope=authorization_scope,
+                executable_fingerprint=None,
+            )
+
+    @staticmethod
+    def _insert_workspace(
+        session: Session,
+        *,
+        now: datetime,
+        workspace: AgentWorkspaceSession,
+        agent: AgentType,
+        authorization_scope: str,
+        executable_fingerprint: str | None,
+    ) -> AgentWorkspaceSessionRecord:
+        row = AgentWorkspaceSessionRecord(
+            id=workspace.workspace_id,
+            project_id=workspace.project_id,
+            authorization_scope=authorization_scope,
+            runtime_host_installation_id=workspace.runtime_host_installation_id,
+            runtime_host_installation_revision=workspace.runtime_host_installation_revision,
+            runtime_type="agentbox-runtime-linux-v1",
+            agent_type=agent.value,
+            state=WorkspaceState.STARTING.value,
+            runtime_session_name=managed_session_name(workspace.project_id, agent),
+            runtime_marker=managed_marker(
+                runtime_host_installation_id=workspace.runtime_host_installation_id,
+                runtime_host_installation_revision=workspace.runtime_host_installation_revision,
+                project_id=workspace.project_id,
+                agent_type=agent,
+                workspace_id_value=workspace.workspace_id,
+                generation=1,
+                binding_revision=workspace.binding_revision,
+                binding_digest=workspace.binding_digest,
+            ),
+            executable_fingerprint=executable_fingerprint,
+            executable_evidence_state=(
+                ExecutableEvidenceState.STALE.value
+                if executable_fingerprint is not None
+                else ExecutableEvidenceState.UNOBSERVED.value
+            ),
+            executable_evidence_generation=None,
+            executable_evidence_runtime_epoch=None,
+            generation=1,
+            binding_revision=workspace.binding_revision,
+            binding_digest=workspace.binding_digest,
+            revision=1,
+            created_at=now,
+            updated_at=now,
+            last_seen_at=now,
+            reconciliation_state=ReconciliationState.AUTHORITATIVE.value,
+        )
+        try:
+            session.add(row)
+            session.flush()
+        except IntegrityError as exc:
+            raise WorkspaceSessionConflict("Project/AgentType workspace already exists") from exc
+        return row
 
     def transition(
         self,
@@ -326,11 +418,94 @@ class WorkspaceSessionService:
             )
             row.exit_code = None
             row.failure_code = None
+            if row.executable_evidence_state == ExecutableEvidenceState.VERIFIED.value:
+                row.executable_evidence_state = ExecutableEvidenceState.STALE.value
             row.revision += 1
             row.updated_at = now
             row.last_seen_at = now
             session.flush()
             return row
+
+    def record_executable_evidence(
+        self,
+        workspace_id_value: str,
+        *,
+        expected_revision: int,
+        generation: int,
+        runtime_epoch: str,
+        executable_fingerprint: str,
+    ) -> AgentWorkspaceSessionRecord:
+        """CAS one typed Runtime proof onto the exact workspace generation."""
+
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise WorkspaceSessionConflict("expected revision is invalid")
+        if type(generation) is not int or generation < 1:
+            raise WorkspaceSessionConflict("evidence generation is invalid")
+        epoch = _runtime_epoch(runtime_epoch)
+        if not _HEX64.fullmatch(executable_fingerprint):
+            raise WorkspaceSessionConflict("executable fingerprint is invalid")
+        now = self._clock.now()
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            row = session.get(AgentWorkspaceSessionRecord, workspace_id_value)
+            if row is None:
+                raise WorkspaceSessionNotFound(workspace_id_value)
+            current = (
+                row.executable_fingerprint,
+                row.executable_evidence_generation,
+                row.executable_evidence_runtime_epoch,
+            )
+            observed = (executable_fingerprint, generation, str(epoch))
+            if row.revision != expected_revision or row.generation != generation:
+                if (
+                    row.revision == expected_revision + 1
+                    and row.executable_evidence_state == ExecutableEvidenceState.VERIFIED.value
+                    and current == observed
+                ):
+                    return row
+                raise WorkspaceSessionConflict("workspace evidence target is stale")
+            if row.executable_evidence_state == ExecutableEvidenceState.VERIFIED.value:
+                if current == observed:
+                    return row
+                raise WorkspaceSessionConflict("executable evidence differs from current")
+            row.executable_fingerprint = executable_fingerprint
+            row.executable_evidence_state = ExecutableEvidenceState.VERIFIED.value
+            row.executable_evidence_generation = generation
+            row.executable_evidence_runtime_epoch = str(epoch)
+            row.revision += 1
+            row.updated_at = now
+            row.last_seen_at = now
+            session.flush()
+            return row
+
+    @staticmethod
+    def executable_evidence_is_current(
+        row: AgentWorkspaceSessionRecord, *, runtime_epoch: str
+    ) -> bool:
+        """Return the strict predicate later Start/Attach owners must enforce."""
+
+        try:
+            epoch = str(_runtime_epoch(runtime_epoch))
+        except RuntimeEpochBindingError:
+            return False
+        return (
+            row.executable_evidence_state == ExecutableEvidenceState.VERIFIED.value
+            and isinstance(row.executable_fingerprint, str)
+            and _HEX64.fullmatch(row.executable_fingerprint) is not None
+            and row.executable_evidence_generation == row.generation
+            and row.executable_evidence_runtime_epoch == epoch
+        )
+
+    @classmethod
+    def require_current_executable_evidence(
+        cls, row: AgentWorkspaceSessionRecord, *, runtime_epoch: str
+    ) -> None:
+        """Fail closed unless Start/Attach may trust the stored executable proof."""
+
+        if not cls.executable_evidence_is_current(row, runtime_epoch=runtime_epoch):
+            raise WorkspaceExecutableEvidenceRequired(
+                "Current Runtime executable evidence is required"
+            )
 
     def begin_stop(
         self, workspace_id_value: str, *, expected_revision: int
@@ -452,10 +627,12 @@ class WorkspaceSessionService:
 
 
 __all__ = [
+    "ExecutableEvidenceState",
     "RuntimeEpochBindingError",
     "RuntimeEpochClassification",
     "WorkspaceSessionConflict",
     "WorkspaceSessionError",
+    "WorkspaceExecutableEvidenceRequired",
     "WorkspaceSessionNotFound",
     "WorkspaceSessionNotReady",
     "WorkspaceStopNotFound",

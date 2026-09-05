@@ -8,8 +8,9 @@ import unicodedata
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from agentbox_core.clock import Clock
 from agentbox_core.database import Database
@@ -188,6 +189,7 @@ class ProjectService:
             source_type=source_type,
             repository_url=repository_url,
             state="creating",
+            revision=1,
             created_at=now,
             updated_at=now,
         )
@@ -200,10 +202,14 @@ class ProjectService:
         except IntegrityError as exc:
             raise ProjectConflict() from exc
 
-    def discard_reservation(self, project_id: str) -> None:
+    def discard_reservation(self, project_id: str, *, expected_revision: int | None = None) -> None:
         with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             project = session.get(Project, project_id)
-            if project is not None and project.state == "creating":
+            if project is None:
+                return
+            self._validate_expected_revision(project, expected_revision)
+            if project.state == "creating":
                 session.delete(project)
 
     def reconcile_existing(self, relative_paths: tuple[str, ...]) -> tuple[Project, ...]:
@@ -230,6 +236,7 @@ class ProjectService:
                     relative_path=relative_path,
                     source_type="existing",
                     state="ready",
+                    revision=1,
                     created_at=now,
                     updated_at=now,
                 )
@@ -244,21 +251,64 @@ class ProjectService:
                 )
             )
 
-    def mark_ready(self, project_id: str, *, default_branch: str | None = None) -> None:
+    def mark_ready(
+        self,
+        project_id: str,
+        *,
+        default_branch: str | None = None,
+        expected_revision: int | None = None,
+    ) -> None:
         with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             project = session.get(Project, project_id)
             if project is None:
                 raise ProjectNotFound()
-            project.state = "ready"
-            project.default_branch = default_branch[:128] if default_branch else None
-            project.updated_at = self._clock.now()
+            self._validate_expected_revision(project, expected_revision)
+            normalized_branch = default_branch[:128] if default_branch else None
+            if project.state == "ready" and project.default_branch == normalized_branch:
+                return
+            self._cas_project(
+                session,
+                project,
+                state="ready",
+                default_branch=normalized_branch,
+            )
 
-    def mark_error(self, project_id: str) -> None:
+    def mark_error(self, project_id: str, *, expected_revision: int | None = None) -> None:
         with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             project = session.get(Project, project_id)
-            if project is not None:
-                project.state = "error"
-                project.updated_at = self._clock.now()
+            if project is None:
+                return
+            self._validate_expected_revision(project, expected_revision)
+            if project.state == "error":
+                return
+            self._cas_project(session, project, state="error")
+
+    @staticmethod
+    def _validate_expected_revision(project: Project, expected_revision: int | None) -> None:
+        if expected_revision is None:
+            return
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise ProjectConflict()
+        if project.revision != expected_revision:
+            raise ProjectConflict()
+
+    def _cas_project(self, session: Session, project: Project, **values: object) -> None:
+        if project.revision >= 2**63 - 1:
+            raise ProjectConflict()
+        statement = (
+            update(Project)
+            .where(Project.id == project.id, Project.revision == project.revision)
+            .values(
+                **values,
+                revision=project.revision + 1,
+                updated_at=self._clock.now(),
+            )
+        )
+        updated_id = session.execute(statement.returning(Project.id)).scalar_one_or_none()
+        if updated_id != project.id:
+            raise ProjectConflict()
 
     @staticmethod
     def _valid_legacy_key(value: str) -> bool:

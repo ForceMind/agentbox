@@ -12,8 +12,10 @@ from agentbox_core.waw_models import (
     WorkspaceStopOperationRecord,
 )
 from agentbox_core.waw_sessions import (
+    ExecutableEvidenceState,
     RuntimeEpochBindingError,
     RuntimeEpochClassification,
+    WorkspaceExecutableEvidenceRequired,
     WorkspaceSessionConflict,
     WorkspaceSessionNotReady,
     WorkspaceSessionService,
@@ -81,7 +83,88 @@ def test_create_is_deterministic_and_metadata_only(settings: Any, clock: Any) ->
     assert row.generation == 1
     assert row.state == WorkspaceState.STARTING.value
     assert row.runtime_marker.startswith("waw-v1:wri_")
+    assert row.executable_evidence_state == ExecutableEvidenceState.STALE.value
+    assert not service.executable_evidence_is_current(row, runtime_epoch="1")
     assert not hasattr(row, "terminal")
+
+
+def test_executable_evidence_is_exact_generation_epoch_cas(settings: Any, clock: Any) -> None:
+    _database, service, project_id, host_id = _seed(settings, clock)
+    row = service.create(
+        project_id=project_id,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest="a" * 64,
+    )
+    assert row.executable_fingerprint is None
+    assert row.executable_evidence_state == ExecutableEvidenceState.UNOBSERVED.value
+    with pytest.raises(WorkspaceExecutableEvidenceRequired):
+        service.require_current_executable_evidence(row, runtime_epoch="7")
+
+    verified = service.record_executable_evidence(
+        row.id,
+        expected_revision=row.revision,
+        generation=row.generation,
+        runtime_epoch="7",
+        executable_fingerprint="b" * 64,
+    )
+    assert service.executable_evidence_is_current(verified, runtime_epoch="7")
+    service.require_current_executable_evidence(verified, runtime_epoch="7")
+    assert not service.executable_evidence_is_current(verified, runtime_epoch="8")
+    replay = service.record_executable_evidence(
+        row.id,
+        expected_revision=row.revision,
+        generation=row.generation,
+        runtime_epoch="7",
+        executable_fingerprint="b" * 64,
+    )
+    assert replay.revision == verified.revision
+    with pytest.raises(WorkspaceSessionConflict):
+        service.record_executable_evidence(
+            row.id,
+            expected_revision=verified.revision,
+            generation=row.generation,
+            runtime_epoch="7",
+            executable_fingerprint="c" * 64,
+        )
+
+
+def test_runtime_epoch_advance_stales_verified_executable_evidence(
+    settings: Any, clock: Any
+) -> None:
+    _database, service, project_id, host_id = _seed(settings, clock)
+    row = service.create(
+        project_id=project_id,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest="a" * 64,
+    )
+    row = service.record_executable_evidence(
+        row.id,
+        expected_revision=row.revision,
+        generation=1,
+        runtime_epoch="7",
+        executable_fingerprint="b" * 64,
+    )
+    service.classify_runtime_epoch(
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        observed_runtime_epoch="7",
+    )
+    service.classify_runtime_epoch(
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        observed_runtime_epoch="8",
+    )
+    stale = service.get(row.id)
+    assert stale.executable_evidence_state == ExecutableEvidenceState.STALE.value
+    assert not service.executable_evidence_is_current(stale, runtime_epoch="8")
 
 
 def test_runtime_epoch_first_and_same_bind_preserve_workspace(settings: Any, clock: Any) -> None:

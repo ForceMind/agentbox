@@ -9,6 +9,7 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Annotated, Literal, Protocol, cast
 
+from agentbox_core.configuration import Environment
 from agentbox_core.errors import AgentBoxError, RecentAuthenticationRequired, RuntimeGatewayError
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
 from agentbox_core.waw import AgentType, StopResult
@@ -35,6 +36,12 @@ from agentbox_api.waw_admission import (
     WAWAttachmentTicketResponse,
     WAWRuntimeReadiness,
     prepare_attachment,
+)
+from agentbox_api.waw_application import (
+    WAW_APPLICATION_SCOPE_KEY,
+    WAWAPIApplication,
+    WAWAPIApplicationError,
+    WAWMode,
 )
 from agentbox_api.waw_authorization import (
     SingleAdminWorkspacePolicy,
@@ -224,6 +231,31 @@ def _waw_request_id() -> str:
 
 
 def _workspace_policy(request: Request) -> WorkspaceAuthorizationPolicy:
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            return owner.authorization_policy
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code=exc.code,
+                category="unavailable",
+                message="WAW API application is unavailable",
+                retryable=True,
+            ) from exc
+    mode = getattr(request.app.state, "waw_mode", None)
+    if mode is WAWMode.DISABLED and request.app.state.settings.env is Environment.PRODUCTION:
+        raise RuntimeGatewayError(
+            code="WAW_DISABLED",
+            category="unavailable",
+            message="WAW is disabled",
+        )
+    if mode is WAWMode.FILESYSTEM_V2:
+        raise RuntimeGatewayError(
+            code="WAW_API_UNAVAILABLE",
+            category="unavailable",
+            message="WAW API application is unavailable",
+            retryable=True,
+        )
     configured = getattr(request.app.state, "waw_authorization_policy", None)
     if configured is None:
         return SingleAdminWorkspacePolicy()
@@ -254,7 +286,16 @@ def _authorize_workspace(
 
 
 def _waw_coordinator(request: Request) -> _WAWLifecycleRequester:
-    coordinator = getattr(request.app.state, "waw_bind_coordinator", None)
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            coordinator: object | None = owner.bind_coordinator
+        except WAWAPIApplicationError as exc:
+            raise WAWControlClientError(
+                "RUNTIME_UNAVAILABLE", "WAW API application is unavailable", retryable=True
+            ) from exc
+    else:
+        coordinator = getattr(request.app.state, "waw_bind_coordinator", None)
     if coordinator is None or not callable(getattr(coordinator, "request_lifecycle", None)):
         raise WAWControlClientError(
             "RUNTIME_INSTALLATION_UNTRUSTED",
@@ -297,6 +338,38 @@ def _runtime_error(exc: WAWControlClientError) -> RuntimeGatewayError:
         message="WAW Runtime request failed",
         retryable=exc.retryable,
     )
+
+
+def _require_current_executable_evidence(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+    coordinator: _WAWLifecycleRequester,
+) -> tuple[dict[str, object], str]:
+    """Require one verified executable observation for the bound Runtime epoch."""
+
+    attestation = coordinator.attestation
+    runtime_epoch = attestation.get("runtime_epoch") if isinstance(attestation, dict) else None
+    if not isinstance(attestation, dict) or not isinstance(runtime_epoch, str):
+        raise RuntimeGatewayError(
+            code="RUNTIME_INSTALLATION_UNTRUSTED",
+            category="unavailable",
+            message="Runtime verification is unavailable",
+            retryable=True,
+        )
+    try:
+        current = _services(request).workspaces.executable_evidence_is_current(
+            row, runtime_epoch=runtime_epoch
+        )
+    except Exception:
+        current = False
+    if current is not True:
+        raise RuntimeGatewayError(
+            code="WORKSPACE_NOT_READY",
+            category="conflict",
+            message="Workspace is not ready",
+            retryable=True,
+        )
+    return attestation, runtime_epoch
 
 
 def _admission_error(exc: WAWAdmissionError) -> RuntimeGatewayError:
@@ -546,6 +619,8 @@ async def start_workspace(
             category="conflict",
             message="Workspace identity changed",
         )
+    coordinator = _waw_coordinator(request)
+    _require_current_executable_evidence(request, row, coordinator)
     if row.state == "RUNNING":
         response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
         return WorkspaceStartResponse(
@@ -570,9 +645,7 @@ async def start_workspace(
         expected_revision = row.revision
     payload = _lifecycle_payload(row, request, action="workspace.workspace.start")
     try:
-        runtime = await _waw_coordinator(request).request_lifecycle(
-            "workspace.workspace.start", payload
-        )
+        runtime = await coordinator.request_lifecycle("workspace.workspace.start", payload)
     except WAWControlClientError as exc:
         raise _runtime_error(exc) from exc
     try:
@@ -638,21 +711,14 @@ async def issue_attachment_ticket(
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
     _authorize_workspace(request, authenticated, row)
     coordinator = _waw_coordinator(request)
-    attestation = coordinator.attestation
-    if not isinstance(attestation, dict):
-        raise RuntimeGatewayError(
-            code="RUNTIME_INSTALLATION_UNTRUSTED",
-            category="unavailable",
-            message="Runtime is not bound",
-            retryable=True,
-        )
+    attestation, runtime_epoch = _require_current_executable_evidence(request, row, coordinator)
     try:
         runtime = WAWRuntimeReadiness(
             runtime_host_installation_id=str(attestation["runtime_host_installation_id"]),
             runtime_host_installation_revision=int(
                 cast(str, attestation["runtime_host_installation_revision"])
             ),
-            runtime_epoch=str(attestation["runtime_epoch"]),
+            runtime_epoch=runtime_epoch,
             ready=True,
         )
         origin = request.headers.get("origin", "")
@@ -662,7 +728,7 @@ async def issue_attachment_ticket(
             policy=_workspace_policy(request),
             recent_authenticator=_recent_authenticator(request),
             runtime=runtime,
-            bound_runtime_epoch=str(attestation["runtime_epoch"]),
+            bound_runtime_epoch=runtime_epoch,
             authority=_attachment_authority(request),
             origin=origin,
             allowed_origins=request.app.state.settings.allowed_origins,
@@ -907,9 +973,7 @@ async def detach_workspace(
                 auth_epoch=authenticated.auth_epoch,
             ),
         )
-        operations = getattr(request.app.state, "waw_detach_operations", None)
-        if isinstance(operations, dict):
-            operations[operation_key] = (operation_id, True)
+        _mark_detached(request, operation_key, operation_id)
     except WAWControlClientError as exc:
         raise _runtime_error(exc) from exc
     except TicketAuthorityError as exc:
@@ -978,7 +1042,19 @@ def _lifecycle_payload(
 
 
 def _attachment_authority(request: Request) -> AttachmentAuthority:
-    authority = getattr(request.app.state, "waw_attachment_authority", None)
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            authority: object | None = owner.attachment_authority
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code="ATTACHMENT_TICKET_UNAVAILABLE",
+                category="unavailable",
+                message="WAW attachment authority is unavailable",
+                retryable=True,
+            ) from exc
+    else:
+        authority = getattr(request.app.state, "waw_attachment_authority", None)
     if not isinstance(authority, AttachmentAuthority):
         raise RuntimeGatewayError(
             code="ATTACHMENT_TICKET_UNAVAILABLE",
@@ -999,6 +1075,24 @@ def _detach_operation(request: Request, key: tuple[object, ...]) -> tuple[str, b
     the Runtime and lease checks.
     """
 
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            return owner.detach_operation(key)
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code=exc.code,
+                category="unavailable",
+                message="WAW detach operation is unavailable",
+                retryable=True,
+            ) from exc
+        except Exception as exc:
+            raise RuntimeGatewayError(
+                code="RANDOMNESS_UNAVAILABLE",
+                category="unavailable",
+                message="secure detach operation randomness is unavailable",
+                retryable=True,
+            ) from exc
     operations = getattr(request.app.state, "waw_detach_operations", None)
     if not isinstance(operations, dict):
         operations = {}
@@ -1021,3 +1115,21 @@ def _detach_operation(request: Request, key: tuple[object, ...]) -> tuple[str, b
         # a replay still has to present a live lease and current tuple.
         operations.pop(next(iter(operations)))
     return operation_id, False
+
+
+def _mark_detached(request: Request, key: tuple[object, ...], operation_id: str) -> None:
+    owner = request.scope.get(WAW_APPLICATION_SCOPE_KEY)
+    if type(owner) is WAWAPIApplication:
+        try:
+            owner.mark_detached(key, operation_id)
+        except WAWAPIApplicationError as exc:
+            raise RuntimeGatewayError(
+                code=exc.code,
+                category="unavailable",
+                message="WAW detach operation is unavailable",
+                retryable=True,
+            ) from exc
+        return
+    operations = getattr(request.app.state, "waw_detach_operations", None)
+    if isinstance(operations, dict):
+        operations[key] = (operation_id, True)

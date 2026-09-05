@@ -9,6 +9,7 @@ from agentbox_protocol.waw_control import (
     decode_control_response,
     encode_control_request,
     encode_control_response,
+    validate_relative_key,
 )
 
 
@@ -317,6 +318,15 @@ def test_protocol_version_requires_json_integer_and_relative_key_nfc() -> None:
     )
     with pytest.raises(WAWControlError):
         encode_control_request({**binding, "relative_key": "Å"})
+
+
+@pytest.mark.parametrize(
+    "value",
+    ("Å", "bad/path", "bad\\path", ".", "..", " leading", "trailing ", "bad\x00key"),
+)
+def test_public_relative_key_validator_matches_control_codec(value: str) -> None:
+    with pytest.raises(WAWControlError):
+        validate_relative_key(value)
 
 
 def test_control_decoder_rejects_crlf() -> None:
