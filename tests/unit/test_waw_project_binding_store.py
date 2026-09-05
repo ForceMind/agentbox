@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import agentbox_runtime.waw_project_binding_store as binding_store
 import pytest
 from agentbox_runtime.waw_project_binding_store import (
     WAWDurableProjectBinding,
@@ -85,10 +86,30 @@ def test_verifier_uses_descriptor_held_project_identity(tmp_path: Path) -> None:
 
     (root / "demo").rmdir()
     (root / "demo").mkdir(mode=0o700)
-    assert verifier.binding_digest(request) != first
+    with pytest.raises(WAWProjectBindingVerifierError, match="identity changed"):
+        verifier.binding_digest(request)
     verifier.close()
     with pytest.raises(WAWProjectBindingVerifierError):
         verifier.binding_digest(request)
+
+
+def test_verifier_bounds_held_project_descriptors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "projects"
+    root.mkdir(mode=0o700)
+    (root / "demo").mkdir(mode=0o700)
+    (root / "other").mkdir(mode=0o700)
+    monkeypatch.setattr(binding_store, "_MAX_BINDINGS", 1)
+    verifier = WAWProjectBindingVerifier.test_only(root)
+    verifier.binding_digest(
+        {"project_id": PROJECT_ID, "relative_key": "demo", "project_revision": "1"}
+    )
+    with pytest.raises(WAWProjectBindingVerifierError, match="descriptor capacity"):
+        verifier.binding_digest(
+            {"project_id": PROJECT_ID, "relative_key": "other", "project_revision": "1"}
+        )
+    verifier.close()
 
 
 @pytest.mark.parametrize("relative_key", ["../demo", "demo+one", " demo", "demo/"])

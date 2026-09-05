@@ -195,6 +195,10 @@ class WAWProjectBindingVerifier:
         self._root_path = root
         self._root_fd = self._open_root()
         self._root_identity = _directory_identity(os.fstat(self._root_fd))
+        # Retain one descriptor per exact relative key.  The held descriptor
+        # prevents an unlink/recreate cycle from recycling an inode between two
+        # registrations in the same Runtime epoch.
+        self._project_descriptors: dict[str, tuple[int, tuple[int, int, int, int, int]]] = {}
         self._closed = False
 
     @classmethod
@@ -263,7 +267,28 @@ class WAWProjectBindingVerifier:
             self._validate_directory(details)
             named = os.stat(relative_key, dir_fd=self._root_fd, follow_symlinks=False)
             self._validate_directory(named)
-            if _directory_identity(details) != _directory_identity(named):
+            project_identity = _directory_identity(details)
+            if project_identity != _directory_identity(named):
+                raise WAWProjectBindingVerifierError("Project path identity changed")
+            held = self._project_descriptors.get(relative_key)
+            if held is not None:
+                held_fd, held_identity = held
+                try:
+                    held_details = os.fstat(held_fd)
+                except OSError as exc:
+                    raise WAWProjectBindingVerifierError(
+                        "Project path descriptor is unavailable"
+                    ) from exc
+                self._validate_directory(held_details)
+                if (
+                    _directory_identity(held_details) != held_identity
+                    or project_identity != held_identity
+                ):
+                    raise WAWProjectBindingVerifierError("Project path identity changed")
+            self._revalidate_root()
+            final_named = os.stat(relative_key, dir_fd=self._root_fd, follow_symlinks=False)
+            self._validate_directory(final_named)
+            if _directory_identity(final_named) != project_identity:
                 raise WAWProjectBindingVerifierError("Project path identity changed")
             self._revalidate_root()
             path_fingerprint = _canonical_sha256(
@@ -278,7 +303,7 @@ class WAWProjectBindingVerifier:
                     "schema_version": "waw-project-path-v1",
                 }
             )
-            return _canonical_sha256(
+            digest = _canonical_sha256(
                 {
                     "path_fingerprint": path_fingerprint,
                     "project_id": project_id,
@@ -287,19 +312,36 @@ class WAWProjectBindingVerifier:
                     "schema_version": "waw-project-binding-v1",
                 }
             )
+            if held is None:
+                if len(self._project_descriptors) >= _MAX_BINDINGS:
+                    raise WAWProjectBindingVerifierError(
+                        "Project binding descriptor capacity exceeded"
+                    )
+                self._project_descriptors[relative_key] = (project_fd, project_identity)
+                project_fd = -1
+            return digest
         finally:
-            os.close(project_fd)
+            if project_fd >= 0:
+                os.close(project_fd)
 
     def close(self) -> None:
         if self._closed:
             return
         descriptor, self._root_fd = self._root_fd, -1
+        project_descriptors = tuple(fd for fd, _identity in self._project_descriptors.values())
+        self._project_descriptors.clear()
         self._closed = True
-        if descriptor >= 0:
+        failure: OSError | None = None
+        for candidate in (descriptor, *project_descriptors):
+            if candidate < 0:
+                continue
             try:
-                os.close(descriptor)
+                os.close(candidate)
             except OSError as exc:
-                raise WAWProjectBindingVerifierError("Project verifier close failed") from exc
+                if failure is None:
+                    failure = exc
+        if failure is not None:
+            raise WAWProjectBindingVerifierError("Project verifier close failed") from failure
 
 
 class WAWProjectBindingStore:
