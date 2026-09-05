@@ -67,5 +67,23 @@ controller 直接把 INPUT、RESIZE、Detach 或 Stop 发往 Control Plane。
   terminal `SUCCESS`，包含 native、E2E、four installer jobs、frontend/security,
   release candidate 和 Backend Python 3.11/3.12/3.13。
 
-独立 Sol review 最终结论为 P0/P1/P2 均无。下一步是受控 renderer、page hook 和
-双语 `WorkspacePage` 接线，并运行 Web/E2E acceptance matrix。
+Controller safety 的独立 Sol review 最终结论为 P0/P1/P2 均无。下一步是 page hook
+和双语 `WorkspacePage` 接线，并运行 Web/E2E acceptance matrix。
+
+## Bounded DOM renderer checkpoint
+
+Commit `f4d868e` adds the production-only renderer factory used by the next
+page-composition slice. It gives `TerminalScheduler` an explicit render task;
+the task builds a full projection in a `DocumentFragment` and replaces the
+surface only after the whole render succeeds. Terminal plaintext is copied only
+through text nodes/`textContent`; the class set is closed. Cancel/fence clears
+the old surface before external callback reentrancy can install another owner,
+with a verified `textContent` fallback when `replaceChildren()` fails.
+
+Renderer tests cover render/cancel/fence DOM cleanup, persistent DOM exceptions,
+reentrant fence callbacks, bounded multi-turn rendering and a cancelled late
+render task. The renderer suite has 11 cases; full Web validation is 958 passed.
+The existing cross-frame UTF-8 reservation test retains all assertions and uses
+a 10-second per-test deadline to tolerate observed Mac parallel-worker pressure;
+isolated execution remains below five seconds. This checkpoint awaits its own
+exact-head CI and does not attach the renderer to `WorkspacePage` yet.

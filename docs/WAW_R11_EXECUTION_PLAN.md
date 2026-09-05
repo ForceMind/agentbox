@@ -156,6 +156,14 @@ Its independent Sol review found no P0/P1/P2 and final exact head completed
 controls and bilingual UI/E2E still remain; this checkpoint is not a user-facing
 terminal.
 
+#### rc6-C bounded renderer checkpoint
+
+Commit `f4d868e` supplies the explicit bounded DOM renderer for the controller,
+including cleanup fallback and reentrancy tests. It has local Web validation but
+awaits exact-head CI. The next work unit owns page context, ticket/trust/control
+ports and the bilingual UI; it must not replace the renderer with scheduler's
+test no-op.
+
 ### rc6 exit evidence
 
 - lifecycle, singleton inode, fork, cancellation, pidfd, delayed Audit, detached
