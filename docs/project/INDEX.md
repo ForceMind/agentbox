@@ -27,6 +27,9 @@
   rc6–rc9 composition, failure, artifact/operations and bilingual UI contract.
 - [R11 execution plan](../WAW_R11_EXECUTION_PLAN.md): active rc6–rc9 work-unit
   ownership, state-machine, Project binding, controller and acceptance plan.
+- [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md): typed Project binding,
+  generation-one creation and Runtime executable-evidence checkpoint, with its
+  verification and remaining boundaries.
 
 - [Authentication timing diagnostic](../AUTH_TIMING_DIAGNOSTIC.md): isolated numeric observations, failure/privacy rules, regression evidence and unknown historical latency cause.
 

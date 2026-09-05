@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T09:11:18Z"
-verified_by: "codex-r11-execution-rebaseline"
+verified_at_utc: "2026-09-05T17:22:46Z"
+verified_by: "codex-r11-rc6-first-use-checkpoint"
 repository: "ForceMind/agentbox"
 ---
 
@@ -11,14 +11,16 @@ repository: "ForceMind/agentbox"
 
 - Live revalidation on 2026-09-05: `git fetch origin --prune` exited `0`;
   `main`, `origin/main` and the branch merge-base equal
-  `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active branch head is
-  `e45a456eaaa1a43d5be61711dd6ce02962035c43`. Draft PR #80 points at that
-  exact head and its 20 checks are terminal `SUCCESS`.
-- The active worktree is intentionally dirty with uncommitted rc6-A ownership,
-  rc6-B Project binding ledger and rc9 locale-foundation work. Those changes
-  are not covered by PR #80 CI and are not recorded here as delivered. The
-  active, reviewed execution order is
-  `docs/WAW_R11_EXECUTION_PLAN.md`.
+  `341a69bf855f48f90cbecfb5c6872c3bf8c28360`. The upstream rc6 branch head was
+  `9bf5e8d1defa4704b521d6c67a4725740c0f5fd4` before this checkpoint; code commit
+  `708acd8aa9dc2af945f5664a7ba983c192affde4` is not covered by exact-head CI yet.
+- The active, reviewed execution order is `docs/WAW_R11_EXECUTION_PLAN.md`.
+  The rc6-B first-use contract and local evidence are recorded in
+  `docs/WAW_R11_RC6_FIRST_USE.md`; this is not a claim that rc6, rc7, rc8, rc9
+  or R12 is complete.
+- Earlier paragraphs labeled “current uncommitted” are retained historical
+  checkpoints. The branch/CI status in this opening section and the rc6 current
+  composition checkpoint supersede them.
 - The first rc9 foundation increment is commit
   `184781cca3010e36fb979ad0490566363b0816cc`: typed bilingual catalog domains,
   English/Chinese key parity, known API-code localization and the route/state
@@ -689,24 +691,19 @@ PROPOSED architecture status are preserved.
 
 ## R11/rc6 current composition checkpoint
 
-- The verified remote baseline is PR #80 head `b2f0e0b...`; its exact head
-  completed 20/20 checks with `SUCCESS`. This is baseline evidence, not a claim
-  about the current uncommitted integration work.
-- The current uncommitted rc6 composition implements one `WAWPeerAuthority`,
-  typed control-dispatch peer context, authority-backed stream verification,
-  lifecycle authority transfer/revocation, and Runtime server shutdown ownership.
-  It has not yet been committed or submitted to CI.
-- The final local core matrix completed 216 plus 5 focused cases. Independent
-  Sol/xhigh review completed 244 cases with 1 Linux-only skip and 9 deselected,
-  plus 8 encrypted-server non-UDS cases, and reports PASS with no P0/P1/P2.
-  Twenty-eight real-UDS cases could not run in this execution environment because
-  socket setup returned `PermissionError`; they remain unverified locally.
-- Ruff, Black, Linux-target mypy (256 sources), documentation-link checks (240),
-  and `git diff --check` passed for the current integration set.
-- Next rc6 order is commit/push and exact-head Linux CI, whose UDS jobs provide
-  the supported-platform evidence, then the remaining controller composition.
-  Normal merge/read-back follows the complete rc6 acceptance set. rc7–rc9 and
-  the R12 real-host boundary remain unchanged.
+- The upstream rc6 branch head before this documentation checkpoint is
+  `9bf5e8d...`; it contains the API owner, browser-controller foundation and
+  Runtime durable binding-store checkpoints. Its exact-head CI must be read from
+  GitHub rather than inferred from older PR #80 evidence.
+- Commit `708acd8...` adds the first Project Start path, closed typed executable
+  evidence action, exact bound-host/epoch checks, response-loss fencing and
+  concurrent first-use convergence. Local scope validation is 168 passed with
+  one Linux-only skipped control-path test; Ruff, Black and Linux-target mypy
+  pass. It has no exact-head CI or independent rc6 review yet.
+- Next rc6 order is documentation commit/push, exact-head Linux CI and read-back;
+  then complete deterministic startup/restart binding replay and browser page
+  composition. Normal merge/read-back follows the complete rc6 acceptance set.
+  rc7–rc9 and the R12 real-host boundary remain unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
   Backend Python quality jobs failed on the same preserved non-fixed server
   restart contract. The reviewed follow-up restores restart only after a clean,

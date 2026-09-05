@@ -19,7 +19,8 @@ claim product qualification.
   exact-head CI complete.
 - R8–R10 delivered crypto, opaque relay, trust/terminal foundations and fixed
   Runtime process composition. The browser page still has no live terminal
-  controller and the formal Project-to-first-workspace path remains incomplete.
+  controller. The formal Project-to-first-workspace path is implemented in the
+  local rc6-B checkpoint but awaits its own exact-head CI.
 
 ## Product outcome
 
@@ -105,6 +106,15 @@ closed with `BINDING_BOOTSTRAP_REQUIRED`.
 Migrations use expand then activate. Existing rows are never reverse-engineered
 into a digest or fingerprint; unprovable nonterminal rows become reconciliation
 work. Unsafe downgrade is rejected.
+
+#### rc6-B first-use checkpoint
+
+Commit `708acd8aa9dc2af945f5664a7ba983c192affde4` implements the typed first-use
+flow and `workspace.workspace.executable_evidence.v1`. Its exact contract,
+failure fences and local validation are recorded in
+[R11 rc6 first use](WAW_R11_RC6_FIRST_USE.md). This is a committed local
+checkpoint, not yet an exact-head CI result or completion of rc6-B: deterministic
+startup/restart replay and the remaining rc6 acceptance evidence are still due.
 
 ### C. Browser controller and exact Stop
 

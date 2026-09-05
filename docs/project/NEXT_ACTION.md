@@ -13,8 +13,12 @@ blocker is resolved. Do not request the same software approval again.
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
   persistence/first use and rc6-C browser controller; only then proceed to rc7,
-  rc8 and rc9. The active branch remains Draft PR #80 and its prior CI evidence
-  does not cover uncommitted work.
+  rc8 and rc9. Commit `708acd8...` now implements the rc6-B first-use path and
+  closed Runtime executable evidence action; its contract is
+  `docs/WAW_R11_RC6_FIRST_USE.md`. Exact-head CI, independent rc6 review,
+  deterministic startup/restart replay and browser page composition remain due.
+- Historical paragraphs below that say “current uncommitted” are prior rc6
+  checkpoints; the top active-implementation status is authoritative.
 - rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
   shared catalog, error-code mapper and route-state manifest are available for
   page owners. The page migration and bilingual visual matrix remain pending.
@@ -35,11 +39,10 @@ blocker is resolved. Do not request the same software approval again.
 - R10/rc5 is delivered by PR #79: final head `0d9e7c7...` completed 20/20
   exact-head checks and merged as `341a69bf...`; exact parent read-back, all six
   post-main workflows and dynamic Dependency Graph completed SUCCESS.
-- PR #80 remote baseline `b2f0e0b...` completed 20/20 exact-head checks with
-  `SUCCESS`. The current rc6 integration is uncommitted: a single
-  `WAWPeerAuthority` now supplies typed control peer context, stream authority,
-  lifecycle transfer/revocation and Runtime shutdown ownership. It is not yet a
-  committed or CI-verified delivery.
+- PR #80 upstream checkpoint `9bf5e8d...` must receive a fresh CI read-back;
+  older `b2f0e0b...` evidence does not cover later rc6 commits. The next code
+  checkpoint `708acd8...` is committed locally and awaits push plus exact-head
+  CI; do not present either checkpoint as a completed rc6 delivery.
 - Current evidence: the final local core matrix completed 216 plus 5 focused
   cases; independent Sol/xhigh review completed 244 cases with 1 Linux-only skip
   and 9 deselected, plus 8 encrypted-server non-UDS cases. Review is PASS with no
@@ -83,9 +86,9 @@ blocker is resolved. Do not request the same software approval again.
 - Bind/control shutdown evidence is also complete locally: pending exchange,
   detached task, retained peer or uncertain FD close prevents clean. Commit and
   exact-head verify it, then continue process lock and stream-owner composition.
-- Complete this rc6 integration slice by commit/push and exact-head Linux CI,
-  then continue the remaining production controller composition. Normal merge and
-  exact read-back follow the complete rc6 acceptance set. After
+- Push the rc6-B checkpoint and read exact-head Linux CI before continuing the
+  remaining production controller composition. Normal merge and exact read-back
+  follow the complete rc6 acceptance set. After
   rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
   and rc9 full UI localization/visual E2E.
 - First integration head `e210d749...` completed 17/20 checks. Three Backend
