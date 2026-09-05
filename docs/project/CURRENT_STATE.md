@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T17:44:57Z"
+verified_at_utc: "2026-09-05T17:53:32Z"
 verified_by: "codex-r11-rc6-first-use-checkpoint"
 repository: "ForceMind/agentbox"
 ---
@@ -14,8 +14,9 @@ repository: "ForceMind/agentbox"
   `341a69bf855f48f90cbecfb5c6872c3bf8c28360`. The upstream rc6 branch head was
   `9bf5e8d1defa4704b521d6c67a4725740c0f5fd4` before this checkpoint. The exact
   head `029378e...` completed 17/20 checks; all three Backend Python jobs exposed
-  the same Linux inode-reuse flaw in the Runtime Project verifier. Local repair
-  `3ba85cb...` is the next checkpoint and is not covered by CI yet.
+  the same Linux inode-reuse flaw in the Runtime Project verifier. Repair head
+  `bbdd67c...` completed the fresh exact-head 20/20 matrix, including native and
+  Python 3.11/3.12/3.13.
 - The active, reviewed execution order is `docs/WAW_R11_EXECUTION_PLAN.md`.
   The rc6-B first-use contract and local evidence are recorded in
   `docs/WAW_R11_RC6_FIRST_USE.md`; this is not a claim that rc6, rc7, rc8, rc9
@@ -705,10 +706,10 @@ PROPOSED architecture status are preserved.
 - Repair `3ba85cb...` retains at most 256 verified Project descriptors for the
   Runtime epoch and rejects replacement before inode reuse can alias an existing
   binding. Local scope validation is 169 passed with one Linux-only skipped
-  control-path test; Ruff, Black and Linux-target mypy pass. It awaits exact-head
-  CI and independent rc6 review.
-- Next rc6 order is documentation commit/push, exact-head Linux CI and read-back;
-  then complete deterministic startup/restart binding replay and browser page
+  control-path test; Ruff, Black and Linux-target mypy pass. The resulting
+  `bbdd67c...` exact head completed 20/20 checks; independent rc6 review remains
+  pending.
+- Next rc6 order is deterministic startup/restart binding replay and browser page
   composition. Normal merge/read-back follows the complete rc6 acceptance set.
   rc7–rc9 and the R12 real-host boundary remain unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
