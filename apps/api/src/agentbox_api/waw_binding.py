@@ -93,6 +93,8 @@ class WAWRuntimeBindCoordinator:
         self._closed = False
         self._lock = asyncio.Lock()
         self._close_operation: asyncio.Task[None] | None = None
+        self._test_transport_closed = False
+        self._close_failure: WAWControlClientError | None = None
 
     @classmethod
     def test_only(
@@ -249,6 +251,27 @@ class WAWRuntimeBindCoordinator:
             dict(self._bound_response) if self.bound and self._bound_response is not None else None
         )
 
+    @property
+    def shutdown_clean(self) -> bool:
+        """Whether the attestation, peer and owned transport closed cleanly."""
+
+        operation = self._close_operation
+        if (
+            not self._closed
+            or self._close_failure is not None
+            or self._bound_response is not None
+            or self._bound_peer is not None
+            or operation is None
+            or not operation.done()
+            or operation.cancelled()
+        ):
+            return False
+        if operation.exception() is not None:
+            return False
+        if self._client is not None:
+            return self._client.shutdown_clean
+        return self._test_transport_closed
+
     def borrow_runtime_peer(self, peer_socket: Any) -> RuntimePeerBorrow:
         """Borrow the exact published Runtime pidfd for one stream connection."""
 
@@ -349,15 +372,28 @@ class WAWRuntimeBindCoordinator:
             self._bound_response = None
             self._peer_generation += 1
             if peer is not None:
-                peer.close()
+                try:
+                    peer.poison()
+                except WAWControlClientError as exc:
+                    self._record_close_failure(exc)
             if self._client is not None:
-                await self._client.close()
+                try:
+                    await self._client.close()
+                except WAWControlClientError as exc:
+                    self._record_close_failure(exc)
             else:
                 close = getattr(self._test_transport, "close", None)
                 if callable(close):
                     result = close()
                     if isinstance(result, Awaitable):
                         await result
+                self._test_transport_closed = True
+            if self._close_failure is not None:
+                raise self._close_failure
+
+    def _record_close_failure(self, failure: WAWControlClientError) -> None:
+        if self._close_failure is None:
+            self._close_failure = failure
 
 
 __all__ = [

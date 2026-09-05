@@ -214,6 +214,7 @@ async def test_close_fences_unpublished_exchange_before_worker_acquires_lock(
     await close_wait
 
     assert client.closed and client.poisoned and candidate.closed
+    assert not client.shutdown_clean
     with pytest.raises(OSError):
         os.fstat(retained)
     os.close(writer)
@@ -438,6 +439,7 @@ async def test_close_is_irreversible_while_detached_operation_finishes(
     await client.close()
     await client.close()
     assert client.closed is True and client.poisoned is True
+    assert not client.shutdown_clean
     release.set()
     await asyncio.sleep(0)
     await asyncio.sleep(0)
@@ -455,6 +457,8 @@ async def test_replacement_requires_terminal_close_and_returns_fresh_owner(
     with pytest.raises(WAWControlClientError):
         client.replacement_after_close()
     await client.close()
+
+    assert client.shutdown_clean
 
     replacement = client.replacement_after_close()
     with pytest.raises(WAWControlClientError):
@@ -647,3 +651,67 @@ def test_bound_peer_poison_and_close_release_retained_fd_once(
     peer.close()
     assert closed == [retained]
     original_close(writer)
+
+
+def test_bound_peer_close_failure_is_sticky_after_detaching_fd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer, retained, writer, _owner = _published_peer()
+    original_close = os.close
+    attempts: list[int] = []
+
+    def fail_close(descriptor: int) -> None:
+        if descriptor == retained:
+            attempts.append(descriptor)
+            raise OSError("synthetic pidfd close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_close)
+    try:
+        with pytest.raises(WAWControlClientError) as first:
+            peer.poison()
+        with pytest.raises(WAWControlClientError) as repeated:
+            peer.close()
+        assert first.value.code == repeated.value.code == "RUNTIME_UNAVAILABLE"
+        assert attempts == [retained]
+        assert peer.poisoned and peer.close_failure is first.value
+    finally:
+        original_close(retained)
+        original_close(writer)
+
+
+@pytest.mark.anyio
+async def test_client_close_failure_is_sticky_after_candidate_fd_detaches(
+    socket_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _client(socket_dir / "unused.sock")
+    retained, writer = os.pipe()
+    os.set_inheritable(retained, False)
+    candidate = BoundRuntimePeer(
+        control_subject._RuntimePeerObservation(4242, os.geteuid(), os.getegid(), retained),
+        WAWSocketPathIdentity(1, 2),
+    )
+    client._pending_exchange = control_subject.RuntimeBindExchange(
+        client, _bind_response(), candidate
+    )
+    original_close = os.close
+    attempts: list[int] = []
+
+    def fail_close(descriptor: int) -> None:
+        if descriptor == retained:
+            attempts.append(descriptor)
+            raise OSError("synthetic pidfd close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_close)
+    try:
+        with pytest.raises(WAWControlClientError) as first:
+            await client.close()
+        with pytest.raises(WAWControlClientError) as repeated:
+            await client.close()
+        assert first.value.code == repeated.value.code == "RUNTIME_UNAVAILABLE"
+        assert attempts == [retained]
+        assert not client.shutdown_clean and candidate.close_failure is first.value
+    finally:
+        original_close(retained)
+        original_close(writer)

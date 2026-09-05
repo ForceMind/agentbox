@@ -544,6 +544,7 @@ async def test_coordinator_close_is_irreversible_and_idempotent() -> None:
 
     assert client.closes == 1
     assert coordinator.bound is False and coordinator.attestation is None
+    assert coordinator.shutdown_clean
     with pytest.raises(WAWControlClientError) as raised:
         await coordinator.bind()
     assert raised.value.code == "RUNTIME_UNAVAILABLE"
@@ -570,8 +571,73 @@ async def test_cancelled_close_keeps_one_owned_close_operation() -> None:
     first.cancel()
     with pytest.raises(asyncio.CancelledError):
         await first
+    assert not coordinator.shutdown_clean
     client.release.set()
     await coordinator.close()
     await coordinator.close()
     assert client.closes == 1
     assert not coordinator.bound
+    assert coordinator.shutdown_clean
+
+
+@pytest.mark.anyio
+async def test_close_failure_is_sticky_and_never_reports_a_clean_binding() -> None:
+    client = FakeClient(_response())
+    coordinator = _coordinator(client)
+    await coordinator.bind()
+
+    async def fail_close() -> None:
+        raise RuntimeError("synthetic close failure")
+
+    coordinator._perform_close = fail_close  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="synthetic close failure"):
+        await coordinator.close()
+    assert not coordinator.shutdown_clean
+    with pytest.raises(WAWControlClientError):
+        await coordinator.bind()
+
+
+@pytest.mark.anyio
+async def test_concrete_close_retains_sticky_peer_fd_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = WAWControlClient(
+        Path("/unused/control.sock"),
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        expected_socket_uid=os.geteuid(),
+        expected_socket_gid=os.getegid(),
+    )
+    exchange, _candidate, writer = _production_exchange(client)
+
+    async def bind_exchange(_action: str, _request: dict[str, Any]) -> RuntimeBindExchange:
+        return exchange
+
+    monkeypatch.setattr(client, "bind_exchange", bind_exchange)
+    coordinator = _production_coordinator(client, classifier=EpochClassifier())
+    await coordinator.bind()
+    peer = coordinator._bound_peer
+    assert peer is not None
+    retained = peer._pidfd
+    original_close = os.close
+    attempts: list[int] = []
+
+    def fail_close(descriptor: int) -> None:
+        if descriptor == retained:
+            attempts.append(descriptor)
+            raise OSError("synthetic coordinator pidfd close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "close", fail_close)
+    try:
+        with pytest.raises(WAWControlClientError) as first:
+            await coordinator.close()
+        with pytest.raises(WAWControlClientError) as repeated:
+            await coordinator.close()
+        assert first.value.code == repeated.value.code == "RUNTIME_UNAVAILABLE"
+        assert attempts == [retained]
+        assert coordinator.attestation is None and coordinator._bound_peer is None
+        assert not coordinator.shutdown_clean
+    finally:
+        original_close(retained)
+        original_close(writer)

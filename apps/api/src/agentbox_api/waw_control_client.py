@@ -262,6 +262,7 @@ class BoundRuntimePeer:
         self._owner_current: Callable[[BoundRuntimePeer, int], bool] | None = None
         self._poisoned = False
         self._closed = False
+        self._close_failure: WAWControlClientError | None = None
         self._lock = threading.Lock()
 
     @property
@@ -278,6 +279,32 @@ class BoundRuntimePeer:
     def closed(self) -> bool:
         with self._lock:
             return self._closed
+
+    @property
+    def close_failure(self) -> WAWControlClientError | None:
+        with self._lock:
+            return self._close_failure
+
+    def _raise_close_failure(self) -> None:
+        failure = self._close_failure
+        if failure is not None:
+            raise failure
+
+    def _close_detached_pidfd(self, pidfd: int) -> None:
+        if pidfd < 0:
+            self._raise_close_failure()
+            return
+        try:
+            os.close(pidfd)
+        except OSError as exc:
+            failure = WAWControlClientError(
+                "RUNTIME_UNAVAILABLE", "WAW Runtime peer pidfd close failed"
+            )
+            with self._lock:
+                if self._close_failure is None:
+                    self._close_failure = failure
+            raise failure from exc
+        self._raise_close_failure()
 
     def _publish(
         self,
@@ -362,23 +389,21 @@ class BoundRuntimePeer:
 
     def poison(self) -> None:
         with self._lock:
-            if self._closed:
-                return
-            self._poisoned = True
-            pidfd, self._pidfd = self._pidfd, -1
-        if pidfd >= 0:
-            with contextlib.suppress(OSError):
-                os.close(pidfd)
+            if self._closed or self._poisoned:
+                pidfd = -1
+            else:
+                self._poisoned = True
+                pidfd, self._pidfd = self._pidfd, -1
+        self._close_detached_pidfd(pidfd)
 
     def close(self) -> None:
         with self._lock:
             if self._closed:
-                return
-            self._closed = True
-            pidfd, self._pidfd = self._pidfd, -1
-        if pidfd >= 0:
-            with contextlib.suppress(OSError):
-                os.close(pidfd)
+                pidfd = -1
+            else:
+                self._closed = True
+                pidfd, self._pidfd = self._pidfd, -1
+        self._close_detached_pidfd(pidfd)
 
 
 class RuntimeBindExchange:
@@ -400,6 +425,7 @@ class RuntimeBindExchange:
         self._response = dict(response)
         self._candidate: BoundRuntimePeer | None = candidate
         self._published = False
+        self._close_failure: WAWControlClientError | None = None
 
     @property
     def response(self) -> dict[str, Any]:
@@ -430,15 +456,27 @@ class RuntimeBindExchange:
 
     def invalidate(self) -> None:
         candidate, self._candidate = self._candidate, None
-        self._owner._invalidate_exchange(self)
-        if candidate is not None:
-            candidate.poison()
+        try:
+            if candidate is not None:
+                candidate.poison()
+        except WAWControlClientError as exc:
+            self._close_failure = exc
+            raise
+        finally:
+            self._owner._invalidate_exchange(self)
 
     def close(self) -> None:
         candidate, self._candidate = self._candidate, None
-        self._owner._close_exchange(self)
-        if candidate is not None:
-            candidate.close()
+        try:
+            if candidate is not None:
+                candidate.close()
+            elif self._close_failure is not None:
+                raise self._close_failure
+        except WAWControlClientError as exc:
+            self._close_failure = exc
+            raise
+        finally:
+            self._owner._close_exchange(self)
 
 
 def validate_runtime_bind_attestation(
@@ -557,6 +595,7 @@ class WAWControlClient:
         self._pending_exchange: RuntimeBindExchange | None = None
         self._close_operation: asyncio.Task[None] | None = None
         self._replacement_issued = False
+        self._close_failure: WAWControlClientError | None = None
 
     @property
     def socket_path(self) -> Path:
@@ -577,6 +616,23 @@ class WAWControlClient:
         """Number of cancellation-resistant operations still owned by client."""
 
         return len(self._detached_tasks)
+
+    @property
+    def shutdown_clean(self) -> bool:
+        """Whether every transport-owned exchange and task terminated cleanly."""
+
+        operation = self._close_operation
+        return (
+            self._closed
+            and not self._poisoned
+            and self._close_failure is None
+            and self._pending_exchange is None
+            and not self._detached_tasks
+            and operation is not None
+            and operation.done()
+            and not operation.cancelled()
+            and operation.exception() is None
+        )
 
     async def bind_exchange(self, action: str, request: dict[str, Any]) -> RuntimeBindExchange:
         """Return an unpublished peer/attestation pair for the sole bind action."""
@@ -878,7 +934,15 @@ class WAWControlClient:
         exchange = self._pending_exchange
         self._pending_exchange = None
         if exchange is not None:
-            exchange.invalidate()
+            try:
+                exchange.invalidate()
+            except WAWControlClientError as exc:
+                self._record_close_failure(exc)
+
+    def _record_close_failure(self, failure: WAWControlClientError) -> None:
+        if self._close_failure is None:
+            self._close_failure = failure
+        self._poisoned = True
 
     def close(self) -> Coroutine[Any, Any, None]:
         """Irreversibly stop this transport and observe its bounded child work."""
@@ -904,7 +968,10 @@ class WAWControlClient:
             self._closed = True
             exchange, self._pending_exchange = self._pending_exchange, None
             if exchange is not None:
-                exchange.close()
+                try:
+                    exchange.close()
+                except WAWControlClientError as exc:
+                    self._record_close_failure(exc)
             tasks = tuple(self._detached_tasks)
             for task in tasks:
                 task.cancel()
@@ -912,6 +979,8 @@ class WAWControlClient:
                 _done, pending = await asyncio.wait(tasks, timeout=self._cancellation_grace_seconds)
                 if pending:
                     self._poison()
+            if self._close_failure is not None:
+                raise self._close_failure
 
     def replacement_after_close(self) -> WAWControlClient:
         """Create a fresh transport generation after this owner is fully closed."""
@@ -923,6 +992,7 @@ class WAWControlClient:
             or not operation.done()
             or operation.cancelled()
             or operation.exception() is not None
+            or self._close_failure is not None
             or self._pending_exchange is not None
             or self._detached_tasks
             or self._replacement_issued

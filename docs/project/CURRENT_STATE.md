@@ -740,3 +740,7 @@ PROPOSED architecture status are preserved.
   obligations through `invalidate_all()`. New admission operations fail after
   shutdown, while exact positive cleanup remains admissible. Focused tests completed
   66 cases and independent Sol/xhigh review reports PASS with no P0/P1/P2.
+- The same continuation now gives `WAWRuntimeBindCoordinator` and
+  `WAWControlClient` strict shutdown evidence. Retained/candidate pidfd close
+  failures are sticky, never retry an old FD number, invalidate bind state and
+  permanently prevent false-clean. Independent Sol/xhigh review is PASS.

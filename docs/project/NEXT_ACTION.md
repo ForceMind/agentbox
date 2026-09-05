@@ -71,6 +71,9 @@ blocker is resolved. Do not request the same software approval again.
   pending tickets burn, cleanup obligations survive invalidation, and only exact
   cleanup/Audit ACK reaches clean. Commit and exact-head verify this foundation,
   then implement the process lock and single bind/control/relay lifespan owner.
+- Bind/control shutdown evidence is also complete locally: pending exchange,
+  detached task, retained peer or uncertain FD close prevents clean. Commit and
+  exact-head verify it, then continue process lock and stream-owner composition.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
   then continue the remaining production controller composition. Normal merge and
   exact read-back follow the complete rc6 acceptance set. After
