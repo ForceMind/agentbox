@@ -37,6 +37,10 @@ Live evidence at this rebaseline: `main`/`origin/main` are
 uncommitted continuation is not covered by that CI and remains implementation
 work until its own review and exact-head run complete.
 
+The initial rc9 catalog/known-error foundation is commit `184781c...` on the
+active Draft PR and completed 20/20 exact-head checks. It is a prerequisite for,
+not completion of, the full route/state migration and bilingual visual E2E.
+
 ## Verified baseline and reachable behavior
 
 最新 live preflight 已 fetch：local `main` 与 `origin/main` 均为 R10 merge

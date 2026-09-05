@@ -15,6 +15,9 @@ blocker is resolved. Do not request the same software approval again.
   persistence/first use and rc6-C browser controller; only then proceed to rc7,
   rc8 and rc9. The active branch remains Draft PR #80 and its prior CI evidence
   does not cover uncommitted work.
+- rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
+  shared catalog, error-code mapper and route-state manifest are available for
+  page owners. The page migration and bilingual visual matrix remain pending.
 
 - Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
 - R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.

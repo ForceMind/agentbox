@@ -19,6 +19,11 @@ repository: "ForceMind/agentbox"
   are not covered by PR #80 CI and are not recorded here as delivered. The
   active, reviewed execution order is
   `docs/WAW_R11_EXECUTION_PLAN.md`.
+- The first rc9 foundation increment is commit
+  `184781cca3010e36fb979ad0490566363b0816cc`: typed bilingual catalog domains,
+  English/Chinese key parity, known API-code localization and the route/state
+  migration manifest. Its exact head completed 20/20 checks on PR #80. It does
+  not migrate every page or claim rc9 is complete.
 
 - Live preflight after `git fetch origin --prune`: local `main` and `origin/main`
   equal R10 merge `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active R11 branch
