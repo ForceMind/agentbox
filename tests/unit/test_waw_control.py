@@ -174,6 +174,44 @@ def test_start_response_round_trips_decimal_uint64_and_rejects_extra_fields() ->
         encode_control_response({**response, "generation": 1}, "workspace.workspace.start")
 
 
+def test_executable_evidence_action_has_closed_request_and_response() -> None:
+    action = "workspace.workspace.executable_evidence.v1"
+    request = _request(
+        action,
+        workspace_id="aws_" + "2" * 32,
+        project_id="prj_" + "3" * 32,
+        agent_type="claude",
+        generation="1",
+        binding_revision="1",
+        binding_digest="a" * 64,
+        runtime_host_installation_id="wri_" + "4" * 32,
+        runtime_host_installation_revision="1",
+        runtime_epoch="7",
+    )
+    assert decode_control_request(encode_control_request(request)) == request
+    with pytest.raises(WAWControlError):
+        encode_control_request({**request, "runtime_epoch": "0"})
+
+    response = {
+        "protocol_version": 1,
+        "request_id": request["request_id"],
+        "status": "EXECUTABLE_EVIDENCE",
+        "workspace_id": request["workspace_id"],
+        "project_id": request["project_id"],
+        "agent_type": request["agent_type"],
+        "generation": request["generation"],
+        "binding_revision": request["binding_revision"],
+        "binding_digest": request["binding_digest"],
+        "runtime_host_installation_id": request["runtime_host_installation_id"],
+        "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+        "runtime_epoch": request["runtime_epoch"],
+        "executable_fingerprint": "b" * 64,
+    }
+    assert decode_control_response(encode_control_response(response, action), action) == response
+    with pytest.raises(WAWControlError):
+        encode_control_response({**response, "executable_fingerprint": "b" * 63}, action)
+
+
 def test_attach_prepare_response_capability_and_error_shape() -> None:
     response = {
         "protocol_version": 1,

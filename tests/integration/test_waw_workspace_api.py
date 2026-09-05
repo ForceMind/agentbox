@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any, cast
@@ -15,6 +16,7 @@ from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType, workspace_id
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord, RuntimeHostInstallation
+from agentbox_core.waw_sessions import WorkspaceSessionNotFound
 from agentbox_core.waw_tickets import AttachmentAuthority
 from conftest import (
     FakeClaudeRuntime,
@@ -61,7 +63,12 @@ class FakeStatusCoordinator:
 
 
 class FakeLifecycleCoordinator:
-    def __init__(self, *, overrides: dict[str, dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        overrides: dict[str, dict[str, Any]] | None = None,
+        yield_once: bool = False,
+    ) -> None:
         self.attestation = {
             "runtime_epoch": "7",
             "runtime_host_installation_id": HOST_ID,
@@ -69,13 +76,31 @@ class FakeLifecycleCoordinator:
         }
         self.actions: list[str] = []
         self.overrides = overrides or {}
+        self.yield_once = yield_once
+        self._binding_digests: dict[tuple[str, str], str] = {}
 
     async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
         self.actions.append(action)
+        if self.yield_once:
+            await asyncio.sleep(0)
         if action in self.overrides:
             override = self.overrides[action]
             if "error" in override:
                 raise WAWControlClientError(str(override["error"]), "synthetic Runtime failure")
+        if action == "workspace.project_binding.register":
+            binding_key = (str(request["project_id"]), str(request["binding_revision"]))
+            response = {
+                "status": (
+                    "ALREADY_CURRENT" if binding_key in self._binding_digests else "REGISTERED"
+                ),
+                "project_id": request["project_id"],
+                "binding_revision": request["binding_revision"],
+                "binding_digest": self._binding_digests.setdefault(binding_key, DIGEST),
+                "runtime_host_installation_id": request["runtime_host_installation_id"],
+                "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+            }
+            response.update(self.overrides.get(action, {}))
+            return response
         if action == "workspace.workspace.start":
             response = {
                 "status": "STARTED",
@@ -84,6 +109,8 @@ class FakeLifecycleCoordinator:
                 "project_id": request["project_id"],
                 "agent_type": request["agent_type"],
                 "generation": request["generation"],
+                "runtime_host_installation_id": request["runtime_host_installation_id"],
+                "runtime_host_installation_revision": request["runtime_host_installation_revision"],
             }
             response.update(self.overrides.get(action, {}))
             return response
@@ -95,6 +122,22 @@ class FakeLifecycleCoordinator:
                 "project_id": request["project_id"],
                 "agent_type": request["agent_type"],
                 "generation": request["generation"],
+            }
+            response.update(self.overrides.get(action, {}))
+            return response
+        if action == "workspace.workspace.executable_evidence.v1":
+            response = {
+                "status": "EXECUTABLE_EVIDENCE",
+                "workspace_id": request["workspace_id"],
+                "project_id": request["project_id"],
+                "agent_type": request["agent_type"],
+                "generation": request["generation"],
+                "binding_revision": request["binding_revision"],
+                "binding_digest": request["binding_digest"],
+                "runtime_host_installation_id": request["runtime_host_installation_id"],
+                "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+                "runtime_epoch": request["runtime_epoch"],
+                "executable_fingerprint": FINGERPRINT,
             }
             response.update(self.overrides.get(action, {}))
             return response
@@ -158,6 +201,12 @@ def _seed_workspace(
             executable_fingerprint=FINGERPRINT,
         )
     return workspace.id
+
+
+def _seed_project_without_workspace(services: ControlPlaneServices) -> None:
+    with services.database.transaction() as session:
+        session.add(_project(PROJECT_ID))
+        session.add(_host())
 
 
 def _seed_many(
@@ -491,6 +540,12 @@ async def test_waw_start_rejects_noncurrent_executable_evidence_before_runtime(
 ) -> None:
     _seed_workspace(initialized_services, verified=False)
     _set_executable_evidence_state(initialized_services, WORKSPACE_ID, evidence_state)
+    row = initialized_services.workspaces.get(WORKSPACE_ID)
+    initialized_services.workspaces.transition(
+        WORKSPACE_ID,
+        expected_revision=row.revision,
+        state="RUNNING",
+    )
     coordinator = FakeLifecycleCoordinator()
     app = create_app(
         settings,
@@ -520,6 +575,242 @@ async def test_waw_start_rejects_noncurrent_executable_evidence_before_runtime(
     assert response.json()["error"]["code"] == "WORKSPACE_NOT_READY"
     assert evidence_state not in response.text
     assert coordinator.actions == []
+
+
+@pytest.mark.anyio
+async def test_waw_start_rejects_bound_runtime_host_mismatch_before_runtime_work(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_workspace(initialized_services, verified=False)
+    coordinator = FakeLifecycleCoordinator()
+    coordinator.attestation["runtime_host_installation_id"] = "wri_" + "f" * 32
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        response = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+            json={},
+            headers={
+                **origin_headers,
+                "x-csrf-token": login.json()["data"]["csrf_token"],
+            },
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "RUNTIME_INSTALLATION_MISMATCH"
+    assert coordinator.actions == []
+
+
+@pytest.mark.anyio
+async def test_waw_start_records_typed_runtime_evidence_before_confirming_state(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_workspace(initialized_services, verified=False)
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        response = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+            json={},
+            headers={
+                **origin_headers,
+                "x-csrf-token": login.json()["data"]["csrf_token"],
+            },
+        )
+    assert response.status_code == 200
+    row = initialized_services.workspaces.get(WORKSPACE_ID)
+    assert initialized_services.workspaces.executable_evidence_is_current(row, runtime_epoch="7")
+    assert coordinator.actions == [
+        "workspace.workspace.start",
+        "workspace.workspace.executable_evidence.v1",
+    ]
+
+
+@pytest.mark.anyio
+async def test_waw_first_start_commits_runtime_binding_before_workspace_and_evidence(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_project_without_workspace(initialized_services)
+    coordinator = FakeLifecycleCoordinator()
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        response = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+            json={},
+            headers={
+                **origin_headers,
+                "x-csrf-token": login.json()["data"]["csrf_token"],
+            },
+        )
+    assert response.status_code == 200
+    row = initialized_services.workspaces.get(WORKSPACE_ID)
+    binding = initialized_services.project_bindings.get_head(PROJECT_ID)
+    assert (binding.status, binding.binding_revision, binding.binding_digest) == (
+        "CURRENT",
+        1,
+        DIGEST,
+    )
+    assert (row.binding_revision, row.binding_digest, row.generation, row.state) == (
+        1,
+        DIGEST,
+        1,
+        "RUNNING",
+    )
+    assert initialized_services.workspaces.executable_evidence_is_current(row, runtime_epoch="7")
+    assert coordinator.actions == [
+        "workspace.project_binding.register",
+        "workspace.workspace.start",
+        "workspace.workspace.executable_evidence.v1",
+    ]
+
+
+@pytest.mark.anyio
+async def test_waw_concurrent_first_start_converges_on_one_binding_and_workspace(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_project_without_workspace(initialized_services)
+    coordinator = FakeLifecycleCoordinator(yield_once=True)
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        headers = {**origin_headers, "x-csrf-token": login.json()["data"]["csrf_token"]}
+        first, second = await asyncio.gather(
+            client.post(
+                f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+                json={},
+                headers=headers,
+            ),
+            client.post(
+                f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+                json={},
+                headers=headers,
+            ),
+        )
+    assert (first.status_code, second.status_code) == (200, 200)
+    binding = initialized_services.project_bindings.get_head(PROJECT_ID)
+    row = initialized_services.workspaces.get(WORKSPACE_ID)
+    assert (binding.binding_revision, binding.status) == (1, "CURRENT")
+    assert (row.generation, row.state) == (1, "RUNNING")
+    assert initialized_services.workspaces.executable_evidence_is_current(row, runtime_epoch="7")
+    assert coordinator.actions.count("workspace.project_binding.register") == 2
+
+
+@pytest.mark.anyio
+async def test_waw_first_start_fences_ambiguous_binding_registration(
+    settings: Any,
+    initialized_services: ControlPlaneServices,
+    origin_headers: dict[str, str],
+    codex_runtime: FakeCodexRuntime,
+    claude_runtime: FakeClaudeRuntime,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    _seed_project_without_workspace(initialized_services)
+    coordinator = FakeLifecycleCoordinator(
+        overrides={"workspace.project_binding.register": {"project_id": "prj_" + "f" * 32}}
+    )
+    app = create_app(
+        settings,
+        initialized_services,
+        codex_runtime,
+        claude_runtime,
+        project_runtime,
+        waw_bind_coordinator=cast(WAWRuntimeBindCoordinator, coordinator),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"username": "maintainer", "password": PASSWORD},
+            headers=origin_headers,
+        )
+        response = await client.post(
+            f"/api/v1/projects/{PROJECT_ID}/workspaces/claude/start",
+            json={},
+            headers={
+                **origin_headers,
+                "x-csrf-token": login.json()["data"]["csrf_token"],
+            },
+        )
+    assert response.status_code == 503
+    assert (
+        initialized_services.project_bindings.get(PROJECT_ID, 1).status == "RECONCILIATION_REQUIRED"
+    )
+    with pytest.raises(WorkspaceSessionNotFound):
+        initialized_services.workspaces.get(WORKSPACE_ID)
 
 
 @pytest.mark.anyio

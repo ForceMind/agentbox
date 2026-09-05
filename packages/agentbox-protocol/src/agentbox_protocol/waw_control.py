@@ -279,6 +279,18 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
             "runtime_host_installation_id",
             "runtime_host_installation_revision",
         },
+        "workspace.workspace.executable_evidence.v1": common
+        | {
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+        },
         "workspace.attach.prepare": common
         | {
             "workspace_id",
@@ -373,6 +385,8 @@ def _validate_request(value: dict[str, Any]) -> dict[str, Any]:
                 _decimal_u64(value["resume_cursor"], name="resume_cursor", allow_zero=True)
             if value["previous_runtime_epoch"] is not None:
                 _decimal_u64(value["previous_runtime_epoch"], name="previous_runtime_epoch")
+    elif action == "workspace.workspace.executable_evidence.v1":
+        _decimal_u64(value["runtime_epoch"], name="runtime_epoch")
     return value
 
 
@@ -536,6 +550,7 @@ def _validate_response(
         "workspace.workspace.stop",
         "workspace.workspace.status",
         "workspace.workspace.reconcile",
+        "workspace.workspace.executable_evidence.v1",
         "workspace.attach.prepare",
         "workspace.attach.detach",
     }
@@ -602,6 +617,19 @@ def _validate_response(
             "runtime_epoch",
             "state",
             "reconciliation_state",
+        },
+        "workspace.workspace.executable_evidence.v1": _COMMON_RESPONSE
+        | {
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "binding_revision",
+            "binding_digest",
+            "runtime_host_installation_id",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+            "executable_fingerprint",
         },
         "workspace.attach.prepare": _COMMON_RESPONSE
         | _TUPLE_RESPONSE
@@ -718,6 +746,24 @@ def _validate_response(
             or value["reconciliation_state"] not in _RECONCILIATION_STATES
         ):
             raise WAWControlError("reconciliation state is invalid")
+    elif action == "workspace.workspace.executable_evidence.v1":
+        if status != "EXECUTABLE_EVIDENCE":
+            raise WAWControlError("response status is invalid")
+        _response_identity(value)
+        for name in (
+            "generation",
+            "binding_revision",
+            "runtime_host_installation_revision",
+            "runtime_epoch",
+        ):
+            _decimal_u64(value[name], name=name)
+        _string(value["binding_digest"], name="binding_digest", pattern=_DIGEST)
+        _string(
+            value["runtime_host_installation_id"],
+            name="runtime_host_installation_id",
+            pattern=_HOST_ID,
+        )
+        _string(value["executable_fingerprint"], name="executable_fingerprint", pattern=_DIGEST)
     elif action == "workspace.attach.prepare":
         if status not in {
             "PREPARED",

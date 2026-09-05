@@ -22,6 +22,7 @@ _ALLOWED_LIFECYCLE_REQUESTS = frozenset(
         "workspace.workspace.stop",
         "workspace.workspace.status",
         "workspace.workspace.reconcile",
+        "workspace.workspace.executable_evidence.v1",
         "workspace.attach.prepare",
         "workspace.attach.detach",
     }

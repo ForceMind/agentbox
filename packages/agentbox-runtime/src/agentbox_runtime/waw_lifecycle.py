@@ -22,6 +22,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 from agentbox_core.waw import AgentType
 from agentbox_core.waw_recovery import RecoveryError, ResumeHint
 
+from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupAttestation,
     verify_waw_cgroup_attestation_context,
@@ -62,6 +63,7 @@ _START = "workspace.workspace.start"
 _STOP = "workspace.workspace.stop"
 _STATUS = "workspace.workspace.status"
 _RECONCILE = "workspace.workspace.reconcile"
+_EVIDENCE = "workspace.workspace.executable_evidence.v1"
 _ATTACH_PREPARE = "workspace.attach.prepare"
 _ATTACH_DETACH = "workspace.attach.detach"
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
@@ -187,6 +189,13 @@ class WAWProjectBinding:
 @runtime_checkable
 class WAWProjectBindingConsumer(Protocol):
     async def register_project_binding(self, binding: WAWProjectBinding) -> None: ...
+
+
+@runtime_checkable
+class WAWExecutableEvidenceProvider(Protocol):
+    """Return an exact Runtime-observed executable fingerprint for one generation."""
+
+    async def executable_evidence(self, identity: WAWLifecycleIdentity) -> str: ...
 
 
 class WAWLifecycleRegistry:
@@ -534,6 +543,8 @@ class WAWLifecycleRegistry:
                         lambda value: self._attach_detach(value, runtime_peer), request
                     )
                 )
+            elif action == _EVIDENCE:
+                response = await self._executable_evidence(request)
             elif action in {_START, _STOP, _STATUS, _RECONCILE}:
                 response = await self._lifecycle(request, action)
             else:
@@ -867,6 +878,57 @@ class WAWLifecycleRegistry:
         consumer = cast(object, self._executor)
         if isinstance(consumer, WAWProjectBindingConsumer):
             await consumer.register_project_binding(binding)
+
+    async def _executable_evidence(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Return a typed fingerprint only for an exact currently-started binding."""
+
+        self._require_authority()
+        if request.get("runtime_epoch") != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        identity = WAWLifecycleIdentity(
+            workspace_id=request["workspace_id"],
+            project_id=request["project_id"],
+            agent_type=request["agent_type"],
+            generation=request["generation"],
+            binding_revision=request["binding_revision"],
+            binding_digest=request["binding_digest"],
+            runtime_host_installation_id=request["runtime_host_installation_id"],
+            runtime_host_installation_revision=request["runtime_host_installation_revision"],
+        )
+        self._hydrate_durable_generation_floor(identity.workspace_id)
+        self._check_identity(identity)
+        current = self._workspaces.get(identity.workspace_id)
+        if (
+            current is None
+            or current[0] != identity
+            or current[1].state
+            not in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}
+        ):
+            raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
+        provider = cast(object, self._executor)
+        if not isinstance(provider, WAWExecutableEvidenceProvider):
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        try:
+            fingerprint = await provider.executable_evidence(identity)
+        except RuntimeOperationError as exc:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+        if not isinstance(fingerprint, str) or _DIGEST.fullmatch(fingerprint) is None:
+            raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": "EXECUTABLE_EVIDENCE",
+            "workspace_id": identity.workspace_id,
+            "project_id": identity.project_id,
+            "agent_type": identity.agent_type,
+            "generation": identity.generation,
+            "binding_revision": identity.binding_revision,
+            "binding_digest": identity.binding_digest,
+            "runtime_host_installation_id": identity.runtime_host_installation_id,
+            "runtime_host_installation_revision": identity.runtime_host_installation_revision,
+            "runtime_epoch": self._runtime_epoch,
+            "executable_fingerprint": fingerprint,
+        }
 
     async def _lifecycle(self, request: dict[str, Any], action: str) -> dict[str, Any]:
         self._require_authority()

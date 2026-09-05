@@ -65,6 +65,11 @@ class FakeExecutor:
         self.calls.append("reconcile")
         return WAWLifecycleObservation(state="RUNNING", runtime_epoch=self.runtime_epoch)
 
+    async def executable_evidence(self, identity: WAWLifecycleIdentity) -> str:
+        del identity
+        self.calls.append("evidence")
+        return DIGEST
+
 
 def _listen(path: Path) -> socket.socket:
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -195,7 +200,24 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(
         )
         assert status["runtime_epoch"] == "2"
         assert status["attachment_capacity"] == {"admitted": "0", "pending": "0", "limit": "32"}
-        assert executors[0].calls == ["start", "status"]
+        evidence = await coordinator.request_lifecycle(
+            "workspace.workspace.executable_evidence.v1",
+            _request(
+                "workspace.workspace.executable_evidence.v1",
+                "wreq_" + "5" * 32,
+                **lifecycle_fields,
+                runtime_epoch="2",
+            ),
+        )
+        assert evidence == {
+            "protocol_version": 1,
+            "request_id": "wreq_" + "5" * 32,
+            "status": "EXECUTABLE_EVIDENCE",
+            **lifecycle_fields,
+            "runtime_epoch": "2",
+            "executable_fingerprint": DIGEST,
+        }
+        assert executors[0].calls == ["start", "status", "evidence"]
         assert "terminal" not in status
         assert "ticket" not in status
     finally:

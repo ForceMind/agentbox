@@ -143,6 +143,10 @@ class FakeExecutor:
         self.calls.append(("reconcile", identity))
         return WAWLifecycleObservation(state="RUNNING")
 
+    async def executable_evidence(self, identity: WAWLifecycleIdentity) -> str:
+        self.calls.append(("evidence", identity))
+        return DIGEST
+
 
 class InvalidExecutor(FakeExecutor):
     async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
@@ -859,6 +863,40 @@ async def test_missing_binding_registry_rejects_revision_jump() -> None:
     with pytest.raises(WAWControlDispatchError) as exc_info:
         await runtime.dispatch(jumped)
     assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
+
+
+@pytest.mark.anyio
+async def test_executable_evidence_requires_exact_started_workspace_and_epoch() -> None:
+    runtime = registry(FakeExecutor())
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    request = {
+        **lifecycle_request(
+            "workspace.workspace.executable_evidence.v1",
+            request_id="wreq_" + "d" * 32,
+        ),
+        "runtime_epoch": "1",
+    }
+    response = await runtime.dispatch(request)
+    assert response == {
+        "protocol_version": 1,
+        "request_id": request["request_id"],
+        "status": "EXECUTABLE_EVIDENCE",
+        "workspace_id": WORKSPACE,
+        "project_id": PROJECT,
+        "agent_type": "claude",
+        "generation": "1",
+        "binding_revision": "1",
+        "binding_digest": DIGEST,
+        "runtime_host_installation_id": HOST,
+        "runtime_host_installation_revision": "1",
+        "runtime_epoch": "1",
+        "executable_fingerprint": DIGEST,
+    }
+    with pytest.raises(WAWControlDispatchError) as raised:
+        await runtime.dispatch({**request, "runtime_epoch": "2", "request_id": "wreq_" + "f" * 32})
+    assert raised.value.code == "RUNTIME_INSTALLATION_MISMATCH"
 
 
 class BindingExecutor(FakeExecutor):

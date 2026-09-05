@@ -323,6 +323,33 @@ class WAWSupervisorExecutor:
     async def status(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         return await self._probe(identity)
 
+    async def executable_evidence(self, identity: WAWLifecycleIdentity) -> str:
+        """Return the fixed transport fingerprint for one exact live supervisor."""
+
+        key = self._key(identity)
+
+        def operation() -> str:
+            with self._map_lock:
+                supervisor = self._supervisors.get(key)
+            if supervisor is None:
+                raise RuntimeOperationError(
+                    "WAW_WORKSPACE_NOT_FOUND",
+                    "Exact workspace supervisor is unavailable",
+                    category="conflict",
+                )
+            fingerprint = supervisor.fixed_executable_fingerprint()
+            try:
+                validate_binding_digest(fingerprint)
+            except WAWDomainError as exc:
+                raise RuntimeOperationError(
+                    "WAW_EXECUTABLE_EVIDENCE_INVALID",
+                    "Fixed executable fingerprint is invalid",
+                    category="conflict",
+                ) from exc
+            return fingerprint
+
+        return await self._submit(key, operation)
+
     async def reconcile(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         return await self._probe(identity)
 
