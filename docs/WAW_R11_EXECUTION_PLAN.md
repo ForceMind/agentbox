@@ -127,9 +127,10 @@ are still due.
 Commit `9c12ab3` implements the planned eager Runtime restore, ordered API replay,
 closed inventory finalization, Project/binding drift fences and private
 `bindings-v1` install boundary. The detailed contract is
-[R11 rc6 binding replay](WAW_R11_RC6_BINDING_REPLAY.md). Its exact-head CI and
-real Linux/systemd evidence remain pending; rc6-B is not complete until those
-acceptance requirements are satisfied.
+[R11 rc6 binding replay](WAW_R11_RC6_BINDING_REPLAY.md). Its final CI head
+`854cf87` completed 20/20 checks. Real Linux/systemd evidence and the broader
+rc6 acceptance requirements remain pending; rc6-B is not complete until those
+requirements are satisfied.
 
 ### C. Browser controller and exact Stop
 

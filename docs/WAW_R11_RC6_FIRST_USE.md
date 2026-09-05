@@ -105,10 +105,10 @@ drift 组合证据；rc6-C browser controller 页面接线也尚未完成。
 提交 `9c12ab3` 实现了本文件此前列出的 replay/finalize 规则，包括 Runtime eager
 restore、API ordered replay、inventory commitment、Project/Binding drift fence 和
 `bindings-v1` installer boundary。完整契约和本地验证见
-[R11 rc6 binding replay](WAW_R11_RC6_BINDING_REPLAY.md)。该代码仍待 exact-head CI，
-且不代表 rc6-B 或完整 rc6 已完成。
+[R11 rc6 binding replay](WAW_R11_RC6_BINDING_REPLAY.md)。其 `854cf87` exact head
+已完成 20/20 CI，且不代表 rc6-B 或完整 rc6 已完成。
 
 ## 后续边界
 
-本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步读取 `9c12ab3` 的 exact-head
-结果；它通过后才继续 rc6-C browser controller 页面组合。
+本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步是 rc6-C browser controller
+安全修复与页面组合。

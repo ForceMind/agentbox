@@ -1,7 +1,8 @@
 # R11 rc6 deterministic binding replay
 
-状态：代码检查点 `9c12ab3` 已完成本地验证与独立 Sol 复审，尚待该代码后的
-exact-head CI。本文不表示 rc6、R11 或真实主机资格已经完成。
+状态：代码检查点 `9c12ab3`、CI fixture 修复 `3341c13` 与诊断 follow-up
+`854cf87` 已完成本地验证、独立 Sol 复审和 PR #80 的 20/20 exact-head CI。
+本文不表示 rc6、R11 或真实主机资格已经完成。
 
 ## 目标
 
@@ -81,11 +82,20 @@ command, PID, terminal data or Secret crosses this action.
   pass; it does not constitute real systemd or host evidence.
 - Two independent Sol reviews were performed. The first found two P1 and two P2;
   all were fixed and the second found no remaining P0/P1/P2 in the code scope.
+- PR #80 exact head `854cf87774f3de22bd3a37bf74576dcfc29177ee` completed all
+  20 checks successfully, including native, E2E, all four installer jobs,
+  frontend, security, release candidate, and Backend Python 3.11/3.12/3.13.
+  The initial head exposed only a missing test-fixture
+  `RuntimeControl` method; `3341c13` repaired that typing contract. Two
+  non-terminal Python 3.12 runner attempts were cancelled after abnormal test
+  duration and are not counted as evidence. `854cf87` adds a faulthandler stack
+  diagnostic without changing test assertions; its final Python 3.12 run passed
+  in 4m23s.
 
 ## Remaining boundary
 
-This increment still needs exact-head Linux CI, real UDS/systemd evidence and
-the full rc6 acceptance set. It does not activate a host, validate real uid/gid
-or filesystem crash recovery, or qualify a vendor CLI, CRX, trustd, PTY isolation
-or production support. After this checkpoint is CI-verified, the next rc6 work
-is browser controller page composition.
+This increment still needs real UDS/systemd evidence and the full rc6 acceptance
+set. It does not activate a host, validate real uid/gid or filesystem crash
+recovery, or qualify a vendor CLI, CRX, trustd, PTY isolation or production
+support. The next rc6 work is browser controller safety repair and page
+composition.

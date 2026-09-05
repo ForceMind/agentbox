@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T19:55:49Z"
-verified_by: "codex-r11-rc6-binding-replay-checkpoint"
+verified_at_utc: "2026-09-05T20:42:23Z"
+verified_by: "codex-r11-rc6-binding-replay-ci"
 repository: "ForceMind/agentbox"
 ---
 
@@ -30,8 +30,12 @@ repository: "ForceMind/agentbox"
   fences, and the private installer boundary. Its affected-scope matrix is
   346 passed / 2 Linux-host skips; Black, Ruff, Linux-target mypy and
   `git diff --check` pass. Two independent Sol reviews found two P1/two P2 and
-  then no remaining P0/P1/P2 after repair. This checkpoint has not yet received
-  exact-head CI, so it is not rc6-B completion or host evidence.
+  then no remaining P0/P1/P2 after repair. The final exact head
+  `854cf87774f3de22bd3a37bf74576dcfc29177ee` completed 20/20 CI. A fixture typing
+  repair (`3341c13`) and faulthandler-only CI diagnostic (`854cf87`) preceded
+  that terminal result; two abnormal non-terminal Python 3.12 runner attempts
+  are not counted as evidence. The checkpoint is still not rc6-B completion or
+  host evidence.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.
@@ -726,10 +730,9 @@ PROPOSED architecture status are preserved.
   PID/session validation; Linux native passed. `2381171...` then exposed only a
   Black format failure in the new Python test, repaired by `9d078b4...`; its full
   CI completed 20/20 at `4222242...`.
-- The next rc6 order is to push and read `9c12ab3` exact-head CI. Only after
-  that evidence is terminal may work continue with rc6-C browser controller
-  page composition. Normal merge/read-back follows the complete rc6 acceptance
-  set; rc7–rc9 and the R12 real-host boundary remain unchanged.
+- The next rc6 order is browser controller safety repair and page composition.
+  Normal merge/read-back follows the complete rc6 acceptance set; rc7–rc9 and
+  the R12 real-host boundary remain unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
   Backend Python quality jobs failed on the same preserved non-fixed server
   restart contract. The reviewed follow-up restores restart only after a clean,
