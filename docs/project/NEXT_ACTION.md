@@ -19,9 +19,12 @@ blocker is resolved. Do not request the same software approval again.
   `3ba85cb...` retains verified descriptors, and `bbdd67c...` completed a fresh
   20/20 exact-head matrix. A later native status-71 READY timing failure is fixed
   by `af4d43e...` and passed native; `9d078b4...` repairs its test-format gate and
-  `4222242...` completed the fresh 20/20 CI. Its contract is
-  `docs/WAW_R11_RC6_FIRST_USE.md`; independent rc6 review, deterministic
-  startup/restart replay and browser page composition remain due.
+  `4222242...` completed the fresh 20/20 CI. Commit `9c12ab3...` now implements
+  deterministic startup/restart replay, inventory finalization and drift fences;
+  its 346-pass local matrix and independent Sol follow-up review are recorded in
+  `docs/WAW_R11_RC6_BINDING_REPLAY.md`. Push and read its exact-head CI before
+  rc6-C browser page composition. The full rc6 independent review and acceptance
+  set remain due.
 - Historical paragraphs below that say “current uncommitted” are prior rc6
   checkpoints; the top active-implementation status is authoritative.
 - rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
@@ -92,10 +95,9 @@ blocker is resolved. Do not request the same software approval again.
 - Bind/control shutdown evidence is also complete locally: pending exchange,
   detached task, retained peer or uncertain FD close prevents clean. Commit and
   exact-head verify it, then continue process lock and stream-owner composition.
-- Implement deterministic API/Runtime binding replay and exact inventory finalize
-  before continuing the remaining
-  production controller composition. Normal merge and exact read-back follow the
-  complete rc6 acceptance set. After
+- Push `9c12ab3...`, read its exact-head CI and retain any failure as a bounded
+  repair task before continuing the remaining browser controller composition.
+  Normal merge and exact read-back follow the complete rc6 acceptance set. After
   rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
   and rc9 full UI localization/visual E2E.
 - First integration head `e210d749...` completed 17/20 checks. Three Backend

@@ -100,27 +100,15 @@ Runtime 只会针对当前已启动的精确 supervisor 返回该值。
 rc6-B 还需 startup/restart 下的 deterministic binding replay 与 migration/host
 drift 组合证据；rc6-C browser controller 页面接线也尚未完成。
 
-## 下一项：确定性 replay
+## Deterministic replay 检查点
 
-当前 Runtime 只会在收到单条 `project_binding.register` 时从 durable store 懒恢复；
-它不能代表启动完成。下一 rc6-B work unit 必须在任何 lifecycle/stream readiness
-发布前完成以下闭合流程：
-
-1. Runtime 按 `project_id` 顺序读取 bounded durable inventory，验证每条 host、
-   path、digest 和 executor registration；任何损坏或 drift 阻止 application gate。
-2. API 在 Runtime epoch classification 后，从 Control Plane 的 current/open binding
-   生成有序 replay plan；同一 Project 有 open attempt 时优先重放该 attempt，不能
-   猜测 predecessor 或创建 workspace generation。
-3. API 与 Runtime 通过 closed final inventory confirmation 确认 exact set 相等后，
-   才允许 Start、ticket、Attach、stream 与 INPUT/RESIZE。response loss 只能重放
-   同一 ledger row。
-4. 旧 workspace 必须先证明引用 `CURRENT` binding 才能开始新 generation；没有
-   ledger 证明的迁移遗留 row 直接进入 reconciliation。
-5. 安装布局与 systemd sandbox 必须把 `bindings-v1` 纳入受支持的目录/写入边界，
-   并由 Linux integration 与 artifact rehearsal 验证；当前 Mac/CI 不构成真实主机
-   资格。
+提交 `9c12ab3` 实现了本文件此前列出的 replay/finalize 规则，包括 Runtime eager
+restore、API ordered replay、inventory commitment、Project/Binding drift fence 和
+`bindings-v1` installer boundary。完整契约和本地验证见
+[R11 rc6 binding replay](WAW_R11_RC6_BINDING_REPLAY.md)。该代码仍待 exact-head CI，
+且不代表 rc6-B 或完整 rc6 已完成。
 
 ## 后续边界
 
-本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步实现并验证上述启动时
-deterministic binding replay；它完成前不得把 rc6-B 或完整 rc6 标为完成。
+本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步读取 `9c12ab3` 的 exact-head
+结果；它通过后才继续 rc6-C browser controller 页面组合。

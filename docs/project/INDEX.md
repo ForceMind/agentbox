@@ -30,6 +30,9 @@
 - [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md): typed Project binding,
   generation-one creation and Runtime executable-evidence checkpoint, with its
   verification and remaining boundaries.
+- [R11 rc6 binding replay](../WAW_R11_RC6_BINDING_REPLAY.md): exact API/Runtime
+  replay, inventory-finalization gate, drift fences, installer boundary and
+  explicit Linux/host evidence limits.
 
 - [Authentication timing diagnostic](../AUTH_TIMING_DIAGNOSTIC.md): isolated numeric observations, failure/privacy rules, regression evidence and unknown historical latency cause.
 

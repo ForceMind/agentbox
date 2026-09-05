@@ -122,6 +122,15 @@ and passed Linux native; format-only follow-up `9d078b4` completed in the
 deterministic startup/restart replay and the remaining rc6 acceptance evidence
 are still due.
 
+#### rc6-B replay checkpoint
+
+Commit `9c12ab3` implements the planned eager Runtime restore, ordered API replay,
+closed inventory finalization, Project/binding drift fences and private
+`bindings-v1` install boundary. The detailed contract is
+[R11 rc6 binding replay](WAW_R11_RC6_BINDING_REPLAY.md). Its exact-head CI and
+real Linux/systemd evidence remain pending; rc6-B is not complete until those
+acceptance requirements are satisfied.
+
 ### C. Browser controller and exact Stop
 
 The existing browser crypto, wire, trust and bounded-terminal modules become one
