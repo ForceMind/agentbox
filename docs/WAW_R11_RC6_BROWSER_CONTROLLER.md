@@ -85,5 +85,6 @@ reentrant fence callbacks, bounded multi-turn rendering and a cancelled late
 render task. The renderer suite has 11 cases; full Web validation is 958 passed.
 The existing cross-frame UTF-8 reservation test retains all assertions and uses
 a 10-second per-test deadline to tolerate observed Mac parallel-worker pressure;
-isolated execution remains below five seconds. This checkpoint awaits its own
-exact-head CI and does not attach the renderer to `WorkspacePage` yet.
+isolated execution remains below five seconds. Final exact head
+`48850bab3a7822d22114dd46b14ba4362f004f32` completed PR #80's 20/20 CI. This
+checkpoint does not attach the renderer to `WorkspacePage` yet.

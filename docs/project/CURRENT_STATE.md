@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T21:42:30Z"
-verified_by: "codex-r11-rc6-browser-controller-ci"
+verified_at_utc: "2026-09-05T22:26:11Z"
+verified_by: "codex-r11-rc6-browser-renderer-ci"
 repository: "ForceMind/agentbox"
 ---
 
@@ -43,6 +43,11 @@ repository: "ForceMind/agentbox"
   dedicated tests, an independent Sol PASS with no P0/P1/P2 and 20/20
   exact-head CI. It does not yet create a production DOM renderer or wire a
   terminal into `WorkspacePage`.
+- Commit `f4d868e` adds the bounded `DocumentFragment`/`textContent` terminal
+  renderer with clear fallback, cancellation and reentrancy fences. Its final
+  documentation head `48850bab3a7822d22114dd46b14ba4362f004f32` completed
+  20/20 CI. Renderer code still has no production page owner, ticket flow or
+  browser control UI.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.
@@ -737,10 +742,9 @@ PROPOSED architecture status are preserved.
   PID/session validation; Linux native passed. `2381171...` then exposed only a
   Black format failure in the new Python test, repaired by `9d078b4...`; its full
   CI completed 20/20 at `4222242...`.
-- The next rc6 order is the bounded DOM renderer, attachment/page lifecycle hook
-  and bilingual `WorkspacePage` composition. Normal merge/read-back follows the
-  complete rc6 acceptance set; rc7–rc9 and the R12 real-host boundary remain
-  unchanged.
+- The next rc6 order is the attachment/page lifecycle hook and bilingual
+  `WorkspacePage` composition. Normal merge/read-back follows the complete rc6
+  acceptance set; rc7–rc9 and the R12 real-host boundary remain unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
   Backend Python quality jobs failed on the same preserved non-fixed server
   restart contract. The reviewed follow-up restores restart only after a clean,

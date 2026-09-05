@@ -159,10 +159,10 @@ terminal.
 #### rc6-C bounded renderer checkpoint
 
 Commit `f4d868e` supplies the explicit bounded DOM renderer for the controller,
-including cleanup fallback and reentrancy tests. It has local Web validation but
-awaits exact-head CI. The next work unit owns page context, ticket/trust/control
-ports and the bilingual UI; it must not replace the renderer with scheduler's
-test no-op.
+including cleanup fallback and reentrancy tests. Its final documentation head
+`48850ba` completed 20/20 CI. The next work unit owns page context,
+ticket/trust/control ports and the bilingual UI; it must not replace the renderer
+with scheduler's test no-op.
 
 ### rc6 exit evidence
 
