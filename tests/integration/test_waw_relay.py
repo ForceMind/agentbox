@@ -760,6 +760,13 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             binding_digest=c.binding_digest,
             executable_fingerprint="d" * 64,
         )
+        workspace = services.workspaces.record_executable_evidence(
+            workspace.id,
+            expected_revision=workspace.revision,
+            generation=workspace.generation,
+            runtime_epoch="2",
+            executable_fingerprint="d" * 64,
+        )
         with services.database.transaction() as session:
             stored = session.get(AgentWorkspaceSessionRecord, workspace.id)
             assert stored is not None
