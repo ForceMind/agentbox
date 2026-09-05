@@ -37,9 +37,18 @@ blocker is resolved. Do not request the same software approval again.
   remaining P0/P1/P2. Twenty-eight real-UDS cases are locally unverified because
   this environment returned `PermissionError` during socket setup. Ruff, Black,
   Linux-target mypy (256 sources), doc links (240) and `git diff --check` pass.
+- The current uncommitted bounded-redraw slice has a neutral 24-row/60 KiB
+  contract with row 25 and byte 61,441 as discarded sentinels. Held-FD tmux
+  capture proves socket/pane/retained-pidfd identity before and after one shared
+  one-second deadline; supervisor capture/cursor/baseline publication is atomic,
+  and production capture callbacks are removed from registry/service/bootstrap.
+  The unified focused matrix completed 341 tests with 9 Linux-only skips and 2
+  local UDS cases deselected; independent Sol/xhigh review reports PASS with no
+  P0/P1/P2. The new Linux native case requires exact-head CI; local UDS setup
+  remains unverified after `PermissionError`.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
-  then continue bounded redraw and the remaining production controller composition.
-  Normal merge and exact read-back follow the complete rc6 acceptance set. After
+  then continue the remaining production controller composition. Normal merge and
+  exact read-back follow the complete rc6 acceptance set. After
   rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
   and rc9 full UI localization/visual E2E.
 - First integration head `e210d749...` completed 17/20 checks. Three Backend
@@ -47,7 +56,7 @@ blocker is resolved. Do not request the same software approval again.
   no longer restart without consuming a second epoch. The local reviewed fix
   restores only that compatible restart; fixed/control/poisoned/incomplete shutdown
   stays terminal. Follow-up `c534fe437...` completed the fresh exact-head 20/20
-  matrix. Continue with the bounded redraw slice; do not merge rc6 until the full
+  matrix. Continue the remaining rc6 controller composition; do not merge rc6 until the full
   controller composition and rc6 acceptance set are complete.
 - Locale remains fixed per document from only `navigator.languages[0]`: primary
   `zh` → `zh-CN`; all other, missing or malformed values → English. Technical

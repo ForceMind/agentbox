@@ -148,7 +148,7 @@ manifest, Runtime HOME or a Secret.
 
 Runtime captures from the exact marked tmux pane through the held tmux executable
 and derived socket/session identity. The capture returns at most 24 rows and
-60 KiB plus a one-bit `has_more` result obtained from row 25 and byte 60,001
+60 KiB plus a one-bit `has_more` result obtained from row 25 and byte 61,441
 sentinels. Sentinels are discarded and never enter output rings or Audit. The
 operation uses one monotonic second and validates socket identity before and after.
 
@@ -156,6 +156,18 @@ Fresh redraw selection, output cursor allocation and the live-output baseline ar
 published under one supervisor owner. Timeout, wrong pane, socket replacement,
 row overflow and byte overflow return explicit failure or `has_more`; no PATH
 lookup or unbounded `capture-pane` is allowed.
+
+The current uncommitted rc6 implementation has a neutral 24-row/60 KiB redraw
+contract, where 61,441 is the one-byte look-ahead limit. Fixed transport captures
+only through held tmux descriptors and proves socket, pane and retained-pidfd
+identity both before and after capture under one shared one-second deadline. The
+supervisor atomically captures, assigns the redraw cursors and returns the
+post-selection baseline; it no longer lets encrypted-stream code compose those
+operations. Production capture callbacks have been removed from the registry,
+attachment service and bootstrap path. The unified focused matrix completed 341
+tests with 9 Linux-only skips and 2 local UDS cases deselected. Independent
+Sol/xhigh review reports PASS with no P0/P1/P2. The newly added real Linux native
+capture case awaits exact-head CI; local UDS setup is blocked by `PermissionError`.
 
 ## Browser controller
 

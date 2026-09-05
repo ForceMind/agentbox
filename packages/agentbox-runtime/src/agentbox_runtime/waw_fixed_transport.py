@@ -28,7 +28,7 @@ import threading
 import time
 import weakref
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
@@ -73,6 +73,15 @@ from agentbox_runtime.waw_process_protocol import (
     encode_wbr_resize,
 )
 from agentbox_runtime.waw_pty import PtyGeometry, validate_input
+from agentbox_runtime.waw_redraw import (
+    BYTE_READ_LIMIT,
+    BoundedRedraw,
+    WAWRedrawError,
+    trim_redraw_sentinels,
+)
+from agentbox_runtime.waw_redraw import (
+    DEADLINE as REDRAW_DEADLINE_SECONDS,
+)
 from agentbox_runtime.waw_supervisor import (
     RuntimeAttachmentCleanupEvidence,
     RuntimeAttachmentLease,
@@ -724,11 +733,25 @@ class _NativeProcessResources:
     cgroup: CgroupControlHandle
     tmux_socket_identity: tuple[int, int]
     exit_observed: bool = False
+    operation_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
 @dataclass(frozen=True, repr=False)
 class _NativeProcessGroup:
     value: int
+
+
+class _WAWRedrawChildUnreaped(RuntimeOperationError):
+    """Transfer an exact unreaped child pidfd to the native port owner."""
+
+    def __init__(self, pid: int, pidfd: int | None) -> None:
+        super().__init__(
+            "WAW_REDRAW_CAPTURE_FAILED",
+            "Fixed redraw child cleanup is incomplete",
+            category="unavailable",
+        )
+        self.pid = pid
+        self.pidfd = pidfd
 
 
 class _NativeAttachment:
@@ -888,6 +911,10 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
         self._execution_authority: WAWVerifiedExecutionAuthority | None = None
         self.production_qualified = False
         self._closed = False
+        self._redraw_lock = threading.RLock()
+        self._redraw_children: list[tuple[int, int]] = []
+        self._redraw_cleanup_failed = False
+        self._redraw_poisoned = False
 
     @classmethod
     def from_verified_execution_authority(
@@ -1375,6 +1402,208 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
         self._attachments[id(request.binding)] = attachment
         return attachment
 
+    def capture_redraw(self, binding: FixedProcessBinding, deadline: float) -> BoundedRedraw:
+        """Capture only the exact fixed tmux pane through held descriptors."""
+
+        self._require_open()
+        self._ensure_redraw_state()
+        with self._redraw_lock:
+            if self._redraw_poisoned:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_UNAVAILABLE",
+                    "Fixed redraw capture is unavailable",
+                    category="unavailable",
+                )
+        resources = self._resources(binding)
+        _redraw_remaining(deadline)
+        with resources.operation_lock:
+            if self._resources(binding) is not resources:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                    "Runtime redraw binding changed",
+                    category="conflict",
+                )
+            self._verify_redraw_identity(binding.identity, resources, deadline)
+            raw = self._run_redraw_tmux(
+                binding.identity,
+                (
+                    "capture-pane",
+                    "-p",
+                    "-t",
+                    _fixed_tmux_pane_target(binding.identity),
+                    "-S",
+                    "0",
+                    "-E",
+                    "24",
+                ),
+                deadline,
+                BYTE_READ_LIMIT,
+            )
+            self._verify_redraw_identity(binding.identity, resources, deadline)
+            try:
+                return trim_redraw_sentinels(raw)
+            except WAWRedrawError as exc:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_LIMIT_INVALID",
+                    "Fixed redraw result exceeded its sentinel bound",
+                    category="broken",
+                ) from exc
+
+    def _verify_redraw_identity(
+        self,
+        identity: FixedProcessIdentity,
+        resources: _NativeProcessResources,
+        deadline: float,
+    ) -> None:
+        _redraw_remaining(deadline)
+        try:
+            socket_identity = _verify_fixed_tmux_socket(
+                identity, self._helpers.tmux_socket_directory
+            )
+        except RuntimeOperationError as exc:
+            raise RuntimeOperationError(
+                "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                "Fixed redraw socket identity is unconfirmed",
+                category="conflict",
+            ) from exc
+        if socket_identity != resources.tmux_socket_identity or _pidfd_exit_observed(
+            resources.pidfd, 0.0
+        ):
+            raise RuntimeOperationError(
+                "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                "Fixed redraw process identity is unavailable",
+                category="conflict",
+            )
+        format_string = "\t".join(
+            (
+                "#{session_name}",
+                "#{session_id}",
+                "#{session_windows}",
+                "#{window_index}",
+                "#{window_id}",
+                "#{window_panes}",
+                "#{pane_index}",
+                "#{pane_id}",
+                "#{pane_pid}",
+                "#{pane_dead}",
+            )
+        )
+        try:
+            observed = self._run_redraw_tmux(
+                identity,
+                (
+                    "display-message",
+                    "-p",
+                    "-t",
+                    _fixed_tmux_pane_target(identity),
+                    "-F",
+                    format_string,
+                ),
+                deadline,
+                2049,
+            )
+        except RuntimeOperationError as exc:
+            if exc.code in {"WAW_REDRAW_TIMEOUT", "WAW_REDRAW_UNAVAILABLE"}:
+                raise
+            raise RuntimeOperationError(
+                "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                "Fixed redraw pane identity is unconfirmed",
+                category="conflict",
+            ) from exc
+        expected = (
+            "\t".join(
+                (
+                    _fixed_tmux_session(identity),
+                    "$0",
+                    "1",
+                    "0",
+                    "@0",
+                    "1",
+                    "0",
+                    "%0",
+                    str(resources.pid),
+                    "0",
+                )
+            ).encode("ascii")
+            + b"\n"
+        )
+        if observed != expected or _pidfd_exit_observed(resources.pidfd, 0.0):
+            raise RuntimeOperationError(
+                "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                "Fixed redraw pane identity is unconfirmed",
+                category="conflict",
+            )
+
+    def _run_redraw_tmux(
+        self,
+        identity: FixedProcessIdentity,
+        operation: tuple[str, ...],
+        deadline: float,
+        read_limit: int,
+    ) -> bytes:
+        arguments = (
+            "tmux",
+            "-S",
+            f"/proc/self/fd/4/{identity.workspace_hash[:32]}.sock",
+            "-f",
+            "/proc/self/fd/5",
+            *operation,
+        )
+        try:
+            result = _run_fixed_tmux_client(
+                self._helpers.tmux_executable,
+                self._helpers.tmux_socket_directory,
+                self._helpers.tmux_config,
+                arguments,
+                deadline,
+                read_limit,
+            )
+            with self._redraw_lock:
+                if self._redraw_poisoned:
+                    raise RuntimeOperationError(
+                        "WAW_REDRAW_UNAVAILABLE",
+                        "Fixed redraw capture is unavailable",
+                        category="unavailable",
+                    )
+            return result
+        except _WAWRedrawChildUnreaped as exc:
+            self._ensure_redraw_state()
+            with self._redraw_lock:
+                self._redraw_poisoned = True
+                if exc.pidfd is None:
+                    self._redraw_cleanup_failed = True
+                else:
+                    self._redraw_children.append((exc.pid, exc.pidfd))
+            raise RuntimeOperationError(
+                "WAW_REDRAW_CAPTURE_FAILED",
+                "Fixed redraw child cleanup is incomplete",
+                category="unavailable",
+            ) from exc
+
+    def _ensure_redraw_state(self) -> None:
+        if not hasattr(self, "_redraw_lock"):
+            self._redraw_lock = threading.RLock()
+            self._redraw_children = []
+            self._redraw_cleanup_failed = False
+            self._redraw_poisoned = False
+
+    def _cleanup_redraw_children(self, deadline: float) -> bool:
+        self._ensure_redraw_state()
+        with self._redraw_lock:
+            retained: list[tuple[int, int]] = []
+            for pid, pidfd in self._redraw_children:
+                try:
+                    reaped = _kill_and_reap_redraw_child(pid, pidfd, deadline)
+                except _WAWRedrawChildUnreaped as exc:
+                    self._redraw_cleanup_failed |= exc.pidfd is None
+                    if exc.pidfd is not None:
+                        retained.append((exc.pid, exc.pidfd))
+                    continue
+                if not reaped:
+                    retained.append((pid, pidfd))
+            self._redraw_children = retained
+            return not retained and not self._redraw_cleanup_failed
+
     def probe(self, binding: FixedProcessBinding) -> RuntimeProbeEvidence:
         resources = self._resources(binding)
         exited = _observe_resources_exit(resources, 0.0)
@@ -1389,6 +1618,15 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
 
     def stop(self, binding: FixedProcessBinding) -> RuntimeStopEvidence:
         resources = self._resources(binding)
+        with resources.operation_lock:
+            return self._stop_locked(binding, resources)
+
+    def _stop_locked(
+        self, binding: FixedProcessBinding, resources: _NativeProcessResources
+    ) -> RuntimeStopEvidence:
+        redraw_clean = self._cleanup_redraw_children(
+            time.monotonic() + min(self._stop_timeout, REDRAW_DEADLINE_SECONDS)
+        )
         attachment = self._attachments.get(id(binding))
         if attachment is not None:
             cleanup = attachment.close()
@@ -1417,7 +1655,7 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
                 "Native cgroup thaw read-back is invalid",
                 category="conflict",
             )
-        confirmed = exited and group_empty and populated == 0
+        confirmed = exited and group_empty and populated == 0 and redraw_clean
         tmux_gone = (
             _remove_fixed_tmux_socket(
                 binding.identity,
@@ -1444,6 +1682,14 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
             raise RuntimeOperationError(
                 "RECONCILIATION_REQUIRED",
                 "Native process bindings remain live",
+                category="conflict",
+            )
+        if not self._cleanup_redraw_children(
+            time.monotonic() + min(self._stop_timeout, REDRAW_DEADLINE_SECONDS)
+        ):
+            raise RuntimeOperationError(
+                "RECONCILIATION_REQUIRED",
+                "Fixed redraw child cleanup remains incomplete",
                 category="conflict",
             )
         self._closed = True
@@ -2264,6 +2510,195 @@ def _verify_fd_digest(descriptor: int, expected: str, *, max_bytes: int = 64 * 1
         )
 
 
+def _fixed_tmux_session(identity: FixedProcessIdentity) -> str:
+    return f"agentbox-waw-{identity.agent_type.value}-{identity.workspace_hash[:32]}"
+
+
+def _fixed_tmux_pane_target(identity: FixedProcessIdentity) -> str:
+    return f"={_fixed_tmux_session(identity)}:0.0"
+
+
+def _redraw_remaining(deadline: float) -> float:
+    now = time.monotonic()
+    if (
+        type(deadline) not in (int, float)
+        or isinstance(deadline, bool)
+        or not math.isfinite(deadline)
+        or deadline <= now
+        or deadline - now > REDRAW_DEADLINE_SECONDS
+    ):
+        raise RuntimeOperationError(
+            "WAW_REDRAW_TIMEOUT",
+            "Fixed redraw deadline is invalid or expired",
+            category="unavailable",
+        )
+    return float(deadline - now)
+
+
+def _run_fixed_tmux_client(
+    executable: int,
+    socket_directory: int,
+    config: int,
+    arguments: tuple[str, ...],
+    deadline: float,
+    read_limit: int,
+) -> bytes:
+    """Run one held-FD tmux client and retain at most one sentinel byte."""
+
+    if type(read_limit) is not int or not 1 <= read_limit <= BYTE_READ_LIMIT:
+        raise ValueError("fixed tmux read limit is invalid")
+    _redraw_remaining(deadline)
+    read_fd = write_fd = devnull = -1
+    pid: int | None = None
+    pidfd: int | None = None
+    output = bytearray()
+    try:
+        read_fd, write_fd = os.pipe()
+        os.set_inheritable(read_fd, False)
+        os.set_inheritable(write_fd, False)
+        os.set_blocking(read_fd, False)
+        devnull = os.open("/dev/null", os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
+        try:
+            pid = _spawn_fixed(
+                executable,
+                arguments,
+                {
+                    "HOME": "/nonexistent",
+                    "PATH": "/usr/bin",
+                    "LANG": "C.UTF-8",
+                    "LC_CTYPE": "C.UTF-8",
+                    "TERM": "xterm-256color",
+                },
+                (
+                    (devnull, 0),
+                    (write_fd, 1),
+                    (devnull, 2),
+                    (socket_directory, 4),
+                    (config, 5),
+                ),
+            )
+            try:
+                pidfd = os.pidfd_open(pid, 0)
+            except BaseException:
+                _terminate_without_pidfd(pid)
+                pid = None
+                raise
+        finally:
+            descriptor, write_fd = write_fd, -1
+            _close_fd(descriptor)
+
+        while len(output) < read_limit:
+            remaining = _redraw_remaining(deadline)
+            poller = select.poll()
+            poller.register(read_fd, select.POLLIN | select.POLLHUP | select.POLLERR)
+            if not poller.poll(max(1, math.ceil(remaining * 1000))):
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_TIMEOUT",
+                    "Fixed redraw read deadline expired",
+                    category="unavailable",
+                )
+            try:
+                chunk = os.read(read_fd, min(8192, read_limit - len(output)))
+            except BlockingIOError:
+                continue
+            if not chunk:
+                break
+            output.extend(chunk)
+        if len(output) == read_limit:
+            assert pid is not None and pidfd is not None
+            child_pidfd, pidfd = pidfd, None
+            if not _kill_and_reap_redraw_child(pid, child_pidfd, deadline):
+                raise _WAWRedrawChildUnreaped(pid, child_pidfd)
+        else:
+            assert pidfd is not None
+            status = _wait_spawned_child(pidfd, _redraw_remaining(deadline))
+            if status is None:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_TIMEOUT",
+                    "Fixed redraw child deadline expired",
+                    category="unavailable",
+                )
+            child_pidfd, pidfd = pidfd, None
+            try:
+                _close_fd(child_pidfd)
+            except OSError:
+                raise _WAWRedrawChildUnreaped(pid, None) from None
+            if status != 0:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_CAPTURE_FAILED",
+                    "Fixed redraw child failed",
+                    category="unavailable",
+                )
+        return bytes(output)
+    except RuntimeOperationError as exc:
+        if exc.code.startswith("WAW_REDRAW_"):
+            raise
+        code = (
+            "WAW_REDRAW_UNAVAILABLE"
+            if exc.code == "RUNTIME_UNAVAILABLE"
+            else "WAW_REDRAW_CAPTURE_FAILED"
+        )
+        raise RuntimeOperationError(
+            code,
+            "Fixed redraw child operation failed",
+            category="unavailable",
+        ) from exc
+    except Exception as exc:
+        failure = RuntimeOperationError(
+            "WAW_REDRAW_CAPTURE_FAILED",
+            "Fixed redraw child operation failed",
+            category="unavailable",
+        )
+        raise failure from exc
+    finally:
+        cleanup_error: BaseException | None = None
+        if pid is not None and pidfd is not None:
+            child_pidfd, pidfd = pidfd, None
+            try:
+                if not _kill_and_reap_redraw_child(pid, child_pidfd, deadline):
+                    raise _WAWRedrawChildUnreaped(pid, child_pidfd)
+            except BaseException as exc:
+                cleanup_error = exc
+        for descriptor in (read_fd, write_fd, devnull):
+            if descriptor >= 0:
+                try:
+                    _close_fd(descriptor)
+                except BaseException as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+        if isinstance(cleanup_error, _WAWRedrawChildUnreaped):
+            raise cleanup_error
+        if cleanup_error is not None:
+            raise RuntimeOperationError(
+                "WAW_REDRAW_CAPTURE_FAILED",
+                "Fixed redraw child cleanup failed",
+                category="unavailable",
+            ) from cleanup_error
+
+
+def _kill_and_reap_redraw_child(pid: int, pidfd: int, deadline: float) -> bool:
+    """Kill/reap one exact tmux client without closing an unreaped pidfd."""
+
+    try:
+        _signal_pidfd(pidfd, signal.SIGKILL)
+        with _suppress_process_lookup():
+            os.killpg(pid, signal.SIGKILL)
+    except Exception:
+        pass
+    remaining = max(0.0, deadline - time.monotonic())
+    try:
+        status = _wait_spawned_child(pidfd, remaining)
+    except Exception:
+        return False
+    if status is None:
+        return False
+    try:
+        _close_fd(pidfd)
+    except OSError:
+        raise _WAWRedrawChildUnreaped(pid, None) from None
+    return True
+
+
 def _spawn_fixed(
     executable: int,
     argv: tuple[str, ...],
@@ -2832,6 +3267,30 @@ class WAWFixedTransport:
             )
         sink(payload)
         return len(payload)
+
+    def capture_redraw(self, deadline: float) -> BoundedRedraw:
+        if self._closed:
+            raise RuntimeOperationError(
+                "WAW_REDRAW_UNAVAILABLE",
+                "Fixed redraw capture is unavailable",
+                category="unavailable",
+            )
+        binding = self._inspector.binding
+        capture = getattr(self._port, "capture_redraw", None)
+        if binding is None or not callable(capture):
+            raise RuntimeOperationError(
+                "WAW_REDRAW_UNAVAILABLE",
+                "Fixed redraw capture is unavailable",
+                category="unavailable",
+            )
+        result = capture(binding, deadline)
+        if type(result) is not BoundedRedraw:
+            raise RuntimeOperationError(
+                "WAW_REDRAW_LIMIT_INVALID",
+                "Fixed redraw capture returned invalid evidence",
+                category="broken",
+            )
+        return result
 
     def close_attachment(self, lease: RuntimeAttachmentLease) -> RuntimeAttachmentCleanupEvidence:
         if self._last_cleanup is not None and self._last_cleanup[0] is lease:

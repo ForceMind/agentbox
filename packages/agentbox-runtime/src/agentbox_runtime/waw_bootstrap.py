@@ -16,8 +16,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentbox_core.waw_tickets import AttachmentTuple
-
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
@@ -25,7 +23,6 @@ from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationSt
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_encrypted_server import WAWEncryptedServer
 from agentbox_runtime.waw_encrypted_stream import (
-    BoundedRedraw,
     RuntimePeer,
     WAWEncryptedAttachmentService,
     WAWEncryptedRegistry,
@@ -625,18 +622,17 @@ def build_waw_encrypted_servers(
     runtime_epoch: str,
     static_key: Callable[[], bytes],
     peer_authority: WAWPeerAuthority,
-    capture: Callable[[AttachmentTuple], BoundedRedraw],
     expected_peer_uid: int,
     expected_peer_gid: int,
     clock: Callable[[], float],
 ) -> tuple[WAWControlServer, WAWEncryptedServer, WAWEncryptedRegistry]:
     """Non-activating composition of qualified fixed Runtime endpoints.
 
-    No key file is read. Missing capture, process peer/unit, pidfd, named socket
+    No key file is read. Missing fixed redraw, process peer/unit, pidfd, named socket
     or key custody evidence cannot be supplied by this helper; the deployment
     caller must provide qualified ports. Test keys/ports are software evidence.
     """
-    if not callable(capture) or not callable(static_key):
+    if not callable(static_key):
         raise ValueError("trusted encrypted Runtime providers are required")
     if (
         type(peer_authority) is not WAWPeerAuthority
@@ -685,7 +681,6 @@ def build_waw_encrypted_servers(
         streams,
         peer=borrow_runtime_peer,
         supervisor=executor.encrypted_supervisor,
-        capture=capture,
         current=executor.encrypted_binding_current,
     )
     control_server = build_waw_control_server(

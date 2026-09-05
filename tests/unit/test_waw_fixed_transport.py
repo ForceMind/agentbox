@@ -9,6 +9,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -42,6 +43,7 @@ from agentbox_runtime.waw_process_inspector import (
 )
 from agentbox_runtime.waw_process_protocol import WBRMessage, WBRMessageType, encode_wbr_message
 from agentbox_runtime.waw_pty import PtyGeometry
+from agentbox_runtime.waw_redraw import BoundedRedraw
 from agentbox_runtime.waw_supervisor import (
     RuntimeAttachmentCleanupEvidence,
     RuntimeAttachmentLease,
@@ -171,6 +173,8 @@ class FakeNativePort:
         self.attachments: list[FakeAttachment] = []
         self.stop_calls = 0
         self.stop_members = 0
+        self.redraw = BoundedRedraw(b"", False)
+        self.redraw_calls: list[tuple[FixedProcessBinding, float]] = []
 
     def start(self, request: FixedLaunchRequest) -> FixedStartProof:
         self.starts.append(request)
@@ -200,6 +204,10 @@ class FakeNativePort:
             item.managed_marker,
             RuntimeProbeState.RUNNING,
         )
+
+    def capture_redraw(self, binding: FixedProcessBinding, deadline: float) -> BoundedRedraw:
+        self.redraw_calls.append((binding, deadline))
+        return self.redraw
 
     def stop(self, binding: FixedProcessBinding) -> RuntimeStopEvidence:
         self.stop_calls += 1
@@ -665,6 +673,240 @@ def test_process_group_empty_rejects_evidence_after_deadline(
 ) -> None:
     monkeypatch.setattr(fixed_subject, "_process_group_exists", lambda _group: True)
     assert not fixed_subject._wait_process_group_empty(42, 0.0)
+
+
+def _native_redraw_port() -> tuple[
+    NativeHelperProcessPort,
+    FixedProcessBinding,
+    Any,
+]:
+    identity = fixed_identity()
+    resources = fixed_subject._NativeProcessResources(
+        321,
+        321,
+        91,
+        -1,
+        -1,
+        -1,
+        cast(Any, object()),
+        cast(Any, object()),
+        cast(Any, object()),
+        (11, 12),
+    )
+    binding = FixedProcessBinding(identity, resources, object(), object())
+    port = object.__new__(NativeHelperProcessPort)
+    port._closed = False
+    port._bindings = {id(binding): resources}
+    port._helpers = cast(
+        Any,
+        SimpleNamespace(
+            tmux_executable=7,
+            tmux_socket_directory=8,
+            tmux_config=9,
+        ),
+    )
+    port._stop_timeout = 0.1
+    return port, binding, resources
+
+
+def test_native_redraw_uses_exact_identity_and_discards_row_sentinel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port, binding, resources = _native_redraw_port()
+    identity = binding.identity
+    expected_identity = (
+        "\t".join(
+            (
+                fixed_subject._fixed_tmux_session(identity),
+                "$0",
+                "1",
+                "0",
+                "@0",
+                "1",
+                "0",
+                "%0",
+                str(resources.pid),
+                "0",
+            )
+        ).encode()
+        + b"\n"
+    )
+    calls: list[tuple[tuple[str, ...], float, int]] = []
+
+    def run(
+        _identity: FixedProcessIdentity,
+        operation: tuple[str, ...],
+        deadline: float,
+        limit: int,
+    ) -> bytes:
+        calls.append((operation, deadline, limit))
+        return b"row\n" * 25 if operation[0] == "capture-pane" else expected_identity
+
+    port._run_redraw_tmux = run  # type: ignore[method-assign,assignment]
+    monkeypatch.setattr(fixed_subject, "_redraw_remaining", lambda _deadline: 1.0)
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", lambda *_: (11, 12))
+    monkeypatch.setattr(fixed_subject, "_pidfd_exit_observed", lambda *_: False)
+
+    redraw = port.capture_redraw(binding, 42.0)
+
+    assert redraw.payload == b"row\n" * 24 and redraw.has_more
+    assert [call[0][0] for call in calls] == [
+        "display-message",
+        "capture-pane",
+        "display-message",
+    ]
+    capture = calls[1][0]
+    assert capture == (
+        "capture-pane",
+        "-p",
+        "-t",
+        fixed_subject._fixed_tmux_pane_target(identity),
+        "-S",
+        "0",
+        "-E",
+        "24",
+    )
+    assert all(deadline == 42.0 for _operation, deadline, _limit in calls)
+
+
+def test_native_redraw_rejects_socket_or_pane_identity_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port, binding, _resources = _native_redraw_port()
+    monkeypatch.setattr(fixed_subject, "_redraw_remaining", lambda _deadline: 1.0)
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", lambda *_: (99, 100))
+    monkeypatch.setattr(fixed_subject, "_pidfd_exit_observed", lambda *_: False)
+    with pytest.raises(RuntimeOperationError, match="identity is unavailable"):
+        port.capture_redraw(binding, 42.0)
+
+    monkeypatch.setattr(fixed_subject, "_verify_fixed_tmux_socket", lambda *_: (11, 12))
+    port._run_redraw_tmux = lambda *_args: b"wrong\n"  # type: ignore[method-assign]
+    with pytest.raises(RuntimeOperationError, match="pane identity"):
+        port.capture_redraw(binding, 42.0)
+
+
+def test_fixed_tmux_client_uses_only_held_descriptor_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[int, tuple[str, ...], dict[str, str], tuple[tuple[int, int], ...]]] = []
+    closed: list[int] = []
+    real_close = os.close
+
+    def spawn(
+        executable: int,
+        arguments: tuple[str, ...],
+        environment: dict[str, str],
+        descriptor_map: tuple[tuple[int, int], ...],
+    ) -> int:
+        observed.append((executable, arguments, environment, descriptor_map))
+        stdout = next(source for source, destination in descriptor_map if destination == 1)
+        os.write(stdout, b"bounded")
+        return 321
+
+    def close(descriptor: int) -> None:
+        closed.append(descriptor)
+        if descriptor != 91:
+            real_close(descriptor)
+
+    monkeypatch.setattr(fixed_subject, "_spawn_fixed", spawn)
+    monkeypatch.setattr(os, "pidfd_open", lambda *_: 91, raising=False)
+    monkeypatch.setattr(fixed_subject, "_wait_spawned_child", lambda *_: 0)
+    monkeypatch.setattr(fixed_subject, "_redraw_remaining", lambda _deadline: 1.0)
+    monkeypatch.setattr(fixed_subject, "_close_fd", close)
+
+    result = fixed_subject._run_fixed_tmux_client(
+        7,
+        8,
+        9,
+        ("tmux", "-S", "/proc/self/fd/4/fixed.sock", "display-message"),
+        42.0,
+        32,
+    )
+
+    assert result == b"bounded"
+    executable, arguments, environment, descriptor_map = observed[0]
+    assert executable == 7 and arguments[0] == "tmux"
+    assert environment["PATH"] == "/usr/bin"
+    held = {
+        (source, destination) for source, destination in descriptor_map if destination in {4, 5}
+    }
+    assert held == {
+        (8, 4),
+        (9, 5),
+    }
+    assert closed.count(91) == 1
+
+
+def test_fixed_tmux_client_transfers_unreaped_pidfd_without_closing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[int] = []
+    real_close = os.close
+
+    def spawn(
+        _executable: int,
+        _arguments: tuple[str, ...],
+        _environment: dict[str, str],
+        descriptor_map: tuple[tuple[int, int], ...],
+    ) -> int:
+        stdout = next(source for source, destination in descriptor_map if destination == 1)
+        os.write(stdout, b"partial")
+        return 321
+
+    def close(descriptor: int) -> None:
+        closed.append(descriptor)
+        if descriptor != 91:
+            real_close(descriptor)
+
+    monkeypatch.setattr(fixed_subject, "_spawn_fixed", spawn)
+    monkeypatch.setattr(os, "pidfd_open", lambda *_: 91, raising=False)
+    monkeypatch.setattr(fixed_subject, "_wait_spawned_child", lambda *_: None)
+    monkeypatch.setattr(fixed_subject, "_kill_and_reap_redraw_child", lambda *_: False)
+    monkeypatch.setattr(fixed_subject, "_redraw_remaining", lambda _deadline: 1.0)
+    monkeypatch.setattr(fixed_subject, "_close_fd", close)
+
+    with pytest.raises(fixed_subject._WAWRedrawChildUnreaped) as raised:
+        fixed_subject._run_fixed_tmux_client(
+            7,
+            8,
+            9,
+            ("tmux", "display-message"),
+            42.0,
+            32,
+        )
+    assert raised.value.pidfd == 91
+    assert 91 not in closed
+
+
+def test_native_redraw_poison_retains_unreaped_child_until_stop_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port, binding, _resources = _native_redraw_port()
+
+    def unreaped(*_args: object) -> bytes:
+        raise fixed_subject._WAWRedrawChildUnreaped(321, 91)
+
+    monkeypatch.setattr(fixed_subject, "_run_fixed_tmux_client", unreaped)
+    with pytest.raises(RuntimeOperationError, match="cleanup is incomplete"):
+        port._run_redraw_tmux(binding.identity, ("capture-pane",), 42.0, 32)
+    assert port._redraw_poisoned and port._redraw_children == [(321, 91)]
+    with pytest.raises(RuntimeOperationError, match="unavailable"):
+        port.capture_redraw(binding, 42.0)
+
+    monkeypatch.setattr(fixed_subject, "_kill_and_reap_redraw_child", lambda *_: False)
+    assert not port._cleanup_redraw_children(42.0)
+    assert port._redraw_children == [(321, 91)]
+
+
+def test_fixed_transport_passes_opaque_binding_to_redraw_port(tmp_path: Path) -> None:
+    item = fixed_identity()
+    port = FakeNativePort()
+    fixed = transport(item, port)
+    fixed.start(command(tmp_path, item), PtyGeometry(80, 24))
+    port.redraw = BoundedRedraw(b"screen", False)
+
+    assert fixed.capture_redraw(42.0) == port.redraw
+    assert port.redraw_calls == [(fixed._inspector.binding, 42.0)]
 
 
 def test_unpopulated_stop_remains_fenced_for_exact_destroy_retry(tmp_path: Path) -> None:

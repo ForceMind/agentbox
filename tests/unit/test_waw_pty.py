@@ -115,6 +115,17 @@ def test_output_cursor_exhaustion_fails_closed() -> None:
         ring.append(b"x")
 
 
+def test_output_batch_validates_capacity_and_cursor_before_mutation() -> None:
+    ring = OutputRing(capacity_bytes=4)
+    before = (ring.next_cursor, ring.buffered_bytes)
+    with pytest.raises(WAWPTYError, match="retained atomically"):
+        ring.append_batch((b"abc", b"de"))
+    assert (ring.next_cursor, ring.buffered_bytes) == before
+
+    frames = ring.append_batch((b"ab", b"cd"))
+    assert [(frame.start_cursor, frame.end_cursor) for frame in frames] == [(1, 2), (3, 4)]
+
+
 def test_resume_cursor_rejects_reserved_exhaustion_value() -> None:
     with pytest.raises(WAWPTYError):
         OutputRing().replay(2**64 - 1)

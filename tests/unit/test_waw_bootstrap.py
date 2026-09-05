@@ -28,7 +28,7 @@ from agentbox_runtime.waw_conflicts import (
     WAWLegacyCodexState,
     WAWManagedConflictState,
 )
-from agentbox_runtime.waw_encrypted_stream import BoundedRedraw, RuntimePeer
+from agentbox_runtime.waw_encrypted_stream import RuntimePeer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
     WAWCanonicalManifestBundle,
@@ -728,7 +728,6 @@ def test_encrypted_builder_uses_registry_authority_for_control_stream_and_servic
         runtime_epoch=runtime_epoch,
         static_key=lambda: bytes(32),
         peer_authority=authority,
-        capture=lambda _claims: BoundedRedraw(b"", False),
         expected_peer_uid=1001,
         expected_peer_gid=1002,
         clock=lambda: 0.0,
@@ -770,7 +769,7 @@ def test_encrypted_builder_uses_registry_authority_for_control_stream_and_servic
 
     parameters = inspect.signature(build_waw_encrypted_servers).parameters
     assert "peer_authority" in parameters
-    assert {"peer", "peer_verifier", "control_peer_authorizer"}.isdisjoint(parameters)
+    assert {"peer", "peer_verifier", "control_peer_authorizer", "capture"}.isdisjoint(parameters)
 
 
 def test_encrypted_builder_rejects_non_registry_authority(tmp_path: Path) -> None:
@@ -792,7 +791,6 @@ def test_encrypted_builder_rejects_non_registry_authority(tmp_path: Path) -> Non
             runtime_epoch=runtime_epoch,
             static_key=lambda: bytes(32),
             peer_authority=WAWPeerAuthority(expected_uid=1001, expected_gid=1002),
-            capture=lambda _claims: BoundedRedraw(b"", False),
             expected_peer_uid=1001,
             expected_peer_gid=1002,
             clock=lambda: 0.0,

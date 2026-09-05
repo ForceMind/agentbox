@@ -9,6 +9,7 @@ secret from a caller.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -32,7 +33,20 @@ from agentbox_runtime.waw_managed_command import (
     managed_command_agent_type,
     validate_managed_command,
 )
-from agentbox_runtime.waw_pty import OutputReplay, OutputRing, PtyGeometry, validate_input
+from agentbox_runtime.waw_pty import (
+    OutputReplay,
+    OutputRing,
+    PtyGeometry,
+    WAWPTYError,
+    validate_input,
+)
+from agentbox_runtime.waw_redraw import (
+    DEADLINE,
+    MAX_FRAME_BYTES,
+    BoundedRedraw,
+    RuntimeRedrawPublication,
+    WAWRedrawError,
+)
 
 
 class RuntimePublicationInvalidator:
@@ -164,6 +178,8 @@ class WAWTransport(Protocol):
     def detach(self) -> bool: ...
 
     def resize(self, geometry: PtyGeometry) -> None: ...
+
+    def capture_redraw(self, deadline: float) -> BoundedRedraw: ...
 
     def stop(self) -> RuntimeStopEvidence: ...
 
@@ -562,10 +578,12 @@ class WAWSupervisor:
         """Reserve one exact attachment without acquiring a writer or opening PTYs."""
         with self._lock:
             self._check_attachment(attachment)
-            if not callable(getattr(self._transport, "close_attachment", None)):
+            if not callable(getattr(self._transport, "close_attachment", None)) or not callable(
+                getattr(self._transport, "capture_redraw", None)
+            ):
                 raise RuntimeOperationError(
                     "RUNTIME_UNAVAILABLE",
-                    "Exact attachment cleanup port is unavailable",
+                    "Exact attachment cleanup port or redraw port is unavailable",
                     category="unavailable",
                 )
             if self._runtime_pending is not None or self._attachment is not None:
@@ -833,6 +851,103 @@ class WAWSupervisor:
                 self.append_output(source, payload[offset : offset + 32768])
                 for offset in range(0, len(payload), 32768)
             )
+
+    def publish_fresh_redraw(
+        self,
+        attachment: RuntimeAttachmentLease,
+    ) -> RuntimeRedrawPublication:
+        """Capture and publish one baseline under the exact supervisor owner."""
+
+        with self._lock, self.runtime_attachment_guard(attachment) as evidence:
+            if evidence.state is not RuntimeProbeState.RUNNING:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                    "Runtime redraw process identity is unavailable",
+                    category="conflict",
+                )
+            source = self._output_source
+            capture = getattr(self._transport, "capture_redraw", None)
+            if source is None or not callable(capture):
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_UNAVAILABLE",
+                    "Fixed redraw capture is unavailable",
+                    category="unavailable",
+                )
+            started = self._clock()
+            if (
+                type(started) not in (int, float)
+                or isinstance(started, bool)
+                or not math.isfinite(started)
+            ):
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_TIMEOUT",
+                    "Runtime redraw clock is invalid",
+                    category="unavailable",
+                )
+            deadline = float(started) + DEADLINE
+            prior_head = self._ring.next_cursor - 1
+            try:
+                redraw = capture(deadline)
+            except RuntimeOperationError:
+                raise
+            except Exception as exc:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_CAPTURE_FAILED",
+                    "Fixed redraw capture failed",
+                    category="unavailable",
+                ) from exc
+            finished = self._clock()
+            if (
+                type(finished) not in (int, float)
+                or isinstance(finished, bool)
+                or not math.isfinite(finished)
+                or finished < started
+                or finished >= deadline
+            ):
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_TIMEOUT",
+                    "Runtime redraw deadline expired",
+                    category="unavailable",
+                )
+            self._check_attachment(attachment)
+            if self._runtime_pending is not attachment or source is not self._output_source:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                    "Runtime redraw authority changed",
+                    category="conflict",
+                )
+            post = self.probe()
+            if post.state is not RuntimeProbeState.RUNNING:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_IDENTITY_UNCONFIRMED",
+                    "Runtime redraw process identity changed",
+                    category="conflict",
+                )
+            if type(redraw) is not BoundedRedraw:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_LIMIT_INVALID",
+                    "Fixed redraw result is invalid",
+                    category="broken",
+                )
+            chunks = tuple(
+                redraw.payload[offset : offset + MAX_FRAME_BYTES]
+                for offset in range(0, len(redraw.payload), MAX_FRAME_BYTES)
+            )
+            try:
+                frames = self._ring.append_batch(chunks)
+                publication = RuntimeRedrawPublication(
+                    frames,
+                    self._ring.next_cursor - 1,
+                    redraw.has_more,
+                )
+            except (WAWPTYError, WAWRedrawError) as exc:
+                raise RuntimeOperationError(
+                    "WAW_REDRAW_LIMIT_INVALID",
+                    "Fixed redraw publication is invalid",
+                    category="broken",
+                ) from exc
+            assert not frames or frames[0].start_cursor == prior_head + 1
+            return publication
 
     def replay_output(
         self,

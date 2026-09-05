@@ -21,11 +21,12 @@ import time
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import AgentType, managed_marker, workspace_id
 from agentbox_core.waw_tickets import AttachmentTuple
+from agentbox_runtime import waw_fixed_transport as fixed_subject
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_fixed_transport import (
     NativeHelperHandles,
@@ -35,6 +36,7 @@ from agentbox_runtime.waw_process_inspector import (
     FixedAttachmentRequest,
     FixedLaunchHandles,
     FixedLaunchRequest,
+    FixedProcessBinding,
     FixedProcessIdentity,
     FixedStartState,
 )
@@ -612,6 +614,64 @@ def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(
     _wait_session_gone(session)
     control.close()
     wbr.close()
+
+
+def test_held_tmux_redraw_captures_only_exact_live_pane(
+    native_binaries: Path,
+    fake_binaries: tuple[Path, Path],
+    tmp_path: Path,
+) -> None:
+    session, control, wbr = _begin_real_workspace(
+        native_binaries,
+        fake_binaries[0],
+        tmp_path,
+    )
+    assert control.recv(9) == b"AWR1\x01\x01\x00\x00"
+    pid, uid, gid = struct.unpack(
+        "3i",
+        control.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")),
+    )
+    assert uid == os.geteuid() and gid == os.getegid()
+    pidfd = os.pidfd_open(pid, 0)
+    tmux_fd = os.open("/usr/bin/tmux", os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    directory_fd = os.open(TMUX_SOCKET.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    config_fd = os.open(TMUX_CONFIG, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    socket_details = os.stat(TMUX_SOCKET, follow_symlinks=False)
+    identity = _fixed_identity()
+    resources = fixed_subject._NativeProcessResources(
+        pid,
+        os.getpgid(pid),
+        pidfd,
+        -1,
+        -1,
+        -1,
+        control,
+        wbr,
+        cast(Any, object()),
+        (socket_details.st_dev, socket_details.st_ino),
+    )
+    binding = FixedProcessBinding(identity, resources, object(), object())
+    port = object.__new__(NativeHelperProcessPort)
+    port._closed = False
+    port._helpers = NativeHelperHandles(-1, -1, tmux_fd, directory_fd, config_fd)
+    port._bindings = {id(binding): resources}
+    port._stop_timeout = 1.0
+    try:
+        redraw = port.capture_redraw(binding, time.monotonic() + 1.0)
+        assert len(redraw.payload) <= 60 * 1024
+        assert (
+            redraw.payload.count(b"\n")
+            + bool(redraw.payload and not redraw.payload.endswith(b"\n"))
+            <= 24
+        )
+        assert b"READY claude" in redraw.payload
+    finally:
+        _kill_tmux_server()
+        for descriptor in (pidfd, tmux_fd, directory_fd, config_fd):
+            os.close(descriptor)
+        control.close()
+        wbr.close()
+        _wait_session_gone(session)
 
 
 def test_codex_fixed_profile_uses_same_isolated_native_path(

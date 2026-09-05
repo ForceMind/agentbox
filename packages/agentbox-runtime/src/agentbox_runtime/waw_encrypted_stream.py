@@ -37,6 +37,7 @@ from agentbox_protocol.waw_wire import (
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_pty import OutputFrame, PtyGeometry
+from agentbox_runtime.waw_redraw import BoundedRedraw as BoundedRedraw
 from agentbox_runtime.waw_supervisor import (
     RuntimeAttachmentLease,
     RuntimeProbeState,
@@ -169,24 +170,6 @@ class RuntimePeer:
 
 
 @dataclass(frozen=True, repr=False)
-class BoundedRedraw:
-    """Trusted marked-pane capture result; synthetic fixtures must say so."""
-
-    payload: bytes = field(repr=False)
-    truncated: bool
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.payload) is not bytes
-            or len(self.payload) > 60 * 1024
-            or self.payload.count(b"\n") + bool(self.payload and not self.payload.endswith(b"\n"))
-            > 24
-            or type(self.truncated) is not bool
-        ):
-            raise EncryptedStreamError("OUTPUT_BACKPRESSURE")
-
-
-@dataclass(frozen=True, repr=False)
 class RuntimeCleanup:
     claims: AttachmentTuple
     runtime_epoch: str
@@ -211,7 +194,6 @@ class _Prepared:
     hints: tuple[str | None, str | None]
     started: float
     capability: str = field(repr=False)
-    capture: Callable[[], BoundedRedraw] = field(repr=False)
     consumed: bool = False
     session: WAWEncryptedSession | None = None
     cleanup: RuntimeCleanup | None = None
@@ -271,7 +253,6 @@ class WAWEncryptedRegistry:
         peer: RuntimePeer,
         claims: AttachmentTuple,
         supervisor: WAWSupervisor,
-        capture: Callable[[], BoundedRedraw],
         resume_cursor: str | None = None,
         previous_runtime_epoch: str | None = None,
         current: Callable[[], bool],
@@ -339,7 +320,7 @@ class WAWEncryptedRegistry:
                 and current() is True,
             )
             supervisor.reserve_runtime_attachment(lease)
-            record = _Prepared(claims, peer, supervisor, lease, hints, now, capability, capture)
+            record = _Prepared(claims, peer, supervisor, lease, hints, now, capability)
             self._records[claims.attachment_id] = record
             try:
                 with supervisor.runtime_attachment_guard(lease):
@@ -1022,21 +1003,24 @@ class WAWEncryptedSession:
                 )
             records = replay.frames
         else:
-            started = self._clock()
-            redraw = self._record.capture()
-            if type(redraw) is not BoundedRedraw or self._clock() - started >= 1:
-                raise EncryptedStreamError("OUTPUT_BACKPRESSURE")
-            source = self._supervisor.output_source()
-            for offset in range(0, len(redraw.payload), OUTPUT_LIMIT):
-                self._supervisor.append_output(
-                    source, redraw.payload[offset : offset + OUTPUT_LIMIT]
-                )
-            replay = self._supervisor.replay_output(
-                head, generation=self._lease.claims.generation, runtime_epoch=self._epoch
-            )
-            records = replay.frames
-            gap = (0, 0, "baseline_redraw") if redraw.truncated else None
-        self._baseline = self._supervisor.snapshot().next_cursor - 1
+            try:
+                publication = self._supervisor.publish_fresh_redraw(self._lease)
+            except RuntimeOperationError as exc:
+                if exc.code == "WAW_REDRAW_IDENTITY_UNCONFIRMED":
+                    raise EncryptedStreamError("RECONCILIATION_REQUIRED") from None
+                if exc.code == "WAW_REDRAW_UNAVAILABLE":
+                    raise EncryptedStreamError("RUNTIME_UNAVAILABLE") from None
+                if exc.code in {
+                    "WAW_REDRAW_TIMEOUT",
+                    "WAW_REDRAW_CAPTURE_FAILED",
+                    "WAW_REDRAW_LIMIT_INVALID",
+                }:
+                    raise EncryptedStreamError("OUTPUT_BACKPRESSURE") from None
+                raise
+            records = publication.frames
+            gap = (0, 0, "baseline_redraw") if publication.has_more else None
+            head = publication.baseline_cursor
+        self._baseline = head
         self._baseline_records, self._baseline_gap = self._select(records, gap, 65536)
 
     def _gap_payload(self, gap: tuple[int, int, str]) -> dict[str, Any]:
@@ -1457,12 +1441,11 @@ class WAWEncryptedAttachmentService:
         *,
         peer: Callable[[], RuntimePeer],
         supervisor: Callable[[AttachmentTuple], WAWSupervisor],
-        capture: Callable[[AttachmentTuple], BoundedRedraw],
         current: Callable[[AttachmentTuple], bool],
     ) -> None:
         self.registry = registry
         self._peer_provider, self._supervisor_provider = peer, supervisor
-        self._capture_provider, self._current = capture, current
+        self._current = current
         self._bound_authority: tuple[object, str, bytes] | None = None
         self._detach_requests: OrderedDict[
             str, tuple[str, AttachmentTuple, object, float, dict[str, Any]]
@@ -1537,7 +1520,6 @@ class WAWEncryptedAttachmentService:
                 peer=self._bound_peer(peer),
                 claims=claims,
                 supervisor=self._supervisor_provider(claims),
-                capture=lambda: self._capture_provider(claims),
                 current=lambda: self._current(claims),
                 resume_cursor=request["resume_cursor"],
                 previous_runtime_epoch=request["previous_runtime_epoch"],

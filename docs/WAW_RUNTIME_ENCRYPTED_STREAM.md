@@ -39,6 +39,18 @@ crypto/epoch/exit/Stop clearing preserves cursor-domain gap information. The
 redraw port admits only a bounded 24-row, 60 KiB result from a qualified marked
 pane capture, not a default whole-pane capture.
 
+The current uncommitted R11 continuation uses a neutral result whose one-byte
+look-ahead is byte 61,441 and whose row look-ahead is row 25. A fixed held-FD
+tmux capture verifies socket, pane and retained-pidfd identity before and after
+one shared monotonic-second deadline; sentinels never enter the redraw, ring,
+wire or Audit. The supervisor publishes capture, continuous cursor allocation
+and baseline atomically. Registry, attachment-service and bootstrap capture
+callbacks are removed from the production path, so that path cannot substitute a
+caller-supplied capture source. The unified focused matrix completed 341 tests
+with 9 Linux-only skips and 2 local UDS cases deselected. Independent Sol/xhigh
+review reports PASS with no P0/P1/P2. The new real Linux native case awaits
+exact-head CI; this Mac cannot set up the required UDS cases (`PermissionError`).
+
 Input is decrypted once, then receives the appropriate accepted and terminal
 written/uncertain/rejected result. Rejection after successful decryption retains
 nonce continuity. A cached terminal ACK may be replayed at most once within its

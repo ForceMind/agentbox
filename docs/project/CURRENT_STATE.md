@@ -700,3 +700,14 @@ PROPOSED architecture status are preserved.
   independent Sol review reports PASS. Follow-up `c534fe437...` completed 20/20
   exact-head checks, including Linux native and Backend Python 3.11/3.12/3.13;
   each Backend matrix reported 3577 passed and 43 host-gated skips.
+- The current bounded-redraw continuation is uncommitted. A neutral contract
+  retains at most 24 physical rows and 60 KiB, using row 25 and byte 61,441 only
+  as discarded sentinels. Held-FD tmux capture verifies socket, pane and retained
+  pidfd identity both before and after one shared one-second deadline. The
+  supervisor now owns one atomic capture/cursor/baseline publication, and the
+  registry, attachment service and bootstrap no longer accept a production capture
+  callback. The unified focused matrix completed 341 tests with 9 Linux-only
+  skips and 2 local UDS cases deselected. Independent Sol/xhigh review reports
+  PASS with no P0/P1/P2. The new real Linux native case awaits exact-head CI;
+  28 broader local UDS cases remain unverified after `PermissionError` during
+  socket setup.

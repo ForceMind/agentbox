@@ -20,7 +20,6 @@ from agentbox_runtime.waw_cgroup_attestation_store import (
 )
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_encrypted_stream import (
-    BoundedRedraw,
     EncryptedStreamError,
     RuntimePeer,
     WAWEncryptedAttachmentService,
@@ -273,7 +272,6 @@ def encrypted_service() -> WAWEncryptedAttachmentService:
         streams,
         peer=forbidden_peer,
         supervisor=cast(Any, lambda _claims: None),
-        capture=cast(Any, lambda _claims: BoundedRedraw(b"", False)),
         current=lambda _claims: True,
     )
 
@@ -546,7 +544,6 @@ async def test_already_bound_commit_close_failure_fences_session_before_authorit
         harness.registry,
         peer=forbidden_peer,
         supervisor=lambda _claims: harness.supervisor,
-        capture=lambda _claims: harness.redraw,
         current=lambda _claims: harness.valid,
     )
     runtime.configure_encrypted_attachments(service)
