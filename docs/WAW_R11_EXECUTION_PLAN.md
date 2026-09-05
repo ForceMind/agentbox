@@ -145,6 +145,17 @@ Stop fences browser INPUT/RESIZE synchronously, requests positive Detach cleanup
 then sends the generation-bound Stop. `pagehide`, freeze, unmount, selection/auth
 change, provider loss and controller epoch change immediately fence publication.
 
+#### rc6-C controller safety checkpoint
+
+Commit `ea0ac84` closes the controller-only gaps before page composition: every
+connection uses a fresh redraw, only successful renderer work advances cursor,
+all publication points recheck context/trust, terminal input uncertainty fences
+before resolution, and exact Detach/Stop use a current page control request.
+Its independent Sol review found no P0/P1/P2 and final exact head completed
+20/20 CI. A real DOM terminal surface, attachment/page lifecycle hook, browser
+controls and bilingual UI/E2E still remain; this checkpoint is not a user-facing
+terminal.
+
 ### rc6 exit evidence
 
 - lifecycle, singleton inode, fork, cancellation, pidfd, delayed Audit, detached

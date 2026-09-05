@@ -1,7 +1,8 @@
 # R11 rc6 browser controller safety foundation
 
-状态：本地 controller 安全基础已实现、完成独立 Sol 复审和定向/全量 Web 验证，
-尚待本提交的 exact-head CI、真实 terminal surface 与 `WorkspacePage` 组合。
+状态：controller 安全基础 `ea0ac84` 已完成独立 Sol 复审、定向/全量 Web 验证和
+PR #80 的 20/20 exact-head CI；真实 terminal surface 与 `WorkspacePage` 组合仍待
+实现。
 本文不表示浏览器终端、rc6、R11 或真实 trust-provider 资格已经完成。
 
 ## 目的
@@ -62,6 +63,9 @@ controller 直接把 INPUT、RESIZE、Detach 或 Stop 发往 Control Plane。
   reconnect、terminal input rejection/write uncertainty、final send、deferred input、
   heartbeat/scheduled resize、stale control context、Detach/Stop lifecycle/Abort、
   每个 receipt identity field 和 exact Stop receipt。
+- PR #80 exact head `ea0ac844c1f2e52fc8cdc51a0ec7d90645094338`：20/20 checks
+  terminal `SUCCESS`，包含 native、E2E、four installer jobs、frontend/security,
+  release candidate 和 Backend Python 3.11/3.12/3.13。
 
 独立 Sol review 最终结论为 P0/P1/P2 均无。下一步是受控 renderer、page hook 和
 双语 `WorkspacePage` 接线，并运行 Web/E2E acceptance matrix。
