@@ -70,6 +70,8 @@ export type WAWBrowserFenceReason =
   | 'STOP_REQUESTED'
   | 'DETACH_FAILED'
   | 'STOP_FAILED'
+  | 'INPUT_UNCERTAIN'
+  | 'INPUT_REJECTED'
   | 'WORKSPACE_TERMINAL'
   | 'OUTPUT_GAP'
   | 'SUPERSEDED'
@@ -102,6 +104,19 @@ export interface WAWBrowserConnectRequest {
   readonly generation: string
   readonly reconnect: boolean
   /** Captures the page selection, authenticated Session and UI controller epoch. */
+  readonly context: WAWBrowserContextLease
+}
+
+/**
+ * A control request must repeat the page's current workspace identity. It lets
+ * a detached/fenced controller perform an exact cleanup or Stop without
+ * borrowing a now-invalid streaming context.
+ */
+export interface WAWBrowserControlRequest {
+  readonly projectId: string
+  readonly workspaceId: string
+  readonly agentType: 'claude' | 'codex'
+  readonly generation: string
   readonly context: WAWBrowserContextLease
 }
 
@@ -267,6 +282,8 @@ export interface WAWBrowserControllerSnapshot {
   readonly reason: WAWBrowserFenceReason | null
   readonly attachment: WAWBrowserAttachmentIdentity | null
   readonly outputCursor: string | null
+  /** Runtime had to bound the current connection's fresh redraw. */
+  readonly freshRedrawTruncated: boolean
   readonly input: WAWBrowserInputSnapshot | null
 }
 
@@ -306,19 +323,17 @@ interface PendingResize {
   readonly rows: number
 }
 
-interface ResumeCursor {
-  readonly projectId: string
-  readonly workspaceId: string
-  readonly agentType: 'claude' | 'codex'
-  readonly generation: string
-  readonly runtimeEpoch: string
-  readonly cursor: bigint
-}
-
 interface Deferred<T> {
   readonly promise: Promise<T>
   resolve(value: T): void
   reject(error: WAWBrowserControllerError): void
+}
+
+interface ActiveControlOperation {
+  readonly token: symbol
+  readonly identity: WAWBrowserAttachmentIdentity
+  readonly context: WAWBrowserContextLease
+  readonly cancel: () => void
 }
 
 const READY = 1
@@ -554,13 +569,14 @@ export class WAWBrowserController {
   #handshake: 'WAIT_ATTEST' | 'WAIT_ACK' | 'WAIT_ADMITTED' | null = null
   #canaryVerified = false
   #outputCursor: bigint | null = null
-  #resume: ResumeCursor | null = null
+  #freshRedrawTruncated = false
   #pendingInput: PendingInput | null = null
   #pendingResize: PendingResize | null = null
   #latestResize: { readonly columns: number; readonly rows: number } | null =
     null
   #resizeTokens: number = WAW_BROWSER_CONTROLLER_LIMITS.resizeBurst
   #resizeRefillAt = 0
+  #activeControlOperation: ActiveControlOperation | null = null
 
   constructor(options: WAWBrowserControllerOptions) {
     this.#origin = exactOrigin(options.origin)
@@ -581,6 +597,7 @@ export class WAWBrowserController {
       reason: this.#reason,
       attachment: this.#identity,
       outputCursor: this.#outputCursor?.toString() ?? null,
+      freshRedrawTruncated: this.#freshRedrawTruncated,
       input: this.#inputSnapshot(),
     })
   }
@@ -655,14 +672,38 @@ export class WAWBrowserController {
     trust = this.#trustLease,
   ): void {
     if (this.#isCurrent(epoch, context, trust)) return
-    if (epoch === this.#epoch) this.#teardown('FENCED', 'CONTEXT_CHANGED', true)
-    throw new WAWBrowserControllerError('CONTEXT_CHANGED')
+    const reason = this.#currentFenceReason(context, trust)
+    if (epoch === this.#epoch) this.#teardown('FENCED', reason)
+    throw new WAWBrowserControllerError(reason)
+  }
+
+  #currentFenceReason(
+    context: WAWBrowserContextLease | null,
+    trust: Readonly<WAWTrustAuthorizationLease> | null,
+  ): 'CONTEXT_CHANGED' | 'TRUST_LOST' {
+    try {
+      if (
+        context === null ||
+        context.signal.aborted ||
+        context.isCurrent() !== true
+      ) {
+        return 'CONTEXT_CHANGED'
+      }
+      if (
+        trust !== null &&
+        (trust.signal.aborted || trust.isCurrent() !== true)
+      ) {
+        return 'TRUST_LOST'
+      }
+    } catch {
+      return 'CONTEXT_CHANGED'
+    }
+    return 'CONTEXT_CHANGED'
   }
 
   #listenToContext(context: WAWBrowserContextLease, epoch: number): void {
     const invalidate = () => {
-      if (epoch === this.#epoch)
-        this.#teardown('FENCED', 'CONTEXT_CHANGED', true)
+      if (epoch === this.#epoch) this.#teardown('FENCED', 'CONTEXT_CHANGED')
     }
     context.signal.addEventListener('abort', invalidate, { once: true })
     this.#contextAbort = () =>
@@ -674,7 +715,7 @@ export class WAWBrowserController {
     epoch: number,
   ): void {
     const invalidate = () => {
-      if (epoch === this.#epoch) this.#teardown('FENCED', 'TRUST_LOST', true)
+      if (epoch === this.#epoch) this.#teardown('FENCED', 'TRUST_LOST')
     }
     lease.signal.addEventListener('abort', invalidate, { once: true })
     this.#trustAbort = () =>
@@ -723,7 +764,7 @@ export class WAWBrowserController {
   #teardown(
     status: WAWBrowserControllerStatus,
     reason: WAWBrowserFenceReason,
-    clearResume: boolean,
+    preserveControlOperation: symbol | null = null,
   ): void {
     const error = new WAWBrowserControllerError(reason)
     this.#epoch += 1
@@ -734,6 +775,13 @@ export class WAWBrowserController {
     this.#trustAbort = null
     this.#context = null
     this.#trustLease = null
+    if (
+      this.#activeControlOperation !== null &&
+      this.#activeControlOperation.token !== preserveControlOperation
+    ) {
+      this.#activeControlOperation.cancel()
+      this.#activeControlOperation = null
+    }
     this.#open?.reject(error)
     this.#open = null
     this.#connected?.reject(error)
@@ -770,15 +818,15 @@ export class WAWBrowserController {
     }
     this.#terminal = null
     this.#admission = null
-    if (clearResume) {
-      this.#resume = null
-      this.#outputCursor = null
-    }
+    // A new attachment always receives a fresh redraw. A destroyed terminal
+    // model must never be paired with a retained cursor from an old model.
+    this.#outputCursor = null
+    this.#freshRedrawTruncated = false
     this.#setStatus(status, reason)
   }
 
   #protocolFailure(reason: WAWBrowserFenceReason = 'PROTOCOL_INVALID'): never {
-    this.#teardown('FENCED', reason, true)
+    this.#teardown('FENCED', reason)
     throw new WAWBrowserControllerError(reason)
   }
 
@@ -817,7 +865,7 @@ export class WAWBrowserController {
     }
 
     if (this.#status !== 'IDLE') {
-      this.#teardown('FENCED', 'SUPERSEDED', false)
+      this.#teardown('FENCED', 'SUPERSEDED')
     }
     const epoch = (this.#epoch += 1)
     this.#context = request.context
@@ -832,6 +880,7 @@ export class WAWBrowserController {
     this.#inboundTail = Promise.resolve()
     this.#inboundBufferedBytes = 0
     this.#outputCursor = null
+    this.#freshRedrawTruncated = false
     this.#pendingInput = null
     this.#pendingResize = null
     this.#latestResize = null
@@ -908,12 +957,12 @@ export class WAWBrowserController {
         message: (data) => this.#queueInbound(epoch, data),
         close: () => {
           if (epoch === this.#epoch) {
-            this.#teardown('FENCED', 'TRANSPORT_FAILED', true)
+            this.#teardown('FENCED', 'TRANSPORT_FAILED')
           }
         },
         error: () => {
           if (epoch === this.#epoch) {
-            this.#teardown('FENCED', 'TRANSPORT_FAILED', true)
+            this.#teardown('FENCED', 'TRANSPORT_FAILED')
           }
         },
       })
@@ -930,19 +979,17 @@ export class WAWBrowserController {
       this.#open = null
       this.#setStatus('HANDSHAKING')
 
-      const resume = request.reconnect ? this.#matchingResume(request) : null
       let bearer = issued.ticket
       issued = null
       let hello: WireRecord | null = {
         protocol_version: 1,
         ...admission,
         runtime_epoch: identity.runtimeEpoch,
-        resume_cursor:
-          resume !== null && resume.cursor > 0n
-            ? resume.cursor.toString()
-            : null,
-        previous_runtime_epoch:
-          resume !== null && resume.cursor > 0n ? resume.runtimeEpoch : null,
+        // The terminal model is destroyed on every detach/fence. Reusing a
+        // cursor without atomically transferring that model could skip output.
+        // Reconnect therefore always requests a bounded fresh redraw.
+        resume_cursor: null,
+        previous_runtime_epoch: null,
         ticket: bearer,
       }
       this.#publishPayload(epoch, FrameType.WS_HELLO, hello)
@@ -971,27 +1018,12 @@ export class WAWBrowserController {
                     ? 'CONTEXT_CHANGED'
                     : 'PROTOCOL_INVALID'
             : 'PROTOCOL_INVALID'
-        this.#teardown('FENCED', reason, true)
+        this.#teardown('FENCED', reason)
       }
       throw error instanceof WAWBrowserControllerError
         ? error
         : new WAWBrowserControllerError('PROTOCOL_INVALID')
     }
-  }
-
-  #matchingResume(request: WAWBrowserConnectRequest): ResumeCursor | null {
-    const resume = this.#resume
-    if (
-      resume !== null &&
-      resume.projectId === request.projectId &&
-      resume.workspaceId === request.workspaceId &&
-      resume.agentType === request.agentType &&
-      resume.generation === request.generation
-    ) {
-      return resume
-    }
-    this.#resume = null
-    return null
   }
 
   #startAdmissionTimer(epoch: number, startedAt: number): void {
@@ -1002,19 +1034,19 @@ export class WAWBrowserController {
       try {
         now = this.#readNow()
       } catch {
-        this.#teardown('FENCED', 'PROTOCOL_INVALID', true)
+        this.#teardown('FENCED', 'PROTOCOL_INVALID')
         return
       }
       if (now < deadline) {
         this.#admissionTimer = this.#schedule(run, deadline - now)
         return
       }
-      this.#teardown('FENCED', 'ADMISSION_TIMEOUT', true)
+      this.#teardown('FENCED', 'ADMISSION_TIMEOUT')
     }
     try {
       this.#admissionTimer = this.#schedule(run, deadline - startedAt)
     } catch {
-      this.#teardown('FENCED', 'PROTOCOL_INVALID', true)
+      this.#teardown('FENCED', 'PROTOCOL_INVALID')
     }
   }
 
@@ -1025,11 +1057,34 @@ export class WAWBrowserController {
       fence.reason === 'TERMINAL_RENDER_FAILED'
         ? 'OUTPUT_RENDER_FAILED'
         : 'TERMINAL_PARSE_LIMIT',
-      true,
     )
   }
 
+  #assertPublicationCurrent(epoch: number): void {
+    const context = this.#context
+    const trust = this.#trustLease
+    let contextCurrent = false
+    let trustCurrent = false
+    try {
+      contextCurrent = Boolean(
+        context !== null &&
+        !context.signal.aborted &&
+        context.isCurrent() === true,
+      )
+      trustCurrent = Boolean(
+        trust !== null && !trust.signal.aborted && trust.isCurrent() === true,
+      )
+    } catch {
+      contextCurrent = false
+    }
+    if (epoch === this.#epoch && contextCurrent && trustCurrent) return
+    const reason = contextCurrent ? 'TRUST_LOST' : 'CONTEXT_CHANGED'
+    if (epoch === this.#epoch) this.#teardown('FENCED', reason)
+    throw new WAWBrowserControllerError(reason)
+  }
+
   #publishPayload(epoch: number, kind: FrameType, payload: unknown): bigint {
+    this.#assertPublicationCurrent(epoch)
     const admission = this.#admission
     const identity = this.#identity
     if (admission === null || identity === null) {
@@ -1051,6 +1106,12 @@ export class WAWBrowserController {
   }
 
   #publishBytes(epoch: number, bytes: Uint8Array): void {
+    try {
+      this.#assertPublicationCurrent(epoch)
+    } catch (error) {
+      bytes.fill(0)
+      throw error
+    }
     const socket = this.#socket
     if (
       epoch !== this.#epoch ||
@@ -1077,6 +1138,14 @@ export class WAWBrowserController {
       return this.#protocolFailure('OUTPUT_BACKPRESSURE')
     }
     try {
+      // Getter-backed socket state may yield to host code. Revalidate at the
+      // final synchronous publication boundary as well as before encoding.
+      this.#assertPublicationCurrent(epoch)
+    } catch (error) {
+      bytes.fill(0)
+      throw error
+    }
+    try {
       socket.send(bytes)
     } catch {
       bytes.fill(0)
@@ -1095,7 +1164,7 @@ export class WAWBrowserController {
       this.#inboundBufferedBytes + data.byteLength >
         WAW_BROWSER_CONTROLLER_LIMITS.inboundBufferedBytes
     ) {
-      this.#teardown('FENCED', 'OUTPUT_BACKPRESSURE', true)
+      this.#teardown('FENCED', 'OUTPUT_BACKPRESSURE')
       return
     }
     const bytes = new Uint8Array(data.slice(0))
@@ -1114,8 +1183,14 @@ export class WAWBrowserController {
               : error instanceof WAWBrowserControllerError &&
                   error.code === 'STREAM_CRYPTO_FAILURE'
                 ? 'STREAM_CRYPTO_FAILURE'
-                : 'PROTOCOL_INVALID'
-          this.#teardown('FENCED', reason, true)
+                : error instanceof WAWBrowserControllerError &&
+                    error.code === 'CONTEXT_CHANGED'
+                  ? 'CONTEXT_CHANGED'
+                  : error instanceof WAWBrowserControllerError &&
+                      error.code === 'TRUST_LOST'
+                    ? 'TRUST_LOST'
+                    : 'PROTOCOL_INVALID'
+          this.#teardown('FENCED', reason)
         } finally {
           bytes.fill(0)
           if (epoch === this.#epoch) {
@@ -1183,16 +1258,32 @@ export class WAWBrowserController {
       case FrameType.STATE: {
         const state = record(frame).state
         if (state === 'RUNNING' || state === 'NEEDS_INTERACTION') return
-        this.#teardown('FENCED', 'WORKSPACE_TERMINAL', true)
+        this.#teardown('FENCED', 'WORKSPACE_TERMINAL')
         return
       }
       case FrameType.EXIT:
       case FrameType.CLOSE:
-        this.#teardown('FENCED', 'WORKSPACE_TERMINAL', true)
+        this.#teardown('FENCED', 'WORKSPACE_TERMINAL')
         return
-      case FrameType.GAP:
-        this.#teardown('FENCED', 'OUTPUT_GAP', true)
+      case FrameType.GAP: {
+        const gap = record(frame)
+        if (
+          gap.reason === 'baseline_redraw' &&
+          gap.from_cursor === '0' &&
+          gap.to_cursor === '0' &&
+          this.#outputCursor === null &&
+          !this.#freshRedrawTruncated
+        ) {
+          // A fresh redraw may be bounded after the marker. It does not mean
+          // a rendered cursor was lost, because this connection never sends a
+          // positive resume cursor.
+          this.#freshRedrawTruncated = true
+          this.#emit()
+          return
+        }
+        this.#teardown('FENCED', 'OUTPUT_GAP')
         return
+      }
       case FrameType.PONG:
         return
       default:
@@ -1245,25 +1336,10 @@ export class WAWBrowserController {
         throw new WAWBrowserControllerError('STREAM_CRYPTO_FAILURE')
       }
       const body = record(frame)
-      const cursor = exactCursor(body.output_cursor)
-      const resume = this.#resume
-      if (
-        resume !== null &&
-        resume.cursor > 0n &&
-        this.#matchingIdentityForResume(resume) &&
-        cursor !== resume.cursor
-      ) {
-        throw new WAWBrowserControllerError('PROTOCOL_INVALID')
-      }
-      this.#outputCursor = cursor
-      this.#resume = Object.freeze({
-        projectId: this.#identity!.projectId,
-        workspaceId: this.#identity!.workspaceId,
-        agentType: this.#identity!.agentType,
-        generation: this.#identity!.generation,
-        runtimeEpoch: this.#identity!.runtimeEpoch,
-        cursor,
-      })
+      // Validate the Runtime's selected baseline bound, but do not present it
+      // as a rendered cursor. Only a completed terminal render may advance the
+      // cursor visible to a later decision.
+      exactCursor(body.output_cursor)
       this.#handshake = null
       this.#admissionTimer?.()
       this.#admissionTimer = null
@@ -1280,17 +1356,6 @@ export class WAWBrowserController {
       throw new WAWBrowserControllerError('PROTOCOL_INVALID')
     }
     throw new WAWBrowserControllerError('PROTOCOL_INVALID')
-  }
-
-  #matchingIdentityForResume(resume: ResumeCursor): boolean {
-    const identity = this.#identity
-    return (
-      identity !== null &&
-      identity.projectId === resume.projectId &&
-      identity.workspaceId === resume.workspaceId &&
-      identity.agentType === resume.agentType &&
-      identity.generation === resume.generation
-    )
   }
 
   async #handleOutput(
@@ -1332,16 +1397,6 @@ export class WAWBrowserController {
     }
     this.#assertCurrent(epoch, context, trust)
     this.#outputCursor = cursor
-    if (this.#identity !== null) {
-      this.#resume = Object.freeze({
-        projectId: this.#identity.projectId,
-        workspaceId: this.#identity.workspaceId,
-        agentType: this.#identity.agentType,
-        generation: this.#identity.generation,
-        runtimeEpoch: this.#identity.runtimeEpoch,
-        cursor,
-      })
-    }
     this.#emit()
   }
 
@@ -1415,7 +1470,7 @@ export class WAWBrowserController {
         this.#emit()
       }
       if (epoch === this.#epoch) {
-        this.#teardown('FENCED', 'STREAM_CRYPTO_FAILURE', true)
+        this.#teardown('FENCED', 'STREAM_CRYPTO_FAILURE')
       }
     } finally {
       plaintext.fill(0)
@@ -1463,14 +1518,24 @@ export class WAWBrowserController {
     input.state = result
     input.reasonCode = body.reason_code as string | null
     this.#pendingInput = null
-    input.resolve(
-      Object.freeze({
-        browserHop: input.browserHop.toString(),
-        cryptoSequence: input.cryptoSequence.toString(),
-        state: result,
-        reasonCode: input.reasonCode,
-      }),
-    )
+    const outcome = Object.freeze({
+      browserHop: input.browserHop.toString(),
+      cryptoSequence: input.cryptoSequence.toString(),
+      state: result,
+      reasonCode: input.reasonCode,
+    })
+    const terminalResult =
+      result === 'write_uncertain' ||
+      (result === 'rejected' && input.reasonCode !== 'INPUT_RATE_LIMITED')
+    if (terminalResult) {
+      // Runtime closes after uncertain input. Fence before resolving so a
+      // caller cannot publish a second input in the ACK/CLOSE race window.
+      this.#teardown(
+        'FENCED',
+        result === 'write_uncertain' ? 'INPUT_UNCERTAIN' : 'INPUT_REJECTED',
+      )
+    }
+    input.resolve(outcome)
     this.#emit()
   }
 
@@ -1478,6 +1543,7 @@ export class WAWBrowserController {
     if (this.#status !== 'CONNECTED') {
       throw new WAWBrowserControllerError('CONTROLLER_NOT_CONNECTED')
     }
+    this.#assertPublicationCurrent(this.#epoch)
     if (
       !Number.isInteger(columns) ||
       columns < WAW_BROWSER_CONTROLLER_LIMITS.resizeColumnsMin ||
@@ -1515,7 +1581,7 @@ export class WAWBrowserController {
     try {
       now = this.#readNow()
     } catch {
-      this.#teardown('FENCED', 'PROTOCOL_INVALID', true)
+      this.#teardown('FENCED', 'PROTOCOL_INVALID')
       return
     }
     this.#refillResize(now)
@@ -1527,10 +1593,21 @@ export class WAWBrowserController {
       try {
         this.#resizeTimer = this.#schedule(() => {
           this.#resizeTimer = null
-          this.#drainResize(epoch)
+          try {
+            this.#drainResize(epoch)
+          } catch (error) {
+            if (epoch !== this.#epoch) return
+            this.#teardown(
+              'FENCED',
+              error instanceof WAWBrowserControllerError &&
+                error.code === 'TRUST_LOST'
+                ? 'TRUST_LOST'
+                : 'CONTEXT_CHANGED',
+            )
+          }
         }, delay)
       } catch {
-        this.#teardown('FENCED', 'PROTOCOL_INVALID', true)
+        this.#teardown('FENCED', 'PROTOCOL_INVALID')
       }
       return
     }
@@ -1590,7 +1667,7 @@ export class WAWBrowserController {
       if (epoch !== this.#epoch || this.#status !== 'CONNECTED') return
       const identity = this.#identity
       if (identity === null) {
-        this.#teardown('FENCED', 'PROTOCOL_INVALID', true)
+        this.#teardown('FENCED', 'PROTOCOL_INVALID')
         return
       }
       try {
@@ -1606,7 +1683,7 @@ export class WAWBrowserController {
         )
       } catch {
         if (epoch === this.#epoch) {
-          this.#teardown('FENCED', 'TRANSPORT_FAILED', true)
+          this.#teardown('FENCED', 'TRANSPORT_FAILED')
         }
       }
     }
@@ -1616,15 +1693,85 @@ export class WAWBrowserController {
         WAW_BROWSER_CONTROLLER_LIMITS.heartbeatMs,
       )
     } catch {
-      this.#teardown('FENCED', 'PROTOCOL_INVALID', true)
+      this.#teardown('FENCED', 'PROTOCOL_INVALID')
     }
   }
 
-  #controlIdentity(): WAWBrowserAttachmentIdentity {
-    if (this.#identity === null) {
+  #beginControlOperation(
+    request: WAWBrowserControlRequest,
+  ): ActiveControlOperation {
+    if (this.#activeControlOperation !== null) {
+      throw new WAWBrowserControllerError('CONTROLLER_BUSY')
+    }
+    const identity = this.#identity
+    if (identity === null) {
       throw new WAWBrowserControllerError('ATTACHMENT_UNAVAILABLE')
     }
-    return this.#identity
+    let contextCurrent = false
+    try {
+      contextCurrent =
+        !request.context.signal.aborted && request.context.isCurrent() === true
+    } catch {
+      contextCurrent = false
+    }
+    if (
+      !contextCurrent ||
+      identity.projectId !== request.projectId ||
+      identity.workspaceId !== request.workspaceId ||
+      identity.agentType !== request.agentType ||
+      identity.generation !== request.generation
+    ) {
+      throw new WAWBrowserControllerError('CONTEXT_CHANGED')
+    }
+    const token = Symbol('waw-control-operation')
+    const invalidate = () => {
+      if (this.#activeControlOperation?.token === token) {
+        this.#teardown('FENCED', 'CONTEXT_CHANGED')
+      }
+    }
+    request.context.signal.addEventListener('abort', invalidate, { once: true })
+    const operation = Object.freeze({
+      token,
+      identity,
+      context: request.context,
+      cancel: () =>
+        request.context.signal.removeEventListener('abort', invalidate),
+    })
+    this.#activeControlOperation = operation
+    return operation
+  }
+
+  #controlOperationCurrent(operation: ActiveControlOperation): boolean {
+    try {
+      return (
+        this.#activeControlOperation?.token === operation.token &&
+        !operation.context.signal.aborted &&
+        operation.context.isCurrent() === true
+      )
+    } catch {
+      return false
+    }
+  }
+
+  #assertControlOperation(operation: ActiveControlOperation): void {
+    if (this.#controlOperationCurrent(operation)) return
+    throw new WAWBrowserControllerError('CONTEXT_CHANGED')
+  }
+
+  #finishControlOperation(operation: ActiveControlOperation): void {
+    if (this.#activeControlOperation?.token === operation.token) {
+      operation.cancel()
+      this.#activeControlOperation = null
+    }
+  }
+
+  #failControlOperation(
+    operation: ActiveControlOperation,
+    reason: WAWBrowserFenceReason,
+  ): void {
+    const owned = this.#activeControlOperation?.token === operation.token
+    this.#finishControlOperation(operation)
+    if (owned) this.#setStatus('FENCED', reason)
   }
 
   #checkDetachReceipt(
@@ -1653,20 +1800,28 @@ export class WAWBrowserController {
       receipt.workspace_id !== identity.workspaceId ||
       receipt.project_id !== identity.projectId ||
       receipt.agent_type !== identity.agentType ||
-      receipt.generation !== identity.generation
+      receipt.generation !== identity.generation ||
+      receipt.state !== 'STOPPED'
     ) {
       throw new WAWBrowserControllerError('STOP_FAILED')
     }
     return receipt
   }
 
-  async detach(): Promise<WAWBrowserDetachReceipt> {
+  async detach(
+    request: WAWBrowserControlRequest,
+  ): Promise<WAWBrowserDetachReceipt> {
     if (this.#status === 'DETACHING' || this.#status === 'STOPPING') {
       throw new WAWBrowserControllerError('CONTROLLER_BUSY')
     }
-    const identity = this.#controlIdentity()
-    this.#teardown('DETACHING', 'DETACH_REQUESTED', false)
+    if (!['CONNECTED', 'FENCED'].includes(this.#status)) {
+      throw new WAWBrowserControllerError('CONTROLLER_NOT_CONNECTED')
+    }
+    const operation = this.#beginControlOperation(request)
+    const { identity } = operation
+    this.#teardown('DETACHING', 'DETACH_REQUESTED', operation.token)
     try {
+      this.#assertControlOperation(operation)
       const receipt = await this.#controls.detach({
         workspaceId: identity.workspaceId,
         attachmentId: identity.attachmentId,
@@ -1675,28 +1830,41 @@ export class WAWBrowserController {
         agentType: identity.agentType,
       })
       const checked = this.#checkDetachReceipt(identity, receipt)
+      this.#assertControlOperation(operation)
+      this.#finishControlOperation(operation)
       this.#setStatus('DETACHED')
       return checked
     } catch (error) {
-      this.#resume = null
-      this.#outputCursor = null
-      this.#setStatus('FENCED', 'DETACH_FAILED')
+      this.#failControlOperation(
+        operation,
+        error instanceof WAWBrowserControllerError &&
+          error.code === 'CONTEXT_CHANGED'
+          ? 'CONTEXT_CHANGED'
+          : 'DETACH_FAILED',
+      )
       throw error instanceof WAWBrowserControllerError
         ? error
         : new WAWBrowserControllerError('DETACH_FAILED')
     }
   }
 
-  async stop(): Promise<WAWBrowserStopOutcome> {
+  async stop(
+    request: WAWBrowserControlRequest,
+  ): Promise<WAWBrowserStopOutcome> {
     if (this.#status === 'DETACHING' || this.#status === 'STOPPING') {
       throw new WAWBrowserControllerError('CONTROLLER_BUSY')
     }
-    const identity = this.#controlIdentity()
+    if (!['CONNECTED', 'DETACHED', 'FENCED'].includes(this.#status)) {
+      throw new WAWBrowserControllerError('CONTROLLER_NOT_CONNECTED')
+    }
+    const operation = this.#beginControlOperation(request)
+    const { identity } = operation
     const alreadyDetached = this.#status === 'DETACHED'
-    this.#teardown('STOPPING', 'STOP_REQUESTED', true)
+    this.#teardown('STOPPING', 'STOP_REQUESTED', operation.token)
     let detachReceipt: WAWBrowserDetachReceipt | null = null
     if (!alreadyDetached) {
       try {
+        this.#assertControlOperation(operation)
         detachReceipt = this.#checkDetachReceipt(
           identity,
           await this.#controls.detach({
@@ -1707,14 +1875,22 @@ export class WAWBrowserController {
             agentType: identity.agentType,
           }),
         )
+        this.#assertControlOperation(operation)
       } catch (error) {
-        this.#setStatus('FENCED', 'DETACH_FAILED')
+        this.#failControlOperation(
+          operation,
+          error instanceof WAWBrowserControllerError &&
+            error.code === 'CONTEXT_CHANGED'
+            ? 'CONTEXT_CHANGED'
+            : 'DETACH_FAILED',
+        )
         throw error instanceof WAWBrowserControllerError
           ? error
           : new WAWBrowserControllerError('DETACH_FAILED')
       }
     }
     try {
+      this.#assertControlOperation(operation)
       const stopReceipt = this.#checkStopReceipt(
         identity,
         await this.#controls.stop({
@@ -1723,6 +1899,9 @@ export class WAWBrowserController {
           agentType: identity.agentType,
         }),
       )
+      this.#assertControlOperation(operation)
+      this.#finishControlOperation(operation)
+      this.#identity = null
       this.#setStatus('STOPPED')
       return Object.freeze({
         detachConfirmed: alreadyDetached || detachReceipt !== null,
@@ -1730,7 +1909,13 @@ export class WAWBrowserController {
         stop: stopReceipt,
       })
     } catch (error) {
-      this.#setStatus('FENCED', 'STOP_FAILED')
+      this.#failControlOperation(
+        operation,
+        error instanceof WAWBrowserControllerError &&
+          error.code === 'CONTEXT_CHANGED'
+          ? 'CONTEXT_CHANGED'
+          : 'STOP_FAILED',
+      )
       throw error instanceof WAWBrowserControllerError
         ? error
         : new WAWBrowserControllerError('STOP_FAILED')
@@ -1740,16 +1925,18 @@ export class WAWBrowserController {
   handlePageLifecycle(
     event: 'pagehide' | 'freeze' | 'hidden' | 'unmount',
   ): void {
+    if (this.#status === 'STOPPED' && this.#identity === null) return
     const reason: Record<typeof event, WAWBrowserFenceReason> = {
       pagehide: 'PAGEHIDE',
       freeze: 'PAGE_FROZEN',
       hidden: 'PAGE_HIDDEN',
       unmount: 'UNMOUNTED',
     }
-    this.#teardown('FENCED', reason[event], true)
+    this.#teardown('FENCED', reason[event])
   }
 
   contextChanged(): void {
-    this.#teardown('FENCED', 'CONTEXT_CHANGED', true)
+    if (this.#status === 'STOPPED' && this.#identity === null) return
+    this.#teardown('FENCED', 'CONTEXT_CHANGED')
   }
 }

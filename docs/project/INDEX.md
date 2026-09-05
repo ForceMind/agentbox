@@ -33,6 +33,8 @@
 - [R11 rc6 binding replay](../WAW_R11_RC6_BINDING_REPLAY.md): exact API/Runtime
   replay, inventory-finalization gate, drift fences, installer boundary and
   explicit Linux/host evidence limits.
+- [R11 rc6 browser controller](../WAW_R11_RC6_BROWSER_CONTROLLER.md): controller
+  cursor/input/control fences, fresh-redraw contract and page-composition limits.
 
 - [Authentication timing diagnostic](../AUTH_TIMING_DIAGNOSTIC.md): isolated numeric observations, failure/privacy rules, regression evidence and unknown historical latency cause.
 
