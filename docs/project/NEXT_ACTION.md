@@ -18,9 +18,10 @@ blocker is resolved. Do not request the same software approval again.
   Linux inode-reuse verifier failure across Python 3.11/3.12/3.13. Repair
   `3ba85cb...` retains verified descriptors, and `bbdd67c...` completed a fresh
   20/20 exact-head matrix. A later native status-71 READY timing failure is fixed
-  by `af4d43e...` and awaits CI. Its contract is `docs/WAW_R11_RC6_FIRST_USE.md`;
-  independent rc6 review, deterministic startup/restart replay and browser page
-  composition remain due.
+  by `af4d43e...` and passed native; `9d078b4...` repairs its test-format gate and
+  awaits complete CI. Its contract is `docs/WAW_R11_RC6_FIRST_USE.md`; independent
+  rc6 review, deterministic startup/restart replay and browser page composition
+  remain due.
 - Historical paragraphs below that say “current uncommitted” are prior rc6
   checkpoints; the top active-implementation status is authoritative.
 - rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
@@ -45,8 +46,9 @@ blocker is resolved. Do not request the same software approval again.
   post-main workflows and dynamic Dependency Graph completed SUCCESS.
 - PR #80 repair head `bbdd67c...` has terminal 20/20 CI after fixing the shared
   descriptor-release/inode-reuse issue. It verifies the current first-use/
-  evidence checkpoint. Native follow-up `af4d43e...` awaits CI; do not merge
-  before replay, controller composition and the remaining rc6 acceptance set.
+  evidence checkpoint. Native follow-up passed; format repair `9d078b4...` awaits
+  CI. Do not merge before replay, controller composition and the remaining rc6
+  acceptance set.
 - Current evidence: the final local core matrix completed 216 plus 5 focused
   cases; independent Sol/xhigh review completed 244 cases with 1 Linux-only skip
   and 9 deselected, plus 8 encrypted-server non-UDS cases. Review is PASS with no
@@ -90,7 +92,7 @@ blocker is resolved. Do not request the same software approval again.
 - Bind/control shutdown evidence is also complete locally: pending exchange,
   detached task, retained peer or uncertain FD close prevents clean. Commit and
   exact-head verify it, then continue process lock and stream-owner composition.
-- Verify native follow-up `af4d43e...`, then implement deterministic API/Runtime
+- Verify format follow-up `9d078b4...`, then implement deterministic API/Runtime
   binding replay and exact inventory finalize before continuing the remaining
   production controller composition. Normal merge and exact read-back follow the
   complete rc6 acceptance set. After

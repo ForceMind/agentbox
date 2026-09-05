@@ -46,9 +46,10 @@ a typed Project binding and exact Runtime executable evidence. Its first CI head
 `029378e...` failed 3 Backend Python jobs because Linux reused an inode after
 the verifier released its Project descriptor. Repair `3ba85cb...` retains a
 bounded descriptor per verified key; its `bbdd67c...` exact head completed 20/20
-checks. Later native READY timing failure is fixed in `af4d43e...` and awaits CI.
-Independent review, startup/restart replay and browser page composition are still
-pending. See [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md).
+checks. Later native READY timing failure is fixed in `af4d43e...` and native CI
+passed; format repair `9d078b4...` awaits the full matrix. Independent review,
+startup/restart replay and browser page composition are still pending. See
+[R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md).
 
 ## Verified baseline and reachable behavior
 
@@ -105,7 +106,7 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
 | R10 fixed interactive process | 已完成 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | PR #79 final head `0d9e7c7...` 经20/20 CI、正常合并`341a69bf...`、精确回读、六组post-main和Dependency Graph SUCCESS。真实 vendor/host 证据仍属 R12 |
-| R11 software integration | 进行中 | 全链路 controller、故障注入、E2E、artifact、操作文档与全页面双语 | R4–R10；API public anchor、同一Runtime peer/pidfd与durable epoch 已在 rc6 组合；redraw `f37f92d9...` 与 `WAWRuntimeApplication` `628e9c00...` 均完成20/20 exact-head CI。`708acd8...` 的 first-use CI 暴露 inode reuse，`3ba85cb...`/`bbdd67c...` 已由20/20修复验证，`af4d43e...` 修复 native READY timing 后待 CI；独立审查、deterministic restart replay 与 browser 页面接线仍待完成。production main、real key/provider和host仍关闭。无持久payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
+| R11 software integration | 进行中 | 全链路 controller、故障注入、E2E、artifact、操作文档与全页面双语 | R4–R10；API public anchor、同一Runtime peer/pidfd与durable epoch 已在 rc6 组合；redraw `f37f92d9...` 与 `WAWRuntimeApplication` `628e9c00...` 均完成20/20 exact-head CI。`708acd8...` 的 first-use CI 暴露 inode reuse，`3ba85cb...`/`bbdd67c...` 已由20/20修复验证，`af4d43e...` native 通过且 `9d078b4...` 格式修复待完整 CI；独立审查、deterministic restart replay 与 browser 页面接线仍待完成。production main、real key/provider和host仍关闭。无持久payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
 API singleton 的当前未提交基础已实现 `AttachmentAuthority.begin_shutdown()`：

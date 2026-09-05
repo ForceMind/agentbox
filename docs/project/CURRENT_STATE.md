@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T18:09:26Z"
+verified_at_utc: "2026-09-05T18:15:56Z"
 verified_by: "codex-r11-rc6-first-use-checkpoint"
 repository: "ForceMind/agentbox"
 ---
@@ -17,7 +17,9 @@ repository: "ForceMind/agentbox"
   the same Linux inode-reuse flaw in the Runtime Project verifier. Repair head
   `bbdd67c...` completed the fresh exact-head 20/20 matrix, including native and
   Python 3.11/3.12/3.13. Later documentation head `801a494...` failed only native
-  attach READY status 71; `af4d43e...` is the local timing repair awaiting CI.
+  attach READY status 71; `af4d43e...` passed native, while `2381171...` quality
+  failed only because its new Python test needed Black formatting. `9d078b4...`
+  is the local format repair awaiting CI.
 - The active, reviewed execution order is `docs/WAW_R11_EXECUTION_PLAN.md`.
   The rc6-B first-use contract and local evidence are recorded in
   `docs/WAW_R11_RC6_FIRST_USE.md`; this is not a claim that rc6, rc7, rc8, rc9
@@ -713,8 +715,10 @@ PROPOSED architecture status are preserved.
 - Documentation-only head `801a494...` then failed native attach READY status 71,
   with the other 19 checks passing. `af4d43e...` replaces fixed short client
   polling with one bounded monotonic READY deadline while preserving exact
-  PID/session validation; portable native checks pass and Linux CI is pending.
-- Next rc6 order after this native repair's CI is deterministic startup/restart
+  PID/session validation; Linux native passed. `2381171...` then exposed only a
+  Black format failure in the new Python test, repaired by `9d078b4...`; its full
+  CI remains pending.
+- Next rc6 order after this format repair's CI is deterministic startup/restart
   binding replay and browser page
   composition. Normal merge/read-back follows the complete rc6 acceptance set.
   rc7–rc9 and the R12 real-host boundary remain unchanged.
