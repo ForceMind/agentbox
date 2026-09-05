@@ -55,6 +55,14 @@ blocker is resolved. Do not request the same software approval again.
   native completed 73 cases; Backend Python 3.11 completed 3629 passed/44 skipped,
   with 3.12/3.13 also successful. Treat bounded redraw as verified and continue
   with `WAWRuntimeApplication` production composition and singleton ownership.
+- The current `WAWRuntimeApplication` composition is uncommitted: typed Runtime
+  key/executor providers and activated sockets have distinct one-shot ownership;
+  stream, control and legacy share application start/close tasks and one dispatch
+  gate. Partial production builders are private and weak-map provenance is gone.
+  Incomplete construction retains a typed retryable owner. Provider closure waits
+  for stream/control/lifecycle/legacy clean evidence. Independent Sol/xhigh review
+  reports PASS with no P0/P1/P2; Linux-target mypy covers 260 sources. Production
+  main, real key/provider and host activation remain disabled.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
   then continue the remaining production controller composition. Normal merge and
   exact read-back follow the complete rc6 acceptance set. After

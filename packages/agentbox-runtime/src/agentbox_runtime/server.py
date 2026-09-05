@@ -11,7 +11,6 @@ import socket
 import stat
 import struct
 import threading
-import weakref
 from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
 from typing import Any
@@ -97,11 +96,59 @@ _PROJECT_ACTION_KEYS: dict[str, frozenset[str]] = {
     "github.pr.create": frozenset({"project_key", "title", "body", "base"}),
 }
 _ACTIONS |= frozenset(_PROJECT_ACTION_KEYS)
-_CONTROL_SERVER_ISSUES: weakref.WeakKeyDictionary[
-    WAWControlServer, tuple[WAWFixedRuntimeComposition, str, WAWPeerAuthority]
-] = weakref.WeakKeyDictionary()
-_CONTROL_SERVER_ISSUE_LOCK = threading.Lock()
 _CONNECTION_SHUTDOWN_GRACE_SECONDS = 0.05
+_RUNTIME_COMPOSITION_TOKEN = object()
+
+
+class _WAWRuntimeCompositionBinding:
+    def __init__(
+        self,
+        token: object,
+        composition: WAWFixedRuntimeComposition,
+        control: WAWControlServer,
+        authority: WAWPeerAuthority,
+    ) -> None:
+        if token is not _RUNTIME_COMPOSITION_TOKEN:
+            raise RuntimeOperationError(
+                "WAW_COMPOSITION_MISMATCH",
+                "Runtime composition binding is not caller-constructible",
+                category="conflict",
+            )
+        self._composition = composition
+        self._control = control
+        self._authority = authority
+        self._used = False
+        self._lock = threading.Lock()
+
+    def take(self) -> tuple[WAWFixedRuntimeComposition, WAWControlServer, WAWPeerAuthority]:
+        with self._lock:
+            if self._used:
+                raise RuntimeOperationError(
+                    "WAW_COMPOSITION_MISMATCH",
+                    "Runtime composition binding is already consumed",
+                    category="conflict",
+                )
+            self._used = True
+            return self._composition, self._control, self._authority
+
+
+def _issue_runtime_composition_binding(
+    composition: WAWFixedRuntimeComposition,
+    control: WAWControlServer,
+) -> _WAWRuntimeCompositionBinding:
+    authority = composition.registry.peer_authority
+    if type(authority) is not WAWPeerAuthority or type(control) is not WAWControlServer:
+        raise RuntimeOperationError(
+            "WAW_COMPOSITION_MISMATCH",
+            "Runtime composition binding is invalid",
+            category="conflict",
+        )
+    return _WAWRuntimeCompositionBinding(
+        _RUNTIME_COMPOSITION_TOKEN,
+        composition,
+        control,
+        authority,
+    )
 
 
 class _RuntimeConflictProbe:
@@ -159,7 +206,13 @@ class RuntimeExecutorServer:
         waw_vendor_auth_bindings: Mapping[AgentType, WAWVendorPublicAuthBinding] | None = None,
         waw_auth_probe_cache: WAWPublicAuthProbeCache | None = None,
         waw_fixed_runtime: WAWFixedRuntimeComposition | None = None,
+        waw_composition_binding: _WAWRuntimeCompositionBinding | None = None,
     ) -> None:
+        issued_authority: WAWPeerAuthority | None = None
+        if waw_composition_binding is not None:
+            if waw_control_server is not None or waw_fixed_runtime is not None:
+                raise ValueError("composition binding owns control and fixed runtime")
+            waw_fixed_runtime, waw_control_server, issued_authority = waw_composition_binding.take()
         if read_timeout_seconds <= 0 or write_timeout_seconds <= 0 or trailing_timeout_seconds <= 0:
             raise ValueError("Runtime socket timeouts must be positive")
         if (
@@ -206,12 +259,6 @@ class RuntimeExecutorServer:
             coordinator = waw_fixed_runtime.executor.conflict_coordinator
             auth_probe = waw_fixed_runtime.executor.auth_probe
             peer_authority = waw_fixed_runtime.registry.peer_authority
-            with _CONTROL_SERVER_ISSUE_LOCK:
-                control_issue = (
-                    _CONTROL_SERVER_ISSUES.pop(waw_control_server, None)
-                    if type(waw_control_server) is WAWControlServer
-                    else None
-                )
             if (
                 type(coordinator) is not WAWConflictCoordinator
                 or type(auth_probe) is not WAWCachedPublicAuthProbe
@@ -219,10 +266,8 @@ class RuntimeExecutorServer:
                 or waw_fixed_runtime.executor.runtime_epoch != waw_fixed_runtime.runtime_epoch
                 or waw_fixed_runtime.executor.execution_authority
                 is not waw_fixed_runtime.execution_authority
-                or control_issue is None
-                or control_issue[0] is not waw_fixed_runtime
-                or control_issue[1] != waw_fixed_runtime.runtime_epoch
-                or control_issue[2] is not peer_authority
+                or issued_authority is not peer_authority
+                or type(waw_control_server) is not WAWControlServer
                 or not callable(formal_project_id_for_legacy)
                 or type(self._manager) is not CodexManager
                 or type(self._claude_manager) is not ClaudeSessionManager
@@ -291,6 +336,42 @@ class RuntimeExecutorServer:
         """Return the authority shared by control, lifecycle and stream wiring."""
 
         return self._waw_peer_authority
+
+    @property
+    def waw_control_server(self) -> WAWControlServer | None:
+        return self._waw_control_server
+
+    @property
+    def legacy_shutdown_clean(self) -> bool:
+        """True after the legacy listener and all accepted work closed cleanly."""
+
+        operation = self._close_operation
+        return (
+            self._closed
+            and not self._closing
+            and not self._poisoned
+            and operation is not None
+            and operation.done()
+            and not operation.cancelled()
+            and operation.exception() is None
+            and self._server is None
+            and not self._connection_tasks
+            and not self._writers
+        )
+
+    @property
+    def shutdown_clean(self) -> bool:
+        """Include control, lifecycle and retained authority terminal evidence."""
+
+        control = self._waw_control_server
+        composition = self._waw_fixed_runtime
+        authority = self._waw_peer_authority
+        return (
+            self.legacy_shutdown_clean
+            and (control is None or control.shutdown_clean)
+            and (composition is None or composition.registry.shutdown_clean)
+            and (authority is None or authority.shutdown_clean)
+        )
 
     @property
     def waw_public_auth_probe(self) -> WAWPublicAuthProbe | None:
@@ -705,6 +786,16 @@ class RuntimeExecutorServer:
         try:
             if self._closing or self._closed:
                 return
+            if (
+                self._waw_fixed_runtime is not None
+                and not self._waw_fixed_runtime.registry.application_gate_open
+            ):
+                await self._write_error(
+                    writer,
+                    "RUNTIME_UNAVAILABLE",
+                    "Runtime application is not ready",
+                )
+                return
             if not self._peer_allowed(writer):
                 await self._write_error(
                     writer, "RUNTIME_PEER_FORBIDDEN", "Runtime peer is forbidden"
@@ -1040,7 +1131,7 @@ class RuntimeExecutorServer:
         await asyncio.wait_for(writer.drain(), timeout=self._write_timeout_seconds)
 
 
-def build_runtime_server_from_filesystem_v2(
+def _build_runtime_server_from_filesystem_v2(
     *,
     socket_path: Path,
     manager: CodexManager,
@@ -1062,46 +1153,50 @@ def build_runtime_server_from_filesystem_v2(
 ) -> RuntimeExecutorServer:
     """Build one R11 server from the sole filesystem-v2 epoch composition."""
 
-    composition = create_waw_lifecycle_registry_from_filesystem_bundle(
-        runtime_manifest_path=runtime_manifest_path,
-        public_directory=public_directory,
-        expected_runtime_gid=expected_runtime_gid,
-        epoch_store=epoch_store,
-        executor_factory=executor_factory,
-        binding_digest_factory=binding_digest_factory,
-    )
-    control_server = build_waw_control_server(
-        sockets=activated_sockets,
-        registry=composition.registry,
-        expected_peer_uid=waw_control_peer_uid,
-        expected_peer_gid=waw_control_peer_gid,
-    )
-    peer_authority = composition.registry.peer_authority
-    if type(peer_authority) is not WAWPeerAuthority:
-        raise RuntimeOperationError(
-            "WAW_COMPOSITION_MISMATCH",
-            "Control server did not retain the fixed Runtime peer authority",
-            category="conflict",
+    composition: WAWFixedRuntimeComposition | None = None
+    peer_authority: WAWPeerAuthority | None = None
+    try:
+        composition = create_waw_lifecycle_registry_from_filesystem_bundle(
+            runtime_manifest_path=runtime_manifest_path,
+            public_directory=public_directory,
+            expected_runtime_gid=expected_runtime_gid,
+            epoch_store=epoch_store,
+            executor_factory=executor_factory,
+            binding_digest_factory=binding_digest_factory,
         )
-    with _CONTROL_SERVER_ISSUE_LOCK:
-        _CONTROL_SERVER_ISSUES[control_server] = (
-            composition,
-            composition.runtime_epoch,
-            peer_authority,
+        control_server = build_waw_control_server(
+            sockets=activated_sockets,
+            registry=composition.registry,
+            expected_peer_uid=waw_control_peer_uid,
+            expected_peer_gid=waw_control_peer_gid,
         )
-    return RuntimeExecutorServer(
-        socket_path,
-        manager,
-        allowed_peer_uids=allowed_peer_uids,
-        allowed_peer_gids=allowed_peer_gids,
-        claude_manager=claude_manager,
-        project_manager=project_manager,
-        capability_collector=capability_collector,
-        waw_control_server=control_server,
-        enable_waw_fixed_process=True,
-        formal_project_id_for_legacy=formal_project_id_for_legacy,
-        waw_fixed_runtime=composition,
-    )
+        peer_authority = composition.registry.peer_authority
+        if type(peer_authority) is not WAWPeerAuthority:
+            raise RuntimeOperationError(
+                "WAW_COMPOSITION_MISMATCH",
+                "Control server did not retain the fixed Runtime peer authority",
+                category="conflict",
+            )
+        binding = _issue_runtime_composition_binding(composition, control_server)
+        return RuntimeExecutorServer(
+            socket_path,
+            manager,
+            allowed_peer_uids=allowed_peer_uids,
+            allowed_peer_gids=allowed_peer_gids,
+            claude_manager=claude_manager,
+            project_manager=project_manager,
+            capability_collector=capability_collector,
+            enable_waw_fixed_process=True,
+            formal_project_id_for_legacy=formal_project_id_for_legacy,
+            waw_composition_binding=binding,
+        )
+    except BaseException:
+        with contextlib.suppress(BaseException):
+            activated_sockets.control.close()
+        if peer_authority is not None:
+            with contextlib.suppress(BaseException):
+                peer_authority.close()
+        raise
 
 
 async def _main() -> None:
@@ -1171,6 +1266,5 @@ def main() -> None:
 
 __all__ = [
     "RuntimeExecutorServer",
-    "build_runtime_server_from_filesystem_v2",
     "main",
 ]

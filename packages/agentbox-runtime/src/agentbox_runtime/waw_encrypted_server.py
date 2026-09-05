@@ -159,6 +159,7 @@ class WAWEncryptedServer:
         self._close_operation: asyncio.Task[None] | None = None
         self._close_complete = False
         self._close_failure: RuntimeError | None = None
+        self._socket_closed = False
 
     @classmethod
     def from_activated(
@@ -178,6 +179,24 @@ class WAWEncryptedServer:
     @property
     def poisoned(self) -> bool:
         return self._poisoned
+
+    @property
+    def shutdown_clean(self) -> bool:
+        """Whether every listener-owned resource reached a clean terminal state."""
+
+        return (
+            self._closed
+            and self._close_complete
+            and self._close_failure is None
+            and not self._poisoned
+            and self._socket_closed
+            and self._close_operation is None
+            and (self._accept_task is None or self._accept_task.done())
+            and all(task.done() for task in self._connections)
+            and all(task.done() for task in self._workers)
+            and not self._sessions
+            and not self._peers
+        )
 
     async def start(self) -> None:
         if self._closing or self._poisoned or self._closed or self._close_operation is not None:
@@ -499,8 +518,12 @@ class WAWEncryptedServer:
     async def _perform_close(self) -> None:
         self._closing = True
         self._closed = True
-        with contextlib.suppress(OSError):
+        try:
             self._socket.close()
+        except OSError:
+            self._poison()
+        else:
+            self._socket_closed = True
         if self._accept_task is not None:
             self._accept_task.cancel()
             done, _ = await asyncio.wait({self._accept_task}, timeout=1.0)

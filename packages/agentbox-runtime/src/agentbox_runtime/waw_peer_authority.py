@@ -274,6 +274,17 @@ class WAWPeerAuthority:
         return self._expected_gid
 
     @property
+    def shutdown_clean(self) -> bool:
+        with self._lock:
+            return (
+                self._closed
+                and not self._poisoned
+                and self._close_failure is None
+                and self._current is None
+                and self._pending is None
+            )
+
+    @property
     def retired_epochs(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(sorted(self._retired))

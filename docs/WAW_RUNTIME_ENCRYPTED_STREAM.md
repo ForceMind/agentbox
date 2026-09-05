@@ -56,6 +56,16 @@ completed 73 cases including real held-FD tmux capture; Backend Python 3.11
 completed 3629 passed/44 skipped, with Python 3.12/3.13 also successful. This
 closes the bounded-redraw software slice without claiming R12 host qualification.
 
+The current uncommitted `WAWRuntimeApplication` continuation supplies typed,
+one-shot Runtime key/executor providers, shared startup/close tasks and one gate
+used by both control and legacy dispatch. Partial production builders are private;
+the prior weak-map provenance is replaced by an unforgeable one-use binding.
+Incomplete construction retains a typed retryable cleanup owner. Shutdown evidence
+requires terminal listeners, workers, sessions, peers and writers with neither
+poison nor close failure before key/provider closure. Production main, real
+key/provider and real-host activation remain disabled. Independent Sol/xhigh
+review reports PASS with no P0/P1/P2.
+
 Input is decrypted once, then receives the appropriate accepted and terminal
 written/uncertain/rejected result. Rejection after successful decryption retains
 nonce continuity. A cached terminal ACK may be replayed at most once within its

@@ -614,7 +614,7 @@ def build_waw_control_server(
     )
 
 
-def build_waw_encrypted_servers(
+def _create_waw_encrypted_servers_test_only(
     *,
     sockets: WAWActivatedSockets,
     registry: WAWLifecycleRegistry,
@@ -632,6 +632,42 @@ def build_waw_encrypted_servers(
     or key custody evidence cannot be supplied by this helper; the deployment
     caller must provide qualified ports. Test keys/ports are software evidence.
     """
+    stream_server, streams = _build_waw_encrypted_stream_server(
+        sockets=sockets,
+        registry=registry,
+        executor=executor,
+        runtime_epoch=runtime_epoch,
+        static_key=static_key,
+        peer_authority=peer_authority,
+        expected_peer_uid=expected_peer_uid,
+        expected_peer_gid=expected_peer_gid,
+        clock=clock,
+    )
+    control_server = build_waw_control_server(
+        sockets=sockets,
+        registry=registry,
+        expected_peer_uid=expected_peer_uid,
+        expected_peer_gid=expected_peer_gid,
+        max_active_connections=16,
+        max_active_dispatches=8,
+    )
+    return control_server, stream_server, streams
+
+
+def _build_waw_encrypted_stream_server(
+    *,
+    sockets: WAWActivatedSockets,
+    registry: WAWLifecycleRegistry,
+    executor: WAWSupervisorExecutor,
+    runtime_epoch: str,
+    static_key: Callable[[], bytes],
+    peer_authority: WAWPeerAuthority,
+    expected_peer_uid: int,
+    expected_peer_gid: int,
+    clock: Callable[[], float],
+) -> tuple[WAWEncryptedServer, WAWEncryptedRegistry]:
+    """Attach the one stream endpoint to an already composed control registry."""
+
     if not callable(static_key):
         raise ValueError("trusted encrypted Runtime providers are required")
     if (
@@ -639,6 +675,7 @@ def build_waw_encrypted_servers(
         or registry.peer_authority is not peer_authority
         or peer_authority.expected_uid != expected_peer_uid
         or peer_authority.expected_gid != expected_peer_gid
+        or executor.runtime_epoch != runtime_epoch
     ):
         raise ValueError("encrypted Runtime requires the registry's exact peer authority")
 
@@ -683,16 +720,8 @@ def build_waw_encrypted_servers(
         supervisor=executor.encrypted_supervisor,
         current=executor.encrypted_binding_current,
     )
-    control_server = build_waw_control_server(
-        sockets=sockets,
-        registry=registry,
-        expected_peer_uid=expected_peer_uid,
-        expected_peer_gid=expected_peer_gid,
-        max_active_connections=16,
-        max_active_dispatches=8,
-    )
     registry.configure_encrypted_attachments(service)
-    return control_server, stream_server, streams
+    return stream_server, streams
 
 
 __all__ = [

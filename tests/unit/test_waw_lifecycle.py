@@ -295,6 +295,21 @@ async def test_binding_gate_and_idempotent_bind_and_register() -> None:
 
 
 @pytest.mark.anyio
+async def test_application_gate_blocks_every_control_mutation_until_startup_commit() -> None:
+    runtime = registry()
+    runtime.configure_application_gate()
+    with pytest.raises(WAWControlDispatchError) as closed:
+        await runtime.dispatch(bind_request())
+    assert closed.value.code == "RUNTIME_UNAVAILABLE" and closed.value.retryable
+
+    runtime.open_application_gate()
+    assert (await runtime.dispatch(bind_request()))["status"] == "BOUND"
+    runtime.close_application_gate()
+    with pytest.raises(WAWControlDispatchError, match="RUNTIME_UNAVAILABLE"):
+        await runtime.dispatch(register_request())
+
+
+@pytest.mark.anyio
 async def test_peer_authority_bind_repeat_and_terminal_transfer() -> None:
     authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
     runtime = registry(peer_authority=authority)

@@ -13,8 +13,8 @@ from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
 from agentbox_runtime.waw_bootstrap import (
+    _create_waw_encrypted_servers_test_only,
     build_waw_control_server,
-    build_waw_encrypted_servers,
     create_waw_lifecycle_registry_development_only,
     create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat,
     create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only,
@@ -721,7 +721,7 @@ def test_encrypted_builder_uses_registry_authority_for_control_stream_and_servic
 
     monkeypatch.setattr(bootstrap_subject, "WAWControlServer", FakeControlServer)
     monkeypatch.setattr(bootstrap_subject, "WAWEncryptedServer", FakeEncryptedServer)
-    control, stream, streams = build_waw_encrypted_servers(
+    control, stream, streams = _create_waw_encrypted_servers_test_only(
         sockets=sockets,
         registry=registry,
         executor=executor,
@@ -767,7 +767,7 @@ def test_encrypted_builder_uses_registry_authority_for_control_stream_and_servic
     assert service._peer_provider() is runtime_peer
     assert borrowed_lease.closed
 
-    parameters = inspect.signature(build_waw_encrypted_servers).parameters
+    parameters = inspect.signature(_create_waw_encrypted_servers_test_only).parameters
     assert "peer_authority" in parameters
     assert {"peer", "peer_verifier", "control_peer_authorizer", "capture"}.isdisjoint(parameters)
 
@@ -784,7 +784,7 @@ def test_encrypted_builder_rejects_non_registry_authority(tmp_path: Path) -> Non
     authority = WAWPeerAuthority(expected_uid=1001, expected_gid=1002)
     registry.configure_peer_authority(authority)
     with pytest.raises(ValueError, match="exact peer authority"):
-        build_waw_encrypted_servers(
+        _create_waw_encrypted_servers_test_only(
             sockets=WAWActivatedSockets(cast(Any, object()), cast(Any, object())),
             registry=registry,
             executor=_fixed_executor(tmp_path, runtime_epoch),

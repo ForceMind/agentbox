@@ -466,6 +466,7 @@ async def test_start_relistens_fixed_backlog_before_readiness_and_is_idempotent(
 
     await server.close()
     await server.close()
+    assert server.shutdown_clean
     assert events.count("server-close") == 1
     assert "socket-close" not in events
     with pytest.raises(RuntimeError, match="unavailable"):
@@ -696,6 +697,7 @@ async def test_dispatches_valid_request_and_closes_connection(tmp_path: Path) ->
         assert seen == [_request()]
     finally:
         await server.close()
+        assert server.shutdown_clean
         sock.close()
 
 
@@ -908,6 +910,7 @@ async def test_close_while_dispatching_is_bounded_and_poisoned(tmp_path: Path) -
         close_task = asyncio.create_task(server.close())
         await asyncio.wait_for(close_task, timeout=1)
         assert server._poisoned is True
+        assert not server.shutdown_clean
         release.set()
         assert await asyncio.wait_for(call, timeout=1) == b""
     finally:

@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -19,7 +20,7 @@ from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.server import (
     _ACTIONS,
     RuntimeExecutorServer,
-    build_runtime_server_from_filesystem_v2,
+    _build_runtime_server_from_filesystem_v2,
 )
 from agentbox_runtime.tmux import TmuxAdapter
 from agentbox_runtime.waw_auth_probe import (
@@ -210,17 +211,9 @@ def _epoch_store(tmp_path: Path) -> WAWRuntimeEpochStore:
     return store
 
 
-def _issued_control(composition: WAWFixedRuntimeComposition) -> WAWControlServer:
+def _issued_binding(composition: WAWFixedRuntimeComposition) -> Any:
     control = object.__new__(WAWControlServer)
-    peer_authority = composition.registry.peer_authority
-    assert type(peer_authority) is WAWPeerAuthority
-    with server_subject._CONTROL_SERVER_ISSUE_LOCK:
-        server_subject._CONTROL_SERVER_ISSUES[control] = (
-            composition,
-            composition.runtime_epoch,
-            peer_authority,
-        )
-    return control
+    return server_subject._issue_runtime_composition_binding(composition, control)
 
 
 def test_legacy_only_server_keeps_fixed_process_inert(tmp_path: Path) -> None:
@@ -695,8 +688,7 @@ async def test_server_uses_preconsumed_composition_without_second_epoch(
         claude_manager=claude,
         enable_waw_fixed_process=True,
         formal_project_id_for_legacy=_Providers.formal_project_id,
-        waw_control_server=_issued_control(composition),
-        waw_fixed_runtime=composition,
+        waw_composition_binding=_issued_binding(composition),
     )
     try:
         await server.start(create_development_parent=True)
@@ -723,8 +715,7 @@ def test_server_rejects_epoch_store_or_mismatched_composition_before_effects(
             claude_manager=claude,
             enable_waw_fixed_process=True,
             formal_project_id_for_legacy=_Providers.formal_project_id,
-            waw_control_server=_issued_control(composition),
-            waw_fixed_runtime=composition,
+            waw_composition_binding=_issued_binding(composition),
             waw_epoch_store=store,
         )
     assert codex.conflict_coordinator is None
@@ -744,8 +735,7 @@ def test_server_rejects_epoch_store_or_mismatched_composition_before_effects(
             claude_manager=claude,
             enable_waw_fixed_process=True,
             formal_project_id_for_legacy=_Providers.formal_project_id,
-            waw_control_server=_issued_control(mismatched),
-            waw_fixed_runtime=mismatched,
+            waw_composition_binding=_issued_binding(mismatched),
         )
     assert codex.conflict_coordinator is None
     assert claude.conflict_coordinator is None
@@ -756,10 +746,17 @@ def test_server_rejects_unissued_or_wrong_composition_control_before_effects(
     tmp_path: Path,
 ) -> None:
     composition = _composition(tmp_path)
-    for index, control in enumerate(
+    cases = (
+        {
+            "waw_control_server": object.__new__(WAWControlServer),
+            "waw_fixed_runtime": composition,
+        },
+        {"waw_composition_binding": _issued_binding(replace(composition, runtime_epoch="3"))},
+    )
+    for index, extra in enumerate(
         (
-            object.__new__(WAWControlServer),
-            _issued_control(replace(composition, runtime_epoch="3")),
+            cases[0],
+            cases[1],
         )
     ):
         manager_root = tmp_path / f"control-{index}"
@@ -774,8 +771,7 @@ def test_server_rejects_unissued_or_wrong_composition_control_before_effects(
                 claude_manager=claude,
                 enable_waw_fixed_process=True,
                 formal_project_id_for_legacy=_Providers.formal_project_id,
-                waw_control_server=control,
-                waw_fixed_runtime=composition,
+                **cast(Any, extra),
             )
         assert codex.conflict_coordinator is None
         assert claude.conflict_coordinator is None
@@ -802,7 +798,7 @@ def test_filesystem_v2_builder_retains_the_only_composition(
     manager_root.mkdir()
     codex, claude = _managers(manager_root)
 
-    server = build_runtime_server_from_filesystem_v2(
+    server = _build_runtime_server_from_filesystem_v2(
         socket_path=tmp_path / "builder.sock",
         manager=codex,
         claude_manager=claude,
@@ -987,3 +983,38 @@ async def test_server_refreshes_auth_only_through_injected_qualified_runner(
         )
         == evidence
     )
+
+
+@pytest.mark.anyio
+async def test_fixed_legacy_handler_obeys_same_application_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = object.__new__(RuntimeExecutorServer)
+    server._closing = False
+    server._closed = False
+    server._writers = set()
+    server._waw_fixed_runtime = cast(
+        Any,
+        SimpleNamespace(registry=SimpleNamespace(application_gate_open=False)),
+    )
+    errors: list[tuple[str, str]] = []
+
+    async def write_error(_writer: Any, code: str, message: str) -> None:
+        errors.append((code, message))
+
+    monkeypatch.setattr(server, "_write_error", write_error)
+    monkeypatch.setattr(
+        server,
+        "_peer_allowed",
+        lambda _writer: (_ for _ in ()).throw(AssertionError("gate must run first")),
+    )
+
+    class Writer:
+        def close(self) -> None:
+            return None
+
+        async def wait_closed(self) -> None:
+            return None
+
+    await server._handle(asyncio.StreamReader(), cast(Any, Writer()))
+    assert errors == [("RUNTIME_UNAVAILABLE", "Runtime application is not ready")]

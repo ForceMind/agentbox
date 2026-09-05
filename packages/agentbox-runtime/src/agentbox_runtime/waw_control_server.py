@@ -156,6 +156,23 @@ class WAWControlServer:
         self._close_operation: asyncio.Task[None] | None = None
         self._start_operation: asyncio.Task[None] | None = None
 
+    @property
+    def shutdown_clean(self) -> bool:
+        """Whether every listener-owned resource reached a clean terminal state."""
+
+        tasks = self._connection_tasks | self._dispatch_tasks | self._io_tasks | self._cleanup_tasks
+        return (
+            self._closed
+            and not self._closing
+            and not self._poisoned
+            and self._server is None
+            and (self._socket_ownership is not _SocketOwnership.RAW or self._raw_socket_closed)
+            and (self._start_operation is None or self._start_operation.done())
+            and (self._close_operation is None or self._close_operation.done())
+            and not self._writers
+            and all(task.done() for task in tasks)
+        )
+
     async def start(self) -> None:
         if self._poisoned:
             raise RuntimeError("WAW control server is poisoned")

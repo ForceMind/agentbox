@@ -722,3 +722,12 @@ PROPOSED architecture status are preserved.
   Python 3.11 completed 3629 passed/44 skipped, and the 3.12/3.13 matrix also
   completed successfully. The bounded-redraw slice is verified; the next rc6
   scope is `WAWRuntimeApplication` production composition.
+- The current `WAWRuntimeApplication` slice is uncommitted. Typed Runtime
+  key/executor providers and activated sockets transfer through distinct one-shot
+  owners; shared start/close tasks compose stream, gated control, gated legacy and
+  one final application-gate commit. Partial production builders are private and
+  weak-map provenance is replaced by an unforgeable one-use binding. Incomplete
+  construction exposes a typed, reachable cleanup owner for retry. Shutdown
+  evidence keeps the provider until stream/control/lifecycle/legacy are all clean.
+  No production main, real key/provider or host is enabled. Independent Sol/xhigh
+  review reports PASS with no P0/P1/P2; Linux-target mypy covers 260 sources.

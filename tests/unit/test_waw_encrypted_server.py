@@ -203,6 +203,7 @@ async def test_external_close_cancellation_does_not_cancel_shared_cleanup() -> N
 
     first_wait = server.close()
     assert server._closing and server._closed and server._close_operation is not None
+    assert not server.shutdown_clean
     with pytest.raises(RuntimeError, match="unavailable"):
         await server.start()
     first = asyncio.create_task(first_wait)
@@ -219,7 +220,8 @@ async def test_external_close_cancellation_does_not_cancel_shared_cleanup() -> N
     assert connection.done() and worker.done()
     for _ in range(3):
         await asyncio.sleep(0)
-    assert server._close_operation is None
+    assert cast(Any, server)._close_operation is None
+    assert server.shutdown_clean
 
 
 @pytest.mark.anyio
@@ -255,6 +257,7 @@ async def test_close_worker_failure_or_direct_cancellation_is_sticky(
         await waiter
     assert "private" not in str(raised.value)
     assert server.poisoned and server._close_failure is not None
+    assert not server.shutdown_clean
     with pytest.raises(RuntimeError, match="close failed"):
         await server.close()
     assert events.count("registry-invalidated") == 1

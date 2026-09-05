@@ -264,6 +264,8 @@ class WAWLifecycleRegistry:
         self._wait_shutdown_operation: asyncio.Task[None] | None = None
         self._shutdown_failure: WAWControlDispatchError | None = None
         self._shutdown_cause: BaseException | None = None
+        self._application_gate_required = False
+        self._application_gate_open = True
 
     def configure_encrypted_attachments(self, service: WAWEncryptedAttachmentService) -> None:
         """Install the real fixed service before serving; never replace live wiring."""
@@ -280,6 +282,30 @@ class WAWLifecycleRegistry:
     def peer_authority(self) -> WAWPeerAuthority | None:
         return self._peer_authority
 
+    @property
+    def shutdown_clean(self) -> bool:
+        begin = self._begin_shutdown_operation
+        wait = self._wait_shutdown_operation
+        authority = self._peer_authority
+        return (
+            self._shutting_down
+            and self._shutdown_failure is None
+            and begin is not None
+            and begin.done()
+            and not begin.cancelled()
+            and begin.exception() is None
+            and wait is not None
+            and wait.done()
+            and not wait.cancelled()
+            and wait.exception() is None
+            and not self._encrypted_operations
+            and not self._detached_cleanup_tasks
+            and not self._authority_quarantine_identities
+            and self._authority is None
+            and self._peer_authority_identity is None
+            and (authority is None or authority.shutdown_clean)
+        )
+
     def configure_peer_authority(self, authority: WAWPeerAuthority) -> None:
         """Install the sole API process authority before any control mutation."""
 
@@ -292,6 +318,33 @@ class WAWLifecycleRegistry:
         ):
             raise ValueError("peer authority cannot be installed")
         self._peer_authority = authority
+
+    def configure_application_gate(self) -> None:
+        """Require an application-level startup commit before control mutation."""
+
+        if (
+            self._application_gate_required
+            or self._authority is not None
+            or self._request_cache
+            or self._attachments
+            or self._shutting_down
+        ):
+            raise ValueError("application gate cannot be configured")
+        self._application_gate_required = True
+        self._application_gate_open = False
+
+    def open_application_gate(self) -> None:
+        if not self._application_gate_required or self._shutting_down:
+            raise RuntimeError("application gate cannot be opened")
+        self._application_gate_open = True
+
+    def close_application_gate(self) -> None:
+        if self._application_gate_required:
+            self._application_gate_open = False
+
+    @property
+    def application_gate_open(self) -> bool:
+        return not self._application_gate_required or self._application_gate_open
 
     async def begin_shutdown(self) -> None:
         """Fence dispatch and revoke authority state without closing its pidfd owner."""
@@ -1357,7 +1410,9 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
 
     def _require_dispatch_open(self) -> None:
-        if self._shutting_down:
+        if self._shutting_down or (
+            self._application_gate_required and not self._application_gate_open
+        ):
             raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
 
     def _validate_control_peer(

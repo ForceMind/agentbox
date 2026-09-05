@@ -180,6 +180,19 @@ Follow-up `f37f92d9...` completed 20/20 exact-head checks. Linux native complete
 3629 passed/44 skipped; Python 3.12/3.13 also succeeded. Bounded redraw is now a
 verified rc6 slice. `WAWRuntimeApplication` production composition is next.
 
+The current `WAWRuntimeApplication` slice is uncommitted. It adds typed Runtime
+key/executor provider boundaries, shared application startup/close tasks, a single
+control/legacy application gate, and one stream/control/legacy composition. The
+activated sockets, key and executor provider move through distinct one-shot
+`take()` owners. Partial production builders are private and the former weak-map
+provenance is replaced by an unforgeable one-use composition binding. Incomplete
+construction returns a typed error carrying a reachable, retryable cleanup owner.
+Shutdown evidence is clean only after listeners, workers, sessions, peers and
+writers terminate without poison or close failure; only then may key/provider
+owners close. The start order is stream, gated control, gated legacy, then one gate
+commit. This does not enable production main, a real key/provider or a real host.
+Independent Sol/xhigh review reports PASS with no P0/P1/P2.
+
 ## Browser controller
 
 - Connect uses an exact same-origin WebSocket URL, subprotocol
