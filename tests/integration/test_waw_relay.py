@@ -805,6 +805,12 @@ def test_session_validator_fences_ticket_and_publication_after_project_binding_d
     class Control:
         attestation = {"runtime_epoch": "2"}
 
+        def borrow_runtime_peer(self, _peer_socket: object) -> RuntimePeerBorrow:
+            raise AssertionError("validator fixture never borrows the Runtime peer")
+
+        async def request_lifecycle(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError((action, request))
+
     validator = ReadOnlySessionValidator(
         services,
         settings,
