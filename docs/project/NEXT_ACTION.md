@@ -10,6 +10,12 @@ blocker is resolved. Do not request the same software approval again.
 
 ## Active implementation
 
+- Execute the 2026-09-05 R11 work-unit plan in
+  `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
+  persistence/first use and rc6-C browser controller; only then proceed to rc7,
+  rc8 and rc9. The active branch remains Draft PR #80 and its prior CI evidence
+  does not cover uncommitted work.
+
 - Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
 - R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.
 - R5 is merged as PR #74 after 19/19 checks and exact read-back. Cold-start/GC

@@ -1,13 +1,24 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-04T20:43:46Z"
-verified_by: "codex-live-reconciliation"
+verified_at_utc: "2026-09-05T09:11:18Z"
+verified_by: "codex-r11-execution-rebaseline"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
 ## Current authorized implementation
+
+- Live revalidation on 2026-09-05: `git fetch origin --prune` exited `0`;
+  `main`, `origin/main` and the branch merge-base equal
+  `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active branch head is
+  `e45a456eaaa1a43d5be61711dd6ce02962035c43`. Draft PR #80 points at that
+  exact head and its 20 checks are terminal `SUCCESS`.
+- The active worktree is intentionally dirty with uncommitted rc6-A ownership,
+  rc6-B Project binding ledger and rc9 locale-foundation work. Those changes
+  are not covered by PR #80 CI and are not recorded here as delivered. The
+  active, reviewed execution order is
+  `docs/WAW_R11_EXECUTION_PLAN.md`.
 
 - Live preflight after `git fetch origin --prune`: local `main` and `origin/main`
   equal R10 merge `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active R11 branch

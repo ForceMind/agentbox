@@ -23,6 +23,20 @@ Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实
 实际 host 激活、真实 key/Provider Secret 操作、架构决策和生产发布仍服从
 [GOVERNANCE.md](GOVERNANCE.md) 的明确授权边界。
 
+## 2026-09-05 execution rebaseline
+
+当前执行目标是完成 R11 软件交付。详细、可验收的 work-unit 计划见
+[WAW R11 execution plan](../WAW_R11_EXECUTION_PLAN.md)。它将 rc6 拆为 API
+process ownership、Project binding persistence/first-use provisioning 与 browser
+controller 三项；三项完成后才进入 rc7 failure matrix、rc8 artifact rehearsal 和
+rc9 full bilingual UI。
+
+Live evidence at this rebaseline: `main`/`origin/main` are
+`341a69bf855f48f90cbecfb5c6872c3bf8c28360`; Draft PR #80 head
+`e45a456eaaa1a43d5be61711dd6ce02962035c43` completed 20/20 checks. Current
+uncommitted continuation is not covered by that CI and remains implementation
+work until its own review and exact-head run complete.
+
 ## Verified baseline and reachable behavior
 
 最新 live preflight 已 fetch：local `main` 与 `origin/main` 均为 R10 merge
