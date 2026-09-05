@@ -451,8 +451,8 @@ async def build_waw_runtime_application_from_filesystem_v2(
     epoch_store: WAWRuntimeEpochStore,
     executor_provider: WAWRuntimeExecutorProvider,
     key_port: WAWRuntimeStaticKeyPort,
-    binding_digest_factory: BindingDigestFactory,
     clock: Callable[[], float],
+    binding_digest_factory: BindingDigestFactory | None = None,
     project_manager: ProjectWorkspaceManager | None = None,
     capability_collector: RuntimeCapabilityCollector | None = None,
 ) -> WAWRuntimeApplication:

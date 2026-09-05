@@ -1147,7 +1147,7 @@ def _build_runtime_server_from_filesystem_v2(
     expected_runtime_gid: int,
     epoch_store: WAWRuntimeEpochStore,
     executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
-    binding_digest_factory: BindingDigestFactory,
+    binding_digest_factory: BindingDigestFactory | None = None,
     project_manager: ProjectWorkspaceManager | None = None,
     capability_collector: RuntimeCapabilityCollector | None = None,
 ) -> RuntimeExecutorServer:

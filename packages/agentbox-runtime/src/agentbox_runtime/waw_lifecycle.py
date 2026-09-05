@@ -44,6 +44,13 @@ from agentbox_runtime.waw_peer_authority import (
     WAWPeerLease,
     WAWPeerTransferPlan,
 )
+from agentbox_runtime.waw_project_binding_store import (
+    WAWDurableProjectBinding,
+    WAWProjectBindingStore,
+    WAWProjectBindingStoreError,
+    WAWProjectBindingVerifier,
+    WAWProjectBindingVerifierError,
+)
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
     WAWWorkspaceAttestationStore,
@@ -196,6 +203,8 @@ class WAWLifecycleRegistry:
         enrollment_state: str = "steady",
         executor: WAWLifecycleExecutor | None = None,
         binding_digest_factory: BindingDigestFactory | None = None,
+        binding_verifier: WAWProjectBindingVerifier | None = None,
+        binding_store: WAWProjectBindingStore | None = None,
         runtime_epoch: str = "1",
         attestation_store: WAWWorkspaceAttestationStore | None = None,
         cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
@@ -216,7 +225,14 @@ class WAWLifecycleRegistry:
         self._enrollment_state = enrollment_state
         self._runtime_epoch = runtime_epoch
         self._executor = executor
+        if (binding_verifier is None) != (binding_store is None):
+            raise ValueError("binding verifier and durable store must be provided together")
+        if binding_verifier is not None and binding_digest_factory is not None:
+            raise ValueError("binding verifier replaces the digest factory")
         self._binding_digest_factory = binding_digest_factory
+        self._binding_verifier = binding_verifier
+        self._binding_store = binding_store
+        self._binding_resources_closed = binding_verifier is None
         self._attestation_store = attestation_store
         if (cgroup_attestation_store is None) != (cgroup_attestation_factory is None):
             raise ValueError(
@@ -248,6 +264,7 @@ class WAWLifecycleRegistry:
         self._cleanup_quarantine: set[str] = set()
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, WAWProjectBinding] = {}
+        self._hydrated_bindings: set[str] = set()
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
         self._attachments: dict[str, dict[str, Any]] = {}
         self._generation_floor: dict[str, int] = {}
@@ -303,6 +320,7 @@ class WAWLifecycleRegistry:
             and not self._authority_quarantine_identities
             and self._authority is None
             and self._peer_authority_identity is None
+            and self._binding_resources_closed
             and (authority is None or authority.shutdown_clean)
         )
 
@@ -415,8 +433,25 @@ class WAWLifecycleRegistry:
                 self._record_shutdown_failure(
                     WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
                 )
+        if self._shutdown_failure is None:
+            try:
+                self._close_binding_resources()
+            except BaseException as exc:
+                self._record_shutdown_failure(exc)
         if self._shutdown_failure is not None:
             raise self._shutdown_failure from self._shutdown_cause
+
+    def _close_binding_resources(self) -> None:
+        verifier, self._binding_verifier = self._binding_verifier, None
+        store, self._binding_store = self._binding_store, None
+        try:
+            if verifier is not None:
+                verifier.close()
+            if store is not None:
+                store.close()
+        except (WAWProjectBindingStoreError, WAWProjectBindingVerifierError) as exc:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+        self._binding_resources_closed = True
 
     async def _await_shutdown_operation(self, operation: asyncio.Task[None]) -> None:
         try:
@@ -706,12 +741,18 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         project_id = request["project_id"]
         previous = self._bindings.get(project_id)
+        if previous is None:
+            previous = self._hydrate_durable_binding(project_id)
         if previous is None and (
             request["binding_revision"] != "1"
             or request["previous_binding_revision"] is not None
             or request["previous_binding_digest"] is not None
         ):
-            raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+            raise WAWControlDispatchError(
+                "BINDING_BOOTSTRAP_REQUIRED"
+                if self._binding_store is not None
+                else "PROJECT_IDENTITY_CHANGED"
+            )
         if (
             previous is not None
             and request["binding_revision"] != previous.binding_revision
@@ -721,19 +762,29 @@ class WAWLifecycleRegistry:
             )
         ):
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
-        if self._binding_digest_factory is None:
-            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
-        digest = self._binding_digest_factory(request)
-        if isinstance(digest, Awaitable):
-            digest = await digest
-        if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+        digest_value: object
+        try:
+            if self._binding_verifier is not None:
+                digest_value = self._binding_verifier.binding_digest(request)
+            elif self._binding_digest_factory is not None:
+                digest_value = self._binding_digest_factory(request)
+                if isinstance(digest_value, Awaitable):
+                    digest_value = await digest_value
+            else:
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+        except WAWProjectBindingVerifierError as exc:
+            raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if not isinstance(digest_value, str) or not _DIGEST.fullmatch(digest_value):
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
+        digest = digest_value
         if previous is not None and request["binding_revision"] == previous.binding_revision:
             if (
                 request["relative_key"] == previous.relative_key
                 and request["project_revision"] == previous.project_revision
                 and digest == previous.binding_digest
             ):
+                await self._register_executor_binding(previous)
+                self._hydrated_bindings.add(project_id)
                 return {
                     "protocol_version": 1,
                     "request_id": request["request_id"],
@@ -754,10 +805,26 @@ class WAWLifecycleRegistry:
             runtime_host_installation_id=self._host_id,
             runtime_host_installation_revision=self._host_revision,
         )
-        consumer = cast(object, self._executor)
-        if isinstance(consumer, WAWProjectBindingConsumer):
-            await consumer.register_project_binding(binding)
+        await self._register_executor_binding(binding)
+        if self._binding_store is not None:
+            try:
+                self._binding_store.commit(
+                    WAWDurableProjectBinding(
+                        project_id=binding.project_id,
+                        relative_key=binding.relative_key,
+                        project_revision=binding.project_revision,
+                        binding_revision=binding.binding_revision,
+                        binding_digest=binding.binding_digest,
+                        previous_binding_revision=request["previous_binding_revision"],
+                        previous_binding_digest=request["previous_binding_digest"],
+                        runtime_host_installation_id=binding.runtime_host_installation_id,
+                        runtime_host_installation_revision=binding.runtime_host_installation_revision,
+                    )
+                )
+            except WAWProjectBindingStoreError as exc:
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
         self._bindings[project_id] = binding
+        self._hydrated_bindings.add(project_id)
         return {
             "protocol_version": 1,
             "request_id": request["request_id"],
@@ -768,6 +835,38 @@ class WAWLifecycleRegistry:
             "runtime_host_installation_id": self._host_id,
             "runtime_host_installation_revision": self._host_revision,
         }
+
+    def _hydrate_durable_binding(self, project_id: str) -> WAWProjectBinding | None:
+        store = self._binding_store
+        if store is None:
+            return None
+        try:
+            durable = store.get(project_id)
+        except WAWProjectBindingStoreError as exc:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+        if durable is None:
+            return None
+        if (
+            durable.runtime_host_installation_id != self._host_id
+            or durable.runtime_host_installation_revision != self._host_revision
+        ):
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        binding = WAWProjectBinding(
+            project_id=durable.project_id,
+            relative_key=durable.relative_key,
+            project_revision=durable.project_revision,
+            binding_revision=durable.binding_revision,
+            binding_digest=durable.binding_digest,
+            runtime_host_installation_id=durable.runtime_host_installation_id,
+            runtime_host_installation_revision=durable.runtime_host_installation_revision,
+        )
+        self._bindings[project_id] = binding
+        return binding
+
+    async def _register_executor_binding(self, binding: WAWProjectBinding) -> None:
+        consumer = cast(object, self._executor)
+        if isinstance(consumer, WAWProjectBindingConsumer):
+            await consumer.register_project_binding(binding)
 
     async def _lifecycle(self, request: dict[str, Any], action: str) -> dict[str, Any]:
         self._require_authority()

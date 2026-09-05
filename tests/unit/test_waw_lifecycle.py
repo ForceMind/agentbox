@@ -38,6 +38,12 @@ from agentbox_runtime.waw_peer_authority import (
     WAWPeerLease,
     WAWPeerTransferPlan,
 )
+from agentbox_runtime.waw_project_binding_store import (
+    WAWProjectBindingStore,
+    WAWProjectBindingStoreError,
+    WAWProjectBindingVerifier,
+    WAWProjectBindingVerifierError,
+)
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
     WAWWorkspaceAttestationStore,
@@ -238,6 +244,8 @@ def registry(
     cgroup_attestation_timeout_seconds: float = 2.0,
     cleanup_timeout_seconds: float = 2.0,
     peer_authority: WAWPeerAuthority | None = None,
+    binding_verifier: WAWProjectBindingVerifier | None = None,
+    binding_store: WAWProjectBindingStore | None = None,
 ) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
@@ -245,7 +253,9 @@ def registry(
         host_manifest_digest="c" * 64,
         project_root_manifest_digest="d" * 64,
         executor=executor,
-        binding_digest_factory=lambda _request: DIGEST,
+        binding_digest_factory=(None if binding_verifier is not None else lambda _request: DIGEST),
+        binding_verifier=binding_verifier,
+        binding_store=binding_store,
         attestation_store=attestation_store,
         cgroup_attestation_store=cgroup_attestation_store,
         cgroup_attestation_factory=cgroup_attestation_factory,
@@ -849,6 +859,91 @@ async def test_missing_binding_registry_rejects_revision_jump() -> None:
     with pytest.raises(WAWControlDispatchError) as exc_info:
         await runtime.dispatch(jumped)
     assert exc_info.value.code == "PROJECT_IDENTITY_CHANGED"
+
+
+class BindingExecutor(FakeExecutor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bindings: list[object] = []
+
+    async def register_project_binding(self, binding: object) -> None:
+        self.bindings.append(binding)
+
+
+@pytest.mark.anyio
+async def test_durable_binding_store_hydrates_exact_replay_after_runtime_restart(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    request = register_request(request_id="wreq_" + "c" * 32)
+
+    first_executor = BindingExecutor()
+    first = registry(
+        first_executor,
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    await first.dispatch(bind_request())
+    first_response = await first.dispatch(request)
+    assert first_response["status"] == "REGISTERED"
+    assert len(first_executor.bindings) == 1
+
+    restarted_executor = BindingExecutor()
+    restarted = registry(
+        restarted_executor,
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    await restarted.dispatch(bind_request(request_id="wreq_" + "d" * 32))
+    replay = await restarted.dispatch(register_request(request_id="wreq_" + "e" * 32))
+    assert replay["status"] == "ALREADY_CURRENT"
+    assert replay["binding_digest"] == first_response["binding_digest"]
+    assert len(restarted_executor.bindings) == 1
+    verifier.close()
+    store.close()
+
+
+@pytest.mark.anyio
+async def test_missing_durable_binding_store_requires_bootstrap_for_revision_two(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    runtime = registry(binding_verifier=verifier, binding_store=store)
+    await runtime.dispatch(bind_request())
+    with pytest.raises(WAWControlDispatchError) as raised:
+        await runtime.dispatch(register_request(revision="2", previous="1"))
+    assert raised.value.code == "BINDING_BOOTSTRAP_REQUIRED"
+    verifier.close()
+    store.close()
+
+
+@pytest.mark.anyio
+async def test_registry_shutdown_closes_binding_verifier_and_store(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    runtime = registry(binding_verifier=verifier, binding_store=store)
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+    assert runtime.shutdown_clean
+    with pytest.raises(WAWProjectBindingStoreError):
+        store.get(PROJECT)
+    with pytest.raises(WAWProjectBindingVerifierError):
+        verifier.binding_digest(
+            {"project_id": PROJECT, "relative_key": "project-a", "project_revision": "1"}
+        )
 
 
 @pytest.mark.anyio

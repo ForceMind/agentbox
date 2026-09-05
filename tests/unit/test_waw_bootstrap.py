@@ -16,6 +16,7 @@ from agentbox_runtime.waw_bootstrap import (
     _create_waw_encrypted_servers_test_only,
     build_waw_control_server,
     create_waw_lifecycle_registry_development_only,
+    create_waw_lifecycle_registry_from_filesystem_bundle,
     create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat,
     create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only,
     create_waw_lifecycle_registry_from_loaded_manifest_bundle_v1_compat,
@@ -817,6 +818,50 @@ def test_v2_loaded_test_only_composition_uses_consumed_epoch_once(tmp_path: Path
     assert composition.executor.runtime_epoch == "2"
     assert composition.executor.execution_authority is composition.execution_authority
     assert composition.registry is not None
+
+
+def test_filesystem_v2_uses_fixed_binding_resources_when_no_test_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = _verified_v2_pin()
+    verifier = object()
+    store = object()
+    captured: dict[str, object] = {}
+    result = object()
+    monkeypatch.setattr(
+        bootstrap_subject,
+        "load_verified_canonical_waw_manifest_bundle_v2",
+        lambda *_args, **_kwargs: manifest,
+    )
+    monkeypatch.setattr(
+        bootstrap_subject,
+        "_issue_verified_execution_authority",
+        lambda _manifest: object(),
+    )
+    monkeypatch.setattr(
+        bootstrap_subject,
+        "_filesystem_v2_binding_resources",
+        lambda _manifest: (verifier, store),
+    )
+
+    def compose(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return result
+
+    monkeypatch.setattr(bootstrap_subject, "_compose_verified_v2", compose)
+    assert (
+        create_waw_lifecycle_registry_from_filesystem_bundle(
+            runtime_manifest_path=tmp_path / "runtime.json",
+            public_directory=tmp_path,
+            expected_runtime_gid=os.getegid(),
+            epoch_store=cast(Any, object()),
+            executor_factory=cast(Any, object()),
+        )
+        is result
+    )
+    assert captured["binding_digest_factory"] is None
+    assert captured["binding_verifier"] is verifier
+    assert captured["binding_store"] is store
 
 
 def test_v2_composition_rejects_executor_epoch_downgrade_without_consuming_epoch(

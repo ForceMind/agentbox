@@ -13,6 +13,7 @@ from __future__ import annotations
 import hmac
 import re
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,8 +56,16 @@ from agentbox_runtime.waw_manifest_codecs import (
     verify_api_host_anchor_v2_cross_manifest,
 )
 from agentbox_runtime.waw_peer_authority import WAWPeerAuthority, WAWPeerAuthorityError
+from agentbox_runtime.waw_project_binding_store import (
+    WAWProjectBindingStore,
+    WAWProjectBindingStoreError,
+    WAWProjectBindingVerifier,
+    WAWProjectBindingVerifierError,
+)
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
+
+_FILESYSTEM_V2_BINDING_STORE = Path("/var/lib/agentbox-waw/bindings-v1")
 
 
 def create_waw_lifecycle_registry_development_only(
@@ -402,7 +411,7 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
     expected_runtime_gid: int,
     epoch_store: WAWRuntimeEpochStore,
     executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
-    binding_digest_factory: BindingDigestFactory,
+    binding_digest_factory: BindingDigestFactory | None = None,
     expected_runtime_uid: int = 0,
     expected_public_uid: int = 0,
     expected_public_gid: int = 0,
@@ -433,16 +442,31 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
         expected_max_bytes=expected_max_bytes,
     )
     authority = _issue_verified_execution_authority(manifest)
-    return _compose_verified_v2(
-        manifest=manifest,
-        authority=authority,
-        epoch_store=epoch_store,
-        executor_factory=executor_factory,
-        binding_digest_factory=binding_digest_factory,
-        attestation_store=attestation_store,
-        cgroup_attestation_store=cgroup_attestation_store,
-        cgroup_attestation_factory=cgroup_attestation_factory,
-    )
+    verifier: WAWProjectBindingVerifier | None = None
+    store: WAWProjectBindingStore | None = None
+    try:
+        if binding_digest_factory is None:
+            verifier, store = _filesystem_v2_binding_resources(manifest)
+        return _compose_verified_v2(
+            manifest=manifest,
+            authority=authority,
+            epoch_store=epoch_store,
+            executor_factory=executor_factory,
+            binding_digest_factory=binding_digest_factory,
+            binding_verifier=verifier,
+            binding_store=store,
+            attestation_store=attestation_store,
+            cgroup_attestation_store=cgroup_attestation_store,
+            cgroup_attestation_factory=cgroup_attestation_factory,
+        )
+    except BaseException:
+        if verifier is not None:
+            with suppress(WAWProjectBindingVerifierError):
+                verifier.close()
+        if store is not None:
+            with suppress(WAWProjectBindingStoreError):
+                store.close()
+        raise
 
 
 def _compose_verified_v2(
@@ -451,7 +475,9 @@ def _compose_verified_v2(
     authority: WAWVerifiedExecutionAuthority,
     epoch_store: WAWRuntimeEpochStore,
     executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
-    binding_digest_factory: BindingDigestFactory,
+    binding_digest_factory: BindingDigestFactory | None,
+    binding_verifier: WAWProjectBindingVerifier | None = None,
+    binding_store: WAWProjectBindingStore | None = None,
     attestation_store: WAWWorkspaceAttestationStore | None,
     cgroup_attestation_store: WAWCgroupAttestationStore | None,
     cgroup_attestation_factory: CgroupAttestationFactory | None,
@@ -489,12 +515,52 @@ def _compose_verified_v2(
         enrollment_state=manifest.runtime.enrollment_state,
         executor=executor,
         binding_digest_factory=binding_digest_factory,
+        binding_verifier=binding_verifier,
+        binding_store=binding_store,
         runtime_epoch=runtime_epoch,
         attestation_store=attestation_store,
         cgroup_attestation_store=cgroup_attestation_store,
         cgroup_attestation_factory=cgroup_attestation_factory,
     )
     return WAWFixedRuntimeComposition(registry, executor, runtime_epoch, authority)
+
+
+def _filesystem_v2_binding_resources(
+    manifest: CrossManifestPinV2,
+) -> tuple[WAWProjectBindingVerifier, WAWProjectBindingStore]:
+    """Open only the manifest-pinned Project root and fixed Runtime store."""
+
+    try:
+        root_uid = int(manifest.project_root.root_uid)
+        root_gid = int(manifest.project_root.root_gid)
+        if root_uid < 0 or root_gid < 0:
+            raise ValueError
+        verifier = WAWProjectBindingVerifier(
+            Path(manifest.project_root.configured_root),
+            expected_uid=root_uid,
+            expected_gid=root_gid,
+        )
+        try:
+            store = WAWProjectBindingStore(
+                _FILESYSTEM_V2_BINDING_STORE,
+                expected_uid=root_uid,
+                expected_gid=root_gid,
+            )
+        except BaseException:
+            verifier.close()
+            raise
+        return verifier, store
+    except (
+        OSError,
+        ValueError,
+        WAWProjectBindingStoreError,
+        WAWProjectBindingVerifierError,
+    ) as exc:
+        raise RuntimeOperationError(
+            "WAW_BINDING_STORE_UNAVAILABLE",
+            "Runtime Project binding evidence is unavailable",
+            category="unavailable",
+        ) from exc
 
 
 def _create_registry_from_verified_manifest(
