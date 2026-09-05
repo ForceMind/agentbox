@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 import re
 import select
+import socket
+import struct
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import Lock, RLock
@@ -92,6 +95,20 @@ class _PidfdOwner:
 class WAWPeerCandidate(_PidfdOwner):
     """One observed live caller process; no request metadata is attached."""
 
+    def __init__(
+        self, authority: WAWPeerAuthority, identity: WAWProcessIdentity, pidfd: int
+    ) -> None:
+        super().__init__(identity, pidfd)
+        self._authority = authority
+
+    def close(self) -> None:
+        """Release the candidate pidfd and fence its authority on close failure."""
+
+        try:
+            super().close()
+        except OSError:
+            raise self._authority._record_close_failure() from None
+
 
 class WAWPeerLease(_PidfdOwner):
     """Borrowed view of one exact retained authority generation."""
@@ -128,6 +145,14 @@ class WAWPeerLease(_PidfdOwner):
     def current(self) -> bool:
         return self._authority._lease_current(self)
 
+    def close(self) -> None:
+        """Release this borrowed pidfd and fence the shared authority on failure."""
+
+        try:
+            super().close()
+        except OSError:
+            raise self._authority._record_close_failure() from None
+
     def _current_under_authority(self) -> bool:
         with self._fd_lock:
             return self._pidfd is not None and _pidfd_current(self._pidfd)
@@ -149,6 +174,7 @@ class WAWPeerTransferPlan(_PidfdOwner):
         expected_generation: int | None,
         revocation_required: bool,
         replaces_generation: int | None,
+        replaces_identity: WAWRuntimePeerIdentity | None,
     ) -> None:
         super().__init__(identity, pidfd)
         self._token = token
@@ -159,6 +185,7 @@ class WAWPeerTransferPlan(_PidfdOwner):
         self._expected_generation = expected_generation
         self._revocation_required = revocation_required
         self._replaces_generation = replaces_generation
+        self._replaces_identity = replaces_identity
 
     @property
     def api_authority_epoch(self) -> str:
@@ -187,6 +214,10 @@ class WAWPeerTransferPlan(_PidfdOwner):
     @property
     def replaces_generation(self) -> int | None:
         return self._replaces_generation
+
+    @property
+    def replaces_identity(self) -> WAWRuntimePeerIdentity | None:
+        return self._replaces_identity
 
 
 ObservedPeer: TypeAlias = WAWPeerCandidate | WAWPeerLease | None
@@ -235,6 +266,14 @@ class WAWPeerAuthority:
             return self._poisoned
 
     @property
+    def expected_uid(self) -> int:
+        return self._expected_uid
+
+    @property
+    def expected_gid(self) -> int:
+        return self._expected_gid
+
+    @property
     def retired_epochs(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(sorted(self._retired))
@@ -260,13 +299,13 @@ class WAWPeerAuthority:
                 and current.identity.process == identity
             ):
                 return self._borrow_locked(current)
-            duplicate = _duplicate_pidfd(pidfd)
+            duplicate = _duplicate_pidfd(self, pidfd)
             try:
                 if _process_identity(pid, duplicate) != identity or not _pidfd_current(duplicate):
                     raise WAWPeerAuthorityError("PEER_NOT_CURRENT")
-                return WAWPeerCandidate(identity, duplicate)
+                return WAWPeerCandidate(self, identity, duplicate)
             except BaseException:
-                _close(duplicate)
+                _close_authority_descriptor(self, duplicate)
                 raise
 
     def borrow(self) -> WAWPeerLease | None:
@@ -276,6 +315,53 @@ class WAWPeerAuthority:
             if current is None or not self._current_live(current):
                 return None
             return self._borrow_locked(current)
+
+    def observe_stream(self, pid: int, uid: int, gid: int, pidfd: int) -> WAWPeerLease | None:
+        """Accept a stream only when it is the exact already-bound API process."""
+
+        observed = self.observe_control(pid, uid, gid, pidfd)
+        if type(observed) is WAWPeerLease:
+            return observed
+        if type(observed) is WAWPeerCandidate:
+            try:
+                observed.close()
+            except OSError:
+                raise self._record_close_failure() from None
+        return None
+
+    def observe_stream_socket(self, peer_socket: object) -> WAWPeerLease | None:
+        """Authenticate one accepted stream socket against the retained API process."""
+
+        option = getattr(socket, "SO_PEERCRED", None)
+        opener = getattr(os, "pidfd_open", None)
+        if (
+            type(option) is not int
+            or not callable(opener)
+            or not hasattr(peer_socket, "getsockopt")
+        ):
+            return None
+        pidfd: int | None = None
+        lease: WAWPeerLease | None = None
+        try:
+            raw = peer_socket.getsockopt(socket.SOL_SOCKET, option, struct.calcsize("3i"))
+            if type(raw) is not bytes or len(raw) != struct.calcsize("3i"):
+                return None
+            pid, uid, gid = struct.unpack("3i", raw)
+            pidfd = opener(pid, 0)
+            lease = self.observe_stream(pid, uid, gid, pidfd)
+        except (OSError, OverflowError, ValueError, WAWPeerAuthorityError, struct.error):
+            return None
+        finally:
+            if pidfd is not None:
+                try:
+                    _close(pidfd)
+                except OSError:
+                    if lease is not None:
+                        with suppress(OSError, WAWPeerAuthorityError):
+                            lease.close()
+                        lease = None
+                    self._record_close_failure()
+        return lease
 
     def prepare_bind(
         self,
@@ -288,7 +374,7 @@ class WAWPeerAuthority:
         nonce = _validate_nonce_digest(nonce_digest)
         if type(peer) not in {WAWPeerCandidate, WAWPeerLease}:
             raise TypeError("peer must be an observed candidate or lease")
-        if type(peer) is WAWPeerLease and peer._authority is not self:
+        if peer._authority is not self:
             raise WAWPeerAuthorityError("PEER_INVALID")
         with self._lock:
             self._require_open()
@@ -301,6 +387,7 @@ class WAWPeerAuthority:
             expected_generation: int | None = None
             revocation_required = False
             replaces_generation: int | None = None
+            replaces_identity: WAWRuntimePeerIdentity | None = None
             if current is not None and self._current_live(current):
                 if current.identity.process != peer.identity:
                     raise WAWPeerAuthorityError("AUTHORITY_CONFLICT")
@@ -315,6 +402,7 @@ class WAWPeerAuthority:
                     if epoch == current.api_authority_epoch:
                         raise WAWPeerAuthorityError("EPOCH_RETIRED")
                     replaces_generation = current.identity.generation
+                    replaces_identity = current.identity
                     descriptor = self._detach_terminal_current_locked(current)
                     revocation_required = True
                     try:
@@ -333,6 +421,7 @@ class WAWPeerAuthority:
                 expected_generation=expected_generation,
                 revocation_required=revocation_required,
                 replaces_generation=replaces_generation,
+                replaces_identity=replaces_identity,
             )
             self._pending = plan
             return plan
@@ -425,9 +514,9 @@ class WAWPeerAuthority:
             raise failure
 
     def _borrow_locked(self, current: _CurrentAuthority) -> WAWPeerLease:
-        duplicate = _duplicate_pidfd(current.pidfd)
+        duplicate = _duplicate_pidfd(self, current.pidfd)
         if not _pidfd_current(duplicate):
-            _close(duplicate)
+            _close_authority_descriptor(self, duplicate)
             raise WAWPeerAuthorityError("PEER_NOT_CURRENT")
         return WAWPeerLease(
             self,
@@ -518,13 +607,22 @@ def _process_identity(pid: int, pidfd: int) -> WAWProcessIdentity:
     return WAWProcessIdentity(pid, details.st_dev, details.st_ino)
 
 
-def _duplicate_pidfd(pidfd: int) -> int:
+def _close_authority_descriptor(authority: WAWPeerAuthority, descriptor: int) -> None:
+    """Close an authority-owned duplicate or permanently fence its authority."""
+
+    try:
+        _close(descriptor)
+    except OSError:
+        raise authority._record_close_failure() from None
+
+
+def _duplicate_pidfd(authority: WAWPeerAuthority, pidfd: int) -> int:
     try:
         duplicate = _dup(pidfd)
         try:
             _set_inheritable(duplicate, False)
         except BaseException:
-            _close(duplicate)
+            _close_authority_descriptor(authority, duplicate)
             raise
         return duplicate
     except OSError as exc:

@@ -26,21 +26,25 @@ blocker is resolved. Do not request the same software approval again.
 - R10/rc5 is delivered by PR #79: final head `0d9e7c7...` completed 20/20
   exact-head checks and merged as `341a69bf...`; exact parent read-back, all six
   post-main workflows and dynamic Dependency Graph completed SUCCESS.
-- Active R11/rc6 first closes the public API host-anchor loader, same-live-Runtime
-  control/stream pidfd binding, durable runtime-epoch reconciliation and Runtime
-  redraw capture. It then composes the browser/API/Runtime controller. rc7–rc9
-  add failure injection, operational/artifact rehearsal and full cross-page
-  bilingual migration. Locale is fixed per document from only
-  `navigator.languages[0]`: primary `zh` → `zh-CN`; all other/missing/malformed
-  values → English; technical identifiers remain English.
-- The public API anchor loader, durable epoch transaction and fixed-backlog Runtime
-  listener re-`listen` are implemented and exact-head verified. API retained
-  `BoundRuntimePeer` is implemented and independently reviewed; next complete its
-  Linux exact-head CI, then close Runtime-side API authority transfer and bounded
-  redraw before production bootstrap.
-- Runtime peer-authority foundation is implemented and independently reviewed;
-  next replace the three separate control/stream peer callbacks with this single
-  authority in control dispatch, lifecycle transfer and encrypted attachment.
+- PR #80 remote baseline `b2f0e0b...` completed 20/20 exact-head checks with
+  `SUCCESS`. The current rc6 integration is uncommitted: a single
+  `WAWPeerAuthority` now supplies typed control peer context, stream authority,
+  lifecycle transfer/revocation and Runtime shutdown ownership. It is not yet a
+  committed or CI-verified delivery.
+- Current evidence: the final local core matrix completed 216 plus 5 focused
+  cases; independent Sol/xhigh review completed 244 cases with 1 Linux-only skip
+  and 9 deselected, plus 8 encrypted-server non-UDS cases. Review is PASS with no
+  remaining P0/P1/P2. Twenty-eight real-UDS cases are locally unverified because
+  this environment returned `PermissionError` during socket setup. Ruff, Black,
+  Linux-target mypy (256 sources), doc links (240) and `git diff --check` pass.
+- Complete this rc6 integration slice by commit/push and exact-head Linux CI,
+  then continue bounded redraw and the remaining production controller composition.
+  Normal merge and exact read-back follow the complete rc6 acceptance set. After
+  rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
+  and rc9 full UI localization/visual E2E.
+- Locale remains fixed per document from only `navigator.languages[0]`: primary
+  `zh` → `zh-CN`; all other, missing or malformed values → English. Technical
+  identifiers remain English.
 - Keep R7/R8 active lifecycle obligations explicit: 30s stale/60s grace,
   15min idle/8h absolute, Runtime health, current auth and positive cleanup.
 - Resolve remaining software contracts with documented rationale and independent

@@ -461,53 +461,6 @@ def test_listener_rejects_nonlistening_socket(tmp_path: Path) -> None:
         h.session.close()
 
 
-@pytest.mark.parametrize("decision", [False, 1, "raise", True])
-def test_control_peer_authorizer_requires_exact_true_and_closes_rejected_pidfd(
-    monkeypatch: pytest.MonkeyPatch,
-    decision: object,
-) -> None:
-    import os
-
-    from agentbox_runtime.waw_control_server import WAWControlServer
-
-    server = object.__new__(WAWControlServer)
-    server._expected_peer_uid = 42
-    server._expected_peer_gid = 43
-    read_fd, write_fd = os.pipe()
-    seen: list[tuple[int, int, int, int]] = []
-
-    def authorize(pid: int, uid: int, gid: int, pidfd: int) -> bool:
-        seen.append((pid, uid, gid, pidfd))
-        if decision == "raise":
-            raise RuntimeError("synthetic verifier failure")
-        return decision  # type: ignore[return-value]
-
-    server._peer_authorizer = authorize
-    monkeypatch.setattr(os, "pidfd_open", lambda *_: read_fd, raising=False)
-    monkeypatch.setattr(socket, "SO_PEERCRED", 17, raising=False)
-
-    class PeerSocket:
-        def getsockopt(self, *_: object) -> bytes:
-            return struct.pack("3i", 123, 42, 43)
-
-    class Writer:
-        def get_extra_info(self, _: str) -> PeerSocket:
-            return PeerSocket()
-
-    try:
-        result = server._peer_pidfd(Writer())  # type: ignore[arg-type]
-        assert seen == [(123, 42, 43, read_fd)]
-        if decision is True:
-            assert result == read_fd
-            os.close(read_fd)
-        else:
-            assert result is None
-            with pytest.raises(OSError):
-                os.fstat(read_fd)
-    finally:
-        os.close(write_fd)
-
-
 @pytest.mark.parametrize(
     "stage", ["hello", "key_init", "confirm", "ready", "commit", "active", "cleanup"]
 )

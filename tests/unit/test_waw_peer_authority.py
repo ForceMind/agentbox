@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import os
+import struct
 import threading
 
 import pytest
@@ -213,6 +214,27 @@ def test_cross_authority_leases_are_rejected_before_either_authority_lock() -> N
             os.close(descriptor)
 
 
+def test_cross_authority_candidate_is_rejected_before_pidfd_transfer() -> None:
+    first = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    second = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    first_read, first_write = _pipe_peer()
+    second_read, second_write = _pipe_peer()
+    candidate = _candidate(second, 202, second_read)
+    candidate_fd = candidate.fileno()
+    try:
+        with pytest.raises(WAWPeerAuthorityError) as raised:
+            first.prepare_bind(candidate, api_authority_epoch="9", nonce_digest=NONCE_A)
+        assert raised.value.code == "PEER_INVALID"
+        assert not candidate.closed and candidate.fileno() == candidate_fd
+        assert first.borrow() is None and second.borrow() is None
+    finally:
+        candidate.close()
+        first.close()
+        second.close()
+        for descriptor in (first_read, first_write, second_read, second_write):
+            os.close(descriptor)
+
+
 def test_borrow_duplicates_only_retained_pidfd(monkeypatch: pytest.MonkeyPatch) -> None:
     authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
     read_fd, write_fd = _pipe_peer()
@@ -236,6 +258,127 @@ def test_borrow_duplicates_only_retained_pidfd(monkeypatch: pytest.MonkeyPatch) 
         lease.close()
     finally:
         authority.close()
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_post_duplicate_revalidation_close_failure_stickily_poisons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    duplicates: list[int] = []
+    close_calls: list[int] = []
+    real_dup = subject._dup
+    try:
+
+        def record_dup(descriptor: int) -> int:
+            duplicate = real_dup(descriptor)
+            duplicates.append(duplicate)
+            return duplicate
+
+        checks = iter((True, False))
+
+        def fail_duplicate_close(descriptor: int) -> None:
+            close_calls.append(descriptor)
+            raise OSError("private revalidation close failure")
+
+        monkeypatch.setattr(subject, "_dup", record_dup)
+        monkeypatch.setattr(subject, "_pidfd_current", lambda _descriptor: next(checks))
+        monkeypatch.setattr(subject, "_close", fail_duplicate_close)
+        with pytest.raises(WAWPeerAuthorityError) as failed:
+            authority.observe_control(101, UID, GID, read_fd)
+        assert failed.value.code == "PEER_CLOSE_FAILED"
+        assert close_calls == duplicates and len(close_calls) == 1 and authority.poisoned
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        for descriptor in duplicates:
+            os.close(descriptor)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_borrow_duplicate_revalidation_close_failure_stickily_poisons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    duplicates: list[int] = []
+    close_calls: list[int] = []
+    real_dup, real_close = subject._dup, subject._close
+    try:
+        _bind(authority, 101, read_fd)
+
+        def record_dup(descriptor: int) -> int:
+            duplicate = real_dup(descriptor)
+            duplicates.append(duplicate)
+            return duplicate
+
+        checks = iter((True, False))
+
+        def fail_duplicate_close(descriptor: int) -> None:
+            close_calls.append(descriptor)
+            if descriptor in duplicates:
+                raise OSError("private borrow close failure")
+            real_close(descriptor)
+
+        monkeypatch.setattr(subject, "_dup", record_dup)
+        monkeypatch.setattr(subject, "_pidfd_current", lambda _descriptor: next(checks))
+        monkeypatch.setattr(subject, "_close", fail_duplicate_close)
+        with pytest.raises(WAWPeerAuthorityError) as failed:
+            authority.borrow()
+        assert failed.value.code == "PEER_CLOSE_FAILED"
+        assert close_calls == duplicates and len(close_calls) == 1 and authority.poisoned
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        for descriptor in duplicates:
+            os.close(descriptor)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_duplicate_set_inheritable_cleanup_close_failure_stickily_poisons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    duplicates: list[int] = []
+    close_calls: list[int] = []
+    real_dup = subject._dup
+    try:
+
+        def record_dup(descriptor: int) -> int:
+            duplicate = real_dup(descriptor)
+            duplicates.append(duplicate)
+            return duplicate
+
+        def fail_close(descriptor: int) -> None:
+            close_calls.append(descriptor)
+            raise OSError("private inheritable cleanup failure")
+
+        def fail_set_inheritable(*_args: object) -> None:
+            raise OSError("private inheritable failure")
+
+        monkeypatch.setattr(subject, "_dup", record_dup)
+        monkeypatch.setattr(subject, "_set_inheritable", fail_set_inheritable)
+        monkeypatch.setattr(subject, "_close", fail_close)
+        with pytest.raises(WAWPeerAuthorityError) as failed:
+            authority.observe_control(101, UID, GID, read_fd)
+        assert failed.value.code == "PEER_CLOSE_FAILED"
+        assert close_calls == duplicates and len(close_calls) == 1 and authority.poisoned
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        for descriptor in duplicates:
+            os.close(descriptor)
         os.close(read_fd)
         os.close(write_fd)
 
@@ -706,6 +849,274 @@ def test_authority_close_detaches_and_attempts_pending_and_current_once(
         for descriptor in targets:
             os.close(descriptor)
         os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_lease_close_error_stickily_poisons_authority_without_second_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    lease_fd: int | None = None
+    real_close = subject._close
+    calls: list[int] = []
+    try:
+        _bind(authority, 101, read_fd)
+        lease = authority.borrow()
+        assert lease is not None
+        lease_fd = lease.fileno()
+
+        def fail_lease_close(descriptor: int) -> None:
+            calls.append(descriptor)
+            if descriptor == lease_fd:
+                raise OSError("private lease close failure")
+            real_close(descriptor)
+
+        monkeypatch.setattr(subject, "_close", fail_lease_close)
+        with pytest.raises(WAWPeerAuthorityError) as failed:
+            lease.close()
+        assert failed.value.code == "PEER_CLOSE_FAILED"
+        assert authority.poisoned
+        assert lease.closed and not lease.current() and not lease.runtime_peer.current()
+        with pytest.raises(WAWPeerAuthorityError) as borrowed:
+            authority.borrow()
+        assert borrowed.value.code == "AUTHORITY_POISONED"
+
+        lease.close()
+        assert calls == [lease_fd]
+        with pytest.raises(WAWPeerAuthorityError) as closed:
+            authority.close()
+        assert closed.value is failed.value
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        if lease_fd is not None:
+            os.close(lease_fd)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_control_candidate_close_error_stickily_poisons_authority_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    candidate_fd: int | None = None
+    calls: list[int] = []
+    real_close = subject._close
+    try:
+        candidate = _candidate(authority, 101, read_fd)
+        candidate_fd = candidate.fileno()
+
+        def fail_candidate_close(descriptor: int) -> None:
+            calls.append(descriptor)
+            if descriptor == candidate_fd:
+                raise OSError("private candidate close failure")
+            real_close(descriptor)
+
+        monkeypatch.setattr(subject, "_close", fail_candidate_close)
+        with pytest.raises(WAWPeerAuthorityError) as failed:
+            candidate.close()
+        assert failed.value.code == "PEER_CLOSE_FAILED"
+        assert candidate.closed and not candidate.current() and authority.poisoned
+        assert calls == [candidate_fd]
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+
+        candidate.close()
+        assert calls == [candidate_fd]
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        if candidate_fd is not None:
+            os.close(candidate_fd)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+@pytest.mark.parametrize("bound", [False, True])
+def test_observe_stream_candidate_close_failure_stickily_poisons(
+    monkeypatch: pytest.MonkeyPatch, bound: bool
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    primary_read, primary_write = _pipe_peer()
+    candidate_read, candidate_write = _pipe_peer()
+    duplicates: list[int] = []
+    calls: list[int] = []
+    real_dup, real_close = subject._dup, subject._close
+    try:
+        if bound:
+            _bind(authority, 101, primary_read)
+
+        def record_dup(descriptor: int) -> int:
+            duplicate = real_dup(descriptor)
+            duplicates.append(duplicate)
+            return duplicate
+
+        def fail_candidate_close(descriptor: int) -> None:
+            calls.append(descriptor)
+            if descriptor in duplicates:
+                raise OSError("private candidate close failure")
+            real_close(descriptor)
+
+        monkeypatch.setattr(subject, "_dup", record_dup)
+        monkeypatch.setattr(subject, "_close", fail_candidate_close)
+        with pytest.raises(WAWPeerAuthorityError) as failed:
+            authority.observe_stream(202 if bound else 101, UID, GID, candidate_read)
+        assert failed.value.code == "PEER_CLOSE_FAILED"
+        assert calls == duplicates and len(calls) == 1
+        assert authority.poisoned
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        for descriptor in duplicates:
+            os.close(descriptor)
+        os.close(primary_read)
+        os.close(primary_write)
+        os.close(candidate_read)
+        os.close(candidate_write)
+
+
+def test_observe_stream_socket_raw_pidfd_close_failure_rejects_and_poisons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    raw_pidfd: int | None = None
+    calls: list[int] = []
+    real_close = subject._close
+    try:
+        _bind(authority, 101, read_fd)
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_peer_authority.socket.SO_PEERCRED", 17, raising=False
+        )
+
+        def open_pidfd(_pid: int, _flags: int) -> int:
+            nonlocal raw_pidfd
+            raw_pidfd = os.dup(read_fd)
+            return raw_pidfd
+
+        def fail_raw_close(descriptor: int) -> None:
+            calls.append(descriptor)
+            if descriptor == raw_pidfd:
+                raise OSError("private raw close failure")
+            real_close(descriptor)
+
+        class PeerSocket:
+            def getsockopt(self, *_: object) -> bytes:
+                return struct.pack("3i", 101, UID, GID)
+
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_peer_authority.os.pidfd_open", open_pidfd, raising=False
+        )
+        monkeypatch.setattr(subject, "_close", fail_raw_close)
+        assert authority.observe_stream_socket(PeerSocket()) is None
+        assert raw_pidfd is not None
+        assert calls.count(raw_pidfd) == 1
+        assert authority.poisoned
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        if raw_pidfd is not None:
+            os.close(raw_pidfd)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_observe_stream_socket_lease_close_failure_stays_rejected_and_poisoned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    raw_pidfd: int | None = None
+    leases: list[int] = []
+    calls: list[int] = []
+    real_dup, real_close = subject._dup, subject._close
+    try:
+        _bind(authority, 101, read_fd)
+        current = authority._current
+        assert current is not None
+        current_pidfd = current.pidfd
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_peer_authority.socket.SO_PEERCRED", 17, raising=False
+        )
+
+        def open_pidfd(_pid: int, _flags: int) -> int:
+            nonlocal raw_pidfd
+            raw_pidfd = os.dup(read_fd)
+            return raw_pidfd
+
+        def record_dup(descriptor: int) -> int:
+            duplicate = real_dup(descriptor)
+            if descriptor == current_pidfd:
+                leases.append(duplicate)
+            return duplicate
+
+        def fail_raw_and_lease_close(descriptor: int) -> None:
+            calls.append(descriptor)
+            if descriptor == raw_pidfd or descriptor in leases:
+                raise OSError("private stream close failure")
+            real_close(descriptor)
+
+        class PeerSocket:
+            def getsockopt(self, *_: object) -> bytes:
+                return struct.pack("3i", 101, UID, GID)
+
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_peer_authority.os.pidfd_open", open_pidfd, raising=False
+        )
+        monkeypatch.setattr(subject, "_dup", record_dup)
+        monkeypatch.setattr(subject, "_close", fail_raw_and_lease_close)
+        assert authority.observe_stream_socket(PeerSocket()) is None
+        assert raw_pidfd is not None
+        assert len(leases) == 1 and authority.poisoned
+        assert calls.count(raw_pidfd) == calls.count(leases[0]) == 1
+        with pytest.raises(WAWPeerAuthorityError, match="AUTHORITY_POISONED"):
+            authority.borrow()
+    finally:
+        with contextlib.suppress(WAWPeerAuthorityError):
+            authority.close()
+        if raw_pidfd is not None:
+            os.close(raw_pidfd)
+        for descriptor in leases:
+            os.close(descriptor)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_observe_stream_socket_uid_gid_mismatch_closes_raw_pidfd_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=UID, expected_gid=GID)
+    read_fd, write_fd = _pipe_peer()
+    calls: list[int] = []
+    real_close = subject._close
+    try:
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_peer_authority.socket.SO_PEERCRED", 17, raising=False
+        )
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_peer_authority.os.pidfd_open", lambda *_: read_fd, raising=False
+        )
+
+        def record_close(descriptor: int) -> None:
+            calls.append(descriptor)
+            real_close(descriptor)
+
+        monkeypatch.setattr(subject, "_close", record_close)
+
+        class PeerSocket:
+            def getsockopt(self, *_: object) -> bytes:
+                return struct.pack("3i", 101, UID + 1, GID)
+
+        assert authority.observe_stream_socket(PeerSocket()) is None
+        assert calls == [read_fd] and not authority.poisoned
+    finally:
+        authority.close()
         os.close(write_fd)
 
 

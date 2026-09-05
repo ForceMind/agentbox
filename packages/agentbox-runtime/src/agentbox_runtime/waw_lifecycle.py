@@ -33,7 +33,16 @@ from agentbox_runtime.waw_cgroup_attestation_store import (
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_encrypted_stream import (
     EncryptedStreamError,
+    RuntimePeer,
     WAWEncryptedAttachmentService,
+)
+from agentbox_runtime.waw_peer_authority import (
+    WAWPeerAuthority,
+    WAWPeerAuthorityError,
+    WAWPeerBindStatus,
+    WAWPeerCandidate,
+    WAWPeerLease,
+    WAWPeerTransferPlan,
 )
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
@@ -193,6 +202,7 @@ class WAWLifecycleRegistry:
         cgroup_attestation_factory: CgroupAttestationFactory | None = None,
         cgroup_attestation_timeout_seconds: float = 2.0,
         cleanup_timeout_seconds: float = 2.0,
+        peer_authority: WAWPeerAuthority | None = None,
     ) -> None:
         if not isinstance(runtime_epoch, str) or _POS_DECIMAL.fullmatch(runtime_epoch) is None:
             raise ValueError("runtime_epoch must be a canonical positive decimal")
@@ -230,6 +240,9 @@ class WAWLifecycleRegistry:
         ):
             raise ValueError("cleanup_timeout_seconds must be positive")
         self._cleanup_timeout_seconds = float(cleanup_timeout_seconds)
+        if peer_authority is not None and type(peer_authority) is not WAWPeerAuthority:
+            raise TypeError("peer_authority must be WAWPeerAuthority")
+        self._peer_authority = peer_authority
         self._detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self._detached_cleanup_identities: dict[asyncio.Task[Any], WAWLifecycleIdentity] = {}
         self._cleanup_quarantine: set[str] = set()
@@ -243,6 +256,14 @@ class WAWLifecycleRegistry:
         self._lock = asyncio.Lock()
         self._encrypted_attachments: WAWEncryptedAttachmentService | None = None
         self._encrypted_operations: set[asyncio.Task[dict[str, Any]]] = set()
+        self._peer_authority_identity: object | None = None
+        self._authority_quarantined = False
+        self._authority_quarantine_identities: list[object] = []
+        self._shutting_down = False
+        self._begin_shutdown_operation: asyncio.Task[None] | None = None
+        self._wait_shutdown_operation: asyncio.Task[None] | None = None
+        self._shutdown_failure: WAWControlDispatchError | None = None
+        self._shutdown_cause: BaseException | None = None
 
     def configure_encrypted_attachments(self, service: WAWEncryptedAttachmentService) -> None:
         """Install the real fixed service before serving; never replace live wiring."""
@@ -255,13 +276,138 @@ class WAWLifecycleRegistry:
             raise ValueError("encrypted attachment service cannot be installed")
         self._encrypted_attachments = service
 
-    async def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
+    @property
+    def peer_authority(self) -> WAWPeerAuthority | None:
+        return self._peer_authority
+
+    def configure_peer_authority(self, authority: WAWPeerAuthority) -> None:
+        """Install the sole API process authority before any control mutation."""
+
+        if (
+            type(authority) is not WAWPeerAuthority
+            or self._peer_authority is not None
+            or self._authority is not None
+            or self._request_cache
+            or self._attachments
+        ):
+            raise ValueError("peer authority cannot be installed")
+        self._peer_authority = authority
+
+    async def begin_shutdown(self) -> None:
+        """Fence dispatch and revoke authority state without closing its pidfd owner."""
+
+        self._shutting_down = True
+        operation = self._begin_shutdown_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_begin_shutdown())
+            self._begin_shutdown_operation = operation
+            operation.add_done_callback(self._shutdown_done)
+        await self._await_shutdown_operation(operation)
+
+    async def wait_shutdown_workers(self) -> None:
+        """Observe all lifecycle workers after the application closes peer authority."""
+
+        self._shutting_down = True
+        operation = self._wait_shutdown_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_wait_shutdown_workers())
+            self._wait_shutdown_operation = operation
+            operation.add_done_callback(self._shutdown_done)
+        await self._await_shutdown_operation(operation)
+
+    async def _perform_begin_shutdown(self) -> None:
+        first_error: BaseException | None = None
+        async with self._lock:
+            identities: list[object] = []
+            if self._peer_authority_identity is not None:
+                identities.append(self._peer_authority_identity)
+            for identity in self._authority_quarantine_identities:
+                if not any(current is identity for current in identities):
+                    identities.append(identity)
+            service = self._encrypted_attachments
+            for identity in identities:
+                confirmed = service is None
+                if service is not None:
+                    try:
+                        confirmed = service.revoke_authority(identity)
+                    except Exception as exc:
+                        if first_error is None:
+                            first_error = exc
+                        confirmed = False
+                if confirmed:
+                    self._release_quarantined_authority_identity(identity)
+                else:
+                    self._quarantine_authority_identity(identity)
+                    if first_error is None:
+                        first_error = WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+            self._clear_peer_authority_caches()
+        if first_error is not None:
+            failure = self._record_shutdown_failure(first_error)
+            raise failure from self._shutdown_cause
+
+    async def _perform_wait_shutdown_workers(self) -> None:
+        async with self._lock:
+            workers = {
+                task
+                for task in self._encrypted_operations | self._detached_cleanup_tasks
+                if not task.done()
+            }
+        if workers:
+            _done, pending = await asyncio.wait(
+                workers,
+                timeout=self._cleanup_timeout_seconds,
+            )
+            if pending:
+                self._authority_quarantined = True
+                self._record_shutdown_failure(
+                    WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+                )
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure from self._shutdown_cause
+
+    async def _await_shutdown_operation(self, operation: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            if operation.cancelled():
+                failure = self._record_shutdown_failure()
+                raise failure from self._shutdown_cause
+            raise
+        except BaseException as exc:
+            failure = self._record_shutdown_failure(exc)
+            raise failure from self._shutdown_cause
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure from self._shutdown_cause
+
+    def _shutdown_done(self, task: asyncio.Task[None]) -> None:
+        try:
+            task.result()
+        except BaseException as exc:
+            self._record_shutdown_failure(exc)
+
+    def _record_shutdown_failure(
+        self, error: BaseException | None = None
+    ) -> WAWControlDispatchError:
+        self._authority_quarantined = True
+        if self._shutdown_failure is None:
+            self._shutdown_failure = WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+            self._shutdown_cause = error
+        return self._shutdown_failure
+
+    async def dispatch(
+        self,
+        request: dict[str, Any],
+        peer: WAWPeerCandidate | WAWPeerLease | None = None,
+    ) -> dict[str, Any]:
         """Dispatch one decoded control request; all mutations are serialized."""
 
+        self._require_dispatch_open()
         action = request.get("action")
         if not isinstance(action, str):
             raise WAWControlDispatchError("PROTOCOL_INVALID")
         async with self._lock:
+            self._require_dispatch_open()
+            runtime_peer = self._validate_control_peer(action, peer)
             request_id = request.get("request_id")
             if not isinstance(request_id, str):
                 raise WAWControlDispatchError("PROTOCOL_INVALID")
@@ -269,28 +415,36 @@ class WAWLifecycleRegistry:
                 request, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             )
             cached = self._request_cache.get(request_id)
-            if cached is not None and not (
-                self._encrypted_attachments is not None
-                and action in {_BIND, _ATTACH_PREPARE, _ATTACH_DETACH}
+            if (
+                cached is not None
+                and action != _BIND
+                and not (
+                    self._encrypted_attachments is not None
+                    and action in {_ATTACH_PREPARE, _ATTACH_DETACH}
+                )
             ):
                 if cached[0] != fingerprint:
                     raise WAWControlDispatchError("PROTOCOL_INVALID")
                 return dict(cached[1])
             if action == _BIND:
-                response = self._bind(request)
+                response = self._bind(request, peer)
             elif action == _REGISTER:
                 response = await self._register(request)
             elif action == _ATTACH_PREPARE:
                 response = (
-                    self._attach_prepare(request)
+                    self._attach_prepare(request, runtime_peer)
                     if self._encrypted_attachments is None
-                    else await self._encrypted_call(self._attach_prepare, request)
+                    else await self._encrypted_call(
+                        lambda value: self._attach_prepare(value, runtime_peer), request
+                    )
                 )
             elif action == _ATTACH_DETACH:
                 response = (
-                    self._attach_detach(request)
+                    self._attach_detach(request, runtime_peer)
                     if self._encrypted_attachments is None
-                    else await self._encrypted_call(self._attach_detach, request)
+                    else await self._encrypted_call(
+                        lambda value: self._attach_detach(value, runtime_peer), request
+                    )
                 )
             elif action in {_START, _STOP, _STATUS, _RECONCILE}:
                 response = await self._lifecycle(request, action)
@@ -298,10 +452,10 @@ class WAWLifecycleRegistry:
                 raise WAWControlDispatchError("PROTOCOL_INVALID")
             # A real PREPARED bearer is owned only by the capability authority;
             # never retain it in the generic request cache past burn/expiry.
-            if self._encrypted_attachments is not None and action in {
-                _ATTACH_PREPARE,
-                _ATTACH_DETACH,
-            }:
+            if action == _BIND or (
+                self._encrypted_attachments is not None
+                and action in {_ATTACH_PREPARE, _ATTACH_DETACH}
+            ):
                 return response
             self._request_cache[request_id] = (fingerprint, dict(response))
             self._request_cache.move_to_end(request_id)
@@ -329,7 +483,15 @@ class WAWLifecycleRegistry:
         with suppress(BaseException):
             task.result()
 
-    def _bind(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _bind(
+        self,
+        request: dict[str, Any],
+        peer: WAWPeerCandidate | WAWPeerLease | None,
+    ) -> dict[str, Any]:
+        if self._peer_authority is not None:
+            if type(peer) not in {WAWPeerCandidate, WAWPeerLease}:
+                raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN")
+            return self._bind_peer_authority(request, cast(WAWPeerCandidate | WAWPeerLease, peer))
         if self._encrypted_attachments is not None:
             try:
                 self._encrypted_attachments.bind_authority(request)
@@ -354,6 +516,133 @@ class WAWLifecycleRegistry:
             "enrollment_epoch": self._enrollment_epoch,
             "enrollment_state": self._enrollment_state,
         }
+
+    def _bind_peer_authority(
+        self,
+        request: dict[str, Any],
+        peer: WAWPeerCandidate | WAWPeerLease,
+    ) -> dict[str, Any]:
+        authority = self._peer_authority
+        assert authority is not None
+        digest = hashlib.sha256(request["authority_nonce"].encode("ascii")).digest()
+        plan: WAWPeerTransferPlan | None = None
+        committed = False
+        commit_attempted = False
+        committed_identity = peer.runtime_peer.identity if type(peer) is WAWPeerLease else None
+        possibly_published_identity: object | None = None
+        try:
+            plan = authority.prepare_bind(
+                peer,
+                api_authority_epoch=request["api_authority_epoch"],
+                nonce_digest=digest,
+            )
+            if plan.revocation_required:
+                if self._encrypted_operations:
+                    raise WAWPeerAuthorityError("REVOCATION_INCOMPLETE")
+                if (
+                    self._encrypted_attachments is not None
+                    and plan.replaces_identity is not None
+                    and not self._encrypted_attachments.revoke_authority(plan.replaces_identity)
+                ):
+                    raise WAWPeerAuthorityError("REVOCATION_INCOMPLETE")
+                self._clear_peer_authority_caches()
+            if plan.status is WAWPeerBindStatus.ALREADY_BOUND:
+                possibly_published_identity = committed_identity
+            commit_attempted = True
+            status = authority.commit_bind(plan)
+            committed = True
+            lease = authority.borrow()
+            if lease is None:
+                raise WAWPeerAuthorityError("PEER_NOT_CURRENT")
+            committed_identity = lease.runtime_peer.identity
+            bind_error: Exception | None = None
+            try:
+                if self._encrypted_attachments is not None:
+                    self._encrypted_attachments.bind_authority(request, lease.runtime_peer)
+            except Exception as exc:
+                bind_error = exc
+            try:
+                lease.close()
+            except Exception as exc:
+                if bind_error is None:
+                    bind_error = exc
+            if bind_error is not None:
+                raise bind_error
+        except Exception as exc:
+            if plan is not None and not committed:
+                with suppress(WAWPeerAuthorityError):
+                    authority.fail_bind(plan)
+                if plan.revocation_required:
+                    self._quarantine_authority_identity(plan.replaces_identity)
+                    self._clear_peer_authority_caches()
+            if committed or commit_attempted:
+                self._authority_quarantined = True
+                cleanup_identity = committed_identity if committed else possibly_published_identity
+                revoked = self._encrypted_attachments is None or cleanup_identity is None
+                if self._encrypted_attachments is not None and cleanup_identity is not None:
+                    try:
+                        revoked = self._encrypted_attachments.revoke_authority(cleanup_identity)
+                    except Exception:
+                        revoked = False
+                if revoked:
+                    self._release_quarantined_authority_identity(cleanup_identity)
+                else:
+                    self._quarantine_authority_identity(cleanup_identity)
+                self._clear_peer_authority_caches()
+                with suppress(WAWPeerAuthorityError):
+                    authority.close()
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from None
+            if not isinstance(exc, (WAWPeerAuthorityError, EncryptedStreamError)):
+                raise
+            code = exc.code
+            if code in {
+                "AUTHORITY_POISONED",
+                "AUTHORITY_CLOSED",
+                "RETIRED_EPOCHS_FULL",
+                "REVOCATION_INCOMPLETE",
+                "PEER_CLOSE_FAILED",
+            }:
+                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from None
+            if code in {"EPOCH_RETIRED", "AUTHORITY_CONFLICT"}:
+                raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH") from None
+            raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN") from None
+        self._peer_authority_identity = committed_identity
+        epoch = request["api_authority_epoch"]
+        nonce = digest.hex()
+        self._authority = (epoch, nonce)
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status.value,
+            "api_authority_epoch": epoch,
+            "runtime_epoch": self._runtime_epoch,
+            "runtime_host_installation_id": self._host_id,
+            "runtime_host_installation_revision": self._host_revision,
+            "host_manifest_digest": self._host_manifest_digest,
+            "project_root_manifest_digest": self._project_root_manifest_digest,
+            "enrollment_epoch": self._enrollment_epoch,
+            "enrollment_state": self._enrollment_state,
+        }
+
+    def _clear_peer_authority_caches(self) -> None:
+        self._authority = None
+        self._peer_authority_identity = None
+        self._attachments.clear()
+        self._request_cache.clear()
+
+    def _quarantine_authority_identity(self, identity: object | None) -> None:
+        self._authority_quarantined = True
+        if identity is not None and not any(
+            current is identity for current in self._authority_quarantine_identities
+        ):
+            self._authority_quarantine_identities.append(identity)
+
+    def _release_quarantined_authority_identity(self, identity: object | None) -> None:
+        if identity is None:
+            return
+        self._authority_quarantine_identities = [
+            current for current in self._authority_quarantine_identities if current is not identity
+        ]
 
     async def _register(self, request: dict[str, Any]) -> dict[str, Any]:
         self._require_authority()
@@ -691,7 +980,9 @@ class WAWLifecycleRegistry:
             return self._status_response(request, observation)
         return self._reconcile_response(request, observation)
 
-    def _attach_prepare(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _attach_prepare(
+        self, request: dict[str, Any], runtime_peer: RuntimePeer | None = None
+    ) -> dict[str, Any]:
         """Reserve one tuple-bound attachment after Runtime liveness checks.
 
         This synthetic control-plane contract intentionally returns only a
@@ -728,7 +1019,7 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("WORKSPACE_NOT_RUNNING")
         if self._encrypted_attachments is not None:
             try:
-                return self._encrypted_attachments.prepare(request)
+                return self._encrypted_attachments.prepare(request, runtime_peer)
             except EncryptedStreamError as exc:
                 raise WAWControlDispatchError(exc.code) from None
         attachment_id = request["attachment_id"]
@@ -791,7 +1082,9 @@ class WAWLifecycleRegistry:
             "capability": capability,
         }
 
-    def _attach_detach(self, request: dict[str, Any]) -> dict[str, Any]:
+    def _attach_detach(
+        self, request: dict[str, Any], runtime_peer: RuntimePeer | None = None
+    ) -> dict[str, Any]:
         """Close one prepared attachment and return positive cleanup proof."""
 
         self._require_authority()
@@ -801,7 +1094,7 @@ class WAWLifecycleRegistry:
             raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
         if self._encrypted_attachments is not None:
             try:
-                return self._encrypted_attachments.detach(request)
+                return self._encrypted_attachments.detach(request, runtime_peer)
             except EncryptedStreamError as exc:
                 raise WAWControlDispatchError(exc.code) from None
         current = self._attachments.get(request["attachment_id"])
@@ -1062,6 +1355,28 @@ class WAWLifecycleRegistry:
     def _require_authority(self) -> None:
         if self._authority is None:
             raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
+
+    def _require_dispatch_open(self) -> None:
+        if self._shutting_down:
+            raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
+
+    def _validate_control_peer(
+        self,
+        action: str,
+        peer: WAWPeerCandidate | WAWPeerLease | None,
+    ) -> RuntimePeer | None:
+        authority = self._peer_authority
+        if authority is None:
+            return None
+        if action == _BIND:
+            if type(peer) not in {WAWPeerCandidate, WAWPeerLease}:
+                raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN")
+            return peer.runtime_peer if type(peer) is WAWPeerLease else None
+        if type(peer) is not WAWPeerLease or not peer.current():
+            raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
+        if self._authority is None or peer.api_authority_epoch != self._authority[0]:
+            raise WAWControlDispatchError("RUNTIME_PEER_FORBIDDEN")
+        return peer.runtime_peer
 
     def _check_identity(self, identity: WAWLifecycleIdentity) -> None:
         self._validate_generation(identity.generation)

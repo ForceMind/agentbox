@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import socket
 import sys
@@ -95,6 +96,343 @@ class _RecordingAsyncServer:
 
     async def wait_closed(self) -> None:
         self.events.append("server-wait-closed")
+
+
+class _PeerContext:
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+class _FailingPeerContext(_PeerContext):
+    def close(self) -> None:
+        super().close()
+        raise OSError("synthetic peer context close failure")
+
+
+class _MemoryWriter:
+    def __init__(self) -> None:
+        self.output = bytearray()
+        self.closed = False
+
+    def write(self, data: bytes) -> None:
+        self.output.extend(data)
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        return None
+
+    def get_extra_info(self, _name: str) -> None:
+        return None
+
+
+def _reader(raw: bytes) -> asyncio.StreamReader:
+    reader = asyncio.StreamReader()
+    reader.feed_data(raw)
+    reader.feed_eof()
+    return reader
+
+
+def _unit_server(dispatch: Any, authorizer: Any = None) -> WAWControlServer:
+    return WAWControlServer(
+        cast(Any, _RecordingListeningSocket([])),
+        dispatch,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        peer_authorizer=authorizer,
+        timeout_seconds=0.05,
+        cancellation_grace_seconds=0.01,
+    )
+
+
+@pytest.mark.anyio
+async def test_peer_authorizer_runs_after_full_framing_and_dispatch_receives_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer = _PeerContext()
+    authorized: list[tuple[int, int, int, int]] = []
+    dispatched: list[tuple[dict[str, object], _PeerContext]] = []
+
+    def authorize(pid: int, uid: int, gid: int, pidfd: int) -> _PeerContext:
+        authorized.append((pid, uid, gid, pidfd))
+        return peer
+
+    async def dispatch(request: dict[str, object], context: _PeerContext) -> dict[str, object]:
+        dispatched.append((request, context))
+        return _response(cast(str, request["request_id"]))
+
+    server = _unit_server(dispatch, authorize)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    writer = _MemoryWriter()
+    raw = json.dumps(_request(), separators=(",", ":")).encode() + b"\n"
+    try:
+        await server._handle(_reader(raw), cast(Any, writer))
+        assert authorized == [(os.getpid(), os.geteuid(), os.getegid(), pidfd)]
+        assert dispatched == [(_request(), peer)]
+        assert peer.close_calls == 1
+        assert writer.closed and writer.output
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_peer_context_close_failure_never_returns_dispatch_success() -> None:
+    peer = _FailingPeerContext()
+
+    async def dispatch(request: dict[str, object], context: _PeerContext) -> dict[str, object]:
+        assert context is peer
+        return _response(cast(str, request["request_id"]))
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    with pytest.raises(WAWControlDispatchError) as raised:
+        await server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 1,
+            peer_context=peer,
+        )
+    assert raised.value.code == "CONTROL_UNAVAILABLE"
+    assert raised.value.retryable
+    assert peer.close_calls == 1
+    assert server._poisoned
+    await server.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"{}\n",
+        json.dumps(_request(), separators=(",", ":")).encode() + b"\ntrailing",
+    ],
+)
+async def test_malformed_or_trailing_request_never_calls_peer_authorizer(
+    raw: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def authorize(*_args: object) -> _PeerContext:
+        nonlocal calls
+        calls += 1
+        return _PeerContext()
+
+    async def forbidden_dispatch(*_args: object) -> dict[str, object]:
+        raise AssertionError("invalid framing must not dispatch")
+
+    server = _unit_server(forbidden_dispatch, authorize)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    try:
+        await server._handle(_reader(raw), cast(Any, _MemoryWriter()))
+        assert calls == 0
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("decision", [None, True, "raise"])
+async def test_peer_authorizer_rejection_or_exception_fails_closed_without_poison(
+    decision: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dispatch_calls = 0
+
+    def authorize(*_args: object) -> object:
+        if decision == "raise":
+            raise RuntimeError("private authority failure")
+        return decision
+
+    async def forbidden_dispatch(*_args: object) -> dict[str, object]:
+        nonlocal dispatch_calls
+        dispatch_calls += 1
+        return {}
+
+    server = _unit_server(forbidden_dispatch, authorize)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    raw = json.dumps(_request(), separators=(",", ":")).encode() + b"\n"
+    try:
+        await server._handle(_reader(raw), cast(Any, _MemoryWriter()))
+        assert dispatch_calls == 0
+        assert not server._poisoned
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_resistant_dispatch_owns_peer_until_its_actual_terminal_state() -> None:
+    peer = _PeerContext()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def dispatch(_request: dict[str, object], context: _PeerContext) -> dict[str, object]:
+        assert context is peer
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+            return _response(cast(str, _request["request_id"]))
+        raise AssertionError("unreachable")
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    call = asyncio.create_task(
+        server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 0.01,
+            peer_context=peer,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    with pytest.raises(_WAWControlDispatchPoisoned):
+        await call
+    assert peer.close_calls == 0
+    release.set()
+    for _ in range(10):
+        if peer.close_calls:
+            break
+        await asyncio.sleep(0)
+    assert peer.close_calls == 1
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_promptly_cancelled_timeout_closes_peer_exactly_once() -> None:
+    peer = _PeerContext()
+
+    async def dispatch(_request: dict[str, object], _context: _PeerContext) -> dict[str, object]:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    with pytest.raises(TimeoutError):
+        await server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 0.01,
+            peer_context=peer,
+        )
+    assert peer.close_calls == 1
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_dispatch_cancelled_before_first_step_closes_peer_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    peer = _PeerContext()
+    body_entered = False
+
+    async def dispatch(_request: dict[str, object], _context: _PeerContext) -> dict[str, object]:
+        nonlocal body_entered
+        body_entered = True
+        return _response(cast(str, _request["request_id"]))
+
+    server = _unit_server(dispatch, lambda *_args: peer)
+    real_create_task = asyncio.create_task
+
+    def cancel_before_step(coroutine: Any) -> asyncio.Task[Any]:
+        task = real_create_task(coroutine)
+        task.cancel()
+        return task
+
+    monkeypatch.setattr(asyncio, "create_task", cancel_before_step)
+    with pytest.raises(asyncio.CancelledError):
+        await server._dispatch_with_deadline(
+            _request(),
+            server._monotonic() + 1,
+            peer_context=peer,
+        )
+    assert not body_entered
+    assert peer.close_calls == 1
+    monkeypatch.setattr(asyncio, "create_task", real_create_task)
+    await server.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["error", "cancel"])
+async def test_writer_cleanup_failure_still_closes_raw_pidfd_once(
+    failure: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        return {}
+
+    server = _unit_server(dispatch)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+
+    async def failed_writer_cleanup(_writer: asyncio.StreamWriter) -> None:
+        if failure == "cancel":
+            raise asyncio.CancelledError
+        raise RuntimeError("private writer cleanup failure")
+
+    monkeypatch.setattr(server, "_close_writer", failed_writer_cleanup)
+    try:
+        if failure == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await server._handle(_reader(b"{}\n"), cast(Any, _MemoryWriter()))
+        else:
+            with pytest.raises(RuntimeError, match="writer cleanup"):
+                await server._handle(_reader(b"{}\n"), cast(Any, _MemoryWriter()))
+        with pytest.raises(OSError):
+            os.fstat(pidfd)
+    finally:
+        os.close(write_fd)
+        await server.close()
+
+
+@pytest.mark.anyio
+async def test_raw_pidfd_close_error_poisons_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def dispatch(_request: dict[str, object]) -> dict[str, object]:
+        return {}
+
+    server = _unit_server(dispatch)
+    pidfd, write_fd = os.pipe()
+    credentials = subject._ControlPeerCredentials(os.getpid(), os.geteuid(), os.getegid(), pidfd)
+    monkeypatch.setattr(server, "_peer_credentials", lambda _writer: credentials)
+    real_close = os.close
+    calls = 0
+
+    def failed_raw_close(descriptor: int) -> None:
+        nonlocal calls
+        if descriptor == pidfd:
+            calls += 1
+            raise OSError("private raw close failure")
+        real_close(descriptor)
+
+    monkeypatch.setattr(os, "close", failed_raw_close)
+    try:
+        await server._handle(_reader(b"{}\n"), cast(Any, _MemoryWriter()))
+        assert server._poisoned and calls == 1
+        await server.close()
+        assert calls == 1
+    finally:
+        real_close(pidfd)
+        real_close(write_fd)
 
 
 @pytest.mark.anyio

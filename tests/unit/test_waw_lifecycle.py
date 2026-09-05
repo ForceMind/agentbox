@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -18,10 +19,25 @@ from agentbox_runtime.waw_cgroup_attestation_store import (
     WAWCgroupAttestationStore,
 )
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
+from agentbox_runtime.waw_encrypted_stream import (
+    BoundedRedraw,
+    EncryptedStreamError,
+    RuntimePeer,
+    WAWEncryptedAttachmentService,
+    WAWEncryptedRegistry,
+)
 from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
+)
+from agentbox_runtime.waw_peer_authority import (
+    WAWPeerAuthority,
+    WAWPeerAuthorityError,
+    WAWPeerBindStatus,
+    WAWPeerCandidate,
+    WAWPeerLease,
+    WAWPeerTransferPlan,
 )
 from agentbox_runtime.waw_workspace_attestation import (
     WAWWorkspaceAttestationError,
@@ -222,6 +238,7 @@ def registry(
     cgroup_attestation_factory: Any | None = None,
     cgroup_attestation_timeout_seconds: float = 2.0,
     cleanup_timeout_seconds: float = 2.0,
+    peer_authority: WAWPeerAuthority | None = None,
 ) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
@@ -235,6 +252,29 @@ def registry(
         cgroup_attestation_factory=cgroup_attestation_factory,
         cgroup_attestation_timeout_seconds=cgroup_attestation_timeout_seconds,
         cleanup_timeout_seconds=cleanup_timeout_seconds,
+        peer_authority=peer_authority,
+    )
+
+
+def observed_peer(
+    authority: WAWPeerAuthority, pid: int, descriptor: int
+) -> WAWPeerCandidate | WAWPeerLease:
+    peer = authority.observe_control(pid, os.geteuid(), os.getegid(), descriptor)
+    assert type(peer) in {WAWPeerCandidate, WAWPeerLease}
+    return cast(WAWPeerCandidate | WAWPeerLease, peer)
+
+
+def encrypted_service() -> WAWEncryptedAttachmentService:
+    def forbidden_peer() -> RuntimePeer:
+        raise AssertionError("typed dispatch must supply the Runtime peer")
+
+    streams = WAWEncryptedRegistry(runtime_epoch="1", static_key=lambda: b"k" * 32)
+    return WAWEncryptedAttachmentService(
+        streams,
+        peer=forbidden_peer,
+        supervisor=cast(Any, lambda _claims: None),
+        capture=cast(Any, lambda _claims: BoundedRedraw(b"", False)),
+        current=lambda _claims: True,
     )
 
 
@@ -245,12 +285,491 @@ async def test_binding_gate_and_idempotent_bind_and_register() -> None:
         await runtime.dispatch(register_request())
     assert exc_info.value.code == "BINDING_BOOTSTRAP_REQUIRED"
 
-    assert (await runtime.dispatch(bind_request()))["status"] == "BOUND"
+    first_bind = bind_request()
+    assert (await runtime.dispatch(first_bind))["status"] == "BOUND"
+    assert (await runtime.dispatch(first_bind))["status"] == "ALREADY_BOUND"
+    assert first_bind["request_id"] not in runtime._request_cache
     assert (await runtime.dispatch(bind_request("wreq_" + "2" * 32)))["status"] == "ALREADY_BOUND"
     first = await runtime.dispatch(register_request())
     assert first["status"] == "REGISTERED"
     duplicate = await runtime.dispatch(register_request(request_id="wreq_" + "6" * 32))
     assert duplicate["status"] == "ALREADY_CURRENT"
+
+
+@pytest.mark.anyio
+async def test_peer_authority_bind_repeat_and_terminal_transfer() -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    old_read, old_write = os.pipe()
+    new_read, new_write = os.pipe()
+    candidate = observed_peer(authority, 101, old_read)
+    try:
+        with pytest.raises(WAWControlDispatchError) as unbound:
+            await runtime.dispatch(register_request(), candidate)
+        assert unbound.value.code == "BINDING_BOOTSTRAP_REQUIRED"
+
+        assert (await runtime.dispatch(bind_request(), candidate))["status"] == "BOUND"
+        foreign = observed_peer(authority, 202, new_read)
+        with pytest.raises(WAWControlDispatchError) as conflict:
+            await runtime.dispatch(bind_request(), foreign)
+        assert conflict.value.code == "RUNTIME_INSTALLATION_MISMATCH"
+        foreign.close()
+        old_lease = observed_peer(authority, 101, old_read)
+        assert type(old_lease) is WAWPeerLease
+        assert (await runtime.dispatch(bind_request("wreq_" + "2" * 32), old_lease))[
+            "status"
+        ] == "ALREADY_BOUND"
+        current_lease = observed_peer(authority, 101, old_read)
+        assert type(current_lease) is WAWPeerLease
+        assert (await runtime.dispatch(register_request(), current_lease))["status"] == "REGISTERED"
+
+        os.close(old_write)
+        old_write = -1
+        replacement = observed_peer(authority, 202, new_read)
+        transfer_request = {
+            **bind_request("wreq_" + "3" * 32),
+            "api_authority_epoch": "2",
+            "authority_nonce": "c" * 32,
+        }
+        assert (await runtime.dispatch(transfer_request, replacement))["status"] == "BOUND"
+        assert not old_lease.current() and not current_lease.current()
+    finally:
+        for peer in (
+            candidate,
+            locals().get("foreign"),
+            locals().get("old_lease"),
+            locals().get("current_lease"),
+            locals().get("replacement"),
+        ):
+            if isinstance(peer, (WAWPeerCandidate, WAWPeerLease)):
+                peer.close()
+        authority.close()
+        os.close(old_read)
+        if old_write >= 0:
+            os.close(old_write)
+        os.close(new_read)
+        os.close(new_write)
+
+
+@pytest.mark.anyio
+async def test_peer_authority_bind_never_uses_generic_request_cache() -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    read_fd, write_fd = os.pipe()
+    candidate = observed_peer(authority, 101, read_fd)
+    try:
+        request = bind_request()
+        assert (await runtime.dispatch(request, candidate))["status"] == "BOUND"
+        lease = observed_peer(authority, 101, read_fd)
+        assert type(lease) is WAWPeerLease
+        assert (await runtime.dispatch(request, lease))["status"] == "ALREADY_BOUND"
+        assert request["request_id"] not in runtime._request_cache
+        lease.close()
+    finally:
+        candidate.close()
+        authority.close()
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("phase", ["first", "already", "transfer"])
+async def test_committed_service_bind_failure_revokes_before_authority_close(
+    phase: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    service = encrypted_service()
+    runtime.configure_encrypted_attachments(service)
+    old_read, old_write = os.pipe()
+    new_read, new_write = os.pipe()
+    candidate = observed_peer(authority, 101, old_read)
+    fail_bind = False
+    events: list[tuple[str, object | None]] = []
+    bound_identity: object | None = None
+
+    def bind(_request: dict[str, Any], peer: RuntimePeer | None = None) -> None:
+        nonlocal bound_identity
+        assert peer is not None
+        bound_identity = peer.identity
+        events.append(("bind", peer.identity))
+        if fail_bind:
+            raise EncryptedStreamError("RUNTIME_PEER_FORBIDDEN")
+
+    def revoke(identity: object) -> bool:
+        nonlocal bound_identity
+        events.append(("invalidate", identity))
+        if bound_identity is identity:
+            bound_identity = None
+        events.append(("cleanup", identity))
+        return True
+
+    real_close = authority.close
+
+    def close_authority() -> None:
+        if not authority._closed:
+            events.append(("authority-close", None))
+        real_close()
+
+    monkeypatch.setattr(service, "bind_authority", bind)
+    monkeypatch.setattr(service, "revoke_authority", revoke)
+    monkeypatch.setattr(authority, "close", close_authority)
+    peers: list[WAWPeerCandidate | WAWPeerLease] = [candidate]
+    try:
+        if phase != "first":
+            await runtime.dispatch(bind_request(), candidate)
+            events.clear()
+        if phase == "transfer":
+            os.close(old_write)
+            old_write = -1
+            selected = observed_peer(authority, 202, new_read)
+            request = {
+                **bind_request("wreq_" + "3" * 32),
+                "api_authority_epoch": "2",
+                "authority_nonce": "c" * 32,
+            }
+        elif phase == "already":
+            selected = observed_peer(authority, 101, old_read)
+            request = bind_request("wreq_" + "2" * 32)
+        else:
+            selected = candidate
+            request = bind_request()
+        if selected is not candidate:
+            peers.append(selected)
+        runtime._attachments["old"] = {"authority": "old"}
+        runtime._request_cache["wreq_" + "f" * 32] = (
+            "old",
+            {"status": "OLD"},
+        )
+        fail_bind = True
+        with pytest.raises(WAWControlDispatchError) as raised:
+            await runtime.dispatch(request, selected)
+        assert raised.value.code == "RUNTIME_UNAVAILABLE"
+        kinds = [kind for kind, _identity in events]
+        assert kinds == (
+            ["invalidate", "cleanup", "bind", "invalidate", "cleanup", "authority-close"]
+            if phase == "transfer"
+            else ["bind", "invalidate", "cleanup", "authority-close"]
+        )
+        assert runtime._authority is None and runtime._request_cache == {}
+        assert runtime._attachments == {} and runtime._authority_quarantined
+        with pytest.raises(WAWPeerAuthorityError) as closed:
+            authority.borrow()
+        assert closed.value.code == "AUTHORITY_CLOSED"
+    finally:
+        for peer in peers:
+            peer.close()
+        with suppress(WAWPeerAuthorityError):
+            authority.close()
+        os.close(old_read)
+        if old_write >= 0:
+            os.close(old_write)
+        os.close(new_read)
+        os.close(new_write)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("fault", ["borrow", "lease_close"])
+async def test_post_commit_peer_fault_revokes_existing_service_authority(
+    fault: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    service = encrypted_service()
+    runtime.configure_encrypted_attachments(service)
+    read_fd, write_fd = os.pipe()
+    candidate = observed_peer(authority, 101, read_fd)
+    revoked: list[object] = []
+    monkeypatch.setattr(service, "bind_authority", lambda _request, _peer=None: None)
+
+    def revoke(identity: object) -> bool:
+        revoked.append(identity)
+        return True
+
+    monkeypatch.setattr(service, "revoke_authority", revoke)
+    try:
+        await runtime.dispatch(bind_request(), candidate)
+        identity = runtime._peer_authority_identity
+        lease = observed_peer(authority, 101, read_fd)
+        assert type(lease) is WAWPeerLease and identity is not None
+        real_borrow = authority.borrow
+
+        if fault == "borrow":
+
+            def failed_borrow() -> WAWPeerLease | None:
+                raise WAWPeerAuthorityError("PEER_NOT_CURRENT")
+
+            monkeypatch.setattr(authority, "borrow", failed_borrow)
+        else:
+
+            def close_failing_borrow() -> WAWPeerLease | None:
+                borrowed = real_borrow()
+                assert borrowed is not None
+                real_lease_close = borrowed.close
+
+                def failed_close() -> None:
+                    real_lease_close()
+                    raise OSError("synthetic lease close failure")
+
+                borrowed.close = failed_close  # type: ignore[method-assign]
+                return borrowed
+
+            monkeypatch.setattr(authority, "borrow", close_failing_borrow)
+
+        with pytest.raises(WAWControlDispatchError) as raised:
+            await runtime.dispatch(bind_request("wreq_" + "2" * 32), lease)
+        assert raised.value.code == "RUNTIME_UNAVAILABLE"
+        assert revoked == [identity]
+        lease.close()
+    finally:
+        candidate.close()
+        with suppress(WAWPeerAuthorityError):
+            authority.close()
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+@pytest.mark.anyio
+async def test_already_bound_commit_close_failure_fences_session_before_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_waw_encrypted_stream import Harness
+
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    harness = Harness(tmp_path)
+
+    def forbidden_peer() -> RuntimePeer:
+        raise AssertionError("typed dispatch must supply the Runtime peer")
+
+    service = WAWEncryptedAttachmentService(
+        harness.registry,
+        peer=forbidden_peer,
+        supervisor=lambda _claims: harness.supervisor,
+        capture=lambda _claims: harness.redraw,
+        current=lambda _claims: harness.valid,
+    )
+    runtime.configure_encrypted_attachments(service)
+    read_fd, write_fd = os.pipe()
+    candidate = observed_peer(authority, 101, read_fd)
+    events: list[str] = []
+
+    class Publication:
+        def fence(self) -> bool:
+            events.append("publication-fence")
+            return True
+
+        def send(self, _data: memoryview) -> int:
+            raise AssertionError("revoked publication must not send")
+
+    try:
+        await runtime.dispatch(bind_request(), candidate)
+        bound_lease = authority.borrow()
+        assert bound_lease is not None
+        runtime_peer = bound_lease.runtime_peer
+        bound_lease.close()
+        record = next(iter(harness.registry._records.values()))
+        record.peer = runtime_peer
+        harness.session._publication = Publication()
+        harness.session._publication_fenced = False
+        original_cleanup = harness.transport.close_attachment
+
+        def cleanup(lease: Any) -> Any:
+            events.append("pty-cleanup")
+            return original_cleanup(lease)
+
+        harness.transport.close_attachment = cleanup
+        original_plan_close = WAWPeerTransferPlan.close
+
+        def failed_plan_close(plan: WAWPeerTransferPlan) -> None:
+            original_plan_close(plan)
+            events.append("plan-close-failed")
+            raise OSError("synthetic plan close failure")
+
+        monkeypatch.setattr(WAWPeerTransferPlan, "close", failed_plan_close)
+        original_authority_close = authority.close
+
+        def close_authority() -> None:
+            if not authority._closed:
+                events.append("authority-close")
+            original_authority_close()
+
+        monkeypatch.setattr(authority, "close", close_authority)
+        control_lease = observed_peer(authority, 101, read_fd)
+        assert type(control_lease) is WAWPeerLease
+        with pytest.raises(WAWControlDispatchError) as raised:
+            await runtime.dispatch(bind_request("wreq_" + "2" * 32), control_lease)
+        assert raised.value.code == "RUNTIME_UNAVAILABLE"
+        assert events == [
+            "plan-close-failed",
+            "publication-fence",
+            "pty-cleanup",
+            "authority-close",
+        ]
+        assert harness.session.closed and harness.registry.count == 0
+        assert runtime._authority is None and runtime._authority_quarantined
+        control_lease.close()
+    finally:
+        candidate.close()
+        with suppress(WAWPeerAuthorityError):
+            authority.close()
+        harness.session.close()
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("phase", ["first", "transfer"])
+async def test_unpublished_commit_failure_closes_without_revoking_unrelated_identity(
+    phase: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    service = encrypted_service()
+    runtime.configure_encrypted_attachments(service)
+    old_read, old_write = os.pipe()
+    new_read, new_write = os.pipe()
+    candidate = observed_peer(authority, 101, old_read)
+    revoked: list[object] = []
+    monkeypatch.setattr(service, "bind_authority", lambda _request, _peer=None: None)
+
+    def revoke(identity: object) -> bool:
+        revoked.append(identity)
+        return True
+
+    monkeypatch.setattr(service, "revoke_authority", revoke)
+    peers: list[WAWPeerCandidate | WAWPeerLease] = [candidate]
+    try:
+        old_identity: object | None = None
+        if phase == "transfer":
+            await runtime.dispatch(bind_request(), candidate)
+            old_identity = runtime._peer_authority_identity
+            assert old_identity is not None
+            os.close(old_write)
+            old_write = -1
+            selected = observed_peer(authority, 202, new_read)
+            peers.append(selected)
+            request = {
+                **bind_request("wreq_" + "3" * 32),
+                "api_authority_epoch": "2",
+                "authority_nonce": "c" * 32,
+            }
+        else:
+            selected = candidate
+            request = bind_request()
+
+        def failed_commit(_plan: WAWPeerTransferPlan) -> WAWPeerBindStatus:
+            raise WAWPeerAuthorityError("TRANSFER_STALE")
+
+        monkeypatch.setattr(authority, "commit_bind", failed_commit)
+        runtime._attachments["old"] = {"authority": "old"}
+        runtime._request_cache["wreq_" + "f" * 32] = ("old", {"status": "OLD"})
+        with pytest.raises(WAWControlDispatchError) as raised:
+            await runtime.dispatch(request, selected)
+        assert raised.value.code == "RUNTIME_UNAVAILABLE"
+        assert revoked == ([] if old_identity is None else [old_identity])
+        assert authority._closed and runtime._authority is None
+        assert not runtime._attachments and not runtime._request_cache
+    finally:
+        for peer in peers:
+            peer.close()
+        with suppress(WAWPeerAuthorityError):
+            authority.close()
+        os.close(old_read)
+        if old_write >= 0:
+            os.close(old_write)
+        os.close(new_read)
+        os.close(new_write)
+
+
+@pytest.mark.anyio
+async def test_shutdown_revokes_then_leaves_authority_close_to_application_owner() -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    service = encrypted_service()
+    runtime.configure_encrypted_attachments(service)
+    read_fd, write_fd = os.pipe()
+    candidate = observed_peer(authority, 101, read_fd)
+    revoked: list[object] = []
+    release = asyncio.Event()
+    worker = asyncio.create_task(release.wait())
+    runtime._encrypted_operations.add(cast(Any, worker))
+    worker.add_done_callback(lambda task: runtime._encrypted_done(cast(Any, task)))
+    monkeypatch_target = cast(Any, service)
+    monkeypatch_target.bind_authority = lambda _request, _peer=None: None
+
+    def revoke(identity: object) -> bool:
+        revoked.append(identity)
+        return True
+
+    monkeypatch_target.revoke_authority = revoke
+    try:
+        await runtime.dispatch(bind_request(), candidate)
+        identity = runtime._peer_authority_identity
+        assert identity is not None
+        runtime._attachments["old"] = {"authority": "old"}
+        runtime._request_cache["wreq_" + "f" * 32] = ("old", {"status": "OLD"})
+
+        await runtime.begin_shutdown()
+        await runtime.begin_shutdown()
+
+        assert revoked == [identity]
+        assert runtime._authority is None and not runtime._attachments
+        assert not runtime._request_cache and not authority._closed
+        rejected_peer = observed_peer(authority, 101, read_fd)
+        try:
+            with pytest.raises(WAWControlDispatchError) as stopped:
+                await runtime.dispatch(bind_request(), rejected_peer)
+            assert stopped.value.code == "RUNTIME_UNAVAILABLE"
+        finally:
+            rejected_peer.close()
+
+        authority.close()
+        wait = asyncio.create_task(runtime.wait_shutdown_workers())
+        await asyncio.sleep(0)
+        assert not wait.done()
+        release.set()
+        await wait
+        await runtime.wait_shutdown_workers()
+    finally:
+        release.set()
+        await worker
+        candidate.close()
+        with suppress(WAWPeerAuthorityError):
+            authority.close()
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+@pytest.mark.anyio
+async def test_shutdown_revoke_failure_is_sticky_but_does_not_close_authority() -> None:
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(peer_authority=authority)
+    service = encrypted_service()
+    runtime.configure_encrypted_attachments(service)
+    read_fd, write_fd = os.pipe()
+    candidate = observed_peer(authority, 101, read_fd)
+    monkeypatch_target = cast(Any, service)
+    monkeypatch_target.bind_authority = lambda _request, _peer=None: None
+    monkeypatch_target.revoke_authority = lambda _identity: False
+    try:
+        await runtime.dispatch(bind_request(), candidate)
+        with pytest.raises(WAWControlDispatchError) as first:
+            await runtime.begin_shutdown()
+        with pytest.raises(WAWControlDispatchError) as repeated:
+            await runtime.begin_shutdown()
+        assert repeated.value is first.value
+        assert not authority._closed and runtime._authority_quarantine_identities
+        authority.close()
+        with pytest.raises(WAWControlDispatchError) as waited:
+            await runtime.wait_shutdown_workers()
+        assert waited.value is first.value
+    finally:
+        candidate.close()
+        with suppress(WAWPeerAuthorityError):
+            authority.close()
+        os.close(read_fd)
+        os.close(write_fd)
 
 
 @pytest.mark.anyio

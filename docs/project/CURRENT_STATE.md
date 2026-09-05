@@ -670,3 +670,24 @@ PROPOSED architecture status are preserved.
 - Runtime peer authority must now be wired through control dispatch, lifecycle
   bind/transfer and encrypted streams. Redraw and application ownership remain
   active rc6 work. No production WAW path is enabled by this foundation.
+
+## R11/rc6 current composition checkpoint
+
+- The verified remote baseline is PR #80 head `b2f0e0b...`; its exact head
+  completed 20/20 checks with `SUCCESS`. This is baseline evidence, not a claim
+  about the current uncommitted integration work.
+- The current uncommitted rc6 composition implements one `WAWPeerAuthority`,
+  typed control-dispatch peer context, authority-backed stream verification,
+  lifecycle authority transfer/revocation, and Runtime server shutdown ownership.
+  It has not yet been committed or submitted to CI.
+- The final local core matrix completed 216 plus 5 focused cases. Independent
+  Sol/xhigh review completed 244 cases with 1 Linux-only skip and 9 deselected,
+  plus 8 encrypted-server non-UDS cases, and reports PASS with no P0/P1/P2.
+  Twenty-eight real-UDS cases could not run in this execution environment because
+  socket setup returned `PermissionError`; they remain unverified locally.
+- Ruff, Black, Linux-target mypy (256 sources), documentation-link checks (240),
+  and `git diff --check` passed for the current integration set.
+- Next rc6 order is commit/push and exact-head Linux CI, whose UDS jobs provide
+  the supported-platform evidence, then the remaining controller composition.
+  Normal merge/read-back follows the complete rc6 acceptance set. rc7–rc9 and
+  the R12 real-host boundary remain unchanged.

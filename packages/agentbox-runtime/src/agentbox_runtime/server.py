@@ -12,7 +12,7 @@ import stat
 import struct
 import threading
 import weakref
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +60,7 @@ from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
 from agentbox_runtime.waw_lifecycle import BindingDigestFactory
+from agentbox_runtime.waw_peer_authority import WAWPeerAuthority
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_vendor_probe import WAWVendorProbeRunner
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
@@ -97,9 +98,10 @@ _PROJECT_ACTION_KEYS: dict[str, frozenset[str]] = {
 }
 _ACTIONS |= frozenset(_PROJECT_ACTION_KEYS)
 _CONTROL_SERVER_ISSUES: weakref.WeakKeyDictionary[
-    WAWControlServer, tuple[WAWFixedRuntimeComposition, str]
+    WAWControlServer, tuple[WAWFixedRuntimeComposition, str, WAWPeerAuthority]
 ] = weakref.WeakKeyDictionary()
 _CONTROL_SERVER_ISSUE_LOCK = threading.Lock()
+_CONNECTION_SHUTDOWN_GRACE_SECONDS = 0.05
 
 
 class _RuntimeConflictProbe:
@@ -185,6 +187,7 @@ class RuntimeExecutorServer:
         self._waw_public_auth_probe: WAWPublicAuthProbe | None = None
         self._waw_auth_probe_cache: WAWPublicAuthProbeCache | None = None
         self._waw_conflict_coordinator: WAWConflictCoordinator | None = None
+        self._waw_peer_authority: WAWPeerAuthority | None = None
         self._waw_runtime_epoch: int | None = None
         if waw_fixed_runtime is not None:
             if any(
@@ -202,6 +205,7 @@ class RuntimeExecutorServer:
                 raise ValueError("fixed composition owns conflict and auth providers")
             coordinator = waw_fixed_runtime.executor.conflict_coordinator
             auth_probe = waw_fixed_runtime.executor.auth_probe
+            peer_authority = waw_fixed_runtime.registry.peer_authority
             with _CONTROL_SERVER_ISSUE_LOCK:
                 control_issue = (
                     _CONTROL_SERVER_ISSUES.pop(waw_control_server, None)
@@ -211,12 +215,14 @@ class RuntimeExecutorServer:
             if (
                 type(coordinator) is not WAWConflictCoordinator
                 or type(auth_probe) is not WAWCachedPublicAuthProbe
+                or type(peer_authority) is not WAWPeerAuthority
                 or waw_fixed_runtime.executor.runtime_epoch != waw_fixed_runtime.runtime_epoch
                 or waw_fixed_runtime.executor.execution_authority
                 is not waw_fixed_runtime.execution_authority
                 or control_issue is None
                 or control_issue[0] is not waw_fixed_runtime
                 or control_issue[1] != waw_fixed_runtime.runtime_epoch
+                or control_issue[2] is not peer_authority
                 or not callable(formal_project_id_for_legacy)
                 or type(self._manager) is not CodexManager
                 or type(self._claude_manager) is not ClaudeSessionManager
@@ -232,6 +238,7 @@ class RuntimeExecutorServer:
             self._waw_public_auth_probe = auth_probe
             self._waw_auth_probe_cache = auth_probe.cache
             self._waw_conflict_coordinator = coordinator
+            self._waw_peer_authority = peer_authority
             self._manager.bind_conflict_coordinator(coordinator)
             self._claude_manager.bind_conflict_coordinator(
                 coordinator,
@@ -255,6 +262,13 @@ class RuntimeExecutorServer:
             )
             self._waw_runtime_epoch = None
         self._server: asyncio.AbstractServer | None = None
+        self._closing = False
+        self._closed = False
+        self._poisoned = False
+        self._start_task: asyncio.Task[Any] | None = None
+        self._close_operation: asyncio.Task[None] | None = None
+        self._connection_tasks: set[asyncio.Task[None]] = set()
+        self._writers: set[asyncio.StreamWriter] = set()
 
     @property
     def waw_runtime_epoch(self) -> int | None:
@@ -271,6 +285,12 @@ class RuntimeExecutorServer:
     @property
     def waw_fixed_runtime(self) -> WAWFixedRuntimeComposition | None:
         return self._waw_fixed_runtime
+
+    @property
+    def waw_peer_authority(self) -> WAWPeerAuthority | None:
+        """Return the authority shared by control, lifecycle and stream wiring."""
+
+        return self._waw_peer_authority
 
     @property
     def waw_public_auth_probe(self) -> WAWPublicAuthProbe | None:
@@ -385,52 +405,66 @@ class RuntimeExecutorServer:
         return coordinator
 
     async def start(self, *, create_development_parent: bool = False) -> None:
-        if self._waw_epoch_store is not None and self._waw_runtime_epoch is None:
-            try:
-                self._waw_runtime_epoch = self._waw_epoch_store.consume()
-            except WAWRuntimeEpochError as exc:
-                raise RuntimeError("WAW Runtime epoch trust root is unavailable") from exc
-        parent = self._socket_path.parent
-        if create_development_parent:
-            parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if not parent.is_dir():
-            raise RuntimeError("Runtime socket parent does not exist")
-        if self._socket_path.exists() or self._socket_path.is_symlink():
-            details = self._socket_path.lstat()
-            if not stat.S_ISSOCK(details.st_mode) or details.st_uid != os.geteuid():
-                raise RuntimeError("refusing to replace an unexpected Runtime socket path")
-            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            probe.settimeout(0.2)
-            try:
-                probe.connect(str(self._socket_path))
-            except OSError as exc:
-                if exc.errno not in {errno.ECONNREFUSED, errno.ENOENT}:
-                    raise RuntimeError("Runtime socket state cannot be verified") from exc
-                try:
-                    current = self._socket_path.lstat()
-                except FileNotFoundError:
-                    current = None
-                if current is not None:
-                    if (
-                        not stat.S_ISSOCK(current.st_mode)
-                        or current.st_uid != os.geteuid()
-                        or (current.st_dev, current.st_ino) != (details.st_dev, details.st_ino)
-                    ):
-                        raise RuntimeError(
-                            "Runtime socket changed during stale-state check"
-                        ) from exc
-                    self._socket_path.unlink()
-            else:
-                raise RuntimeError("Runtime socket already has an active server")
-            finally:
-                probe.close()
-        self._server = await asyncio.start_unix_server(
-            self._handle,
-            path=self._socket_path,
-            start_serving=False,
-            limit=MAX_RUNTIME_FRAME + 1,
-        )
+        if self._closing or self._closed or self._close_operation is not None:
+            raise RuntimeError("Runtime server is unavailable")
+        if self._server is not None:
+            return
+        current_task = asyncio.current_task()
+        if current_task is None:
+            raise RuntimeError("Runtime server requires an asyncio task")
+        start_task = self._start_task
+        if start_task is not None and start_task is not current_task:
+            await asyncio.shield(start_task)
+            return
+        self._start_task = current_task
         try:
+            if self._waw_epoch_store is not None and self._waw_runtime_epoch is None:
+                try:
+                    self._waw_runtime_epoch = self._waw_epoch_store.consume()
+                except WAWRuntimeEpochError as exc:
+                    raise RuntimeError("WAW Runtime epoch trust root is unavailable") from exc
+            parent = self._socket_path.parent
+            if create_development_parent:
+                parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if not parent.is_dir():
+                raise RuntimeError("Runtime socket parent does not exist")
+            if self._socket_path.exists() or self._socket_path.is_symlink():
+                details = self._socket_path.lstat()
+                if not stat.S_ISSOCK(details.st_mode) or details.st_uid != os.geteuid():
+                    raise RuntimeError("refusing to replace an unexpected Runtime socket path")
+                probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                probe.settimeout(0.2)
+                try:
+                    probe.connect(str(self._socket_path))
+                except OSError as exc:
+                    if exc.errno not in {errno.ECONNREFUSED, errno.ENOENT}:
+                        raise RuntimeError("Runtime socket state cannot be verified") from exc
+                    try:
+                        current = self._socket_path.lstat()
+                    except FileNotFoundError:
+                        current = None
+                    if current is not None:
+                        if (
+                            not stat.S_ISSOCK(current.st_mode)
+                            or current.st_uid != os.geteuid()
+                            or (current.st_dev, current.st_ino) != (details.st_dev, details.st_ino)
+                        ):
+                            raise RuntimeError(
+                                "Runtime socket changed during stale-state check"
+                            ) from exc
+                        self._socket_path.unlink()
+                else:
+                    raise RuntimeError("Runtime socket already has an active server")
+                finally:
+                    probe.close()
+            self._server = await asyncio.start_unix_server(
+                self._accept_connection,
+                path=self._socket_path,
+                start_serving=False,
+                limit=MAX_RUNTIME_FRAME + 1,
+            )
+            if self._closing or self._closed:
+                raise RuntimeError("Runtime server is unavailable")
             configured_gid = os.environ.get("AGENTBOX_RUNTIME_SOCKET_GID")
             if configured_gid:
                 try:
@@ -442,25 +476,201 @@ class RuntimeExecutorServer:
                 os.chown(self._socket_path, -1, socket_gid)
             self._socket_path.chmod(0o660)
             await self._server.start_serving()
+            if self._closing or self._closed:
+                raise RuntimeError("Runtime server is unavailable")
             if self._waw_control_server is not None:
                 await self._waw_control_server.start()
-        except Exception:
-            await self.close()
+        except BaseException:
+            await self._cleanup_failed_start()
             raise
+        finally:
+            if self._start_task is current_task:
+                self._start_task = None
 
-    async def close(self) -> None:
+    async def _cleanup_failed_start(self) -> None:
+        if self._closing:
+            partial = self._take_runtime_server()
+            if partial is not None:
+                with contextlib.suppress(BaseException):
+                    partial.close()
+                with contextlib.suppress(BaseException):
+                    await partial.wait_closed()
+            return
+        self._start_task = None
+        with contextlib.suppress(BaseException):
+            await self.close()
+
+    def close(self) -> Coroutine[Any, Any, None]:
+        """Start or join the one independently owned shutdown operation."""
+
+        self._closing = True
+        self._closed = True
+        operation = self._close_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_close())
+            self._close_operation = operation
+            operation.add_done_callback(self._consume_close_operation)
+        return self._wait_for_close(operation)
+
+    async def _wait_for_close(self, operation: asyncio.Task[None]) -> None:
+        await asyncio.shield(operation)
+
+    @staticmethod
+    def _consume_close_operation(operation: asyncio.Task[Any]) -> None:
+        with contextlib.suppress(BaseException):
+            operation.result()
+
+    async def _perform_close(self) -> None:
+        failures: dict[int, BaseException] = {}
+
+        def failed(stage: int, error: BaseException) -> None:
+            if isinstance(error, asyncio.CancelledError):
+                self._poisoned = True
+                error = RuntimeError("Runtime shutdown was cancelled")
+            failures.setdefault(stage, error)
+
+        control_close: Coroutine[Any, Any, None] | None = None
         if self._waw_control_server is not None:
-            await self._waw_control_server.close()
-        if self._server is not None:
-            self._server.close()
-            await self._server.wait_closed()
-            self._server = None
+            try:
+                # WAWControlServer.close synchronously marks the listener closed
+                # before returning its independently owned cleanup awaitable.
+                control_close = self._waw_control_server.close()
+            except BaseException as exc:
+                failed(0, exc)
+
+        runtime_server = self._take_runtime_server()
+        if runtime_server is not None:
+            try:
+                # asyncio.Server.close synchronously stops new admission.
+                runtime_server.close()
+            except BaseException as exc:
+                failed(1, exc)
+
+        lifecycle = None if self._waw_fixed_runtime is None else self._waw_fixed_runtime.registry
+        if lifecycle is not None:
+            try:
+                await lifecycle.begin_shutdown()
+            except BaseException as exc:
+                failed(2, exc)
+
+        authority = self._waw_peer_authority
+        if authority is not None:
+            try:
+                authority.close()
+            except BaseException as exc:
+                failed(3, exc)
+
+        start_task = self._start_task
+        if start_task is not None and start_task is not asyncio.current_task():
+            start_task.cancel()
+            try:
+                done, pending = await asyncio.wait(
+                    {start_task}, timeout=_CONNECTION_SHUTDOWN_GRACE_SECONDS
+                )
+            except BaseException as exc:
+                failed(4, exc)
+                done, pending = set(), {start_task}
+            if done:
+                with contextlib.suppress(BaseException):
+                    start_task.result()
+            if pending:
+                self._poisoned = True
+                failed(4, RuntimeError("Runtime start shutdown timed out"))
+                start_task.add_done_callback(self._consume_close_operation)
+            late_server = self._take_runtime_server()
+            if late_server is not None and late_server is not runtime_server:
+                try:
+                    late_server.close()
+                except BaseException as exc:
+                    failed(4, exc)
+                try:
+                    await late_server.wait_closed()
+                except BaseException as exc:
+                    failed(4, exc)
+
+        if lifecycle is not None:
+            try:
+                await lifecycle.wait_shutdown_workers()
+            except BaseException as exc:
+                failed(4, exc)
+
+        if control_close is not None:
+            try:
+                await control_close
+            except BaseException as exc:
+                failed(0, exc)
+        if runtime_server is not None:
+            try:
+                await runtime_server.wait_closed()
+            except BaseException as exc:
+                failed(1, exc)
+
+        for writer in tuple(self._writers):
+            try:
+                writer.close()
+            except BaseException as exc:
+                failed(5, exc)
+        tasks = tuple(self._connection_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            try:
+                done, pending = await asyncio.wait(
+                    tasks,
+                    timeout=_CONNECTION_SHUTDOWN_GRACE_SECONDS,
+                )
+            except BaseException as exc:
+                failed(5, exc)
+                done = {task for task in tasks if task.done()}
+                pending = set(tasks) - done
+            for task in done:
+                self._connection_tasks.discard(task)
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    pass
+                except BaseException as exc:
+                    failed(5, exc)
+            if pending:
+                self._poisoned = True
+                failed(5, RuntimeError("Runtime connection shutdown timed out"))
+                for task in pending:
+                    task.add_done_callback(self._connection_done)
+
         try:
             details = self._socket_path.lstat()
             if stat.S_ISSOCK(details.st_mode) and details.st_uid == os.geteuid():
                 self._socket_path.unlink()
         except FileNotFoundError:
             pass
+        except BaseException as exc:
+            failed(6, exc)
+
+        self._closing = False
+        if failures:
+            raise failures[min(failures)]
+
+    def _take_runtime_server(self) -> asyncio.AbstractServer | None:
+        server, self._server = self._server, None
+        return server
+
+    def _accept_connection(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        if self._closing or self._closed:
+            writer.close()
+            return
+        task = asyncio.create_task(self._handle(reader, writer))
+        self._connection_tasks.add(task)
+        self._writers.add(writer)
+        task.add_done_callback(self._connection_done)
+
+    def _connection_done(self, task: asyncio.Task[None]) -> None:
+        self._connection_tasks.discard(task)
+        with contextlib.suppress(BaseException):
+            task.result()
 
     async def serve_forever(self) -> None:
         if self._server is None:
@@ -471,6 +681,8 @@ class RuntimeExecutorServer:
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         request_id: str | None = None
         try:
+            if self._closing or self._closed:
+                return
             if not self._peer_allowed(writer):
                 await self._write_error(
                     writer, "RUNTIME_PEER_FORBIDDEN", "Runtime peer is forbidden"
@@ -591,6 +803,7 @@ class RuntimeExecutorServer:
             writer.close()
             with contextlib.suppress(OSError):
                 await writer.wait_closed()
+            self._writers.discard(writer)
 
     def _peer_allowed(self, writer: asyncio.StreamWriter) -> bool:
         transport_socket = writer.get_extra_info("socket")
@@ -841,10 +1054,18 @@ def build_runtime_server_from_filesystem_v2(
         expected_peer_uid=waw_control_peer_uid,
         expected_peer_gid=waw_control_peer_gid,
     )
+    peer_authority = composition.registry.peer_authority
+    if type(peer_authority) is not WAWPeerAuthority:
+        raise RuntimeOperationError(
+            "WAW_COMPOSITION_MISMATCH",
+            "Control server did not retain the fixed Runtime peer authority",
+            category="conflict",
+        )
     with _CONTROL_SERVER_ISSUE_LOCK:
         _CONTROL_SERVER_ISSUES[control_server] = (
             composition,
             composition.runtime_epoch,
+            peer_authority,
         )
     return RuntimeExecutorServer(
         socket_path,

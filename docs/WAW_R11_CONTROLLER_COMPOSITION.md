@@ -21,6 +21,28 @@ Each increment updates the visible version from one source, documentation and
 GitHub; it must complete exact-head CI, normal merge and exact read-back before
 the next increment is marked complete.
 
+## rc6 current implementation checkpoint
+
+PR #80 head `b2f0e0b...` is the verified remote baseline with 20/20 exact-head
+checks `SUCCESS`. The current controller composition is uncommitted and therefore
+is not represented by that baseline: it wires one `WAWPeerAuthority`, typed
+control-dispatch peer context, authority-backed encrypted-stream verification,
+lifecycle transfer/revocation and Runtime server shutdown ownership.
+
+The final local core matrix completed 216 plus 5 focused cases; the independent
+reviewer completed 244 cases with 1 Linux-only skip and 9 deselected, plus 8
+encrypted-server non-UDS cases. Twenty-eight real-UDS cases remain unverified
+because this execution environment returned `PermissionError` during socket
+setup. Ruff, Black, Linux-target mypy (256 sources), documentation links (240),
+and `git diff --check` pass. Independent Sol/xhigh review reports PASS with no
+remaining P0/P1/P2. This paragraph does not claim a commit, exact-head CI result
+or merge for the uncommitted integration.
+
+The remaining rc6 order is commit/push, exact-head Linux CI including real UDS,
+then the next controller slice. Normal merge and exact read-back occur only when
+the complete rc6 acceptance set is satisfied. rc7–rc9 remain serial successors,
+and R12 remains the separate real-host qualification boundary.
+
 ## rc6 composition invariants
 
 - One API process owns one `AttachmentAuthority`, API authority epoch/nonce,

@@ -23,7 +23,7 @@ from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
 from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_control_server import WAWControlServer
-from agentbox_runtime.waw_encrypted_server import PeerVerifier, WAWEncryptedServer
+from agentbox_runtime.waw_encrypted_server import WAWEncryptedServer
 from agentbox_runtime.waw_encrypted_stream import (
     BoundedRedraw,
     RuntimePeer,
@@ -57,6 +57,7 @@ from agentbox_runtime.waw_manifest_codecs import (
     verify_api_host_anchor_cross_manifest,
     verify_api_host_anchor_v2_cross_manifest,
 )
+from agentbox_runtime.waw_peer_authority import WAWPeerAuthority, WAWPeerAuthorityError
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
@@ -585,8 +586,24 @@ def build_waw_control_server(
     expected_peer_uid: int,
     expected_peer_gid: int,
     timeout_seconds: float = 2.0,
+    max_active_connections: int = 64,
+    max_active_dispatches: int = 16,
 ) -> WAWControlServer:
-    """Bind the registry dispatcher to an already-validated control socket."""
+    """Bind control traffic to the registry's sole API process authority."""
+
+    authority = registry.peer_authority
+    if authority is None:
+        authority = WAWPeerAuthority(
+            expected_uid=expected_peer_uid,
+            expected_gid=expected_peer_gid,
+        )
+        registry.configure_peer_authority(authority)
+    elif (
+        type(authority) is not WAWPeerAuthority
+        or authority.expected_uid != expected_peer_uid
+        or authority.expected_gid != expected_peer_gid
+    ):
+        raise ValueError("registry peer authority does not match the control peer identity")
 
     return WAWControlServer(
         sockets.control,
@@ -594,6 +611,9 @@ def build_waw_control_server(
         expected_peer_uid=expected_peer_uid,
         expected_peer_gid=expected_peer_gid,
         timeout_seconds=timeout_seconds,
+        max_active_connections=max_active_connections,
+        max_active_dispatches=max_active_dispatches,
+        peer_authorizer=authority.observe_control,
     )
 
 
@@ -604,9 +624,7 @@ def build_waw_encrypted_servers(
     executor: WAWSupervisorExecutor,
     runtime_epoch: str,
     static_key: Callable[[], bytes],
-    peer: Callable[[], RuntimePeer],
-    peer_verifier: PeerVerifier,
-    control_peer_authorizer: Callable[[int, int, int, int], bool],
+    peer_authority: WAWPeerAuthority,
     capture: Callable[[AttachmentTuple], BoundedRedraw],
     expected_peer_uid: int,
     expected_peer_gid: int,
@@ -618,26 +636,63 @@ def build_waw_encrypted_servers(
     or key custody evidence cannot be supplied by this helper; the deployment
     caller must provide qualified ports. Test keys/ports are software evidence.
     """
-    if any(
-        not callable(value)
-        for value in (peer, peer_verifier, control_peer_authorizer, capture, static_key)
-    ):
+    if not callable(capture) or not callable(static_key):
         raise ValueError("trusted encrypted Runtime providers are required")
+    if (
+        type(peer_authority) is not WAWPeerAuthority
+        or registry.peer_authority is not peer_authority
+        or peer_authority.expected_uid != expected_peer_uid
+        or peer_authority.expected_gid != expected_peer_gid
+    ):
+        raise ValueError("encrypted Runtime requires the registry's exact peer authority")
+
+    def borrow_runtime_peer() -> RuntimePeer:
+        try:
+            lease = peer_authority.borrow()
+        except WAWPeerAuthorityError:
+            raise RuntimeOperationError(
+                "RUNTIME_PEER_FORBIDDEN",
+                "Runtime peer authority is unavailable",
+                category="conflict",
+            ) from None
+        if lease is None:
+            raise RuntimeOperationError(
+                "RUNTIME_PEER_FORBIDDEN",
+                "Runtime peer authority is unavailable",
+                category="conflict",
+            )
+        try:
+            return lease.runtime_peer
+        finally:
+            lease.close()
+
+    def verify_stream(peer_socket: object) -> RuntimePeer | None:
+        lease = peer_authority.observe_stream_socket(peer_socket)
+        if lease is None:
+            return None
+        try:
+            return lease.runtime_peer
+        finally:
+            lease.close()
+
     streams = WAWEncryptedRegistry(runtime_epoch=runtime_epoch, static_key=static_key, clock=clock)
-    stream_server = WAWEncryptedServer.from_activated(sockets, streams, peer_verifier=peer_verifier)
+    stream_server = WAWEncryptedServer.from_activated(
+        sockets,
+        streams,
+        peer_verifier=verify_stream,
+    )
     service = WAWEncryptedAttachmentService(
         streams,
-        peer=peer,
+        peer=borrow_runtime_peer,
         supervisor=executor.encrypted_supervisor,
         capture=capture,
         current=executor.encrypted_binding_current,
     )
-    control_server = WAWControlServer(
-        sockets.control,
-        registry.dispatch,
+    control_server = build_waw_control_server(
+        sockets=sockets,
+        registry=registry,
         expected_peer_uid=expected_peer_uid,
         expected_peer_gid=expected_peer_gid,
-        peer_authorizer=control_peer_authorizer,
         max_active_connections=16,
         max_active_dispatches=8,
     )

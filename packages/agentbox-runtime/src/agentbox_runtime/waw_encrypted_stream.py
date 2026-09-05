@@ -420,6 +420,53 @@ class WAWEncryptedRegistry:
                 return record.session.close()
             return self._cleanup(record)
 
+    def revoke_authority(self, identity: object) -> bool:
+        """Fence and clean every attachment owned by one API authority.
+
+        This is an identity-scoped transfer primitive, not a Runtime-wide
+        invalidation. Capabilities are burned for the whole matching set before
+        any socket or PTY cleanup begins. A record remains as a quarantine slot
+        unless both publication fencing and exact PTY cleanup are confirmed.
+        """
+        with self._lock:
+            records = tuple(
+                record for record in self._records.values() if record.peer.identity is identity
+            )
+            for record in records:
+                record.consumed = True
+                record.capability = ""
+
+            publication_fenced: dict[str, bool] = {}
+            for record in records:
+                session = record.session
+                publication_fenced[record.claims.attachment_id] = (
+                    True if session is None else session.invalidate()
+                )
+
+            confirmed = True
+            for record in records:
+                try:
+                    session = record.session
+                    proof = (
+                        self._cleanup(record)
+                        if session is None
+                        else session._close_after_invalidation()
+                    )
+                except Exception:
+                    confirmed = False
+                    continue
+                if not publication_fenced[record.claims.attachment_id] or not proof.confirmed:
+                    confirmed = False
+
+            # Authority transfer must not preserve an old process's idempotency
+            # replies. _cleanup may have just created one, so purge after cleanup.
+            for attachment_id, completed in tuple(self._completed.items()):
+                if completed[1] is identity:
+                    del self._completed[attachment_id]
+            return confirmed and all(
+                self._records.get(record.claims.attachment_id) is not record for record in records
+            )
+
     def _cleanup(self, record: _Prepared, *, release: bool = True) -> RuntimeCleanup:
         record.consumed = True
         record.capability = ""
@@ -1328,6 +1375,19 @@ class WAWEncryptedSession:
                 self._control_drain_until = self._clock() + 1.0
         else:
             self.invalidate()
+
+        return self._close_after_invalidation(
+            clear_reason=clear_reason,
+            drain_control=drain_control,
+        )
+
+    def _close_after_invalidation(
+        self,
+        *,
+        clear_reason: str | None = None,
+        drain_control: bool = False,
+    ) -> RuntimeCleanup:
+        """Finish cleanup without retrying an already attempted publication fence."""
         cleanup_failed = not drain_control and not self._publication_fenced
         if self._crypto is not None:
             try:
@@ -1408,28 +1468,47 @@ class WAWEncryptedAttachmentService:
             str, tuple[str, AttachmentTuple, object, float, dict[str, Any]]
         ] = OrderedDict()
 
-    def bind_authority(self, request: dict[str, Any]) -> None:
-        peer = self._peer_provider()
+    def _runtime_peer(self, peer: RuntimePeer | None) -> RuntimePeer:
+        peer = self._peer_provider() if peer is None else peer
         self.registry._peer(peer)
-        if request["api_authority_epoch"] != peer.api_authority_epoch:
-            raise EncryptedStreamError("RUNTIME_PEER_FORBIDDEN")
-        digest = hashlib.sha256(request["authority_nonce"].encode("ascii")).digest()
-        current = self._bound_authority
-        if current is not None and (
-            current[0] is not peer.identity
-            or current[1] != peer.api_authority_epoch
-            or not hmac.compare_digest(current[2], digest)
-        ):
-            raise EncryptedStreamError("RUNTIME_PEER_FORBIDDEN")
-        self._bound_authority = (peer.identity, peer.api_authority_epoch, digest)
+        return peer
 
-    def _bound_peer(self) -> RuntimePeer:
-        peer = self._peer_provider()
-        self.registry._peer(peer)
+    def bind_authority(
+        self,
+        request: dict[str, Any],
+        peer: RuntimePeer | None = None,
+    ) -> None:
+        with self.registry._lock:
+            peer = self._runtime_peer(peer)
+            if request["api_authority_epoch"] != peer.api_authority_epoch:
+                raise EncryptedStreamError("RUNTIME_PEER_FORBIDDEN")
+            digest = hashlib.sha256(request["authority_nonce"].encode("ascii")).digest()
+            current = self._bound_authority
+            if current is not None and (
+                current[0] is not peer.identity
+                or current[1] != peer.api_authority_epoch
+                or not hmac.compare_digest(current[2], digest)
+            ):
+                raise EncryptedStreamError("RUNTIME_PEER_FORBIDDEN")
+            self._bound_authority = (peer.identity, peer.api_authority_epoch, digest)
+
+    def _bound_peer(self, peer: RuntimePeer | None) -> RuntimePeer:
+        peer = self._runtime_peer(peer)
         bound = self._bound_authority
         if bound is None or bound[0] is not peer.identity or bound[1] != peer.api_authority_epoch:
             raise EncryptedStreamError("RUNTIME_PEER_FORBIDDEN")
         return peer
+
+    def revoke_authority(self, identity: object) -> bool:
+        """Drop one bound API authority and its exact attachment/cache state."""
+        with self.registry._lock:
+            bound = self._bound_authority
+            if bound is not None and bound[0] is identity:
+                self._bound_authority = None
+            for attachment_id, entry in tuple(self._detach_requests.items()):
+                if entry[2] is identity:
+                    del self._detach_requests[attachment_id]
+            return self.registry.revoke_authority(identity)
 
     def _claims(self, request: dict[str, Any]) -> AttachmentTuple:
         values = {key: request[key] for key in ADMISSION_KEYS}
@@ -1447,33 +1526,42 @@ class WAWEncryptedAttachmentService:
             raise EncryptedStreamError("ATTACHMENT_STALE")
         return AttachmentTuple(**values)
 
-    def prepare(self, request: dict[str, Any]) -> dict[str, Any]:
-        claims = self._claims(request)
-        capability = self.registry.prepare(
-            peer=self._bound_peer(),
-            claims=claims,
-            supervisor=self._supervisor_provider(claims),
-            capture=lambda: self._capture_provider(claims),
-            current=lambda: self._current(claims),
-            resume_cursor=request["resume_cursor"],
-            previous_runtime_epoch=request["previous_runtime_epoch"],
-        )
-        return {
-            "protocol_version": 1,
-            "request_id": request["request_id"],
-            "status": "PREPARED",
-            **admission_fields(claims),
-            "runtime_epoch": self.registry.runtime_epoch,
-            "resume_cursor": request["resume_cursor"],
-            "previous_runtime_epoch": request["previous_runtime_epoch"],
-            "capability": capability,
-        }
-
-    def detach(self, request: dict[str, Any]) -> dict[str, Any]:
-        claims = self._claims(request)
-        peer = self._bound_peer()
-        now = self.registry._now()
+    def prepare(
+        self,
+        request: dict[str, Any],
+        peer: RuntimePeer | None = None,
+    ) -> dict[str, Any]:
         with self.registry._lock:
+            claims = self._claims(request)
+            capability = self.registry.prepare(
+                peer=self._bound_peer(peer),
+                claims=claims,
+                supervisor=self._supervisor_provider(claims),
+                capture=lambda: self._capture_provider(claims),
+                current=lambda: self._current(claims),
+                resume_cursor=request["resume_cursor"],
+                previous_runtime_epoch=request["previous_runtime_epoch"],
+            )
+            return {
+                "protocol_version": 1,
+                "request_id": request["request_id"],
+                "status": "PREPARED",
+                **admission_fields(claims),
+                "runtime_epoch": self.registry.runtime_epoch,
+                "resume_cursor": request["resume_cursor"],
+                "previous_runtime_epoch": request["previous_runtime_epoch"],
+                "capability": capability,
+            }
+
+    def detach(
+        self,
+        request: dict[str, Any],
+        peer: RuntimePeer | None = None,
+    ) -> dict[str, Any]:
+        with self.registry._lock:
+            claims = self._claims(request)
+            peer = self._bound_peer(peer)
+            now = self.registry._now()
             for attachment_id, entry in tuple(self._detach_requests.items()):
                 if now >= entry[3]:
                     del self._detach_requests[attachment_id]

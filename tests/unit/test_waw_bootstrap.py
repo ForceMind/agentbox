@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import inspect
 import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from agentbox_runtime import waw_bootstrap as bootstrap_subject
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.project import ProjectRegistry
+from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
 from agentbox_runtime.waw_bootstrap import (
+    build_waw_control_server,
+    build_waw_encrypted_servers,
     create_waw_lifecycle_registry_development_only,
     create_waw_lifecycle_registry_from_filesystem_bundle_v1_compat,
     create_waw_lifecycle_registry_from_loaded_manifest_bundle_test_only,
@@ -23,6 +28,7 @@ from agentbox_runtime.waw_conflicts import (
     WAWLegacyCodexState,
     WAWManagedConflictState,
 )
+from agentbox_runtime.waw_encrypted_stream import BoundedRedraw, RuntimePeer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_host_manifest import (
     WAWCanonicalManifestBundle,
@@ -45,6 +51,7 @@ from agentbox_runtime.waw_manifest_codecs import (
     encode_runtime_host_manifest,
     manifest_sha256,
 )
+from agentbox_runtime.waw_peer_authority import WAWPeerAuthority
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 
@@ -632,6 +639,164 @@ def _fixed_executor(tmp_path: Path, epoch: str, authority: Any = None) -> WAWSup
         execution_authority=authority,
         auth_probe=object.__new__(WAWCachedPublicAuthProbe),
     )
+
+
+def test_control_builder_configures_and_reuses_one_peer_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    registry, _ = create_waw_lifecycle_registry_development_only(
+        manifest=_manifest(),
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    sockets = WAWActivatedSockets(cast(Any, object()), cast(Any, object()))
+    calls: list[dict[str, Any]] = []
+
+    class FakeControlServer:
+        def __init__(self, *_args: Any, **kwargs: Any) -> None:
+            calls.append(kwargs)
+
+    monkeypatch.setattr(bootstrap_subject, "WAWControlServer", FakeControlServer)
+    first = build_waw_control_server(
+        sockets=sockets,
+        registry=registry,
+        expected_peer_uid=1001,
+        expected_peer_gid=1002,
+    )
+    authority = registry.peer_authority
+    assert type(authority) is WAWPeerAuthority
+    assert (authority.expected_uid, authority.expected_gid) == (1001, 1002)
+    second = build_waw_control_server(
+        sockets=sockets,
+        registry=registry,
+        expected_peer_uid=1001,
+        expected_peer_gid=1002,
+    )
+
+    assert isinstance(cast(Any, first), FakeControlServer)
+    assert isinstance(cast(Any, second), FakeControlServer)
+    assert len(calls) == 2
+    assert all(callback["peer_authorizer"].__self__ is authority for callback in calls)
+    with pytest.raises(ValueError, match="does not match"):
+        build_waw_control_server(
+            sockets=sockets,
+            registry=registry,
+            expected_peer_uid=2001,
+            expected_peer_gid=1002,
+        )
+
+
+def test_encrypted_builder_uses_registry_authority_for_control_stream_and_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    registry, runtime_epoch = create_waw_lifecycle_registry_development_only(
+        manifest=_manifest(),
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    authority = WAWPeerAuthority(expected_uid=1001, expected_gid=1002)
+    registry.configure_peer_authority(authority)
+    executor = _fixed_executor(tmp_path, runtime_epoch)
+    sockets = WAWActivatedSockets(cast(Any, object()), cast(Any, object()))
+    control_calls: list[dict[str, Any]] = []
+    stream_calls: list[dict[str, Any]] = []
+
+    class FakeControlServer:
+        def __init__(self, *_args: Any, **kwargs: Any) -> None:
+            control_calls.append(kwargs)
+
+    class FakeEncryptedServer:
+        @classmethod
+        def from_activated(cls, *_args: Any, **kwargs: Any) -> FakeEncryptedServer:
+            stream_calls.append(kwargs)
+            return cls()
+
+    monkeypatch.setattr(bootstrap_subject, "WAWControlServer", FakeControlServer)
+    monkeypatch.setattr(bootstrap_subject, "WAWEncryptedServer", FakeEncryptedServer)
+    control, stream, streams = build_waw_encrypted_servers(
+        sockets=sockets,
+        registry=registry,
+        executor=executor,
+        runtime_epoch=runtime_epoch,
+        static_key=lambda: bytes(32),
+        peer_authority=authority,
+        capture=lambda _claims: BoundedRedraw(b"", False),
+        expected_peer_uid=1001,
+        expected_peer_gid=1002,
+        clock=lambda: 0.0,
+    )
+
+    assert isinstance(cast(Any, control), FakeControlServer)
+    assert isinstance(cast(Any, stream), FakeEncryptedServer)
+    assert control_calls[0]["peer_authorizer"].__self__ is authority
+    verifier = stream_calls[0]["peer_verifier"]
+    runtime_peer = RuntimePeer(object(), "1", lambda: True)
+
+    class Lease:
+        def __init__(self) -> None:
+            self.runtime_peer = runtime_peer
+            self.closed = False
+
+        def close(self) -> None:
+            assert not self.closed
+            self.closed = True
+
+    stream_lease = Lease()
+    borrowed_lease = Lease()
+    observed: list[object] = []
+
+    def observe_stream_socket(peer_socket: object) -> Any:
+        observed.append(peer_socket)
+        return stream_lease
+
+    monkeypatch.setattr(authority, "observe_stream_socket", observe_stream_socket)
+    monkeypatch.setattr(authority, "borrow", lambda: borrowed_lease)
+    accepted_socket = object()
+    assert verifier(accepted_socket) is runtime_peer
+    assert observed == [accepted_socket] and stream_lease.closed
+    service = registry._encrypted_attachments
+    assert service is not None
+    assert service.registry is streams
+    assert service._peer_provider() is runtime_peer
+    assert borrowed_lease.closed
+
+    parameters = inspect.signature(build_waw_encrypted_servers).parameters
+    assert "peer_authority" in parameters
+    assert {"peer", "peer_verifier", "control_peer_authorizer"}.isdisjoint(parameters)
+
+
+def test_encrypted_builder_rejects_non_registry_authority(tmp_path: Path) -> None:
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    registry, runtime_epoch = create_waw_lifecycle_registry_development_only(
+        manifest=_manifest(),
+        epoch_store=store,
+        executor=FakeExecutor(),
+        binding_digest_factory=lambda _request: "a" * 64,
+    )
+    authority = WAWPeerAuthority(expected_uid=1001, expected_gid=1002)
+    registry.configure_peer_authority(authority)
+    with pytest.raises(ValueError, match="exact peer authority"):
+        build_waw_encrypted_servers(
+            sockets=WAWActivatedSockets(cast(Any, object()), cast(Any, object())),
+            registry=registry,
+            executor=_fixed_executor(tmp_path, runtime_epoch),
+            runtime_epoch=runtime_epoch,
+            static_key=lambda: bytes(32),
+            peer_authority=WAWPeerAuthority(expected_uid=1001, expected_gid=1002),
+            capture=lambda _claims: BoundedRedraw(b"", False),
+            expected_peer_uid=1001,
+            expected_peer_gid=1002,
+            clock=lambda: 0.0,
+        )
 
 
 def test_v2_loaded_test_only_composition_uses_consumed_epoch_once(tmp_path: Path) -> None:
