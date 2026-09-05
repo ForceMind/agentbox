@@ -1,5 +1,15 @@
 # API ciphertext relay
 
+## API singleton shutdown continuation
+
+The current uncommitted rc6 continuation gives `AttachmentAuthority` a synchronous,
+idempotent shutdown fence. Pending tickets are burned; active and staged records
+remain cleanup-pending through general invalidation. Shutdown rejects new or
+advancing admission operations but continues to accept exact positive Runtime
+cleanup and durable Audit acknowledgment. `shutdown_clean` therefore cannot be
+produced by clearing authority maps. Focused tests completed 66 cases and
+independent Sol/xhigh review reports PASS with no P0/P1/P2.
+
 R8 composes the actual [staged coordinator](WAW_STAGED_ADMISSION.md), native
 WebSocket transport and Runtime Unix stream adapter. Status: **implemented and
 independently reviewed PASS locally; exact-head CI/merge remain pending**. It is not production activation;

@@ -735,3 +735,8 @@ PROPOSED architecture status are preserved.
   including Linux native, E2E and Backend Python 3.11/3.12/3.13. This top-level
   Runtime ownership slice is verified. API singleton/lifespan ownership is the
   next rc6 scope; production main and real key/provider activation remain closed.
+- The uncommitted API-singleton continuation adds `AttachmentAuthority.begin_shutdown()`.
+  Pending tickets are burned; active and staged records retain exact cleanup/Audit
+  obligations through `invalidate_all()`. New admission operations fail after
+  shutdown, while exact positive cleanup remains admissible. Focused tests completed
+  66 cases and independent Sol/xhigh review reports PASS with no P0/P1/P2.

@@ -67,6 +67,10 @@ blocker is resolved. Do not request the same software approval again.
   Continue rc6 with the API singleton, one attachment/bind/control/relay owner and
   lifespan shutdown ordering; keep real key/provider and production activation in
   their existing host-gated scope.
+- `AttachmentAuthority` shutdown fencing is implemented and independently reviewed:
+  pending tickets burn, cleanup obligations survive invalidation, and only exact
+  cleanup/Audit ACK reaches clean. Commit and exact-head verify this foundation,
+  then implement the process lock and single bind/control/relay lifespan owner.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
   then continue the remaining production controller composition. Normal merge and
   exact read-back follow the complete rc6 acceptance set. After

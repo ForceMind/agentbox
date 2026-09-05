@@ -197,6 +197,12 @@ Head `628e9c00...` completed 20/20 exact-head checks, including Linux native,
 E2E and Backend Python 3.11/3.12/3.13. `WAWRuntimeApplication` ownership is now a
 verified rc6 slice. API singleton/lifespan ownership is next.
 
+The current uncommitted API foundation adds an idempotent
+`AttachmentAuthority.begin_shutdown()`. It burns pending tickets and preserves
+active/staged cleanup obligations across `invalidate_all()` until exact cleanup
+and Audit acknowledgment. Sixty-six focused tests and independent Sol/xhigh review
+pass with no P0/P1/P2.
+
 ## Browser controller
 
 - Connect uses an exact same-origin WebSocket URL, subprotocol

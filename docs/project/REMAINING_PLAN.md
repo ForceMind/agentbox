@@ -81,6 +81,12 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 | R11 software integration | 进行中 | 全链路 controller、故障注入、E2E、artifact、操作文档与全页面双语 | R4–R10；API public anchor、同一Runtime peer/pidfd与durable epoch 已在 rc6 组合；redraw `f37f92d9...` 与 `WAWRuntimeApplication` `628e9c00...` 均完成20/20 exact-head CI。Runtime application已闭合distinct one-shot socket/key/executor ownership、shared start/close、同一control/legacy gate、private partial builders、one-use binding、retryable construction cleanup及六项shutdown evidence，独立Sol/xhigh PASS。下一项为API singleton/lifespan，再组合browser/API/Runtime；production main、real key/provider和host仍关闭。无持久payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
+API singleton 的当前未提交基础已实现 `AttachmentAuthority.begin_shutdown()`：
+pending ticket 会 burn，active/staged cleanup obligation 会跨 `invalidate_all()`
+保留，只有 exact Runtime cleanup 与 durable Audit ACK 才能达到 clean。66 项
+focused tests 与独立 Sol/xhigh 审查通过；下一项为 process lock 及单一
+bind/control/relay lifespan owner。
+
 ```mermaid
 flowchart LR
   R0 --> R1
