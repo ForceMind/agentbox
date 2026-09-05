@@ -691,3 +691,10 @@ PROPOSED architecture status are preserved.
   the supported-platform evidence, then the remaining controller composition.
   Normal merge/read-back follows the complete rc6 acceptance set. rc7–rc9 and
   the R12 real-host boundary remain unchanged.
+- Integration commit `e210d749...` completed 17/20 exact-head checks; all three
+  Backend Python quality jobs failed on the same preserved non-fixed server
+  restart contract. The reviewed follow-up restores restart only after a clean,
+  successful non-fixed shutdown with no control server, poison or owned resource;
+  fixed WAW composition remains terminal and the consumed Runtime epoch is not
+  reset. `test_runtime_server.py` completed 23 cases, full static gates pass and
+  independent Sol review reports PASS. The follow-up is not yet pushed or CI-verified.

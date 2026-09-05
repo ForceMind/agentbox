@@ -42,6 +42,12 @@ blocker is resolved. Do not request the same software approval again.
   Normal merge and exact read-back follow the complete rc6 acceptance set. After
   rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
   and rc9 full UI localization/visual E2E.
+- First integration head `e210d749...` completed 17/20 checks. Three Backend
+  matrix jobs exposed one shared legacy regression: a clean non-fixed server could
+  no longer restart without consuming a second epoch. The local reviewed fix
+  restores only that compatible restart; fixed/control/poisoned/incomplete shutdown
+  stays terminal. Commit and push this follow-up, then require a fresh exact-head
+  20/20 result before continuing.
 - Locale remains fixed per document from only `navigator.languages[0]`: primary
   `zh` → `zh-CN`; all other, missing or malformed values → English. Technical
   identifiers remain English.

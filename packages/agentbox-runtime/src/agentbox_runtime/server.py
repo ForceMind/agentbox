@@ -405,6 +405,7 @@ class RuntimeExecutorServer:
         return coordinator
 
     async def start(self, *, create_development_parent: bool = False) -> None:
+        self._reset_clean_nonfixed_restart()
         if self._closing or self._closed or self._close_operation is not None:
             raise RuntimeError("Runtime server is unavailable")
         if self._server is not None:
@@ -486,6 +487,27 @@ class RuntimeExecutorServer:
         finally:
             if self._start_task is current_task:
                 self._start_task = None
+
+    def _reset_clean_nonfixed_restart(self) -> None:
+        operation = self._close_operation
+        if operation is None:
+            return
+        if (
+            self._waw_fixed_runtime is not None
+            or self._waw_control_server is not None
+            or self._poisoned
+            or not operation.done()
+            or operation.cancelled()
+            or operation.exception() is not None
+            or self._server is not None
+            or self._start_task is not None
+            or self._connection_tasks
+            or self._writers
+        ):
+            return
+        self._close_operation = None
+        self._closing = False
+        self._closed = False
 
     async def _cleanup_failed_start(self) -> None:
         if self._closing:

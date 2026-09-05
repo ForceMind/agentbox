@@ -43,6 +43,15 @@ then the next controller slice. Normal merge and exact read-back occur only when
 the complete rc6 acceptance set is satisfied. rc7–rc9 remain serial successors,
 and R12 remains the separate real-host qualification boundary.
 
+The first integration head `e210d749...` completed 17/20 checks. Its three
+Backend matrix failures were the same pre-existing non-fixed restart contract:
+clean close followed by start must retain the already consumed Runtime epoch.
+The reviewed follow-up permits restart only for a successful, residue-free
+non-fixed server without a WAW control owner; fixed composition and every
+poisoned, failed, cancelled or incomplete shutdown remain terminal. This
+follow-up has 23 focused passing cases and independent Sol PASS, but is not yet
+pushed or exact-head verified.
+
 ## rc6 composition invariants
 
 - One API process owns one `AttachmentAuthority`, API authority epoch/nonce,

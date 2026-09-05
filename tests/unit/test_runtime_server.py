@@ -240,6 +240,52 @@ def test_legacy_only_server_keeps_fixed_process_inert(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_clean_nonfixed_restart_reuses_consumed_epoch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex, claude = _managers(tmp_path)
+    calls = 0
+
+    class EpochStore:
+        def consume(self) -> int:
+            nonlocal calls
+            calls += 1
+            return 7
+
+    class RuntimeServer:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+        async def start_serving(self) -> None:
+            return None
+
+        def close(self) -> None:
+            self.path.unlink(missing_ok=True)
+
+        async def wait_closed(self) -> None:
+            return None
+
+    async def create_server(*_args: Any, path: Path, **_kwargs: Any) -> Any:
+        Path(path).touch()
+        return RuntimeServer(Path(path))
+
+    monkeypatch.setattr(asyncio, "start_unix_server", create_server)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+        waw_epoch_store=cast(Any, EpochStore()),
+    )
+    await server.start()
+    await server.close()
+    await server.start()
+    assert server.waw_runtime_epoch == 7 and calls == 1
+    await server.close()
+
+
+@pytest.mark.anyio
 async def test_close_is_shared_and_caller_cancellation_does_not_cancel_cleanup(
     tmp_path: Path,
 ) -> None:
