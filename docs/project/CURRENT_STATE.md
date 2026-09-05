@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T17:22:46Z"
+verified_at_utc: "2026-09-05T17:44:57Z"
 verified_by: "codex-r11-rc6-first-use-checkpoint"
 repository: "ForceMind/agentbox"
 ---
@@ -12,8 +12,10 @@ repository: "ForceMind/agentbox"
 - Live revalidation on 2026-09-05: `git fetch origin --prune` exited `0`;
   `main`, `origin/main` and the branch merge-base equal
   `341a69bf855f48f90cbecfb5c6872c3bf8c28360`. The upstream rc6 branch head was
-  `9bf5e8d1defa4704b521d6c67a4725740c0f5fd4` before this checkpoint; code commit
-  `708acd8aa9dc2af945f5664a7ba983c192affde4` is not covered by exact-head CI yet.
+  `9bf5e8d1defa4704b521d6c67a4725740c0f5fd4` before this checkpoint. The exact
+  head `029378e...` completed 17/20 checks; all three Backend Python jobs exposed
+  the same Linux inode-reuse flaw in the Runtime Project verifier. Local repair
+  `3ba85cb...` is the next checkpoint and is not covered by CI yet.
 - The active, reviewed execution order is `docs/WAW_R11_EXECUTION_PLAN.md`.
   The rc6-B first-use contract and local evidence are recorded in
   `docs/WAW_R11_RC6_FIRST_USE.md`; this is not a claim that rc6, rc7, rc8, rc9
@@ -697,9 +699,14 @@ PROPOSED architecture status are preserved.
   GitHub rather than inferred from older PR #80 evidence.
 - Commit `708acd8...` adds the first Project Start path, closed typed executable
   evidence action, exact bound-host/epoch checks, response-loss fencing and
-  concurrent first-use convergence. Local scope validation is 168 passed with
-  one Linux-only skipped control-path test; Ruff, Black and Linux-target mypy
-  pass. It has no exact-head CI or independent rc6 review yet.
+  concurrent first-use convergence. Its `029378e...` exact-head run failed 3
+  Python matrix jobs on one shared Runtime verifier inode-reuse assertion; the
+  other 17 checks passed.
+- Repair `3ba85cb...` retains at most 256 verified Project descriptors for the
+  Runtime epoch and rejects replacement before inode reuse can alias an existing
+  binding. Local scope validation is 169 passed with one Linux-only skipped
+  control-path test; Ruff, Black and Linux-target mypy pass. It awaits exact-head
+  CI and independent rc6 review.
 - Next rc6 order is documentation commit/push, exact-head Linux CI and read-back;
   then complete deterministic startup/restart binding replay and browser page
   composition. Normal merge/read-back follows the complete rc6 acceptance set.

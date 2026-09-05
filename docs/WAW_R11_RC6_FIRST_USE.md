@@ -1,8 +1,10 @@
 # R11 rc6 Project 首次使用与 Runtime 可执行文件证据
 
-状态：实现检查点。代码提交 `708acd8aa9dc2af945f5664a7ba983c192affde4`
-已完成本地定向验证；尚未获得该提交后的 exact-head CI、独立审查、合并或
-真实主机证据。
+状态：CI 修复检查点。首次使用代码提交
+`708acd8aa9dc2af945f5664a7ba983c192affde4` 的 exact-head CI 有 17/20 通过、
+3 个 Backend Python matrix 失败；修复提交
+`3ba85cb` 已完成本地扩展验证，等待新的 exact-head CI、独立审查、合并或真实
+主机证据。
 
 本文件只定义 rc6-B 的已实现控制面路径。它不激活主机、不读取 Runtime HOME、
 不处理 Provider Secret，也不把合成 Runtime 测试当作可用终端。
@@ -64,10 +66,18 @@ Runtime 只会针对当前已启动的精确 supervisor 返回该值。
 
 ## 本地验证
 
-- `ruff check`：10 个受影响 API、Protocol、Runtime 与测试文件通过。
+- `029378e` exact-head CI：E2E、native、release、installer、安全和其余质量
+  检查通过；Python 3.11/3.12/3.13 都在
+  `test_verifier_uses_descriptor_held_project_identity` 失败。根因是 Linux 允许
+  删除后重用 inode，而旧 verifier 在两次登记之间释放 Project descriptor；不是
+  SHA-256 碰撞，也没有把失败的 CI 写成通过。
+- `3ba85cb` 将每个成功验证 `relative_key` 的目录 descriptor 交由 verifier 持有，
+  上限为 256；后续登记会把 named path 与 held descriptor 比对，关闭时统一释放
+  所有 owned descriptors。新的 inode-reuse 与 descriptor-capacity 回归均通过。
+- `ruff check`：12 个受影响 API、Protocol、Runtime 与测试文件通过。
 - `black --check`：同一文件集通过。
-- `mypy --platform linux`：8 个受影响 source/test 文件通过。
-- 定向 pytest：168 passed，1 skipped。跳过项是 macOS 不具备的 Linux
+- `mypy --platform linux`：10 个受影响 source/test 文件通过。
+- 扩展定向 pytest：169 passed，1 skipped。跳过项是 macOS 不具备的 Linux
   `SO_PEERCRED/pidfd` control-path 集成；该项将由 exact-head Linux CI 执行。
 - 覆盖了 closed codec、Runtime registry/executor、真实 control-path 测试结构、
   首次绑定、并发首次 Start、Runtime registration 响应不匹配、host tuple 漂移、
@@ -79,6 +89,6 @@ drift 组合证据；rc6-C browser controller 页面接线也尚未完成。
 
 ## 后续边界
 
-本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步先推送并读取本提交后的
-exact-head CI；只有 CI 终态成功后，才把它记录为已验证的 rc6 子阶段并继续
-rc6 的剩余 restart/controller 组合工作。
+本检查点不改变 rc7、rc8、rc9 或 R12 的顺序。下一步先推送并读取 `3ba85cb`
+后的 exact-head CI；只有 CI 终态成功后，才把它记录为已验证的 rc6 子阶段并继续
+rc6 的启动时 deterministic binding replay 与 browser controller 页面组合工作。

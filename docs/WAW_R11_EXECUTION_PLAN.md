@@ -110,11 +110,13 @@ work. Unsafe downgrade is rejected.
 #### rc6-B first-use checkpoint
 
 Commit `708acd8aa9dc2af945f5664a7ba983c192affde4` implements the typed first-use
-flow and `workspace.workspace.executable_evidence.v1`. Its exact contract,
-failure fences and local validation are recorded in
-[R11 rc6 first use](WAW_R11_RC6_FIRST_USE.md). This is a committed local
-checkpoint, not yet an exact-head CI result or completion of rc6-B: deterministic
-startup/restart replay and the remaining rc6 acceptance evidence are still due.
+flow and `workspace.workspace.executable_evidence.v1`. Its first exact-head run
+failed only because the existing Project verifier released a descriptor before a
+Linux inode-reuse check; fix `3ba85cb` retains a bounded descriptor per verified
+key and awaits a fresh exact-head run. The exact contract, failure fences and
+local validation are recorded in [R11 rc6 first use](WAW_R11_RC6_FIRST_USE.md).
+This is not completion of rc6-B: deterministic startup/restart replay and the
+remaining rc6 acceptance evidence are still due.
 
 ### C. Browser controller and exact Stop
 
