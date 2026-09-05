@@ -717,3 +717,8 @@ PROPOSED architecture status are preserved.
   that requires its socket to remain present. The local follow-up removes that
   contradictory post-kill assertion; implementation capture evidence passed in
   the failed run. A fresh exact-head result is still required.
+- Bounded-redraw follow-up `f37f92d9...` completed 20/20 exact-head checks.
+  Linux native completed 73 cases, including held-FD real tmux capture; Backend
+  Python 3.11 completed 3629 passed/44 skipped, and the 3.12/3.13 matrix also
+  completed successfully. The bounded-redraw slice is verified; the next rc6
+  scope is `WAWRuntimeApplication` production composition.

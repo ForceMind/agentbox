@@ -51,6 +51,11 @@ with 9 Linux-only skips and 2 local UDS cases deselected. Independent Sol/xhigh
 review reports PASS with no P0/P1/P2. The new real Linux native case awaits
 exact-head CI; this Mac cannot set up the required UDS cases (`PermissionError`).
 
+Exact-head follow-up `f37f92d9...` completed 20/20 checks. The Linux native job
+completed 73 cases including real held-FD tmux capture; Backend Python 3.11
+completed 3629 passed/44 skipped, with Python 3.12/3.13 also successful. This
+closes the bounded-redraw software slice without claiming R12 host qualification.
+
 Input is decrypted once, then receives the appropriate accepted and terminal
 written/uncertain/rejected result. Rejection after successful decryption retains
 nonce continuity. A cached terminal ACK may be replayed at most once within its

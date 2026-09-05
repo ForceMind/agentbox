@@ -175,6 +175,11 @@ killed tmux and subsequently called a helper that requires the socket to remain.
 The test-only follow-up removes that contradictory post-kill assertion; a fresh
 exact-head native/full Backend result remains required.
 
+Follow-up `f37f92d9...` completed 20/20 exact-head checks. Linux native completed
+73 cases with the real held-FD tmux capture, and Backend Python 3.11 completed
+3629 passed/44 skipped; Python 3.12/3.13 also succeeded. Bounded redraw is now a
+verified rc6 slice. `WAWRuntimeApplication` production composition is next.
+
 ## Browser controller
 
 - Connect uses an exact same-origin WebSocket URL, subprotocol

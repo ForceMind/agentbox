@@ -51,6 +51,10 @@ blocker is resolved. Do not request the same software approval again.
   that expects the tmux socket. The test-only follow-up removes that invalid
   cleanup assertion. Commit/push it and require a fresh exact-head native/full
   Backend pass before recording bounded redraw complete.
+- Follow-up `f37f92d9...` completed the required 20/20 exact-head matrix. Linux
+  native completed 73 cases; Backend Python 3.11 completed 3629 passed/44 skipped,
+  with 3.12/3.13 also successful. Treat bounded redraw as verified and continue
+  with `WAWRuntimeApplication` production composition and singleton ownership.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
   then continue the remaining production controller composition. Normal merge and
   exact read-back follow the complete rc6 acceptance set. After
