@@ -86,9 +86,7 @@ def test_native_ready_header_matches_python_adapter() -> None:
 
 
 def test_attach_supervisor_ready_wait_uses_one_monotonic_deadline() -> None:
-    source = (ROOT / "native" / "waw" / "src" / "attach_supervisor.c").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "native" / "waw" / "src" / "attach_supervisor.c").read_text(encoding="utf-8")
     assert "clock_gettime(CLOCK_MONOTONIC, &ready_deadline)" in source
     assert "ready_deadline.tv_sec += (time_t)(AGENTBOX_WAW_READY_DEADLINE_MS" in source
     assert "ready_deadline_milliseconds(&ready_deadline)" in source
