@@ -18,6 +18,7 @@ from agentbox_api.waw_control_client import (
 _ALLOWED_LIFECYCLE_REQUESTS = frozenset(
     {
         "workspace.project_binding.register",
+        "workspace.project_binding.inventory.finalize.v1",
         "workspace.workspace.start",
         "workspace.workspace.stop",
         "workspace.workspace.status",

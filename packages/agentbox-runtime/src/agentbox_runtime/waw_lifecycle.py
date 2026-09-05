@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import math
 import re
@@ -21,6 +22,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from agentbox_core.waw import AgentType
 from agentbox_core.waw_recovery import RecoveryError, ResumeHint
+from agentbox_protocol.waw_control import WAWControlError, binding_inventory_digest
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_cgroup_attestation import (
@@ -59,6 +61,7 @@ from agentbox_runtime.waw_workspace_attestation import (
 
 _BIND = "workspace.api_authority.bind"
 _REGISTER = "workspace.project_binding.register"
+_FINALIZE_INVENTORY = "workspace.project_binding.inventory.finalize.v1"
 _START = "workspace.workspace.start"
 _STOP = "workspace.workspace.stop"
 _STATUS = "workspace.workspace.status"
@@ -100,6 +103,7 @@ _PROCESS_STATES = _STATES | {"NOT_STARTED"}
 _MAX_U64 = 2**64 - 1
 _MAX_DETACHED_CLEANUPS = 32
 _SUPPORTED_AGENT_TYPES = frozenset(agent.value for agent in AgentType)
+_BOOTSTRAP_ACTIONS = frozenset({_BIND, _REGISTER, _FINALIZE_INVENTORY})
 
 # Runtime observations are deliberately stricter than the underlying provider
 # API.  An ambiguous process/lifecycle pair must never be exposed as healthy.
@@ -273,6 +277,7 @@ class WAWLifecycleRegistry:
         self._cleanup_quarantine: set[str] = set()
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, WAWProjectBinding] = {}
+        self._durable_bindings: dict[str, WAWDurableProjectBinding] = {}
         self._hydrated_bindings: set[str] = set()
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
         self._attachments: dict[str, dict[str, Any]] = {}
@@ -292,6 +297,9 @@ class WAWLifecycleRegistry:
         self._shutdown_cause: BaseException | None = None
         self._application_gate_required = False
         self._application_gate_open = True
+        self._binding_replay_operation: asyncio.Task[None] | None = None
+        self._binding_replay_complete = binding_store is None
+        self._binding_inventory_finalized: tuple[tuple[str, str], str, str] | None = None
 
     def configure_encrypted_attachments(self, service: WAWEncryptedAttachmentService) -> None:
         """Install the real fixed service before serving; never replace live wiring."""
@@ -326,6 +334,7 @@ class WAWLifecycleRegistry:
             and wait.exception() is None
             and not self._encrypted_operations
             and not self._detached_cleanup_tasks
+            and (self._binding_replay_operation is None or self._binding_replay_operation.done())
             and not self._authority_quarantine_identities
             and self._authority is None
             and self._peer_authority_identity is None
@@ -363,15 +372,111 @@ class WAWLifecycleRegistry:
     def open_application_gate(self) -> None:
         if not self._application_gate_required or self._shutting_down:
             raise RuntimeError("application gate cannot be opened")
+        if self._binding_store is not None and self._binding_inventory_finalized is None:
+            raise RuntimeError("binding inventory is not finalized")
         self._application_gate_open = True
 
     def close_application_gate(self) -> None:
         if self._application_gate_required:
             self._application_gate_open = False
 
+    def _fence_binding_inventory(self, *, replay_incomplete: bool = False) -> None:
+        if not self.binding_inventory_finalize_required:
+            return
+        self._application_gate_open = False
+        self._binding_inventory_finalized = None
+        if replay_incomplete:
+            self._binding_replay_complete = False
+
     @property
     def application_gate_open(self) -> bool:
         return not self._application_gate_required or self._application_gate_open
+
+    @property
+    def binding_inventory_finalize_required(self) -> bool:
+        """Whether production startup awaits an exact API inventory commitment."""
+
+        return self._application_gate_required and self._binding_store is not None
+
+    async def restore_project_binding_inventory(self) -> None:
+        """Validate and replay the complete durable inventory exactly once.
+
+        This operation runs before the Runtime listeners start.  It deliberately
+        performs descriptor and executor work outside the registry mutation lock,
+        then publishes the validated set atomically.  Shutdown can therefore
+        fence publication and boundedly observe a cancellation-resistant executor.
+        """
+
+        operation = self._binding_replay_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_binding_inventory_replay())
+            self._binding_replay_operation = operation
+            operation.add_done_callback(self._consume_binding_replay)
+        await asyncio.shield(operation)
+
+    async def _perform_binding_inventory_replay(self) -> None:
+        store = self._binding_store
+        verifier = self._binding_verifier
+        if store is None:
+            self._binding_replay_complete = True
+            return
+        if verifier is None:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+        try:
+            durable_values = tuple(sorted(store.list_current(), key=lambda item: item.project_id))
+        except WAWProjectBindingStoreError as exc:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+
+        bindings: dict[str, WAWProjectBinding] = {}
+        durable_bindings: dict[str, WAWDurableProjectBinding] = {}
+        for durable in durable_values:
+            if durable.project_id in bindings:
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            if (
+                durable.runtime_host_installation_id != self._host_id
+                or durable.runtime_host_installation_revision != self._host_revision
+            ):
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            try:
+                digest = verifier.binding_digest(
+                    {
+                        "project_id": durable.project_id,
+                        "relative_key": durable.relative_key,
+                        "project_revision": durable.project_revision,
+                    }
+                )
+            except WAWProjectBindingVerifierError as exc:
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH") from exc
+            if not hmac.compare_digest(digest, durable.binding_digest):
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            binding = self._binding_from_durable(durable)
+            try:
+                await self._register_executor_binding(binding)
+            except asyncio.CancelledError:
+                raise
+            except BaseException as exc:
+                raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+            bindings[durable.project_id] = binding
+            durable_bindings[durable.project_id] = durable
+
+        try:
+            binding_inventory_digest(
+                [self._binding_inventory_item(value) for value in durable_values]
+            )
+        except WAWControlError as exc:
+            raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH") from exc
+        async with self._lock:
+            if self._shutting_down:
+                raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+            self._bindings = bindings
+            self._durable_bindings = durable_bindings
+            self._hydrated_bindings = set(bindings)
+            self._binding_replay_complete = True
+
+    @staticmethod
+    def _consume_binding_replay(operation: asyncio.Task[None]) -> None:
+        with suppress(BaseException):
+            operation.result()
 
     async def begin_shutdown(self) -> None:
         """Fence dispatch and revoke authority state without closing its pidfd owner."""
@@ -432,6 +537,9 @@ class WAWLifecycleRegistry:
                 for task in self._encrypted_operations | self._detached_cleanup_tasks
                 if not task.done()
             }
+            replay = self._binding_replay_operation
+            if replay is not None and not replay.done():
+                workers.add(replay)
         if workers:
             _done, pending = await asyncio.wait(
                 workers,
@@ -498,12 +606,12 @@ class WAWLifecycleRegistry:
     ) -> dict[str, Any]:
         """Dispatch one decoded control request; all mutations are serialized."""
 
-        self._require_dispatch_open()
         action = request.get("action")
         if not isinstance(action, str):
             raise WAWControlDispatchError("PROTOCOL_INVALID")
+        self._require_dispatch_open(action)
         async with self._lock:
-            self._require_dispatch_open()
+            self._require_dispatch_open(action)
             runtime_peer = self._validate_control_peer(action, peer)
             request_id = request.get("request_id")
             if not isinstance(request_id, str):
@@ -527,6 +635,8 @@ class WAWLifecycleRegistry:
                 response = self._bind(request, peer)
             elif action == _REGISTER:
                 response = await self._register(request)
+            elif action == _FINALIZE_INVENTORY:
+                response = self._finalize_binding_inventory(request)
             elif action == _ATTACH_PREPARE:
                 response = (
                     self._attach_prepare(request, runtime_peer)
@@ -728,6 +838,9 @@ class WAWLifecycleRegistry:
         self._peer_authority_identity = None
         self._attachments.clear()
         self._request_cache.clear()
+        if self.binding_inventory_finalize_required:
+            self._application_gate_open = False
+            self._binding_inventory_finalized = None
 
     def _quarantine_authority_identity(self, identity: object | None) -> None:
         self._authority_quarantined = True
@@ -745,6 +858,8 @@ class WAWLifecycleRegistry:
 
     async def _register(self, request: dict[str, Any]) -> dict[str, Any]:
         self._require_authority()
+        if self.binding_inventory_finalize_required and not self._binding_replay_complete:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
         if (
             request["runtime_host_installation_id"] != self._host_id
             or request["runtime_host_installation_revision"] != self._host_revision
@@ -784,6 +899,7 @@ class WAWLifecycleRegistry:
             else:
                 raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
         except WAWProjectBindingVerifierError as exc:
+            self._fence_binding_inventory(replay_incomplete=True)
             raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
         if not isinstance(digest_value, str) or not _DIGEST.fullmatch(digest_value):
             raise WAWControlDispatchError("INTERNAL_BOUNDED")
@@ -794,7 +910,14 @@ class WAWLifecycleRegistry:
                 and request["project_revision"] == previous.project_revision
                 and digest == previous.binding_digest
             ):
-                await self._register_executor_binding(previous)
+                try:
+                    await self._register_executor_binding(previous)
+                except asyncio.CancelledError:
+                    self._fence_binding_inventory(replay_incomplete=True)
+                    raise
+                except BaseException as exc:
+                    self._fence_binding_inventory(replay_incomplete=True)
+                    raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
                 self._hydrated_bindings.add(project_id)
                 return {
                     "protocol_version": 1,
@@ -816,25 +939,33 @@ class WAWLifecycleRegistry:
             runtime_host_installation_id=self._host_id,
             runtime_host_installation_revision=self._host_revision,
         )
-        await self._register_executor_binding(binding)
+        durable_binding = WAWDurableProjectBinding(
+            project_id=binding.project_id,
+            relative_key=binding.relative_key,
+            project_revision=binding.project_revision,
+            binding_revision=binding.binding_revision,
+            binding_digest=binding.binding_digest,
+            previous_binding_revision=request["previous_binding_revision"],
+            previous_binding_digest=request["previous_binding_digest"],
+            runtime_host_installation_id=binding.runtime_host_installation_id,
+            runtime_host_installation_revision=binding.runtime_host_installation_revision,
+        )
+        try:
+            await self._register_executor_binding(binding)
+        except asyncio.CancelledError:
+            self._fence_binding_inventory(replay_incomplete=True)
+            raise
+        except BaseException as exc:
+            self._fence_binding_inventory(replay_incomplete=True)
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
         if self._binding_store is not None:
             try:
-                self._binding_store.commit(
-                    WAWDurableProjectBinding(
-                        project_id=binding.project_id,
-                        relative_key=binding.relative_key,
-                        project_revision=binding.project_revision,
-                        binding_revision=binding.binding_revision,
-                        binding_digest=binding.binding_digest,
-                        previous_binding_revision=request["previous_binding_revision"],
-                        previous_binding_digest=request["previous_binding_digest"],
-                        runtime_host_installation_id=binding.runtime_host_installation_id,
-                        runtime_host_installation_revision=binding.runtime_host_installation_revision,
-                    )
-                )
+                durable_binding = self._binding_store.commit(durable_binding)
             except WAWProjectBindingStoreError as exc:
-                raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True) from exc
+                self._fence_binding_inventory(replay_incomplete=True)
+                raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
         self._bindings[project_id] = binding
+        self._durable_bindings[project_id] = durable_binding
         self._hydrated_bindings.add(project_id)
         return {
             "protocol_version": 1,
@@ -872,7 +1003,90 @@ class WAWLifecycleRegistry:
             runtime_host_installation_revision=durable.runtime_host_installation_revision,
         )
         self._bindings[project_id] = binding
+        self._durable_bindings[project_id] = durable
         return binding
+
+    @staticmethod
+    def _binding_from_durable(durable: WAWDurableProjectBinding) -> WAWProjectBinding:
+        return WAWProjectBinding(
+            project_id=durable.project_id,
+            relative_key=durable.relative_key,
+            project_revision=durable.project_revision,
+            binding_revision=durable.binding_revision,
+            binding_digest=durable.binding_digest,
+            runtime_host_installation_id=durable.runtime_host_installation_id,
+            runtime_host_installation_revision=durable.runtime_host_installation_revision,
+        )
+
+    @staticmethod
+    def _binding_inventory_item(durable: WAWDurableProjectBinding) -> dict[str, str | None]:
+        return {
+            "project_id": durable.project_id,
+            "relative_key": durable.relative_key,
+            "project_revision": durable.project_revision,
+            "binding_revision": durable.binding_revision,
+            "previous_binding_revision": durable.previous_binding_revision,
+            "previous_binding_digest": durable.previous_binding_digest,
+            "binding_digest": durable.binding_digest,
+            "runtime_host_installation_id": durable.runtime_host_installation_id,
+            "runtime_host_installation_revision": durable.runtime_host_installation_revision,
+        }
+
+    def _finalize_binding_inventory(self, request: dict[str, Any]) -> dict[str, Any]:
+        self._require_authority()
+        if request["runtime_epoch"] != self._runtime_epoch:
+            raise WAWControlDispatchError("RUNTIME_INSTALLATION_MISMATCH")
+        if not self._binding_replay_complete:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+        if (
+            set(self._bindings) != set(self._durable_bindings)
+            or set(self._bindings) != self._hydrated_bindings
+            or any(
+                self._bindings[project_id] != self._binding_from_durable(durable)
+                for project_id, durable in self._durable_bindings.items()
+            )
+        ):
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE")
+        try:
+            count, digest = binding_inventory_digest(
+                [
+                    self._binding_inventory_item(self._durable_bindings[project_id])
+                    for project_id in sorted(self._durable_bindings)
+                ]
+            )
+        except WAWControlError as exc:
+            raise WAWControlDispatchError("BINDING_REPLAY_INCOMPLETE") from exc
+        if request["binding_count"] != count or not hmac.compare_digest(
+            request["inventory_digest"], digest
+        ):
+            self._fence_binding_inventory()
+            raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+        authority = self._authority
+        assert authority is not None
+        expected = (authority, count, digest)
+        current = self._binding_inventory_finalized
+        if current is not None:
+            if current != expected:
+                self._fence_binding_inventory()
+                raise WAWControlDispatchError("BINDING_INVENTORY_MISMATCH")
+            status = "ALREADY_FINALIZED"
+        else:
+            self._binding_inventory_finalized = expected
+            try:
+                if self._application_gate_required:
+                    self.open_application_gate()
+            except BaseException:
+                self._binding_inventory_finalized = None
+                raise
+            status = "FINALIZED"
+        return {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "status": status,
+            "runtime_epoch": self._runtime_epoch,
+            "binding_count": count,
+            "inventory_digest": digest,
+        }
 
     async def _register_executor_binding(self, binding: WAWProjectBinding) -> None:
         consumer = cast(object, self._executor)
@@ -1570,9 +1784,11 @@ class WAWLifecycleRegistry:
         if self._authority is None:
             raise WAWControlDispatchError("BINDING_BOOTSTRAP_REQUIRED", retryable=True)
 
-    def _require_dispatch_open(self) -> None:
+    def _require_dispatch_open(self, action: str) -> None:
         if self._shutting_down or (
-            self._application_gate_required and not self._application_gate_open
+            self._application_gate_required
+            and not self._application_gate_open
+            and action not in _BOOTSTRAP_ACTIONS
         ):
             raise WAWControlDispatchError("RUNTIME_UNAVAILABLE", retryable=True)
 

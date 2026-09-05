@@ -204,6 +204,32 @@ def test_project_state_mutations_increment_revision_with_cas_and_fence_commit(
     assert projects.get(PROJECT_ID).revision == 3
 
 
+def test_project_revision_change_atomically_fences_nonterminal_workspace(
+    settings: Any, clock: Any
+) -> None:
+    database, _bindings = _seed(settings, clock)
+    sessions = WorkspaceSessionService(database, clock)
+    workspace = sessions.create(
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=DIGEST_1,
+    )
+
+    ProjectService(database, clock).mark_error(PROJECT_ID, expected_revision=1)
+
+    fenced = sessions.get(workspace.id)
+    assert (
+        fenced.state,
+        fenced.reconciliation_state,
+        fenced.failure_code,
+        fenced.revision,
+    ) == ("UNKNOWN", "reconciliation_required", "PROJECT_BINDING_STALE", 2)
+
+
 def test_project_reservation_discard_uses_revision_cas(settings: Any, clock: Any) -> None:
     database, _bindings = _seed(settings, clock)
     projects = ProjectService(database, clock)
@@ -263,6 +289,9 @@ def test_next_revision_commits_only_over_exact_head(settings: Any, clock: Any) -
     )
     assert service.get(PROJECT_ID, 1).status == ProjectBindingStatus.SUPERSEDED.value
     assert service.get_head(PROJECT_ID).binding_revision == 2
+    assert [(row.project_id, row.binding_revision) for row in service.list_replay_plan()] == [
+        (PROJECT_ID, 2)
+    ]
 
 
 def test_unchanged_current_head_cannot_be_advanced_without_reconciliation(
@@ -345,6 +374,240 @@ def test_reconciliation_preserves_replayable_attempt(settings: Any, clock: Any) 
         binding_digest=DIGEST_1,
     )
     assert committed.status == ProjectBindingStatus.CURRENT.value
+
+
+def test_reconciling_current_binding_atomically_fences_matching_workspace(
+    settings: Any, clock: Any
+) -> None:
+    database, service = _seed(settings, clock)
+    _reserve(service)
+    service.commit(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_project_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    workspace = WorkspaceSessionService(database, clock).create(
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=DIGEST_1,
+    )
+
+    service.require_reconciliation(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_binding_digest=DIGEST_1,
+    )
+
+    fenced = WorkspaceSessionService(database, clock).get(workspace.id)
+    assert (
+        fenced.state,
+        fenced.reconciliation_state,
+        fenced.failure_code,
+        fenced.revision,
+    ) == ("UNKNOWN", "reconciliation_required", "BINDING_RECONCILIATION_REQUIRED", 2)
+
+
+def test_reconciling_current_binding_does_not_interrupt_exact_stop(
+    settings: Any, clock: Any
+) -> None:
+    database, service = _seed(settings, clock)
+    _reserve(service)
+    service.commit(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_project_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    sessions = WorkspaceSessionService(database, clock)
+    workspace = sessions.create(
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    operation = sessions.begin_stop(workspace.id, expected_revision=workspace.revision)
+
+    service.require_reconciliation(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_binding_digest=DIGEST_1,
+    )
+
+    assert sessions.get(workspace.id).state == "STOPPING"
+    completed = sessions.complete_stop(operation.id, result="STOPPED")
+    assert completed.result == "STOPPED"
+
+
+def test_repeated_current_binding_reconciliation_does_not_rebump_workspace(
+    settings: Any, clock: Any
+) -> None:
+    database, service = _seed(settings, clock)
+    _reserve(service)
+    service.commit(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_project_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    sessions = WorkspaceSessionService(database, clock)
+    workspace = sessions.create(
+        project_id=PROJECT_ID,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    service.require_reconciliation(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_binding_digest=DIGEST_1,
+    )
+    first = sessions.get(workspace.id)
+    clock.advance(seconds=1)
+
+    service.require_reconciliation(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_binding_digest=DIGEST_1,
+    )
+
+    second = sessions.get(workspace.id)
+    assert (
+        second.revision,
+        second.updated_at,
+        second.last_seen_at,
+    ) == (
+        first.revision,
+        first.updated_at,
+        first.last_seen_at,
+    )
+
+
+def test_replay_plan_is_project_sorted_and_prefers_open_attempt(settings: Any, clock: Any) -> None:
+    database, service = _seed(settings, clock)
+    second_project_id = "prj_" + "0" * 32
+    with database.transaction() as session:
+        now = clock.now()
+        session.add(
+            Project(
+                id=second_project_id,
+                slug="before-demo",
+                display_name="Before Demo",
+                relative_path="before-demo",
+                source_type="empty",
+                state="ready",
+                revision=1,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    _reserve(service)
+    service.commit(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_project_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    with database.transaction() as session:
+        project = session.get(Project, PROJECT_ID)
+        assert project is not None
+        project.revision = 2
+    _reserve(
+        service,
+        project_revision=2,
+        predecessor_revision=1,
+        predecessor_digest=DIGEST_1,
+    )
+    service.reserve(
+        project_id=second_project_id,
+        expected_project_revision=1,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=1,
+        expected_head_revision=None,
+        expected_head_digest=None,
+    )
+
+    plan = service.list_replay_plan()
+    assert [(row.project_id, row.binding_revision) for row in plan] == [
+        (second_project_id, 1),
+        (PROJECT_ID, 2),
+    ]
+
+
+def test_replay_plan_blocks_digest_known_reconciliation(settings: Any, clock: Any) -> None:
+    _database, service = _seed(settings, clock)
+    _reserve(service)
+    service.commit(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_project_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    service.require_reconciliation(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_binding_digest=DIGEST_1,
+    )
+    with pytest.raises(ProjectBindingConflict, match="BINDING_INVENTORY_MISMATCH"):
+        service.list_replay_plan()
+
+
+def test_replay_plan_revalidates_project_revision(settings: Any, clock: Any) -> None:
+    database, service = _seed(settings, clock)
+    _reserve(service)
+    service.commit(
+        project_id=PROJECT_ID,
+        binding_revision=1,
+        expected_project_revision=1,
+        binding_digest=DIGEST_1,
+    )
+    with database.transaction() as session:
+        project = session.get(Project, PROJECT_ID)
+        assert project is not None
+        project.revision = 2
+    with pytest.raises(ProjectBindingNotReady):
+        service.list_replay_plan()
+
+
+def test_replay_plan_is_bounded(settings: Any, clock: Any) -> None:
+    database, service = _seed(settings, clock)
+    for index in range(257):
+        project_id = f"prj_{index:032x}"
+        with database.transaction() as session:
+            now = clock.now()
+            session.add(
+                Project(
+                    id=project_id,
+                    slug=f"project-{index}",
+                    display_name=f"Project {index}",
+                    relative_path=f"project-{index}",
+                    source_type="empty",
+                    state="ready",
+                    revision=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        service.reserve(
+            project_id=project_id,
+            expected_project_revision=1,
+            runtime_host_installation_id=HOST_ID,
+            runtime_host_installation_revision=1,
+            expected_head_revision=None,
+            expected_head_digest=None,
+        )
+    with pytest.raises(ProjectBindingConflict, match="BINDING_REPLAY_INCOMPLETE"):
+        service.list_replay_plan()
 
 
 def test_concurrent_first_reservation_converges_on_one_attempt(settings: Any, clock: Any) -> None:

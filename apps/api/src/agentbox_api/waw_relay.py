@@ -27,10 +27,16 @@ from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from agentbox_core.configuration import Settings
-from agentbox_core.models import AdminUser, ControlPlaneSession
+from agentbox_core.models import AdminUser, ControlPlaneSession, Project
 from agentbox_core.security import keyed_digest
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
 from agentbox_core.waw_lease import LeaseCleanupFence, LeaseCleanupState, LeaseOwner
+from agentbox_core.waw_models import (
+    AgentWorkspaceSessionRecord,
+    ProjectBindingRecord,
+    RuntimeHostInstallation,
+)
+from agentbox_core.waw_project_bindings import ProjectBindingStatus
 from agentbox_core.waw_recovery import RecoveryIdentity
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
@@ -1596,10 +1602,23 @@ class ReadOnlySessionValidator:
             with self.services.database.transaction() as session:
                 row = session.get(ControlPlaneSession, context.session_id)
                 user = session.get(AdminUser, context.user_id)
+                workspace = session.get(AgentWorkspaceSessionRecord, claims.workspace_id)
+                project = session.get(Project, claims.project_id)
+                host = session.get(RuntimeHostInstallation, claims.runtime_host_installation_id)
+                binding = session.scalar(
+                    sql_select(ProjectBindingRecord).where(
+                        ProjectBindingRecord.project_id == claims.project_id,
+                        ProjectBindingRecord.status == ProjectBindingStatus.CURRENT.value,
+                    )
+                )
                 now = self.services.database.transaction_now(session)
                 if (
                     row is None
                     or user is None
+                    or workspace is None
+                    or project is None
+                    or host is None
+                    or binding is None
                     or not user.is_active
                     or row.user_id != context.user_id
                     or row.auth_epoch != context.auth_epoch
@@ -1614,33 +1633,49 @@ class ReadOnlySessionValidator:
                     or now < row.last_seen_at
                 ):
                     return False
-            workspace = self.services.workspaces.get(claims.workspace_id)
-            attestation = self.control.attestation
-            return bool(
-                (not require_running or workspace.state in ("RUNNING", "NEEDS_INTERACTION"))
-                and workspace.authorization_scope == context.authorization_scope
-                and self.policy.allows(self.authenticated, workspace)
-                and attestation is not None
-                and attestation.get("runtime_epoch") == context.runtime_epoch
-                and self.services.workspaces.executable_evidence_is_current(
-                    workspace, runtime_epoch=context.runtime_epoch
-                )
-                and all(
-                    getattr(workspace, key if key != "workspace_id" else "id") == value
-                    for key, value in (
-                        ("workspace_id", claims.workspace_id),
-                        ("project_id", claims.project_id),
-                        ("agent_type", str(claims.agent_type)),
-                        ("generation", claims.generation),
-                        ("binding_revision", claims.binding_revision),
-                        ("binding_digest", claims.binding_digest),
-                        ("runtime_host_installation_id", claims.runtime_host_installation_id),
-                        (
-                            "runtime_host_installation_revision",
-                            claims.runtime_host_installation_revision,
-                        ),
+                if not (
+                    (not require_running or workspace.state in ("RUNNING", "NEEDS_INTERACTION"))
+                    and workspace.authorization_scope == context.authorization_scope
+                    and self.policy.allows(self.authenticated, workspace)
+                    and self.services.workspaces.executable_evidence_is_current(
+                        workspace, runtime_epoch=context.runtime_epoch
                     )
-                )
+                    and project.archived_at is None
+                    and project.state == "ready"
+                    and project.revision == binding.project_revision
+                    and project.relative_path == binding.relative_key
+                    and binding.binding_digest is not None
+                    and host.revision == claims.runtime_host_installation_revision
+                    and binding.binding_revision == claims.binding_revision
+                    and binding.binding_digest == claims.binding_digest
+                    and binding.runtime_host_installation_id == claims.runtime_host_installation_id
+                    and binding.runtime_host_installation_revision
+                    == claims.runtime_host_installation_revision
+                    and all(
+                        getattr(workspace, key if key != "workspace_id" else "id") == value
+                        for key, value in (
+                            ("workspace_id", claims.workspace_id),
+                            ("project_id", claims.project_id),
+                            ("agent_type", str(claims.agent_type)),
+                            ("generation", claims.generation),
+                            ("binding_revision", claims.binding_revision),
+                            ("binding_digest", claims.binding_digest),
+                            (
+                                "runtime_host_installation_id",
+                                claims.runtime_host_installation_id,
+                            ),
+                            (
+                                "runtime_host_installation_revision",
+                                claims.runtime_host_installation_revision,
+                            ),
+                        )
+                    )
+                ):
+                    return False
+            attestation = self.control.attestation
+            return (
+                isinstance(attestation, dict)
+                and attestation.get("runtime_epoch") == context.runtime_epoch
             )
         except Exception:
             return False

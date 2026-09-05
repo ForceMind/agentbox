@@ -6,8 +6,10 @@ import asyncio
 import errno
 import fcntl
 import grp
+import hmac
 import os
 import pwd
+import re
 import secrets
 import stat
 import threading
@@ -23,14 +25,22 @@ from typing import Any
 
 from agentbox_core.configuration import Settings
 from agentbox_core.services import ControlPlaneServices
+from agentbox_core.waw_models import ProjectBindingRecord
+from agentbox_core.waw_project_bindings import (
+    ProjectBindingConflict,
+    ProjectBindingNotFound,
+    ProjectBindingNotReady,
+    ProjectBindingStatus,
+)
 from agentbox_core.waw_tickets import AttachmentAuthority
+from agentbox_protocol.waw_control import WAWControlError, binding_inventory_digest
 
 from agentbox_api.waw_authorization import (
     SingleAdminWorkspacePolicy,
     WorkspaceAuthorizationPolicy,
 )
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
-from agentbox_api.waw_control_client import WAWControlClient
+from agentbox_api.waw_control_client import WAWControlClient, WAWControlClientError
 from agentbox_api.waw_host_anchor import WAWAPIHostAnchorError, load_waw_api_host_anchor_v2
 from agentbox_api.waw_relay import RelayFailure, RuntimeSocketTrust, WAWStreamHandler
 
@@ -47,6 +57,10 @@ _TEST_ONLY_APPLICATION_TOKEN = object()
 _PRODUCTION_APPLICATION_TOKEN = object()
 WAW_APPLICATION_SCOPE_KEY = "agentbox.waw_application"
 _MAX_DETACH_OPERATIONS = 256
+_HOST_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
+_DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
+_DECIMAL_U64 = re.compile(r"\A[1-9][0-9]{0,19}\Z")
+_MAX_U64 = 2**64 - 1
 
 
 class WAWAPIApplicationError(RuntimeError):
@@ -856,12 +870,202 @@ class WAWAPIApplication:
                 raise WAWAPIApplicationError(
                     "WAW_API_UNAVAILABLE", "WAW Runtime binding was not published"
                 )
+            await self._replay_and_finalize_project_bindings(produced.bind_coordinator)
+            if self._close_requested:
+                raise WAWAPIApplicationError(
+                    "WAW_API_UNAVAILABLE", "WAW API application startup was fenced"
+                )
             self._process_lock.revalidate()
             self._state = WAWAPIApplicationState.RUNNING
         except BaseException:
             self._state = WAWAPIApplicationState.POISONED
             await self._cleanup_failed_start()
             raise
+
+    async def _replay_and_finalize_project_bindings(
+        self, coordinator: WAWRuntimeBindCoordinator
+    ) -> None:
+        """Replay the exact Control Plane binding plan before readiness publishes.
+
+        The API never derives a filesystem identity or digest.  It replays only
+        durable ledger attempts over the already attested Runtime peer, commits
+        pending attempts solely from the typed Runtime digest, and then sends a
+        compact canonical inventory commitment.  Any uncertain exchange aborts
+        startup and preserves the singleton's fail-closed cleanup path.
+        """
+
+        attestation = coordinator.attestation
+        if not isinstance(attestation, dict):
+            raise WAWAPIApplicationError(
+                "WAW_API_COMPOSITION_UNAVAILABLE", "WAW Runtime attestation is unavailable"
+            )
+        runtime_epoch = attestation.get("runtime_epoch")
+        runtime_host_id = attestation.get("runtime_host_installation_id")
+        runtime_host_revision = attestation.get("runtime_host_installation_revision")
+        if (
+            not isinstance(runtime_epoch, str)
+            or _DECIMAL_U64.fullmatch(runtime_epoch) is None
+            or int(runtime_epoch) > _MAX_U64
+            or not isinstance(runtime_host_id, str)
+            or _HOST_ID.fullmatch(runtime_host_id) is None
+            or not isinstance(runtime_host_revision, str)
+            or _DECIMAL_U64.fullmatch(runtime_host_revision) is None
+            or int(runtime_host_revision) > _MAX_U64
+        ):
+            raise WAWAPIApplicationError(
+                "WAW_API_COMPOSITION_UNAVAILABLE", "WAW Runtime attestation is invalid"
+            )
+
+        try:
+            plan = self._services.project_bindings.list_replay_plan()
+        except (ProjectBindingConflict, ProjectBindingNotReady) as exc:
+            raise WAWAPIApplicationError(
+                "WAW_API_COMPOSITION_UNAVAILABLE", "WAW binding replay plan is unavailable"
+            ) from exc
+
+        for binding in plan:
+            if (
+                binding.runtime_host_installation_id != runtime_host_id
+                or binding.runtime_host_installation_revision != int(runtime_host_revision)
+            ):
+                raise WAWAPIApplicationError(
+                    "WAW_API_COMPOSITION_UNAVAILABLE", "WAW binding host identity is stale"
+                )
+            attempted = False
+            try:
+                attempted = True
+                response = await coordinator.request_lifecycle(
+                    "workspace.project_binding.register",
+                    self._binding_registration_request(binding),
+                )
+                digest = self._validate_binding_registration_response(binding, response)
+                if binding.binding_digest is None:
+                    self._services.project_bindings.commit(
+                        project_id=binding.project_id,
+                        binding_revision=binding.binding_revision,
+                        expected_project_revision=binding.project_revision,
+                        binding_digest=digest,
+                    )
+                elif not hmac.compare_digest(binding.binding_digest, digest):
+                    raise WAWControlClientError(
+                        "BINDING_INVENTORY_MISMATCH", "WAW binding digest differs from Runtime"
+                    )
+            except (ProjectBindingConflict, ProjectBindingNotReady, WAWControlClientError) as exc:
+                if attempted and binding.binding_digest is None:
+                    with suppress(ProjectBindingConflict, ProjectBindingNotFound):
+                        self._services.project_bindings.require_reconciliation(
+                            project_id=binding.project_id,
+                            binding_revision=binding.binding_revision,
+                            expected_binding_digest=None,
+                        )
+                raise WAWAPIApplicationError(
+                    "WAW_API_COMPOSITION_UNAVAILABLE", "WAW binding replay did not complete"
+                ) from exc
+
+        try:
+            current = self._services.project_bindings.list_replay_plan()
+            if any(
+                binding.status != ProjectBindingStatus.CURRENT.value
+                or binding.binding_digest is None
+                for binding in current
+            ):
+                raise WAWControlError("binding replay plan is not finalized")
+            count, digest = binding_inventory_digest(
+                [self._binding_inventory_item(binding) for binding in current]
+            )
+            response = await coordinator.request_lifecycle(
+                "workspace.project_binding.inventory.finalize.v1",
+                {
+                    "protocol_version": 1,
+                    "request_id": f"wreq_{secrets.token_hex(16)}",
+                    "action": "workspace.project_binding.inventory.finalize.v1",
+                    "runtime_epoch": runtime_epoch,
+                    "binding_count": count,
+                    "inventory_digest": digest,
+                },
+            )
+        except (
+            ProjectBindingConflict,
+            ProjectBindingNotReady,
+            WAWControlClientError,
+            WAWControlError,
+        ) as exc:
+            raise WAWAPIApplicationError(
+                "WAW_API_COMPOSITION_UNAVAILABLE", "WAW binding inventory is unavailable"
+            ) from exc
+
+        if (
+            response.get("status") not in {"FINALIZED", "ALREADY_FINALIZED"}
+            or response.get("runtime_epoch") != runtime_epoch
+            or response.get("binding_count") != count
+            or response.get("inventory_digest") != digest
+        ):
+            raise WAWAPIApplicationError(
+                "WAW_API_COMPOSITION_UNAVAILABLE", "WAW binding inventory is stale"
+            )
+
+    @staticmethod
+    def _binding_registration_request(binding: ProjectBindingRecord) -> dict[str, object]:
+        return {
+            "protocol_version": 1,
+            "request_id": f"wreq_{secrets.token_hex(16)}",
+            "action": "workspace.project_binding.register",
+            "project_id": binding.project_id,
+            "relative_key": binding.relative_key,
+            "project_revision": str(binding.project_revision),
+            "binding_revision": str(binding.binding_revision),
+            "previous_binding_revision": (
+                None
+                if binding.previous_binding_revision is None
+                else str(binding.previous_binding_revision)
+            ),
+            "previous_binding_digest": binding.previous_binding_digest,
+            "schema_version": "waw-project-binding-v1",
+            "runtime_host_installation_id": binding.runtime_host_installation_id,
+            "runtime_host_installation_revision": str(binding.runtime_host_installation_revision),
+        }
+
+    @staticmethod
+    def _validate_binding_registration_response(
+        binding: ProjectBindingRecord, response: dict[str, object]
+    ) -> str:
+        digest = response.get("binding_digest")
+        expected = {
+            "project_id": binding.project_id,
+            "binding_revision": str(binding.binding_revision),
+            "runtime_host_installation_id": binding.runtime_host_installation_id,
+            "runtime_host_installation_revision": str(binding.runtime_host_installation_revision),
+        }
+        if (
+            response.get("status") not in {"REGISTERED", "ALREADY_CURRENT"}
+            or any(response.get(name) != value for name, value in expected.items())
+            or not isinstance(digest, str)
+            or _DIGEST.fullmatch(digest) is None
+        ):
+            raise WAWControlClientError(
+                "BINDING_INVENTORY_MISMATCH", "WAW binding registration response is stale"
+            )
+        return digest
+
+    @staticmethod
+    def _binding_inventory_item(binding: ProjectBindingRecord) -> dict[str, str | None]:
+        if binding.binding_digest is None:
+            raise WAWControlError("current binding has no digest")
+        return {
+            "project_id": binding.project_id,
+            "relative_key": binding.relative_key,
+            "project_revision": str(binding.project_revision),
+            "binding_revision": str(binding.binding_revision),
+            "previous_binding_revision": (
+                None
+                if binding.previous_binding_revision is None
+                else str(binding.previous_binding_revision)
+            ),
+            "previous_binding_digest": binding.previous_binding_digest,
+            "binding_digest": binding.binding_digest,
+            "runtime_host_installation_id": binding.runtime_host_installation_id,
+            "runtime_host_installation_revision": str(binding.runtime_host_installation_revision),
+        }
 
     def _validate_components(
         self, value: WAWAPIComponents, authority_epoch: int, authority_nonce: str

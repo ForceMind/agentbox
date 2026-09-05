@@ -24,11 +24,28 @@ from agentbox_runtime.waw_runtime_application import (
 
 
 class _Registry:
-    def __init__(self, events: list[str]) -> None:
+    def __init__(
+        self,
+        events: list[str],
+        *,
+        finalize_required: bool = False,
+        replay_failure: BaseException | None = None,
+    ) -> None:
         self.events = events
         self.gate_open = False
+        self.binding_inventory_finalize_required = finalize_required
+        self.replay_failure = replay_failure
         self.peer_authority = object()
         self.shutdown_clean = False
+
+    @property
+    def application_gate_open(self) -> bool:
+        return self.gate_open
+
+    async def restore_project_binding_inventory(self) -> None:
+        self.events.append("bindings.restore")
+        if self.replay_failure is not None:
+            raise self.replay_failure
 
     def open_application_gate(self) -> None:
         self.events.append("gate.open")
@@ -180,9 +197,15 @@ def _application(
     close_entered: asyncio.Event | None = None,
     close_release: asyncio.Event | None = None,
     control_clean: bool = True,
+    finalize_required: bool = False,
+    replay_failure: BaseException | None = None,
 ) -> tuple[WAWRuntimeApplication, list[str], _KeyPort, _Provider]:
     events: list[str] = []
-    registry = _Registry(events)
+    registry = _Registry(
+        events,
+        finalize_required=finalize_required,
+        replay_failure=replay_failure,
+    )
     runtime = _Runtime(
         events,
         registry,
@@ -223,7 +246,45 @@ async def test_start_opens_gate_only_after_stream_and_runtime_are_ready() -> Non
     await app.start(create_development_parent=True)
 
     assert app.ready and app.state is WAWRuntimeApplicationState.RUNNING
-    assert events == ["stream.start", "control.start", "runtime.start:True", "gate.open"]
+    assert events == [
+        "bindings.restore",
+        "stream.start",
+        "control.start",
+        "runtime.start:True",
+        "gate.open",
+    ]
+
+
+@pytest.mark.anyio
+async def test_durable_inventory_keeps_workload_unready_until_finalize() -> None:
+    app, events, _key, _provider = _application(finalize_required=True)
+
+    await app.start()
+
+    assert app.state is WAWRuntimeApplicationState.RUNNING
+    assert not app.ready
+    assert events == [
+        "bindings.restore",
+        "stream.start",
+        "control.start",
+        "runtime.start:False",
+    ]
+    app._registry.open_application_gate()
+    assert app.ready
+
+
+@pytest.mark.anyio
+async def test_binding_replay_failure_starts_no_listener_and_never_opens_gate() -> None:
+    failure = RuntimeError("synthetic binding replay failure")
+    app, events, _key, _provider = _application(replay_failure=failure)
+
+    with pytest.raises(RuntimeError, match="binding replay failure"):
+        await app.start()
+
+    assert "stream.start" not in events
+    assert "control.start" not in events
+    assert "gate.open" not in events
+    assert app.state is WAWRuntimeApplicationState.POISONED
 
 
 @pytest.mark.anyio

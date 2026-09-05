@@ -8,6 +8,7 @@ import json
 import os
 import socket
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ import pytest
 from agentbox_api.waw_admission_coordinator import AdmissionAuditAction as A
 from agentbox_api.waw_admission_coordinator import RuntimeCleanupRequest, RuntimePrepareRequest
 from agentbox_api.waw_application import WAWWorkLedger
+from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
 from agentbox_api.waw_control_client import (
     BoundRuntimePeer,
     RuntimePeerBorrow,
@@ -26,6 +28,7 @@ from agentbox_api.waw_input_budget import InputBudgetOverflow, InputBudgetOwner
 from agentbox_api.waw_relay import (
     DurableAdmissionAudit,
     FailedAdmissionBudget,
+    ReadOnlySessionValidator,
     RelayFailure,
     RuntimeSocketTrust,
     UnixRuntimePort,
@@ -34,8 +37,11 @@ from agentbox_api.waw_relay import (
     _canonical_origin,
 )
 from agentbox_core.configuration import Settings
-from agentbox_core.models import AuditEvent, ControlPlaneSession
+from agentbox_core.models import AuditEvent, ControlPlaneSession, Project
 from agentbox_core.services import ControlPlaneServices
+from agentbox_core.waw import AgentType
+from agentbox_core.waw_models import RuntimeHostInstallation
+from agentbox_core.waw_tickets import AttachmentAuthority, AuthenticatedAttachmentContext
 from agentbox_protocol.abws import FrameType as F
 from agentbox_protocol.abws import encode_frame
 from agentbox_protocol.awce import encode_awce_header
@@ -698,8 +704,129 @@ def test_failed_attempt_budget_bounded_without_bearer_keys() -> None:
     assert len(budget._failures) == 0
 
 
-def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
+def test_session_validator_fences_ticket_and_publication_after_project_binding_drift(
     services: ControlPlaneServices, settings: Settings
+) -> None:
+    password = "relay binding drift test password"
+    services.admin.initialize("admin", password)
+    issued = services.auth.login(
+        username="admin", password=password, source_identifier="fixture", request_id=None
+    )
+    authenticated = services.sessions.authenticate(issued.token)
+    project_id = "prj_" + "3" * 32
+    host_id = "wri_" + "4" * 32
+    digest = "a" * 64
+    fingerprint = "b" * 64
+    now = datetime(2026, 9, 5)
+    with services.database.transaction() as session:
+        session.add(
+            Project(
+                id=project_id,
+                slug="relay-binding-drift",
+                display_name="Relay binding drift",
+                relative_path="relay-binding-drift",
+                source_type="empty",
+                repository_url=None,
+                default_branch=None,
+                state="ready",
+                archived_at=None,
+                revision=1,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            RuntimeHostInstallation(
+                id=host_id,
+                revision=1,
+                runtime_type="agentbox-runtime-linux-v1",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    attempt = services.project_bindings.reserve(
+        project_id=project_id,
+        expected_project_revision=1,
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        expected_head_revision=None,
+        expected_head_digest=None,
+    )
+    services.project_bindings.commit(
+        project_id=project_id,
+        binding_revision=attempt.binding_revision,
+        expected_project_revision=1,
+        binding_digest=digest,
+    )
+    workspace = services.workspaces.create(
+        project_id=project_id,
+        agent_type=AgentType.CLAUDE,
+        authorization_scope="admin",
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=digest,
+        executable_fingerprint=fingerprint,
+    )
+    workspace = services.workspaces.record_executable_evidence(
+        workspace.id,
+        expected_revision=workspace.revision,
+        generation=workspace.generation,
+        runtime_epoch="2",
+        executable_fingerprint=fingerprint,
+    )
+    services.workspaces.transition(
+        workspace.id, expected_revision=workspace.revision, state="RUNNING"
+    )
+    authority = AttachmentAuthority(clock=lambda: 10.0, authority_epoch=7)
+    context = AuthenticatedAttachmentContext(
+        authenticated.session_id,
+        authenticated.user_id,
+        "admin",
+        "https://example.test",
+        "2",
+        authenticated.auth_epoch,
+    )
+    claims = authority.issue(
+        workspace_id=workspace.id,
+        project_id=project_id,
+        agent_type=AgentType.CLAUDE,
+        attachment_id="att_" + "5" * 32,
+        generation=workspace.generation,
+        auth_epoch=authenticated.auth_epoch,
+        runtime_host_installation_id=host_id,
+        runtime_host_installation_revision=1,
+        binding_revision=1,
+        binding_digest=digest,
+        origin=context.origin,
+        context=context,
+    ).claims
+
+    class Control:
+        attestation = {"runtime_epoch": "2"}
+
+    validator = ReadOnlySessionValidator(
+        services,
+        settings,
+        Control(),
+        SingleAdminWorkspacePolicy(),
+        authenticated,
+    )
+    assert validator.current(claims, context)
+    assert validator.publication_current(claims, context)
+
+    services.projects.mark_error(project_id, expected_revision=1)
+
+    assert not validator.current(claims, context)
+    assert not validator.publication_current(claims, context)
+
+
+@pytest.mark.parametrize(
+    "revocation",
+    ("pre_hello_project", "active_project", "active_auth"),
+)
+def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
+    services: ControlPlaneServices, settings: Settings, revocation: str
 ) -> None:
     async def run() -> None:
         import base64
@@ -750,6 +877,20 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
                     updated_at=now,
                 )
             )
+        attempt = services.project_bindings.reserve(
+            project_id=c.project_id,
+            expected_project_revision=1,
+            runtime_host_installation_id=c.runtime_host_installation_id,
+            runtime_host_installation_revision=1,
+            expected_head_revision=None,
+            expected_head_digest=None,
+        )
+        services.project_bindings.commit(
+            project_id=c.project_id,
+            binding_revision=attempt.binding_revision,
+            expected_project_revision=1,
+            binding_digest=c.binding_digest,
+        )
         workspace = services.workspaces.create(
             project_id=c.project_id,
             agent_type=AgentType.CODEX,
@@ -868,6 +1009,13 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             )
             response = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 3)
             assert response.startswith(b"HTTP/1.1 101")
+            if revocation == "pre_hello_project":
+                services.projects.mark_error(c.project_id, expected_revision=1)
+                send(h.frame(F.WS_HELLO, BA, 1))
+                opcode, raw = await receive()
+                assert opcode == 8 and int.from_bytes(raw, "big") == 4403
+                assert authority.active_count == 0
+                return
             send(h.frame(F.WS_HELLO, BA, 1))
             send(h.frame(F.KEY_INIT, BA, 2))
             opcode, raw = await receive()
@@ -876,10 +1024,13 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             assert decode_wire_frame((await receive())[1], AB).frame_type == F.KEY_CONFIRM_ACK
             assert decode_wire_frame((await receive())[1], AB).frame_type == F.ADMITTED
             assert authority.active_count == 1
-            with services.database.transaction() as session:
-                stored_session = session.get(ControlPlaneSession, issued.session_id)
-                assert stored_session is not None
-                stored_session.auth_epoch += 1
+            if revocation == "active_project":
+                services.projects.mark_error(c.project_id, expected_revision=1)
+            else:
+                with services.database.transaction() as session:
+                    stored_session = session.get(ControlPlaneSession, issued.session_id)
+                    assert stored_session is not None
+                    stored_session.auth_epoch += 1
             envelope = (
                 encode_awce_header(
                     crypto_envelope_version=1,

@@ -65,6 +65,28 @@ def test_store_commits_exact_current_head_and_requires_the_next_predecessor(
     store.close()
 
 
+@pytest.mark.parametrize(
+    ("revision", "previous_revision", "previous_digest"),
+    (
+        ("1", "1", "a" * 64),
+        ("1", None, "a" * 64),
+        ("1", "1", None),
+        ("2", None, None),
+        ("2", None, "a" * 64),
+        ("2", "1", None),
+    ),
+)
+def test_durable_binding_requires_a_complete_predecessor_pair(
+    revision: str, previous_revision: str | None, previous_digest: str | None
+) -> None:
+    with pytest.raises(WAWProjectBindingStoreError):
+        _binding(
+            revision=revision,
+            previous_revision=previous_revision,
+            previous_digest=previous_digest,
+        )
+
+
 def test_store_rejects_noncanonical_or_unexpected_inventory(tmp_path: Path) -> None:
     directory = tmp_path / "bindings"
     store = WAWProjectBindingStore.test_only(directory)

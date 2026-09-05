@@ -5,6 +5,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +27,17 @@ from agentbox_api.waw_application import (
 )
 from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
+from agentbox_api.waw_control_client import WAWControlClientError
 from agentbox_api.waw_relay import DurableAdmissionAudit, WAWStreamHandler
 from agentbox_core.configuration import Environment, Settings
+from agentbox_core.models import Project
 from agentbox_core.services import ControlPlaneServices
+from agentbox_core.waw_models import RuntimeHostInstallation
 from agentbox_core.waw_tickets import AttachmentAuthority
+
+PROJECT_ID = "prj_" + "1" * 32
+HOST_ID = "wri_" + "2" * 32
+REPLAY_DIGEST = "d" * 64
 
 
 class BindTransport:
@@ -37,24 +45,36 @@ class BindTransport:
         self.authority_epoch = authority_epoch
         self.calls = 0
         self.closes = 0
+        self.actions: list[dict[str, Any]] = []
 
     async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
-        assert action == "workspace.api_authority.bind"
-        assert request["api_authority_epoch"] == str(self.authority_epoch)
-        self.calls += 1
-        return {
-            "protocol_version": 1,
-            "request_id": request["request_id"],
-            "status": "BOUND",
-            "api_authority_epoch": str(self.authority_epoch),
-            "runtime_epoch": "9",
-            "runtime_host_installation_id": "wri_" + "2" * 32,
-            "runtime_host_installation_revision": "3",
-            "host_manifest_digest": "a" * 64,
-            "project_root_manifest_digest": "b" * 64,
-            "enrollment_epoch": "1",
-            "enrollment_state": "steady",
-        }
+        self.actions.append({"action": action, **request})
+        if action == "workspace.api_authority.bind":
+            assert request["api_authority_epoch"] == str(self.authority_epoch)
+            self.calls += 1
+            return {
+                "protocol_version": 1,
+                "request_id": request["request_id"],
+                "status": "BOUND",
+                "api_authority_epoch": str(self.authority_epoch),
+                "runtime_epoch": "9",
+                "runtime_host_installation_id": HOST_ID,
+                "runtime_host_installation_revision": "3",
+                "host_manifest_digest": "a" * 64,
+                "project_root_manifest_digest": "b" * 64,
+                "enrollment_epoch": "1",
+                "enrollment_state": "steady",
+            }
+        if action == "workspace.project_binding.inventory.finalize.v1":
+            return {
+                "protocol_version": 1,
+                "request_id": request["request_id"],
+                "status": "FINALIZED",
+                "runtime_epoch": request["runtime_epoch"],
+                "binding_count": request["binding_count"],
+                "inventory_digest": request["inventory_digest"],
+            }
+        raise AssertionError(action)
 
     async def close(self) -> None:
         self.closes += 1
@@ -70,6 +90,174 @@ class PausedBindTransport(BindTransport):
         self.entered.set()
         await self.release.wait()
         return await super().request(action, request)
+
+
+class ReplayTransport(BindTransport):
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        if action == "workspace.project_binding.register":
+            self.actions.append({"action": action, **request})
+            return {
+                "protocol_version": 1,
+                "request_id": request["request_id"],
+                "status": "REGISTERED",
+                "project_id": request["project_id"],
+                "binding_revision": request["binding_revision"],
+                "binding_digest": REPLAY_DIGEST,
+                "runtime_host_installation_id": request["runtime_host_installation_id"],
+                "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+            }
+        return await super().request(action, request)
+
+
+class MismatchedFinalizeTransport(ReplayTransport):
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        response = await super().request(action, request)
+        if action == "workspace.project_binding.inventory.finalize.v1":
+            response["inventory_digest"] = "f" * 64
+        return response
+
+
+class LostRegisterTransport(ReplayTransport):
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        if action == "workspace.project_binding.register":
+            self.actions.append({"action": action, **request})
+            raise WAWControlClientError("RUNTIME_UNAVAILABLE", "synthetic response loss")
+        return await super().request(action, request)
+
+
+class RuntimeRegistrationState:
+    def __init__(self) -> None:
+        self.persisted = False
+
+
+class ResponseLossAfterRuntimePersistTransport(ReplayTransport):
+    def __init__(self, authority_epoch: int, state: RuntimeRegistrationState) -> None:
+        super().__init__(authority_epoch)
+        self.state = state
+
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        if action == "workspace.project_binding.register":
+            self.actions.append({"action": action, **request})
+            self.state.persisted = True
+            raise WAWControlClientError("RUNTIME_UNAVAILABLE", "synthetic response loss")
+        return await super().request(action, request)
+
+
+class RecoveredRuntimeRegistrationTransport(ReplayTransport):
+    def __init__(self, authority_epoch: int, state: RuntimeRegistrationState) -> None:
+        super().__init__(authority_epoch)
+        self.state = state
+
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        if action == "workspace.project_binding.register":
+            assert self.state.persisted
+            self.actions.append({"action": action, **request})
+            return {
+                "protocol_version": 1,
+                "request_id": request["request_id"],
+                "status": "ALREADY_CURRENT",
+                "project_id": request["project_id"],
+                "binding_revision": request["binding_revision"],
+                "binding_digest": REPLAY_DIGEST,
+                "runtime_host_installation_id": request["runtime_host_installation_id"],
+                "runtime_host_installation_revision": request["runtime_host_installation_revision"],
+            }
+        return await super().request(action, request)
+
+
+class PausedRegisterTransport(ReplayTransport):
+    def __init__(self, authority_epoch: int) -> None:
+        super().__init__(authority_epoch)
+        self.register_entered = asyncio.Event()
+        self.register_release = asyncio.Event()
+
+    async def request(self, action: str, request: dict[str, Any]) -> dict[str, Any]:
+        if action == "workspace.project_binding.register":
+            self.register_entered.set()
+            await self.register_release.wait()
+        return await super().request(action, request)
+
+
+def _seed_current_binding(services: ControlPlaneServices) -> None:
+    now = datetime(2026, 9, 5, 0, 0, 0)
+    with services.database.transaction() as session:
+        session.add(
+            Project(
+                id=PROJECT_ID,
+                slug="replay-project",
+                display_name="Replay project",
+                relative_path="replay-project",
+                source_type="empty",
+                repository_url=None,
+                default_branch=None,
+                state="ready",
+                archived_at=None,
+                revision=1,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            RuntimeHostInstallation(
+                id=HOST_ID,
+                revision=3,
+                runtime_type="agentbox-runtime-linux-v1",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    attempt = services.project_bindings.reserve(
+        project_id=PROJECT_ID,
+        expected_project_revision=1,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        expected_head_revision=None,
+        expected_head_digest=None,
+    )
+    services.project_bindings.commit(
+        project_id=PROJECT_ID,
+        binding_revision=attempt.binding_revision,
+        expected_project_revision=1,
+        binding_digest=REPLAY_DIGEST,
+    )
+
+
+def _seed_pending_binding(services: ControlPlaneServices) -> None:
+    now = datetime(2026, 9, 5, 0, 0, 0)
+    with services.database.transaction() as session:
+        session.add(
+            Project(
+                id=PROJECT_ID,
+                slug="replay-pending",
+                display_name="Replay pending",
+                relative_path="replay-pending",
+                source_type="empty",
+                repository_url=None,
+                default_branch=None,
+                state="ready",
+                archived_at=None,
+                revision=1,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            RuntimeHostInstallation(
+                id=HOST_ID,
+                revision=3,
+                runtime_type="agentbox-runtime-linux-v1",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    services.project_bindings.reserve(
+        project_id=PROJECT_ID,
+        expected_project_revision=1,
+        runtime_host_installation_id=HOST_ID,
+        runtime_host_installation_revision=3,
+        expected_head_revision=None,
+        expected_head_digest=None,
+    )
 
 
 def _assert_state(owner: WAWAPIApplication, expected: WAWAPIApplicationState) -> None:
@@ -159,6 +347,169 @@ async def test_owner_constructs_only_after_lock_and_closes_in_order(
     assert owner.shutdown_clean is True
     assert transport.closes == 1
     assert (tmp_path / "api.lock").exists()
+
+
+@pytest.mark.anyio
+async def test_owner_replays_and_finalizes_current_binding_before_running(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    _seed_current_binding(services)
+    created: list[tuple[int, str, BindTransport]] = []
+    owner = _owner(
+        tmp_path / "api.lock",
+        settings,
+        services,
+        created,
+        transport_factory=ReplayTransport,
+    )
+
+    await owner.start()
+
+    transport = created[0][2]
+    assert [call["action"] for call in transport.actions] == [
+        "workspace.api_authority.bind",
+        "workspace.project_binding.register",
+        "workspace.project_binding.inventory.finalize.v1",
+    ]
+    assert transport.actions[-1]["binding_count"] == "1"
+    inventory_digest = transport.actions[-1]["inventory_digest"]
+    assert isinstance(inventory_digest, str) and len(inventory_digest) == 64
+    assert owner.state is WAWAPIApplicationState.RUNNING
+
+    await owner.close()
+    services.database.close()
+    owner.finalize_after_database_close()
+
+
+@pytest.mark.anyio
+async def test_owner_does_not_publish_when_inventory_finalize_is_mismatched(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    _seed_current_binding(services)
+    created: list[tuple[int, str, BindTransport]] = []
+    owner = _owner(
+        tmp_path / "api.lock",
+        settings,
+        services,
+        created,
+        transport_factory=MismatchedFinalizeTransport,
+    )
+
+    with pytest.raises(WAWAPIApplicationError) as raised:
+        await owner.start()
+    assert raised.value.code == "WAW_API_COMPOSITION_UNAVAILABLE"
+    assert owner.state is WAWAPIApplicationState.POISONED
+    assert not owner.readiness_checks["waw_api_singleton"]
+
+
+@pytest.mark.anyio
+async def test_owner_reconciles_pending_binding_after_runtime_registration_response_loss(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    _seed_pending_binding(services)
+    created: list[tuple[int, str, BindTransport]] = []
+    owner = _owner(
+        tmp_path / "api.lock",
+        settings,
+        services,
+        created,
+        transport_factory=LostRegisterTransport,
+    )
+
+    with pytest.raises(WAWAPIApplicationError) as raised:
+        await owner.start()
+
+    assert raised.value.code == "WAW_API_COMPOSITION_UNAVAILABLE"
+    assert services.project_bindings.get(PROJECT_ID, 1).status == "RECONCILIATION_REQUIRED"
+
+
+@pytest.mark.anyio
+async def test_replay_recovers_runtime_persisted_binding_after_response_loss(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    _seed_pending_binding(services)
+    state = RuntimeRegistrationState()
+    first_created: list[tuple[int, str, BindTransport]] = []
+    first = _owner(
+        tmp_path / "first.lock",
+        settings,
+        services,
+        first_created,
+        transport_factory=lambda authority_epoch: ResponseLossAfterRuntimePersistTransport(
+            authority_epoch, state
+        ),
+    )
+
+    with pytest.raises(WAWAPIApplicationError):
+        await first.start()
+    assert state.persisted
+    assert services.project_bindings.get(PROJECT_ID, 1).status == "RECONCILIATION_REQUIRED"
+
+    recovered_created: list[tuple[int, str, BindTransport]] = []
+    recovered = _owner(
+        tmp_path / "recovered.lock",
+        settings,
+        services,
+        recovered_created,
+        transport_factory=lambda authority_epoch: RecoveredRuntimeRegistrationTransport(
+            authority_epoch, state
+        ),
+    )
+    await recovered.start()
+
+    binding = services.project_bindings.get(PROJECT_ID, 1)
+    assert (binding.status, binding.binding_digest) == ("CURRENT", REPLAY_DIGEST)
+    assert [call["action"] for call in recovered_created[0][2].actions] == [
+        "workspace.api_authority.bind",
+        "workspace.project_binding.register",
+        "workspace.project_binding.inventory.finalize.v1",
+    ]
+
+    await recovered.close()
+    services.database.close()
+    recovered.finalize_after_database_close()
+
+
+@pytest.mark.anyio
+async def test_owner_fences_project_drift_between_replay_register_and_finalize(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    _seed_current_binding(services)
+    created: list[tuple[int, str, BindTransport]] = []
+    owner = _owner(
+        tmp_path / "api.lock",
+        settings,
+        services,
+        created,
+        transport_factory=PausedRegisterTransport,
+    )
+    starting = asyncio.create_task(owner.start())
+    while not created:
+        await asyncio.sleep(0)
+    transport = created[0][2]
+    assert isinstance(transport, PausedRegisterTransport)
+    await transport.register_entered.wait()
+    services.projects.mark_error(PROJECT_ID, expected_revision=1)
+    transport.register_release.set()
+
+    with pytest.raises(WAWAPIApplicationError) as raised:
+        await starting
+    assert raised.value.code == "WAW_API_COMPOSITION_UNAVAILABLE"
+    assert owner.state is WAWAPIApplicationState.POISONED
+    assert [call["action"] for call in transport.actions] == [
+        "workspace.api_authority.bind",
+        "workspace.project_binding.register",
+    ]
 
 
 @pytest.mark.anyio

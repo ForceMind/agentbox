@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from enum import StrEnum
 
 from agentbox_protocol.waw_control import WAWControlError, validate_relative_key
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from agentbox_core.clock import Clock
 from agentbox_core.database import Database
@@ -22,7 +24,9 @@ _PROJECT_ID = re.compile(r"\Aprj_[0-9a-f]{32}\Z")
 _HOST_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _MAX_SQLITE_SEQUENCE = 2**63 - 1
+MAX_REPLAY_BINDINGS = 256
 _TERMINAL_WORKSPACE_STATES = ("EXITED", "STOPPED")
+_RECONCILIATION_FENCE_EXCLUDED_WORKSPACE_STATES = ("EXITED", "STOPPED", "STOPPING")
 
 
 class ProjectBindingStatus(StrEnum):
@@ -126,8 +130,8 @@ class ProjectBindingService:
                 raise ProjectBindingNotFound(project_id)
             return row
 
-    def list_current(self, *, limit: int = 256) -> tuple[ProjectBindingRecord, ...]:
-        if type(limit) is not int or not 1 <= limit <= 256:
+    def list_current(self, *, limit: int = MAX_REPLAY_BINDINGS) -> tuple[ProjectBindingRecord, ...]:
+        if type(limit) is not int or not 1 <= limit <= MAX_REPLAY_BINDINGS:
             raise ProjectBindingConflict("binding enumeration limit is invalid")
         with self._database.transaction() as session:
             rows = tuple(
@@ -141,6 +145,117 @@ class ProjectBindingService:
         if len(rows) > limit:
             raise ProjectBindingConflict("binding enumeration limit exceeded")
         return rows
+
+    def list_replay_plan(
+        self, *, limit: int = MAX_REPLAY_BINDINGS
+    ) -> tuple[ProjectBindingRecord, ...]:
+        """Return one deterministic binding attempt per Project for Runtime replay.
+
+        The result is ordered by ``project_id`` and contains at most 256 rows.
+        An open ``PENDING`` (including a digest-less reconciliation attempt) is
+        selected before its current head.  A digest-known reconciliation state is
+        an inventory-drift blocker, never a replayable current binding.
+        """
+
+        if type(limit) is not int or not 1 <= limit <= MAX_REPLAY_BINDINGS:
+            raise ProjectBindingConflict("binding replay limit is invalid")
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            rows = tuple(
+                session.scalars(
+                    select(ProjectBindingRecord)
+                    .where(
+                        ProjectBindingRecord.status.in_(
+                            (
+                                ProjectBindingStatus.PENDING.value,
+                                ProjectBindingStatus.CURRENT.value,
+                                ProjectBindingStatus.RECONCILIATION_REQUIRED.value,
+                            )
+                        )
+                    )
+                    .order_by(
+                        ProjectBindingRecord.project_id,
+                        ProjectBindingRecord.binding_revision,
+                    )
+                    .limit((limit * 2) + 1)
+                )
+            )
+            by_project: dict[str, list[ProjectBindingRecord]] = {}
+            for row in rows:
+                by_project.setdefault(row.project_id, []).append(row)
+            if len(rows) > limit * 2 or len(by_project) > limit:
+                raise ProjectBindingConflict("BINDING_REPLAY_INCOMPLETE")
+
+            plan: list[ProjectBindingRecord] = []
+            for project_id in sorted(by_project):
+                candidates = by_project[project_id]
+                if any(
+                    row.status == ProjectBindingStatus.RECONCILIATION_REQUIRED.value
+                    and row.binding_digest is not None
+                    for row in candidates
+                ):
+                    raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+                open_attempt = next(
+                    (
+                        row
+                        for row in candidates
+                        if row.binding_digest is None
+                        and row.status
+                        in {
+                            ProjectBindingStatus.PENDING.value,
+                            ProjectBindingStatus.RECONCILIATION_REQUIRED.value,
+                        }
+                    ),
+                    None,
+                )
+                current = next(
+                    (row for row in candidates if row.status == ProjectBindingStatus.CURRENT.value),
+                    None,
+                )
+                selected = open_attempt or current
+                if selected is None:
+                    raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+                self._validate_replay_candidate(session, selected)
+                self._validate_replay_predecessor(session, selected)
+                plan.append(selected)
+            return tuple(plan)
+
+    @staticmethod
+    def _validate_replay_candidate(session: Session, row: ProjectBindingRecord) -> None:
+        project = session.get(Project, row.project_id)
+        if (
+            project is None
+            or project.archived_at is not None
+            or project.state != "ready"
+            or project.revision != row.project_revision
+            or project.relative_path != row.relative_key
+        ):
+            raise ProjectBindingNotReady(row.project_id)
+        host = session.get(RuntimeHostInstallation, row.runtime_host_installation_id)
+        if host is None or host.revision != row.runtime_host_installation_revision:
+            raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+
+    @staticmethod
+    def _validate_replay_predecessor(session: Session, row: ProjectBindingRecord) -> None:
+        if row.binding_revision == 1:
+            if row.previous_binding_revision is not None or row.previous_binding_digest is not None:
+                raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+            return
+        if (
+            row.previous_binding_revision != row.binding_revision - 1
+            or row.previous_binding_digest is None
+        ):
+            raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+        predecessor = session.get(
+            ProjectBindingRecord, (row.project_id, row.previous_binding_revision)
+        )
+        if predecessor is None or predecessor.binding_digest != row.previous_binding_digest:
+            raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+        if row.binding_digest is None:
+            if predecessor.status != ProjectBindingStatus.CURRENT.value:
+                raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
+        elif predecessor.status != ProjectBindingStatus.SUPERSEDED.value:
+            raise ProjectBindingConflict("BINDING_INVENTORY_MISMATCH")
 
     def reserve(
         self,
@@ -423,12 +538,15 @@ class ProjectBindingService:
         )
         with self._database.transaction() as session:
             session.execute(text("BEGIN IMMEDIATE"))
+            now = self._database.transaction_now(session)
             row = session.get(ProjectBindingRecord, (project_key, revision))
             if row is None:
                 raise ProjectBindingNotFound(project_key)
             if row.binding_digest != digest:
                 raise ProjectBindingConflict("binding reconciliation target is stale")
             if row.status == ProjectBindingStatus.RECONCILIATION_REQUIRED.value:
+                if row.binding_digest is not None:
+                    self._fence_binding_workspaces(session, row, now)
                 return row
             if row.status not in {
                 ProjectBindingStatus.PENDING.value,
@@ -436,9 +554,52 @@ class ProjectBindingService:
             }:
                 raise ProjectBindingConflict("binding is not reconcilable")
             row.status = ProjectBindingStatus.RECONCILIATION_REQUIRED.value
-            row.updated_at = self._database.transaction_now(session)
+            row.updated_at = now
+            if row.binding_digest is not None:
+                self._fence_binding_workspaces(session, row, now)
             session.flush()
             return row
+
+    @staticmethod
+    def _fence_binding_workspaces(
+        session: Session, binding: ProjectBindingRecord, now: datetime
+    ) -> None:
+        """Atomically retire live workspace rows bound to a reconciled head."""
+
+        assert binding.binding_digest is not None
+        already_fenced = (
+            (AgentWorkspaceSessionRecord.state == "UNKNOWN")
+            & (AgentWorkspaceSessionRecord.reconciliation_state == "reconciliation_required")
+            & (AgentWorkspaceSessionRecord.failure_code == "BINDING_RECONCILIATION_REQUIRED")
+        )
+        predicate = (
+            AgentWorkspaceSessionRecord.project_id == binding.project_id,
+            AgentWorkspaceSessionRecord.binding_revision == binding.binding_revision,
+            AgentWorkspaceSessionRecord.binding_digest == binding.binding_digest,
+            AgentWorkspaceSessionRecord.state.not_in(
+                _RECONCILIATION_FENCE_EXCLUDED_WORKSPACE_STATES
+            ),
+            ~already_fenced,
+        )
+        exhausted = session.scalar(
+            select(AgentWorkspaceSessionRecord.id)
+            .where(*predicate, AgentWorkspaceSessionRecord.revision >= _MAX_SQLITE_SEQUENCE)
+            .limit(1)
+        )
+        if exhausted is not None:
+            raise ProjectBindingConflict("workspace revision is exhausted")
+        session.execute(
+            update(AgentWorkspaceSessionRecord)
+            .where(*predicate)
+            .values(
+                state="UNKNOWN",
+                reconciliation_state="reconciliation_required",
+                failure_code="BINDING_RECONCILIATION_REQUIRED",
+                revision=AgentWorkspaceSessionRecord.revision + 1,
+                updated_at=now,
+                last_seen_at=now,
+            )
+        )
 
 
 __all__ = [
@@ -448,4 +609,5 @@ __all__ = [
     "ProjectBindingNotReady",
     "ProjectBindingService",
     "ProjectBindingStatus",
+    "MAX_REPLAY_BINDINGS",
 ]

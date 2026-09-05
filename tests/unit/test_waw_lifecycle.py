@@ -9,7 +9,11 @@ from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import AgentType, workspace_id
-from agentbox_protocol.waw_control import decode_control_response, encode_control_response
+from agentbox_protocol.waw_control import (
+    binding_inventory_digest,
+    decode_control_response,
+    encode_control_response,
+)
 from agentbox_runtime.waw_cgroup_attestation import (
     WAWCgroupAttachmentLeaf,
     WAWCgroupAttestation,
@@ -29,6 +33,7 @@ from agentbox_runtime.waw_lifecycle import (
     WAWLifecycleIdentity,
     WAWLifecycleObservation,
     WAWLifecycleRegistry,
+    WAWProjectBinding,
 )
 from agentbox_runtime.waw_peer_authority import (
     WAWPeerAuthority,
@@ -39,6 +44,7 @@ from agentbox_runtime.waw_peer_authority import (
     WAWPeerTransferPlan,
 )
 from agentbox_runtime.waw_project_binding_store import (
+    WAWDurableProjectBinding,
     WAWProjectBindingStore,
     WAWProjectBindingStoreError,
     WAWProjectBindingVerifier,
@@ -81,6 +87,22 @@ def register_request(
         "schema_version": "waw-project-binding-v1",
         "runtime_host_installation_id": HOST,
         "runtime_host_installation_revision": "1",
+    }
+
+
+def inventory_finalize_request(
+    *,
+    binding_count: str,
+    inventory_digest: str,
+    request_id: str = "wreq_" + "f" * 32,
+) -> dict[str, Any]:
+    return {
+        "protocol_version": 1,
+        "request_id": request_id,
+        "action": "workspace.project_binding.inventory.finalize.v1",
+        "runtime_epoch": "1",
+        "binding_count": binding_count,
+        "inventory_digest": inventory_digest,
     }
 
 
@@ -309,18 +331,23 @@ async def test_binding_gate_and_idempotent_bind_and_register() -> None:
 
 
 @pytest.mark.anyio
-async def test_application_gate_blocks_every_control_mutation_until_startup_commit() -> None:
-    runtime = registry()
+async def test_application_gate_allows_bootstrap_control_but_fences_workload() -> None:
+    runtime = registry(FakeExecutor())
     runtime.configure_application_gate()
-    with pytest.raises(WAWControlDispatchError) as closed:
-        await runtime.dispatch(bind_request())
-    assert closed.value.code == "RUNTIME_UNAVAILABLE" and closed.value.retryable
-
-    runtime.open_application_gate()
     assert (await runtime.dispatch(bind_request()))["status"] == "BOUND"
+    assert (await runtime.dispatch(register_request()))["status"] == "REGISTERED"
+    with pytest.raises(WAWControlDispatchError) as closed:
+        await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+    assert closed.value.code == "RUNTIME_UNAVAILABLE" and closed.value.retryable
+    runtime.open_application_gate()
+    assert (await runtime.dispatch(lifecycle_request("workspace.workspace.start")))[
+        "status"
+    ] == "STARTED"
     runtime.close_application_gate()
     with pytest.raises(WAWControlDispatchError, match="RUNTIME_UNAVAILABLE"):
-        await runtime.dispatch(register_request())
+        await runtime.dispatch(
+            lifecycle_request("workspace.workspace.status", request_id="wreq_" + "e" * 32)
+        )
 
 
 @pytest.mark.anyio
@@ -902,10 +929,506 @@ async def test_executable_evidence_requires_exact_started_workspace_and_epoch() 
 class BindingExecutor(FakeExecutor):
     def __init__(self) -> None:
         super().__init__()
-        self.bindings: list[object] = []
+        self.bindings: list[WAWProjectBinding] = []
 
-    async def register_project_binding(self, binding: object) -> None:
+    async def register_project_binding(self, binding: WAWProjectBinding) -> None:
         self.bindings.append(binding)
+
+
+def durable_binding(
+    verifier: WAWProjectBindingVerifier,
+    *,
+    project_id: str,
+    relative_key: str,
+) -> WAWDurableProjectBinding:
+    digest = verifier.binding_digest(
+        {
+            "project_id": project_id,
+            "relative_key": relative_key,
+            "project_revision": "1",
+        }
+    )
+    return WAWDurableProjectBinding(
+        project_id=project_id,
+        relative_key=relative_key,
+        project_revision="1",
+        binding_revision="1",
+        binding_digest=digest,
+        previous_binding_revision=None,
+        previous_binding_digest=None,
+        runtime_host_installation_id=HOST,
+        runtime_host_installation_revision="1",
+    )
+
+
+def inventory_item(value: WAWDurableProjectBinding) -> dict[str, str | None]:
+    record = value.to_record()
+    del record["schema_version"]
+    return record
+
+
+@pytest.mark.anyio
+async def test_startup_replays_sorted_inventory_then_exact_finalize_opens_workload(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    (projects / "project-b").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    second_project = "prj_" + "4" * 32
+    first = durable_binding(verifier, project_id=PROJECT, relative_key="project-a")
+    second = durable_binding(
+        verifier,
+        project_id=second_project,
+        relative_key="project-b",
+    )
+    store.commit(second)
+    store.commit(first)
+    executor = BindingExecutor()
+    runtime = registry(executor, binding_verifier=verifier, binding_store=store)
+    runtime.configure_application_gate()
+
+    await runtime.restore_project_binding_inventory()
+
+    assert [binding.project_id for binding in executor.bindings] == sorted(
+        [PROJECT, second_project]
+    )
+    assert (await runtime.dispatch(bind_request()))["status"] == "BOUND"
+    with pytest.raises(WAWControlDispatchError) as closed:
+        await runtime.dispatch(
+            lifecycle_request(
+                "workspace.workspace.start",
+                digest=first.binding_digest,
+            )
+        )
+    assert closed.value.code == "RUNTIME_UNAVAILABLE"
+    count, digest = binding_inventory_digest([inventory_item(second), inventory_item(first)])
+    request = inventory_finalize_request(binding_count=count, inventory_digest=digest)
+    finalized = await runtime.dispatch(request)
+    assert finalized == {
+        "protocol_version": 1,
+        "request_id": request["request_id"],
+        "status": "FINALIZED",
+        "runtime_epoch": "1",
+        "binding_count": "2",
+        "inventory_digest": digest,
+    }
+    assert await runtime.dispatch(request) == finalized
+    already = await runtime.dispatch(
+        inventory_finalize_request(
+            binding_count=count,
+            inventory_digest=digest,
+            request_id="wreq_" + "e" * 32,
+        )
+    )
+    assert already["status"] == "ALREADY_FINALIZED"
+    assert runtime.application_gate_open
+    started = await runtime.dispatch(
+        lifecycle_request(
+            "workspace.workspace.start",
+            digest=first.binding_digest,
+        )
+    )
+    assert started["status"] == "STARTED"
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_empty_replay_accepts_bootstrap_register_before_finalize(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    await runtime.restore_project_binding_inventory()
+    await runtime.dispatch(bind_request())
+
+    registered = await runtime.dispatch(register_request())
+
+    assert registered["status"] == "REGISTERED"
+    current = store.get(PROJECT)
+    assert current is not None
+    count, digest = binding_inventory_digest([inventory_item(current)])
+    finalized = await runtime.dispatch(
+        inventory_finalize_request(binding_count=count, inventory_digest=digest)
+    )
+    assert finalized["status"] == "FINALIZED"
+    assert bool(runtime.application_gate_open)
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_empty_inventory_finalize_opens_workload(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    await runtime.restore_project_binding_inventory()
+    await runtime.dispatch(bind_request())
+    count, digest = binding_inventory_digest([])
+
+    finalized = await runtime.dispatch(
+        inventory_finalize_request(binding_count=count, inventory_digest=digest)
+    )
+
+    assert finalized["status"] == "FINALIZED"
+    assert finalized["binding_count"] == "0"
+    assert bool(runtime.application_gate_open)
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_finalize_rejects_mismatch_and_incomplete_replay_without_opening_gate(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    current = durable_binding(verifier, project_id=PROJECT, relative_key="project-a")
+    store.commit(current)
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    assert (await runtime.dispatch(bind_request()))["status"] == "BOUND"
+
+    with pytest.raises(WAWControlDispatchError) as incomplete:
+        await runtime.dispatch(
+            inventory_finalize_request(binding_count="0", inventory_digest="a" * 64)
+        )
+    assert incomplete.value.code == "BINDING_REPLAY_INCOMPLETE"
+    await runtime.restore_project_binding_inventory()
+    with pytest.raises(WAWControlDispatchError) as mismatch:
+        await runtime.dispatch(
+            inventory_finalize_request(
+                binding_count="1",
+                inventory_digest="b" * 64,
+                request_id="wreq_" + "e" * 32,
+            )
+        )
+    assert mismatch.value.code == "BINDING_INVENTORY_MISMATCH"
+    assert not runtime.application_gate_open
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_new_api_authority_must_finalize_inventory_again(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    current = durable_binding(verifier, project_id=PROJECT, relative_key="project-a")
+    store.commit(current)
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+        peer_authority=authority,
+    )
+    runtime.configure_application_gate()
+    await runtime.restore_project_binding_inventory()
+    count, digest = binding_inventory_digest([inventory_item(current)])
+    old_read, old_write = os.pipe()
+    new_read, new_write = os.pipe()
+    peers: list[WAWPeerCandidate | WAWPeerLease] = []
+    try:
+        candidate = observed_peer(authority, 101, old_read)
+        peers.append(candidate)
+        assert (await runtime.dispatch(bind_request(), candidate))["status"] == "BOUND"
+        old_lease = observed_peer(authority, 101, old_read)
+        peers.append(old_lease)
+        first = await runtime.dispatch(
+            inventory_finalize_request(binding_count=count, inventory_digest=digest),
+            old_lease,
+        )
+        assert first["status"] == "FINALIZED"
+        assert bool(runtime.application_gate_open)
+
+        os.close(old_write)
+        old_write = -1
+        replacement = observed_peer(authority, 202, new_read)
+        peers.append(replacement)
+        transfer = {
+            **bind_request("wreq_" + "3" * 32),
+            "api_authority_epoch": "2",
+            "authority_nonce": "c" * 32,
+        }
+        assert (await runtime.dispatch(transfer, replacement))["status"] == "BOUND"
+        assert not bool(runtime.application_gate_open)
+        replacement_lease = observed_peer(authority, 202, new_read)
+        peers.append(replacement_lease)
+        second = await runtime.dispatch(
+            inventory_finalize_request(
+                binding_count=count,
+                inventory_digest=digest,
+                request_id="wreq_" + "d" * 32,
+            ),
+            replacement_lease,
+        )
+        assert second["status"] == "FINALIZED"
+        assert bool(runtime.application_gate_open)
+    finally:
+        for peer in peers:
+            peer.close()
+        authority.close()
+        verifier.close()
+        store.close()
+        os.close(old_read)
+        if old_write >= 0:
+            os.close(old_write)
+        os.close(new_read)
+        os.close(new_write)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["host", "path"])
+async def test_replay_host_or_path_drift_stays_fail_closed(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    current = durable_binding(verifier, project_id=PROJECT, relative_key="project-a")
+    store.commit(
+        replace(
+            current,
+            relative_key="missing-project" if failure == "path" else current.relative_key,
+            runtime_host_installation_id=(
+                "wri_" + "9" * 32 if failure == "host" else current.runtime_host_installation_id
+            ),
+        )
+    )
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    with pytest.raises(WAWControlDispatchError) as raised:
+        await runtime.restore_project_binding_inventory()
+    assert raised.value.code == "BINDING_INVENTORY_MISMATCH"
+    assert not runtime.application_gate_open
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_replay_digest_or_executor_failure_stays_fail_closed(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    store.commit(
+        WAWDurableProjectBinding(
+            project_id=PROJECT,
+            relative_key="project-a",
+            project_revision="1",
+            binding_revision="1",
+            binding_digest="0" * 64,
+            previous_binding_revision=None,
+            previous_binding_digest=None,
+            runtime_host_installation_id=HOST,
+            runtime_host_installation_revision="1",
+        )
+    )
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    with pytest.raises(WAWControlDispatchError) as digest_failure:
+        await runtime.restore_project_binding_inventory()
+    assert digest_failure.value.code == "BINDING_INVENTORY_MISMATCH"
+    assert not runtime.application_gate_open
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+    projects2 = tmp_path / "projects-2"
+    projects2.mkdir(mode=0o700)
+    (projects2 / "project-a").mkdir(mode=0o700)
+    verifier2 = WAWProjectBindingVerifier.test_only(projects2)
+    store2 = WAWProjectBindingStore.test_only(tmp_path / "bindings-2")
+    store2.commit(durable_binding(verifier2, project_id=PROJECT, relative_key="project-a"))
+
+    class FailingBindingExecutor(BindingExecutor):
+        async def register_project_binding(self, binding: WAWProjectBinding) -> None:
+            raise RuntimeError("synthetic executor rejection")
+
+    runtime2 = registry(
+        FailingBindingExecutor(),
+        binding_verifier=verifier2,
+        binding_store=store2,
+    )
+    runtime2.configure_application_gate()
+    with pytest.raises(WAWControlDispatchError) as executor_failure:
+        await runtime2.restore_project_binding_inventory()
+    assert executor_failure.value.code == "BINDING_REPLAY_INCOMPLETE"
+    assert not runtime2.application_gate_open
+    await runtime2.begin_shutdown()
+    await runtime2.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_uncertain_register_persistence_fences_finalized_workload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    current = durable_binding(verifier, project_id=PROJECT, relative_key="project-a")
+    store.commit(current)
+    runtime = registry(
+        BindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    await runtime.restore_project_binding_inventory()
+    await runtime.dispatch(bind_request())
+    count, digest = binding_inventory_digest([inventory_item(current)])
+    await runtime.dispatch(inventory_finalize_request(binding_count=count, inventory_digest=digest))
+    assert bool(runtime.application_gate_open)
+
+    def fail_commit(_value: WAWDurableProjectBinding) -> WAWDurableProjectBinding:
+        raise WAWProjectBindingStoreError("synthetic persistence failure")
+
+    monkeypatch.setattr(store, "commit", fail_commit)
+    successor = register_request(
+        revision="2",
+        previous="1",
+        request_id="wreq_" + "d" * 32,
+    )
+    successor["previous_binding_digest"] = current.binding_digest
+    with pytest.raises(WAWControlDispatchError) as raised:
+        await runtime.dispatch(successor)
+    assert raised.value.code == "BINDING_REPLAY_INCOMPLETE"
+    assert not bool(runtime.application_gate_open)
+    with pytest.raises(WAWControlDispatchError) as workload:
+        await runtime.dispatch(
+            lifecycle_request(
+                "workspace.workspace.start",
+                digest=current.binding_digest,
+            )
+        )
+    assert workload.value.code == "RUNTIME_UNAVAILABLE"
+    await runtime.begin_shutdown()
+    await runtime.wait_shutdown_workers()
+
+
+@pytest.mark.anyio
+async def test_shutdown_during_replay_observes_worker_and_never_publishes(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    store.commit(durable_binding(verifier, project_id=PROJECT, relative_key="project-a"))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class PausedBindingExecutor(BindingExecutor):
+        async def register_project_binding(self, binding: WAWProjectBinding) -> None:
+            entered.set()
+            await release.wait()
+            self.bindings.append(binding)
+
+    runtime = registry(
+        PausedBindingExecutor(),
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    replay = asyncio.create_task(runtime.restore_project_binding_inventory())
+    await entered.wait()
+    await runtime.begin_shutdown()
+    release.set()
+    with pytest.raises(WAWControlDispatchError) as interrupted:
+        await replay
+    assert interrupted.value.code == "BINDING_REPLAY_INCOMPLETE"
+    await runtime.wait_shutdown_workers()
+    assert not runtime.application_gate_open
+    assert not runtime._bindings
+
+
+@pytest.mark.anyio
+async def test_replay_shutdown_timeout_is_sticky_and_retains_binding_resources(
+    tmp_path: Path,
+) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir(mode=0o700)
+    (projects / "project-a").mkdir(mode=0o700)
+    verifier = WAWProjectBindingVerifier.test_only(projects)
+    store = WAWProjectBindingStore.test_only(tmp_path / "bindings")
+    store.commit(durable_binding(verifier, project_id=PROJECT, relative_key="project-a"))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class ResistantBindingExecutor(BindingExecutor):
+        async def register_project_binding(self, binding: WAWProjectBinding) -> None:
+            entered.set()
+            await release.wait()
+            self.bindings.append(binding)
+
+    runtime = registry(
+        ResistantBindingExecutor(),
+        cleanup_timeout_seconds=0.01,
+        binding_verifier=verifier,
+        binding_store=store,
+    )
+    runtime.configure_application_gate()
+    replay = asyncio.create_task(runtime.restore_project_binding_inventory())
+    await entered.wait()
+    await runtime.begin_shutdown()
+
+    with pytest.raises(WAWControlDispatchError) as shutdown:
+        await runtime.wait_shutdown_workers()
+
+    assert shutdown.value.code == "RUNTIME_UNAVAILABLE"
+    assert not runtime.shutdown_clean
+    assert store.get(PROJECT) is not None
+    release.set()
+    with pytest.raises(WAWControlDispatchError) as interrupted:
+        await replay
+    assert interrupted.value.code == "BINDING_REPLAY_INCOMPLETE"
+    with pytest.raises(WAWControlDispatchError) as repeated:
+        await runtime.wait_shutdown_workers()
+    assert repeated.value is shutdown.value
+    verifier.close()
+    store.close()
 
 
 @pytest.mark.anyio

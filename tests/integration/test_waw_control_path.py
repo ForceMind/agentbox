@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_api.waw_control_client import WAWControlClient
+from agentbox_protocol.waw_control import binding_inventory_digest
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
@@ -178,6 +179,39 @@ async def test_prebound_runtime_control_round_trip_uses_consumed_epoch(
             "workspace.project_binding.register", register
         )
         assert registered["binding_digest"] == DIGEST
+        binding_count, inventory_digest = binding_inventory_digest(
+            [
+                {
+                    "project_id": PROJECT,
+                    "relative_key": "project-a",
+                    "project_revision": "1",
+                    "binding_revision": "1",
+                    "previous_binding_revision": None,
+                    "previous_binding_digest": None,
+                    "binding_digest": DIGEST,
+                    "runtime_host_installation_id": HOST,
+                    "runtime_host_installation_revision": "1",
+                }
+            ]
+        )
+        finalized = await coordinator.request_lifecycle(
+            "workspace.project_binding.inventory.finalize.v1",
+            _request(
+                "workspace.project_binding.inventory.finalize.v1",
+                "wreq_" + "f" * 32,
+                runtime_epoch="2",
+                binding_count=binding_count,
+                inventory_digest=inventory_digest,
+            ),
+        )
+        assert finalized == {
+            "protocol_version": 1,
+            "request_id": "wreq_" + "f" * 32,
+            "status": "FINALIZED",
+            "runtime_epoch": "2",
+            "binding_count": binding_count,
+            "inventory_digest": inventory_digest,
+        }
 
         lifecycle_fields = {
             "workspace_id": WORKSPACE,

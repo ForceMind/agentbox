@@ -503,6 +503,39 @@ def _require_binding_reconciliation(
         )
 
 
+def _require_workspace_current_binding(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+) -> None:
+    """Fence new Start/Attach effects to one current Control Plane binding."""
+
+    services = _services(request)
+    try:
+        project = services.projects.get(row.project_id, ready=True)
+        binding = services.project_bindings.get_head(row.project_id)
+    except (AgentBoxError, ProjectBindingNotFound) as exc:
+        raise RuntimeGatewayError(
+            code="RECONCILIATION_REQUIRED",
+            category="conflict",
+            message="Workspace binding is not current",
+        ) from exc
+    if (
+        binding.status != ProjectBindingStatus.CURRENT.value
+        or binding.binding_digest is None
+        or binding.project_revision != project.revision
+        or binding.relative_key != project.relative_path
+        or binding.binding_revision != row.binding_revision
+        or binding.binding_digest != row.binding_digest
+        or binding.runtime_host_installation_id != row.runtime_host_installation_id
+        or binding.runtime_host_installation_revision != row.runtime_host_installation_revision
+    ):
+        raise RuntimeGatewayError(
+            code="RECONCILIATION_REQUIRED",
+            category="conflict",
+            message="Workspace binding is not current",
+        )
+
+
 async def _ensure_current_project_binding(
     request: Request,
     *,
@@ -977,6 +1010,7 @@ async def start_workspace(
             category="conflict",
             message="Workspace identity changed",
         )
+    _require_workspace_current_binding(request, row)
     _authorize_workspace(request, authenticated, row)
     try:
         _bound_attestation, bound_runtime_epoch = _bound_workspace_runtime_identity(
@@ -1036,6 +1070,11 @@ async def start_workspace(
             message="Invalid Runtime state",
         )
     try:
+        _require_workspace_current_binding(request, row)
+    except RuntimeGatewayError:
+        _fence_ambiguous_workspace_start(request, row)
+        raise
+    try:
         if not _services(request).workspaces.executable_evidence_is_current(
             row,
             runtime_epoch=bound_runtime_epoch,
@@ -1057,6 +1096,11 @@ async def start_workspace(
                 failure_code="EXECUTABLE_EVIDENCE_UNAVAILABLE",
             )
         raise _runtime_error(exc) from exc
+    try:
+        _require_workspace_current_binding(request, row)
+    except RuntimeGatewayError:
+        _fence_ambiguous_workspace_start(request, row)
+        raise
     if row.state in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}:
         # A concurrent first-use retry may have committed the same exact
         # evidence and Runtime generation before this request reaches its
@@ -1132,6 +1176,7 @@ async def issue_attachment_ticket(
     except WorkspaceSessionNotFound as exc:
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
     _authorize_workspace(request, authenticated, row)
+    _require_workspace_current_binding(request, row)
     coordinator = _waw_coordinator(request)
     attestation, runtime_epoch = _require_current_executable_evidence(request, row, coordinator)
     try:

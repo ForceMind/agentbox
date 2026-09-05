@@ -243,7 +243,10 @@ class WAWRuntimeApplication:
 
     @property
     def ready(self) -> bool:
-        return self.state is WAWRuntimeApplicationState.RUNNING
+        return (
+            self.state is WAWRuntimeApplicationState.RUNNING
+            and self._registry.application_gate_open
+        )
 
     @property
     def shutdown_evidence(self) -> WAWRuntimeShutdownEvidence | None:
@@ -270,6 +273,8 @@ class WAWRuntimeApplication:
 
     async def _perform_start(self, *, create_development_parent: bool) -> None:
         try:
+            await self._registry.restore_project_binding_inventory()
+            self._require_starting()
             await self._stream.start()
             self._require_starting()
             control = self._runtime.waw_control_server
@@ -285,7 +290,8 @@ class WAWRuntimeApplication:
                 or self._composition.executor.runtime_epoch != self._composition.runtime_epoch
             ):
                 raise RuntimeError("WAW Runtime composition changed during startup")
-            self._registry.open_application_gate()
+            if not self._registry.binding_inventory_finalize_required:
+                self._registry.open_application_gate()
             with self._state_lock:
                 if self._state is not WAWRuntimeApplicationState.STARTING:
                     self._registry.close_application_gate()

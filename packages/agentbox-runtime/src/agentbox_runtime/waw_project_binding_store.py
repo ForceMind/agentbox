@@ -61,10 +61,15 @@ class WAWDurableProjectBinding:
         ):
             _u64(value, field)
         _digest(self.binding_digest, "binding_digest")
-        if self.previous_binding_revision is None or self.previous_binding_digest is None:
-            if self.binding_revision != "1":
-                raise WAWProjectBindingStoreError("binding predecessor is unavailable")
+        if self.binding_revision == "1":
+            if (
+                self.previous_binding_revision is not None
+                or self.previous_binding_digest is not None
+            ):
+                raise WAWProjectBindingStoreError("first binding cannot have a predecessor")
         else:
+            if self.previous_binding_revision is None or self.previous_binding_digest is None:
+                raise WAWProjectBindingStoreError("binding predecessor is unavailable")
             previous = _u64(self.previous_binding_revision, "previous_binding_revision")
             _digest(self.previous_binding_digest, "previous_binding_digest")
             if int(previous) + 1 != int(self.binding_revision):
