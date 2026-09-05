@@ -46,8 +46,9 @@ blocker is resolved. Do not request the same software approval again.
   matrix jobs exposed one shared legacy regression: a clean non-fixed server could
   no longer restart without consuming a second epoch. The local reviewed fix
   restores only that compatible restart; fixed/control/poisoned/incomplete shutdown
-  stays terminal. Commit and push this follow-up, then require a fresh exact-head
-  20/20 result before continuing.
+  stays terminal. Follow-up `c534fe437...` completed the fresh exact-head 20/20
+  matrix. Continue with the bounded redraw slice; do not merge rc6 until the full
+  controller composition and rc6 acceptance set are complete.
 - Locale remains fixed per document from only `navigator.languages[0]`: primary
   `zh` → `zh-CN`; all other, missing or malformed values → English. Technical
   identifiers remain English.

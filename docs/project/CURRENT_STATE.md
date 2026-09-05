@@ -697,4 +697,6 @@ PROPOSED architecture status are preserved.
   successful non-fixed shutdown with no control server, poison or owned resource;
   fixed WAW composition remains terminal and the consumed Runtime epoch is not
   reset. `test_runtime_server.py` completed 23 cases, full static gates pass and
-  independent Sol review reports PASS. The follow-up is not yet pushed or CI-verified.
+  independent Sol review reports PASS. Follow-up `c534fe437...` completed 20/20
+  exact-head checks, including Linux native and Backend Python 3.11/3.12/3.13;
+  each Backend matrix reported 3577 passed and 43 host-gated skips.

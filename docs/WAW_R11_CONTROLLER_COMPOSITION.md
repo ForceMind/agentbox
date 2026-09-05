@@ -49,8 +49,9 @@ clean close followed by start must retain the already consumed Runtime epoch.
 The reviewed follow-up permits restart only for a successful, residue-free
 non-fixed server without a WAW control owner; fixed composition and every
 poisoned, failed, cancelled or incomplete shutdown remain terminal. This
-follow-up has 23 focused passing cases and independent Sol PASS, but is not yet
-pushed or exact-head verified.
+follow-up has 23 focused passing cases and independent Sol PASS. Commit
+`c534fe437...` completed 20/20 exact-head checks, including Linux native and the
+Backend Python 3.11/3.12/3.13 full matrix. Bounded redraw is the next rc6 slice.
 
 ## rc6 composition invariants
 
