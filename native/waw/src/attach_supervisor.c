@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdint.h>
@@ -149,8 +150,42 @@ static void query_child(const char *workspace_hash, enum agentbox_waw_agent_type
     _exit(126);
 }
 
+static int ready_deadline_milliseconds(const struct timespec *deadline) {
+    struct timespec now;
+    int64_t nanoseconds;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return -1;
+    }
+    nanoseconds = ((int64_t)deadline->tv_sec - (int64_t)now.tv_sec) * INT64_C(1000000000) +
+                  (int64_t)(deadline->tv_nsec - now.tv_nsec);
+    if (nanoseconds <= 0) {
+        return 0;
+    }
+    nanoseconds = (nanoseconds + INT64_C(999999)) / INT64_C(1000000);
+    return nanoseconds > (int64_t)INT_MAX ? INT_MAX : (int)nanoseconds;
+}
+
+static int poll_until_ready_deadline(struct pollfd *watched, nfds_t watched_count,
+                                     const struct timespec *deadline, int maximum_wait_ms) {
+    for (;;) {
+        int timeout = ready_deadline_milliseconds(deadline);
+        int result;
+        if (timeout <= 0) {
+            return timeout;
+        }
+        if (maximum_wait_ms > 0 && timeout > maximum_wait_ms) {
+            timeout = maximum_wait_ms;
+        }
+        result = poll(watched, watched_count, timeout);
+        if (result >= 0 || errno != EINTR) {
+            return result;
+        }
+    }
+}
+
 static int query_attached_client_once(const char *workspace_hash,
-                                      enum agentbox_waw_agent_type agent, pid_t attach_pid) {
+                                      enum agentbox_waw_agent_type agent, pid_t attach_pid,
+                                      const struct timespec *deadline) {
     int output[2];
     pid_t query;
     int query_pidfd;
@@ -187,17 +222,23 @@ static int query_attached_client_once(const char *workspace_hash,
     watched[1].fd = query_pidfd;
     watched[1].events = POLLIN;
     watched[1].revents = 0;
-    if (poll(watched, 2U, 120) <= 0) {
-        agentbox_waw_terminate_and_reap((int)query, query_pidfd);
-        (void)close(output[0]);
-        return 0;
+    {
+        int result = poll_until_ready_deadline(watched, 2U, deadline, 0);
+        if (result <= 0) {
+            agentbox_waw_terminate_and_reap((int)query, query_pidfd);
+            (void)close(output[0]);
+            return result < 0 ? -1 : 0;
+        }
     }
     size = read(output[0], observed, sizeof(observed) - 1U);
     (void)close(output[0]);
     watched[1].revents = 0;
-    if (poll(&watched[1], 1U, 30) <= 0) {
-        agentbox_waw_terminate_and_reap((int)query, query_pidfd);
-        return 0;
+    {
+        int result = poll_until_ready_deadline(&watched[1], 1U, deadline, 0);
+        if (result <= 0) {
+            agentbox_waw_terminate_and_reap((int)query, query_pidfd);
+            return result < 0 ? -1 : 0;
+        }
     }
     (void)close(query_pidfd);
     while (waitpid(query, &status, 0) < 0) {
@@ -218,19 +259,25 @@ static int query_attached_client_once(const char *workspace_hash,
 }
 
 static int confirm_attached_client(const char *workspace_hash, enum agentbox_waw_agent_type agent,
-                                   pid_t attach_pid, int attach_pidfd) {
+                                   pid_t attach_pid, int attach_pidfd,
+                                   const struct timespec *deadline) {
     struct pollfd alive;
-    struct timespec pause = {0, 20000000L};
-    int attempt;
     alive.fd = attach_pidfd;
     alive.events = POLLIN;
-    for (attempt = 0; attempt < 4; ++attempt) {
+    for (;;) {
         int result;
+        int remaining = ready_deadline_milliseconds(deadline);
+        if (remaining <= 0) {
+            if (remaining == 0) {
+                errno = ETIMEDOUT;
+            }
+            return -1;
+        }
         alive.revents = 0;
         if (poll(&alive, 1U, 0) != 0) {
             return -1;
         }
-        result = query_attached_client_once(workspace_hash, agent, attach_pid);
+        result = query_attached_client_once(workspace_hash, agent, attach_pid, deadline);
         if (result == 1) {
             alive.revents = 0;
             return poll(&alive, 1U, 0) == 0 ? 0 : -1;
@@ -238,16 +285,18 @@ static int confirm_attached_client(const char *workspace_hash, enum agentbox_waw
         if (result < 0) {
             return -1;
         }
-        (void)nanosleep(&pause, NULL);
+        alive.revents = 0;
+        if (poll_until_ready_deadline(&alive, 1U, deadline, 20) != 0) {
+            return -1;
+        }
     }
-    errno = ETIMEDOUT;
-    return -1;
 }
 
 static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type agent) {
     pid_t child;
     int pidfd;
     int exec_status[2] = {-1, -1};
+    struct timespec ready_deadline;
     pid_t expected_parent = getppid();
     int kept[4] = {AGENTBOX_WAW_ATTACH_TMUX_EXECUTABLE_FD,
                    AGENTBOX_WAW_ATTACH_SOCKET_DIRECTORY_FD,
@@ -284,6 +333,18 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
     if (pipe2(exec_status, O_CLOEXEC) != 0) {
         return 71;
     }
+    if (clock_gettime(CLOCK_MONOTONIC, &ready_deadline) != 0) {
+        (void)close(exec_status[0]);
+        (void)close(exec_status[1]);
+        return 71;
+    }
+    ready_deadline.tv_sec += (time_t)(AGENTBOX_WAW_READY_DEADLINE_MS / UINT32_C(1000));
+    ready_deadline.tv_nsec +=
+        (long)((AGENTBOX_WAW_READY_DEADLINE_MS % UINT32_C(1000)) * UINT32_C(1000000));
+    if (ready_deadline.tv_nsec >= 1000000000L) {
+        ready_deadline.tv_sec += 1;
+        ready_deadline.tv_nsec -= 1000000000L;
+    }
     child = fork();
     if (child < 0) {
         (void)close(exec_status[0]);
@@ -306,15 +367,19 @@ static int run_attach(const char *workspace_hash, enum agentbox_waw_agent_type a
         agentbox_waw_terminate_and_reap((int)child, pidfd);
         return 71;
     }
-    if (agentbox_waw_confirm_exec_timeout(exec_status[0], pidfd, 200) != 0) {
-        agentbox_waw_terminate_and_reap((int)child, pidfd);
-        return 71;
+    {
+        int remaining = ready_deadline_milliseconds(&ready_deadline);
+        if (remaining <= 0 ||
+            agentbox_waw_confirm_exec_timeout(exec_status[0], pidfd, remaining) != 0) {
+            agentbox_waw_terminate_and_reap((int)child, pidfd);
+            return 71;
+        }
     }
     if (close(exec_status[0]) != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
         return 71;
     }
-    if (confirm_attached_client(workspace_hash, agent, child, pidfd) != 0) {
+    if (confirm_attached_client(workspace_hash, agent, child, pidfd, &ready_deadline) != 0) {
         agentbox_waw_terminate_and_reap((int)child, pidfd);
         return 71;
     }

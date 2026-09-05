@@ -85,6 +85,21 @@ def test_native_ready_header_matches_python_adapter() -> None:
     assert "AGENTBOX_WAW_READY_DEADLINE_MS UINT32_C(1000)" in header
 
 
+def test_attach_supervisor_ready_wait_uses_one_monotonic_deadline() -> None:
+    source = (ROOT / "native" / "waw" / "src" / "attach_supervisor.c").read_text(
+        encoding="utf-8"
+    )
+    assert "clock_gettime(CLOCK_MONOTONIC, &ready_deadline)" in source
+    assert "ready_deadline.tv_sec += (time_t)(AGENTBOX_WAW_READY_DEADLINE_MS" in source
+    assert "ready_deadline_milliseconds(&ready_deadline)" in source
+    assert "agentbox_waw_confirm_exec_timeout(exec_status[0], pidfd, remaining)" in source
+    assert "confirm_attached_client(workspace_hash, agent, child, pidfd, &ready_deadline)" in source
+    assert "poll_until_ready_deadline(watched, 2U, deadline, 0)" in source
+    assert "attempt < 4" not in source
+    assert "poll(watched, 2U, 120)" not in source
+    assert "poll(&watched[1], 1U, 30)" not in source
+
+
 def test_linux_ci_uses_the_full_workspace_hash_for_cgroup_identity() -> None:
     workflow = (ROOT / ".github/workflows/backend.yml").read_text(encoding="utf-8")
     assert f"WORKSPACE_HASH: {'a' * 64}" in workflow
