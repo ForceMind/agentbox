@@ -193,6 +193,10 @@ owners close. The start order is stream, gated control, gated legacy, then one g
 commit. This does not enable production main, a real key/provider or a real host.
 Independent Sol/xhigh review reports PASS with no P0/P1/P2.
 
+Head `628e9c00...` completed 20/20 exact-head checks, including Linux native,
+E2E and Backend Python 3.11/3.12/3.13. `WAWRuntimeApplication` ownership is now a
+verified rc6 slice. API singleton/lifespan ownership is next.
+
 ## Browser controller
 
 - Connect uses an exact same-origin WebSocket URL, subprotocol

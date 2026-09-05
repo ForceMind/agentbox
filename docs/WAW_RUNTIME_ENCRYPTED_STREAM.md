@@ -66,6 +66,10 @@ poison nor close failure before key/provider closure. Production main, real
 key/provider and real-host activation remain disabled. Independent Sol/xhigh
 review reports PASS with no P0/P1/P2.
 
+`WAWRuntimeApplication` head `628e9c00...` completed 20/20 exact-head checks.
+The Runtime top-level stream/control/legacy ownership and shutdown evidence are
+verified; API singleton/lifespan composition remains the next rc6 boundary.
+
 Input is decrypted once, then receives the appropriate accepted and terminal
 written/uncertain/rejected result. Rejection after successful decryption retains
 nonce continuity. A cached terminal ACK may be replayed at most once within its

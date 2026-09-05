@@ -731,3 +731,7 @@ PROPOSED architecture status are preserved.
   evidence keeps the provider until stream/control/lifecycle/legacy are all clean.
   No production main, real key/provider or host is enabled. Independent Sol/xhigh
   review reports PASS with no P0/P1/P2; Linux-target mypy covers 260 sources.
+- `WAWRuntimeApplication` head `628e9c00...` completed 20/20 exact-head checks,
+  including Linux native, E2E and Backend Python 3.11/3.12/3.13. This top-level
+  Runtime ownership slice is verified. API singleton/lifespan ownership is the
+  next rc6 scope; production main and real key/provider activation remain closed.

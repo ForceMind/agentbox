@@ -63,6 +63,10 @@ blocker is resolved. Do not request the same software approval again.
   for stream/control/lifecycle/legacy clean evidence. Independent Sol/xhigh review
   reports PASS with no P0/P1/P2; Linux-target mypy covers 260 sources. Production
   main, real key/provider and host activation remain disabled.
+- `WAWRuntimeApplication` head `628e9c00...` completed 20/20 exact-head checks.
+  Continue rc6 with the API singleton, one attachment/bind/control/relay owner and
+  lifespan shutdown ordering; keep real key/provider and production activation in
+  their existing host-gated scope.
 - Complete this rc6 integration slice by commit/push and exact-head Linux CI,
   then continue the remaining production controller composition. Normal merge and
   exact read-back follow the complete rc6 acceptance set. After
