@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from conftest import downgrade_database, migrate_database  # type: ignore[import-not-found]
+from conftest import downgrade_database, migrate_database
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 

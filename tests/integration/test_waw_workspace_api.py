@@ -16,7 +16,7 @@ from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType, workspace_id
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord, RuntimeHostInstallation
 from agentbox_core.waw_tickets import AttachmentAuthority
-from conftest import (  # type: ignore[import-not-found]
+from conftest import (
     FakeClaudeRuntime,
     FakeCodexRuntime,
     FakeProjectRuntime,
