@@ -20,6 +20,7 @@ versioning for release display and PEP 440 for the Python package.
   repository browser-source execution boundary.
 - Project and Project-detail technical values now wrap inside their cards at
   desktop and mobile widths, preventing horizontal viewport overflow.
+- The Workspace terminal input can shrink within its wrapping mobile flex row.
 
 ### Verification status
 

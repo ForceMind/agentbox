@@ -131,7 +131,8 @@ repository: "ForceMind/agentbox"
   harness marker. The repository browser-source boundary check passes and safe
   text components reject raw-HTML props at compile time. Project and
   Project-detail technical values have shrink/wrap boundaries for the desktop
-  and mobile viewport matrix. This local record does not substitute for GitHub
+  and mobile viewport matrix; the Workspace terminal input can shrink inside
+  its flex row at 390px. This local record does not substitute for GitHub
   evidence.
   This is not delivery evidence: exact-head CI, normal merge, merge read-back and
   post-main verification are all pending. rc8 historical jobs must be `success`
