@@ -81,7 +81,9 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 交付 browser trust/terminal core，R10 fixed process candidate 本地完成；
 `WorkspacePage.tsx` 已把连接/重连/断开接入完整 controller，并把 provider unavailable
 保持为无 ticket 的关闭状态。PR #80 已完成 exact-head CI、normal merge 与 read-back；
-它仍只是 rc6 软件交付，并不表示 R11 或真实终端资格完成。
+它仍只是 rc6 软件交付，并不表示 R11 或真实终端资格完成。rc7-A local matrix 现在覆盖
+admission、stream、restart/shutdown、browser lifecycle、exact Stop 和 canary scans，仍待
+它自己的 exact-head CI、merge/read-back。
 
 ## Confirmed issue and unresolved observations
 
@@ -115,7 +117,7 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
 | R10 fixed interactive process | 已完成 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | PR #79 final head `0d9e7c7...` 经20/20 CI、正常合并`341a69bf...`、精确回读、六组post-main和Dependency Graph SUCCESS。真实 vendor/host 证据仍属 R12 |
-| R11 software integration | 进行中 | rc7 failure injection、rc8 artifact/operations、rc9 全页面双语 | R4–R10；rc6 page composition、binding-drift Stop、`0.3.0rc6` version source、独立复审、117 API/relay、64 E2E、20/20 exact CI 与 merge `8480bf8...` 已完成。当前从 rc7 deterministic failure matrix 继续；production main、real key/provider和host仍关闭。无持久 payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
+| R11 software integration | 进行中 | rc7 failure injection、rc8 artifact/operations、rc9 全页面双语 | R4–R10；rc6 page composition、binding-drift Stop、`0.3.0rc6` version source、独立复审、117 API/relay、64 E2E、20/20 exact CI 与 merge `8480bf8...` 已完成。rc7-A candidate 的 29 focused Python、341 related Python、997 Web、Linux-target mypy 和 independent P0=0/P1=0 已完成；exact-head CI、merge/read-back 后才能进入 rc8。production main、real key/provider和host仍关闭。 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
 API singleton 的当前未提交基础已实现 `AttachmentAuthority.begin_shutdown()`：

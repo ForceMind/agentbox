@@ -207,6 +207,31 @@ restart, shutdown, page lifecycle and Stop. Each case proves: no early
 ciphertext loss, no post-fence publication, positive cleanup before writer
 release, and no payload/key/ticket canary in persistent or diagnostic output.
 
+### rc7-A deterministic matrix candidate（本地已验证，待 exact-head CI）
+
+PR #81 的当前工作树只新增 test-only controls 与 composed tests，未修改任何
+production module、环境变量、query parameter 或全局 fault switch。封闭 checkpoint、
+void-only gate、整数纳秒时钟与 partial-write controls 只能从 `tests/support` 或 Web
+test source 使用；source boundary test 也拒绝 production import edge。
+
+本地 matrix 覆盖 admission 的 ticket reserve、prepare、key publication、Audit、READY、
+COMMIT send/ACK 与 ADMITTED Audit；ACTIVE relay 的 input partial-write/EAGAIN、
+OUTPUT/GAP publication、heartbeat/resize fence；同一 owner 的 shutdown drain 与完整
+API+Runtime restart；browser ticket/lifecycle/provider fence、valid AWCE backpressure、
+renderer/crypto cleanup 与 exact Stop 的 pending Detach/Stop lifecycle fence。
+动态 payload/key/ticket canary 实际经过 typed admission/active paths，并扫描 durable
+Audit、Jobs/JobEvent、captured logs、diagnostic artifact 与 SQLite/WAL/SHM；browser
+counterpart checks DOM, storage, crypto/trust and scheduler/socket cleanup.
+
+本地证据为 rc7 Python focused 29 passed、related Python regression 341 passed、Web
+full 997 passed、Linux-target mypy 274 sources、Web lint/typecheck/build/format 全部
+通过，以及独立 Sol review `P0=0/P1=0`。本 Mac 对一条既有 real-UDS relay test 的
+`/tmp` socket bind 返回 `PermissionError`；它不属于 rc7 assertion failure，仍必须由
+exact-head Linux CI 覆盖。受限 synthetic diagnostic export 与无 Storage authority 的
+Node runner 只限定各自测试的覆盖范围；它们不构成 production CLI diagnostics 或真实
+browser/host qualification。rc8 不得在 PR #81 exact-head CI、normal merge 和 read-back
+完成前开始。
+
 ## rc8: artifact and operations rehearsal
 
 After rc7 merge/read-back, the release artifact builds native helpers from its

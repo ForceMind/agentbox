@@ -252,6 +252,23 @@ ciphertext loss; no post-EXIT ACK; one ticket burn; positive cleanup before writ
 release; and no payload, key or ticket canary in SQLite sidecars, Audit/Jobs,
 logs, browser storage, reports, artifacts or retained DOM/tasks.
 
+### rc7-A candidate evidence
+
+The rc7-A candidate implements this matrix only through test-only helpers. Its
+admission, active relay, API+Runtime restart, owner shutdown, browser lifecycle
+and exact Stop tests drive the existing typed ports/controllers; no production
+fault mode, test import edge or real credential is introduced. Dynamic key,
+ticket and opaque INPUT canaries are scanned from durable Audit/Jobs, logs,
+diagnostics and SQLite/WAL/SHM. Browser tests independently prove renderer/DOM,
+Web Storage, crypto/trust and scheduler/socket cleanup.
+
+Local validation is 29 focused Python tests, 341 related Python regression tests,
+997 Web tests, Linux-target mypy across 274 sources and full Web quality gates;
+independent review reports P0=0/P1=0. Exact-head CI, normal merge and read-back
+remain required before rc7 is delivered. A synthetic diagnostic export and a Node
+test runner without a Storage authority do not replace production diagnostic or
+real-browser evidence; R12 remains the real host/product boundary.
+
 ## rc8 artifact and operations rehearsal
 
 The release workflow compiles native helpers from the unpacked artifact source,

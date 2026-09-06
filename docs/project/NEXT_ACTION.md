@@ -10,6 +10,14 @@ blocker is resolved. Do not request the same software approval again.
 
 ## Active implementation
 
+- rc7-A deterministic failure-matrix candidate is locally verified on PR #81's
+  branch: 29 focused Python tests, 341 related Python regression tests, 997 Web
+  tests, Linux-target mypy and full Web quality gates pass; independent Sol review
+  is P0=0/P1=0. Commit and push this candidate with its scope documentation, then
+  wait for the exact-head matrix, normal merge and read-back before beginning rc8.
+  The local Mac could not bind `/tmp` for one pre-existing real-UDS relay test;
+  Linux CI remains the required evidence for that path. The candidate is
+  software-only and does not activate a host or change the visible rc6 version.
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
   persistence/first use and rc6-C browser controller are delivered by PR #80
