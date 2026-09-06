@@ -646,8 +646,12 @@ class LoopbackHealthProbe:
                 if match is not None:
                     socket_inodes.add(match.group(1))
             rows = Path("/proc/net/tcp").read_text(encoding="ascii").splitlines()[1:]
-        except (OSError, UnicodeError) as exc:
-            raise RehearsalError("health: API listener ownership is unavailable") from exc
+        except (OSError, UnicodeError):
+            # A just-spawned process can close or replace a descriptor while
+            # /proc is enumerated. The caller already has a bounded readiness
+            # deadline and checks process liveness on every retry; retrying
+            # avoids treating that observation race as listener evidence.
+            return None
         ports: set[int] = set()
         for row in rows:
             fields = row.split()

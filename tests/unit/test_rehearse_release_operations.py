@@ -1037,6 +1037,12 @@ def test_health_requires_the_exact_listener_owner_and_artifact_provenance(
         )
 
 
+def test_loopback_health_probe_retries_a_transient_proc_descriptor_race(tmp_path: Path) -> None:
+    probe = operations.LoopbackHealthProbe("http://127.0.0.1:19001")
+
+    assert probe._process_listener_port(tmp_path / "not-a-process") is None
+
+
 def test_rehearsal_critical_checks_never_use_python_assert() -> None:
     tree = ast.parse(SCRIPT.read_text(encoding="utf-8"), filename=SCRIPT.name)
     assert not any(isinstance(node, ast.Assert) for node in ast.walk(tree))
