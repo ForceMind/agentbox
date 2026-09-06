@@ -1,8 +1,8 @@
 # R11 rc6 browser controller safety foundation
 
-状态：controller 安全基础 `ea0ac84` 已完成独立 Sol 复审、定向/全量 Web 验证和
-PR #80 的 20/20 exact-head CI；真实 terminal surface 与 `WorkspacePage` 组合仍待
-实现。
+状态：controller 安全基础 `ea0ac84` 与 bounded renderer `f4d868e` 已分别完成独立
+Sol 复审和 PR #80 的 20/20 exact-head CI。当前分支的 page-composition 实现已完成
+本地验证和独立复审；本次实现自身仍待提交、exact-head CI、normal merge 与 read-back。
 本文不表示浏览器终端、rc6、R11 或真实 trust-provider 资格已经完成。
 
 ## 目的
@@ -34,7 +34,7 @@ controller 直接把 INPUT、RESIZE、Detach 或 Stop 发往 Control Plane。
   个 mutation，也不接受迟到 receipt 复活 UI。只有 exact `state: STOPPED` receipt
   可以进入本地 `STOPPED`。
 
-## 仍待组合的页面边界
+## 页面组合边界
 
 - 生产 terminal renderer 必须显式创建 `TerminalScheduler` render task，用
   `textContent` 与 closed CSS classes 写入受控 surface；禁止默认 no-op renderer，
@@ -47,6 +47,49 @@ controller 直接把 INPUT、RESIZE、Detach 或 Stop 发往 Control Plane。
   已确定的 `Locale` 传给 copy。它不能再读取 `navigator.language` 或
   `navigator.languages`；全站只有 i18n bootstrap 的 `navigator.languages[0]`
   可以决定 `zh-CN` 或 English。
+
+## Page-composition implementation checkpoint（待 exact-head CI）
+
+`useWAWBrowserAttachment` 是 `WorkspacePage` 唯一的 browser attachment owner。
+它保留 controller、trust 和 concrete DOM surface 的可验证边界，页面本身没有
+ticket、key、plaintext frame 或 generic runtime command authority。
+
+- Connect/Reconnect 仅在 document 可见、固定高度 viewport 与 terminal surface 已就绪、
+  Runtime 为 `RUNNING`、且受管 Chromium provider 明确可用时才会创建 provider 或请求
+  ticket。通用构建的 extension ID 为 `null` 时路径保持 disabled，不打开 port、不发 ticket。
+- runtime identity 分为三层：仅 `RUNNING` 可取新 ticket；`RUNNING` 与
+  `NEEDS_INTERACTION` 可维持现有 stream；`RUNNING`、`NEEDS_INTERACTION`、
+  `TRUST_REQUIRED`、`LOGIN_REQUIRED` 均可保留已准入 attachment 的 exact control
+  identity。后两种状态同步围栏 stream，却不允许以 direct HTTP Stop 跳过 Detach proof。
+- `pagehide`、`document` 的 `freeze`、visibility hidden、surface replacement、auth/
+  Project/runtime identity 改变和 unmount 都同步清 terminal DOM、未提交 input DOM 与流
+  lease。页面恢复只显示已围栏状态；它不会恢复旧 stream。控制操作使用独立的 fresh
+  page-control lease，因此同一身份在前台确认 Stop 时仍按
+  `Detach(ATTACH_PTY_CLOSED) -> Stop` 执行；`detachConfirmed` 为 false 不能显示
+  `STOP_CONFIRMED`，也不能 fallback 到 direct Stop。
+- view size 只由固定高度 `.workspace-terminal-frame` 的 `ResizeObserver` 得出。可用
+  content box 扣除 16px 四边 padding 后按 8px × 20px cell clamp 到 8–240 columns 和
+  1–200 rows。renderer 的普通、wide 和 sparse-gap cell 都只用 closed CSS classes；
+  plaintext 仍只进入 `textContent`，不使用动态 style 或 HTML parsing。
+- 输入框在 submit 时只发送 `value + "\r"`（空行即 `"\r"`），处理 IME，按含 CR 的
+  UTF-8 长度限制为 16 KiB，并在 controller 同步接管后立即清零临时字节数组。ACK pending
+  禁用第二次 input；React state 只保留 outcome state/reason code，从不保留 input 文本。
+- action errors 绑定 auth、selection 与 attachment identity；scope 变化后的旧 request
+  或旧 callback 无法在新页面显示 error。Runtime status error 和 terminal outcome 都用
+  本地化文本配合 technical code，绝不显示 server prose。
+
+同一 checkpoint 也补齐了 API/relay 的 current binding read-back：WebSocket admission、
+active INPUT 和 OUTPUT publication 从 claims 的 exact binding primary key 读取并要求
+`CURRENT`。Runtime Start 已返回可运行状态后如 Project/binding 漂移，API 先持久化
+generation/binding/host-bound Stop intent，再执行 shielded exact Stop；只有正向回执才
+写 `STOPPED`，不确定结果保持 `UNKNOWN/reconciliation_required`。
+
+本地证据：Web `vitest run` 为 28 files、983 passed；`tsc -b --pretty false`、ESLint、
+Prettier 和 `git diff --check` 均通过。受管本机 API/relay matrix
+`test_waw_workspace_api.py test_waw_relay.py` 为 117 passed；完整 `pnpm e2e` 为
+64 passed（58.6s），覆盖桌面/移动、`zh-CN`/English、overflow、focus 和 exact Stop。
+独立 Sol 最终复审为 P0=0、P1=0。以上不替代本 checkpoint 的 exact-head CI，也不构成
+真实 CRX/trustd、CLI/PTY 或 host qualification 证据。
 
 ## 本地验证
 

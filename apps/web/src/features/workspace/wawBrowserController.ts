@@ -164,11 +164,13 @@ export interface WAWBrowserControlPort {
     readonly generation: string
     readonly leaseNumber: string
     readonly agentType: 'claude' | 'codex'
+    readonly signal: AbortSignal
   }): Promise<WAWBrowserDetachReceipt>
   stop(request: {
     readonly workspaceId: string
     readonly generation: string
     readonly agentType: 'claude' | 'codex'
+    readonly signal: AbortSignal
   }): Promise<WAWBrowserStopReceipt>
 }
 
@@ -1828,6 +1830,7 @@ export class WAWBrowserController {
         generation: identity.generation,
         leaseNumber: identity.leaseNumber,
         agentType: identity.agentType,
+        signal: operation.context.signal,
       })
       const checked = this.#checkDetachReceipt(identity, receipt)
       this.#assertControlOperation(operation)
@@ -1873,6 +1876,7 @@ export class WAWBrowserController {
             generation: identity.generation,
             leaseNumber: identity.leaseNumber,
             agentType: identity.agentType,
+            signal: operation.context.signal,
           }),
         )
         this.#assertControlOperation(operation)
@@ -1897,6 +1901,7 @@ export class WAWBrowserController {
           workspaceId: identity.workspaceId,
           generation: identity.generation,
           agentType: identity.agentType,
+          signal: operation.context.signal,
         }),
       )
       this.#assertControlOperation(operation)

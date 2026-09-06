@@ -152,9 +152,9 @@ connection uses a fresh redraw, only successful renderer work advances cursor,
 all publication points recheck context/trust, terminal input uncertainty fences
 before resolution, and exact Detach/Stop use a current page control request.
 Its independent Sol review found no P0/P1/P2 and final exact head completed
-20/20 CI. A real DOM terminal surface, attachment/page lifecycle hook, browser
-controls and bilingual UI/E2E still remain; this checkpoint is not a user-facing
-terminal.
+20/20 CI. At that controller-only commit a real DOM terminal surface,
+attachment/page lifecycle hook, browser controls and bilingual UI/E2E still
+remained; this checkpoint is not by itself a user-facing terminal.
 
 #### rc6-C bounded renderer checkpoint
 
@@ -163,6 +163,19 @@ including cleanup fallback and reentrancy tests. Its final documentation head
 `48850ba` completed 20/20 CI. The next work unit owns page context,
 ticket/trust/control ports and the bilingual UI; it must not replace the renderer
 with scheduler's test no-op.
+
+#### rc6-C page-composition checkpoint（待 exact-head CI）
+
+当前分支把 concrete DOM renderer、managed-provider availability、ticket/trust/control
+ports 和 `WorkspacePage` 接到同一 attachment owner。它同时修复了 controller page
+lifecycle、input ownership、viewport-only resize、fresh control lease 与 binding-drift
+cleanup 的组合缺口；完整契约见
+[R11 rc6 browser controller](WAW_R11_RC6_BROWSER_CONTROLLER.md)。
+
+该 checkpoint 的本地 Web matrix 为 28 files、983 passed，browser controller/page hook/
+renderer/WorkspacePage 的独立 Sol review 为 P0=0、P1=0。API/relay matrix 为 117 passed，
+full E2E 为 64 passed。exact-head CI、normal merge 和 read-back 仍是未完成的 rc6 exit
+evidence；不得以本地 checkpoint 声称 rc6 或 R11 已完成。
 
 ### rc6 exit evidence
 

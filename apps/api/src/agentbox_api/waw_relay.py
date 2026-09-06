@@ -1605,11 +1605,9 @@ class ReadOnlySessionValidator:
                 workspace = session.get(AgentWorkspaceSessionRecord, claims.workspace_id)
                 project = session.get(Project, claims.project_id)
                 host = session.get(RuntimeHostInstallation, claims.runtime_host_installation_id)
-                binding = session.scalar(
-                    sql_select(ProjectBindingRecord).where(
-                        ProjectBindingRecord.project_id == claims.project_id,
-                        ProjectBindingRecord.status == ProjectBindingStatus.CURRENT.value,
-                    )
+                binding = session.get(
+                    ProjectBindingRecord,
+                    (claims.project_id, claims.binding_revision),
                 )
                 now = self.services.database.transaction_now(session)
                 if (
@@ -1644,6 +1642,7 @@ class ReadOnlySessionValidator:
                     and project.state == "ready"
                     and project.revision == binding.project_revision
                     and project.relative_path == binding.relative_key
+                    and binding.status == ProjectBindingStatus.CURRENT.value
                     and binding.binding_digest is not None
                     and host.revision == claims.runtime_host_installation_revision
                     and binding.binding_revision == claims.binding_revision

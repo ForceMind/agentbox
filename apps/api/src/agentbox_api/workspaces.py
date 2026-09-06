@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import secrets
 from collections.abc import Mapping
@@ -11,6 +12,7 @@ from typing import Annotated, Literal, Protocol, cast
 
 from agentbox_core.configuration import Environment
 from agentbox_core.errors import AgentBoxError, RecentAuthenticationRequired, RuntimeGatewayError
+from agentbox_core.models import Project
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
 from agentbox_core.waw import AgentType, StopResult
 from agentbox_core.waw_models import AgentWorkspaceSessionRecord, ProjectBindingRecord
@@ -24,6 +26,7 @@ from agentbox_core.waw_sessions import (
     WorkspaceSessionConflict,
     WorkspaceSessionNotFound,
     WorkspaceSessionNotReady,
+    WorkspaceStopNotFound,
 )
 from agentbox_core.waw_tickets import (
     AttachmentAuthority,
@@ -506,34 +509,60 @@ def _require_binding_reconciliation(
 def _require_workspace_current_binding(
     request: Request,
     row: AgentWorkspaceSessionRecord,
-) -> None:
-    """Fence new Start/Attach effects to one current Control Plane binding."""
+) -> AgentWorkspaceSessionRecord:
+    """Read one snapshot proving Project, binding and workspace currentness."""
 
     services = _services(request)
     try:
-        project = services.projects.get(row.project_id, ready=True)
-        binding = services.project_bindings.get_head(row.project_id)
-    except (AgentBoxError, ProjectBindingNotFound) as exc:
+        with services.database.transaction() as session:
+            project = session.get(Project, row.project_id)
+            workspace = session.get(AgentWorkspaceSessionRecord, row.id)
+            binding = session.get(
+                ProjectBindingRecord,
+                (row.project_id, row.binding_revision),
+            )
+            if (
+                project is None
+                or workspace is None
+                or binding is None
+                or project.archived_at is not None
+                or project.state != "ready"
+                or binding.status != ProjectBindingStatus.CURRENT.value
+                or binding.binding_digest is None
+                or binding.project_revision != project.revision
+                or binding.relative_key != project.relative_path
+                or binding.binding_revision != workspace.binding_revision
+                or binding.binding_digest != workspace.binding_digest
+                or binding.runtime_host_installation_id != workspace.runtime_host_installation_id
+                or binding.runtime_host_installation_revision
+                != workspace.runtime_host_installation_revision
+                or any(
+                    getattr(workspace, field) != getattr(row, field)
+                    for field in (
+                        "project_id",
+                        "agent_type",
+                        "generation",
+                        "binding_revision",
+                        "binding_digest",
+                        "runtime_host_installation_id",
+                        "runtime_host_installation_revision",
+                    )
+                )
+            ):
+                raise RuntimeGatewayError(
+                    code="RECONCILIATION_REQUIRED",
+                    category="conflict",
+                    message="Workspace binding is not current",
+                )
+            return workspace
+    except RuntimeGatewayError:
+        raise
+    except Exception as exc:
         raise RuntimeGatewayError(
             code="RECONCILIATION_REQUIRED",
             category="conflict",
             message="Workspace binding is not current",
         ) from exc
-    if (
-        binding.status != ProjectBindingStatus.CURRENT.value
-        or binding.binding_digest is None
-        or binding.project_revision != project.revision
-        or binding.relative_key != project.relative_path
-        or binding.binding_revision != row.binding_revision
-        or binding.binding_digest != row.binding_digest
-        or binding.runtime_host_installation_id != row.runtime_host_installation_id
-        or binding.runtime_host_installation_revision != row.runtime_host_installation_revision
-    ):
-        raise RuntimeGatewayError(
-            code="RECONCILIATION_REQUIRED",
-            category="conflict",
-            message="Workspace binding is not current",
-        )
 
 
 async def _ensure_current_project_binding(
@@ -666,20 +695,130 @@ async def _create_first_workspace_from_current_binding(
 def _fence_ambiguous_workspace_start(
     request: Request,
     row: AgentWorkspaceSessionRecord,
+    *,
+    binding_drift: bool = False,
 ) -> None:
     """Fence an unconfirmed Start only while this request still owns its row."""
 
     with suppress(WorkspaceSessionConflict, WorkspaceSessionNotFound):
         current = _services(request).workspaces.get(row.id)
-        if current.revision != row.revision or current.state != "STARTING":
+        if any(
+            getattr(current, field) != getattr(row, field)
+            for field in (
+                "project_id",
+                "agent_type",
+                "generation",
+                "binding_revision",
+                "binding_digest",
+                "runtime_host_installation_id",
+                "runtime_host_installation_revision",
+            )
+        ):
+            return
+        if current.state == "STARTING":
+            if current.revision != row.revision:
+                return
+        elif not binding_drift or current.state not in {
+            "RUNNING",
+            "NEEDS_INTERACTION",
+            "TRUST_REQUIRED",
+            "LOGIN_REQUIRED",
+        }:
             return
         _services(request).workspaces.transition(
             current.id,
             expected_revision=current.revision,
             state="UNKNOWN",
             reconciliation_state="reconciliation_required",
-            failure_code="START_UNCONFIRMED",
+            failure_code=(
+                "BINDING_RECONCILIATION_REQUIRED" if binding_drift else "START_UNCONFIRMED"
+            ),
         )
+
+
+async def _compensate_started_workspace_binding_drift(
+    request: Request,
+    row: AgentWorkspaceSessionRecord,
+    coordinator: _WAWLifecycleRequester,
+) -> None:
+    """Persist and execute exact Stop after a post-Start binding drift.
+
+    A valid Runtime Start response means the process may already exist.  The
+    binding drift therefore first fences the Control Plane row and then owns a
+    generation/binding/host-bound Stop operation.  Only a validated positive
+    Stop acknowledgement reaches STOPPED; any failure remains durable
+    reconciliation evidence.  ``shield`` prevents caller cancellation from
+    cancelling the already-ledgered cleanup request.
+    """
+
+    _fence_ambiguous_workspace_start(request, row, binding_drift=True)
+    services = _services(request)
+    try:
+        current = services.workspaces.get(row.id)
+        if any(
+            getattr(current, field) != getattr(row, field)
+            for field in (
+                "project_id",
+                "agent_type",
+                "generation",
+                "binding_revision",
+                "binding_digest",
+                "runtime_host_installation_id",
+                "runtime_host_installation_revision",
+            )
+        ):
+            return
+        if current.state in {"STOPPING", "STOPPED"}:
+            return
+        operation = services.workspaces.begin_stop(
+            current.id,
+            expected_revision=current.revision,
+        )
+    except (WorkspaceSessionConflict, WorkspaceSessionNotFound):
+        # Another exact lifecycle owner won the row. Its durable state remains
+        # the source of truth; this request must not borrow or replace it.
+        return
+
+    async def complete() -> None:
+        result = StopResult.RECONCILIATION_REQUIRED
+        failure_code: str | None = "BINDING_STOP_UNCONFIRMED"
+        try:
+            runtime = await coordinator.request_lifecycle(
+                "workspace.workspace.stop",
+                _lifecycle_payload(
+                    current,
+                    request,
+                    action="workspace.workspace.stop",
+                ),
+            )
+            _validate_lifecycle_response_identity(runtime, current)
+            if runtime.get("state") == "STOPPED":
+                result = StopResult.STOPPED
+                failure_code = None
+            else:
+                result = StopResult.TIMEOUT
+                failure_code = "BINDING_STOP_UNCONFIRMED"
+        except BaseException:
+            # The operation is already durable. A malformed, failed or
+            # cancelled Runtime response cannot be reported as a clean Stop.
+            result = StopResult.RECONCILIATION_REQUIRED
+            failure_code = "BINDING_STOP_UNCONFIRMED"
+        try:
+            services.workspaces.complete_stop(
+                operation.id,
+                result=result,
+                failure_code=failure_code,
+            )
+        except (
+            WorkspaceSessionConflict,
+            WorkspaceSessionNotFound,
+            WorkspaceStopNotFound,
+        ):
+            # Preserve the pending/unknown durable record if another owner
+            # changed the exact tuple while cleanup was in flight.
+            return
+
+    await asyncio.shield(complete())
 
 
 async def _record_runtime_executable_evidence(
@@ -730,6 +869,7 @@ async def _record_runtime_executable_evidence(
             "RUNTIME_INSTALLATION_MISMATCH",
             "WAW executable evidence identity is stale",
         )
+    row = _require_workspace_current_binding(request, row)
     try:
         return _services(request).workspaces.record_executable_evidence(
             row.id,
@@ -1010,7 +1150,15 @@ async def start_workspace(
             category="conflict",
             message="Workspace identity changed",
         )
-    _require_workspace_current_binding(request, row)
+    acquired_revision = row.revision
+    acquired_state = row.state
+    row = _require_workspace_current_binding(request, row)
+    if row.revision != acquired_revision or row.state != acquired_state:
+        raise RuntimeGatewayError(
+            code="WORKSPACE_START_IN_PROGRESS",
+            category="conflict",
+            message="Workspace changed while Start was acquired",
+        )
     _authorize_workspace(request, authenticated, row)
     try:
         _bound_attestation, bound_runtime_epoch = _bound_workspace_runtime_identity(
@@ -1020,12 +1168,20 @@ async def start_workspace(
         raise _runtime_error(exc) from exc
     if row.state == "RUNNING":
         _require_current_executable_evidence(request, row, coordinator)
+        current = _require_workspace_current_binding(request, row)
+        if current.revision != row.revision or current.state != "RUNNING":
+            raise RuntimeGatewayError(
+                code="WORKSPACE_START_IN_PROGRESS",
+                category="conflict",
+                message="Workspace changed while Start was confirmed",
+            )
+        row = current
         response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
         return WorkspaceStartResponse(
             request_id=_request_id(request),
             workspace_id=row.id,
             project_id=row.project_id,
-            agent_type=row.agent_type,
+            agent_type=cast(Literal["claude", "codex"], row.agent_type),
             state=row.state,
             generation=str(row.generation),
         )
@@ -1070,10 +1226,22 @@ async def start_workspace(
             message="Invalid Runtime state",
         )
     try:
-        _require_workspace_current_binding(request, row)
+        row = _require_workspace_current_binding(request, row)
     except RuntimeGatewayError:
-        _fence_ambiguous_workspace_start(request, row)
+        await _compensate_started_workspace_binding_drift(request, row, coordinator)
         raise
+    if row.state not in {
+        "STARTING",
+        "RUNNING",
+        "NEEDS_INTERACTION",
+        "TRUST_REQUIRED",
+        "LOGIN_REQUIRED",
+    }:
+        raise RuntimeGatewayError(
+            code="WORKSPACE_START_IN_PROGRESS",
+            category="conflict",
+            message="Workspace changed while Runtime Start was confirmed",
+        )
     try:
         if not _services(request).workspaces.executable_evidence_is_current(
             row,
@@ -1086,6 +1254,9 @@ async def start_workspace(
                 expected_runtime_epoch=bound_runtime_epoch,
             )
             expected_revision = row.revision
+    except RuntimeGatewayError:
+        await _compensate_started_workspace_binding_drift(request, row, coordinator)
+        raise
     except WAWControlClientError as exc:
         with suppress(Exception):
             _services(request).workspaces.transition(
@@ -1097,9 +1268,9 @@ async def start_workspace(
             )
         raise _runtime_error(exc) from exc
     try:
-        _require_workspace_current_binding(request, row)
+        row = _require_workspace_current_binding(request, row)
     except RuntimeGatewayError:
-        _fence_ambiguous_workspace_start(request, row)
+        await _compensate_started_workspace_binding_drift(request, row, coordinator)
         raise
     if row.state in {"RUNNING", "NEEDS_INTERACTION", "TRUST_REQUIRED", "LOGIN_REQUIRED"}:
         # A concurrent first-use retry may have committed the same exact
@@ -1147,6 +1318,11 @@ async def start_workspace(
                 category="conflict",
                 message="Workspace revision is stale",
             ) from exc
+    try:
+        row = _require_workspace_current_binding(request, row)
+    except RuntimeGatewayError:
+        await _compensate_started_workspace_binding_drift(request, row, coordinator)
+        raise
     response.headers.update({"Cache-Control": "no-store", "Pragma": "no-cache"})
     return WorkspaceStartResponse(
         request_id=_request_id(request),
@@ -1176,9 +1352,10 @@ async def issue_attachment_ticket(
     except WorkspaceSessionNotFound as exc:
         raise HTTPException(status_code=404, detail="Workspace not found") from exc
     _authorize_workspace(request, authenticated, row)
-    _require_workspace_current_binding(request, row)
+    row = _require_workspace_current_binding(request, row)
     coordinator = _waw_coordinator(request)
     attestation, runtime_epoch = _require_current_executable_evidence(request, row, coordinator)
+    row = _require_workspace_current_binding(request, row)
     try:
         runtime = WAWRuntimeReadiness(
             runtime_host_installation_id=str(attestation["runtime_host_installation_id"]),

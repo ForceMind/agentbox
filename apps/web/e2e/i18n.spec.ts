@@ -124,7 +124,7 @@ test('selects zh-CN only for first Chinese browser language across desktop and m
       locale: 'zh-CN',
       documentLang: 'zh-CN',
       heading: '交互式工作区',
-      admission: '尚未准入',
+      admission: '信任 provider 不可用',
       projectLabel: '正式 READY Project',
       start: '启动工作区',
       notice: '启动请求已确认。进程状态与浏览器终端连接状态分别显示。',
@@ -135,13 +135,13 @@ test('selects zh-CN only for first Chinese browser language across desktop and m
       locale: 'en-US',
       documentLang: 'en',
       heading: 'Interactive workspace',
-      admission: 'Not admitted',
+      admission: 'Trust provider unavailable',
     },
     {
       locale: 'fr-FR',
       documentLang: 'en',
       heading: 'Interactive workspace',
-      admission: 'Not admitted',
+      admission: 'Trust provider unavailable',
     },
   ] as const
 

@@ -187,14 +187,18 @@ test('runs the synthetic Codex metadata lifecycle with exact stop confirmation',
   const agentSelect = page.getByLabel('AgentType', { exact: true })
   await agentSelect.selectOption('codex')
   await expect(page.getByText('Starting', { exact: true })).toBeVisible()
-  await expect(page.getByText('Not admitted')).toBeVisible()
+  await expect(
+    page.getByText('Trust provider unavailable', { exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Connect terminal' }),
   ).toBeDisabled()
 
   await page.getByRole('button', { name: 'Start workspace' }).click()
   await expect(page.getByText('Running', { exact: true })).toBeVisible()
-  await expect(page.getByText('Not admitted')).toBeVisible()
+  await expect(
+    page.getByText('Trust provider unavailable', { exact: true }),
+  ).toBeVisible()
   const startRequest = requests.find((request) =>
     request.url.endsWith('/workspaces/codex/start'),
   )

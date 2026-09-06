@@ -25,9 +25,10 @@ blocker is resolved. Do not request the same software approval again.
   `docs/WAW_R11_RC6_BINDING_REPLAY.md`. Its final `854cf87...` exact head has
   completed 20/20 CI. Controller safety commit `ea0ac84...` has an independent
   Sol PASS and 20/20 CI. Renderer commit `f4d868e...` and documentation head
-  `48850ba...` also completed 20/20 CI; implement the attachment/page lifecycle
-  hook and bilingual page composition next. The full rc6 independent review and
-  acceptance set remain due.
+  `48850ba...` also completed 20/20 CI. The local attachment/page lifecycle,
+  bilingual composition and binding-drift cleanup checkpoint now has independent
+  Sol P0=0/P1=0, 983 Web, 117 API/relay and 64 E2E tests; its exact-head CI,
+  normal merge/read-back and remaining rc6 acceptance set remain due.
 - Historical paragraphs below that say “current uncommitted” are prior rc6
   checkpoints; the top active-implementation status is authoritative.
 - rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
@@ -98,10 +99,10 @@ blocker is resolved. Do not request the same software approval again.
 - Bind/control shutdown evidence is also complete locally: pending exchange,
   detached task, retained peer or uncertain FD close prevents clean. Commit and
   exact-head verify it, then continue process lock and stream-owner composition.
-- Implement the attachment/page lifecycle hook and bilingual page composition.
-  Normal merge and exact read-back follow the complete rc6 acceptance set. After
-  rc6, proceed serially to rc7 failure injection, rc8 artifact/operations rehearsal
-  and rc9 full UI localization/visual E2E.
+- Page lifecycle hook、bounded terminal surface、browser control UI 与 binding-drift
+  cleanup 已在当前 local checkpoint 实现并通过独立复审。完成其 E2E、socket-bound relay
+  matrix、exact-head CI、normal merge 和 read-back 后，才继续 rc7 failure injection、rc8
+  artifact/operations rehearsal 与 rc9 全站 bilingual UI。
 - First integration head `e210d749...` completed 17/20 checks. Three Backend
   matrix jobs exposed one shared legacy regression: a clean non-fixed server could
   no longer restart without consuming a second epoch. The local reviewed fix

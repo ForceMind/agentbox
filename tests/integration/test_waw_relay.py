@@ -40,7 +40,7 @@ from agentbox_core.configuration import Settings
 from agentbox_core.models import AuditEvent, ControlPlaneSession, Project
 from agentbox_core.services import ControlPlaneServices
 from agentbox_core.waw import AgentType
-from agentbox_core.waw_models import RuntimeHostInstallation
+from agentbox_core.waw_models import ProjectBindingRecord, RuntimeHostInstallation
 from agentbox_core.waw_tickets import AttachmentAuthority, AuthenticatedAttachmentContext
 from agentbox_protocol.abws import FrameType as F
 from agentbox_protocol.abws import encode_frame
@@ -704,8 +704,18 @@ def test_failed_attempt_budget_bounded_without_bearer_keys() -> None:
     assert len(budget._failures) == 0
 
 
+def _drift_binding_without_workspace_fence(services: ControlPlaneServices, project_id: str) -> None:
+    """Inject a schema-valid stale head without relying on service-side workspace fencing."""
+
+    with services.database.transaction() as session:
+        binding = session.get(ProjectBindingRecord, (project_id, 1))
+        assert binding is not None and binding.status == "CURRENT"
+        binding.status = "RECONCILIATION_REQUIRED"
+
+
+@pytest.mark.parametrize("drift", ("project", "binding"))
 def test_session_validator_fences_ticket_and_publication_after_project_binding_drift(
-    services: ControlPlaneServices, settings: Settings
+    services: ControlPlaneServices, settings: Settings, drift: str
 ) -> None:
     password = "relay binding drift test password"
     services.admin.initialize("admin", password)
@@ -821,7 +831,10 @@ def test_session_validator_fences_ticket_and_publication_after_project_binding_d
     assert validator.current(claims, context)
     assert validator.publication_current(claims, context)
 
-    services.projects.mark_error(project_id, expected_revision=1)
+    if drift == "project":
+        services.projects.mark_error(project_id, expected_revision=1)
+    else:
+        _drift_binding_without_workspace_fence(services, project_id)
 
     assert not validator.current(claims, context)
     assert not validator.publication_current(claims, context)
@@ -829,7 +842,14 @@ def test_session_validator_fences_ticket_and_publication_after_project_binding_d
 
 @pytest.mark.parametrize(
     "revocation",
-    ("pre_hello_project", "active_project", "active_auth"),
+    (
+        "pre_hello_project",
+        "pre_hello_binding",
+        "active_project",
+        "active_binding_input",
+        "active_binding_publication",
+        "active_auth",
+    ),
 )
 def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
     services: ControlPlaneServices, settings: Settings, revocation: str
@@ -1015,8 +1035,12 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             )
             response = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 3)
             assert response.startswith(b"HTTP/1.1 101")
-            if revocation == "pre_hello_project":
-                services.projects.mark_error(c.project_id, expected_revision=1)
+            if revocation in {"pre_hello_project", "pre_hello_binding"}:
+                if revocation == "pre_hello_project":
+                    services.projects.mark_error(c.project_id, expected_revision=1)
+                else:
+                    _drift_binding_without_workspace_fence(services, c.project_id)
+                    assert services.workspaces.get(workspace.id).state == "RUNNING"
                 send(h.frame(F.WS_HELLO, BA, 1))
                 opcode, raw = await receive()
                 assert opcode == 8 and int.from_bytes(raw, "big") == 4403
@@ -1032,11 +1056,32 @@ def test_actual_api_upgrade_admission_and_revocation_fences_next_input(
             assert authority.active_count == 1
             if revocation == "active_project":
                 services.projects.mark_error(c.project_id, expected_revision=1)
+            elif revocation in {"active_binding_input", "active_binding_publication"}:
+                _drift_binding_without_workspace_fence(services, c.project_id)
+                assert services.workspaces.get(workspace.id).state == "RUNNING"
             else:
                 with services.database.transaction() as session:
                     stored_session = session.get(ControlPlaneSession, issued.session_id)
                     assert stored_session is not None
                     stored_session.auth_epoch += 1
+            if revocation == "active_binding_publication":
+                output = (
+                    encode_awce_header(
+                        crypto_envelope_version=1,
+                        direction_id=2,
+                        flags=0,
+                        crypto_sequence=1,
+                        stream_cursor=1,
+                        context_id=bytes.fromhex("e" * 32),
+                        ciphertext_length=17,
+                    )
+                    + b"x" * 17
+                )
+                h.runtime.incoming.put_nowait(encode_wire_frame(F.OUTPUT, RA, output, 6))
+                opcode, raw = await receive()
+                assert opcode == 8 and int.from_bytes(raw, "big") == 4403
+                assert authority.active_count == 0 and authority.record_count == 0
+                return
             envelope = (
                 encode_awce_header(
                     crypto_envelope_version=1,

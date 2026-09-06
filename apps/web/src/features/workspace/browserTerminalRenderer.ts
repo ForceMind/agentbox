@@ -51,6 +51,7 @@ export class BrowserTerminalProjectionRenderTask implements TerminalRenderTask {
   #lineIndex = 0
   #runIndex = 0
   #lastColumn = 0
+  #gapRemaining = 0
   #line: HTMLDivElement | null = null
   #cancelled = false
   #committed = false
@@ -101,18 +102,28 @@ export class BrowserTerminalProjectionRenderTask implements TerminalRenderTask {
       this.#line = line
       this.#runIndex = 0
       this.#lastColumn = 0
+      this.#gapRemaining = 0
     }
     const run = source.runs[this.#runIndex]
     if (run !== undefined) {
-      if (run.column > this.#lastColumn) {
-        this.#line.append(
-          this.#surface.ownerDocument.createTextNode(
-            ' '.repeat(run.column - this.#lastColumn),
-          ),
-        )
+      if (this.#gapRemaining === 0 && run.column > this.#lastColumn) {
+        this.#gapRemaining = run.column - this.#lastColumn
+      }
+      if (this.#gapRemaining > 0) {
+        const gap = this.#surface.ownerDocument.createElement('span')
+        gap.className = `${CLASS_PREFIX}-gap`
+        gap.textContent = ' '
+        this.#line.append(gap)
+        this.#gapRemaining -= 1
+        this.#lastColumn += 1
+        return
+      }
+      if (run.column !== this.#lastColumn) {
+        throw new Error('terminal projection gap is invalid')
       }
       const span = this.#surface.ownerDocument.createElement('span')
       applyStyle(span, run.style)
+      span.classList.add(`${CLASS_PREFIX}-cell-${run.width}`)
       // The model owns decoded plaintext only until projection release. DOM
       // textContent copies it without parsing it as markup or a URL.
       span.textContent = run.text

@@ -41,13 +41,20 @@ repository: "ForceMind/agentbox"
   gated cursor, context/trust publication checks, terminal-input uncertainty
   fence and exact control-operation lifecycle. Its controller scope has 28
   dedicated tests, an independent Sol PASS with no P0/P1/P2 and 20/20
-  exact-head CI. It does not yet create a production DOM renderer or wire a
-  terminal into `WorkspacePage`.
+  exact-head CI. That committed controller-only checkpoint did not itself create
+  a production DOM renderer or wire a terminal into `WorkspacePage`.
 - Commit `f4d868e` adds the bounded `DocumentFragment`/`textContent` terminal
   renderer with clear fallback, cancellation and reentrancy fences. Its final
   documentation head `48850bab3a7822d22114dd46b14ba4362f004f32` completed
-  20/20 CI. Renderer code still has no production page owner, ticket flow or
-  browser control UI.
+  20/20 CI. That committed renderer checkpoint still had no production page
+  owner, ticket flow or browser control UI.
+- Current branch rc6 page-composition checkpoint owns the concrete
+  `WorkspacePage` surface, managed-provider availability, lifecycle fencing,
+  fresh page-control lease, viewport-only resize, bounded input outcome and
+  Project binding drift cleanup. It has 28 Web files/983 tests, 117 API/relay
+  tests and 64 E2E tests locally, plus a final independent Sol review with
+  P0=0/P1=0, but has not completed exact-head CI and is not a verified delivery
+  snapshot.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.
@@ -742,9 +749,10 @@ PROPOSED architecture status are preserved.
   PID/session validation; Linux native passed. `2381171...` then exposed only a
   Black format failure in the new Python test, repaired by `9d078b4...`; its full
   CI completed 20/20 at `4222242...`.
-- The next rc6 order is the attachment/page lifecycle hook and bilingual
-  `WorkspacePage` composition. Normal merge/read-back follows the complete rc6
-  acceptance set; rc7–rc9 and the R12 real-host boundary remain unchanged.
+- The current local rc6 order is to finish E2E/socket-bound validation, commit
+  the attachment/page lifecycle and binding-drift cleanup checkpoint, obtain
+  exact-head CI, then normal merge/read-back. rc7–rc9 and the R12 real-host
+  boundary remain unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
   Backend Python quality jobs failed on the same preserved non-fixed server
   restart contract. The reviewed follow-up restores restart only after a clean,

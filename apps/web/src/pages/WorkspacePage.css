@@ -49,6 +49,208 @@
   font: inherit;
 }
 
+.workspace-terminal-frame {
+  position: relative;
+  height: clamp(14rem, 46vh, 42rem);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: #10151c;
+}
+
+.workspace-terminal-surface {
+  --waw-terminal-cell-width: 8px;
+  --waw-terminal-cell-height: 20px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: calc(var(--waw-terminal-cell-width, 8px) * 2);
+  overflow: auto;
+  color: #f5f7fa;
+  color-scheme: dark;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: calc(var(--waw-terminal-cell-width) * 1.5);
+  line-height: var(--waw-terminal-cell-height);
+  white-space: pre;
+}
+
+.workspace-terminal-frame > .workspace-terminal-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border: 0;
+  border-radius: inherit;
+  text-align: center;
+  pointer-events: none;
+}
+
+.waw-terminal-line {
+  min-height: var(--waw-terminal-cell-height);
+}
+
+.waw-terminal-run {
+  display: inline-block;
+  overflow: clip;
+  white-space: pre;
+}
+
+.waw-terminal-cell-1,
+.waw-terminal-gap {
+  inline-size: var(--waw-terminal-cell-width);
+}
+
+.waw-terminal-cell-2 {
+  inline-size: calc(var(--waw-terminal-cell-width) * 2);
+}
+
+.waw-terminal-gap {
+  display: inline-block;
+  overflow: clip;
+  white-space: pre;
+}
+
+.waw-terminal-bold {
+  font-weight: 700;
+}
+.waw-terminal-dim {
+  opacity: 0.72;
+}
+.waw-terminal-italic {
+  font-style: italic;
+}
+.waw-terminal-underline {
+  text-decoration: underline;
+}
+.waw-terminal-inverse {
+  filter: invert(1);
+}
+.waw-terminal-fg-black {
+  color: #9aa5b4;
+}
+.waw-terminal-fg-red {
+  color: #ef6b73;
+}
+.waw-terminal-fg-green {
+  color: #77c88d;
+}
+.waw-terminal-fg-yellow {
+  color: #e8c66d;
+}
+.waw-terminal-fg-blue {
+  color: #78a7f5;
+}
+.waw-terminal-fg-magenta {
+  color: #c98ce6;
+}
+.waw-terminal-fg-cyan {
+  color: #70c7ce;
+}
+.waw-terminal-fg-white {
+  color: #f5f7fa;
+}
+.waw-terminal-fg-bright-black {
+  color: #8c96a3;
+}
+.waw-terminal-fg-bright-red {
+  color: #ff8b92;
+}
+.waw-terminal-fg-bright-green {
+  color: #9ee7ae;
+}
+.waw-terminal-fg-bright-yellow {
+  color: #ffe08b;
+}
+.waw-terminal-fg-bright-blue {
+  color: #a7c7ff;
+}
+.waw-terminal-fg-bright-magenta {
+  color: #e3b4ff;
+}
+.waw-terminal-fg-bright-cyan {
+  color: #a5edf2;
+}
+.waw-terminal-fg-bright-white {
+  color: #fff;
+}
+.waw-terminal-bg-black {
+  background-color: #202833;
+}
+.waw-terminal-bg-red {
+  background-color: #7b3038;
+}
+.waw-terminal-bg-green {
+  background-color: #315d40;
+}
+.waw-terminal-bg-yellow {
+  background-color: #715d27;
+}
+.waw-terminal-bg-blue {
+  background-color: #36548a;
+}
+.waw-terminal-bg-magenta {
+  background-color: #6e4784;
+}
+.waw-terminal-bg-cyan {
+  background-color: #285e65;
+}
+.waw-terminal-bg-white {
+  background-color: #b8c0cc;
+}
+.waw-terminal-bg-bright-black {
+  background-color: #596574;
+}
+.waw-terminal-bg-bright-red {
+  background-color: #9b414a;
+}
+.waw-terminal-bg-bright-green {
+  background-color: #437a55;
+}
+.waw-terminal-bg-bright-yellow {
+  background-color: #94762e;
+}
+.waw-terminal-bg-bright-blue {
+  background-color: #486cac;
+}
+.waw-terminal-bg-bright-magenta {
+  background-color: #81589a;
+}
+.waw-terminal-bg-bright-cyan {
+  background-color: #347782;
+}
+.waw-terminal-bg-bright-white {
+  background-color: #e8edf3;
+}
+
+.workspace-connection-state {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+}
+
+.workspace-terminal-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
+
+.workspace-terminal-input input {
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.workspace-terminal-input input {
+  flex: 1 1 16rem;
+}
+
 .workspace-selection-card,
 section[aria-labelledby='workspace-status'] {
   margin-bottom: 1rem;

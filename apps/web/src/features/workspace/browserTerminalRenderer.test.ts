@@ -198,6 +198,35 @@ describe('BrowserTerminalAttachment', () => {
     expect(element.textContent).toContain('X'.repeat(64))
   })
 
+  it('uses closed fixed-cell classes for sparse gaps and wide model cells', () => {
+    const element = surface()
+    const task = new BrowserTerminalProjectionRenderTask(
+      element,
+      {
+        lines: [
+          {
+            row: 0,
+            runs: [
+              {
+                column: 3,
+                width: 2,
+                text: '界',
+                style: STYLE,
+              },
+            ],
+          },
+        ],
+      } as unknown as TerminalProjection,
+      1,
+      () => true,
+    )
+
+    expect(task.run(() => 0, 100)).toBe(true)
+    expect(element.querySelectorAll('.waw-terminal-gap')).toHaveLength(3)
+    expect(element.querySelector('.waw-terminal-cell-2')).not.toBeNull()
+    expect(element.querySelector('[style]')).toBeNull()
+  })
+
   it('makes a cancelled queued render inert before it can commit DOM', async () => {
     const element = surface()
     const attachment = new BrowserTerminalAttachment(element, vi.fn())

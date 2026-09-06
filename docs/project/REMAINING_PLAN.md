@@ -47,14 +47,16 @@ a typed Project binding and exact Runtime executable evidence. Its first CI head
 the verifier released its Project descriptor. Repair `3ba85cb...` retains a
 bounded descriptor per verified key; its `bbdd67c...` exact head completed 20/20
 checks. Later native READY timing failure is fixed in `af4d43e...` and native CI
-passed; format repair `9d078b4...` completed in `4222242...` 20/20 CI. Independent
-review and browser page composition are still pending. Commit `9c12ab3...`
+passed; format repair `9d078b4...` completed in `4222242...` 20/20 CI. The local
+page composition and independent review checkpoint is now complete but awaits
+its own exact-head CI. Commit `9c12ab3...`
 implements startup/restart binding replay and inventory finalization, with 346
 targeted passes and two environment skips locally; final exact head `854cf87...`
 completed 20/20 CI.
 Controller safety commit `ea0ac84...` also completed independent Sol review and
 20/20 CI; renderer `f4d868e...` / `48850ba...` also completed 20/20 CI. The page
-composition remains pending.
+composition has 983 Web, 117 API/relay and 64 E2E local passes; merge evidence
+remains pending.
 See [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md).
 
 ## Verified baseline and reachable behavior
@@ -77,8 +79,9 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 
 入口事实：Runtime encrypted server 与 API opaque relay 已由 R7/R8 交付，R9
 交付 browser trust/terminal core，R10 fixed process candidate 本地完成；
-`WorkspacePage.tsx` 尚未将连接/重连/断开接入完整 controller。因此现有 core
-仍不等于用户可访问的真实终端，R11 才完成软件组合。
+`WorkspacePage.tsx` 当前已把连接/重连/断开接入完整 controller，并把 provider unavailable
+保持为无 ticket 的关闭状态；其本地 Web/独立审查 checkpoint 已完成，仍待 exact-head CI、
+merge/read-back 与 rc6 其余 exit evidence。因此它不是 R11 或真实终端资格完成声明。
 
 ## Confirmed issue and unresolved observations
 
@@ -112,7 +115,7 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
 | R10 fixed interactive process | 已完成 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | PR #79 final head `0d9e7c7...` 经20/20 CI、正常合并`341a69bf...`、精确回读、六组post-main和Dependency Graph SUCCESS。真实 vendor/host 证据仍属 R12 |
-| R11 software integration | 进行中 | 全链路 controller、故障注入、E2E、artifact、操作文档与全页面双语 | R4–R10；API public anchor、同一Runtime peer/pidfd与durable epoch 已在 rc6 组合；redraw `f37f92d9...` 与 `WAWRuntimeApplication` `628e9c00...` 均完成20/20 exact-head CI。`708acd8...` 的 first-use CI 暴露 inode reuse，`3ba85cb...`/`bbdd67c...` 已由20/20修复验证，`af4d43e...`/`9d078b4...` 的 native/format follow-up 也已由 `4222242...` 20/20验证。`9c12ab3...` replay、`ea0ac84...` controller safety 及 `f4d868e...` bounded renderer 已分别由独立审查和 20/20 CI验证；browser 页面接线、完整 rc6 独立审查和其余验收仍待完成。production main、real key/provider和host仍关闭。无持久payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
+| R11 software integration | 进行中 | 全链路 controller、故障注入、E2E、artifact、操作文档与全页面双语 | R4–R10；API public anchor、同一Runtime peer/pidfd与durable epoch 已在 rc6 组合；redraw `f37f92d9...` 与 `WAWRuntimeApplication` `628e9c00...` 均完成20/20 exact-head CI。`708acd8...` 的 first-use CI 暴露 inode reuse，`3ba85cb...`/`bbdd67c...` 已由20/20修复验证，`af4d43e...`/`9d078b4...` 的 native/format follow-up 也已由 `4222242...` 20/20验证。`9c12ab3...` replay、`ea0ac84...` controller safety 及 `f4d868e...` bounded renderer 已分别由独立审查和 20/20 CI验证；本地 page composition、binding-drift Stop、117 API/relay 与64 E2E验证及独立复审已补齐，仍待其 exact CI、merge/read-back 和完整 rc6 exit evidence。production main、real key/provider和host仍关闭。无持久payload/key，覆盖audit/commit/queue/exit/revoke/cancel矩阵、CI和独立审查 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
 API singleton 的当前未提交基础已实现 `AttachmentAuthority.begin_shutdown()`：

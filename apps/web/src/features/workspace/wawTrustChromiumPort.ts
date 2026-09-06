@@ -385,6 +385,11 @@ function browserRuntime(): ChromeRuntime | null {
   return chromeValue?.runtime?.connect ? chromeValue.runtime : null
 }
 
+/** Reads only public browser enrollment availability; it never opens a port. */
+export function managedChromiumTrustProviderAvailable(): boolean {
+  return browserRuntime() !== null && WAW_TRUST_EXTENSION_ID !== null
+}
+
 /** Production remains unavailable until a signed client enrollment supplies the ID. */
 export function createManagedChromiumTrustProvider(): WAWTrustProviderPort | null {
   const runtime = browserRuntime()
