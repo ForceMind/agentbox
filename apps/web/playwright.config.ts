@@ -17,9 +17,10 @@ export default defineConfig({
   use: {
     baseURL,
     // Pair Codes and Phase 6 pane-output canaries are rendered in the DOM.
-    // Retained screenshots or traces could become secret-bearing artifacts.
+    // Retained screenshots, traces or video could become secret-bearing artifacts.
     screenshot: 'off',
     trace: 'off',
+    video: 'off',
   },
   projects: [
     {

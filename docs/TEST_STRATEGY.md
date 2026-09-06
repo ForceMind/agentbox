@@ -7,6 +7,27 @@ Tests must prove that AgentBox remains a constrained control plane, not merely t
 Sections explicitly labelled implemented record executed coverage; all other
 sections remain release-gate designs and are not claims of passing tests.
 
+## R11 rc9 local candidate coverage
+
+The rc9 candidate locally verifies typed `zh-CN`/English catalog parity,
+`navigator.languages[0]`-only document locale selection, code-only API error
+localization and route/state rendering. Tests assert that server/API prose is
+not a fallback and that identifiers, protocol fields, enum values, error codes
+and Audit actions remain technical English. The Workspace harness is test-only,
+uses a distinct origin and is excluded from the production bundle. Terminal E2E
+uses non-sensitive fixtures and disables trace, video and screenshots.
+
+The Workspace browser matrix covers loading, unregistered, direct-route
+not-found, Runtime identity mismatch, reconciliation-required, unavailable
+managed provider and the complete managed lifecycle/dialog in both locales at
+1280×800 and 390×844. The runner rebuilds production `dist` then rejects any
+test-only harness marker before serving the normal preview. An overflow failure
+reports only bounded element tag/class/geometry metadata, never terminal or
+user text, so cross-platform layout diagnosis does not retain sensitive output.
+
+This local evidence is not exact-head CI, merge or post-main evidence. rc9
+delivery remains pending normal CI, merge read-back and post-main verification.
+
 ## Phase 3 implemented coverage
 
 The Phase 3 suite now uses temporary SQLite files, Alembic upgrade/downgrade,
@@ -314,11 +335,13 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 ## Release quality gates
 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
-## Release-candidate and rc8 coverage
+## Release-candidate workflow and historic rc8 coverage
 
-The independent Release Candidate workflow derives `0.3.0rc8` from the core
-version source, builds the production Web once, and creates two release bundles
-from separate staging directories at the same commit and
+The independent Release Candidate workflow derives the current candidate version
+from the core version source (currently `0.3.0rc9`). Its historic rc8 artifact
+rehearsal derives `0.3.0rc8` only when the candidate is rc8. The workflow builds
+the production Web once, and creates two release bundles from separate staging
+directories at the same commit and
 `SOURCE_DATE_EPOCH`. Exact tarball, manifest, SBOM, and checksum equality is the
 same-runner reproducibility gate; cross-runner byte equality remains unverified.
 

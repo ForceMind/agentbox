@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError } from '../../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { useProjects } from '../projects/useProjects'
 import { useWorkspaceActions } from './useWorkspaceActions'
@@ -21,35 +20,25 @@ import type {
   WorkspaceNotice,
   WorkspacePageModel,
   WorkspaceStopTarget,
+  WorkspaceApiErrorView,
 } from './workspaceView'
+import { workspaceApiError, workspaceError } from './workspaceView'
 
 type Lookup = {
   key: string
   status: WorkspacePageModel['lookup']
   row: WorkspaceMetadata | null
-  error: ApiError | null
+  error: WorkspaceApiErrorView | null
 }
 
 type ScopedActionError = {
-  readonly error: ApiError
+  readonly error: WorkspaceApiErrorView
   readonly scope: string
   readonly selectionKey: string
   readonly attachmentKey: string | null
 }
-function failure(error: unknown): ApiError {
-  if (error instanceof ApiError) return error
-  if (error instanceof WAWBrowserControllerError) {
-    return new ApiError({
-      code: error.code,
-      message: 'Browser terminal operation could not be completed',
-      status: 0,
-    })
-  }
-  return new ApiError({
-    code: 'WAW_METADATA_INVALID',
-    message: '工作区信息不完整，请刷新后重试',
-    status: 0,
-  })
+function failure(error: unknown): WorkspaceApiErrorView {
+  return workspaceApiError(error, 'WAW_METADATA_INVALID')
 }
 
 /** Metadata/lifecycle workflow only. No ticket acquisition or admission is inferred. */
@@ -160,11 +149,7 @@ export function useWorkspaceController(options: {
           key,
           status: 'error',
           row: null,
-          error: new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: 'URL 中的 AgentType 无效，请重新选择项目与 AgentType',
-            status: 400,
-          }),
+          error: workspaceError('WAW_INVALID_AGENT'),
         })
         return
       }
@@ -178,11 +163,7 @@ export function useWorkspaceController(options: {
             key,
             status: 'error',
             row: null,
-            error: new ApiError({
-              code: 'WORKSPACE_NOT_FOUND',
-              message: '工作区标识无效',
-              status: 404,
-            }),
+            error: workspaceError('WORKSPACE_NOT_FOUND'),
           })
           return
         }
@@ -198,11 +179,7 @@ export function useWorkspaceController(options: {
           )
           if (!current()) return
           if (!readyIds.includes(row.project_id))
-            throw new ApiError({
-              code: 'PROJECT_NOT_READY',
-              message: '该工作区所属项目不可用',
-              status: 409,
-            })
+            throw workspaceError('PROJECT_NOT_READY')
           select(row.project_id, row.agent_type)
         } catch (error) {
           if (current())
@@ -224,11 +201,7 @@ export function useWorkspaceController(options: {
           key,
           status: 'error',
           row: null,
-          error: new ApiError({
-            code: 'PROJECT_NOT_READY',
-            message: '请选择可用的正式项目',
-            status: 409,
-          }),
+          error: workspaceError('PROJECT_NOT_READY'),
         })
         return
       }
@@ -333,7 +306,7 @@ export function useWorkspaceController(options: {
     selectionEpoch.current === epoch &&
     authScopeRef.current === scope &&
     attachmentIdentityRef.current === attachmentKey
-  const setScopedActionError = (error: ApiError) => {
+  const setScopedActionError = (error: WorkspaceApiErrorView) => {
     setActionError({
       error,
       scope: authScope,
@@ -345,7 +318,7 @@ export function useWorkspaceController(options: {
     actionError !== null &&
     actionError.scope === authScope &&
     actionError.selectionKey === key &&
-    actionError.attachmentKey === attachment.identity?.key
+    actionError.attachmentKey === (attachment.identity?.key ?? null)
       ? actionError.error
       : null
   const validCurrentRow = () =>
@@ -396,11 +369,7 @@ export function useWorkspaceController(options: {
       const response = await actions.start(row.project_id, row.agent_type)
       if (!actionStillCurrent(epoch, scope, attachmentKey)) return
       if (!response || response.workspace_id !== row.id)
-        throw new ApiError({
-          code: 'PROJECT_IDENTITY_CHANGED',
-          message: '工作区身份已变化，请刷新',
-          status: 409,
-        })
+        throw workspaceError('PROJECT_IDENTITY_CHANGED')
       setNotice('START_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
@@ -466,12 +435,7 @@ export function useWorkspaceController(options: {
         ).state
       }
       if (!actionStillCurrent(epoch, scope, attachmentKey)) return
-      if (state !== 'STOPPED')
-        throw new ApiError({
-          code: 'RECONCILIATION_REQUIRED',
-          message: '停止尚未确认，请刷新状态',
-          status: 409,
-        })
+      if (state !== 'STOPPED') throw workspaceError('RECONCILIATION_REQUIRED')
       setConfirmation(null)
       setNotice('STOP_CONFIRMED')
       setReload((value) => value + 1)
@@ -563,7 +527,7 @@ export function useWorkspaceController(options: {
   return {
     projects: choices,
     projectsLoading: projects.loading,
-    projectError: projects.error ? '项目列表读取失败，请刷新后重试。' : null,
+    projectError: projects.error,
     selectedProjectId: selection.projectId,
     agentType: selection.agentType,
     lookup: currentLookup.status,
@@ -574,11 +538,7 @@ export function useWorkspaceController(options: {
     runtimeView: runtimeMismatch
       ? {
           status: 'error',
-          error: new ApiError({
-            code: 'PROJECT_IDENTITY_CHANGED',
-            message: 'Runtime 代次已变化，请刷新工作区',
-            status: 409,
-          }),
+          error: workspaceError('PROJECT_IDENTITY_CHANGED'),
         }
       : status.view,
     attachment: attachment.view,

@@ -108,6 +108,22 @@ textarea {
   margin-top: 1rem;
 }
 
+/* External identifiers and user names may be longer than a card or grid cell. */
+.project-grid > *,
+.project-detail-grid > *,
+.runtime-card-heading > *,
+.runtime-details,
+.runtime-details div,
+.runtime-details dd,
+.inline-form > * {
+  min-width: 0;
+}
+
+.runtime-card bdi {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 @media (min-width: 720px) {
   .project-forms,
   .project-grid,
@@ -302,6 +318,12 @@ button:disabled {
 .login-error details {
   margin-top: 0.35rem;
 }
+.login-error summary {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  cursor: pointer;
+}
 .login-error code {
   display: block;
   max-width: 100%;
@@ -489,6 +511,18 @@ button:disabled {
   border-color: #5d512e;
   background: #251f10;
   color: var(--warning);
+}
+
+@media (max-width: 639px) {
+  .runtime-card-heading .status-badge {
+    min-width: 0;
+    max-width: 50%;
+    justify-content: flex-end;
+    overflow-wrap: anywhere;
+    text-align: end;
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 
 .metric-grid,

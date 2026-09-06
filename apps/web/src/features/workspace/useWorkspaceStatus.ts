@@ -1,27 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
-import { ApiError } from '../../lib/api'
 import {
   parseWorkspaceRuntimeStatusResponse,
   WorkspaceRuntimeStatusResponse,
 } from '../../lib/contracts'
+import { workspaceApiError, type WorkspaceApiErrorView } from './workspaceView'
 
 export type WorkspaceStatusView =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'loaded'; response: WorkspaceRuntimeStatusResponse }
-  | { status: 'error'; error: ApiError }
-
-function normalizedError(error: unknown): ApiError {
-  return error instanceof ApiError
-    ? error
-    : new ApiError({
-        code: 'WAW_STATUS_UNAVAILABLE',
-        message: 'Workspace status is unavailable',
-        status: 0,
-      })
-}
+  | { status: 'error'; error: WorkspaceApiErrorView }
 
 /** Fetches bounded metadata only; it never creates an admission or terminal transport. */
 export function useWorkspaceStatus(
@@ -48,12 +38,11 @@ export function useWorkspaceStatus(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/status`,
         {
           timeoutMs: 10_000,
-          validate: (value) => {
-            const result = parseWorkspaceRuntimeStatusResponse(value)
-            if (result.data.workspace_id !== workspaceId)
-              throw new Error('Workspace status identity mismatch')
-            return result
-          },
+          // The controller compares all Runtime identity fields against the
+          // selected metadata row and emits the specific fenced identity error.
+          // Keeping the parsed response here lets that higher-level guard
+          // distinguish an identity mismatch from transport unavailability.
+          validate: parseWorkspaceRuntimeStatusResponse,
         },
       )
       if (requestGeneration.current === generation) {
@@ -63,7 +52,10 @@ export function useWorkspaceStatus(
       if (requestGeneration.current === generation) {
         setSnapshot({
           scope,
-          view: { status: 'error', error: normalizedError(error) },
+          view: {
+            status: 'error',
+            error: workspaceApiError(error, 'WAW_STATUS_UNAVAILABLE'),
+          },
         })
       }
     }

@@ -2,29 +2,38 @@ import { FileText } from 'lucide-react'
 
 import { PlannedPage } from '../components/PlannedPage'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { currentLocale, type Locale } from '../i18n'
+import { logsCatalog } from '../i18n/catalogs/logs'
 
-export function LogsPage() {
-  usePageTitle('Logs')
+export function LogsPage({ locale = currentLocale() }: { locale?: Locale }) {
+  const catalog = logsCatalog.catalogs[locale]
+  usePageTitle(catalog['logs.title']({}))
   return (
     <PlannedPage
       capabilities={[
         {
-          title: 'AgentBox logs',
-          description: 'Bounded control-plane diagnostics.',
+          title: catalog['logs.agentboxTitle']({}),
+          description: catalog['logs.agentboxDescription']({}),
         },
         {
-          title: 'Runtime logs',
-          description: 'Redacted runtime-specific output.',
+          title: catalog['logs.runtimeTitle']({}),
+          description: catalog['logs.runtimeDescription']({}),
         },
         {
-          title: 'Audit events',
-          description: 'Security-relevant action history.',
+          title: catalog['logs.auditTitle']({}),
+          description: catalog['logs.auditDescription']({}),
         },
       ]}
-      description="Application and host log viewing is not available yet."
-      eyebrow="Observability"
+      copy={{
+        capabilitiesAria: catalog['logs.capabilitiesAria']({}),
+        notImplemented: catalog['logs.notImplemented']({}),
+        planned: catalog['logs.planned']({}),
+        previewOnly: catalog['logs.previewOnly']({}),
+      }}
+      description={catalog['logs.description']({})}
+      eyebrow={catalog['logs.eyebrow']({})}
       icon={FileText}
-      title="Logs"
+      title={catalog['logs.title']({})}
     />
   )
 }

@@ -129,7 +129,7 @@ test('selects zh-CN only for first Chinese browser language across desktop and m
       start: '启动工作区',
       notice: '启动请求已确认。进程状态与浏览器终端连接状态分别显示。',
       workspaceNav: '工作区',
-      health: '控制平面: 正常',
+      health: '控制平面：正常',
     },
     {
       locale: 'en-US',

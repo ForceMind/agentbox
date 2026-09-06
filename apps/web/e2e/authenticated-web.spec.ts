@@ -261,7 +261,8 @@ test('tracks successful and failed clone Jobs without fake percentages', async (
   await page.getByLabel('Project name (optional)').fill('Failed Clone E2E')
   await page.getByRole('button', { name: 'Clone' }).click()
   await expect(page.getByText(/job_clone_failure · failed/i)).toBeVisible()
-  await expect(page.getByText(/Git authentication is required/i)).toBeVisible()
+  await expect(page.getByText('GIT_AUTH_REQUIRED')).toBeVisible()
+  await expect(page.getByText(/Git authentication is required/i)).toHaveCount(0)
 })
 
 test('shows structured Git state without dangerous actions', async ({
@@ -474,7 +475,9 @@ test('returns the same public login error for incorrect credentials', async ({
   await page.getByLabel('Username').fill(username)
   await page.getByLabel('Password').fill('an incorrect test passphrase')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('alert')).toContainText('Invalid credentials')
+  await expect(page.getByRole('alert')).toContainText(
+    'The username or password is incorrect.',
+  )
   await expect(page).toHaveURL(/\/login$/)
 })
 
@@ -482,7 +485,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc8', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc9', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
@@ -675,8 +678,14 @@ test('fails closed on Pair errors without rendering raw Runtime output', async (
   await page.getByRole('button', { name: 'Pair New Device' }).click()
   await page.getByRole('button', { name: 'Generate Code' }).click()
   await expect(page.getByRole('alert')).toContainText(
-    'Codex did not return a recognizable pairing code',
+    'Codex did not return a recognizable pair code.',
   )
+  await expect(
+    page.getByText('Codex did not return a recognizable pairing code'),
+  ).toHaveCount(0)
+  await expect(
+    page.getByText('CODEX_PAIR_OUTPUT_UNRECOGNIZED'),
+  ).toHaveAttribute('dir', 'ltr')
   await expect(page.getByText(pairCode)).toHaveCount(0)
 })
 

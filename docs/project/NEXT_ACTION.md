@@ -16,25 +16,33 @@ blocker is resolved. Do not request the same software approval again.
   parents 87f5bce and 710ceef, and all six post-main workflows succeeded. This
   remains software-only evidence; no tag, release, host activation or R12
   qualification occurred.
-- Start rc9 from the verified main baseline. Keep the existing immutable locale
-  rule: read only navigator.languages[0], choose zh-CN only for primary zh, and
-  otherwise English. Migrate every locale-manifest route/state to typed catalog
-  copy, remove direct server-prose rendering, validate all four
-  language-and-viewport combinations, and preserve technical values without
-  translating or humanizing external protocol strings.
-- Before advancing the unified version to rc9, make the fixed rc8
-  predecessor/artifact operations jobs version-aware but fail-closed: rc8 must
-  execute them successfully, rc9 must skip exactly those historical jobs while
-  current-candidate artifact checks and release-gate remain successful. Do not
-  edit the fixed rc8 contract or treat skipped/failing/unknown versions as pass.
+- Run rc9 exact-head CI from the verified main baseline, then normal merge,
+  merge read-back and post-main verification. The local candidate already
+  completed the route/state migration, code-only render fence and bilingual
+  visual matrix; preserve the immutable locale rule (only
+  `navigator.languages[0]`, `zh` primary → `zh-CN`, otherwise English) and
+  preserve technical values without translating or humanizing external protocol
+  strings. Do not claim delivery before all four GitHub stages complete.
+- The fixed rc8 predecessor/artifact operations jobs are now version-aware and
+  fail-closed: rc8 executes them successfully, while rc9 skips exactly those
+  historical jobs and still requires current-candidate artifact checks and
+  `release-gate` success. Preserve the fixed rc8 contract; skipped, failing or
+  unknown results must never count as pass.
+
+- rc9 version text is Python `0.3.0rc9`, npm `0.3.0-rc.9`, MV3 `0.3.0.9`.
+  Production output must retain no test bypass; the distinct-origin Workspace
+  harness is E2E-only and sensitive artifacts remain disabled. R12 stays
+  independent, unstarted and host-gated.
 
 - Historical rc6 work-unit and checkpoint evidence remains in the execution
   plan and current-state record. The rc8 and rc9 actions above are the current
   authoritative sequence.
 
-- rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
-  shared catalog, error-code mapper and route-state manifest are available for
-  page owners. The page migration and bilingual visual matrix remain pending.
+- Historical rc9 foundation commit `184781c...` completed 20/20 exact-head
+  checks. Its shared catalog, error-code mapper and route-state manifest are
+  now incorporated in the current candidate; the page migration and bilingual
+  visual matrix are no longer a pending implementation item. Current local
+  evidence is recorded in `CURRENT_STATE.md`; exact-head CI remains required.
 
 - Preserve merged R0/R1/R2/R9.1/R10.1 and the verified delivery record, PRs #67–#72.
 - R3/R4 are merged as PR #73 after 19/19 checks and exact read-back.

@@ -1,9 +1,24 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
+
+const currentLocaleMock = vi.hoisted(() => vi.fn((): 'en' | 'zh-CN' => 'en'))
+
+vi.mock('../i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../i18n')>()
+  return { ...actual, currentLocale: currentLocaleMock }
+})
+
 import { WorkspacePage } from './WorkspacePage'
 import { MAX_INPUT_BYTES } from '../features/workspace/wawCryptoProfile'
 import type { WorkspacePageModel } from '../features/workspace/workspaceView'
-import { ApiError } from '../lib/api'
 
 // jsdom has no native dialog implementation; browser E2E verifies modal focus.
 const originalShowModal = HTMLDialogElement.prototype.showModal
@@ -32,6 +47,7 @@ afterAll(() => {
     value: originalClose,
   })
 })
+beforeEach(() => currentLocaleMock.mockReturnValue('en'))
 
 const project = {
   id: 'prj_0123456789abcdef0123456789abcdef',
@@ -100,7 +116,7 @@ describe('WorkspacePage', () => {
         { id: 'prj_abcdef0123456789abcdef0123456789', displayName: 'Other' },
       ],
     })
-    render(<WorkspacePage model={m} locale="en" />)
+    render(<WorkspacePage model={m} />)
     fireEvent.change(screen.getByLabelText('Formal READY Project'), {
       target: { value: 'prj_abcdef0123456789abcdef0123456789' },
     })
@@ -118,9 +134,15 @@ describe('WorkspacePage', () => {
     ['loading', { projectsLoading: true, projects: [] }],
     ['empty', { projects: [] }],
     ['unregistered', { lookup: 'unregistered' as const }],
-    ['error', { lookup: 'error' as const, projectError: 'Project 加载失败' }],
+    [
+      'error',
+      {
+        lookup: 'error' as const,
+        projectError: { code: 'CONTROL_PLANE_UNAVAILABLE' },
+      },
+    ],
   ])('renders %s state', (_name, overrides) => {
-    render(<WorkspacePage model={model(overrides)} locale="en" />)
+    render(<WorkspacePage model={model(overrides)} />)
     expect(
       screen.getByRole('heading', { name: 'Interactive workspace' }),
     ).toBeInTheDocument()
@@ -133,7 +155,7 @@ describe('WorkspacePage', () => {
       canStop: false,
       lifecycleState: 'STARTING',
     })
-    render(<WorkspacePage model={m} locale="en" />)
+    render(<WorkspacePage model={m} />)
     expect(
       screen.getByRole('button', { name: 'Start workspace' }),
     ).toBeDisabled()
@@ -161,7 +183,7 @@ describe('WorkspacePage', () => {
       canInput: true,
       canResize: true,
     })
-    render(<WorkspacePage model={m} locale="en" />)
+    render(<WorkspacePage model={m} />)
     expect(m.setTerminalSurface).toHaveBeenCalledWith(expect.any(HTMLElement))
     expect(m.setTerminalViewport).toHaveBeenCalledWith(expect.any(HTMLElement))
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
@@ -249,7 +271,7 @@ describe('WorkspacePage', () => {
       },
       canInput: false,
     })
-    render(<WorkspacePage model={m} locale="en" />)
+    render(<WorkspacePage model={m} />)
     expect(screen.getByRole('textbox', { name: 'Send input' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Send input' })).toBeDisabled()
     expect(screen.getByText('Sending terminal input…')).toBeVisible()
@@ -257,7 +279,7 @@ describe('WorkspacePage', () => {
 
   it('does not enable Connect when the trust provider is unavailable', () => {
     const m = model()
-    render(<WorkspacePage model={m} locale="en" />)
+    render(<WorkspacePage model={m} />)
     expect(screen.getByText('Trust provider unavailable')).toBeVisible()
     expect(
       screen.getByRole('button', { name: 'Connect terminal' }),
@@ -282,7 +304,7 @@ describe('WorkspacePage', () => {
         surfaceReady: true,
       },
     })
-    const { rerender } = render(<WorkspacePage model={m} locale="en" />)
+    const { rerender } = render(<WorkspacePage model={m} />)
     expect(
       screen.getByText('Input was rate limited and was not sent. Try again.'),
     ).toBeVisible()
@@ -291,9 +313,9 @@ describe('WorkspacePage', () => {
       screen.queryByText('sensitive terminal input'),
     ).not.toBeInTheDocument()
 
+    currentLocaleMock.mockReturnValue('zh-CN')
     rerender(
       <WorkspacePage
-        locale="zh-CN"
         model={{
           ...m,
           attachment: {
@@ -312,29 +334,23 @@ describe('WorkspacePage', () => {
   it('keeps Runtime status failure code visible beside lifecycle actions', () => {
     render(
       <WorkspacePage
-        locale="en"
         model={model({
           runtimeView: {
             status: 'error',
-            error: new ApiError({
-              code: 'WAW_STATUS_UNAVAILABLE',
-              message: 'hidden server text',
-              status: 503,
-            }),
+            error: { code: 'WAW_STATUS_UNAVAILABLE' },
           },
         })}
       />,
     )
     expect(
-      screen.getByText('Workspace information is temporarily unavailable.'),
+      screen.getByText('Workspace status is temporarily unavailable.'),
     ).toBeVisible()
     expect(screen.getByText('WAW_STATUS_UNAVAILABLE')).toBeVisible()
-    expect(screen.queryByText('hidden server text')).not.toBeInTheDocument()
   })
 
   it('requires exact Stop confirmation and supports cancel', async () => {
     const m = model()
-    const { rerender } = render(<WorkspacePage model={m} locale="en" />)
+    const { rerender } = render(<WorkspacePage model={m} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Stop workspace' }))
     expect(m.requestStop).toHaveBeenCalledTimes(1)
@@ -342,23 +358,24 @@ describe('WorkspacePage', () => {
       workspaceId: 'aws_0123456789abcdef0123456789abcdef',
       generation: '7',
     }
-    rerender(<WorkspacePage model={{ ...m, stopTarget }} locale="en" />)
+    rerender(<WorkspacePage model={{ ...m, stopTarget }} />)
     expect(screen.getByRole('dialog')).toHaveTextContent(
       'aws_0123456789abcdef0123456789abcdef',
     )
     expect(screen.getByRole('dialog')).toHaveTextContent('Generation: 7')
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(m.cancelStop).toHaveBeenCalledTimes(1)
-    rerender(<WorkspacePage model={m} locale="en" />)
+    rerender(<WorkspacePage model={m} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Stop workspace' }))
-    rerender(<WorkspacePage model={{ ...m, stopTarget }} locale="en" />)
+    rerender(<WorkspacePage model={{ ...m, stopTarget }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Confirm stop' }))
     expect(m.confirmStop).toHaveBeenCalledTimes(1)
   })
 
   it('renders Chinese copy only for the zh-CN locale', () => {
-    render(<WorkspacePage model={model()} locale="zh-CN" />)
+    currentLocaleMock.mockReturnValue('zh-CN')
+    render(<WorkspacePage model={model()} />)
     expect(screen.getByRole('heading', { name: '交互式工作区' })).toBeVisible()
     expect(screen.getByText('信任 provider 不可用')).toBeVisible()
     expect(screen.getByRole('button', { name: '启动工作区' })).toBeDisabled()
@@ -367,15 +384,13 @@ describe('WorkspacePage', () => {
   it('keeps technical values English and does not expose control-plane text', () => {
     render(
       <WorkspacePage
-        locale="en"
         model={model({
-          projectError: '项目列表含有不可信细节',
+          projectError: {
+            code: 'CONTROL_PLANE_UNAVAILABLE',
+            requestId: 'req_workspace_project',
+          },
           notice: 'START_CONFIRMED',
-          error: new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: '不可信的控制面错误消息',
-            status: 400,
-          }),
+          error: { code: 'WAW_INVALID_AGENT' },
         })}
       />,
     )
@@ -390,8 +405,6 @@ describe('WorkspacePage', () => {
         'The start request was confirmed. Process status and browser terminal connection status are shown separately.',
       ),
     ).toBeVisible()
-    expect(screen.queryByText('项目列表含有不可信细节')).not.toBeInTheDocument()
-    expect(screen.queryByText('不可信的控制面错误消息')).not.toBeInTheDocument()
     const code = screen.getByText('WAW_INVALID_AGENT')
     expect(code).toHaveAttribute('lang', 'en')
     expect(code).toHaveAttribute('dir', 'ltr')
@@ -399,11 +412,9 @@ describe('WorkspacePage', () => {
   })
 
   it('maps recovery to a localized paused-operation notice', () => {
+    currentLocaleMock.mockReturnValue('zh-CN')
     render(
-      <WorkspacePage
-        locale="zh-CN"
-        model={model({ notice: 'RUNTIME_RECOVERY_REQUIRED' })}
-      />,
+      <WorkspacePage model={model({ notice: 'RUNTIME_RECOVERY_REQUIRED' })} />,
     )
 
     expect(

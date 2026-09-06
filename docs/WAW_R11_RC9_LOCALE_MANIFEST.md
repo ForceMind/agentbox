@@ -1,7 +1,9 @@
 # R11 rc9 route-state localization manifest
 
-Status: implementation inventory for rc9. It defines page-migration scope; it
-does not claim that those pages already use the catalog or that R11 is complete.
+Status: local implementation and verification candidate for rc9. The page
+migration is complete in the candidate; exact-head CI, normal merge, merge
+read-back and post-main verification remain pending. It does not claim R11 or
+R12 is complete.
 
 ## Fixed locale and rendering rules
 
@@ -20,6 +22,15 @@ does not claim that those pages already use the catalog or that R11 is complete.
   `translate=no`). Protocol values, enum identifiers, AgentType, Audit actions,
   branches, filenames, repositories, Git/GitHub, tmux, Claude and Codex remain
   English. Project and user names remain user Unicode data.
+- The test-only Workspace harness is served on a distinct origin and is excluded
+  from the production bundle. E2E terminal scenarios disable trace, video and
+  screenshots so sensitive artifacts cannot be retained.
+- Workspace browser coverage includes loading, unregistered, direct-route
+  success/not-found/Runtime-identity-mismatch/reconciliation-required, provider
+  unavailable and the managed lifecycle/dialog. Each is exercised through the
+  normal preview or the distinct test-only harness in both locales and both
+  representative viewports. Held production routes are disposed in failure
+  cleanup, and the runner rejects harness markers from `dist`.
 
 ## Route and state inventory
 

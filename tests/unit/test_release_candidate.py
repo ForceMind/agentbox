@@ -4,6 +4,9 @@ import hashlib
 import importlib.util
 import io
 import json
+import shlex
+import subprocess
+import sys
 import tarfile
 import tomllib
 import zipfile
@@ -11,6 +14,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import yaml  # type: ignore[import-untyped]
 from agentbox_installer import artifact as artifact_module
 from agentbox_installer.artifact import (
     ArtifactError,
@@ -48,6 +52,35 @@ def _release_artifact_checker(root: Path) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+_RELEASE_GATE_JOBS = (
+    "packaging-toolchain",
+    "release-candidate",
+    "rc8-artifact-import",
+    "rc8-synthetic-source",
+    "rc8-predecessor-artifact",
+    "rc8-artifact-operations",
+)
+
+
+def _run_release_gate(
+    root: Path, candidate_version: str, results: dict[str, str], *, omit: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, str(root / "scripts/check-release-gate-version.py")]
+    if omit != "candidate-version":
+        command.extend(("--candidate-version", candidate_version))
+    for job in _RELEASE_GATE_JOBS:
+        if omit != job:
+            command.extend((f"--{job}-result", results[job]))
+    return subprocess.run(
+        command,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
 
 
 def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
@@ -142,8 +175,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc8"
-    assert npm_version("0.3.0rc8") == "0.3.0-rc.8"
+    assert verify_version_consistency(root) == "0.3.0rc9"
+    assert npm_version("0.3.0rc9") == "0.3.0-rc.9"
 
 
 def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> None:
@@ -375,16 +408,6 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
     assert "--requirement requirements-release-packaging.lock" in workflow
     assert "python -m pip_audit --local --skip-editable" in workflow
-    assert (
-        "needs: [packaging-toolchain, release-candidate, rc8-predecessor-artifact, "
-        "rc8-artifact-import, rc8-synthetic-source, rc8-artifact-operations]" in workflow
-    )
-    assert 'test "$PACKAGING_TOOLCHAIN_RESULT" = "success"' in workflow
-    assert 'test "$RELEASE_CANDIDATE_RESULT" = "success"' in workflow
-    assert 'test "$RC8_PREDECESSOR_ARTIFACT_RESULT" = "success"' in workflow
-    assert 'test "$RC8_ARTIFACT_IMPORT_RESULT" = "success"' in workflow
-    assert 'test "$RC8_SYNTHETIC_SOURCE_RESULT" = "success"' in workflow
-    assert 'test "$RC8_ARTIFACT_OPERATIONS_RESULT" = "success"' in workflow
     assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
     assert "rc8-predecessor-artifact" in workflow
     assert "rc8-artifact-operations" in workflow
@@ -400,6 +423,151 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     assert "--skip-native" in workflow
     assert "args+=(--run-synthetic)" in workflow
     assert 'AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"' in workflow
+
+
+def test_release_gate_workflow_has_exact_dependencies_conditions_and_result_mapping() -> None:
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
+    )
+    jobs = workflow["jobs"]
+    packaging = jobs["packaging-toolchain"]
+    candidate = jobs["release-candidate"]
+    predecessor = jobs["rc8-predecessor-artifact"]
+    artifact_import = jobs["rc8-artifact-import"]
+    synthetic_source = jobs["rc8-synthetic-source"]
+    operations = jobs["rc8-artifact-operations"]
+    gate = jobs["release-gate"]
+
+    assert packaging["name"] == "packaging-toolchain (${{ matrix.python-version }})"
+    assert "needs" not in packaging and "if" not in packaging
+    assert candidate["name"] == "release-candidate"
+    assert "needs" not in candidate and "if" not in candidate
+    assert candidate["outputs"] == {"release-version": "${{ steps.release-version.outputs.value }}"}
+    assert predecessor["name"] == "rc8-predecessor-artifact"
+    assert predecessor["needs"] == "release-candidate"
+    assert predecessor["if"] == (
+        "${{ needs.release-candidate.result == 'success' && "
+        "needs.release-candidate.outputs.release-version == '0.3.0rc8' }}"
+    )
+    assert artifact_import["name"] == "rc8-artifact-import (${{ matrix.python-version }})"
+    assert artifact_import["needs"] == "release-candidate"
+    assert "if" not in artifact_import
+    assert synthetic_source["name"] == "rc8-synthetic-source"
+    assert "needs" not in synthetic_source and "if" not in synthetic_source
+    assert operations["name"] == "rc8-artifact-operations"
+    assert operations["needs"] == ["release-candidate", "rc8-predecessor-artifact"]
+    assert operations["if"] == (
+        "${{ always() && needs.release-candidate.result == 'success' && "
+        "needs.release-candidate.outputs.release-version == '0.3.0rc8' && "
+        "needs.rc8-predecessor-artifact.result == 'success' }}"
+    )
+    assert gate["name"] == "release-gate"
+    assert gate["needs"] == [
+        "packaging-toolchain",
+        "release-candidate",
+        "rc8-predecessor-artifact",
+        "rc8-artifact-import",
+        "rc8-synthetic-source",
+        "rc8-artifact-operations",
+    ]
+    assert gate["if"] == "${{ always() }}"
+
+    gate_step = next(
+        step
+        for step in gate["steps"]
+        if step.get("name") == "Require every release-candidate verification"
+    )
+    assert gate_step["env"] == {
+        "RELEASE_VERSION": "${{ needs.release-candidate.outputs.release-version }}",
+        "PACKAGING_TOOLCHAIN_RESULT": "${{ needs.packaging-toolchain.result }}",
+        "RELEASE_CANDIDATE_RESULT": "${{ needs.release-candidate.result }}",
+        "RC8_PREDECESSOR_ARTIFACT_RESULT": "${{ needs.rc8-predecessor-artifact.result }}",
+        "RC8_ARTIFACT_IMPORT_RESULT": "${{ needs.rc8-artifact-import.result }}",
+        "RC8_SYNTHETIC_SOURCE_RESULT": "${{ needs.rc8-synthetic-source.result }}",
+        "RC8_ARTIFACT_OPERATIONS_RESULT": "${{ needs.rc8-artifact-operations.result }}",
+    }
+    command = shlex.split(gate_step["run"].replace("\\\n", " "))
+    assert command[:2] == ["python", "scripts/check-release-gate-version.py"]
+    assert dict(zip(command[2::2], command[3::2], strict=True)) == {
+        "--candidate-version": "$RELEASE_VERSION",
+        "--packaging-toolchain-result": "$PACKAGING_TOOLCHAIN_RESULT",
+        "--release-candidate-result": "$RELEASE_CANDIDATE_RESULT",
+        "--rc8-artifact-import-result": "$RC8_ARTIFACT_IMPORT_RESULT",
+        "--rc8-synthetic-source-result": "$RC8_SYNTHETIC_SOURCE_RESULT",
+        "--rc8-predecessor-artifact-result": "$RC8_PREDECESSOR_ARTIFACT_RESULT",
+        "--rc8-artifact-operations-result": "$RC8_ARTIFACT_OPERATIONS_RESULT",
+    }
+
+
+def _successful_gate_results(candidate_version: str) -> dict[str, str]:
+    historical_result = "success" if candidate_version == "0.3.0rc8" else "skipped"
+    return {
+        "packaging-toolchain": "success",
+        "release-candidate": "success",
+        "rc8-artifact-import": "success",
+        "rc8-synthetic-source": "success",
+        "rc8-predecessor-artifact": historical_result,
+        "rc8-artifact-operations": historical_result,
+    }
+
+
+@pytest.mark.parametrize("candidate_version", ["0.3.0rc8", "0.3.0rc9"])
+def test_release_gate_cli_accepts_exact_version_contract(candidate_version: str) -> None:
+    root = Path(__file__).resolve().parents[2]
+
+    completed = _run_release_gate(
+        root, candidate_version, _successful_gate_results(candidate_version)
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout == f"Release candidate gate passed for {candidate_version}.\n"
+    assert completed.stderr == ""
+
+
+@pytest.mark.parametrize("missing", ["candidate-version", *_RELEASE_GATE_JOBS])
+def test_release_gate_cli_rejects_missing_argument(missing: str) -> None:
+    root = Path(__file__).resolve().parents[2]
+    completed = _run_release_gate(
+        root, "0.3.0rc8", _successful_gate_results("0.3.0rc8"), omit=missing
+    )
+
+    assert completed.returncode == 2
+    assert completed.stdout == ""
+    assert "the following arguments are required:" in completed.stderr
+
+
+@pytest.mark.parametrize("candidate_version", ["", "0.3.0rc7", "0.3.0rc10"])
+def test_release_gate_cli_rejects_unknown_version(candidate_version: str) -> None:
+    root = Path(__file__).resolve().parents[2]
+    completed = _run_release_gate(root, candidate_version, _successful_gate_results("0.3.0rc8"))
+
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert completed.stderr == "release candidate gate failed\n"
+
+
+@pytest.mark.parametrize(
+    ("candidate_version", "job", "unexpected_result"),
+    [
+        ("0.3.0rc9", "rc8-predecessor-artifact", "success"),
+        ("0.3.0rc8", "rc8-artifact-import", "skipped"),
+        ("0.3.0rc8", "packaging-toolchain", "failure"),
+        ("0.3.0rc8", "release-candidate", "cancelled"),
+    ],
+)
+def test_release_gate_cli_rejects_unexpected_job_result(
+    candidate_version: str, job: str, unexpected_result: str
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    results = _successful_gate_results(candidate_version)
+    results[job] = unexpected_result
+
+    completed = _run_release_gate(root, candidate_version, results)
+
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert completed.stderr == "release candidate gate failed\n"
 
 
 def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Path) -> None:

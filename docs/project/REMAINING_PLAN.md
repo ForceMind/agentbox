@@ -229,7 +229,17 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 
 R0–R9 已完成适用实现、独立审查、exact-head CI、正常合并和精确回读。
 R10/rc5 已由 PR #79 完成 exact-head CI、正常合并、精确回读及 post-main。
-现在执行 R11/rc6–rc9：组合 browser/API/Runtime controller，覆盖
-failure/cancel/revoke/restart/cleanup 矩阵，完成 artifact/operation rehearsal，
-并把全站用户界面迁移为按浏览器首选语言选择的 `zh-CN`/English。R12 继续保留
-真实 CRX/trustd/vendor CLI/PTY/isolation/reboot 与生产支持边界的授权目标证据。
+R11 rc6–rc8 已完成软件交付。rc9 bilingual UI 的本地实现与验证候选已完成，
+但 exact-head CI、正常合并、merge read-back 和 post-main 验证尚未完成。其固定
+合同是 typed `zh-CN`/English catalogs、仅 `navigator.languages[0]` 的文档 locale、
+API code-only localization、排除 server prose、技术值保持 English、production
+bundle 无测试旁路、distinct-origin test-only harness 和敏感 E2E artifacts 禁用。
+版本文本为 Python `0.3.0rc9` / npm `0.3.0-rc.9` / MV3 `0.3.0.9`；rc8 历史 jobs
+在 rc8 必须 success、rc9 必须 exact skipped，其他 release-gate checks 必须 success。
+R12 仍为独立 host-gated 未开始工作。
+
+此前 R11/rc6–rc8 完成 browser/API/Runtime controller 组合、
+failure/cancel/revoke/restart/cleanup 矩阵和 artifact/operation rehearsal。全站
+浏览器首选语言的 `zh-CN`/English UI 迁移属于当前 rc9 candidate，而不是 rc6–rc8
+交付。R12 继续保留真实 CRX/trustd/vendor CLI/PTY/isolation/reboot 与生产支持边界
+的授权目标证据。

@@ -5,17 +5,23 @@ export {
   MESSAGE_KEYS,
   messageDomain,
   messageCatalogs,
+  parameterFreeMessage,
   type MessageCatalog,
   type MessageDomain,
+  type MessageArguments,
   type MessageKey,
   type MessageParameters,
+  type ParameterFreeMessageKey,
 } from './catalog'
+export { KNOWN_API_ERROR_CODES, type KnownApiErrorCode } from './apiErrorCodes'
 export {
   isKnownApiErrorCode,
   KNOWN_API_ERROR_MESSAGES,
   localizeApiError,
+  localizeApiErrorData,
   technicalApiIdentifier,
-  type KnownApiErrorCode,
+  type ApiErrorDisplaySource,
+  type LocalizedApiErrorData,
 } from './errors'
 export {
   formatDate,
@@ -33,4 +39,9 @@ export {
   type Locale,
   type LocaleDocument,
 } from './locale'
+export type {
+  CatalogFor,
+  CatalogShard,
+  NoMessageParameters,
+} from './catalogs/types'
 export { technicalValue, type TechnicalValue } from './technical'

@@ -16,11 +16,19 @@
   margin: 0;
   border: 0;
 }
-.workspace-stop-dialog code,
-.workspace-state-line code {
+.workspace-stop-dialog bdi,
+.workspace-state-line bdi,
+.workspace-current-selection bdi {
   overflow-wrap: anywhere;
 }
+.workspace-selection-card .project-forms,
+.workspace-selection-card .project-forms label {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .workspace-selection-card .project-forms select {
+  width: 100%;
   min-width: 0;
   min-height: 44px;
   max-width: 100%;
@@ -32,12 +40,32 @@
   font: inherit;
 }
 
+.workspace-selection-card select:focus,
+section[aria-labelledby='workspace-status'] button:focus,
+section[aria-labelledby='workspace-terminal'] button:focus,
+section[aria-labelledby='workspace-terminal'] input:focus,
+.workspace-stop-dialog button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .workspace-state-line {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   min-width: 0;
 }
+
+.workspace-current-selection {
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.workspace-current-selection dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .workspace-terminal-placeholder {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -249,6 +277,8 @@
 
 .workspace-terminal-input input {
   flex: 1 1 16rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .workspace-selection-card,
@@ -259,15 +289,15 @@ section[aria-labelledby='workspace-status'] {
 section[aria-labelledby='workspace-terminal'] .primary-button {
   padding: 0.65rem 0.95rem;
 }
-.workspace-selection-card .error-panel code,
-section[aria-labelledby='workspace-status'] .error-panel code {
+.workspace-selection-card .error-panel bdi,
+section[aria-labelledby='workspace-status'] .error-panel bdi {
   overflow-wrap: anywhere;
 }
 
 section[aria-labelledby='workspace-status'] .error-panel {
   display: block;
 }
-section[aria-labelledby='workspace-status'] .error-panel code {
+section[aria-labelledby='workspace-status'] .error-panel bdi {
   display: block;
   margin-top: 0.35rem;
 }

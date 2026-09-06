@@ -3,10 +3,17 @@ import { Link } from 'react-router-dom'
 
 import { useAuth } from '../features/auth/AuthContext'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { currentLocale, type Locale } from '../i18n'
+import { notFoundCatalog } from '../i18n/catalogs/notFound'
 
-export function NotFoundPage() {
+export function NotFoundPage({
+  locale = currentLocale(),
+}: {
+  locale?: Locale
+}) {
   const { status } = useAuth()
-  usePageTitle('Page not found')
+  const catalog = notFoundCatalog.catalogs[locale]
+  usePageTitle(catalog['notFound.title']({}))
   const destination = status === 'authenticated' ? '/dashboard' : '/login'
 
   return (
@@ -15,14 +22,13 @@ export function NotFoundPage() {
         <ShieldCheck />
       </div>
       <p className="eyebrow">404</p>
-      <h1>That route is not part of AgentBox.</h1>
-      <p>
-        The address may be outdated, or the capability may belong to a later
-        phase.
-      </p>
+      <h1>{catalog['notFound.heading']({})}</h1>
+      <p>{catalog['notFound.description']({})}</p>
       <Link className="secondary-button" to={destination}>
         <ArrowLeft aria-hidden="true" size={18} />
-        {status === 'authenticated' ? 'Back to Dashboard' : 'Back to sign in'}
+        {status === 'authenticated'
+          ? catalog['notFound.backToDashboard']({})
+          : catalog['notFound.backToSignIn']({})}
       </Link>
     </main>
   )

@@ -325,6 +325,30 @@ Each route/state combination is tracked in the rc9 locale manifest and tested at
 1280x800 and 390x844 for language, overflow, focus and 44px controls. Terminal
 tests use non-sensitive data and disable trace, video and screenshots.
 
+### rc9 candidate status
+
+The typed-catalog, code-only API localization and full route/state migration are
+implemented and locally verified on the current candidate. Locale selection uses
+only `navigator.languages[0]`, fixing `zh-CN` for primary `zh` and English for
+all other/missing/malformed first preferences. User-facing prose comes from the
+typed catalogs; unsafe API/server prose is excluded. Identifiers, protocol
+fields, enum values, error codes and Audit actions remain technical English.
+
+The test-only Workspace harness has a distinct origin and is excluded from the
+production bundle. Sensitive E2E trace/video/screenshot artifacts are disabled.
+Version mapping is Python `0.3.0rc9`, npm `0.3.0-rc.9`, MV3 `0.3.0.9`.
+`release-gate` requires ordinary release checks to succeed; historical rc8
+artifact jobs are `success` only for rc8 and must be exact `skipped` for rc9.
+
+This is not delivery evidence: exact-head CI, normal merge, merge read-back and
+post-main verification remain pending.
+
+Local verification for this candidate passed Web unit (44 files / 1088 tests),
+direct Chromium E2E (92 passed / 28 designed matrix skips), release-candidate
+unit (45 tests), browser-extension unit (3 files / 6 tests), documentation-link
+and workflow-pin checks. The E2E runner builds then scans `dist` fail-closed for
+the test-only Workspace harness markers before serving the production preview.
+
 ## R12 boundary
 
 R12 starts only with a concrete, authorized Linux target. Its evidence covers

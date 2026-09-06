@@ -12,6 +12,7 @@ export interface LocaleDocument {
 }
 
 let initializedLocale: Locale | null = null
+const documentLocales = new WeakMap<LocaleDocument, Locale>()
 
 function canonicalPrimaryLanguage(value: unknown): string | null {
   if (typeof value !== 'string') return null
@@ -44,7 +45,9 @@ export function applyDocumentLocale(
   documentLike: LocaleDocument,
   source: BrowserLocaleSource,
 ): Locale {
-  const locale = detectLocale(source)
+  // A document can acquire a locale once; later helper calls only reapply it.
+  const locale = documentLocales.get(documentLike) ?? detectLocale(source)
+  documentLocales.set(documentLike, locale)
   documentLike.documentElement.lang = locale
   return locale
 }
@@ -56,9 +59,12 @@ export function applyDocumentLocale(
 export function initializeI18n(): Locale {
   if (initializedLocale !== null) return initializedLocale
 
-  initializedLocale = detectBrowserLocale()
+  const source: BrowserLocaleSource =
+    typeof navigator === 'undefined' ? {} : { languages: navigator.languages }
   if (typeof document !== 'undefined') {
-    document.documentElement.lang = initializedLocale
+    initializedLocale = applyDocumentLocale(document, source)
+  } else {
+    initializedLocale = detectLocale(source)
   }
   return initializedLocale
 }
