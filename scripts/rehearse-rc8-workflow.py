@@ -55,6 +55,17 @@ _OPERATIONS_FAILURE_SURFACES = frozenset(
         "binding_store",
     }
 )
+_OPERATIONS_FAILURE_REASONS = (
+    ("artifact verification failed", "artifact"),
+    ("environment proof", "environment_proof"),
+    ("pip report", "pip_report"),
+    ("installed wheel payload", "installed_wheel"),
+    ("site customization", "site_customization"),
+    ("virtual environment", "virtual_environment"),
+    ("module origin", "module_origin"),
+    ("wheel data scheme", "wheel_data"),
+    ("wheel verification", "wheel_verification"),
+)
 
 
 class WorkflowError(RuntimeError):
@@ -689,11 +700,14 @@ def _operations_failure_surface(_stdout: Path, stderr: Path) -> str:
     except (OSError, UnicodeError):
         return "upgrade-rollback"
     match = re.fullmatch(
-        r"release operations rehearsal failed: ([a-z][a-z0-9_]{0,63}): [A-Za-z0-9 _.:-]{1,300}\n",
+        r"release operations rehearsal failed: ([a-z][a-z0-9_]{0,63}): ([A-Za-z0-9 _.:-]{1,300})\n",
         text,
     )
     if match is None or match.group(1) not in _OPERATIONS_FAILURE_SURFACES:
         return "upgrade-rollback"
+    for phrase, category in _OPERATIONS_FAILURE_REASONS:
+        if phrase in match.group(2):
+            return f"upgrade-rollback.{match.group(1)}.{category}"
     return f"upgrade-rollback.{match.group(1)}"
 
 

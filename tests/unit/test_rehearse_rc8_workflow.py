@@ -168,7 +168,10 @@ def test_operations_failure_summary_is_strict_and_never_echoes_stderr(tmp_path: 
         "release operations rehearsal failed: candidate: installed wheel payload digest mismatch\n",
         encoding="utf-8",
     )
-    assert module._operations_failure_surface(stdout, stderr) == "upgrade-rollback.candidate"
+    assert (
+        module._operations_failure_surface(stdout, stderr)
+        == "upgrade-rollback.candidate.installed_wheel"
+    )
 
     stderr.write_text(
         "release operations rehearsal failed: payload: rc8-secret-canary\n",
