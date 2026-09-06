@@ -21,27 +21,25 @@ Each increment updates the visible version from one source, documentation and
 GitHub; it must complete exact-head CI, normal merge and exact read-back before
 the next increment is marked complete.
 
-## rc6 current implementation checkpoint
+## rc6 delivered checkpoint
 
-PR #80 head `b2f0e0b...` is the verified remote baseline with 20/20 exact-head
-checks `SUCCESS`. The current controller composition is uncommitted and therefore
-is not represented by that baseline: it wires one `WAWPeerAuthority`, typed
-control-dispatch peer context, authority-backed encrypted-stream verification,
-lifecycle transfer/revocation and Runtime server shutdown ownership.
+PR #80 final head `e1c10bfbf6dce251cafd24ef931b30e26d3001c0` completed all 20
+exact-head checks. It merged normally as
+`8480bf81450a175b993d86d4255d462922dac87f`, with the candidate head as second
+parent. It delivers the single API/Runtime/browser controller composition,
+Project binding replay/currentness, browser page lifecycle, bounded renderer,
+exact Stop path and the unified `0.3.0rc6` visible version source.
 
-The final local core matrix completed 216 plus 5 focused cases; the independent
-reviewer completed 244 cases with 1 Linux-only skip and 9 deselected, plus 8
-encrypted-server non-UDS cases. Twenty-eight real-UDS cases remain unverified
-because this execution environment returned `PermissionError` during socket
-setup. Ruff, Black, Linux-target mypy (256 sources), documentation links (240),
-and `git diff --check` pass. Independent Sol/xhigh review reports PASS with no
-remaining P0/P1/P2. This paragraph does not claim a commit, exact-head CI result
-or merge for the uncommitted integration.
+Local evidence was 983 Web tests, 117 API/relay tests and 64 E2E tests; the
+independent Sol review reported P0=0/P1=0. All six post-main workflows completed
+success. The first native sanitizer attempt timed out while waiting for a tmux
+pane-death test token; its retry on the identical main SHA passed. This is a
+software delivery record only: real extension/trustd, vendor CLI/PTY and host
+qualification remain R12 evidence.
 
-The remaining rc6 order is commit/push, exact-head Linux CI including real UDS,
-then the next controller slice. Normal merge and exact read-back occur only when
-the complete rc6 acceptance set is satisfied. rc7–rc9 remain serial successors,
-and R12 remains the separate real-host qualification boundary.
+rc7–rc9 remain serial successors. rc7 now starts deterministic composed failure
+injection; it may not add a production fault toggle or use a real credential/
+host as a substitute for controlled test seams.
 
 The first integration head `e210d749...` completed 17/20 checks. Its three
 Backend matrix failures were the same pre-existing non-fixed restart contract:
@@ -253,6 +251,23 @@ Every case proves: no early `CONNECTED`; no input retry; no continued key after
 ciphertext loss; no post-EXIT ACK; one ticket burn; positive cleanup before writer
 release; and no payload, key or ticket canary in SQLite sidecars, Audit/Jobs,
 logs, browser storage, reports, artifacts or retained DOM/tasks.
+
+### rc7-A candidate evidence
+
+The rc7-A candidate implements this matrix only through test-only helpers. Its
+admission, active relay, API+Runtime restart, owner shutdown, browser lifecycle
+and exact Stop tests drive the existing typed ports/controllers; no production
+fault mode, test import edge or real credential is introduced. Dynamic key,
+ticket and opaque INPUT canaries are scanned from durable Audit/Jobs, logs,
+diagnostics and SQLite/WAL/SHM. Browser tests independently prove renderer/DOM,
+Web Storage, crypto/trust and scheduler/socket cleanup.
+
+Local validation is 29 focused Python tests, 341 related Python regression tests,
+997 Web tests, Linux-target mypy across 274 sources and full Web quality gates;
+independent review reports P0=0/P1=0. Exact-head CI, normal merge and read-back
+remain required before rc7 is delivered. A synthetic diagnostic export and a Node
+test runner without a Storage authority do not replace production diagnostic or
+real-browser evidence; R12 remains the real host/product boundary.
 
 ## rc8 artifact and operations rehearsal
 

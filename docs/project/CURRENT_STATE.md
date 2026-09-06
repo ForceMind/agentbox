@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-05T22:26:11Z"
-verified_by: "codex-r11-rc6-browser-renderer-ci"
+verified_at_utc: "2026-09-06T02:17:33Z"
+verified_by: "codex-r11-rc7-local-matrix"
 repository: "ForceMind/agentbox"
 ---
 
@@ -48,13 +48,29 @@ repository: "ForceMind/agentbox"
   documentation head `48850bab3a7822d22114dd46b14ba4362f004f32` completed
   20/20 CI. That committed renderer checkpoint still had no production page
   owner, ticket flow or browser control UI.
-- Current branch rc6 page-composition checkpoint owns the concrete
+- PR #80 delivered the rc6 page-composition checkpoint: its final candidate head
+  `e1c10bfbf6dce251cafd24ef931b30e26d3001c0` completed 20/20 exact-head checks,
+  merged normally as `8480bf81450a175b993d86d4255d462922dac87f`, and completed
+  post-main read-back. The checkpoint owns the concrete
   `WorkspacePage` surface, managed-provider availability, lifecycle fencing,
   fresh page-control lease, viewport-only resize, bounded input outcome and
   Project binding drift cleanup. It has 28 Web files/983 tests, 117 API/relay
   tests and 64 E2E tests locally, plus a final independent Sol review with
-  P0=0/P1=0, but has not completed exact-head CI and is not a verified delivery
-  snapshot.
+  P0=0/P1=0. The first post-main native sanitizer run had an isolated tmux
+  `wait-for` timeout; rerunning that exact failed job on the same main SHA passed,
+  so all six post-main workflows are terminal success. It remains software
+  evidence, not R11/R12 product qualification.
+- rc7-A deterministic composed failure injection is locally verified on the
+  `codex/waw-rc7-failure-injection` candidate for PR #81. It adds test-only
+  closed checkpoints, void gates, integer-nanosecond clocks and controlled
+  partial writes; composed admission/relay/restart/shutdown/browser/Stop tests;
+  and dynamic canary scans across Audit/Jobs/logs/diagnostics/SQLite sidecars plus
+  browser DOM/storage/task owners. Focused Python is 29 passed, related Python
+  regression is 341 passed, full Web is 997 passed, Linux-target mypy covers 274
+  sources, and independent Sol review reports P0=0/P1=0. Exact-head CI, normal
+  merge and read-back are pending, so rc7, R11 and R12 are not delivered. One
+  existing local real-UDS relay test cannot bind `/tmp` under this Mac sandbox;
+  Linux CI remains required for that unrelated host capability.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.
@@ -749,10 +765,9 @@ PROPOSED architecture status are preserved.
   PID/session validation; Linux native passed. `2381171...` then exposed only a
   Black format failure in the new Python test, repaired by `9d078b4...`; its full
   CI completed 20/20 at `4222242...`.
-- The current local rc6 order is to finish E2E/socket-bound validation, commit
-  the attachment/page lifecycle and binding-drift cleanup checkpoint, obtain
-  exact-head CI, then normal merge/read-back. rc7–rc9 and the R12 real-host
-  boundary remain unchanged.
+- rc6 is delivered. The current order is rc7 deterministic composed failure
+  injection, followed by rc8 artifact/operations rehearsal and rc9 full locale
+  migration; the R12 real-host boundary remains unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
   Backend Python quality jobs failed on the same preserved non-fixed server
   restart contract. The reviewed follow-up restores restart only after a clean,
