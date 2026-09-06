@@ -252,9 +252,9 @@ ciphertext loss; no post-EXIT ACK; one ticket burn; positive cleanup before writ
 release; and no payload, key or ticket canary in SQLite sidecars, Audit/Jobs,
 logs, browser storage, reports, artifacts or retained DOM/tasks.
 
-### rc7-A candidate evidence
+### rc7-A delivery evidence
 
-The rc7-A candidate implements this matrix only through test-only helpers. Its
+PR #81 implements this matrix only through test-only helpers. Its
 admission, active relay, API+Runtime restart, owner shutdown, browser lifecycle
 and exact Stop tests drive the existing typed ports/controllers; no production
 fault mode, test import edge or real credential is introduced. Dynamic key,
@@ -262,12 +262,14 @@ ticket and opaque INPUT canaries are scanned from durable Audit/Jobs, logs,
 diagnostics and SQLite/WAL/SHM. Browser tests independently prove renderer/DOM,
 Web Storage, crypto/trust and scheduler/socket cleanup.
 
-Local validation is 29 focused Python tests, 341 related Python regression tests,
-997 Web tests, Linux-target mypy across 274 sources and full Web quality gates;
-independent review reports P0=0/P1=0. Exact-head CI, normal merge and read-back
-remain required before rc7 is delivered. A synthetic diagnostic export and a Node
-test runner without a Storage authority do not replace production diagnostic or
-real-browser evidence; R12 remains the real host/product boundary.
+Candidate `04ef0ae2b94e127cacc496e7876bd41cf203f43d` completed 20/20 exact-head
+checks, merged normally as `b0eaef2e4e54cf1aba86e7669733d0adc885c1fb`, and
+completed six successful post-main workflows. Local validation is 29 focused
+Python tests, 341 related Python regression tests, 997 Web tests, Linux-target
+mypy across 274 sources and full Web quality gates; independent review reports
+P0=0/P1=0. A synthetic diagnostic export and a Node test runner without a Storage
+authority do not replace production diagnostic or real-browser evidence; R12
+remains the real host/product boundary. rc8 is the next software slice.
 
 ## rc8 artifact and operations rehearsal
 

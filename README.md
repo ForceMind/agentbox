@@ -6,7 +6,7 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is now the **pre-release `0.3.0rc6` development candidate** for
+AgentBox source is now the **pre-release `0.3.0rc7` development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 This is not a stable-release, production-readiness, penetration-test,
@@ -271,6 +271,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Quickstart](docs/QUICKSTART.md)
 - [MVP acceptance](docs/MVP_ACCEPTANCE.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
+- [0.3.0rc7 release notes](docs/releases/0.3.0rc7.md)
 - [0.3.0rc6 release notes](docs/releases/0.3.0rc6.md)
 - [Installation](docs/INSTALLATION.md)
 - [Deployment](docs/DEPLOYMENT.md)

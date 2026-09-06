@@ -207,9 +207,9 @@ restart, shutdown, page lifecycle and Stop. Each case proves: no early
 ciphertext loss, no post-fence publication, positive cleanup before writer
 release, and no payload/key/ticket canary in persistent or diagnostic output.
 
-### rc7-A deterministic matrix candidate（本地已验证，待 exact-head CI）
+### rc7-A deterministic matrix delivery
 
-PR #81 的当前工作树只新增 test-only controls 与 composed tests，未修改任何
+PR #81 delivered the test-only controls and composed tests without changing any
 production module、环境变量、query parameter 或全局 fault switch。封闭 checkpoint、
 void-only gate、整数纳秒时钟与 partial-write controls 只能从 `tests/support` 或 Web
 test source 使用；source boundary test 也拒绝 production import edge。
@@ -223,14 +223,19 @@ renderer/crypto cleanup 与 exact Stop 的 pending Detach/Stop lifecycle fence�
 Audit、Jobs/JobEvent、captured logs、diagnostic artifact 与 SQLite/WAL/SHM；browser
 counterpart checks DOM, storage, crypto/trust and scheduler/socket cleanup.
 
-本地证据为 rc7 Python focused 29 passed、related Python regression 341 passed、Web
-full 997 passed、Linux-target mypy 274 sources、Web lint/typecheck/build/format 全部
-通过，以及独立 Sol review `P0=0/P1=0`。本 Mac 对一条既有 real-UDS relay test 的
-`/tmp` socket bind 返回 `PermissionError`；它不属于 rc7 assertion failure，仍必须由
-exact-head Linux CI 覆盖。受限 synthetic diagnostic export 与无 Storage authority 的
-Node runner 只限定各自测试的覆盖范围；它们不构成 production CLI diagnostics 或真实
-browser/host qualification。rc8 不得在 PR #81 exact-head CI、normal merge 和 read-back
-完成前开始。
+The candidate `04ef0ae2b94e127cacc496e7876bd41cf203f43d` completed all 20
+exact-head checks and merged normally as
+`b0eaef2e4e54cf1aba86e7669733d0adc885c1fb` at `2026-09-06T02:26:40Z`, with
+`8480bf8...` and `04ef0ae...` as its exact parents. All six post-main workflows
+completed success. Local evidence was rc7 Python focused 29 passed, related
+Python regression 341 passed, Web full 997 passed, Linux-target mypy 274 sources,
+Web lint/typecheck/build/format, and independent Sol review `P0=0/P1=0`.
+
+The Mac `/tmp` real-UDS bind `PermissionError`, constrained synthetic diagnostic
+export and a Node runner without a Storage authority remain local evidence
+limits; Linux CI supplies the UDS result and none replaces production diagnostics,
+real-browser or host qualification. rc8 artifact/operations rehearsal is now the
+next R11 software slice; R12 remains separate.
 
 ## rc8: artifact and operations rehearsal
 

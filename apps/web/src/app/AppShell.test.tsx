@@ -48,7 +48,7 @@ describe('AppShell', () => {
       </AuthContext.Provider>,
     )
 
-    expect(screen.getByText('0.3.0-rc.6', { exact: true })).toBeVisible()
+    expect(screen.getByText('0.3.0-rc.7', { exact: true })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(
       await screen.findByText('Logout could not be completed'),
