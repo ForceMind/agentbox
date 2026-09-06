@@ -1,6 +1,6 @@
 # WAW R11 execution plan
 
-Status: active software implementation plan, 2026-09-05.
+Status: delivered R11 rc6–rc9 software execution record, finalized 2026-09-06.
 
 This plan refines the accepted R11 controller contract. It governs software
 implementation on the current Mac and Linux CI only. It does not activate a
@@ -325,10 +325,10 @@ Each route/state combination is tracked in the rc9 locale manifest and tested at
 1280x800 and 390x844 for language, overflow, focus and 44px controls. Terminal
 tests use non-sensitive data and disable trace, video and screenshots.
 
-### rc9 candidate status
+### rc9 delivered software evidence
 
 The typed-catalog, code-only API localization and full route/state migration are
-implemented and locally verified on the current candidate. Locale selection uses
+implemented and verified. Locale selection uses
 only `navigator.languages[0]`, fixing `zh-CN` for primary `zh` and English for
 all other/missing/malformed first preferences. User-facing prose comes from the
 typed catalogs; unsafe API/server prose is excluded. Identifiers, protocol
@@ -340,8 +340,16 @@ Version mapping is Python `0.3.0rc9`, npm `0.3.0-rc.9`, MV3 `0.3.0.9`.
 `release-gate` requires ordinary release checks to succeed; historical rc8
 artifact jobs are `success` only for rc8 and must be exact `skipped` for rc9.
 
-This is not delivery evidence: exact-head CI, normal merge, merge read-back and
-post-main verification remain pending.
+PR #85 final exact head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed all
+26 checks, then merged normally at `2026-09-06T17:57:57Z` as
+`b07f944ef2c7b590e5a3f1fa50354d6f492d6c31` with parents
+`b191f4bc259cf6c4e0357afa85a9be0c41acb8ef` and
+`751d4d010f92e18780bd6d96fdb3c9ea23107464`. All post-main workflows succeeded:
+Security `34050212985`, Deployment `34050213004`, Frontend `34050212993`, E2E
+`34050212986`, Release Candidate `34050213006`, Backend `34050213380`.
+`rc8-predecessor-artifact` and `rc8-artifact-operations` were exact `skipped`;
+rc8 synthetic/import, current-candidate checks and `release-gate` succeeded.
+R11 software rc6–rc9 is delivered evidence only; R12 remains unstarted.
 
 Local verification for this candidate passed Web unit (44 files / 1088 tests),
 direct Chromium E2E (92 passed / 28 designed matrix skips), release-candidate

@@ -3,8 +3,8 @@
 Candidate: `0.3.0rc9`; planned tag: `v0.3.0-rc.9`.
 
 Completing the preparation boxes does not authorize a tag, GitHub Release, or
-stable-support claim. Publication boxes remain manual and require review after
-the rc9 PR is merged.
+stable-support claim. PR #85 has merged; publication boxes remain future manual
+work and require review before any tag or GitHub Release.
 
 ## Source and version
 
@@ -57,9 +57,8 @@ the rc9 PR is merged.
       actions remain English.
 - [ ] Test-only distinct-origin Workspace harness is absent from production build;
       sensitive E2E trace, video and screenshot artifacts are disabled.
-- [ ] Local candidate verification is recorded separately from exact-head CI,
-      normal merge, merge read-back and post-main validation; do not mark rc9
-      delivered before all four later stages complete.
+- [x] PR #85 completed 26 exact-head checks, normal merge, merge read-back and
+      all six post-main workflows. This is software delivery evidence only.
 
 ## Reproducibility and artifact contract
 

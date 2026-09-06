@@ -2,14 +2,15 @@
 
 ## Current maturity
 
-AgentBox source is the `0.3.0rc9` local development candidate, advancing from the
+AgentBox source is the `0.3.0rc9` delivered software evidence, advancing from the
 `0.3.0rc1` MVP artifact baseline. It implements authentication,
 typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
 operations, native installation, systemd deployment, staged update, and
 verified rollback for a single-server/single-administrator Linux x86_64 model.
-Its rc9 bilingual UI is locally implemented and verified as a candidate, but
-exact-head CI, normal merge, merge read-back and post-main verification are
-still pending. It is a pre-release—not a production-readiness, penetration-test, or broad
+PR #85 final head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed all 26
+exact-head checks, merged normally as `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`,
+and completed post-main verification. R11 software rc6–rc9 is delivered; R12
+remains independently unstarted and host-gated. This is a pre-release—not a production-readiness, penetration-test, or broad
 platform-support claim.
 
 R10 packages inert WAW process-policy templates and native helper source/build

@@ -1,9 +1,9 @@
 # R11 rc9 route-state localization manifest
 
-Status: local implementation and verification candidate for rc9. The page
-migration is complete in the candidate; exact-head CI, normal merge, merge
-read-back and post-main verification remain pending. It does not claim R11 or
-R12 is complete.
+Status: delivered rc9 software evidence. PR #85 completed the page migration,
+26 exact-head checks, normal merge, merge read-back and all post-main workflows.
+R11 software rc6–rc9 is delivered; R12 remains independently unstarted and
+host-gated.
 
 ## Fixed locale and rendering rules
 
