@@ -10,31 +10,23 @@ blocker is resolved. Do not request the same software approval again.
 
 ## Active implementation
 
-- rc7-A deterministic failure matrix is delivered by PR #81: candidate
-  `04ef0ae...` passed 20/20 exact-head checks, merged as `b0eaef2...`, and all six
-  post-main workflows passed. Its 29 focused Python, 341 related Python, 997 Web,
-  Linux-target mypy and independent P0=0/P1=0 evidence are software-only; R12
-  remains host/product qualification. The rc8 candidate evidence is recorded
-  below; after this documentation head completes fresh CI, review, merge and
-  read-back, proceed with rc9 full browser-selected bilingual UI.
-- rc8 remains bound to the merged 0.3.0rc7 release-record predecessor and its
-  artifact-local provenance, synthetic WAW and exact upgrade/rollback contract
-  in docs/WAW_R11_RC8_ARTIFACT_OPERATIONS.md. Do not start R12 host activation
-  or add a production fault switch.
-
-- rc8 P1 full software evidence is complete on candidate
-  c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2: all 26 exact-head checks are
-  terminal success, including separate exact rc7/rc8 artifacts, 3.11/3.12/3.13
-  artifact imports, the non-skipping 3.11 artifact synthetic flow,
-  upgrade/rollback and dynamic all-surface canary scans. The safe operation
-  receipt reports no secrets and no host qualification. This documentation
-  head must complete fresh full exact-head CI before review, normal merge and
-  exact read-back; do not begin R12 activation.
-- After rc8 merge/read-back, execute rc9 as the full browser-selected bilingual
-  migration: use only navigator.languages[0], select zh-CN only for primary zh,
-  otherwise English, localize every manifest route/state and never render
-  server-provided error prose. Validate both languages at 1280x800 and 390x844
-  before its own exact-head CI, review, merge and read-back.
+- rc8 is delivered by PR #83: documentation head
+  710ceef696757a8a1f2a9165f2312672db57bb1e completed 26 exact-head checks,
+  merged normally as 95bf65d6114008b962985f7311941499c961a7b8 with exact
+  parents 87f5bce and 710ceef, and all six post-main workflows succeeded. This
+  remains software-only evidence; no tag, release, host activation or R12
+  qualification occurred.
+- Start rc9 from the verified main baseline. Keep the existing immutable locale
+  rule: read only navigator.languages[0], choose zh-CN only for primary zh, and
+  otherwise English. Migrate every locale-manifest route/state to typed catalog
+  copy, remove direct server-prose rendering, validate all four
+  language-and-viewport combinations, and preserve technical values without
+  translating or humanizing external protocol strings.
+- Before advancing the unified version to rc9, make the fixed rc8
+  predecessor/artifact operations jobs version-aware but fail-closed: rc8 must
+  execute them successfully, rc9 must skip exactly those historical jobs while
+  current-candidate artifact checks and release-gate remain successful. Do not
+  edit the fixed rc8 contract or treat skipped/failing/unknown versions as pass.
 
 - Historical rc6 work-unit and checkpoint evidence remains in the execution
   plan and current-state record. The rc8 and rc9 actions above are the current

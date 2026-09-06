@@ -62,22 +62,21 @@ separately tracked in R12.
 
 ## In Progress
 
-- Mac remains the development platform. R11/rc6 software controller composition
-  was delivered by PR #80; rc7-A deterministic composed failure injection is
-  delivered by PR #81 (`b0eaef2...`) after 20/20 exact-head CI and six successful
-  post-main workflows. PR #82 fixes `87f5bce...` as the versioned rc7 predecessor;
-  rc8 candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 has completed its full exact-artifact Linux
-  workflow and all 26 exact-head checks: separate predecessor/candidate
-  artifacts, 3.11/3.12/3.13 imports, non-skipping artifact synthetic flow,
-  upgrade/rollback and dynamic canary scans. This documentation head requires
-  fresh exact-head CI before review, normal merge and exact read-back; this is
-  not R12 host evidence.
+- Mac remains the development platform. R11 rc6 and rc7 are delivered by
+  PRs #80 and #81, and rc8 is delivered by PR #83. Documentation head
+  710ceef completed 26 exact-head checks, merged normally as
+  95bf65d6114008b962985f7311941499c961a7b8 with exact parents 87f5bce and
+  710ceef, and all six post-main workflows succeeded. rc8 is software evidence
+  only: no tag, GitHub Release, host activation or R12 qualification occurred.
+  rc9 full browser-selected Chinese/English UI is now the active software slice.
+
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- F1: complete rc8 documentation review, fresh exact-head CI, normal merge and
-  read-back; then execute the rc9 full browser-selected Chinese/English UI.
+- F1: execute rc9 typed bilingual catalog migration, server-prose render fence,
+  version-aware rc8 release-gate compatibility, full language-and-viewport
+  browser matrix, exact-head CI, review, normal merge and read-back.
 - F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and
   product acceptance remain independently gated.

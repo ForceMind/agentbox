@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T11:38:50Z"
-verified_by: "codex-r11-rc8-full-artifact-ci"
+verified_at_utc: "2026-09-06T12:01:19Z"
+verified_by: "codex-r11-rc8-merge-readback"
 repository: "ForceMind/agentbox"
 ---
 
@@ -82,29 +82,27 @@ repository: "ForceMind/agentbox"
   rc8 now uses that versioned merge as its only predecessor. Its P0 contract
   requires unpacked artifact provenance, isolated wheelhouse imports, synthetic
   WAW path and exact upgrade/rollback; no R12 capability is active.
-- rc8 advances the unified source to 0.3.0rc8 / 0.3.0-rc.8 / 0.3.0.8,
-  freezes the artifact/operations contract and records the immutable rc7
-  release-record predecessor in 0.3.0rc8.rehearsal.json.
-- Candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed all 26
-  exact-head checks. The Release Candidate workflow validates the frozen
-  contract; builds separate exact rc7/rc8 artifacts; proves candidate artifact
-  imports on CPython 3.11/3.12/3.13; runs the non-skipping 3.11 artifact
-  API/Runtime/RFC6455/PTY path; applies predecessor to candidate upgrade then
-  receipt-bound rollback; and dynamically scans declared canary surfaces before
-  emitting only a safe result. The operation receipt reports passed synthetic,
-  upgrade/rollback and canary scans, with no secrets and no host qualification.
-  The non-secret result artifact is rc8-rehearsal-result ID 9988185378 from
-  Actions run 34029558191/job 101476798319; its wrapper digest is
-  sha256:6a72aa9b086e0f581de4434d754d3a6994199bed566af256da302a2e982b9afe
-  and GitHub reports expiry at 2026-09-13T11:15:28Z.
-- The candidate also bounds cancellation-resistant WAW work-ledger shutdown:
-  after its single deadline, work and the singleton lock remain owned and the
-  application reaches WAW_API_SHUTDOWN_INCOMPLETE rather than hanging a test
-  runner or discarding cleanup. Focused CPython 3.12 validation passed, and the
-  final Backend 3.11/3.12/3.13 CI matrix is successful. Independent
-  implementation reviews report P0=0/P1=0. This documentation synchronization
-  requires a fresh full exact-head CI before final review, normal merge and
-  exact read-back; R12 remains unstarted.
+- rc8 advances the unified source to 0.3.0rc8 / 0.3.0-rc.8 / 0.3.0.8
+  and freezes the artifact/operations contract around the immutable rc7
+  release-record predecessor.
+- Implementation checkpoint c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed
+  all 26 exact-head checks. It proved separate exact rc7/rc8 artifacts,
+  candidate artifact imports on CPython 3.11/3.12/3.13, the non-skipping 3.11
+  artifact API/Runtime/RFC6455/PTY flow, predecessor-to-candidate upgrade then
+  receipt-bound rollback, and dynamic declared-surface canary scans. The safe
+  receipt reported no secrets and no host qualification.
+- Documentation head 710ceef696757a8a1f2a9165f2312672db57bb1e completed a fresh
+  26 exact-head checks, then PR #83 merged normally as
+  95bf65d6114008b962985f7311941499c961a7b8 at 2026-09-06T11:53:06Z. Its exact
+  parents are 87f5bce964eba231a6a7ade73eaedac7e54646ae and
+  710ceef696757a8a1f2a9165f2312672db57bb1e.
+- All six post-main workflows for merge 95bf65d completed success: Security
+  34031506669, Deployment 34031506642, Frontend 34031506663, E2E 34031506656,
+  Release Candidate 34031506697, and Backend 34031506660. Local main was
+  fast-forwarded to the observed merge with exit 0.
+- rc8 is delivered as software evidence. No tag, GitHub Release, credential,
+  host activation or R12 qualification occurred. The next software stage is rc9
+  full browser-selected bilingual UI and its release-gate compatibility work.
 
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
@@ -115,13 +113,10 @@ repository: "ForceMind/agentbox"
   migration manifest. Its exact head completed 20/20 checks on PR #80. It does
   not migrate every page or claim rc9 is complete.
 
-- Live preflight at 2026-09-06T11:38:50Z: git fetch origin --prune exited 0;
-  the active branch and its remote counterpart equal
-  c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2, while origin/main and the
-  merge-base equal 87f5bce964eba231a6a7ade73eaedac7e54646ae. PR #83 is
-  Draft/Open and this documentation synchronization is still uncommitted.
-  Its later commit must complete fresh exact-head CI before review, merge and
-  read-back.
+- Live merge read-back at 2026-09-06T12:01:19Z: git fetch origin --prune and
+  local main fast-forward both exited 0; local main, origin/main and the current
+  merge base equal 95bf65d6114008b962985f7311941499c961a7b8. PR #83 is merged.
+  The active read-back branch starts exactly from that main commit.
 
 - R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
   all six standard post-main workflows. The separate historical Dependency Graph
