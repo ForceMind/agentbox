@@ -21,7 +21,9 @@ The Workspace browser matrix covers loading, unregistered, direct-route
 not-found, Runtime identity mismatch, reconciliation-required, unavailable
 managed provider and the complete managed lifecycle/dialog in both locales at
 1280×800 and 390×844. The runner rebuilds production `dist` then rejects any
-test-only harness marker before serving the normal preview.
+test-only harness marker before serving the normal preview. An overflow failure
+reports only bounded element tag/class/geometry metadata, never terminal or
+user text, so cross-platform layout diagnosis does not retain sensitive output.
 
 This local evidence is not exact-head CI, merge or post-main evidence. rc9
 delivery remains pending normal CI, merge read-back and post-main verification.

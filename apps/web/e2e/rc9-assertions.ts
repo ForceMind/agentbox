@@ -28,12 +28,49 @@ export async function assertRc9NonEmptyTitle(page: Page): Promise<void> {
 }
 
 export async function assertRc9NoHorizontalOverflow(page: Page): Promise<void> {
-  const dimensions = await page.evaluate(() => ({
-    documentClientWidth: document.documentElement.clientWidth,
-    documentScrollWidth: document.documentElement.scrollWidth,
-    bodyClientWidth: document.body.clientWidth,
-    bodyScrollWidth: document.body.scrollWidth,
-  }))
+  const dimensions = await page.evaluate(() => {
+    const documentClientWidth = document.documentElement.clientWidth
+    const overflowElements = Array.from(
+      document.body.querySelectorAll<HTMLElement>('*'),
+    )
+      .flatMap((element) => {
+        const rect = element.getBoundingClientRect()
+        const overflow = Math.max(
+          rect.right - documentClientWidth,
+          element.scrollWidth - element.clientWidth,
+        )
+        if (overflow <= 0.5) return []
+        const className =
+          typeof element.className === 'string'
+            ? element.className
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 3)
+                .join('.')
+            : ''
+        const style = getComputedStyle(element)
+        return [
+          {
+            className,
+            clientWidth: Math.round(element.clientWidth),
+            display: style.display,
+            overflow: Math.round(overflow),
+            scrollWidth: Math.round(element.scrollWidth),
+            tag: element.tagName.toLowerCase(),
+            width: Math.round(rect.width),
+          },
+        ]
+      })
+      .sort((left, right) => right.overflow - left.overflow)
+      .slice(0, 12)
+    return {
+      bodyClientWidth: document.body.clientWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      documentClientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      overflowElements,
+    }
+  })
   expect(
     dimensions.documentScrollWidth,
     `document overflow: ${JSON.stringify(dimensions)}`,
