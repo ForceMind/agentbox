@@ -16,6 +16,11 @@ blocker is resolved. Do not request the same software approval again.
   Linux-target mypy and independent P0=0/P1=0 evidence are software-only; R12
   remains host/product qualification. Proceed with rc8 artifact and operations
   rehearsal, then rc9 full browser-selected bilingual UI.
+- rc8 P0 is frozen on `87f5bce964eba231a6a7ade73eaedac7e54646ae`, the merged
+  `0.3.0rc7` release-record predecessor. Build the `0.3.0rc8` candidate only
+  through the artifact-local provenance, synthetic WAW path and exact
+  upgrade/rollback contract in `docs/WAW_R11_RC8_ARTIFACT_OPERATIONS.md`; do not
+  start R12 host activation or add a production fault switch.
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
   persistence/first use and rc6-C browser controller are delivered by PR #80

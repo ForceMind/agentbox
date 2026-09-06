@@ -3,6 +3,24 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc8] - Unreleased
+
+### Planned rehearsal
+
+- R11 rc8 is the P0 artifact and operations rehearsal candidate: it will build
+  native helpers from unpacked artifact source, import only from an artifact
+  wheelhouse environment, and use a synthetic key/peer/trust/PTY harness for
+  typed attach, input, output, resize, detach and exact Stop paths.
+- The planned upgrade then rollback rehearsal uses rc7 release-record merge
+  `87f5bce964eba231a6a7ade73eaedac7e54646ae` as its exact predecessor and
+  verifies non-secret database, Project, Runtime-home and epoch canaries plus
+  receipt and journal integrity.
+
+### Status
+
+- Artifact construction, rehearsal execution, rollback evidence, tags, GitHub
+  Releases and host actions are not completed by this version-source update.
+
 ## [0.3.0rc7] - Unreleased
 
 ### Added

@@ -250,6 +250,17 @@ canaries, receipts and journal integrity. Artifact/log/report scans reject
 payload, key and ticket canaries. This does not enable systemd WAW sockets or
 reuse R12 host evidence.
 
+### rc8 P0 provenance freeze
+
+The rc8 predecessor is rc7 release-record merge
+`87f5bce964eba231a6a7ade73eaedac7e54646ae`, not the earlier rc7 software merge.
+The candidate is `0.3.0rc8`; its exact source SHA is supplied by CI. The frozen
+software-only contract is [R11 rc8 artifact and operations rehearsal]
+(WAW_R11_RC8_ARTIFACT_OPERATIONS.md) and its machine-readable provenance record.
+It requires artifact-local native compilation, isolated wheelhouse imports,
+synthetic API/Runtime/RFC6455/PTY execution, exact rc7→rc8→rc7
+upgrade/rollback and canary scans before rc8 may be delivered.
+
 ## rc9: complete browser-selected bilingual UI
 
 Only `navigator.languages[0]` is read once per browser document. A primary `zh`

@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T02:43:03Z"
-verified_by: "codex-r11-rc7-merge-readback"
+verified_at_utc: "2026-09-06T03:16:57Z"
+verified_by: "codex-r11-rc8-p0-local-contract"
 repository: "ForceMind/agentbox"
 ---
 
@@ -74,6 +74,21 @@ repository: "ForceMind/agentbox"
   remains in progress for rc8/rc9 and R12 remains unstarted. One
   existing local real-UDS relay test cannot bind `/tmp` under this Mac sandbox;
   Linux CI remains required for that unrelated host capability.
+- rc7 release-record PR #82 advances the unified source version to `0.3.0rc7`
+  / `0.3.0-rc.7` / `0.3.0.7`; candidate
+  `8546adadb08757156c5f2be045be93a30d2915af` completed 20/20 exact-head checks
+  and merged normally as `87f5bce964eba231a6a7ade73eaedac7e54646ae` at
+  `2026-09-06T03:02:07Z`, with `b0eaef2...` and `8546ada...` as exact parents.
+  rc8 now uses that versioned merge as its only predecessor. Its P0 contract
+  requires unpacked artifact provenance, isolated wheelhouse imports, synthetic
+  WAW path and exact upgrade/rollback; no R12 capability is active.
+- rc8 P0 locally advances the unified source to `0.3.0rc8` / `0.3.0-rc.8` /
+  `0.3.0.8`, freezes the artifact/operations contract and records the predecessor
+  in `0.3.0rc8.rehearsal.json`. Local version verification, 28 release-candidate
+  tests, 997 Web tests, extension version tests, type/lint/build/format and 253
+  documentation links pass. Artifact provenance, synthetic WAW execution and
+  upgrade/rollback have not been implemented or verified yet; exact-head CI for
+  this P0 candidate is pending.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.

@@ -285,6 +285,11 @@ predecessor version with database and receipt/journal integrity verified. This
 does not modify installer `UNIT_NAMES`, enable WAW sockets or inherit earlier
 real-host evidence.
 
+The detailed P0 contract is [R11 rc8 artifact and operations rehearsal]
+(WAW_R11_RC8_ARTIFACT_OPERATIONS.md). Its predecessor is versioned rc7 merge
+`87f5bce964eba231a6a7ade73eaedac7e54646ae`; only the workflow exact head may
+identify the rc8 candidate. rc8 remains test-only and cannot substitute for R12.
+
 ## rc9 locale and UI contract
 
 Only `navigator.languages[0]` is read once per document. A valid primary language
