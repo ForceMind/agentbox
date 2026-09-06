@@ -85,7 +85,9 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 admission、stream、restart/shutdown、browser lifecycle、exact Stop 和 canary scans，已由
 PR #81 `04ef0ae...` 的20/20 exact-head CI、merge `b0eaef2...`、six post-main SUCCESS
 交付。PR #82 then records the unified `0.3.0rc7` version as merge `87f5bce...`;
-下一项为以该 SHA 为 predecessor 的 rc8 artifact/operations rehearsal。
+下一项为以该 SHA 为 predecessor 的 rc8 artifact/operations rehearsal。其 local P1
+core 已完成，仍待 exact-artifact Linux workflow、dynamic canary injection 和 zero-skip
+synthetic/operations evidence。
 
 ## Confirmed issue and unresolved observations
 

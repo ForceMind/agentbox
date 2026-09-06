@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T03:16:57Z"
-verified_by: "codex-r11-rc8-p0-local-contract"
+verified_at_utc: "2026-09-06T05:01:44Z"
+verified_by: "codex-r11-rc8-p1-core-local"
 repository: "ForceMind/agentbox"
 ---
 
@@ -89,6 +89,13 @@ repository: "ForceMind/agentbox"
   documentation links pass. Artifact provenance, synthetic WAW execution and
   upgrade/rollback have not been implemented or verified yet; exact-head CI for
   this P0 candidate is pending.
+- rc8 P1 core adds local fail-closed artifact provenance, upgrade/rollback and
+  canary scanner scripts, plus a synthetic TCP/AF_UNIX/PTY source foundation.
+  That foundation exposed and repaired a relay lease-clock rollback race before
+  Runtime Detach publication. Its socket test is explicitly skipped in this Mac
+  sandbox because loopback bind is forbidden. Workflow execution against exact
+  artifacts, fresh wheelhouse-only environments, dynamic canary injection and
+  zero-skip Linux evidence remain required; rc8 is still incomplete.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.

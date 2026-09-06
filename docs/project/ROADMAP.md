@@ -67,7 +67,8 @@ separately tracked in R12.
   delivered by PR #81 (`b0eaef2...`) after 20/20 exact-head CI and six successful
   post-main workflows. PR #82 fixes `87f5bce...` as the versioned rc7 predecessor;
   rc8 artifact/operations P0 contract and `0.3.0rc8` candidate are locally
-  verified and await their own exact-head CI.
+  verified and await their own exact-head CI. P1 core is local-only until the
+  required exact-artifact Linux workflow completes without a skipped socket path.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

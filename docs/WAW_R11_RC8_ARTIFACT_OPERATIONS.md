@@ -105,3 +105,17 @@ described as real-host qualification.
 3. add synthetic API/Runtime/RFC6455/PTY rehearsal;
 4. add exact upgrade/rollback and canary scan rehearsal;
 5. integrate workflow gates, independent review, release record and read-back.
+
+## Current core checkpoint
+
+The P1 core supplies local fail-closed scripts for unpacked artifact provenance,
+artifact-bound upgrade/rollback evidence and encoded canary scanning. It also
+adds a source-composition synthetic TCP/AF_UNIX/PTY foundation and fixes a relay
+lease-clock race found by that foundation. The synthetic test skips only where a
+local sandbox forbids loopback bind; it is not counted as a successful local run.
+
+This is an intermediate checkpoint, not rc8 acceptance. Required workflow work
+still builds exact predecessor and candidate artifacts, creates fresh
+wheelhouse-only environments, executes the synthetic path there, dynamically
+injects/scans every canary surface and fails if the required loopback path skips.
+Until that gate and the artifact evidence exist, rc8 remains incomplete.

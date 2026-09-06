@@ -21,6 +21,12 @@ blocker is resolved. Do not request the same software approval again.
   through the artifact-local provenance, synthetic WAW path and exact
   upgrade/rollback contract in `docs/WAW_R11_RC8_ARTIFACT_OPERATIONS.md`; do not
   start R12 host activation or add a production fault switch.
+- rc8 P1 core now has local artifact provenance, operations evidence, dynamic
+  scanner and real-socket/PTY source foundation. The next mandatory slice is the
+  required Linux workflow gate: build exact predecessor/candidate artifacts,
+  create fresh artifact-only environments, run the synthetic and operations
+  paths without a skip, then inject and scan dynamic canaries across every
+  declared surface. rc8 is not complete until that workflow evidence exists.
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
   persistence/first use and rc6-C browser controller are delivered by PR #80
