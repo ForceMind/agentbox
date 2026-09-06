@@ -347,9 +347,18 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     assert 'python-version: ["3.11", "3.12", "3.13"]' in workflow
     assert "--requirement requirements-release-packaging.lock" in workflow
     assert "python -m pip_audit --local --skip-editable" in workflow
-    assert "needs: [packaging-toolchain, release-candidate]" in workflow
+    assert (
+        "needs: [packaging-toolchain, release-candidate, rc8-artifact-import, "
+        "rc8-synthetic-source]" in workflow
+    )
     assert 'test "$PACKAGING_TOOLCHAIN_RESULT" = "success"' in workflow
     assert 'test "$RELEASE_CANDIDATE_RESULT" = "success"' in workflow
+    assert 'test "$RC8_ARTIFACT_IMPORT_RESULT" = "success"' in workflow
+    assert 'test "$RC8_SYNTHETIC_SOURCE_RESULT" = "success"' in workflow
+    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
+    assert "rc8-artifact-import" in workflow
+    assert "--skip-native" in workflow
+    assert 'AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"' in workflow
 
 
 def test_internal_agentbox_wheel_is_not_duplicated_as_a_dependency(tmp_path: Path) -> None:

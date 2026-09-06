@@ -45,6 +45,11 @@ AUDITED_ACTIONS = {
         "ea165f8d65b6e75b540449e92b4886f43607fa02",
         "https://github.com/actions/upload-artifact",
     ),
+    "actions/download-artifact": AuditedAction(
+        "v4.3.0",
+        "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+        "https://github.com/actions/download-artifact",
+    ),
     "actions/dependency-review-action": AuditedAction(
         "v4.9.0",
         "2031cfc080254a8a887f58cffee85186f0e49e48",
