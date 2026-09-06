@@ -57,6 +57,7 @@ _TEST_ONLY_APPLICATION_TOKEN = object()
 _PRODUCTION_APPLICATION_TOKEN = object()
 WAW_APPLICATION_SCOPE_KEY = "agentbox.waw_application"
 _MAX_DETACH_OPERATIONS = 256
+_BACKGROUND_CLOSE_TIMEOUT_SECONDS = 5.0
 _HOST_ID = re.compile(r"\Awri_[0-9a-f]{32}\Z")
 _DIGEST = re.compile(r"\A[0-9a-f]{64}\Z")
 _DECIMAL_U64 = re.compile(r"\A[1-9][0-9]{0,19}\Z")
@@ -252,22 +253,55 @@ class WAWWorkLedger:
 
     async def _perform_close(self) -> None:
         await self.drain_routes()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _BACKGROUND_CLOSE_TIMEOUT_SECONDS
         while True:
             with self._lock:
                 background = tuple(self._background_work)
             if not background:
                 break
-            results = await asyncio.gather(*background, return_exceptions=True)
-            failure = next(
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                failure = WAWAPIApplicationError(
+                    "WAW_API_SHUTDOWN_INCOMPLETE",
+                    "WAW background work did not close before its shutdown deadline",
+                )
+                with self._lock:
+                    self._record_failure_locked(failure)
+                raise failure
+            done, pending = await asyncio.wait(background, timeout=remaining)
+            if pending:
+                failure = WAWAPIApplicationError(
+                    "WAW_API_SHUTDOWN_INCOMPLETE",
+                    "WAW background work did not close before its shutdown deadline",
+                )
+                with self._lock:
+                    self._record_failure_locked(failure)
+                raise failure
+            results: tuple[BaseException | None, ...] = tuple(
+                (
+                    WAWAPIApplicationError(
+                        "WAW_API_SHUTDOWN_INCOMPLETE",
+                        "WAW background work was cancelled before completion",
+                    )
+                    if future.cancelled()
+                    else future.exception()
+                )
+                for future in done
+            )
+            with self._lock:
+                for future in done:
+                    self._background_work.discard(future)
+            background_failure = next(
                 (result for result in results if isinstance(result, BaseException)), None
             )
-            if failure is not None:
+            if background_failure is not None:
                 wrapped = WAWAPIApplicationError(
                     "WAW_API_SHUTDOWN_INCOMPLETE", "WAW background work did not close cleanly"
                 )
                 with self._lock:
                     self._record_failure_locked(wrapped)
-                raise wrapped from failure
+                raise wrapped from background_failure
         with self._lock:
             if self._route_tasks or self._background_work:
                 failure = WAWAPIApplicationError(

@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 import pytest
+from agentbox_api import waw_application
 from agentbox_api.main import create_app
 from agentbox_api.waw_admission_coordinator import (
     AdmissionAuditAction,
@@ -613,6 +614,37 @@ async def test_owner_waits_for_background_work_before_database_and_lock(
 
 
 @pytest.mark.anyio
+async def test_owner_background_shutdown_deadline_poison_keeps_pending_work_and_lock(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[tuple[int, str, BindTransport]] = []
+    owner = _owner(tmp_path / "api.lock", settings, services, created)
+    await owner.start()
+    pending = asyncio.get_running_loop().create_future()
+    owner.stream_handler.track_background(pending)
+    monkeypatch.setattr(waw_application, "_BACKGROUND_CLOSE_TIMEOUT_SECONDS", 0.01)
+
+    with pytest.raises(WAWAPIApplicationError) as raised:
+        await asyncio.wait_for(owner.close(), 1)
+    assert raised.value.code == "WAW_API_SHUTDOWN_INCOMPLETE"
+    assert not pending.cancelled()
+    assert owner._work_ledger.background_count == 1
+    assert owner.state is WAWAPIApplicationState.POISONED
+    assert not owner.shutdown_clean
+    assert owner._process_lock.has_owned_fd
+
+    pending.set_result(None)
+    await asyncio.sleep(0)
+    assert owner._work_ledger.background_count == 0
+    with pytest.raises(WAWAPIApplicationError) as repeated:
+        await owner.close()
+    assert repeated.value.code == "WAW_API_SHUTDOWN_INCOMPLETE"
+
+
+@pytest.mark.anyio
 async def test_completed_failed_background_work_is_sticky_before_close(
     tmp_path: Path,
     settings: Settings,
@@ -740,19 +772,22 @@ async def test_cancelled_audit_waiter_keeps_database_work_owned_until_shutdown(
             )
         )
     )
-    assert await asyncio.to_thread(entered.wait, 5)
-    pending.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await pending
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
 
-    closing = asyncio.create_task(owner.close())
-    await asyncio.sleep(0)
-    assert not closing.done()
-    release.set()
-    await closing
-    services.database.close()
-    owner.finalize_after_database_close()
-    assert owner.shutdown_clean
+        closing = asyncio.create_task(owner.close())
+        await asyncio.sleep(0)
+        assert not closing.done()
+        release.set()
+        await closing
+        services.database.close()
+        owner.finalize_after_database_close()
+        assert owner.shutdown_clean
+    finally:
+        release.set()
 
 
 @pytest.mark.anyio
