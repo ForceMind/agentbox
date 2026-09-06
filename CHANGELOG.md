@@ -7,7 +7,7 @@ versioning for release display and PEP 440 for the Python package.
 
 ### Added
 
-- R11 rc9 completes the local candidate implementation for browser-selected
+- R11 rc9 delivers browser-selected
   bilingual UI: typed English/`zh-CN` catalogs, catalog parity checks, route and
   state migration, and API error-code localization without server prose.
 - The document locale is fixed from only `navigator.languages[0]` before React
@@ -25,21 +25,29 @@ versioning for release display and PEP 440 for the Python package.
 - Long status badges wrap within mobile runtime-card headings without hiding
   their state text.
 
-### Verification status
+### Delivery evidence
 
-- Local implementation and verification form a candidate only. Exact-head CI,
-  normal merge, merge read-back and post-main verification remain pending.
+- PR #85 final exact head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed
+  all 26 checks. It merged normally at `2026-09-06T17:57:57Z` as
+  `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`, with exact parents
+  `b191f4bc259cf6c4e0357afa85a9be0c41acb8ef` and
+  `751d4d010f92e18780bd6d96fdb3c9ea23107464`.
+- Post-main Security `34050212985`, Deployment `34050213004`, Frontend
+  `34050212993`, E2E `34050212986`, Release Candidate `34050213006`, and Backend
+  `34050213380` all completed success.
 - Local evidence is Web unit 44 files / 1088 tests, Chromium E2E 92 passed / 28
   intentional matrix skips, release-candidate unit 45 tests, and browser trust
   extension 3 files / 6 tests; each completed successfully before this record.
 - Version mapping is Python `0.3.0rc9`, npm `0.3.0-rc.9`, and MV3 `0.3.0.9`.
-- `release-gate` requires the ordinary release checks to succeed. The historical
-  rc8 artifact jobs must be `success` for rc8 and exactly `skipped` for rc9.
+- `release-gate`, rc8 synthetic/import and the current-candidate checks succeeded.
+  The historical `rc8-predecessor-artifact` and `rc8-artifact-operations` jobs
+  were exactly `skipped`, as required for rc9.
 
 ### Status
 
-- rc9 is not delivered or merged. R12 host activation and qualification remain
-  independent and unstarted.
+- rc9 and all R11 software rc6–rc9 are delivered as software evidence. No tag,
+  GitHub Release, production deployment, Provider credential operation or real
+  host activation occurred. R12 remains independent, unstarted and host-gated.
 
 ## [0.3.0rc8] - Unreleased
 

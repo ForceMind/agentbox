@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T16:51:51Z"
-verified_by: "codex-r11-rc9-local-verification"
+verified_at_utc: "2026-09-06T18:04:17Z"
+verified_by: "codex-r11-rc9-merge-readback"
 repository: "ForceMind/agentbox"
 ---
 
@@ -113,9 +113,9 @@ repository: "ForceMind/agentbox"
   migration manifest. Its exact head completed 20/20 checks on PR #80. It does
   not migrate every page or claim rc9 is complete.
 
-- Current local rc9 candidate: all route/state bilingual UI migration, typed
+- RC9 delivered software evidence: all route/state bilingual UI migration, typed
   catalog parity, code-only API localization and version-aware release-gate work
-  are implemented and locally verified on `codex/waw-rc9-bilingual-ui`. The
+  are implemented and verified on `codex/waw-rc9-bilingual-ui`. The
   document locale reads only `navigator.languages[0]` once: primary `zh` maps to
   `zh-CN`, and every other/missing/malformed first preference maps to English.
   Server/API prose is excluded from user-facing localization; technical protocol,
@@ -133,16 +133,28 @@ repository: "ForceMind/agentbox"
   Project-detail technical values have shrink/wrap boundaries for the desktop
   and mobile viewport matrix; the Workspace Project selector and terminal input
   can shrink inside their rows at 390px, and long runtime status badges wrap in
-  a bounded heading. This local record does not substitute for GitHub evidence.
-  This is not delivery evidence: exact-head CI, normal merge, merge read-back and
-  post-main verification are all pending. rc8 historical jobs must be `success`
-  on rc8 and exact `skipped` on rc9; other release-gate checks remain required.
-  R12 remains unstarted and independently host-gated.
+  a bounded heading. PR #85 final exact head
+  `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed all 26 checks, merged
+  normally at `2026-09-06T17:57:57Z` as
+  `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31` with parents
+  `b191f4bc259cf6c4e0357afa85a9be0c41acb8ef` and
+  `751d4d010f92e18780bd6d96fdb3c9ea23107464`. Post-main Security `34050212985`,
+  Deployment `34050213004`, Frontend `34050212993`, E2E `34050212986`, Release
+  Candidate `34050213006`, and Backend `34050213380` all succeeded. Exact rc9
+  release semantics were rc8-predecessor-artifact/rc8-artifact-operations
+  `skipped`, while rc8 synthetic/import, current-candidate checks and
+  `release-gate` succeeded. R11 software rc6–rc9 is delivered; no tag, GitHub
+  Release, production deployment, Provider credential or real host activation
+  occurred. R12 remains unstarted and independently host-gated.
 
-- Live merge read-back at 2026-09-06T12:01:19Z: git fetch origin --prune and
-  local main fast-forward both exited 0; local main, origin/main and the current
-  merge base equal 95bf65d6114008b962985f7311941499c961a7b8. PR #83 is merged.
-  The active read-back branch starts exactly from that main commit.
+- Live rc9 merge read-back at 2026-09-06T18:04:17Z: `git fetch origin --prune`
+  exited 0; the current read-back branch, `main`, `origin/main` and the merge
+  base equal `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`. Its exact parents are
+  `b191f4bc259cf6c4e0357afa85a9be0c41acb8ef` and
+  `751d4d010f92e18780bd6d96fdb3c9ea23107464`.
+- Historical rc8 merge read-back at 2026-09-06T12:01:19Z observed
+  `95bf65d6114008b962985f7311941499c961a7b8`; it remains RC8 evidence only and
+  is not the current live Git baseline.
 
 - R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
   all six standard post-main workflows. The separate historical Dependency Graph

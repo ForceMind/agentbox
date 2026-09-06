@@ -23,16 +23,18 @@ Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实
 实际 host 激活、真实 key/Provider Secret 操作、架构决策和生产发布仍服从
 [GOVERNANCE.md](GOVERNANCE.md) 的明确授权边界。
 
-## 2026-09-05 execution rebaseline
+## 2026-09-05 execution rebaseline — completed
 
-当前执行目标是完成 R11 软件交付。详细、可验收的 work-unit 计划见
-[WAW R11 execution plan](../WAW_R11_EXECUTION_PLAN.md)。rc6 controller
-composition、rc7 failure matrix 和 rc8 dual-artifact rehearsal均已交付。rc8 的
+该 rebaseline 的目标是完成 R11 软件交付，现已完成。详细、可验收的 work-unit
+记录见 [WAW R11 execution plan](../WAW_R11_EXECUTION_PLAN.md)。rc6 controller
+composition、rc7 failure matrix、rc8 dual-artifact rehearsal 和 rc9 bilingual UI
+均已交付。rc8 的
 PR #83 documentation head completed 26 exact-head checks, merged as
 95bf65d6114008b962985f7311941499c961a7b8, and all six post-main workflows
-succeeded. 当前进入 rc9 full bilingual UI: browser first-language selection,
-typed catalog migration, server-prose render fence, version-aware historical
-rc8 release gate, and complete bilingual browser validation.
+succeeded. PR #85 的 rc9 final head `751d4d010f92e18780bd6d96fdb3c9ea23107464`
+完成 26 exact-head checks，正常合并为 `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`，
+并完成六组 post-main success。当前剩余目标仅为独立 host-gated 的 R12；其真实
+host、Provider 和发布证据尚未开始。
 
 The local rc6-B checkpoint `708acd8...` now creates a first workspace only after
 a typed Project binding and exact Runtime executable evidence. Its first CI head
@@ -52,10 +54,11 @@ composition has 983 Web, 117 API/relay and 64 E2E local passes; merge evidence
 remains pending.
 See [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md).
 
-## Verified baseline and reachable behavior
+## Historical R11 starting baseline and reachable behavior
 
-最新 live preflight 已 fetch：local `main` 与 `origin/main` 均为 R10 merge
-`341a69bf855f48f90cbecfb5c6872c3bf8c28360`；R11 branch 从该提交创建。
+R11 began from R10 merge `341a69bf855f48f90cbecfb5c6872c3bf8c28360`.
+This is historical R11-starting evidence, not the current live Git baseline;
+the current RC9 merge read-back is recorded in `CURRENT_STATE.md`.
 PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精确
 父提交回读、六组 post-main workflows 和 dynamic Dependency Graph 均成功。
 历史 Draft PR #42 不在本轮范围。
@@ -63,12 +66,12 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 | 用户能力 | 已有实现与证据 | 剩余内容 |
 | --- | --- | --- |
 | Project 选择与状态 | Workspace 页面、正式 Project API、metadata controller 与 E2E | 保持既有功能；不得将 metadata ready 当作 terminal admitted |
-| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及经 Linux exact-head CI 验证并合并的 fixed profile/descriptor/cgroup/native process chain | R11 controller；R12 real vendor/host qualification |
-| Connect | R6 staged authority、R7 Runtime encrypted stream、R8 API ciphertext relay、R9 trust provider core | R11 browser/API controller composition；R12 real CRX/trustd/host evidence |
-| input/output/resize | 完整 wire/application crypto、Runtime relay、bounded browser tokenizer/model 与 R10 PTY/WBR transport | R11 将真实软件组件接入用户流程并故障注入；R12真实 CLI 验证 |
-| detach/reconnect | fresh admission、lease/recovery、Runtime stream 与 R10 attach/cleanup 软件 | R11 controller/UI 恢复接线；R12 reboot/host evidence |
-| 输出安全 | 固定加密协议、API opaque relay、VT/UTF-8 tokenizer 和 bounded terminal model | R11 renderer/controller integration 与端到端 failure matrix |
-| Runtime/API restart | durable epoch/generation、quarantine、cleanup 与 local process/cgroup implementation | R11组合回归；R12实际 systemd/socket/cgroup/reboot 验证 |
+| Start / exact Stop | Project-scoped API、typed Runtime lifecycle，以及经 Linux exact-head CI 验证并合并的 fixed profile/descriptor/cgroup/native process chain | R12 real vendor/host qualification |
+| Connect | R6 staged authority、R7 Runtime encrypted stream、R8 API ciphertext relay、R9 trust provider core | R12 real CRX/trustd/host evidence |
+| input/output/resize | 完整 wire/application crypto、Runtime relay、bounded browser tokenizer/model 与 R10 PTY/WBR transport | R12真实 CLI 验证 |
+| detach/reconnect | fresh admission、lease/recovery、Runtime stream 与 R10 attach/cleanup 软件 | R12 reboot/host evidence |
+| 输出安全 | 固定加密协议、API opaque relay、VT/UTF-8 tokenizer 和 bounded terminal model | R12 production host evidence |
+| Runtime/API restart | durable epoch/generation、quarantine、cleanup 与 local process/cgroup implementation | R12实际 systemd/socket/cgroup/reboot 验证 |
 
 入口事实：Runtime encrypted server 与 API opaque relay 已由 R7/R8 交付，R9
 交付 browser trust/terminal core，R10 fixed process candidate 本地完成；
@@ -117,7 +120,7 @@ artifact-operations gate。
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
 | R10 fixed interactive process | 已完成 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | PR #79 final head `0d9e7c7...` 经20/20 CI、正常合并`341a69bf...`、精确回读、六组post-main和Dependency Graph SUCCESS。真实 vendor/host 证据仍属 R12 |
-| R11 software integration | 进行中 | rc9 全页面双语与版本感知 release gate | rc6/rc7/rc8 已交付；PR #83 docs head 710ceef completed 26 exact-head checks, normal merge 95bf65d has exact parents 87f5bce/710ceef, and six post-main workflows SUCCESS. rc9 must remove server-prose UI rendering, migrate all manifest states, validate first-language locale behavior at 1280x800 and 390x844, preserve technical values, and retain a fail-closed rc8 historical gate before its own review/CI/merge/read-back. production main、real key/provider和host仍关闭。 |
+| R11 software integration | 已完成 | rc6–rc9 controller/failure/artifact/bilingual UI software delivery | PR #85 final head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed 26 exact-head checks, normal merge `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31` has exact parents `b191f4bc...`/`751d4d...`, and six post-main workflows SUCCESS. rc9 keeps typed catalogs, code-only API localization, the first-language rule, technical values, production no-bypass bundle and distinct-origin test harness. real key/provider and host remain closed. |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
 API singleton 的当前未提交基础已实现 `AttachmentAuthority.begin_shutdown()`：
@@ -229,8 +232,11 @@ exact-head checks terminal SUCCESS 的 PR；实际 merge SHA 从 read-back 获�
 
 R0–R9 已完成适用实现、独立审查、exact-head CI、正常合并和精确回读。
 R10/rc5 已由 PR #79 完成 exact-head CI、正常合并、精确回读及 post-main。
-R11 rc6–rc8 已完成软件交付。rc9 bilingual UI 的本地实现与验证候选已完成，
-但 exact-head CI、正常合并、merge read-back 和 post-main 验证尚未完成。其固定
+R11 rc6–rc9 已完成软件交付。PR #85 final head
+`751d4d010f92e18780bd6d96fdb3c9ea23107464` completed 26 exact-head checks,
+merged normally at `2026-09-06T17:57:57Z` as
+`b07f944ef2c7b590e5a3f1fa50354d6f492d6c31` with parents `b191f4bc...` and
+`751d4d...`, and all six post-main workflows succeeded. rc9 的固定
 合同是 typed `zh-CN`/English catalogs、仅 `navigator.languages[0]` 的文档 locale、
 API code-only localization、排除 server prose、技术值保持 English、production
 bundle 无测试旁路、distinct-origin test-only harness 和敏感 E2E artifacts 禁用。
@@ -238,8 +244,7 @@ bundle 无测试旁路、distinct-origin test-only harness 和敏感 E2E artifac
 在 rc8 必须 success、rc9 必须 exact skipped，其他 release-gate checks 必须 success。
 R12 仍为独立 host-gated 未开始工作。
 
-此前 R11/rc6–rc8 完成 browser/API/Runtime controller 组合、
-failure/cancel/revoke/restart/cleanup 矩阵和 artifact/operation rehearsal。全站
-浏览器首选语言的 `zh-CN`/English UI 迁移属于当前 rc9 candidate，而不是 rc6–rc8
-交付。R12 继续保留真实 CRX/trustd/vendor CLI/PTY/isolation/reboot 与生产支持边界
-的授权目标证据。
+R11 rc6–rc9 完成 browser/API/Runtime controller 组合、
+failure/cancel/revoke/restart/cleanup 矩阵、artifact/operation rehearsal 和全站
+浏览器首选语言的 `zh-CN`/English UI 迁移。R12 继续保留真实
+CRX/trustd/vendor CLI/PTY/isolation/reboot 与生产支持边界的授权目标证据。

@@ -68,18 +68,18 @@ separately tracked in R12.
   95bf65d6114008b962985f7311941499c961a7b8 with exact parents 87f5bce and
   710ceef, and all six post-main workflows succeeded. rc8 is software evidence
   only: no tag, GitHub Release, host activation or R12 qualification occurred.
-  rc9 local bilingual UI implementation and verification are now complete as a
-  candidate. Exact-head CI, normal merge, merge read-back and post-main
-  verification remain pending; rc9 is not delivered. R12 remains unstarted.
+  PR #85 final head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed all 26
+  exact-head checks and merged normally as `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`.
+  All six post-main workflows succeeded, so R11 software rc6–rc9 is delivered
+  as software evidence. R12 remains independently unstarted and host-gated.
 
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- F1: run rc9 exact-head CI and required review, then normal merge, exact
-  read-back and post-main validation. Preserve the typed catalog/server-prose
-  fence, `navigator.languages[0]` rule, technical-value boundary, production
-  no-bypass bundle and test-only distinct-origin harness.
+- F1: preserve the delivered R11 software contracts and evidence; no tag, GitHub
+  Release, production deployment or Provider credential operation follows from
+  the merge.
 - F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and
   product acceptance remain independently gated.
