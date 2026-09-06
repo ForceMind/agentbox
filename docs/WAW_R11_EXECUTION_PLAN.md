@@ -164,7 +164,7 @@ including cleanup fallback and reentrancy tests. Its final documentation head
 ticket/trust/control ports and the bilingual UI; it must not replace the renderer
 with scheduler's test no-op.
 
-#### rc6-C page-composition checkpoint（待 exact-head CI）
+#### rc6-C page-composition delivery
 
 当前分支把 concrete DOM renderer、managed-provider availability、ticket/trust/control
 ports 和 `WorkspacePage` 接到同一 attachment owner。它同时修复了 controller page
@@ -172,10 +172,15 @@ lifecycle、input ownership、viewport-only resize、fresh control lease 与 bin
 cleanup 的组合缺口；完整契约见
 [R11 rc6 browser controller](WAW_R11_RC6_BROWSER_CONTROLLER.md)。
 
-该 checkpoint 的本地 Web matrix 为 28 files、983 passed，browser controller/page hook/
-renderer/WorkspacePage 的独立 Sol review 为 P0=0、P1=0。API/relay matrix 为 117 passed，
-full E2E 为 64 passed。exact-head CI、normal merge 和 read-back 仍是未完成的 rc6 exit
-evidence；不得以本地 checkpoint 声称 rc6 或 R11 已完成。
+Commit `098ee291325580cb68e4c2265f3c161ae63d0f39` delivers the page-composition and
+binding-drift safety work; `e1c10bfbf6dce251cafd24ef931b30e26d3001c0` adds the
+unified visible `0.3.0rc6` candidate source and release record. The final PR #80
+head completed 20/20 exact-head checks. It merged normally as
+`8480bf81450a175b993d86d4255d462922dac87f`, with `e1c10bf...` as second parent.
+The six standard post-main workflows then completed success; one sanitizer-native
+tmux `wait-for` timeout on the first post-main attempt passed when that exact
+failed job was rerun, while the same exact PR head and all other checks had
+already passed. This is rc6 software delivery, not R11 or R12 completion.
 
 ### rc6 exit evidence
 

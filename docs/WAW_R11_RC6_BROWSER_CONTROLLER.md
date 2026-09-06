@@ -1,8 +1,8 @@
 # R11 rc6 browser controller safety foundation
 
 状态：controller 安全基础 `ea0ac84` 与 bounded renderer `f4d868e` 已分别完成独立
-Sol 复审和 PR #80 的 20/20 exact-head CI。当前分支的 page-composition 实现已完成
-本地验证和独立复审；本次实现自身仍待提交、exact-head CI、normal merge 与 read-back。
+Sol 复审。page-composition 提交 `098ee29...` 与 rc6 version-record `e1c10bf...`
+完成 PR #80 的 20/20 exact-head CI，正常合并为 `8480bf8...` 并完成 post-main read-back。
 本文不表示浏览器终端、rc6、R11 或真实 trust-provider 资格已经完成。
 
 ## 目的
@@ -48,7 +48,7 @@ controller 直接把 INPUT、RESIZE、Detach 或 Stop 发往 Control Plane。
   `navigator.languages`；全站只有 i18n bootstrap 的 `navigator.languages[0]`
   可以决定 `zh-CN` 或 English。
 
-## Page-composition implementation checkpoint（待 exact-head CI）
+## Page-composition delivery
 
 `useWAWBrowserAttachment` 是 `WorkspacePage` 唯一的 browser attachment owner。
 它保留 controller、trust 和 concrete DOM surface 的可验证边界，页面本身没有
@@ -88,8 +88,9 @@ generation/binding/host-bound Stop intent，再执行 shielded exact Stop；只�
 Prettier 和 `git diff --check` 均通过。受管本机 API/relay matrix
 `test_waw_workspace_api.py test_waw_relay.py` 为 117 passed；完整 `pnpm e2e` 为
 64 passed（58.6s），覆盖桌面/移动、`zh-CN`/English、overflow、focus 和 exact Stop。
-独立 Sol 最终复审为 P0=0、P1=0。以上不替代本 checkpoint 的 exact-head CI，也不构成
-真实 CRX/trustd、CLI/PTY 或 host qualification 证据。
+独立 Sol 最终复审为 P0=0、P1=0。PR #80 exact-head CI 为 20/20 success，main read-back
+为 `8480bf8...`；post-main native 首跑的 isolated tmux `wait-for` timeout 在相同 SHA
+重跑成功。以上仍不构成真实 CRX/trustd、CLI/PTY 或 host qualification 证据。
 
 ## 本地验证
 

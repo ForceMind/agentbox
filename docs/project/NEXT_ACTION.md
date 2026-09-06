@@ -12,8 +12,9 @@ blocker is resolved. Do not request the same software approval again.
 
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
-  persistence/first use and rc6-C browser controller; only then proceed to rc7,
-  rc8 and rc9. Commit `708acd8...` implements the rc6-B first-use path and
+  persistence/first use and rc6-C browser controller are delivered by PR #80
+  (`8480bf8...`); now proceed to rc7 deterministic composed failure injection,
+  then rc8 and rc9. Commit `708acd8...` implements the rc6-B first-use path and
   closed Runtime executable evidence action; its first CI run found one shared
   Linux inode-reuse verifier failure across Python 3.11/3.12/3.13. Repair
   `3ba85cb...` retains verified descriptors, and `bbdd67c...` completed a fresh
@@ -25,10 +26,9 @@ blocker is resolved. Do not request the same software approval again.
   `docs/WAW_R11_RC6_BINDING_REPLAY.md`. Its final `854cf87...` exact head has
   completed 20/20 CI. Controller safety commit `ea0ac84...` has an independent
   Sol PASS and 20/20 CI. Renderer commit `f4d868e...` and documentation head
-  `48850ba...` also completed 20/20 CI. The local attachment/page lifecycle,
-  bilingual composition and binding-drift cleanup checkpoint now has independent
-  Sol P0=0/P1=0, 983 Web, 117 API/relay and 64 E2E tests; its exact-head CI,
-  normal merge/read-back and remaining rc6 acceptance set remain due.
+  `48850ba...` also completed 20/20 CI. The attachment/page lifecycle, bilingual
+  composition and binding-drift cleanup checkpoint then completed independent Sol
+  P0=0/P1=0, 983 Web, 117 API/relay, 64 E2E, final 20/20 CI and normal merge/read-back.
 - Historical paragraphs below that say “current uncommitted” are prior rc6
   checkpoints; the top active-implementation status is authoritative.
 - rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
@@ -99,10 +99,10 @@ blocker is resolved. Do not request the same software approval again.
 - Bind/control shutdown evidence is also complete locally: pending exchange,
   detached task, retained peer or uncertain FD close prevents clean. Commit and
   exact-head verify it, then continue process lock and stream-owner composition.
-- Page lifecycle hook、bounded terminal surface、browser control UI 与 binding-drift
-  cleanup 已在当前 local checkpoint 实现并通过独立复审。完成其 E2E、socket-bound relay
-  matrix、exact-head CI、normal merge 和 read-back 后，才继续 rc7 failure injection、rc8
-  artifact/operations rehearsal 与 rc9 全站 bilingual UI。
+- Begin rc7 with named test-only checkpoints, manual promises, fake monotonic clocks
+  and controlled partial-write sockets. Prove admission/stream/restart/shutdown/Stop/
+  browser-lifecycle failure invariants before advancing to rc8 artifact rehearsal
+  and rc9 full browser-selected bilingual UI.
 - First integration head `e210d749...` completed 17/20 checks. Three Backend
   matrix jobs exposed one shared legacy regression: a clean non-fixed server could
   no longer restart without consuming a second epoch. The local reviewed fix
