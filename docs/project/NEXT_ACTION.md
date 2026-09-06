@@ -27,6 +27,11 @@ blocker is resolved. Do not request the same software approval again.
   create fresh artifact-only environments, run the synthetic and operations
   paths without a skip, then inject and scan dynamic canaries across every
   declared surface. rc8 is not complete until that workflow evidence exists.
+- The first required workflow gate now runs candidate artifact provenance/import
+  across Python 3.11/3.12/3.13 and requires the real source synthetic loopback
+  path. Extend it next with exact rc7/rc8 dual-artifact operations and dynamic
+  canary injection/scanning; source-only synthetic success is not artifact
+  execution evidence.
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
   persistence/first use and rc6-C browser controller are delivered by PR #80

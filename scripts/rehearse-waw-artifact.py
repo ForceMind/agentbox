@@ -531,7 +531,8 @@ def rehearse(arguments: argparse.Namespace) -> ReleaseManifest:
             arguments.expected_source_commit,
             arguments.expected_source_ref_kind,
         )
-        rehearse_native(release, arguments.cc)
+        if not arguments.skip_native:
+            rehearse_native(release, arguments.cc)
         rehearse_wheelhouse(release, root, manifest)
     return manifest
 
@@ -549,6 +550,11 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument("--cc", default="cc")
+    parser.add_argument(
+        "--skip-native",
+        action="store_true",
+        help="run the wheelhouse-only import matrix; native provenance remains required elsewhere",
+    )
     return parser
 
 

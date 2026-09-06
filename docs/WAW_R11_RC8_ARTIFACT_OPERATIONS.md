@@ -114,8 +114,10 @@ adds a source-composition synthetic TCP/AF_UNIX/PTY foundation and fixes a relay
 lease-clock race found by that foundation. The synthetic test skips only where a
 local sandbox forbids loopback bind; it is not counted as a successful local run.
 
-This is an intermediate checkpoint, not rc8 acceptance. Required workflow work
-still builds exact predecessor and candidate artifacts, creates fresh
-wheelhouse-only environments, executes the synthetic path there, dynamically
-injects/scans every canary surface and fails if the required loopback path skips.
-Until that gate and the artifact evidence exist, rc8 remains incomplete.
+This is an intermediate checkpoint, not rc8 acceptance. The required workflow
+now gates candidate artifact provenance/import on 3.11/3.12/3.13 and fails if
+the source synthetic loopback path skips. It still must build the exact rc7
+predecessor and rc8 candidate together, execute the synthetic path from
+artifact-only environments, dynamically inject/scan every canary surface, and
+run the full operations rehearsal. Until that evidence exists, rc8 remains
+incomplete.

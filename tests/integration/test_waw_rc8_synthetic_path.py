@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -22,13 +23,12 @@ from support.waw_rc8_synthetic import (
     verify_synthetic_trust_record,
 )
 
-pytestmark = pytest.mark.skipif(
-    not loopback_bind_permitted(),
-    reason="sandbox prevents the required loopback socket bind",
-)
-
 
 def test_rc8_separate_process_socket_crypto_pty_path(tmp_path: Path) -> None:
+    if not loopback_bind_permitted():
+        if os.environ.get("AGENTBOX_RC8_REQUIRE_LOOPBACK") == "1":
+            pytest.fail("required rc8 loopback socket bind is unavailable")
+        pytest.skip("sandbox prevents the required loopback socket bind")
     plaintext = b"synthetic-rc8-input\n"
     expected_output = b"PTY:" + plaintext
 

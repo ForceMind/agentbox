@@ -96,6 +96,10 @@ repository: "ForceMind/agentbox"
   sandbox because loopback bind is forbidden. Workflow execution against exact
   artifacts, fresh wheelhouse-only environments, dynamic canary injection and
   zero-skip Linux evidence remain required; rc8 is still incomplete.
+- The first rc8 required workflow gate validates candidate artifact provenance
+  imports across CPython 3.11/3.12/3.13 and requires the real source synthetic
+  loopback path. Exact dual-artifact operations and injected all-surface canary
+  evidence remain unimplemented.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.
