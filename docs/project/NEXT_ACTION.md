@@ -14,29 +14,32 @@ blocker is resolved. Do not request the same software approval again.
   `04ef0ae...` passed 20/20 exact-head checks, merged as `b0eaef2...`, and all six
   post-main workflows passed. Its 29 focused Python, 341 related Python, 997 Web,
   Linux-target mypy and independent P0=0/P1=0 evidence are software-only; R12
-  remains host/product qualification. Proceed with rc8 artifact and operations
-  rehearsal, then rc9 full browser-selected bilingual UI.
-- Execute the 2026-09-05 R11 work-unit plan in
-  `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
-  persistence/first use and rc6-C browser controller are delivered by PR #80
-  (`8480bf8...`); now proceed to rc7 deterministic composed failure injection,
-  then rc8 and rc9. Commit `708acd8...` implements the rc6-B first-use path and
-  closed Runtime executable evidence action; its first CI run found one shared
-  Linux inode-reuse verifier failure across Python 3.11/3.12/3.13. Repair
-  `3ba85cb...` retains verified descriptors, and `bbdd67c...` completed a fresh
-  20/20 exact-head matrix. A later native status-71 READY timing failure is fixed
-  by `af4d43e...` and passed native; `9d078b4...` repairs its test-format gate and
-  `4222242...` completed the fresh 20/20 CI. Commit `9c12ab3...` now implements
-  deterministic startup/restart replay, inventory finalization and drift fences;
-  its 346-pass local matrix and independent Sol follow-up review are recorded in
-  `docs/WAW_R11_RC6_BINDING_REPLAY.md`. Its final `854cf87...` exact head has
-  completed 20/20 CI. Controller safety commit `ea0ac84...` has an independent
-  Sol PASS and 20/20 CI. Renderer commit `f4d868e...` and documentation head
-  `48850ba...` also completed 20/20 CI. The attachment/page lifecycle, bilingual
-  composition and binding-drift cleanup checkpoint then completed independent Sol
-  P0=0/P1=0, 983 Web, 117 API/relay, 64 E2E, final 20/20 CI and normal merge/read-back.
-- Historical paragraphs below that say “current uncommitted” are prior rc6
-  checkpoints; the top active-implementation status is authoritative.
+  remains host/product qualification. The rc8 candidate evidence is recorded
+  below; after this documentation head completes fresh CI, review, merge and
+  read-back, proceed with rc9 full browser-selected bilingual UI.
+- rc8 remains bound to the merged 0.3.0rc7 release-record predecessor and its
+  artifact-local provenance, synthetic WAW and exact upgrade/rollback contract
+  in docs/WAW_R11_RC8_ARTIFACT_OPERATIONS.md. Do not start R12 host activation
+  or add a production fault switch.
+
+- rc8 P1 full software evidence is complete on candidate
+  c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2: all 26 exact-head checks are
+  terminal success, including separate exact rc7/rc8 artifacts, 3.11/3.12/3.13
+  artifact imports, the non-skipping 3.11 artifact synthetic flow,
+  upgrade/rollback and dynamic all-surface canary scans. The safe operation
+  receipt reports no secrets and no host qualification. This documentation
+  head must complete fresh full exact-head CI before review, normal merge and
+  exact read-back; do not begin R12 activation.
+- After rc8 merge/read-back, execute rc9 as the full browser-selected bilingual
+  migration: use only navigator.languages[0], select zh-CN only for primary zh,
+  otherwise English, localize every manifest route/state and never render
+  server-provided error prose. Validate both languages at 1280x800 and 390x844
+  before its own exact-head CI, review, merge and read-back.
+
+- Historical rc6 work-unit and checkpoint evidence remains in the execution
+  plan and current-state record. The rc8 and rc9 actions above are the current
+  authoritative sequence.
+
 - rc9 foundation commit `184781c...` completed 20/20 exact-head checks: the
   shared catalog, error-code mapper and route-state manifest are available for
   page owners. The page migration and bilingual visual matrix remain pending.

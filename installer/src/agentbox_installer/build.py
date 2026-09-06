@@ -64,6 +64,9 @@ RELEASE_NATIVE_BUILD_SCRIPTS = (
     "scripts/build-waw-native.py",
     "scripts/check-waw-native.py",
 )
+RELEASE_WAW_REHEARSAL_FILES = (
+    ("tests/support/waw_rc8_synthetic.py", "rehearsal/waw_rc8_synthetic.py"),
+)
 PLATFORM_SUPPORT = (
     {
         "distribution": "OpenCloudOS",
@@ -482,6 +485,14 @@ def build_release_artifact(
             if source_path.is_symlink() or not source_path.is_file():
                 raise BuildError(f"required release input is unavailable: {name}")
             target = release / name
+            target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+            shutil.copyfile(source_path, target)
+            os.chmod(target, 0o644)
+        for source_name, target_name in RELEASE_WAW_REHEARSAL_FILES:
+            source_path = source / source_name
+            if source_path.is_symlink() or not source_path.is_file():
+                raise BuildError(f"required release input is unavailable: {source_name}")
+            target = release / target_name
             target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             shutil.copyfile(source_path, target)
             os.chmod(target, 0o644)

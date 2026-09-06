@@ -44,6 +44,8 @@ jobs:
     name: release-candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      release-version: ${{ steps.release-version.outputs.value }}
     env:
       AGENTBOX_EXPECTED_SOURCE_COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       AGENTBOX_SOURCE_REF_KIND: ${{ github.event_name == 'pull_request' && 'pull_request_head' || 'main' }}
@@ -115,6 +117,16 @@ jobs:
           python scripts/check-release-inventory.py \
             --source . \
             --artifact "$artifact"
+      - name: Rehearse unpacked artifact native source and wheelhouse provenance
+        run: |
+          artifact="$(find "$RUNNER_TEMP/agentbox-rc-a" -maxdepth 1 -name 'agentbox-*.tar.gz' -print -quit)"
+          python scripts/rehearse-waw-artifact.py \
+            --artifact "$artifact" \
+            --checksums "$RUNNER_TEMP/agentbox-rc-a/SHA256SUMS" \
+            --manifest "$RUNNER_TEMP/agentbox-rc-a/RELEASE_MANIFEST.json" \
+            --sbom "$RUNNER_TEMP/agentbox-rc-a/SBOM.spdx.json" \
+            --expected-source-commit "$AGENTBOX_EXPECTED_SOURCE_COMMIT" \
+            --expected-source-ref-kind "$AGENTBOX_SOURCE_REF_KIND"
       - name: Artifact-only install and recovery smoke
         run: |
           artifact="$(find "$RUNNER_TEMP/agentbox-rc-a" -maxdepth 1 -name 'agentbox-*.tar.gz' -print -quit)"
@@ -136,9 +148,215 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  rc8-predecessor-artifact:
+    name: rc8-predecessor-artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: candidate-source
+          persist-credentials: false
+      - name: Freeze the reviewed rc8 workflow inputs
+        id: contract
+        working-directory: candidate-source
+        env:
+          AGENTBOX_CANDIDATE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$AGENTBOX_CANDIDATE_SHA"
+          PYTHONPATH=installer/src python scripts/check-rc8-rehearsal-contract.py \
+            --contract docs/releases/0.3.0rc8.rehearsal.json \
+            --candidate-sha "$AGENTBOX_CANDIDATE_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ steps.contract.outputs.predecessor_sha }}
+          path: predecessor-source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.23.2"
+      - name: Build the exact rc7 predecessor artifact from its own source tree
+        working-directory: predecessor-source
+        env:
+          AGENTBOX_PREDECESSOR_SHA: ${{ steps.contract.outputs.predecessor_sha }}
+          AGENTBOX_PREDECESSOR_VERSION: ${{ steps.contract.outputs.predecessor_version }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$AGENTBOX_PREDECESSOR_SHA"
+          python -m pip install --require-hashes --only-binary=:all: --requirement requirements-release-build.lock
+          python -m pip install --no-deps --no-build-isolation --editable .
+          python scripts/check-release-toolchain.py --source . --check-installed
+          pnpm install --frozen-lockfile
+          pnpm build
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          agentbox-install build-release-candidate \
+            --source . \
+            --output-dir "$RUNNER_TEMP/rc8-predecessor-artifact" \
+            --source-ref-kind main
+      - name: Verify exact predecessor bundle provenance
+        working-directory: predecessor-source
+        env:
+          AGENTBOX_PREDECESSOR_SHA: ${{ steps.contract.outputs.predecessor_sha }}
+          AGENTBOX_PREDECESSOR_VERSION: ${{ steps.contract.outputs.predecessor_version }}
+        run: |
+          artifact="$(find "$RUNNER_TEMP/rc8-predecessor-artifact" -maxdepth 1 -name 'agentbox-*.tar.gz' -print -quit)"
+          test -n "$artifact"
+          agentbox-install verify-artifact \
+            --artifact "$artifact" \
+            --checksums "$RUNNER_TEMP/rc8-predecessor-artifact/SHA256SUMS" \
+            --manifest "$RUNNER_TEMP/rc8-predecessor-artifact/RELEASE_MANIFEST.json" \
+            --sbom "$RUNNER_TEMP/rc8-predecessor-artifact/SBOM.spdx.json"
+          python scripts/check-release-artifact.py \
+            --artifact "$artifact" \
+            --checksums "$RUNNER_TEMP/rc8-predecessor-artifact/SHA256SUMS" \
+            --manifest "$RUNNER_TEMP/rc8-predecessor-artifact/RELEASE_MANIFEST.json" \
+            --sbom "$RUNNER_TEMP/rc8-predecessor-artifact/SBOM.spdx.json" \
+            --expected-source-commit "$AGENTBOX_PREDECESSOR_SHA" \
+            --expected-source-ref-kind main
+          python scripts/check-release-inventory.py --source . --artifact "$artifact"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agentbox-0.3.0rc7-linux-x86_64
+          path: ${{ runner.temp }}/rc8-predecessor-artifact/
+          if-no-files-found: error
+          retention-days: 7
+
+  rc8-artifact-operations:
+    name: rc8-artifact-operations
+    needs: [release-candidate, rc8-predecessor-artifact]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: candidate-source
+          persist-credentials: false
+      - name: Freeze the reviewed rc8 workflow inputs
+        id: contract
+        working-directory: candidate-source
+        env:
+          AGENTBOX_CANDIDATE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$AGENTBOX_CANDIDATE_SHA"
+          PYTHONPATH=installer/src python scripts/check-rc8-rehearsal-contract.py \
+            --contract docs/releases/0.3.0rc8.rehearsal.json \
+            --candidate-sha "$AGENTBOX_CANDIDATE_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ steps.contract.outputs.predecessor_sha }}
+          path: predecessor-source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agentbox-${{ needs.release-candidate.outputs.release-version }}-linux-x86_64
+          path: ${{ runner.temp }}/rc8-candidate-bundle
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agentbox-0.3.0rc7-linux-x86_64
+          path: ${{ runner.temp }}/rc8-predecessor-bundle
+      - name: Run dual-artifact upgrade/rollback and dynamic canary rehearsal
+        env:
+          AGENTBOX_CANDIDATE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          AGENTBOX_SOURCE_REF_KIND: ${{ github.event_name == 'pull_request' && 'pull_request_head' || 'main' }}
+        run: |
+          python candidate-source/scripts/rehearse-rc8-workflow.py \
+            --candidate-sha "$AGENTBOX_CANDIDATE_SHA" \
+            --contract "$GITHUB_WORKSPACE/candidate-source/docs/releases/0.3.0rc8.rehearsal.json" \
+            --candidate-source-ref-kind "$AGENTBOX_SOURCE_REF_KIND" \
+            --candidate-source "$GITHUB_WORKSPACE/candidate-source" \
+            --predecessor-source "$GITHUB_WORKSPACE/predecessor-source" \
+            --candidate-artifact-directory "$RUNNER_TEMP/rc8-candidate-bundle" \
+            --predecessor-artifact-directory "$RUNNER_TEMP/rc8-predecessor-bundle" \
+            --work-root "$RUNNER_TEMP/rc8-workflow-evidence" \
+            --canary-root "$RUNNER_TEMP/rc8-workflow-canaries"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rc8-rehearsal-result
+          path: ${{ runner.temp }}/rc8-workflow-evidence/rc8-rehearsal-result.json
+          if-no-files-found: error
+          retention-days: 7
+
+  rc8-artifact-import:
+    name: rc8-artifact-import (${{ matrix.python-version }})
+    needs: release-candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agentbox-${{ needs.release-candidate.outputs.release-version }}-linux-x86_64
+          path: ${{ runner.temp }}/rc8-artifact
+      - name: Prove artifact-only imports on this Python version
+        env:
+          AGENTBOX_EXPECTED_SOURCE_COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          AGENTBOX_SOURCE_REF_KIND: ${{ github.event_name == 'pull_request' && 'pull_request_head' || 'main' }}
+        run: |
+          artifact="$(find "$RUNNER_TEMP/rc8-artifact" -maxdepth 1 -name 'agentbox-*.tar.gz' -print -quit)"
+          args=(
+            --artifact "$artifact"
+            --checksums "$RUNNER_TEMP/rc8-artifact/SHA256SUMS"
+            --manifest "$RUNNER_TEMP/rc8-artifact/RELEASE_MANIFEST.json"
+            --sbom "$RUNNER_TEMP/rc8-artifact/SBOM.spdx.json"
+            --expected-source-commit "$AGENTBOX_EXPECTED_SOURCE_COMMIT"
+            --expected-source-ref-kind "$AGENTBOX_SOURCE_REF_KIND"
+          )
+          if [ "${{ matrix.python-version }}" != "3.11" ]; then
+            args+=(--skip-native)
+          else
+            args+=(--run-synthetic)
+          fi
+          PYTHONPATH=installer/src python scripts/rehearse-waw-artifact.py "${args[@]}"
+
+  rc8-synthetic-source:
+    name: rc8-synthetic-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install synthetic-path test dependencies
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: --requirement requirements-release-build.lock
+          python -m pip install --no-deps --no-build-isolation --editable .
+          python scripts/check-release-toolchain.py --source .
+      - name: Require real loopback, sockets and PTY synthetic path
+        env:
+          AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"
+        run: pytest -q -rs tests/integration/test_waw_rc8_synthetic_path.py
+
   release-gate:
     name: release-gate
-    needs: [packaging-toolchain, release-candidate]
+    needs: [packaging-toolchain, release-candidate, rc8-predecessor-artifact, rc8-artifact-import, rc8-synthetic-source, rc8-artifact-operations]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions: {}
@@ -147,6 +365,14 @@ jobs:
         env:
           PACKAGING_TOOLCHAIN_RESULT: ${{ needs.packaging-toolchain.result }}
           RELEASE_CANDIDATE_RESULT: ${{ needs.release-candidate.result }}
+          RC8_PREDECESSOR_ARTIFACT_RESULT: ${{ needs.rc8-predecessor-artifact.result }}
+          RC8_ARTIFACT_IMPORT_RESULT: ${{ needs.rc8-artifact-import.result }}
+          RC8_SYNTHETIC_SOURCE_RESULT: ${{ needs.rc8-synthetic-source.result }}
+          RC8_ARTIFACT_OPERATIONS_RESULT: ${{ needs.rc8-artifact-operations.result }}
         run: |
           test "$PACKAGING_TOOLCHAIN_RESULT" = "success"
           test "$RELEASE_CANDIDATE_RESULT" = "success"
+          test "$RC8_PREDECESSOR_ARTIFACT_RESULT" = "success"
+          test "$RC8_ARTIFACT_IMPORT_RESULT" = "success"
+          test "$RC8_SYNTHETIC_SOURCE_RESULT" = "success"
+          test "$RC8_ARTIFACT_OPERATIONS_RESULT" = "success"

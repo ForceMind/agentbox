@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T02:43:03Z"
-verified_by: "codex-r11-rc7-merge-readback"
+verified_at_utc: "2026-09-06T11:38:50Z"
+verified_by: "codex-r11-rc8-full-artifact-ci"
 repository: "ForceMind/agentbox"
 ---
 
@@ -74,6 +74,38 @@ repository: "ForceMind/agentbox"
   remains in progress for rc8/rc9 and R12 remains unstarted. One
   existing local real-UDS relay test cannot bind `/tmp` under this Mac sandbox;
   Linux CI remains required for that unrelated host capability.
+- rc7 release-record PR #82 advances the unified source version to `0.3.0rc7`
+  / `0.3.0-rc.7` / `0.3.0.7`; candidate
+  `8546adadb08757156c5f2be045be93a30d2915af` completed 20/20 exact-head checks
+  and merged normally as `87f5bce964eba231a6a7ade73eaedac7e54646ae` at
+  `2026-09-06T03:02:07Z`, with `b0eaef2...` and `8546ada...` as exact parents.
+  rc8 now uses that versioned merge as its only predecessor. Its P0 contract
+  requires unpacked artifact provenance, isolated wheelhouse imports, synthetic
+  WAW path and exact upgrade/rollback; no R12 capability is active.
+- rc8 advances the unified source to 0.3.0rc8 / 0.3.0-rc.8 / 0.3.0.8,
+  freezes the artifact/operations contract and records the immutable rc7
+  release-record predecessor in 0.3.0rc8.rehearsal.json.
+- Candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed all 26
+  exact-head checks. The Release Candidate workflow validates the frozen
+  contract; builds separate exact rc7/rc8 artifacts; proves candidate artifact
+  imports on CPython 3.11/3.12/3.13; runs the non-skipping 3.11 artifact
+  API/Runtime/RFC6455/PTY path; applies predecessor to candidate upgrade then
+  receipt-bound rollback; and dynamically scans declared canary surfaces before
+  emitting only a safe result. The operation receipt reports passed synthetic,
+  upgrade/rollback and canary scans, with no secrets and no host qualification.
+  The non-secret result artifact is rc8-rehearsal-result ID 9988185378 from
+  Actions run 34029558191/job 101476798319; its wrapper digest is
+  sha256:6a72aa9b086e0f581de4434d754d3a6994199bed566af256da302a2e982b9afe
+  and GitHub reports expiry at 2026-09-13T11:15:28Z.
+- The candidate also bounds cancellation-resistant WAW work-ledger shutdown:
+  after its single deadline, work and the singleton lock remain owned and the
+  application reaches WAW_API_SHUTDOWN_INCOMPLETE rather than hanging a test
+  runner or discarding cleanup. Focused CPython 3.12 validation passed, and the
+  final Backend 3.11/3.12/3.13 CI matrix is successful. Independent
+  implementation reviews report P0=0/P1=0. This documentation synchronization
+  requires a fresh full exact-head CI before final review, normal merge and
+  exact read-back; R12 remains unstarted.
+
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.
@@ -83,10 +115,14 @@ repository: "ForceMind/agentbox"
   migration manifest. Its exact head completed 20/20 checks on PR #80. It does
   not migrate every page or claim rc9 is complete.
 
-- Live preflight after `git fetch origin --prune`: local `main` and `origin/main`
-  equal R10 merge `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; active R11 branch
-  `codex/waw-production-controller-rc6` starts exactly there with a clean tree
-  before this documentation update. Historical Draft PR #42 is the only open PR.
+- Live preflight at 2026-09-06T11:38:50Z: git fetch origin --prune exited 0;
+  the active branch and its remote counterpart equal
+  c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2, while origin/main and the
+  merge-base equal 87f5bce964eba231a6a7ade73eaedac7e54646ae. PR #83 is
+  Draft/Open and this documentation synchronization is still uncommitted.
+  Its later commit must complete fresh exact-head CI before review, merge and
+  read-back.
+
 - R9 PR #78 completed 19/19 exact-head checks, normal merge, exact read-back and
   all six standard post-main workflows. The separate historical Dependency Graph
   limitation is addressed on this R10 branch by the `.txt` release input.
@@ -768,9 +804,10 @@ PROPOSED architecture status are preserved.
   PID/session validation; Linux native passed. `2381171...` then exposed only a
   Black format failure in the new Python test, repaired by `9d078b4...`; its full
   CI completed 20/20 at `4222242...`.
-- rc6 is delivered. The current order is rc7 deterministic composed failure
-  injection, followed by rc8 artifact/operations rehearsal and rc9 full locale
-  migration; the R12 real-host boundary remains unchanged.
+- At this historical rc6 checkpoint, the planned order was rc7 deterministic
+  composed failure injection, rc8 artifact/operations rehearsal and rc9 full
+  locale migration. The opening current-state record supersedes this historical
+  ordering; the R12 real-host boundary remains unchanged.
 - Integration commit `e210d749...` completed 17/20 exact-head checks; all three
   Backend Python quality jobs failed on the same preserved non-fixed server
   restart contract. The reviewed follow-up restores restart only after a clean,

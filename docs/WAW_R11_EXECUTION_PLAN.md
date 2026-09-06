@@ -234,8 +234,11 @@ Web lint/typecheck/build/format, and independent Sol review `P0=0/P1=0`.
 The Mac `/tmp` real-UDS bind `PermissionError`, constrained synthetic diagnostic
 export and a Node runner without a Storage authority remain local evidence
 limits; Linux CI supplies the UDS result and none replaces production diagnostics,
-real-browser or host qualification. rc8 artifact/operations rehearsal is now the
-next R11 software slice; R12 remains separate.
+real-browser or host qualification. Candidate
+c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 subsequently completed the rc8
+software evidence gate; this documentation head must complete fresh exact-head
+CI before final review, normal merge and read-back before rc9 begins. R12 remains
+separate.
 
 ## rc8: artifact and operations rehearsal
 
@@ -249,6 +252,60 @@ predecessor version, database, Project, Runtime-home and epoch non-secret
 canaries, receipts and journal integrity. Artifact/log/report scans reject
 payload, key and ticket canaries. This does not enable systemd WAW sockets or
 reuse R12 host evidence.
+
+### rc8 P0 provenance freeze
+
+The rc8 predecessor is rc7 release-record merge
+`87f5bce964eba231a6a7ade73eaedac7e54646ae`, not the earlier rc7 software merge.
+The candidate is `0.3.0rc8`; its exact source SHA is supplied by CI. The frozen
+software-only contract is [R11 rc8 artifact and operations rehearsal]
+(WAW_R11_RC8_ARTIFACT_OPERATIONS.md) and its machine-readable provenance record.
+It requires artifact-local native compilation, isolated wheelhouse imports,
+synthetic API/Runtime/RFC6455/PTY execution, exact rc7→rc8→rc7
+upgrade/rollback and canary scans before rc8 may be delivered.
+
+### rc8 P1 artifact synthetic checkpoint
+
+Commit `3f97bf0848f8aa5e1cd2cfe0baf1227a062629f0` completed the first required
+artifact execution evidence on Linux CI. The candidate bundle includes one
+closed manifest-hashed rehearsal runner. CPython 3.11 creates a fresh
+`--without-pip` venv, bootstraps pip only from the bundle's reviewed wheel,
+installs no-index from the bundle wheelhouse and uses `python -I` to prove the
+parent, API child and Runtime child import every AgentBox module from that venv.
+It then completes the real synthetic socket/PTY path without a skip. CPython
+3.12 and 3.13 independently prove artifact wheelhouse imports.
+
+This checkpoint does not yet provide the exact predecessor artifact, dual
+artifact upgrade/rollback, dynamic canary scan, real host activation or R12
+qualification.
+
+### rc8 P1 full artifact-operations checkpoint
+
+Candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed the full
+artifact-operations gate on exact-head Linux CI. It builds the exact rc7
+release-record predecessor and rc8 candidate from separate source trees, binds
+the two artifacts to separate manifests/digests, and creates separate
+artifact-only environments. CPython 3.11/3.12/3.13 independently prove the
+candidate wheelhouse imports; the 3.11 candidate environment runs the complete
+artifact synthetic API/Runtime/RFC6455/PTY flow without a skip.
+
+The operations runner applies the predecessor, upgrades through the candidate
+artifact, completes receipt-bound rollback, and checks final predecessor
+version/source, health/ready/meta, Alembic schema, non-secret durable state and
+receipt/journal/backup integrity. It dynamically injects payload, ticket and
+ephemeral-private-key canaries into the declared inputs, scans all declared
+private and artifact surfaces before public output, and publishes only a safe
+receipt. The receipt reports passed synthetic, upgrade/rollback and canary scan
+with no secrets and no host qualification. All 26 checks for this candidate
+completed successfully. A bounded WAW background-close deadline was also added
+after a cancellation-resistant close exposed a CI teardown hang; unresolved
+work retains ownership and reaches the existing typed incomplete-shutdown state.
+
+The implementation evidence gate is complete on c998. Any later documentation
+head requires fresh full exact-head CI before independent final review, normal
+merge and exact read-back can deliver rc8. None of this enables a host capability
+or advances R12.
+
 
 ## rc9: complete browser-selected bilingual UI
 

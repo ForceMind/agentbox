@@ -10,7 +10,11 @@ import zipfile
 from pathlib import Path
 
 from agentbox_installer.artifact import scan_wheel_bytes, verify_release_bundle
-from agentbox_installer.build import RELEASE_NATIVE_BUILD_SCRIPTS, RELEASE_NATIVE_SOURCE_FILES
+from agentbox_installer.build import (
+    RELEASE_NATIVE_BUILD_SCRIPTS,
+    RELEASE_NATIVE_SOURCE_FILES,
+    RELEASE_WAW_REHEARSAL_FILES,
+)
 
 CANARIES = (
     b"APP-SECRET-CANARY",
@@ -50,7 +54,10 @@ WAW_INERT_WHEEL_ASSETS = {
 
 
 def verify_waw_release_inventory(
-    native_members: set[str], native_scripts: set[str], wheel_assets: set[str]
+    native_members: set[str],
+    native_scripts: set[str],
+    rehearsal_members: set[str],
+    wheel_assets: set[str],
 ) -> None:
     """Require the release's WAW review inputs to be one exact closed set."""
 
@@ -58,17 +65,20 @@ def verify_waw_release_inventory(
         raise ValueError("release native WAW source inventory mismatch")
     if native_scripts != set(RELEASE_NATIVE_BUILD_SCRIPTS):
         raise ValueError("release native WAW build-script inventory mismatch")
+    if rehearsal_members != {target for _, target in RELEASE_WAW_REHEARSAL_FILES}:
+        raise ValueError("release WAW rehearsal inventory mismatch")
     if wheel_assets != WAW_INERT_WHEEL_ASSETS:
         raise ValueError("release wheel WAW inert-asset inventory mismatch")
 
 
 def collect_waw_release_source_inventory(
     members: list[tarfile.TarInfo],
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], set[str]]:
     """Collect every regular native/script member through the real tar path."""
 
     native_members: set[str] = set()
     native_scripts: set[str] = set()
+    rehearsal_members: set[str] = set()
     for member in members:
         if not member.isfile():
             continue
@@ -77,7 +87,9 @@ def collect_waw_release_source_inventory(
             native_members.add(relative_name)
         if relative_name.startswith("scripts/"):
             native_scripts.add(relative_name)
-    return native_members, native_scripts
+        if relative_name.startswith("rehearsal/"):
+            rehearsal_members.add(relative_name)
+    return native_members, native_scripts, rehearsal_members
 
 
 def collect_agentbox_waw_assets(
@@ -142,7 +154,9 @@ def main() -> int:
             raise SystemExit(f"release secret scan failed: {public_file.name}")
     with tarfile.open(args.artifact, "r:*") as archive:
         members = archive.getmembers()
-        native_members, native_scripts = collect_waw_release_source_inventory(members)
+        native_members, native_scripts, rehearsal_members = collect_waw_release_source_inventory(
+            members
+        )
         for member in members:
             checked += 1
             parts = set(Path(member.name).parts)
@@ -166,7 +180,12 @@ def main() -> int:
                         wheel_assets=wheel_assets,
                     )
     try:
-        verify_waw_release_inventory(native_members, native_scripts, wheel_assets)
+        verify_waw_release_inventory(
+            native_members,
+            native_scripts,
+            rehearsal_members,
+            wheel_assets,
+        )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     print(

@@ -1,10 +1,10 @@
 # AgentBox MVP Release Candidate Checklist
 
-Candidate: `0.3.0rc7`; planned tag: `v0.3.0-rc.7`.
+Candidate: `0.3.0rc8`; planned tag: `v0.3.0-rc.8`.
 
 Completing the preparation boxes does not authorize a tag, GitHub Release, or
 stable-support claim. Publication boxes remain manual and require review after
-the Phase 10 PR is merged.
+the rc8 PR is merged.
 
 ## Source and version
 
@@ -41,7 +41,7 @@ the Phase 10 PR is merged.
       upgrade/downgrade/upgrade, and `pip-audit` pass.
 - [ ] Frontend lint, format, typecheck, unit, build, and high audit pass.
 - [ ] E2E, four-job Deployment matrix, `deployment-gate`, and every current required/additional
-      exact-head check passes (19 observed for the WAW software PRs).
+      exact-head check passes (26 observed for the rc8 artifact-operations candidate).
 
 ## Reproducibility and artifact contract
 
@@ -131,7 +131,7 @@ the Phase 10 PR is merged.
 - [ ] Release notes list manual admin initialization, independent Runtime logins,
       secure remote access, backup limits, unsigned artifact, and out-of-scope work.
 
-## Publication after merge (manual, not Phase 10 PR actions)
+## Publication after merge (manual, not PR actions)
 
 - [ ] Rebuild from merged protected `main` and compare reviewed source commit.
 - [ ] Obtain human approval for the candidate version and release notes.

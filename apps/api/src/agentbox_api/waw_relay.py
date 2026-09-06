@@ -685,7 +685,7 @@ class WAWCiphertextRelay:
             or self._publication_fenced
             or self._detaching
             or self._exited
-            or self.lease.tick(now=now).state != LeaseCleanupState.ACTIVE
+            or self.lease.tick().state != LeaseCleanupState.ACTIVE
             or now - self.last_activity >= 900
             or now - self.started >= 28800
         ):
@@ -712,7 +712,7 @@ class WAWCiphertextRelay:
             or self._publication_fenced
             or now - self.last_activity >= 900
             or now - self.started >= 28800
-            or self.lease.tick(now=now).state
+            or self.lease.tick().state
             not in (LeaseCleanupState.ACTIVE, LeaseCleanupState.DETACHING)
             or not self.authority.is_active(self.claims, context=self.context, now=now)
             or not self._publication_authorized()
@@ -915,16 +915,16 @@ class WAWCiphertextRelay:
                 or self._runtime_queue.items.full()
             ):
                 raise RelayFailure("INPUT_RATE_LIMITED", 4429)
-            self._permit()
+            accepted_now = self._permit()
             hop = self.wire.expected_sequence(AR)
             self._inputs[hop] = _InputReference(
-                frame.hop_sequence, envelope.crypto_sequence, now + 5
+                frame.hop_sequence, envelope.crypto_sequence, accepted_now + 5
             )
             # The immutable forwarded copy is built and queued without an await;
             # one token transfers with it instead of charging another 64 KiB.
             forwarded = forward_wire_frame(frame, AR, hop)
             self._queue_runtime(forwarded, data=True, input_token=input_token)
-            self.last_activity = now
+            self.last_activity = accepted_now
             return
         assert body is not None
         if kind == F.HEARTBEAT:
@@ -932,8 +932,11 @@ class WAWCiphertextRelay:
                 self._limit("heartbeat", interval=5)
                 return
             self._permit()
-            self.lease.heartbeat(now=now)
-            self.authority.heartbeat(self.claims, context=self.context, now=now)
+            # _permit() already advanced the lease with a later observation than
+            # the frame-admission sample. Let each authority take a fresh
+            # monotonic sample rather than replaying that stale value.
+            self.lease.heartbeat()
+            self.authority.heartbeat(self.claims, context=self.context)
         elif kind == F.PING:
             if not self._ping_rates[BA].take(now):
                 self._limit("ping")
@@ -958,10 +961,10 @@ class WAWCiphertextRelay:
                 self._limit("resize")
                 return
             hop = self.wire.expected_sequence(AR)
-            self._permit()
+            accepted_now = self._permit()
             self._resize = frame.hop_sequence, hop, body
             self._queue_runtime(self._emit(kind, AR, body))
-            self.last_activity = now
+            self.last_activity = accepted_now
         elif kind == F.DETACH:
             self._discard_output_at_fence()
             if not self._control_rate.take(now):
@@ -969,10 +972,14 @@ class WAWCiphertextRelay:
                 return
             hop = self.wire.expected_sequence(AR)
             self._permit()
+            # Establish the local cleanup fence before exposing a Runtime
+            # Detach action. The permit above may have advanced the fence past
+            # the frame-admission timestamp, so request_detach must sample its
+            # own current monotonic time rather than replaying ``now``.
+            self.lease.request_detach()
             self._detach = frame.hop_sequence, hop
-            self._queue_runtime(self._emit(kind, AR, body))
             self._detaching = True
-            self.lease.request_detach(now=now)
+            self._queue_runtime(self._emit(kind, AR, body))
         else:
             raise RelayFailure()
 
@@ -1212,14 +1219,14 @@ class WAWCiphertextRelay:
             if self._terminal_at is not None and now - self._terminal_at >= 1:
                 raise RelayFailure("ATTACHMENT_STALE", 4403)
             if not self._exited and not self._detaching:
-                if self.lease.tick(now=now).state != LeaseCleanupState.ACTIVE:
+                if self.lease.tick().state != LeaseCleanupState.ACTIVE:
                     raise RelayFailure("ATTACHMENT_STALE", 4403)
                 if now - self._last_revocation_check >= 5:
                     self._permit()
                     self._last_revocation_check = now
             if (
                 self._detaching
-                and self.lease.tick(now=now).state == LeaseCleanupState.RECONCILIATION_REQUIRED
+                and self.lease.tick().state == LeaseCleanupState.RECONCILIATION_REQUIRED
             ):
                 raise RelayFailure("ATTACHMENT_STALE", 4403)
             if now - self.last_runtime_heartbeat >= 10:

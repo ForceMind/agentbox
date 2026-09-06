@@ -314,9 +314,9 @@ These require disposable VMs, dedicated test identities, redacted evidence, and 
 ## Release quality gates
 
 A release is blocked by an open Critical/High security defect; a Pair Code or credential canary in persistent output; a path/command escape; a root-owned Runtime path; broken upgrade/rollback/restore; unclassified destructive failure; or missing supported-family deployment evidence. Accepted residual Medium risks require explicit human sign-off and a documented mitigation/revisit date.
-## Phase 10 release-candidate coverage
+## Release-candidate and rc8 coverage
 
-The independent Release Candidate workflow derives `0.3.0rc7` from the core
+The independent Release Candidate workflow derives `0.3.0rc8` from the core
 version source, builds the production Web once, and creates two release bundles
 from separate staging directories at the same commit and
 `SOURCE_DATE_EPOCH`. Exact tarball, manifest, SBOM, and checksum equality is the
@@ -337,6 +337,14 @@ data-preserving uninstall. Existing fault matrices remain the update/rollback
 rehearsal. No CI job writes runner `/etc`/`/opt`, uses production credentials,
 creates a tag/Release, or connects to a real server.
 
+The rc8 artifact path additionally starts its venv with `--without-pip`, uses
+only the manifest-hashed bootstrap pip wheel to install manifest-hashed
+wheelhouse distributions, and fails if `.pth`, `sitecustomize.py`,
+`usercustomize.py`, user site or an AgentBox module origin escapes the venv. The
+manifest-hashed synthetic runner is then executed with `python -I` on Linux
+CPython 3.11; its parent, API child and Runtime child independently enforce the
+same origin fence before their real TCP/AF_UNIX/RFC6455/PTY fixture starts.
+
 R10 additionally checks that every inert WAW policy template is package data,
 the Codex exact-two TOML policy bundle is canonical and digest-pinned, the fixed
 interactive-process document is release inventory, and native helper source/
@@ -344,6 +352,30 @@ build-check scripts are exact artifact inputs. The artifact scan rejects an
 unexpected or missing WAW wheel asset, native source or build script. These
 checks do not compile or qualify a production helper binary, install a
 unit/socket, invoke a vendor CLI, or provide host evidence.
+
+### R11 rc8 artifact-operations coverage
+
+The full rc8 operations member builds the exact rc7 release-record predecessor
+and the candidate from separate source trees, validates the frozen rehearsal
+contract, and retains separate artifact-only environments and provenance proofs.
+It applies the predecessor, upgrades via the candidate artifact and actual
+Alembic migration, rolls back through the artifact-local receipt, then verifies
+the exact predecessor version/source, health/ready/meta, schema, non-secret
+durable state and receipt/journal/backup integrity. Dynamic payload, ticket and
+ephemeral-private-key canaries are generated inside the job. The scanner covers
+bundle and unpacked trees, wheelhouses, artifact environments, native output,
+fixture roots, backup/receipt/journal, SQLite/WAL/SHM, captured API/Runtime/PTY
+stdout/stderr and reports before a public result is emitted. Public CI output
+contains only a safe receipt with no canary value.
+
+The WAW API work-ledger shutdown test also holds a cancellation-resistant
+background close past its bounded deadline. It must retain the singleton lock
+and work ownership, enter the typed incomplete-shutdown state, and remain
+poisoned after the late work eventually ends; no cleanup task may be cancelled
+or silently discarded merely to let a test runner finish. The CI topology keeps
+the exact predecessor builder, the three artifact-import members, the full
+artifact-operations member and the final release-gate as separate fail-closed
+jobs, so no source-only or predecessor-only result can satisfy the release gate.
 
 ## Phase 9 hardening and recovery coverage
 
