@@ -3,17 +3,54 @@ import { ShieldCheck } from 'lucide-react'
 
 import packageMetadata from '../../package.json'
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
+import { LocalizedApiError, TechnicalValue } from '../components/i18n'
 import { useAuth } from '../features/auth/AuthContext'
 import { usePageTitle } from '../hooks/usePageTitle'
+import {
+  currentLocale,
+  formatMessage,
+  technicalApiIdentifier,
+  type Locale,
+} from '../i18n'
 import { ApiError } from '../lib/api'
 
-export function LoginPage() {
+type LoginFailure = Readonly<{
+  code: string
+  requestId?: string
+  retryAfter?: number
+  status: number
+}>
+
+function normalizeLoginFailure(reason: unknown): LoginFailure {
+  if (!(reason instanceof ApiError)) {
+    return { code: 'CONTROL_PLANE_UNAVAILABLE', status: 0 }
+  }
+
+  const code =
+    reason.status === 401
+      ? 'AUTH_INVALID_CREDENTIALS'
+      : reason.status === 429
+        ? 'AUTH_RATE_LIMITED'
+        : reason.code
+  return {
+    code,
+    requestId: reason.requestId,
+    retryAfter: reason.retryAfter,
+    status: reason.status,
+  }
+}
+
+export function LoginPage({
+  locale = currentLocale(),
+}: {
+  locale?: Locale
+} = {}) {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [pending, setPending] = useState(false)
-  const [error, setError] = useState<ApiError | null>(null)
-  usePageTitle('Sign in')
+  const [error, setError] = useState<LoginFailure | null>(null)
+  usePageTitle('auth.title', {})
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -23,15 +60,7 @@ export function LoginPage() {
     try {
       await login(username, password)
     } catch (reason) {
-      setError(
-        reason instanceof ApiError
-          ? reason
-          : new ApiError({
-              code: 'CONTROL_PLANE_UNAVAILABLE',
-              message: 'The control plane is unavailable',
-              status: 0,
-            }),
-      )
+      setError(normalizeLoginFailure(reason))
     } finally {
       setPassword('')
       setPending(false)
@@ -39,11 +68,7 @@ export function LoginPage() {
   }
 
   const rateLimited = error?.status === 429
-  const displayError = rateLimited
-    ? 'Too many failed attempts. Try again later.'
-    : error?.status === 401
-      ? 'Invalid credentials'
-      : error?.message
+  const requestId = technicalApiIdentifier(error?.requestId)
 
   return (
     <main className="login-page">
@@ -53,14 +78,16 @@ export function LoginPage() {
             <ShieldCheck size={27} strokeWidth={1.8} />
           </div>
           <div>
-            <p className="eyebrow">AI Developer Infrastructure</p>
-            <h1>AgentBox</h1>
+            <p className="eyebrow">
+              {formatMessage(locale, 'auth.productCategory', {})}
+            </p>
+            <h1>{formatMessage(locale, 'app.name', {})}</h1>
           </div>
         </div>
 
         <div className="login-copy">
-          <h2 id="login-title">Sign in to manage this workstation</h2>
-          <p>Use the local administrator initialized with the AgentBox CLI.</p>
+          <h2 id="login-title">{formatMessage(locale, 'auth.heading', {})}</h2>
+          <p>{formatMessage(locale, 'auth.description', {})}</p>
         </div>
 
         <form
@@ -68,41 +95,65 @@ export function LoginPage() {
           onSubmit={(event) => void handleSubmit(event)}
         >
           <label>
-            <span>Username</span>
+            <span>{formatMessage(locale, 'auth.username', {})}</span>
             <input
               autoCapitalize="none"
               autoComplete="username"
               autoFocus
               maxLength={64}
               onChange={(event) => setUsername(event.target.value)}
+              placeholder={formatMessage(
+                locale,
+                'auth.usernamePlaceholder',
+                {},
+              )}
               required
               value={username}
             />
           </label>
           <label>
-            <span>Password</span>
+            <span>{formatMessage(locale, 'auth.password', {})}</span>
             <input
               autoComplete="current-password"
               maxLength={1024}
               onChange={(event) => setPassword(event.target.value)}
+              placeholder={formatMessage(
+                locale,
+                'auth.passwordPlaceholder',
+                {},
+              )}
               required
               type="password"
               value={password}
             />
           </label>
 
-          {displayError && (
+          {error && (
             <div className="login-error" role="alert">
-              <strong>{displayError}</strong>
-              {rateLimited && error?.retryAfter && (
+              <strong>
+                <LocalizedApiError
+                  error={error}
+                  locale={locale}
+                  role="none"
+                  showCode={false}
+                  showRequestId={false}
+                />
+              </strong>
+              {rateLimited && error.retryAfter !== undefined && (
                 <span>
-                  Try again in approximately {error.retryAfter} seconds.
+                  {formatMessage(locale, 'auth.retryAfter', {
+                    seconds: error.retryAfter,
+                  })}
                 </span>
               )}
-              {error?.requestId && (
+              {requestId && (
                 <details>
-                  <summary>Request details</summary>
-                  <code>{error.requestId}</code>
+                  <summary>
+                    {formatMessage(locale, 'auth.requestDetails', {})}
+                  </summary>
+                  <code>
+                    <TechnicalValue value={requestId.value} />
+                  </code>
                 </details>
               )}
             </div>
@@ -113,32 +164,38 @@ export function LoginPage() {
             disabled={pending || !username.trim() || !password}
             type="submit"
           >
-            {pending ? 'Signing in…' : 'Sign in'}
+            {pending
+              ? formatMessage(locale, 'auth.signingIn', {})
+              : formatMessage(locale, 'auth.signIn', {})}
           </button>
         </form>
 
         <div className="login-footer">
-          <ControlPlanePulse />
-          <span>Local administrator access only</span>
+          <ControlPlanePulse locale={locale} />
+          <span>
+            {formatMessage(locale, 'auth.localAdministratorOnly', {})}
+          </span>
           <small className="app-version">
-            Version{' '}
-            <code dir="ltr" lang="en" translate="no">
-              {packageMetadata.version}
+            {formatMessage(locale, 'auth.version', {})}{' '}
+            <code>
+              <TechnicalValue value={packageMetadata.version} />
             </code>
           </small>
         </div>
       </section>
-      <aside className="login-context" aria-label="AgentBox product context">
-        <p className="eyebrow">One workstation. One calm control plane.</p>
-        <h2>Keep AI development infrastructure within reach.</h2>
-        <p>
-          AgentBox is building a secure, remote management layer for a Linux AI
-          development workstation. Runtime controls arrive in later phases.
+      <aside
+        className="login-context"
+        aria-label={formatMessage(locale, 'auth.productContextLabel', {})}
+      >
+        <p className="eyebrow">
+          {formatMessage(locale, 'auth.contextEyebrow', {})}
         </p>
+        <h2>{formatMessage(locale, 'auth.contextHeading', {})}</h2>
+        <p>{formatMessage(locale, 'auth.contextDescription', {})}</p>
         <ul>
-          <li>Loopback-first access</li>
-          <li>Server-side sessions</li>
-          <li>No browser shell</li>
+          <li>{formatMessage(locale, 'auth.loopbackAccess', {})}</li>
+          <li>{formatMessage(locale, 'auth.serverSessions', {})}</li>
+          <li>{formatMessage(locale, 'auth.noBrowserShell', {})}</li>
         </ul>
       </aside>
     </main>

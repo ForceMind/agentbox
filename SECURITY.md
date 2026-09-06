@@ -2,12 +2,14 @@
 
 ## Current maturity
 
-AgentBox source is the `0.3.0rc8` development candidate, advancing from the
+AgentBox source is the `0.3.0rc9` local development candidate, advancing from the
 `0.3.0rc1` MVP artifact baseline. It implements authentication,
 typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
 operations, native installation, systemd deployment, staged update, and
 verified rollback for a single-server/single-administrator Linux x86_64 model.
-It is a pre-release—not a production-readiness, penetration-test, or broad
+Its rc9 bilingual UI is locally implemented and verified as a candidate, but
+exact-head CI, normal merge, merge read-back and post-main verification are
+still pending. It is a pre-release—not a production-readiness, penetration-test, or broad
 platform-support claim.
 
 R10 packages inert WAW process-policy templates and native helper source/build
@@ -15,6 +17,14 @@ checks. It does not install or enable a unit/socket, create a native helper
 binary, use a vendor account, or handle a Provider credential, Secret, key or
 host enrollment record. R11 integration and R12 host qualification remain
 separate security boundaries.
+
+rc9 keeps user-facing copy in typed `zh-CN`/English catalogs and localizes API
+errors from stable codes only. It never renders API/server prose as a fallback.
+`navigator.languages[0]` is the sole per-document locale input; technical
+values (identifiers, protocol fields, error codes and Audit actions) are not
+translated. Test-only E2E uses a distinct-origin harness; it is absent from the
+production bundle, and traces, video and screenshots remain disabled where a
+sensitive artifact could be created.
 
 The security architecture and completed internal review are documented in
 `docs/SECURITY.md`, `docs/PERMISSIONS.md`, `docs/THREAT_MODEL.md`, and

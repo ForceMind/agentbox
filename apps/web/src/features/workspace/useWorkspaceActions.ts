@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ApiError } from '../../lib/api'
 import {
   parseWorkspaceAttachmentTicketResponse,
   parseWorkspaceDetachResponse,
@@ -9,19 +8,14 @@ import {
   WorkspaceAttachmentTicketResponse,
 } from '../../lib/contracts'
 import { useAuth } from '../auth/AuthContext'
+import {
+  workspaceApiError,
+  workspaceError,
+  type WorkspaceApiErrorView,
+} from './workspaceView'
 
 export type WorkspaceAction =
   'start' | 'connect' | 'reconnect' | 'detach' | 'stop'
-
-function actionError(error: unknown): ApiError {
-  return error instanceof ApiError
-    ? error
-    : new ApiError({
-        code: 'WAW_ACTION_FAILED',
-        message: 'Workspace 操作失败',
-        status: 0,
-      })
-}
 
 /** Metadata/control-plane mutations only. Ticket material is returned to the caller and never persisted. */
 export function useWorkspaceActions() {
@@ -32,7 +26,7 @@ export function useWorkspaceActions() {
     scope: string
   } | null>(null)
   const [errorState, setError] = useState<{
-    error: ApiError
+    error: WorkspaceApiErrorView
     scope: string
   } | null>(null)
   const active = useRef<symbol | null>(null)
@@ -57,25 +51,13 @@ export function useWorkspaceActions() {
     ) => {
       const scope = authScope
       if (signal?.aborted) {
-        throw new ApiError({
-          code: 'WAW_ACTION_STALE',
-          message: '工作区上下文已变化，请重新读取状态',
-          status: 0,
-        })
+        throw workspaceError('WAW_ACTION_STALE')
       }
       if (!scope || !mounted.current || liveScope.current !== scope) {
-        throw new ApiError({
-          code: 'WAW_SESSION_REQUIRED',
-          message: '请重新登录后操作',
-          status: 401,
-        })
+        throw workspaceError('WAW_SESSION_REQUIRED')
       }
       if (active.current !== null) {
-        throw new ApiError({
-          code: 'WAW_ACTION_BUSY',
-          message: 'Workspace 操作正在进行中',
-          status: 409,
-        })
+        throw workspaceError('WAW_ACTION_BUSY')
       }
       const operation = Symbol('workspace-action')
       active.current = operation
@@ -89,22 +71,14 @@ export function useWorkspaceActions() {
       try {
         const result = await task()
         if (!current()) {
-          throw new ApiError({
-            code: 'WAW_ACTION_STALE',
-            message: '会话已变化，请重新读取工作区状态',
-            status: 0,
-          })
+          throw workspaceError('WAW_ACTION_STALE')
         }
         return result
       } catch (cause) {
         if (signal?.aborted) {
-          throw new ApiError({
-            code: 'WAW_ACTION_STALE',
-            message: '工作区上下文已变化，请重新读取状态',
-            status: 0,
-          })
+          throw workspaceError('WAW_ACTION_STALE')
         }
-        const failure = actionError(cause)
+        const failure = workspaceApiError(cause, 'WAW_ACTION_FAILED')
         if (current()) setError({ error: failure, scope })
         throw failure
       } finally {
@@ -128,13 +102,7 @@ export function useWorkspaceActions() {
       signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
-        return Promise.reject(
-          new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: 'AgentType 无效',
-            status: 400,
-          }),
-        )
+        return Promise.reject(workspaceError('WAW_INVALID_AGENT'))
       return run(
         'start',
         () =>
@@ -160,13 +128,7 @@ export function useWorkspaceActions() {
       signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
-        return Promise.reject(
-          new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: 'AgentType 无效',
-            status: 400,
-          }),
-        )
+        return Promise.reject(workspaceError('WAW_INVALID_AGENT'))
       return run<WorkspaceAttachmentTicketResponse>(
         'connect',
         () =>
@@ -195,13 +157,7 @@ export function useWorkspaceActions() {
       signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
-        return Promise.reject(
-          new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: 'AgentType 无效',
-            status: 400,
-          }),
-        )
+        return Promise.reject(workspaceError('WAW_INVALID_AGENT'))
       return run<WorkspaceAttachmentTicketResponse>(
         'reconnect',
         () =>
@@ -233,13 +189,7 @@ export function useWorkspaceActions() {
       signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
-        return Promise.reject(
-          new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: 'AgentType 无效',
-            status: 400,
-          }),
-        )
+        return Promise.reject(workspaceError('WAW_INVALID_AGENT'))
       return run(
         'detach',
         () =>
@@ -276,13 +226,7 @@ export function useWorkspaceActions() {
       signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
-        return Promise.reject(
-          new ApiError({
-            code: 'WAW_INVALID_AGENT',
-            message: 'AgentType 无效',
-            status: 400,
-          }),
-        )
+        return Promise.reject(workspaceError('WAW_INVALID_AGENT'))
       return run(
         'stop',
         () =>

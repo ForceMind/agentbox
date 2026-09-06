@@ -302,6 +302,12 @@ button:disabled {
 .login-error details {
   margin-top: 0.35rem;
 }
+.login-error summary {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  cursor: pointer;
+}
 .login-error code {
   display: block;
   max-width: 100%;

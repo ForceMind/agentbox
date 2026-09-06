@@ -417,13 +417,23 @@ describe('useWAWBrowserAttachment', () => {
 
   it('keeps an exact server ticket error instead of masking it as a protocol failure', async () => {
     const fixture = makeFixture()
+    const messageRead = vi.fn()
+    const failure = new ApiError({
+      code: 'ATTACHMENT_STALE',
+      message: 'unsafe server attachment prose',
+      status: 409,
+      requestId: 'req_exact',
+      retryAfter: 5,
+    })
+    Object.defineProperty(failure, 'message', {
+      configurable: true,
+      get: () => {
+        messageRead()
+        return 'unsafe server attachment prose'
+      },
+    })
     fixture.actions.connect = vi.fn(async () => {
-      throw new ApiError({
-        code: 'ATTACHMENT_STALE',
-        message: 'exact server error',
-        status: 409,
-        requestId: 'req_exact',
-      })
+      throw failure
     })
     const { result } = renderFixture(fixture)
     bindTerminal(result.current)
@@ -431,9 +441,18 @@ describe('useWAWBrowserAttachment', () => {
       await expect(result.current.connect()).rejects.toMatchObject({
         code: 'ATTACHMENT_STALE',
         requestId: 'req_exact',
+        retryAfter: 5,
       })
     })
-    expect(result.current.error).toMatchObject({ code: 'ATTACHMENT_STALE' })
+    expect(result.current.error).toEqual({
+      code: 'ATTACHMENT_STALE',
+      requestId: 'req_exact',
+      retryAfter: 5,
+    })
+    expect(messageRead).not.toHaveBeenCalled()
+    expect(JSON.stringify(result.current.error)).not.toContain(
+      'unsafe server attachment prose',
+    )
   })
 
   it('owns one ticket/trust/controller attempt and fences its stream and plaintext surface', async () => {

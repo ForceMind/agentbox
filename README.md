@@ -6,9 +6,12 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is now the **pre-release `0.3.0rc8` development candidate** for
+AgentBox source is now the **pre-release `0.3.0rc9` local development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
+The rc9 bilingual-UI implementation and local verification are complete as a
+candidate only. Exact-head CI, normal merge, merge read-back and post-main
+verification have not yet occurred.
 This is not a stable-release, production-readiness, penetration-test,
 enterprise-support, or broad platform-support claim.
 
@@ -96,6 +99,15 @@ See the [execution plan](docs/project/EXECUTION_PLAN.md),
 [recovery contracts](docs/WAW3_RECOVERY_CONTRACTS.md) and
 [host gates](docs/WAW1_HOST_GATE_CHECKLIST.md), plus the [fixed interactive
 process boundary](docs/WAW_FIXED_INTERACTIVE_PROCESS.md).
+
+The rc9 UI has exactly two typed catalogs, `zh-CN` and English. A new document
+uses only `navigator.languages[0]`: primary language `zh` selects `zh-CN`, and
+every other, missing or malformed value selects English. API displays localized
+stable error codes only; server prose is excluded. Protocol fields, identifiers,
+enum values, error codes, Audit actions, filenames, branches and versions remain
+technical English. Its test-only Workspace harness runs on a distinct origin;
+the production bundle has no test bypass, and sensitive E2E artifacts remain
+disabled. See the [rc9 locale manifest](docs/WAW_R11_RC9_LOCALE_MANIFEST.md).
 
 ## MVP goal
 
@@ -271,6 +283,7 @@ The detailed gates are in [the development plan](docs/DEVELOPMENT_PLAN.md).
 - [Quickstart](docs/QUICKSTART.md)
 - [MVP acceptance](docs/MVP_ACCEPTANCE.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
+- [0.3.0rc9 candidate notes](docs/releases/0.3.0rc9.md)
 - [0.3.0rc8 release notes](docs/releases/0.3.0rc8.md)
 - [0.3.0rc7 release notes](docs/releases/0.3.0rc7.md)
 - [0.3.0rc6 release notes](docs/releases/0.3.0rc6.md)

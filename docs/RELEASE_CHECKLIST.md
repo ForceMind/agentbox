@@ -1,10 +1,10 @@
 # AgentBox MVP Release Candidate Checklist
 
-Candidate: `0.3.0rc8`; planned tag: `v0.3.0-rc.8`.
+Candidate: `0.3.0rc9`; planned tag: `v0.3.0-rc.9`.
 
 Completing the preparation boxes does not authorize a tag, GitHub Release, or
 stable-support claim. Publication boxes remain manual and require review after
-the rc8 PR is merged.
+the rc9 PR is merged.
 
 ## Source and version
 
@@ -41,7 +41,25 @@ the rc8 PR is merged.
       upgrade/downgrade/upgrade, and `pip-audit` pass.
 - [ ] Frontend lint, format, typecheck, unit, build, and high audit pass.
 - [ ] E2E, four-job Deployment matrix, `deployment-gate`, and every current required/additional
-      exact-head check passes (26 observed for the rc8 artifact-operations candidate).
+      exact-head check passes. `release-gate` requires every ordinary release
+      check to succeed; its historical rc8 artifact jobs must be `success` for
+      rc8 and exactly `skipped` for rc9.
+
+## rc9 bilingual UI boundary
+
+- [ ] Python version is `0.3.0rc9`, npm version is `0.3.0-rc.9`, and the MV3
+      version is `0.3.0.9` from the unified source/version checks.
+- [ ] Typed `zh-CN` and English catalogs have exact key parity; all user-facing
+      API errors map from stable code only, with no server prose fallback.
+- [ ] Locale uses only `navigator.languages[0]` once per document; first primary
+      `zh` selects `zh-CN`, all other/missing/malformed values select English.
+- [ ] Technical identifiers, protocol fields, enum values, error codes and Audit
+      actions remain English.
+- [ ] Test-only distinct-origin Workspace harness is absent from production build;
+      sensitive E2E trace, video and screenshot artifacts are disabled.
+- [ ] Local candidate verification is recorded separately from exact-head CI,
+      normal merge, merge read-back and post-main validation; do not mark rc9
+      delivered before all four later stages complete.
 
 ## Reproducibility and artifact contract
 

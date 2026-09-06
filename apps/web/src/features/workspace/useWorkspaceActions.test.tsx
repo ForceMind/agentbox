@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiClient } from '../../lib/api'
+import { ApiClient, ApiError } from '../../lib/api'
 import { AuthContext, AuthContextValue } from '../auth/AuthContext'
 import { useWorkspaceActions } from './useWorkspaceActions'
 
@@ -146,6 +146,51 @@ describe('useWorkspaceActions', () => {
       release(new Response(JSON.stringify({}), { status: 500 }))
       await expect(first!).rejects.toThrow()
     })
+  })
+
+  it('projects action failures before storing or returning them', async () => {
+    const messageRead = vi.fn()
+    const failure = new ApiError({
+      code: 'WAW_ACTION_FAILED',
+      message: 'unsafe server action prose',
+      requestId: 'req_workspace_action',
+      retryAfter: 9,
+      status: 503,
+    })
+    Object.defineProperty(failure, 'message', {
+      configurable: true,
+      get: () => {
+        messageRead()
+        return 'unsafe server action prose'
+      },
+    })
+    const api = {
+      post: vi.fn(async () => {
+        throw failure
+      }),
+    } as unknown as ApiClient
+    const { result } = renderHook(() => useWorkspaceActions(), {
+      wrapper: wrapper(api),
+    })
+
+    await act(async () => {
+      await expect(
+        result.current.start('prj_0123456789abcdef0123456789abcdef'),
+      ).rejects.toEqual({
+        code: 'WAW_ACTION_FAILED',
+        requestId: 'req_workspace_action',
+        retryAfter: 9,
+      })
+    })
+    expect(result.current.error).toEqual({
+      code: 'WAW_ACTION_FAILED',
+      requestId: 'req_workspace_action',
+      retryAfter: 9,
+    })
+    expect(messageRead).not.toHaveBeenCalled()
+    expect(JSON.stringify(result.current.error)).not.toContain(
+      'unsafe server action prose',
+    )
   })
 
   it('clears its owned pending marker when a page control signal aborts', async () => {

@@ -60,6 +60,52 @@ async function assertCanaryAbsent(path, canary) {
   }
 }
 
+/**
+ * The Workspace harness is a separate Vite entry that must never be reachable
+ * from the production preview. Scan the fresh production build rather than
+ * treating source-graph inspection as release evidence.
+ */
+const productionBundleForbiddenMarkers = Object.freeze([
+  "rc9-workspace-harness",
+  "workspace-harness-evidence",
+  "__AGENTBOX_RC9_WORKSPACE_DEPENDENCIES__",
+  "__rc9_workspace_fixture",
+  "E2E_WORKSPACE_FIXTURE",
+  "managed-browser-port-v1",
+  "__agentbox_rc9_workspace",
+]);
+
+async function assertProductionBundleFenced(path) {
+  if (!existsSync(path)) {
+    throw new Error("production Web bundle was not created before the fence scan");
+  }
+  const entries = await readdir(path, { withFileTypes: true });
+  for (const entry of entries) {
+    const candidate = join(path, entry.name);
+    const nameMarker = productionBundleForbiddenMarkers.find((marker) =>
+      entry.name.includes(marker),
+    );
+    if (nameMarker) {
+      throw new Error(
+        `production Web bundle contains test-only marker: ${nameMarker}`,
+      );
+    }
+    if (entry.isDirectory()) {
+      await assertProductionBundleFenced(candidate);
+      continue;
+    }
+    const content = await readFile(candidate);
+    const contentMarker = productionBundleForbiddenMarkers.find((marker) =>
+      content.includes(Buffer.from(marker)),
+    );
+    if (contentMarker) {
+      throw new Error(
+        `production Web bundle contains test-only marker: ${contentMarker}`,
+      );
+    }
+  }
+}
+
 function capture(command, args) {
   return new Promise((resolveCapture, rejectCapture) => {
     const chunks = [];
@@ -118,16 +164,18 @@ async function stop(child) {
 }
 
 const temporaryRoot = await mkdtemp(join(tmpdir(), "agentbox-e2e-"));
-const pairCanary = `PAIR-${randomBytes(18).toString("base64url").toUpperCase()}`;
+const pairCanary = `PAIR-${randomBytes(18).toString("hex").toUpperCase()}`;
 let runError;
 
 try {
-  const [apiPort, webPort] = await Promise.all([
+  const [apiPort, webPort, harnessPort] = await Promise.all([
+    availablePort(),
     availablePort(),
     availablePort(),
   ]);
   const apiOrigin = `http://127.0.0.1:${apiPort}`;
   const webOrigin = `http://127.0.0.1:${webPort}`;
+  const harnessOrigin = `http://127.0.0.1:${harnessPort}`;
   const testEnvironment = {
     ...process.env,
     // Vite preserves the browser Origin while its proxy may present either
@@ -145,6 +193,7 @@ try {
     AGENTBOX_PROJECT_ROOT: join(temporaryRoot, "projects"),
     AGENTBOX_SECRET_KEY: randomBytes(48).toString("base64url"),
     PLAYWRIGHT_BASE_URL: webOrigin,
+    PLAYWRIGHT_HARNESS_BASE_URL: harnessOrigin,
     ...(authTiming
       ? {
           AGENTBOX_E2E_AUTH_TIMING: "1",
@@ -159,6 +208,9 @@ try {
   await run("pnpm", ["--filter", "@agentbox/web", "build"], {
     env: testEnvironment,
   });
+  await assertProductionBundleFenced(
+    join(repositoryRoot, "apps", "web", "dist"),
+  );
 
   const api = start(
     pythonCommand,
@@ -197,10 +249,35 @@ try {
   );
   await waitFor(webOrigin, web, "Web preview");
 
+  const harness = start(
+    "pnpm",
+    [
+      "--filter",
+      "@agentbox/web",
+      "exec",
+      "vite",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(harnessPort),
+      "--strictPort",
+    ],
+    testEnvironment,
+  );
+  await waitFor(
+    `${harnessOrigin}/e2e/rc9-workspace-harness.html`,
+    harness,
+    "E2E harness",
+  );
+
   await run(
     "pnpm",
     [
-      "--filter", "@agentbox/web", "exec", "playwright", "test",
+      "--filter",
+      "@agentbox/web",
+      "exec",
+      "playwright",
+      "test",
       ...(authTiming ? ["--config", "diagnostics/playwright.config.ts"] : []),
     ],
     {
@@ -210,9 +287,14 @@ try {
   if (authTiming) {
     const results = (
       await readFile(testEnvironment.AGENTBOX_E2E_TIMING_RESULTS, "utf8")
-    ).trim().split("\n").map((line) => JSON.parse(line));
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
     if (results.length !== 4 || results.some((result) => result.passed !== 1)) {
-      throw new Error("auth timing diagnostic failed; see numeric sample results");
+      throw new Error(
+        "auth timing diagnostic failed; see numeric sample results",
+      );
     }
   }
 } catch (error) {

@@ -316,6 +316,78 @@ describe('Workspace metadata controller', () => {
     )
   })
 
+  it('keeps server prose out of Workspace lookup state', async () => {
+    const { fetcher } = fixture()
+    const original = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((input, init) =>
+      input.toString().includes('/workspaces?')
+        ? Promise.resolve(
+            json(
+              {
+                error: {
+                  code: 'WAW_STATUS_UNAVAILABLE',
+                  message: 'unsafe lookup server prose',
+                },
+                request_id: 'req_workspace_lookup',
+              },
+              503,
+            ),
+          )
+        : original(input, init),
+    )
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.lookup).toBe('error'))
+    expect(result.current.error).toEqual({
+      code: 'WAW_STATUS_UNAVAILABLE',
+      requestId: 'req_workspace_lookup',
+    })
+    expect(JSON.stringify(result.current)).not.toContain(
+      'unsafe lookup server prose',
+    )
+  })
+
+  it('keeps server prose out of Workspace action state', async () => {
+    const { fetcher } = fixture()
+    const original = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((input, init) =>
+      input.toString().endsWith('/start')
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error: {
+                  code: 'WAW_ACTION_FAILED',
+                  message: 'unsafe action server prose',
+                },
+                request_id: 'req_workspace_start',
+              }),
+              { status: 503, headers: { 'Retry-After': '11' } },
+            ),
+          )
+        : original(input, init),
+    )
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.canStart).toBe(true))
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.error).toEqual({
+      code: 'WAW_ACTION_FAILED',
+      requestId: 'req_workspace_start',
+      retryAfter: 11,
+    })
+    expect(JSON.stringify(result.current)).not.toContain(
+      'unsafe action server prose',
+    )
+  })
+
   it('discards a late lookup after selecting another Project', async () => {
     const { fetcher } = fixture()
     const original = fetcher.getMockImplementation()!

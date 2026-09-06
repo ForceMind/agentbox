@@ -266,7 +266,7 @@ describe('AgentBox authenticated Web foundation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Invalid credentials',
+      'The username or password is incorrect.',
     )
     fireEvent.click(screen.getByText('Request details'))
     expect(screen.getByText('req_login-123')).toBeInTheDocument()
@@ -302,7 +302,7 @@ describe('AgentBox authenticated Web foundation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Too many failed attempts',
+      'Too many sign-in attempts',
     )
     expect(screen.getByRole('alert')).toHaveTextContent(
       'approximately 73 seconds',
@@ -609,8 +609,11 @@ describe('AgentBox authenticated Web foundation', () => {
       await screen.findByRole('button', { name: 'Start Session' }),
     )
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Claude Runtime Executor is unavailable',
+      'Claude is temporarily unavailable.',
     )
+    expect(
+      screen.queryByText('Claude Runtime Executor is unavailable'),
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 
@@ -753,8 +756,9 @@ describe('AgentBox authenticated Web foundation', () => {
     render(<App />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Project not found',
+      'The requested Project was not found.',
     )
+    expect(screen.queryByText('Project not found')).not.toBeInTheDocument()
     expect(screen.queryByText('Loading Project…')).not.toBeInTheDocument()
   })
 })

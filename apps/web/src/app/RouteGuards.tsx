@@ -1,12 +1,14 @@
 import { Navigate, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../features/auth/AuthContext'
+import { currentLocale, formatMessage } from '../i18n'
 
 function AuthBoot() {
+  const locale = currentLocale()
   return (
     <main className="auth-boot" role="status">
       <span className="loading-dot" aria-hidden="true" />
-      Restoring your session…
+      {formatMessage(locale, 'auth.restoringSession', {})}
     </main>
   )
 }

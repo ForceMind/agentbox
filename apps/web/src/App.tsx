@@ -23,6 +23,7 @@ import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { useWorkspaceController } from './features/workspace/useWorkspaceController'
+import { currentLocale, formatMessage } from './i18n'
 
 function WorkspaceRoute() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
@@ -50,11 +51,12 @@ function WorkspaceScreen(props: {
 
 function RootRedirect() {
   const { status } = useAuth()
+  const locale = currentLocale()
 
   if (status === 'checking') {
     return (
       <div className="auth-boot" role="status">
-        Restoring your session…
+        {formatMessage(locale, 'auth.restoringSession', {})}
       </div>
     )
   }

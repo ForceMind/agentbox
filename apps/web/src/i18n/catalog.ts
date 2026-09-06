@@ -1,218 +1,95 @@
+import { appCatalog } from './catalogs/app'
+import type { AppMessageParameters } from './catalogs/app'
+import { authCatalog } from './catalogs/auth'
+import type { AuthMessageParameters } from './catalogs/auth'
+import { claudeCatalog } from './catalogs/claude'
+import type { ClaudeMessageParameters } from './catalogs/claude'
+import { codexCatalog } from './catalogs/codex'
+import type { CodexMessageParameters } from './catalogs/codex'
+import { commonCatalog } from './catalogs/common'
+import type { CommonMessageParameters } from './catalogs/common'
+import { dashboardCatalog } from './catalogs/dashboard'
+import type { DashboardMessageParameters } from './catalogs/dashboard'
+import { doctorCatalog } from './catalogs/doctor'
+import type { DoctorMessageParameters } from './catalogs/doctor'
+import { documentCatalog } from './catalogs/document'
+import type { DocumentMessageParameters } from './catalogs/document'
+import { errorCatalog } from './catalogs/error'
+import type { ErrorMessageParameters } from './catalogs/error'
+import { itemsCatalog } from './catalogs/items'
+import type { ItemsMessageParameters } from './catalogs/items'
+import { logsCatalog } from './catalogs/logs'
+import type { LogsMessageParameters } from './catalogs/logs'
+import { notFoundCatalog } from './catalogs/notFound'
+import type { NotFoundMessageParameters } from './catalogs/notFound'
+import { projectCatalog } from './catalogs/project'
+import type { ProjectMessageParameters } from './catalogs/project'
+import { projectsCatalog } from './catalogs/projects'
+import type { ProjectsMessageParameters } from './catalogs/projects'
+import { settingsCatalog } from './catalogs/settings'
+import type { SettingsMessageParameters } from './catalogs/settings'
+import { shellCatalog } from './catalogs/shell'
+import type { ShellMessageParameters } from './catalogs/shell'
+import type { CatalogFor } from './catalogs/types'
+import { workspaceCatalog } from './catalogs/workspace'
+import type { WorkspaceMessageParameters } from './catalogs/workspace'
+import { MESSAGE_DOMAINS, type MessageDomain } from './domains'
 import type { Locale } from './locale'
 
-/**
- * Domains are product-facing rather than implementation-facing. A page may add
- * a key in its own domain, but it must add it to both catalogs.
- */
-export const MESSAGE_DOMAINS = [
-  'app',
-  'common',
-  'items',
-  'document',
-  'error',
-  'shell',
-  'auth',
-  'dashboard',
-  'codex',
-  'claude',
-  'workspace',
-  'projects',
-  'project',
-  'doctor',
-  'logs',
-  'settings',
-  'notFound',
-] as const
+export { MESSAGE_DOMAINS, type MessageDomain } from './domains'
 
-export type MessageDomain = (typeof MESSAGE_DOMAINS)[number]
+export interface MessageParameters
+  extends
+    AppMessageParameters,
+    CommonMessageParameters,
+    ItemsMessageParameters,
+    DocumentMessageParameters,
+    ErrorMessageParameters,
+    ShellMessageParameters,
+    AuthMessageParameters,
+    DashboardMessageParameters,
+    CodexMessageParameters,
+    ClaudeMessageParameters,
+    WorkspaceMessageParameters,
+    ProjectsMessageParameters,
+    ProjectMessageParameters,
+    DoctorMessageParameters,
+    LogsMessageParameters,
+    SettingsMessageParameters,
+    NotFoundMessageParameters {}
 
-export const MESSAGE_KEYS = [
-  'app.name',
-  'common.cancel',
-  'common.close',
-  'common.loading',
-  'common.retry',
-  'common.unknown',
-  'document.title',
-  'items.count',
-  'error.unknown',
-  'error.controlPlaneUnavailable',
-  'error.requestTimeout',
-  'error.codexStatusUnavailable',
-  'error.codexActionFailed',
-  'error.codexPairFailed',
-  'error.claudeActionFailed',
-  'error.doctorUnavailable',
-  'error.projectIdentityChanged',
-  'error.projectNotReady',
-  'error.reconciliationRequired',
-  'error.wawActionBusy',
-  'error.wawActionFailed',
-  'error.wawActionStale',
-  'error.wawInvalidAgent',
-  'error.wawMetadataInvalid',
-  'error.wawSessionRequired',
-  'error.wawStatusUnavailable',
-  'error.workspaceNotFound',
-  'shell.dashboard',
-  'shell.codex',
-  'shell.claude',
-  'shell.workspace',
-  'shell.projects',
-  'shell.doctor',
-  'shell.logs',
-  'shell.settings',
-  'auth.title',
-  'dashboard.title',
-  'codex.title',
-  'claude.title',
-  'workspace.title',
-  'projects.title',
-  'project.title',
-  'doctor.title',
-  'logs.title',
-  'settings.title',
-  'notFound.title',
-] as const
+export type MessageKey = Extract<keyof MessageParameters, string>
+export type MessageCatalog = CatalogFor<MessageParameters>
+export type MessageArguments = {
+  [Key in MessageKey]: readonly [key: Key, parameters: MessageParameters[Key]]
+}[MessageKey]
+export type ParameterFreeMessageKey = {
+  [Key in MessageKey]: MessageParameters[Key] extends Readonly<
+    Record<string, never>
+  >
+    ? Key
+    : never
+}[MessageKey]
 
-export type MessageKey = (typeof MESSAGE_KEYS)[number]
-
-type EmptyMessageParameters = Readonly<Record<never, never>>
-
-export type MessageParameters = Readonly<{
-  [
-    Key in Exclude<MessageKey, 'document.title' | 'items.count'>
-  ]: EmptyMessageParameters
-}> & {
-  readonly 'document.title': Readonly<{ title: string }>
-  readonly 'items.count': Readonly<{ count: string }>
-}
-
-export type MessageCatalog = Readonly<{
-  [Key in MessageKey]: (parameters: MessageParameters[Key]) => string
-}>
-
-function defineCatalog(catalog: MessageCatalog): MessageCatalog {
-  return Object.freeze(catalog)
-}
-
-const en = defineCatalog({
-  'app.name': () => 'AgentBox',
-  'common.cancel': () => 'Cancel',
-  'common.close': () => 'Close',
-  'common.loading': () => 'Loading…',
-  'common.retry': () => 'Retry',
-  'common.unknown': () => 'Unknown',
-  'document.title': ({ title }: MessageParameters['document.title']) =>
-    `${title} · AgentBox`,
-  'items.count': ({ count }: MessageParameters['items.count']) =>
-    `${count} items`,
-  'error.unknown': () => 'The operation could not be completed. Try again.',
-  'error.controlPlaneUnavailable': () => 'The control plane is unavailable.',
-  'error.requestTimeout': () => 'The request timed out. Try again.',
-  'error.codexStatusUnavailable': () =>
-    'Codex status is temporarily unavailable.',
-  'error.codexActionFailed': () =>
-    'The Codex operation could not be completed.',
-  'error.codexPairFailed': () => 'A Codex pair code could not be created.',
-  'error.claudeActionFailed': () =>
-    'The Claude operation could not be completed.',
-  'error.doctorUnavailable': () => 'Diagnostics are temporarily unavailable.',
-  'error.projectIdentityChanged': () =>
-    'The Project or Runtime identity changed. Refresh and try again.',
-  'error.projectNotReady': () =>
-    'This Project is not ready for the requested operation.',
-  'error.reconciliationRequired': () =>
-    'Runtime reconciliation is required before continuing.',
-  'error.wawActionBusy': () => 'A workspace operation is already in progress.',
-  'error.wawActionFailed': () =>
-    'The workspace operation could not be completed.',
-  'error.wawActionStale': () =>
-    'The workspace state changed. Refresh and try again.',
-  'error.wawInvalidAgent': () => 'The selected AgentType is not valid.',
-  'error.wawMetadataInvalid': () =>
-    'Workspace information is incomplete. Refresh and try again.',
-  'error.wawSessionRequired': () => 'Sign in again before using the workspace.',
-  'error.wawStatusUnavailable': () =>
-    'Workspace status is temporarily unavailable.',
-  'error.workspaceNotFound': () => 'The requested workspace was not found.',
-  'shell.dashboard': () => 'Dashboard',
-  'shell.codex': () => 'Codex',
-  'shell.claude': () => 'Claude',
-  'shell.workspace': () => 'Workspace',
-  'shell.projects': () => 'Projects',
-  'shell.doctor': () => 'Doctor',
-  'shell.logs': () => 'Logs',
-  'shell.settings': () => 'Settings',
-  'auth.title': () => 'Sign in',
-  'dashboard.title': () => 'Dashboard',
-  'codex.title': () => 'Codex',
-  'claude.title': () => 'Claude',
-  'workspace.title': () => 'Interactive workspace',
-  'projects.title': () => 'Projects',
-  'project.title': () => 'Project',
-  'doctor.title': () => 'Doctor',
-  'logs.title': () => 'Logs',
-  'settings.title': () => 'Settings',
-  'notFound.title': () => 'Page not found',
-})
-
-const zhCN = defineCatalog({
-  'app.name': () => 'AgentBox',
-  'common.cancel': () => '取消',
-  'common.close': () => '关闭',
-  'common.loading': () => '正在加载…',
-  'common.retry': () => '重试',
-  'common.unknown': () => '未知',
-  'document.title': ({ title }: MessageParameters['document.title']) =>
-    `${title} · AgentBox`,
-  'items.count': ({ count }: MessageParameters['items.count']) => `${count} 项`,
-  'error.unknown': () => '操作未完成，请重试。',
-  'error.controlPlaneUnavailable': () => '控制平面暂不可用。',
-  'error.requestTimeout': () => '请求超时，请重试。',
-  'error.codexStatusUnavailable': () => 'Codex 状态暂不可用。',
-  'error.codexActionFailed': () => 'Codex 操作未完成。',
-  'error.codexPairFailed': () => '无法创建 Codex 配对码。',
-  'error.claudeActionFailed': () => 'Claude 操作未完成。',
-  'error.doctorUnavailable': () => '诊断信息暂不可用。',
-  'error.projectIdentityChanged': () =>
-    'Project 或 Runtime 身份已变化，请刷新后重试。',
-  'error.projectNotReady': () => '该 Project 尚未准备好执行此操作。',
-  'error.reconciliationRequired': () => '继续前需要完成 Runtime 恢复核对。',
-  'error.wawActionBusy': () => '已有工作区操作正在进行。',
-  'error.wawActionFailed': () => '工作区操作未完成。',
-  'error.wawActionStale': () => '工作区状态已变化，请刷新后重试。',
-  'error.wawInvalidAgent': () => '所选 AgentType 无效。',
-  'error.wawMetadataInvalid': () => '工作区信息不完整，请刷新后重试。',
-  'error.wawSessionRequired': () => '请重新登录后再使用工作区。',
-  'error.wawStatusUnavailable': () => '工作区状态暂不可用。',
-  'error.workspaceNotFound': () => '未找到请求的工作区。',
-  'shell.dashboard': () => '概览',
-  'shell.codex': () => 'Codex',
-  'shell.claude': () => 'Claude',
-  'shell.workspace': () => '工作区',
-  'shell.projects': () => '项目',
-  'shell.doctor': () => '诊断',
-  'shell.logs': () => '日志',
-  'shell.settings': () => '设置',
-  'auth.title': () => '登录',
-  'dashboard.title': () => '概览',
-  'codex.title': () => 'Codex',
-  'claude.title': () => 'Claude',
-  'workspace.title': () => '交互式工作区',
-  'projects.title': () => '项目',
-  'project.title': () => 'Project',
-  'doctor.title': () => '诊断',
-  'logs.title': () => '日志',
-  'settings.title': () => '设置',
-  'notFound.title': () => '未找到页面',
-})
-
-export const messageCatalogs: Readonly<Record<Locale, MessageCatalog>> =
-  Object.freeze({
-    en,
-    'zh-CN': zhCN,
-  })
+const catalogShards = Object.freeze([
+  appCatalog,
+  commonCatalog,
+  itemsCatalog,
+  documentCatalog,
+  errorCatalog,
+  shellCatalog,
+  authCatalog,
+  dashboardCatalog,
+  codexCatalog,
+  claudeCatalog,
+  workspaceCatalog,
+  projectsCatalog,
+  projectCatalog,
+  doctorCatalog,
+  logsCatalog,
+  settingsCatalog,
+  notFoundCatalog,
+])
 
 export class I18nMessageError extends Error {
   constructor(readonly key: string) {
@@ -221,20 +98,60 @@ export class I18nMessageError extends Error {
   }
 }
 
-/** Formats an explicitly typed message; message keys never fall back to source text. */
-export function formatMessage<Key extends MessageKey>(
+function composeCatalog(locale: Locale): MessageCatalog {
+  const composed: Record<string, unknown> = {}
+
+  for (const shard of catalogShards) {
+    for (const [key, formatter] of Object.entries(shard.catalogs[locale])) {
+      if (Object.hasOwn(composed, key)) {
+        throw new TypeError(`Duplicate i18n message: ${key}`)
+      }
+      composed[key] = formatter
+    }
+  }
+
+  return Object.freeze(composed) as MessageCatalog
+}
+
+const en = composeCatalog('en')
+const zhCN = composeCatalog('zh-CN')
+
+export const messageCatalogs: Readonly<Record<Locale, MessageCatalog>> =
+  Object.freeze({
+    en,
+    'zh-CN': zhCN,
+  })
+
+/** Runtime inventory for parity checks and migration tooling. */
+export const MESSAGE_KEYS: readonly MessageKey[] = Object.freeze(
+  Object.keys(en) as MessageKey[],
+)
+
+/** Builds a safe descriptor for any dynamic key whose contract has no values. */
+export function parameterFreeMessage(
+  key: ParameterFreeMessageKey,
+): MessageArguments {
+  return [key, {}] as MessageArguments
+}
+
+/**
+ * Formats a typed message. The distributed tuple keeps a dynamic key paired
+ * with only its own parameters instead of widening both to unrelated unions.
+ */
+export function formatMessage(
   locale: Locale,
-  key: Key,
-  parameters: MessageParameters[Key],
+  ...arguments_: MessageArguments
 ): string {
+  const [key, parameters] = arguments_
   const formatter = messageCatalogs[locale][key]
   if (typeof formatter !== 'function') throw new I18nMessageError(key)
-  return formatter(parameters)
+  return (formatter as (value: unknown) => string)(parameters)
 }
 
 export function messageDomain(key: MessageKey): MessageDomain {
   const domain = key.split('.', 1)[0]
-  if ((MESSAGE_DOMAINS as readonly string[]).includes(domain))
+  if ((MESSAGE_DOMAINS as readonly string[]).includes(domain)) {
     return domain as MessageDomain
+  }
   throw new I18nMessageError(key)
 }

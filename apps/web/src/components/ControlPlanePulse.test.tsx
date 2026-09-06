@@ -46,7 +46,7 @@ describe('ControlPlanePulse', () => {
       </AuthContext.Provider>,
     )
 
-    expect(screen.getByLabelText('控制平面: 检查中')).toBeVisible()
-    expect(await screen.findByLabelText('控制平面: 不可用')).toBeVisible()
+    expect(screen.getByLabelText('控制平面：检查中')).toBeVisible()
+    expect(await screen.findByLabelText('控制平面：不可用')).toBeVisible()
   })
 })

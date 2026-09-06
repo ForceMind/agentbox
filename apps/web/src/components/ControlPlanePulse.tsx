@@ -1,25 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { useAuth } from '../features/auth/AuthContext'
-import { currentLocale, type Locale } from '../i18n'
+import { currentLocale, formatMessage, type Locale } from '../i18n'
 import { HealthResponse, parseHealthResponse } from '../lib/contracts'
 
 type State = 'checking' | 'healthy' | 'unavailable'
-
-const COPY = {
-  en: {
-    checking: 'Checking',
-    healthy: 'Healthy',
-    unavailable: 'Unavailable',
-    prefix: 'Control plane',
-  },
-  'zh-CN': {
-    checking: '检查中',
-    healthy: '正常',
-    unavailable: '不可用',
-    prefix: '控制平面',
-  },
-} as const satisfies Record<Locale, Record<State | 'prefix', string>>
 
 export function ControlPlanePulse({
   locale = currentLocale(),
@@ -45,13 +30,19 @@ export function ControlPlanePulse({
     return () => controller.abort()
   }, [api])
 
-  const copy = COPY[locale]
-  const label = copy[state]
+  const label =
+    state === 'checking'
+      ? formatMessage(locale, 'shell.healthChecking', {})
+      : state === 'healthy'
+        ? formatMessage(locale, 'shell.healthHealthy', {})
+        : formatMessage(locale, 'shell.healthUnavailable', {})
 
   return (
     <span
       className={`control-pulse pulse-${state}`}
-      aria-label={`${copy.prefix}: ${label}`}
+      aria-label={formatMessage(locale, 'shell.controlPlaneStatus', {
+        status: label,
+      })}
     >
       <span aria-hidden="true" />
       {label}

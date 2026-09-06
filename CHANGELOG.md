@@ -3,6 +3,36 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc9] - Unreleased
+
+### Added
+
+- R11 rc9 completes the local candidate implementation for browser-selected
+  bilingual UI: typed English/`zh-CN` catalogs, catalog parity checks, route and
+  state migration, and API error-code localization without server prose.
+- The document locale is fixed from only `navigator.languages[0]` before React
+  renders. Primary `zh` maps to `zh-CN`; all other, absent or malformed first
+  preferences map to English. Technical values remain English.
+- The test-only Workspace harness has a distinct origin and is excluded from the
+  production bundle. Sensitive E2E artifacts (trace, video and screenshots)
+  remain disabled.
+
+### Verification status
+
+- Local implementation and verification form a candidate only. Exact-head CI,
+  normal merge, merge read-back and post-main verification remain pending.
+- Local evidence is Web unit 44 files / 1088 tests, Chromium E2E 92 passed / 28
+  intentional matrix skips, release-candidate unit 45 tests, and browser trust
+  extension 3 files / 6 tests; each completed successfully before this record.
+- Version mapping is Python `0.3.0rc9`, npm `0.3.0-rc.9`, and MV3 `0.3.0.9`.
+- `release-gate` requires the ordinary release checks to succeed. The historical
+  rc8 artifact jobs must be `success` for rc8 and exactly `skipped` for rc9.
+
+### Status
+
+- rc9 is not delivered or merged. R12 host activation and qualification remain
+  independent and unstarted.
+
 ## [0.3.0rc8] - Unreleased
 
 ### Added

@@ -10,20 +10,41 @@ import { useState } from 'react'
 
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
-import { useClaude } from '../features/claude/useClaude'
+import {
+  LocalizedApiError,
+  OpaqueUserValue,
+  TechnicalValue,
+} from '../components/i18n'
+import { useClaude, type ClaudeSessionView } from '../features/claude/useClaude'
 import { usePageTitle } from '../hooks/usePageTitle'
-import { ClaudeSessionData } from '../lib/contracts'
+import { currentLocale, type Locale } from '../i18n'
+import {
+  claudeCatalog,
+  type ClaudeMessageParameters,
+} from '../i18n/catalogs/claude'
 
-const stateLabels: Record<ClaudeSessionData['state'], string> = {
-  running: 'Running',
-  stopped: 'Stopped',
-  starting: 'Starting',
-  needs_interaction: 'Needs Interaction',
-  broken: 'Broken',
-  unknown: 'Unknown',
+type ClaudeMessageKey = keyof ClaudeMessageParameters
+
+const stateMessageKeys: Readonly<
+  Record<ClaudeSessionView['state'], ClaudeMessageKey>
+> = {
+  running: 'claude.stateRunning',
+  stopped: 'claude.stateStopped',
+  starting: 'claude.stateStarting',
+  needs_interaction: 'claude.stateNeedsInteraction',
+  broken: 'claude.stateBroken',
+  unknown: 'claude.stateUnknown',
 }
 
-function stateTone(state: ClaudeSessionData['state']) {
+const workspaceMessageKeys: Readonly<
+  Record<ClaudeSessionView['workspace_state'], ClaudeMessageKey>
+> = {
+  unknown: 'claude.workspaceUnknown',
+  requires_user_confirmation: 'claude.workspaceRequiresConfirmation',
+  initialized_by_agentbox: 'claude.workspaceInitialized',
+}
+
+function stateTone(state: ClaudeSessionView['state']) {
   return state === 'running'
     ? ('good' as const)
     : state === 'stopped'
@@ -31,12 +52,15 @@ function stateTone(state: ClaudeSessionData['state']) {
       : ('warning' as const)
 }
 
-export function ClaudePage() {
+export function ClaudePage({ locale = currentLocale() }: { locale?: Locale }) {
   const claude = useClaude()
   const [copied, setCopied] = useState<string | null>(null)
-  usePageTitle('Claude')
+  const catalog = claudeCatalog.catalogs[locale]
+  const message = (key: ClaudeMessageKey) => catalog[key]({})
+  usePageTitle(message('claude.title'))
 
-  async function copyAttach(session: ClaudeSessionData) {
+  async function copyAttach(session: ClaudeSessionView) {
+    if (session.attach_command === null) return
     await navigator.clipboard.writeText(session.attach_command)
     setCopied(session.project_id)
     window.setTimeout(() => setCopied(null), 1500)
@@ -48,28 +72,30 @@ export function ClaudePage() {
         action={
           <button
             className="secondary-button"
+            disabled={claude.refreshing || claude.pending.length > 0}
             onClick={() => void claude.refresh()}
             type="button"
           >
-            <RefreshCw size={17} aria-hidden="true" /> Refresh
+            <RefreshCw size={17} aria-hidden="true" />{' '}
+            {message('claude.refresh')}
           </button>
         }
-        description="Project-scoped Claude Code Remote sessions persisted by the Runtime user's tmux server."
-        eyebrow="Runtime"
-        title="Claude"
+        description={message('claude.description')}
+        eyebrow={message('claude.eyebrow')}
+        title={message('claude.title')}
       />
 
       {claude.view.status === 'loading' && (
         <p className="loading-panel" role="status">
-          Inspecting Claude and managed sessions…
+          {message('claude.loading')}
         </p>
       )}
       {claude.view.status === 'error' && (
-        <section className="error-panel" role="alert">
+        <section className="error-panel">
           <AlertTriangle aria-hidden="true" />
           <div>
-            <h2>Claude status unavailable</h2>
-            <p>{claude.view.error.message}</p>
+            <h2>{message('claude.statusUnavailable')}</h2>
+            <LocalizedApiError error={claude.view.error} locale={locale} />
           </div>
         </section>
       )}
@@ -77,40 +103,60 @@ export function ClaudePage() {
         <>
           <section
             className="claude-runtime-grid"
-            aria-label="Claude installation status"
+            aria-label={message('claude.installationAria')}
           >
             <article className="runtime-card">
               <div className="runtime-card-heading">
                 <div>
-                  <p className="eyebrow">Claude Code</p>
-                  <h2>Installation</h2>
+                  <p className="eyebrow">{message('claude.claudeCode')}</p>
+                  <h2>{message('claude.installation')}</h2>
                 </div>
                 <Sparkles aria-hidden="true" />
               </div>
               <dl className="runtime-details">
                 <div>
-                  <dt>Installed</dt>
-                  <dd>{claude.view.data.status.installed ? 'Yes' : 'No'}</dd>
+                  <dt>{message('claude.installed')}</dt>
+                  <dd>
+                    {claude.view.data.status.installed
+                      ? message('claude.yes')
+                      : message('claude.no')}
+                  </dd>
                 </div>
                 <div>
-                  <dt>Version</dt>
-                  <dd>{claude.view.data.status.version ?? 'Unknown'}</dd>
+                  <dt>{message('claude.version')}</dt>
+                  <dd>
+                    {claude.view.data.status.version === null ? (
+                      message('claude.unknown')
+                    ) : (
+                      <TechnicalValue value={claude.view.data.status.version} />
+                    )}
+                  </dd>
                 </div>
                 <div>
-                  <dt>Authentication</dt>
-                  <dd>{claude.view.data.status.authentication}</dd>
+                  <dt>{message('claude.authentication')}</dt>
+                  <dd>
+                    <TechnicalValue
+                      value={claude.view.data.status.authentication}
+                    />
+                  </dd>
                 </div>
                 <div>
-                  <dt>Remote capability</dt>
-                  <dd>{claude.view.data.status.capabilities.remote_control}</dd>
+                  <dt>{message('claude.remoteCapability')}</dt>
+                  <dd>
+                    <TechnicalValue
+                      value={
+                        claude.view.data.status.capabilities.remote_control
+                      }
+                    />
+                  </dd>
                 </div>
               </dl>
             </article>
             <article className="runtime-card">
               <div className="runtime-card-heading">
                 <div>
-                  <p className="eyebrow">Persistence</p>
-                  <h2>tmux</h2>
+                  <p className="eyebrow">{message('claude.persistence')}</p>
+                  <h2>{message('claude.tmux')}</h2>
                 </div>
                 <StatusBadge
                   tone={
@@ -118,27 +164,47 @@ export function ClaudePage() {
                   }
                 >
                   {claude.view.data.status.tmux_installed
-                    ? 'Installed'
-                    : 'Unavailable'}
+                    ? message('claude.installed')
+                    : message('claude.unavailable')}
                 </StatusBadge>
               </div>
               <dl className="runtime-details">
                 <div>
-                  <dt>Version</dt>
-                  <dd>{claude.view.data.status.tmux_version ?? 'Unknown'}</dd>
-                </div>
-                <div>
-                  <dt>Managed sessions</dt>
-                  <dd>{claude.view.data.status.managed_sessions}</dd>
-                </div>
-                <div>
-                  <dt>Unmanaged sessions</dt>
-                  <dd>{claude.view.data.status.unmanaged_sessions}</dd>
-                </div>
-                <div>
-                  <dt>Workspace warnings</dt>
+                  <dt>{message('claude.version')}</dt>
                   <dd>
-                    {claude.view.data.status.workspace_interaction_warnings}
+                    {claude.view.data.status.tmux_version === null ? (
+                      message('claude.unknown')
+                    ) : (
+                      <TechnicalValue
+                        value={claude.view.data.status.tmux_version}
+                      />
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('claude.managedSessions')}</dt>
+                  <dd>
+                    <TechnicalValue
+                      value={String(claude.view.data.status.managed_sessions)}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('claude.unmanagedSessions')}</dt>
+                  <dd>
+                    <TechnicalValue
+                      value={String(claude.view.data.status.unmanaged_sessions)}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('claude.workspaceWarnings')}</dt>
+                  <dd>
+                    <TechnicalValue
+                      value={String(
+                        claude.view.data.status.workspace_interaction_warnings,
+                      )}
+                    />
                   </dd>
                 </div>
               </dl>
@@ -147,27 +213,26 @@ export function ClaudePage() {
 
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Projects</p>
-              <h2>Remote sessions</h2>
+              <p className="eyebrow">{message('claude.projects')}</p>
+              <h2>{message('claude.remoteSessions')}</h2>
             </div>
           </div>
           {claude.view.data.sessions.length === 0 ? (
             <section className="empty-state">
-              <h2>No configured projects</h2>
-              <p>
-                Phase 6 only lists existing immediate directories under the
-                configured project root.
-              </p>
+              <h2>{message('claude.noConfiguredProjects')}</h2>
+              <p>{message('claude.noConfiguredProjectsDescription')}</p>
             </section>
           ) : (
             <section
               className="claude-session-grid"
-              aria-label="Claude project sessions"
+              aria-label={message('claude.sessionsAria')}
             >
               {claude.view.data.sessions.map((session) => {
                 const output = claude.outputs[session.project_id]
-                const actionPending =
-                  claude.pending?.endsWith(`:${session.project_id}`) ?? false
+                const actionError = claude.actionErrors[session.project_id]
+                const actionPending = claude.pending.some(
+                  (operation) => operation.projectId === session.project_id,
+                )
                 return (
                   <article
                     className="claude-session-card"
@@ -175,59 +240,72 @@ export function ClaudePage() {
                   >
                     <div className="runtime-card-heading">
                       <div>
-                        <p className="eyebrow">Project</p>
-                        <h2>{session.display_name}</h2>
+                        <p className="eyebrow">{message('claude.project')}</p>
+                        <h2>
+                          <OpaqueUserValue value={session.display_name} />
+                        </h2>
                       </div>
                       <StatusBadge tone={stateTone(session.state)}>
-                        {stateLabels[session.state]}
+                        {message(stateMessageKeys[session.state])}
                       </StatusBadge>
                     </div>
                     <dl className="runtime-details compact-details">
                       <div>
-                        <dt>tmux</dt>
-                        <dd>{session.tmux_running ? 'Running' : 'Stopped'}</dd>
-                      </div>
-                      <div>
-                        <dt>Remote readiness</dt>
+                        <dt>{message('claude.tmux')}</dt>
                         <dd>
-                          {session.remote_readiness === 'ready'
-                            ? 'Ready'
-                            : 'Unknown'}
+                          {session.tmux_running
+                            ? message('claude.stateRunning')
+                            : message('claude.stateStopped')}
                         </dd>
                       </div>
                       <div>
-                        <dt>Workspace Trust</dt>
-                        <dd>{session.workspace_state.replaceAll('_', ' ')}</dd>
+                        <dt>{message('claude.remoteReadiness')}</dt>
+                        <dd>
+                          {session.remote_readiness === 'ready'
+                            ? message('claude.ready')
+                            : message('claude.unknown')}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{message('claude.workspaceTrust')}</dt>
+                        <dd>
+                          {message(
+                            workspaceMessageKeys[session.workspace_state],
+                          )}
+                        </dd>
                       </div>
                     </dl>
                     {session.state === 'needs_interaction' && (
                       <div className="interaction-notice" role="status">
-                        Claude requires terminal interaction before Remote
-                        Control can continue. AgentBox never accepts Workspace
-                        Trust automatically. Attach, confirm the project, then
-                        exit the interactive Claude session and start Remote
-                        Control again.
+                        {message('claude.interactionNotice')}
                       </div>
                     )}
                     <div className="attach-box">
-                      <span>Attach from the Runtime user's terminal</span>
-                      <code>{session.attach_command}</code>
+                      <span>{message('claude.attachLabel')}</span>
+                      <code>
+                        {session.attach_command === null ? (
+                          message('claude.unknown')
+                        ) : (
+                          <TechnicalValue value={session.attach_command} />
+                        )}
+                      </code>
                       <button
                         className="secondary-button"
+                        disabled={session.attach_command === null}
                         onClick={() => void copyAttach(session)}
                         type="button"
                       >
                         <Clipboard size={16} aria-hidden="true" />{' '}
                         {copied === session.project_id
-                          ? 'Copied'
-                          : 'Copy attach command'}
+                          ? message('claude.copied')
+                          : message('claude.copyAttach')}
                       </button>
                     </div>
                     <div className="action-row">
                       {!session.tmux_running ? (
                         <button
                           className="primary-button action-button"
-                          disabled={actionPending}
+                          disabled={actionPending || claude.refreshing}
                           onClick={() =>
                             void claude.sessionAction(
                               session.project_id,
@@ -236,14 +314,18 @@ export function ClaudePage() {
                           }
                           type="button"
                         >
-                          {claude.pending === `start:${session.project_id}`
-                            ? 'Starting…'
-                            : 'Start Session'}
+                          {claude.pending.some(
+                            (operation) =>
+                              operation.projectId === session.project_id &&
+                              operation.operation === 'start',
+                          )
+                            ? message('claude.starting')
+                            : message('claude.startSession')}
                         </button>
                       ) : (
                         <button
                           className="secondary-button action-button"
-                          disabled={actionPending}
+                          disabled={actionPending || claude.refreshing}
                           onClick={() =>
                             void claude.sessionAction(
                               session.project_id,
@@ -252,44 +334,70 @@ export function ClaudePage() {
                           }
                           type="button"
                         >
-                          {claude.pending === `stop:${session.project_id}`
-                            ? 'Stopping…'
-                            : 'Stop Session'}
+                          {claude.pending.some(
+                            (operation) =>
+                              operation.projectId === session.project_id &&
+                              operation.operation === 'stop',
+                          )
+                            ? message('claude.stopping')
+                            : message('claude.stopSession')}
                         </button>
                       )}
                     </div>
-                    <p className="stop-note">
-                      Stopping ends only this Claude/tmux session. It does not
-                      delete the project.
-                    </p>
+                    <p className="stop-note">{message('claude.stopNote')}</p>
+                    {actionError && (
+                      <section className="error-panel claude-action-error">
+                        <AlertTriangle aria-hidden="true" />
+                        <div>
+                          <h3>{message('claude.actionFailed')}</h3>
+                          <LocalizedApiError
+                            error={actionError}
+                            locale={locale}
+                          />
+                        </div>
+                      </section>
+                    )}
                     <div className="sensitive-output">
                       <div>
-                        <strong>Recent session output</strong>
-                        <StatusBadge tone="warning">Sensitive</StatusBadge>
+                        <strong>{message('claude.recentOutput')}</strong>
+                        <StatusBadge tone="warning">
+                          {message('claude.sensitive')}
+                        </StatusBadge>
                       </div>
-                      <p>
-                        May contain project or model output. It is fetched only
-                        when revealed.
-                      </p>
+                      <p>{message('claude.outputDescription')}</p>
                       {!output ? (
                         <button
                           className="secondary-button"
-                          disabled={!session.tmux_running || actionPending}
+                          disabled={
+                            !session.tmux_running ||
+                            actionPending ||
+                            claude.refreshing
+                          }
                           onClick={() =>
                             void claude.revealOutput(session.project_id)
                           }
                           type="button"
                         >
                           <Eye size={16} aria-hidden="true" />{' '}
-                          {claude.pending === `output:${session.project_id}`
-                            ? 'Loading…'
-                            : 'Reveal'}
+                          {claude.pending.some(
+                            (operation) =>
+                              operation.projectId === session.project_id &&
+                              operation.operation === 'output',
+                          )
+                            ? message('claude.outputLoading')
+                            : message('claude.reveal')}
                         </button>
                       ) : (
                         <>
-                          <pre>{output.output || 'No recent output.'}</pre>
+                          <pre>
+                            {output.output ? (
+                              <OpaqueUserValue value={output.output} />
+                            ) : (
+                              message('claude.noRecentOutput')
+                            )}
+                          </pre>
                           {output.truncated && (
-                            <p>Output was truncated to the safety limit.</p>
+                            <p>{message('claude.outputTruncated')}</p>
                           )}
                           <button
                             className="secondary-button"
@@ -298,7 +406,8 @@ export function ClaudePage() {
                             }
                             type="button"
                           >
-                            <EyeOff size={16} aria-hidden="true" /> Hide
+                            <EyeOff size={16} aria-hidden="true" />{' '}
+                            {message('claude.hide')}
                           </button>
                         </>
                       )}
@@ -309,15 +418,6 @@ export function ClaudePage() {
             </section>
           )}
         </>
-      )}
-      {claude.actionError && (
-        <section className="error-panel claude-action-error" role="alert">
-          <AlertTriangle aria-hidden="true" />
-          <div>
-            <h2>Claude action failed</h2>
-            <p>{claude.actionError.message}</p>
-          </div>
-        </section>
       )}
     </>
   )

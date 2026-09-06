@@ -7,7 +7,6 @@ import {
   useState,
 } from 'react'
 
-import { ApiError } from '../../lib/api'
 import type {
   WorkspaceAttachmentTicketResponse,
   WorkspaceDetachResponse,
@@ -38,6 +37,11 @@ import {
   WAWTrustProviderConsumer,
   type WAWTrustProviderPort,
 } from './wawTrustProvider'
+import {
+  workspaceApiError,
+  workspaceError,
+  type WorkspaceApiErrorView,
+} from './workspaceView'
 
 type AgentType = 'claude' | 'codex'
 
@@ -138,7 +142,7 @@ type Attempt = {
   readonly abort: AbortController
   readonly controller: WAWAttachmentControllerPort
   readonly trust: OwnedTrust
-  readonly portFailure: { value: ApiError | null }
+  readonly portFailure: { value: WorkspaceApiErrorView | null }
   trustClosed: boolean
 }
 
@@ -168,12 +172,8 @@ export const WAW_TERMINAL_VIEWPORT_METRICS = Object.freeze({
   rowsMax: 200,
 })
 
-function asError(code: string): ApiError {
-  return new ApiError({
-    code,
-    message: 'Browser terminal operation could not be completed',
-    status: 0,
-  })
+function asError(code: string): WorkspaceApiErrorView {
+  return workspaceError(code)
 }
 
 function pageVisible(): boolean {
@@ -281,7 +281,7 @@ export function useWAWBrowserAttachment(options: {
   const [lastInputOutcome, setLastInputOutcome] = useState<Readonly<
     Pick<WAWBrowserInputOutcome, 'state' | 'reasonCode'>
   > | null>(null)
-  const [error, setError] = useState<ApiError | null>(null)
+  const [error, setError] = useState<WorkspaceApiErrorView | null>(null)
 
   const identity = resolvedIdentity(options)
   identityRef.current = identity
@@ -477,7 +477,7 @@ export function useWAWBrowserAttachment(options: {
         : createManagedChromiumTrustProvider()
     if (provider === null) throw asError('ATTACHMENT_UNAVAILABLE')
     let trust: OwnedTrust | null = null
-    const portFailure: { value: ApiError | null } = { value: null }
+    const portFailure: { value: WorkspaceApiErrorView | null } = { value: null }
     try {
       trust =
         dependencies?.createTrust?.(provider) ??
@@ -525,7 +525,7 @@ export function useWAWBrowserAttachment(options: {
               if (abort.signal.aborted) {
                 throw new WAWBrowserControllerError('CONTEXT_CHANGED')
               }
-              if (cause instanceof ApiError) portFailure.value = cause
+              portFailure.value = workspaceApiError(cause, 'WAW_ACTION_FAILED')
               throw cause
             }
             requireCurrent()
@@ -549,7 +549,7 @@ export function useWAWBrowserAttachment(options: {
               if (request.signal.aborted) {
                 throw new WAWBrowserControllerError('CONTEXT_CHANGED')
               }
-              if (cause instanceof ApiError) portFailure.value = cause
+              portFailure.value = workspaceApiError(cause, 'WAW_ACTION_FAILED')
               throw cause
             }
             if (request.signal.aborted) {
@@ -570,7 +570,7 @@ export function useWAWBrowserAttachment(options: {
               if (request.signal.aborted) {
                 throw new WAWBrowserControllerError('CONTEXT_CHANGED')
               }
-              if (cause instanceof ApiError) portFailure.value = cause
+              portFailure.value = workspaceApiError(cause, 'WAW_ACTION_FAILED')
               throw cause
             }
             if (request.signal.aborted) {
@@ -687,11 +687,7 @@ export function useWAWBrowserAttachment(options: {
         if (attempt === null || current(attempt)) {
           const failure =
             attempt?.portFailure.value ??
-            (cause instanceof WAWBrowserControllerError
-              ? asError(cause.code)
-              : cause instanceof ApiError
-                ? cause
-                : asError('WAW_ACTION_FAILED'))
+            workspaceApiError(cause, 'WAW_ACTION_FAILED')
           if (failure.code === 'ATTACHMENT_UNAVAILABLE') {
             setSnapshot({
               ...IDLE_VIEW,
@@ -704,10 +700,7 @@ export function useWAWBrowserAttachment(options: {
         if (attempt !== null) closeTrust(attempt)
         throw (
           attempt?.portFailure.value ??
-          (cause instanceof ApiError ||
-          cause instanceof WAWBrowserControllerError
-            ? cause
-            : asError('WAW_ACTION_FAILED'))
+          workspaceApiError(cause, 'WAW_ACTION_FAILED')
         )
       }
     },

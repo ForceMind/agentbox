@@ -8,14 +8,23 @@ export type PlannedCapability = {
   title: string
 }
 
+export type PlannedPageCopy = {
+  capabilitiesAria: string
+  notImplemented: string
+  planned: string
+  previewOnly: string
+}
+
 export function PlannedPage({
   capabilities,
+  copy,
   description,
   eyebrow,
   icon: Icon,
   title,
 }: {
   capabilities: PlannedCapability[]
+  copy: PlannedPageCopy
   description: string
   eyebrow: string
   icon: LucideIcon
@@ -28,20 +37,14 @@ export function PlannedPage({
         <div className="empty-icon" aria-hidden="true">
           <Icon size={24} strokeWidth={1.8} />
         </div>
-        <StatusBadge>Planned</StatusBadge>
-        <h2 id="planned-heading">Not implemented yet</h2>
-        <p>
-          This section is a product preview only. It does not invoke a runtime,
-          system command, or host service.
-        </p>
+        <StatusBadge>{copy.planned}</StatusBadge>
+        <h2 id="planned-heading">{copy.notImplemented}</h2>
+        <p>{copy.previewOnly}</p>
       </section>
-      <section
-        className="planned-grid"
-        aria-label={`Planned ${title} capabilities`}
-      >
+      <section className="planned-grid" aria-label={copy.capabilitiesAria}>
         {capabilities.map((capability) => (
           <article className="planned-card" key={capability.title}>
-            <StatusBadge>Planned</StatusBadge>
+            <StatusBadge>{copy.planned}</StatusBadge>
             <h2>{capability.title}</h2>
             <p>{capability.description}</p>
           </article>

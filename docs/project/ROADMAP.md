@@ -68,15 +68,18 @@ separately tracked in R12.
   95bf65d6114008b962985f7311941499c961a7b8 with exact parents 87f5bce and
   710ceef, and all six post-main workflows succeeded. rc8 is software evidence
   only: no tag, GitHub Release, host activation or R12 qualification occurred.
-  rc9 full browser-selected Chinese/English UI is now the active software slice.
+  rc9 local bilingual UI implementation and verification are now complete as a
+  candidate. Exact-head CI, normal merge, merge read-back and post-main
+  verification remain pending; rc9 is not delivered. R12 remains unstarted.
 
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- F1: execute rc9 typed bilingual catalog migration, server-prose render fence,
-  version-aware rc8 release-gate compatibility, full language-and-viewport
-  browser matrix, exact-head CI, review, normal merge and read-back.
+- F1: run rc9 exact-head CI and required review, then normal merge, exact
+  read-back and post-main validation. Preserve the typed catalog/server-prose
+  fence, `navigator.languages[0]` rule, technical-value boundary, production
+  no-bypass bundle and test-only distinct-origin harness.
 - F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and
   product acceptance remain independently gated.

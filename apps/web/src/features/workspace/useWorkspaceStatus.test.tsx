@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiClient } from '../../lib/api'
+import { ApiClient, ApiError } from '../../lib/api'
 import { AuthContext, AuthContextValue } from '../auth/AuthContext'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 
@@ -90,10 +90,51 @@ describe('useWorkspaceStatus', () => {
       await waitFor(() => expect(result.current.view.status).toBe('error'))
       expect(result.current.view).toMatchObject({
         status: 'error',
-        error: { status },
+        error: { code: `HTTP_${status}` },
       })
     },
   )
+
+  it('stores only stable error evidence without reading ApiError.message', async () => {
+    const messageRead = vi.fn()
+    const failure = new ApiError({
+      code: 'WAW_STATUS_UNAVAILABLE',
+      message: 'unsafe server status prose',
+      requestId: 'req_workspace_status',
+      retryAfter: 17,
+      status: 503,
+    })
+    Object.defineProperty(failure, 'message', {
+      configurable: true,
+      get: () => {
+        messageRead()
+        return 'unsafe server status prose'
+      },
+    })
+    const api = {
+      get: vi.fn(async () => {
+        throw failure
+      }),
+    } as unknown as ApiClient
+    const { result } = renderHook(
+      () => useWorkspaceStatus('aws_0123456789abcdef0123456789abcdef'),
+      { wrapper: wrapper(api) },
+    )
+
+    await waitFor(() => expect(result.current.view.status).toBe('error'))
+    expect(result.current.view).toEqual({
+      status: 'error',
+      error: {
+        code: 'WAW_STATUS_UNAVAILABLE',
+        requestId: 'req_workspace_status',
+        retryAfter: 17,
+      },
+    })
+    expect(messageRead).not.toHaveBeenCalled()
+    expect(JSON.stringify(result.current.view)).not.toContain(
+      'unsafe server status prose',
+    )
+  })
 
   it('does not request status when no workspace is selected', async () => {
     const fetchMock = vi.fn()

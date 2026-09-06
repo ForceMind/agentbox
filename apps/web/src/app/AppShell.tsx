@@ -16,68 +16,52 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import packageMetadata from '../../package.json'
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
+import { OpaqueUserValue, TechnicalValue } from '../components/i18n'
 import { useAuth } from '../features/auth/AuthContext'
-import { currentLocale, type Locale } from '../i18n'
+import { currentLocale, formatMessage, type Locale } from '../i18n'
 
 const navigation = [
   {
-    labels: { en: 'Dashboard', 'zh-CN': '概览' },
+    label: (locale: Locale) => formatMessage(locale, 'shell.dashboard', {}),
     path: '/dashboard',
     icon: Gauge,
   },
-  { labels: { en: 'Codex', 'zh-CN': 'Codex' }, path: '/codex', icon: Bot },
   {
-    labels: { en: 'Claude', 'zh-CN': 'Claude' },
+    label: (locale: Locale) => formatMessage(locale, 'shell.codex', {}),
+    path: '/codex',
+    icon: Bot,
+  },
+  {
+    label: (locale: Locale) => formatMessage(locale, 'shell.claude', {}),
     path: '/claude',
     icon: Sparkles,
   },
   {
-    labels: { en: 'Workspace', 'zh-CN': '工作区' },
+    label: (locale: Locale) => formatMessage(locale, 'shell.workspace', {}),
     path: '/workspace',
     icon: Terminal,
   },
   {
-    labels: { en: 'Projects', 'zh-CN': '项目' },
+    label: (locale: Locale) => formatMessage(locale, 'shell.projects', {}),
     path: '/projects',
     icon: Boxes,
   },
   {
-    labels: { en: 'Doctor', 'zh-CN': '诊断' },
+    label: (locale: Locale) => formatMessage(locale, 'shell.doctor', {}),
     path: '/doctor',
     icon: Activity,
   },
-  { labels: { en: 'Logs', 'zh-CN': '日志' }, path: '/logs', icon: FileText },
   {
-    labels: { en: 'Settings', 'zh-CN': '设置' },
+    label: (locale: Locale) => formatMessage(locale, 'shell.logs', {}),
+    path: '/logs',
+    icon: FileText,
+  },
+  {
+    label: (locale: Locale) => formatMessage(locale, 'shell.settings', {}),
     path: '/settings',
     icon: Settings,
   },
 ] as const
-
-const COPY = {
-  en: {
-    controlPlane: 'Control Plane',
-    navigation: 'Primary navigation',
-    signedIn: 'Signed in as',
-    signingOut: 'Signing out…',
-    signOut: 'Sign out',
-    logoutFailed: 'Logout could not be completed',
-    openNavigation: 'Open navigation',
-    closeNavigation: 'Close navigation',
-    version: 'Version',
-  },
-  'zh-CN': {
-    controlPlane: '控制平面',
-    navigation: '主导航',
-    signedIn: '当前登录用户',
-    signingOut: '正在退出…',
-    signOut: '退出登录',
-    logoutFailed: '无法完成退出登录',
-    openNavigation: '打开导航',
-    closeNavigation: '关闭导航',
-    version: '版本',
-  },
-} as const satisfies Record<Locale, Record<string, string>>
 
 const APP_VERSION = packageMetadata.version
 
@@ -89,8 +73,11 @@ function Navigation({
   onNavigate?: () => void
 }) {
   return (
-    <nav className="primary-nav" aria-label={COPY[locale].navigation}>
-      {navigation.map(({ labels, path, icon: Icon }) => (
+    <nav
+      className="primary-nav"
+      aria-label={formatMessage(locale, 'shell.primaryNavigation', {})}
+    >
+      {navigation.map(({ label, path, icon: Icon }) => (
         <NavLink
           className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
           key={path}
@@ -98,31 +85,33 @@ function Navigation({
           to={path}
         >
           <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
-          <span>{labels[locale]}</span>
+          <span>{label(locale)}</span>
         </NavLink>
       ))}
     </nav>
   )
 }
 
-export function AppShell() {
+export function AppShell({
+  locale = currentLocale(),
+}: {
+  locale?: Locale
+} = {}) {
   const { auth, logout } = useAuth()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
-  const [logoutError, setLogoutError] = useState<string | null>(null)
-  const locale = currentLocale()
-  const copy = COPY[locale]
+  const [logoutError, setLogoutError] = useState(false)
 
   useEffect(() => setMenuOpen(false), [location.pathname])
 
   async function handleLogout() {
     setLogoutPending(true)
-    setLogoutError(null)
+    setLogoutError(false)
     try {
       await logout()
     } catch {
-      setLogoutError(copy.logoutFailed)
+      setLogoutError(true)
     } finally {
       setLogoutPending(false)
     }
@@ -136,32 +125,38 @@ export function AppShell() {
             <ShieldCheck size={21} />
           </div>
           <div>
-            <strong>AgentBox</strong>
-            <span>{copy.controlPlane}</span>
+            <strong>{formatMessage(locale, 'app.name', {})}</strong>
+            <span>{formatMessage(locale, 'shell.controlPlane', {})}</span>
           </div>
         </div>
         <Navigation locale={locale} />
         <div className="sidebar-footer">
-          <ControlPlanePulse />
+          <ControlPlanePulse locale={locale} />
           <small className="app-version">
-            {copy.version}{' '}
-            <code dir="ltr" lang="en" translate="no">
-              {APP_VERSION}
+            {formatMessage(locale, 'shell.version', {})}{' '}
+            <code>
+              <TechnicalValue value={APP_VERSION} />
             </code>
           </small>
-          <p>{copy.signedIn}</p>
-          <strong>{auth?.user.username}</strong>
+          <p>{formatMessage(locale, 'shell.signedInAs', {})}</p>
+          {auth ? (
+            <strong>
+              <OpaqueUserValue value={auth.user.username} />
+            </strong>
+          ) : null}
           <button
             className="secondary-button"
             disabled={logoutPending}
             onClick={() => void handleLogout()}
             type="button"
           >
-            {logoutPending ? copy.signingOut : copy.signOut}
+            {logoutPending
+              ? formatMessage(locale, 'shell.signingOut', {})
+              : formatMessage(locale, 'shell.signOut', {})}
           </button>
           {logoutError && (
             <p className="inline-error" role="alert">
-              {logoutError}
+              {formatMessage(locale, 'shell.logoutFailed', {})}
             </p>
           )}
         </div>
@@ -172,12 +167,16 @@ export function AppShell() {
           <div className="brand-mark" aria-hidden="true">
             <ShieldCheck size={19} />
           </div>
-          <strong>AgentBox</strong>
+          <strong>{formatMessage(locale, 'app.name', {})}</strong>
         </div>
         <button
           aria-controls="mobile-navigation"
           aria-expanded={menuOpen}
-          aria-label={menuOpen ? copy.closeNavigation : copy.openNavigation}
+          aria-label={
+            menuOpen
+              ? formatMessage(locale, 'shell.closeNavigation', {})
+              : formatMessage(locale, 'shell.openNavigation', {})
+          }
           className="icon-button"
           onClick={() => setMenuOpen((open) => !open)}
           type="button"
@@ -189,12 +188,16 @@ export function AppShell() {
       {menuOpen && (
         <div className="mobile-drawer" id="mobile-navigation">
           <div className="mobile-drawer-meta">
-            <ControlPlanePulse />
-            <span>{auth?.user.username}</span>
+            <ControlPlanePulse locale={locale} />
+            {auth ? (
+              <span>
+                <OpaqueUserValue value={auth.user.username} />
+              </span>
+            ) : null}
             <small className="app-version">
-              {copy.version}{' '}
-              <code dir="ltr" lang="en" translate="no">
-                {APP_VERSION}
+              {formatMessage(locale, 'shell.version', {})}{' '}
+              <code>
+                <TechnicalValue value={APP_VERSION} />
               </code>
             </small>
           </div>
@@ -205,11 +208,13 @@ export function AppShell() {
             onClick={() => void handleLogout()}
             type="button"
           >
-            {logoutPending ? copy.signingOut : copy.signOut}
+            {logoutPending
+              ? formatMessage(locale, 'shell.signingOut', {})
+              : formatMessage(locale, 'shell.signOut', {})}
           </button>
           {logoutError && (
             <p className="inline-error" role="alert">
-              {logoutError}
+              {formatMessage(locale, 'shell.logoutFailed', {})}
             </p>
           )}
         </div>

@@ -150,6 +150,8 @@ jobs:
 
   rc8-predecessor-artifact:
     name: rc8-predecessor-artifact
+    needs: release-candidate
+    if: ${{ needs.release-candidate.result == 'success' && needs.release-candidate.outputs.release-version == '0.3.0rc8' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -231,6 +233,7 @@ jobs:
   rc8-artifact-operations:
     name: rc8-artifact-operations
     needs: [release-candidate, rc8-predecessor-artifact]
+    if: ${{ always() && needs.release-candidate.result == 'success' && needs.release-candidate.outputs.release-version == '0.3.0rc8' && needs.rc8-predecessor-artifact.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -359,10 +362,19 @@ jobs:
     needs: [packaging-toolchain, release-candidate, rc8-predecessor-artifact, rc8-artifact-import, rc8-synthetic-source, rc8-artifact-operations]
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    permissions: {}
+    permissions:
+      contents: read
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
       - name: Require every release-candidate verification
         env:
+          RELEASE_VERSION: ${{ needs.release-candidate.outputs.release-version }}
           PACKAGING_TOOLCHAIN_RESULT: ${{ needs.packaging-toolchain.result }}
           RELEASE_CANDIDATE_RESULT: ${{ needs.release-candidate.result }}
           RC8_PREDECESSOR_ARTIFACT_RESULT: ${{ needs.rc8-predecessor-artifact.result }}
@@ -370,9 +382,11 @@ jobs:
           RC8_SYNTHETIC_SOURCE_RESULT: ${{ needs.rc8-synthetic-source.result }}
           RC8_ARTIFACT_OPERATIONS_RESULT: ${{ needs.rc8-artifact-operations.result }}
         run: |
-          test "$PACKAGING_TOOLCHAIN_RESULT" = "success"
-          test "$RELEASE_CANDIDATE_RESULT" = "success"
-          test "$RC8_PREDECESSOR_ARTIFACT_RESULT" = "success"
-          test "$RC8_ARTIFACT_IMPORT_RESULT" = "success"
-          test "$RC8_SYNTHETIC_SOURCE_RESULT" = "success"
-          test "$RC8_ARTIFACT_OPERATIONS_RESULT" = "success"
+          python scripts/check-release-gate-version.py \
+            --candidate-version "$RELEASE_VERSION" \
+            --packaging-toolchain-result "$PACKAGING_TOOLCHAIN_RESULT" \
+            --release-candidate-result "$RELEASE_CANDIDATE_RESULT" \
+            --rc8-artifact-import-result "$RC8_ARTIFACT_IMPORT_RESULT" \
+            --rc8-synthetic-source-result "$RC8_SYNTHETIC_SOURCE_RESULT" \
+            --rc8-predecessor-artifact-result "$RC8_PREDECESSOR_ARTIFACT_RESULT" \
+            --rc8-artifact-operations-result "$RC8_ARTIFACT_OPERATIONS_RESULT"

@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T12:01:19Z"
-verified_by: "codex-r11-rc8-merge-readback"
+verified_at_utc: "2026-09-06T16:51:51Z"
+verified_by: "codex-r11-rc9-local-verification"
 repository: "ForceMind/agentbox"
 ---
 
@@ -112,6 +112,27 @@ repository: "ForceMind/agentbox"
   English/Chinese key parity, known API-code localization and the route/state
   migration manifest. Its exact head completed 20/20 checks on PR #80. It does
   not migrate every page or claim rc9 is complete.
+
+- Current local rc9 candidate: all route/state bilingual UI migration, typed
+  catalog parity, code-only API localization and version-aware release-gate work
+  are implemented and locally verified on `codex/waw-rc9-bilingual-ui`. The
+  document locale reads only `navigator.languages[0]` once: primary `zh` maps to
+  `zh-CN`, and every other/missing/malformed first preference maps to English.
+  Server/API prose is excluded from user-facing localization; technical protocol,
+  identifier, enum, error-code and Audit values remain English. A distinct-origin
+  Workspace E2E harness is test-only and excluded from the production bundle;
+  trace/video/screenshot artifacts remain disabled for sensitive scenarios.
+  Version mapping is Python `0.3.0rc9`, npm `0.3.0-rc.9`, MV3 `0.3.0.9`.
+  Local commands exited 0: Web unit 44 files / 1088 tests; direct Chromium E2E
+  92 passed / 28 designed skips; release-candidate unit 45 tests; browser trust
+  extension 3 files / 6 tests plus packaged inert-manifest fence; documentation
+  links 256; workflow action pins 48 references across 7 audited sources. The
+  E2E runner rebuilds then fail-closes if production `dist` contains a Workspace
+  harness marker. This local record does not substitute for GitHub evidence.
+  This is not delivery evidence: exact-head CI, normal merge, merge read-back and
+  post-main verification are all pending. rc8 historical jobs must be `success`
+  on rc8 and exact `skipped` on rc9; other release-gate checks remain required.
+  R12 remains unstarted and independently host-gated.
 
 - Live merge read-back at 2026-09-06T12:01:19Z: git fetch origin --prune and
   local main fast-forward both exited 0; local main, origin/main and the current

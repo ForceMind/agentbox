@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiClient } from '../../lib/api'
+import { ApiClient, ApiError } from '../../lib/api'
 import { AuthContext, AuthContextValue } from '../auth/AuthContext'
 import { useProject } from './useProjects'
 
@@ -104,7 +104,7 @@ describe('useProject mutation idempotency', () => {
     await waitFor(() => expect(result.current.project?.id).toBe('prj_test'))
 
     await act(async () => result.current.mutate('git/pull'))
-    expect(result.current.error?.status).toBe(0)
+    expect(result.current.error?.code).toBe('CONTROL_PLANE_UNAVAILABLE')
     await act(async () => result.current.mutate('git/pull'))
 
     expect(keys).toHaveLength(2)
@@ -148,12 +148,95 @@ describe('useProject mutation idempotency', () => {
     await waitFor(() => expect(result.current.project?.id).toBe('prj_test'))
 
     await act(async () => result.current.mutate('git/push'))
-    expect(result.current.error?.status).toBe(409)
+    expect(result.current.error?.code).toBe('GIT_CONFLICT')
     await act(async () => result.current.mutate('git/push'))
 
     expect(keys).toHaveLength(2)
     expect(keys[0]).toBeTruthy()
     expect(keys[1]).not.toBe(keys[0])
+    unmount()
+  })
+
+  it('exposes only bounded Job fields and discards every server summary', async () => {
+    const serverCanary = 'RC9-PROJECT-JOB-SUMMARY-CANARY-9H4K'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const path = input.toString()
+        if (path.endsWith('/api/v1/projects/prj_test')) {
+          return Promise.resolve(jsonResponse(200, projectResponse))
+        }
+        if (path.endsWith('/git/push')) {
+          return Promise.resolve(
+            jsonResponse(202, {
+              ...jobResponse,
+              data: {
+                ...jobResponse.data,
+                status: 'failed',
+                phase: serverCanary,
+                progress: 25,
+                error_code: 'GIT_PUSH_FAILED',
+                error_summary: serverCanary,
+                result_summary: serverCanary,
+              },
+            }),
+          )
+        }
+        return Promise.resolve(jsonResponse(404, {}))
+      }),
+    )
+    const { result, unmount } = renderHook(() => useProject('prj_test'), {
+      wrapper: wrapper(new ApiClient()),
+    })
+    await waitFor(() => expect(result.current.project?.id).toBe('prj_test'))
+
+    await act(async () => result.current.mutate('git/push'))
+
+    expect(result.current.job).toEqual({
+      id: 'job_test',
+      status: 'failed',
+      progress: 25,
+      error_code: 'GIT_PUSH_FAILED',
+    })
+    expect(result.current.job).not.toHaveProperty('error_summary')
+    expect(result.current.job).not.toHaveProperty('result_summary')
+    expect(JSON.stringify(result.current.job)).not.toContain(serverCanary)
+    unmount()
+  })
+
+  it('converts API failures without reading server message prose', async () => {
+    const canary = 'RC9-PROJECT-API-MESSAGE-CANARY-5T2Q'
+    let messageReads = 0
+    const failure = new ApiError({
+      code: 'PROJECT_NOT_FOUND',
+      message: canary,
+      requestId: 'req_project_safe_error',
+      status: 404,
+    })
+    Object.defineProperty(failure, 'message', {
+      configurable: true,
+      get: () => {
+        messageReads += 1
+        return canary
+      },
+    })
+    const api = {
+      get: vi.fn(async () => {
+        throw failure
+      }),
+    } as unknown as ApiClient
+    const { result, unmount } = renderHook(() => useProject('prj_test'), {
+      wrapper: wrapper(api),
+    })
+
+    await waitFor(() =>
+      expect(result.current.error).toEqual({
+        code: 'PROJECT_NOT_FOUND',
+        requestId: 'req_project_safe_error',
+      }),
+    )
+    expect(messageReads).toBe(0)
+    expect(JSON.stringify(result.current.error)).not.toContain(canary)
     unmount()
   })
 })

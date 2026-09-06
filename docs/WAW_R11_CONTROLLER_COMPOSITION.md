@@ -4,6 +4,18 @@ Status: accepted software implementation contract for R11/rc6–rc9. This docume
 does not activate a host, install a managed extension, handle a real credential,
 or qualify a vendor CLI.
 
+## rc9 candidate update
+
+The rc9 bilingual UI candidate is locally implemented and verified. It uses
+typed `zh-CN`/English catalogs, code-only API error localization and the fixed
+first-preference locale contract (`navigator.languages[0]` only). API/server
+prose is not rendered as a localization fallback; technical protocol and audit
+values remain English. A distinct-origin test-only Workspace harness supports
+E2E and is absent from the production bundle; sensitive artifacts are disabled.
+
+The candidate still requires exact-head CI, normal merge, merge read-back and
+post-main verification. It does not complete R11 and cannot advance R12.
+
 ## Delivery order
 
 R11 is delivered as four serial release-candidate increments:
