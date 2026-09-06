@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import virtualenv
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/rehearse-waw-artifact.py"
@@ -58,6 +60,8 @@ def _write_wheel(path: Path, name: str, version: str, packages: tuple[str, ...] 
     normalized = name.replace("-", "_")
     dist_info = f"{normalized}-{version}.dist-info"
     records = [f"{package}/__init__.py" for package in packages]
+    if "agentbox_installer" in packages:
+        records.append("agentbox_installer/lifecycle.py")
     records.extend(
         [
             f"{dist_info}/METADATA",
@@ -68,6 +72,8 @@ def _write_wheel(path: Path, name: str, version: str, packages: tuple[str, ...] 
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for package in packages:
             archive.writestr(f"{package}/__init__.py", "")
+        if "agentbox_installer" in packages:
+            archive.writestr("agentbox_installer/lifecycle.py", "class AgentBoxInstaller: pass\n")
         archive.writestr(
             f"{dist_info}/METADATA",
             f"Metadata-Version: 2.4\nName: {name}\nVersion: {version}\n",
@@ -193,7 +199,11 @@ def _build_bundle(tmp_path: Path) -> dict[str, Path]:
             "1.0",
         )
     bootstrap_wheel = release / "bootstrap/pip-26.2.1-py3-none-any.whl"
-    _write_wheel(bootstrap_wheel, "pip", "26.2.1")
+    embedded_pip = (
+        Path(virtualenv.__file__).resolve().parent / "seed/wheels/embed/pip-26.2.1-py3-none-any.whl"
+    )
+    assert embedded_pip.is_file()
+    shutil.copyfile(embedded_pip, bootstrap_wheel)
     sbom = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
@@ -376,6 +386,56 @@ def test_expected_source_is_bound_before_native_or_install_work(tmp_path: Path) 
     )
     assert completed.returncode == 1
     assert completed.stderr == "artifact rehearsal failed: release source provenance\n"
+
+
+def test_retained_workspace_emits_an_artifact_bound_environment_proof(tmp_path: Path) -> None:
+    bundle = _build_bundle(tmp_path)
+    workspace = tmp_path / "retained-workspace"
+    completed = subprocess.run(
+        [*_command(bundle), "--skip-native", "--workspace-root", str(workspace)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    proof = json.loads((workspace / "environment-proof.json").read_text(encoding="utf-8"))
+    environment = workspace / "environment"
+    site_packages = Path(proof["site_packages"])
+    assert proof == {
+        "schema_version": 1,
+        "artifact_sha256": _sha256(bundle["artifact"]),
+        "source_sha": SOURCE_COMMIT,
+        "version": VERSION,
+        "environment_prefix": str(environment.resolve()),
+        "python": str((environment / "bin/python").resolve()),
+        "site_packages": str(site_packages),
+        "wheel_path": f"wheelhouse/agentbox-{VERSION}-py3-none-any.whl",
+        "wheel_sha256": _sha256(
+            workspace / "unpacked" / f"wheelhouse/agentbox-{VERSION}-py3-none-any.whl"
+        ),
+        "installer_module": str(site_packages / "agentbox_installer/lifecycle.py"),
+    }
+    assert (workspace / "unpacked/RELEASE_MANIFEST.json").is_file()
+    assert (workspace / "pip-report.json").is_file()
+    assert not list(site_packages.glob("*.pth"))
+    assert (workspace / "environment-proof.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_artifact_synthetic_requires_a_manifest_hashed_runner(tmp_path: Path) -> None:
+    bundle = _build_bundle(tmp_path)
+    completed = subprocess.run(
+        [*_command(bundle), "--skip-native", "--run-synthetic"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert completed.stderr == "artifact rehearsal failed: artifact synthetic runner\n"
 
 
 def test_compiler_provenance_rejects_an_external_include(tmp_path: Path) -> None:

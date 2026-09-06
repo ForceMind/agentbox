@@ -8,15 +8,19 @@ socket adapter until it can run under the artifact-installed host layout.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import base64
 import contextlib
 import fcntl
 import hashlib
+import importlib
+import importlib.metadata
 import json
 import multiprocessing
 import os
 import pty
+import re
 import secrets
 import select
 import shutil
@@ -61,6 +65,8 @@ from agentbox_core.waw_tickets import (
     TicketAuthorityError,
 )
 from agentbox_protocol.abws import FrameType as F
+from agentbox_protocol.awce import decode_awce
+from agentbox_protocol.waw_crypto_profile import BrowserCryptoProfile
 from agentbox_protocol.waw_wire import Leg, decode_wire_frame, encode_wire_frame
 from agentbox_runtime.process import ExecutableIdentity
 from agentbox_runtime.waw_codex_command import WAWCodexCommand
@@ -103,6 +109,19 @@ _PUBLIC_FINGERPRINT_SIZE = 64
 _ABWS_HEADER = struct.Struct("!4sBBHIQI")
 _CONTROL_HEADER = struct.Struct("!I")
 _WINSIZE = struct.Struct("HHHH")
+_ARTIFACT_VENV_ENV = "AGENTBOX_RC8_EXPECTED_VENV_ROOT"
+_ARTIFACT_VERSION_ENV = "AGENTBOX_RC8_EXPECTED_ARTIFACT_VERSION"
+_ARTIFACT_MODULES = (
+    "agentbox_api",
+    "agentbox_browser_trust",
+    "agentbox_cli",
+    "agentbox_core",
+    "agentbox_helper",
+    "agentbox_installer",
+    "agentbox_protocol",
+    "agentbox_runtime",
+    "agentbox_worker",
+)
 _ECHO_CHILD = """
 import os
 while True:
@@ -111,6 +130,41 @@ while True:
         break
     os.write(1, b\"PTY:\" + value)
 """
+
+
+def _verify_artifact_import_origins() -> None:
+    """Require every AgentBox import to originate in the artifact venv when requested.
+
+    The source-test invocation leaves the environment variables unset.  The
+    artifact rehearsal sets both values before the parent, API child and Runtime
+    child have a chance to open a socket, create a key or start a PTY.
+    """
+
+    root_value = os.environ.get(_ARTIFACT_VENV_ENV)
+    if root_value is None:
+        return
+    version = os.environ.get(_ARTIFACT_VERSION_ENV)
+    root = Path(root_value)
+    if (
+        not root.is_absolute()
+        or not root.exists()
+        or root.is_symlink()
+        or not root.is_dir()
+        or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,2}(?:rc[0-9]+)?", version or "") is None
+    ):
+        raise RuntimeError("artifact synthetic import provenance is invalid")
+    root = root.resolve()
+    if Path(sys.prefix).resolve() != root:
+        raise RuntimeError("artifact synthetic import provenance is invalid")
+    for name in _ARTIFACT_MODULES:
+        module = importlib.import_module(name)
+        origin = getattr(getattr(module, "__spec__", None), "origin", None)
+        if not isinstance(origin, str) or not Path(origin).resolve().is_relative_to(root):
+            raise RuntimeError("artifact synthetic import provenance is invalid")
+    distribution = importlib.metadata.distribution("agentbox")
+    distribution_root = Path(str(distribution.locate_file(""))).resolve()
+    if distribution.version != version or not distribution_root.is_relative_to(root):
+        raise RuntimeError("artifact synthetic import provenance is invalid")
 
 
 def _canonical_trust_record(value: Mapping[str, object]) -> bytes:
@@ -577,8 +631,9 @@ async def _runtime_main(
         registry,
         peer=lambda: peer,
         supervisor=lambda _claims: supervisor,
-        current=lambda _claims: supervisor.state
-        in {SupervisorState.RUNNING, SupervisorState.DETACHED},
+        current=lambda _claims: (
+            supervisor.state in {SupervisorState.RUNNING, SupervisorState.DETACHED}
+        ),
     )
     service.bind_authority(
         {"api_authority_epoch": str(AUTHORITY_EPOCH), "authority_nonce": "d" * 32}, peer
@@ -647,6 +702,7 @@ def _runtime_entry(
     stream_raw: str,
     public_channel: socket.socket,
 ) -> None:
+    _verify_artifact_import_origins()
     root, control, stream = Path(root_raw), Path(control_raw), Path(stream_raw)
     try:
         private_key = X25519PrivateKey.generate()
@@ -937,7 +993,8 @@ async def _http_response(
     reason = {200: "OK", 409: "Conflict"}.get(status, "Bad Request")
     writer.write(
         f"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\n"
-        f"Content-Length: {len(raw)}\r\nConnection: close\r\n\r\n".encode("ascii") + raw
+        f"Content-Length: {len(raw)}\r\nConnection: close\r\n\r\n".encode("ascii")
+        + raw
     )
     await writer.drain()
 
@@ -1199,6 +1256,7 @@ def _api_entry(
     runtime_fingerprint: str,
     trust_record: dict[str, str | int],
 ) -> None:
+    _verify_artifact_import_origins()
     root, control, stream = Path(root_raw), Path(control_raw), Path(stream_raw)
     try:
         asyncio.run(_api_main(listener, root, control, stream, runtime_fingerprint, trust_record))
@@ -1414,6 +1472,255 @@ def synthetic_waw_cluster(tmp_path: Path) -> Iterator[SyntheticWAWCluster]:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def run_synthetic_path(
+    tmp_path: Path,
+    *,
+    plaintext: bytes = b"synthetic-rc8-input\n",
+    browser_ephemeral_private_key: bytes | None = None,
+) -> str:
+    """Exercise the closed API/Runtime/browser/PTY path without pytest.
+
+    The callable is shared by the source test and the manifest-hashed artifact
+    rehearsal runner.  Caller-provided values are test-only inputs: the normal
+    source test keeps its stable payload, while the rc8 workflow later supplies
+    per-run canaries without adding a production switch.
+    """
+
+    _verify_artifact_import_origins()
+    if not loopback_bind_permitted():
+        raise RuntimeError("required rc8 loopback socket bind is unavailable")
+    if type(plaintext) is not bytes or not 1 <= len(plaintext) <= 16_384:
+        raise ValueError("synthetic plaintext is invalid")
+    if browser_ephemeral_private_key is not None and (
+        type(browser_ephemeral_private_key) is not bytes or len(browser_ephemeral_private_key) != 32
+    ):
+        raise ValueError("synthetic browser private key is invalid")
+    expected_output = b"PTY:" + plaintext
+
+    with synthetic_waw_cluster(tmp_path) as cluster:
+        status, started = cluster.http("POST", "/v1/workspaces/synthetic/start")
+        if status != 200:
+            raise RuntimeError("synthetic Start did not succeed")
+        admission = started["admission"]
+        if not isinstance(admission, dict):
+            raise RuntimeError("synthetic admission is invalid")
+        claims = claims_from_admission(admission)
+        if wire_admission_tuple(claims) != admission:
+            raise RuntimeError("synthetic admission tuple changed")
+        ticket = started.get("ticket")
+        if not isinstance(ticket, str) or not ticket.startswith("wat_"):
+            raise RuntimeError("synthetic ticket is invalid")
+        trust_record = started.get("trust_record")
+        if not isinstance(trust_record, dict):
+            raise RuntimeError("synthetic trust record is invalid")
+        trusted_fingerprint = verify_synthetic_trust_record(trust_record, cluster.trust_anchor)
+        tampered_trust = {**trust_record, "runtime_fingerprint": "0" * 64}
+        try:
+            verify_synthetic_trust_record(tampered_trust, cluster.trust_anchor)
+        except ValueError:
+            pass
+        else:
+            raise RuntimeError("synthetic trust tampering was accepted")
+        if trusted_fingerprint != started.get("runtime_fingerprint"):
+            raise RuntimeError("synthetic trust fingerprint differs")
+
+        crypto = BrowserCryptoProfile(
+            admission,
+            RUNTIME_EPOCH,
+            trusted_fingerprint,
+            ephemeral_private_key=browser_ephemeral_private_key,
+        )
+        with cluster.browser() as browser:
+            browser.send(
+                browser_frame(
+                    F.WS_HELLO,
+                    {
+                        "protocol_version": 1,
+                        **admission,
+                        "runtime_epoch": RUNTIME_EPOCH,
+                        "ticket": ticket,
+                        "resume_cursor": None,
+                        "previous_runtime_epoch": None,
+                    },
+                    1,
+                )
+            )
+            browser.send(browser_frame(F.KEY_INIT, crypto.start(), 2))
+
+            opcode, raw = browser.receive()
+            attest = decode_wire_frame(raw, AB)
+            if opcode != 2 or attest.frame_type is not F.KEY_ATTEST or attest.json_payload is None:
+                raise RuntimeError("synthetic key attest is invalid")
+            if (
+                attest.json_payload["runtime_attestation_x25519_fingerprint"]
+                != started["runtime_fingerprint"]
+            ):
+                raise RuntimeError("synthetic key attest differs")
+            browser.send(
+                browser_frame(F.KEY_CONFIRM, crypto.receive_attest(attest.json_payload), 3)
+            )
+            opcode, raw = browser.receive()
+            confirmed = decode_wire_frame(raw, AB)
+            if opcode != 2 or confirmed.frame_type is not F.KEY_CONFIRM_ACK:
+                raise RuntimeError("synthetic key confirmation is invalid")
+            crypto.receive_ack(confirmed.json_payload)
+
+            opcode, raw = browser.receive()
+            admitted = decode_wire_frame(raw, AB)
+            if (
+                opcode != 2
+                or admitted.frame_type is not F.ADMITTED
+                or admitted.json_payload is None
+                or admitted.json_payload.get("state") != "RUNNING"
+            ):
+                raise RuntimeError("synthetic admission was not published")
+
+            browser.send(browser_frame(F.INPUT, crypto.encrypt_input(plaintext), 4))
+            accepted = False
+            written = False
+            output = bytearray()
+            while not (accepted and written and expected_output in output):
+                opcode, raw = browser.receive()
+                if opcode != 2:
+                    raise RuntimeError("synthetic browser frame is invalid")
+                frame = decode_wire_frame(raw, AB)
+                if frame.frame_type is F.ACK:
+                    if frame.json_payload is None:
+                        raise RuntimeError("synthetic input ACK is invalid")
+                    accepted |= frame.json_payload["result"] == "accepted"
+                    written |= frame.json_payload["result"] == "written_to_pty"
+                elif frame.frame_type is F.OUTPUT:
+                    envelope = decode_awce(frame.payload)
+                    output.extend(
+                        crypto.decrypt_output(
+                            frame.payload,
+                            expected_cursor=envelope.stream_cursor,
+                        )
+                    )
+            if output.count(expected_output) != 1:
+                raise RuntimeError("synthetic PTY output is not exact")
+
+            browser.send(
+                browser_frame(
+                    F.RESIZE,
+                    {
+                        "protocol_version": 1,
+                        "attachment_id": claims.attachment_id,
+                        "lease_number": str(claims.lease_number),
+                        "columns": 100,
+                        "rows": 40,
+                    },
+                    5,
+                )
+            )
+            opcode, raw = browser.receive()
+            resized = decode_wire_frame(raw, AB)
+            if (
+                opcode != 2
+                or resized.frame_type is not F.RESIZE_ACK
+                or resized.json_payload is None
+                or resized.json_payload.get("result") != "applied"
+                or (
+                    resized.json_payload.get("effective_columns"),
+                    resized.json_payload.get("effective_rows"),
+                )
+                != (100, 40)
+            ):
+                raise RuntimeError("synthetic resize read-back is invalid")
+
+            browser.send(
+                browser_frame(
+                    F.DETACH,
+                    {
+                        "protocol_version": 1,
+                        "attachment_id": claims.attachment_id,
+                        "lease_number": str(claims.lease_number),
+                    },
+                    6,
+                )
+            )
+            detached: dict[str, Any] | None = None
+            closed = False
+            while detached is None or not closed:
+                opcode, raw = browser.receive()
+                if opcode != 2:
+                    raise RuntimeError("synthetic detach frame is invalid")
+                frame = decode_wire_frame(raw, AB)
+                if frame.frame_type is F.DETACH_ACK:
+                    detached = frame.json_payload
+                elif frame.frame_type is F.CLOSE:
+                    closed = True
+            if (
+                detached is None
+                or detached.get("result") != "detached"
+                or detached.get("cleanup_state") != "ATTACH_PTY_CLOSED"
+                or detached.get("reason_code") is not None
+            ):
+                raise RuntimeError("synthetic detach evidence is invalid")
+
+        status, stopped = cluster.http(
+            "POST", "/v1/workspaces/synthetic/stop", {"generation": GENERATION}
+        )
+        if (
+            status != 200
+            or started["api_pid"] == stopped["runtime_pid"]
+            or stopped["child_pid"] in {started["api_pid"], stopped["runtime_pid"]}
+            or stopped["state"] != "STOPPED"
+            or stopped["child_stopped"] is not True
+            or stopped["geometry"] != [100, 40]
+            or stopped["input_count"] != 1
+            or stopped["detach_count"] != 1
+            or stopped["registry_count"] != 0
+        ):
+            raise RuntimeError("synthetic Stop evidence is invalid")
+
+        with cluster.browser() as replay:
+            replay.send(
+                browser_frame(
+                    F.WS_HELLO,
+                    {
+                        "protocol_version": 1,
+                        **admission,
+                        "runtime_epoch": RUNTIME_EPOCH,
+                        "ticket": ticket,
+                        "resume_cursor": None,
+                        "previous_runtime_epoch": None,
+                    },
+                    1,
+                )
+            )
+            opcode, raw = replay.receive()
+            if opcode != 8 or int.from_bytes(raw[:2], "big") != 4403:
+                raise RuntimeError("synthetic ticket replay was accepted")
+
+        status, shutdown = cluster.http("POST", "/synthetic/shutdown")
+        if (
+            status != 200
+            or shutdown.get("issuance_fenced") is not True
+            or shutdown.get("authority_clean") is not True
+            or shutdown.get("runtime", {}).get("registry_count") != 0
+            or shutdown.get("runtime", {}).get("prepare_count") != 1
+            or shutdown.get("audit") != {"prepared": 1, "admitted": 1, "detached": 1}
+        ):
+            raise RuntimeError("synthetic shutdown evidence is invalid")
+        cluster.assert_children_clean()
+    return ticket
+
+
+def _main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--require-loopback", action="store_true")
+    args = parser.parse_args(argv)
+    if args.require_loopback and not loopback_bind_permitted():
+        return 1
+    try:
+        run_synthetic_path(Path.cwd())
+    except Exception:
+        return 1
+    print("rc8 artifact synthetic path passed.")
+    return 0
+
+
 def browser_frame(kind: F, payload: dict[str, Any] | bytes, sequence: int) -> bytes:
     return encode_wire_frame(kind, BA, payload, sequence)
 
@@ -1435,6 +1742,11 @@ __all__ = [
     "browser_frame",
     "claims_from_admission",
     "loopback_bind_permitted",
+    "run_synthetic_path",
     "synthetic_waw_cluster",
     "verify_synthetic_trust_record",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

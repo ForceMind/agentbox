@@ -22,6 +22,7 @@ from agentbox_installer.build import (
     RELEASE_DOCUMENTS,
     RELEASE_NATIVE_BUILD_SCRIPTS,
     RELEASE_NATIVE_SOURCE_FILES,
+    RELEASE_WAW_REHEARSAL_FILES,
     _frontend_package_inventory,
     _python_package_inventory,
     frontend_inventory_from_pnpm,
@@ -51,7 +52,7 @@ def _release_artifact_checker(root: Path) -> ModuleType:
 
 def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     release = tmp_path / "release"
-    for directory in ("bootstrap", "wheelhouse", "web/dist", "migrations/versions"):
+    for directory in ("bootstrap", "wheelhouse", "web/dist", "migrations/versions", "rehearsal"):
         (release / directory).mkdir(parents=True, exist_ok=True)
     version = "0.3.0rc1"
     (release / "VERSION").write_text(f"{version}\n", encoding="ascii")
@@ -63,6 +64,9 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     (release / "web/dist/index.html").write_text("<!doctype html>\n", encoding="utf-8")
     (release / "migrations/versions/0001.py").write_text(
         'revision = "0001_fixture"\ndown_revision = None\n', encoding="utf-8"
+    )
+    (release / "rehearsal/waw_rc8_synthetic.py").write_text(
+        "# closed fixture rehearsal\n", encoding="utf-8"
     )
     wheel = release / f"wheelhouse/agentbox-{version}-py3-none-any.whl"
     _minimal_wheel(wheel, version)
@@ -172,8 +176,12 @@ def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> Non
         "scripts/build-waw-native.py",
         "scripts/check-waw-native.py",
     )
+    assert RELEASE_WAW_REHEARSAL_FILES == (
+        ("tests/support/waw_rc8_synthetic.py", "rehearsal/waw_rc8_synthetic.py"),
+    )
     assert all((root / name).is_file() for name in RELEASE_NATIVE_SOURCE_FILES)
     assert [(root / name).is_file() for name in RELEASE_NATIVE_BUILD_SCRIPTS] == [True, True]
+    assert [(root / source).is_file() for source, _target in RELEASE_WAW_REHEARSAL_FILES] == [True]
     asset_root = root / "packages/agentbox-runtime/src/agentbox_runtime/assets/waw-inert"
     assert [
         (asset_root / asset.removeprefix("assets/waw-inert/")).is_file()
@@ -238,8 +246,14 @@ def test_release_artifact_waw_inventory_rejects_unexpected_members(
     checker = _release_artifact_checker(root)
     native_members = set(RELEASE_NATIVE_SOURCE_FILES)
     native_scripts = set(RELEASE_NATIVE_BUILD_SCRIPTS)
+    rehearsal_members = {target for _source, target in RELEASE_WAW_REHEARSAL_FILES}
     wheel_assets = set(checker.WAW_INERT_WHEEL_ASSETS)
-    checker.verify_waw_release_inventory(native_members, native_scripts, wheel_assets)
+    checker.verify_waw_release_inventory(
+        native_members,
+        native_scripts,
+        rehearsal_members,
+        wheel_assets,
+    )
 
     if kind == "native":
         native_members.add(unexpected)
@@ -248,7 +262,12 @@ def test_release_artifact_waw_inventory_rejects_unexpected_members(
     else:
         wheel_assets.add(unexpected)
     with pytest.raises(ValueError, match="inventory mismatch"):
-        checker.verify_waw_release_inventory(native_members, native_scripts, wheel_assets)
+        checker.verify_waw_release_inventory(
+            native_members,
+            native_scripts,
+            rehearsal_members,
+            wheel_assets,
+        )
 
 
 def test_release_artifact_collects_every_tar_native_and_script_member() -> None:
@@ -267,11 +286,19 @@ def test_release_artifact_collects_every_tar_native_and_script_member() -> None:
             archive.addfile(info, io.BytesIO(b"x"))
     output.seek(0)
     with tarfile.open(fileobj=output, mode="r:") as archive:
-        native, scripts = checker.collect_waw_release_source_inventory(archive.getmembers())
+        native, scripts, rehearsal = checker.collect_waw_release_source_inventory(
+            archive.getmembers()
+        )
     assert native == set(RELEASE_NATIVE_SOURCE_FILES)
     assert scripts == {*RELEASE_NATIVE_BUILD_SCRIPTS, "scripts/unreviewed-waw-build.py"}
+    assert rehearsal == set()
     with pytest.raises(ValueError, match="build-script inventory mismatch"):
-        checker.verify_waw_release_inventory(native, scripts, set(checker.WAW_INERT_WHEEL_ASSETS))
+        checker.verify_waw_release_inventory(
+            native,
+            scripts,
+            {target for _source, target in RELEASE_WAW_REHEARSAL_FILES},
+            set(checker.WAW_INERT_WHEEL_ASSETS),
+        )
 
 
 def test_release_artifact_does_not_union_waw_assets_across_wheels() -> None:
@@ -305,6 +332,7 @@ def test_release_artifact_does_not_union_waw_assets_across_wheels() -> None:
         checker.verify_waw_release_inventory(
             set(RELEASE_NATIVE_SOURCE_FILES),
             set(RELEASE_NATIVE_BUILD_SCRIPTS),
+            {target for _source, target in RELEASE_WAW_REHEARSAL_FILES},
             observed,
         )
 
@@ -362,6 +390,7 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     )
     assert "Install verified rehearsal runner" not in workflow
     assert "--skip-native" in workflow
+    assert "args+=(--run-synthetic)" in workflow
     assert 'AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"' in workflow
 
 

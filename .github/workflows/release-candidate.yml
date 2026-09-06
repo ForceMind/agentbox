@@ -186,6 +186,8 @@ jobs:
           )
           if [ "${{ matrix.python-version }}" != "3.11" ]; then
             args+=(--skip-native)
+          else
+            args+=(--run-synthetic)
           fi
           PYTHONPATH=installer/src python scripts/rehearse-waw-artifact.py "${args[@]}"
 
