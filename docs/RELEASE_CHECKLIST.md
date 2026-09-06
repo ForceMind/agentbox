@@ -1,6 +1,6 @@
 # AgentBox MVP Release Candidate Checklist
 
-Candidate: `0.3.0rc6`; planned tag: `v0.3.0-rc.6`.
+Candidate: `0.3.0rc7`; planned tag: `v0.3.0-rc.7`.
 
 Completing the preparation boxes does not authorize a tag, GitHub Release, or
 stable-support claim. Publication boxes remain manual and require review after

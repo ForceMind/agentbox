@@ -64,8 +64,8 @@ separately tracked in R12.
 
 - Mac remains the development platform. R11/rc6 software controller composition
   was delivered by PR #80; rc7-A deterministic composed failure injection is
-  locally verified and awaits PR #81 exact-head CI, normal merge and read-back
-  before rc8 can start.
+  delivered by PR #81 (`b0eaef2...`) after 20/20 exact-head CI and six successful
+  post-main workflows. rc8 artifact/operations rehearsal is next.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 

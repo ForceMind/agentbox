@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T02:17:33Z"
-verified_by: "codex-r11-rc7-local-matrix"
+verified_at_utc: "2026-09-06T02:43:03Z"
+verified_by: "codex-r11-rc7-merge-readback"
 repository: "ForceMind/agentbox"
 ---
 
@@ -60,15 +60,18 @@ repository: "ForceMind/agentbox"
   `wait-for` timeout; rerunning that exact failed job on the same main SHA passed,
   so all six post-main workflows are terminal success. It remains software
   evidence, not R11/R12 product qualification.
-- rc7-A deterministic composed failure injection is locally verified on the
-  `codex/waw-rc7-failure-injection` candidate for PR #81. It adds test-only
+- PR #81 delivered rc7-A deterministic composed failure injection: candidate
+  `04ef0ae2b94e127cacc496e7876bd41cf203f43d` completed all 20 exact-head checks,
+  merged normally as `b0eaef2e4e54cf1aba86e7669733d0adc885c1fb` at
+  `2026-09-06T02:26:40Z`, with `8480bf8...` and `04ef0ae...` as exact parents.
+  All six post-main workflows completed success. It adds test-only
   closed checkpoints, void gates, integer-nanosecond clocks and controlled
   partial writes; composed admission/relay/restart/shutdown/browser/Stop tests;
   and dynamic canary scans across Audit/Jobs/logs/diagnostics/SQLite sidecars plus
   browser DOM/storage/task owners. Focused Python is 29 passed, related Python
   regression is 341 passed, full Web is 997 passed, Linux-target mypy covers 274
-  sources, and independent Sol review reports P0=0/P1=0. Exact-head CI, normal
-  merge and read-back are pending, so rc7, R11 and R12 are not delivered. One
+  sources, and independent Sol review reports P0=0/P1=0. rc7 is delivered; R11
+  remains in progress for rc8/rc9 and R12 remains unstarted. One
   existing local real-UDS relay test cannot bind `/tmp` under this Mac sandbox;
   Linux CI remains required for that unrelated host capability.
 - Earlier paragraphs labeled “current uncommitted” are retained historical

@@ -3,6 +3,29 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc7] - Unreleased
+
+### Added
+
+- R11 rc7 adds deterministic, test-only composed failure injection for WAW
+  admission, relay, restart, shutdown, browser lifecycle and exact Stop paths.
+- Closed checkpoints, void gates, integer-nanosecond clocks, controlled partial
+  writes and canary scans exercise failure boundaries without handling Provider
+  credentials or activating host policy.
+
+### Verification
+
+- PR #81 candidate `04ef0ae2b94e127cacc496e7876bd41cf203f43d` completed the
+  20/20 exact-head CI matrix and merged normally as
+  `b0eaef2e4e54cf1aba86e7669733d0adc885c1fb`; exact read-back and all six
+  standard post-main workflows are successful.
+
+### Known limitations
+
+- This remains test-only software evidence. R12 host qualification and rc8
+  artifact/upgrade/rollback rehearsal and rc9 full route/state localization
+  are unfinished.
+
 ## [0.3.0rc6] - Unreleased
 
 ### Added
