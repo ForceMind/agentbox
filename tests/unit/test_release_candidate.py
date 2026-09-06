@@ -357,6 +357,10 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     assert 'test "$RC8_SYNTHETIC_SOURCE_RESULT" = "success"' in workflow
     assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
     assert "rc8-artifact-import" in workflow
+    assert (
+        'PYTHONPATH=installer/src python scripts/rehearse-waw-artifact.py "${args[@]}"' in workflow
+    )
+    assert "Install verified rehearsal runner" not in workflow
     assert "--skip-native" in workflow
     assert 'AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"' in workflow
 
