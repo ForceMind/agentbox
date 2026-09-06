@@ -65,6 +65,10 @@ _OPERATIONS_FAILURE_REASONS = (
     ("module origin", "module_origin"),
     ("wheel data scheme", "wheel_data"),
     ("wheel verification", "wheel_verification"),
+    ("API process exited before readiness", "api_exit"),
+    ("API process did not become ready", "api_not_ready"),
+    ("listener ownership", "listener_ownership"),
+    ("probe failed", "endpoint_probe"),
 )
 
 
