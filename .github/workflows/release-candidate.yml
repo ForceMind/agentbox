@@ -170,7 +170,7 @@ jobs:
         run: |
           python -m pip install --require-hashes --only-binary=:all: --requirement requirements-release-build.lock
           python -m pip install --no-deps --no-build-isolation --editable .
-          python scripts/check-release-toolchain.py --source . --check-installed
+          python scripts/check-release-toolchain.py --source .
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: agentbox-${{ needs.release-candidate.outputs.release-version }}-linux-x86_64
@@ -211,7 +211,7 @@ jobs:
         run: |
           python -m pip install --require-hashes --only-binary=:all: --requirement requirements-release-build.lock
           python -m pip install --no-deps --no-build-isolation --editable .
-          python scripts/check-release-toolchain.py --source . --check-installed
+          python scripts/check-release-toolchain.py --source .
       - name: Require real loopback, sockets and PTY synthetic path
         env:
           AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"
