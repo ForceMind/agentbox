@@ -163,6 +163,7 @@ class Project(Base):
 
     __tablename__ = "projects"
     __table_args__ = (
+        CheckConstraint("revision >= 1", name="ck_projects_revision"),
         Index("uq_projects_slug_active", "slug", unique=True),
         Index("uq_projects_relative_path", "relative_path", unique=True),
     )
@@ -178,6 +179,7 @@ class Project(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     jobs: Mapped[list[Job]] = relationship(back_populates="project")
 

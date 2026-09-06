@@ -34,7 +34,6 @@ from agentbox_runtime.waw_conflicts import (
     WAWManagedConflictState,
 )
 from agentbox_runtime.waw_encrypted_stream import (
-    BoundedRedraw,
     RuntimePeer,
     WAWEncryptedRegistry,
     admission_fields,
@@ -58,6 +57,7 @@ from agentbox_runtime.waw_process_inspector import (
     FixedStartState,
 )
 from agentbox_runtime.waw_pty import PtyGeometry
+from agentbox_runtime.waw_redraw import BoundedRedraw
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_supervisor import (
     RuntimeAttachmentCleanupEvidence,
@@ -86,6 +86,8 @@ class FakeTransport:
     ready: bool = True
     start_gate: threading.Event | None = None
     fail_write: bool = False
+    redraw: BoundedRedraw = field(default_factory=lambda: BoundedRedraw(b"", False))
+    executable_fingerprint: str = "b" * 64
 
     def start(self, command: Any, geometry: PtyGeometry) -> RuntimeStartEvidence:
         assert command.workspace_id == self.identity.workspace_id
@@ -109,6 +111,9 @@ class FakeTransport:
 
     def resize(self, geometry: PtyGeometry) -> None:
         assert geometry.columns > 0 and geometry.rows > 0
+
+    def capture_redraw(self, _deadline: float) -> BoundedRedraw:
+        return self.redraw
 
     def detach(self) -> bool:
         self.detaches += 1
@@ -332,7 +337,6 @@ def _exercise_start_open_lock_order(tmp_dir: str, result: Any) -> None:
         peer=peer,
         claims=claims,
         supervisor=old_supervisor,
-        capture=lambda: BoundedRedraw(b"", False),
         current=current,
     )
     asyncio.run(executor.stop(old_identity))
@@ -475,7 +479,6 @@ async def test_cleanup_fault_after_preflight_blocks_next_generation(
         peer=peer,
         claims=claims,
         supervisor=supervisor,
-        capture=lambda: BoundedRedraw(b"", False),
         current=lambda: executor.encrypted_binding_current(claims),
     )
     await executor.stop(old_identity)
@@ -661,6 +664,20 @@ async def test_duplicate_start_is_fenced(tmp_path: Path, agent: AgentType) -> No
     with pytest.raises(RuntimeOperationError):
         await executor.start(identity)
     assert transport.starts == 1
+
+
+@pytest.mark.anyio
+async def test_executable_evidence_is_available_only_for_the_exact_live_supervisor(
+    tmp_path: Path,
+) -> None:
+    executor, identity, transport, _ = setup(tmp_path, AgentType.CLAUDE)
+    with pytest.raises(RuntimeOperationError, match="unavailable"):
+        await executor.executable_evidence(identity)
+    await executor.register_project_binding(binding())
+    await executor.start(identity)
+    assert await executor.executable_evidence(identity) == transport.executable_fingerprint
+    with pytest.raises(RuntimeOperationError, match="unavailable"):
+        await executor.executable_evidence(replace(identity, generation="2"))
 
 
 @pytest.mark.anyio

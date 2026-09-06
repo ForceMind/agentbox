@@ -71,4 +71,6 @@ jobs:
       - run: ruff check apps packages tests migrations
       - run: black --check apps/api apps/worker apps/cli packages tests migrations
       - run: mypy apps/api apps/worker apps/cli packages tests
-      - run: pytest
+      # Preserve the normal test result, but emit a useful stack if one test
+      # stalls long enough to make a matrix runner non-observable.
+      - run: pytest -o faulthandler_timeout=120

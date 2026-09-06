@@ -3,8 +3,19 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiClient } from '../../lib/api'
 import { AuthContext } from '../auth/AuthContext'
+import type {
+  WAWAttachmentControllerPort,
+  WAWAttachmentDependencies,
+} from './useWAWBrowserAttachment'
 import { useWorkspaceController } from './useWorkspaceController'
 import { parseWorkspaceList, type WorkspaceMetadata } from './workspaceMetadata'
+import type {
+  WAWBrowserAttachmentIdentity,
+  WAWBrowserControllerOptions,
+  WAWBrowserControllerSnapshot,
+  WAWBrowserInputOutcome,
+  WAWBrowserStopOutcome,
+} from './wawBrowserController'
 
 const projectId = 'prj_' + '1'.repeat(32)
 const otherProject = 'prj_' + '2'.repeat(32)
@@ -163,6 +174,128 @@ function fixture(initial = 'STARTING') {
   )
   vi.stubGlobal('fetch', fetcher)
   return { rows, fetcher }
+}
+
+function attachmentSnapshot(
+  overrides: Partial<WAWBrowserControllerSnapshot> = {},
+): WAWBrowserControllerSnapshot {
+  return Object.freeze({
+    status: 'IDLE' as const,
+    reason: null,
+    attachment: null,
+    outputCursor: null,
+    freshRedrawTruncated: false,
+    input: null,
+    ...overrides,
+  })
+}
+
+function attachmentSeam() {
+  const attached: WAWBrowserAttachmentIdentity = {
+    attachmentId: 'att_' + '4'.repeat(32),
+    workspaceId,
+    projectId,
+    agentType: 'codex',
+    generation: '7',
+    leaseNumber: '1',
+    bindingRevision: '1',
+    bindingDigest: 'a'.repeat(64),
+    authEpoch: '1',
+    apiAuthorityEpoch: '1',
+    runtimeHostInstallationId: 'wri_' + '5'.repeat(32),
+    runtimeHostInstallationRevision: '1',
+    runtimeEpoch: '9',
+  }
+  let options: WAWBrowserControllerOptions | null = null
+  let current = attachmentSnapshot()
+  const publish = (next: WAWBrowserControllerSnapshot) => {
+    current = next
+    options?.onSnapshot?.(next)
+  }
+  const controller: WAWAttachmentControllerPort = {
+    get snapshot() {
+      return current
+    },
+    connect: vi.fn(async () => {
+      publish(attachmentSnapshot({ status: 'CONNECTED', attachment: attached }))
+    }),
+    detach: vi.fn(async () => {
+      publish(attachmentSnapshot({ status: 'DETACHED', attachment: attached }))
+      return {
+        workspace_id: workspaceId,
+        attachment_id: attached.attachmentId,
+        generation: '7',
+        lease_number: '1',
+        result: 'detached' as const,
+        cleanup_state: 'ATTACH_PTY_CLOSED' as const,
+      }
+    }),
+    stop: vi.fn(async (): Promise<WAWBrowserStopOutcome> => {
+      publish(attachmentSnapshot({ status: 'STOPPED', attachment: null }))
+      return {
+        detachConfirmed: true,
+        detach: {
+          workspace_id: workspaceId,
+          attachment_id: attached.attachmentId,
+          generation: '7',
+          lease_number: '1',
+          result: 'detached',
+          cleanup_state: 'ATTACH_PTY_CLOSED',
+        },
+        stop: {
+          workspace_id: workspaceId,
+          project_id: projectId,
+          agent_type: 'codex',
+          generation: '7',
+          state: 'STOPPED',
+        },
+      }
+    }),
+    sendInput: vi.fn(async (): Promise<WAWBrowserInputOutcome> => ({
+      browserHop: '1',
+      cryptoSequence: '1',
+      state: 'written_to_pty',
+      reasonCode: null,
+    })),
+    requestResize: vi.fn(),
+    contextChanged: vi.fn(() =>
+      publish(
+        attachmentSnapshot({
+          status: 'FENCED',
+          reason: 'CONTEXT_CHANGED',
+          attachment: current.attachment,
+        }),
+      ),
+    ),
+    handlePageLifecycle: vi.fn(() =>
+      publish(
+        attachmentSnapshot({
+          status: 'FENCED',
+          reason: 'PAGEHIDE',
+          attachment: current.attachment,
+        }),
+      ),
+    ),
+  }
+  const provider = {
+    authority: 'independent' as const,
+    subscribeInvalidation: () => () => undefined,
+    getAtomicSnapshot: async () => {
+      throw new Error('controller seam does not authorize trust')
+    },
+    dispose: vi.fn(),
+  }
+  const dependencies: WAWAttachmentDependencies = {
+    providerAvailable: true,
+    createProvider: () => provider,
+    createTrust: () => ({ authorize: vi.fn(), close: vi.fn() }) as never,
+    createController: (next) => {
+      options = next
+      return controller
+    },
+    origin: () => 'https://example.test',
+  }
+  return { controller, dependencies }
 }
 afterEach(() => vi.unstubAllGlobals())
 
@@ -336,6 +469,41 @@ describe('Workspace metadata controller', () => {
     expect(
       fetcher.mock.calls.some(([url]) =>
         /attachments|reconnect/.test(url.toString()),
+      ),
+    ).toBe(false)
+  })
+
+  it('uses the retained attachment controller for pagehide Stop and never falls back to direct Stop', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const seam = attachmentSeam()
+    const { result } = renderHook(
+      () =>
+        useWorkspaceController({
+          projectId,
+          agentType: 'codex',
+          attachmentDependencies: seam.dependencies,
+        }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => {
+      result.current.setTerminalViewport(document.createElement('div'))
+      result.current.setTerminalSurface(document.createElement('div'))
+    })
+    await waitFor(() => expect(result.current.canConnect).toBe(true))
+    await act(async () => {
+      await result.current.connect()
+    })
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(seam.controller.handlePageLifecycle).toHaveBeenCalledWith('pagehide')
+    act(() => result.current.requestStop())
+    await act(async () => {
+      await result.current.confirmStop()
+    })
+    expect(seam.controller.stop).toHaveBeenCalledTimes(1)
+    expect(
+      fetcher.mock.calls.some(([url]) =>
+        url.toString().endsWith(`/workspaces/${workspaceId}/stop`),
       ),
     ).toBe(false)
   })

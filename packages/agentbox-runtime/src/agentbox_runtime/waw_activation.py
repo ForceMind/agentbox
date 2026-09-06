@@ -29,6 +29,37 @@ class WAWActivatedSockets:
     control: socket.socket
     stream: socket.socket
 
+    def take(self) -> WAWActivatedSockets:
+        """Move both descriptors into one new owner and invalidate this handle."""
+
+        if self.control.fileno() < 0 or self.stream.fileno() < 0:
+            raise WAWActivationError("WAW socket ownership is already consumed")
+        control_fd = self.control.detach()
+        try:
+            stream_fd = self.stream.detach()
+        except BaseException:
+            os.close(control_fd)
+            self.stream.close()
+            raise
+        control: socket.socket | None = None
+        stream: socket.socket | None = None
+        try:
+            control = socket.socket(fileno=control_fd)
+            stream = socket.socket(fileno=stream_fd)
+            control.set_inheritable(False)
+            stream.set_inheritable(False)
+            return WAWActivatedSockets(control, stream)
+        except BaseException:
+            if control is None:
+                os.close(control_fd)
+            else:
+                control.close()
+            if stream is None:
+                os.close(stream_fd)
+            else:
+                stream.close()
+            raise
+
     def close(self) -> None:
         self.control.close()
         self.stream.close()

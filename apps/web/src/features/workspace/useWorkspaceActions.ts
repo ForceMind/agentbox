@@ -50,8 +50,19 @@ export function useWorkspaceActions() {
   }, [authScope])
 
   const run = useCallback(
-    async <T>(action: WorkspaceAction, task: () => Promise<T>) => {
+    async <T>(
+      action: WorkspaceAction,
+      task: () => Promise<T>,
+      signal?: AbortSignal,
+    ) => {
       const scope = authScope
+      if (signal?.aborted) {
+        throw new ApiError({
+          code: 'WAW_ACTION_STALE',
+          message: '工作区上下文已变化，请重新读取状态',
+          status: 0,
+        })
+      }
       if (!scope || !mounted.current || liveScope.current !== scope) {
         throw new ApiError({
           code: 'WAW_SESSION_REQUIRED',
@@ -71,7 +82,8 @@ export function useWorkspaceActions() {
       const current = () =>
         mounted.current &&
         liveScope.current === scope &&
-        active.current === operation
+        active.current === operation &&
+        !signal?.aborted
       setPending({ action, scope })
       setError(null)
       try {
@@ -85,11 +97,22 @@ export function useWorkspaceActions() {
         }
         return result
       } catch (cause) {
+        if (signal?.aborted) {
+          throw new ApiError({
+            code: 'WAW_ACTION_STALE',
+            message: '工作区上下文已变化，请重新读取状态',
+            status: 0,
+          })
+        }
         const failure = actionError(cause)
         if (current()) setError({ error: failure, scope })
         throw failure
       } finally {
-        if (current()) {
+        const ownsOperation =
+          mounted.current &&
+          liveScope.current === scope &&
+          active.current === operation
+        if (ownsOperation) {
           active.current = null
           setPending(null)
         }
@@ -99,7 +122,11 @@ export function useWorkspaceActions() {
   )
 
   const start = useCallback(
-    (projectId: string, agentType: 'claude' | 'codex' = 'claude') => {
+    (
+      projectId: string,
+      agentType: 'claude' | 'codex' = 'claude',
+      signal?: AbortSignal,
+    ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
         return Promise.reject(
           new ApiError({
@@ -108,22 +135,30 @@ export function useWorkspaceActions() {
             status: 400,
           }),
         )
-      return run('start', () =>
-        api.post(
-          `/api/v1/projects/${encodeURIComponent(projectId)}/workspaces/${agentType}/start`,
-          {
-            body: {},
-            csrfToken: auth?.csrf_token,
-            validate: (value) =>
-              parseWorkspaceStartResponse(value, { projectId, agentType }),
-          },
-        ),
+      return run(
+        'start',
+        () =>
+          api.post(
+            `/api/v1/projects/${encodeURIComponent(projectId)}/workspaces/${agentType}/start`,
+            {
+              body: {},
+              csrfToken: auth?.csrf_token,
+              signal,
+              validate: (value) =>
+                parseWorkspaceStartResponse(value, { projectId, agentType }),
+            },
+          ),
+        signal,
       )
     },
     [api, auth, run],
   )
   const connect = useCallback(
-    (workspaceId: string, agentType: 'claude' | 'codex' = 'claude') => {
+    (
+      workspaceId: string,
+      agentType: 'claude' | 'codex' = 'claude',
+      signal?: AbortSignal,
+    ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
         return Promise.reject(
           new ApiError({
@@ -132,25 +167,33 @@ export function useWorkspaceActions() {
             status: 400,
           }),
         )
-      return run<WorkspaceAttachmentTicketResponse>('connect', () =>
-        api.post(
-          `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/attachments`,
-          {
-            body: { mode: 'writer' },
-            csrfToken: auth?.csrf_token,
-            validate: (value) =>
-              parseWorkspaceAttachmentTicketResponse(value, {
-                workspaceId,
-                agentType,
-              }),
-          },
-        ),
+      return run<WorkspaceAttachmentTicketResponse>(
+        'connect',
+        () =>
+          api.post(
+            `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/attachments`,
+            {
+              body: { mode: 'writer' },
+              csrfToken: auth?.csrf_token,
+              signal,
+              validate: (value) =>
+                parseWorkspaceAttachmentTicketResponse(value, {
+                  workspaceId,
+                  agentType,
+                }),
+            },
+          ),
+        signal,
       )
     },
     [api, auth, run],
   )
   const reconnect = useCallback(
-    (workspaceId: string, agentType: 'claude' | 'codex' = 'claude') => {
+    (
+      workspaceId: string,
+      agentType: 'claude' | 'codex' = 'claude',
+      signal?: AbortSignal,
+    ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
         return Promise.reject(
           new ApiError({
@@ -159,19 +202,23 @@ export function useWorkspaceActions() {
             status: 400,
           }),
         )
-      return run<WorkspaceAttachmentTicketResponse>('reconnect', () =>
-        api.post(
-          `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/reconnect`,
-          {
-            body: {},
-            csrfToken: auth?.csrf_token,
-            validate: (value) =>
-              parseWorkspaceAttachmentTicketResponse(value, {
-                workspaceId,
-                agentType,
-              }),
-          },
-        ),
+      return run<WorkspaceAttachmentTicketResponse>(
+        'reconnect',
+        () =>
+          api.post(
+            `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/reconnect`,
+            {
+              body: {},
+              csrfToken: auth?.csrf_token,
+              signal,
+              validate: (value) =>
+                parseWorkspaceAttachmentTicketResponse(value, {
+                  workspaceId,
+                  agentType,
+                }),
+            },
+          ),
+        signal,
       )
     },
     [api, auth, run],
@@ -183,6 +230,7 @@ export function useWorkspaceActions() {
       generation: string,
       leaseNumber: string,
       agentType: 'claude' | 'codex' = 'claude',
+      signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
         return Promise.reject(
@@ -192,26 +240,30 @@ export function useWorkspaceActions() {
             status: 400,
           }),
         )
-      return run('detach', () =>
-        api.post(
-          `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/detach`,
-          {
-            body: {
-              attachment_id: attachmentId,
-              generation,
-              lease_number: leaseNumber,
-            },
-            csrfToken: auth?.csrf_token,
-            validate: (value) =>
-              parseWorkspaceDetachResponse(value, {
-                workspaceId,
-                attachmentId,
+      return run(
+        'detach',
+        () =>
+          api.post(
+            `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/detach`,
+            {
+              body: {
+                attachment_id: attachmentId,
                 generation,
-                leaseNumber,
-                agentType,
-              }),
-          },
-        ),
+                lease_number: leaseNumber,
+              },
+              csrfToken: auth?.csrf_token,
+              signal,
+              validate: (value) =>
+                parseWorkspaceDetachResponse(value, {
+                  workspaceId,
+                  attachmentId,
+                  generation,
+                  leaseNumber,
+                  agentType,
+                }),
+            },
+          ),
+        signal,
       )
     },
     [api, auth, run],
@@ -221,6 +273,7 @@ export function useWorkspaceActions() {
       workspaceId: string,
       generation: string,
       agentType: 'claude' | 'codex' = 'claude',
+      signal?: AbortSignal,
     ) => {
       if (agentType !== 'claude' && agentType !== 'codex')
         return Promise.reject(
@@ -230,17 +283,24 @@ export function useWorkspaceActions() {
             status: 400,
           }),
         )
-      return run('stop', () =>
-        api.post(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/stop`, {
-          body: { generation },
-          csrfToken: auth?.csrf_token,
-          validate: (value) =>
-            parseWorkspaceStopResponse(value, {
-              workspaceId,
-              generation,
-              agentType,
-            }),
-        }),
+      return run(
+        'stop',
+        () =>
+          api.post(
+            `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/stop`,
+            {
+              body: { generation },
+              csrfToken: auth?.csrf_token,
+              signal,
+              validate: (value) =>
+                parseWorkspaceStopResponse(value, {
+                  workspaceId,
+                  generation,
+                  agentType,
+                }),
+            },
+          ),
+        signal,
       )
     },
     [api, auth, run],

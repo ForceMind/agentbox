@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from threading import Barrier, Thread
+from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import workspace_id
@@ -278,6 +279,147 @@ def test_shutdown_and_sweep_retain_staged_cleanup_fences() -> None:
     assert authority.stage(handle) == S.FENCED
     assert authority.record_count == 1
     assert authority.active_count == 0
+
+
+def test_begin_shutdown_fences_staged_writer_until_exact_audit_ack() -> None:
+    authority = AttachmentAuthority(clock=Clock())
+    ticket = issue(authority)
+    handle = reserve(authority, ticket)
+
+    authority.begin_shutdown()
+
+    assert authority.stage(handle) is S.FENCED
+    assert authority.record_count == 1
+    assert not authority.shutdown_clean
+    with pytest.raises(TicketAuthorityError):
+        authority.advance(handle, S.RUNTIME_PREPARED)
+    with pytest.raises(TicketAuthorityError):
+        authority.activate_with_publication(handle, Publication())
+    with pytest.raises(TicketAuthorityError):
+        reserve(authority, issue(authority, 2))
+    with pytest.raises(TicketAuthorityError):
+        authority.acknowledge_staged_cleanup(
+            handle,
+            connection_id=handle.connection_id,
+            cleanup_state="ATTACH_PTY_CLOSED",
+            failure_audited=False,
+        )
+
+    authority.acknowledge_staged_cleanup(
+        handle,
+        connection_id=handle.connection_id,
+        cleanup_state="ATTACH_PTY_CLOSED",
+        failure_audited=True,
+    )
+    assert cast(Any, authority).shutdown_clean
+    with pytest.raises(TicketAuthorityError):
+        authority.acknowledge_staged_cleanup(
+            handle,
+            connection_id=handle.connection_id,
+            cleanup_state="ATTACH_PTY_CLOSED",
+            failure_audited=True,
+        )
+
+
+def test_begin_shutdown_is_idempotent_under_concurrent_callers() -> None:
+    authority = AttachmentAuthority(clock=Clock())
+    handle = reserve(authority, issue(authority))
+    barrier = Barrier(3)
+    failures: list[BaseException] = []
+
+    def stop() -> None:
+        barrier.wait()
+        try:
+            authority.begin_shutdown()
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [Thread(target=stop), Thread(target=stop)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []
+    assert authority.stage(handle) is S.FENCED
+    assert authority.record_count == 1
+    assert not authority.shutdown_clean
+
+
+def test_shutdown_begin_and_staged_cleanup_ack_have_one_locked_winner() -> None:
+    authority = AttachmentAuthority(clock=Clock())
+    handle = reserve(authority, issue(authority))
+    barrier = Barrier(3)
+    results: list[str] = []
+
+    def begin() -> None:
+        barrier.wait()
+        authority.begin_shutdown()
+        results.append("shutdown")
+
+    def acknowledge() -> None:
+        barrier.wait()
+        try:
+            authority.acknowledge_staged_cleanup(
+                handle,
+                connection_id=handle.connection_id,
+                cleanup_state="ATTACH_PTY_CLOSED",
+                failure_audited=True,
+            )
+        except TicketAuthorityError:
+            results.append("ack-before-fence")
+        else:
+            results.append("ack-after-fence")
+
+    threads = [Thread(target=begin), Thread(target=acknowledge)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+
+    assert "shutdown" in results
+    if not authority.shutdown_clean:
+        authority.acknowledge_staged_cleanup(
+            handle,
+            connection_id=handle.connection_id,
+            cleanup_state="ATTACH_PTY_CLOSED",
+            failure_audited=True,
+        )
+    assert cast(Any, authority).shutdown_clean
+
+
+def test_shutdown_acknowledgements_cannot_clear_another_workspace_obligation() -> None:
+    authority = AttachmentAuthority(clock=Clock())
+    direct_ticket = issue(authority, 1)
+    direct = authority.consume(direct_ticket.ticket, direct_ticket.claims, context=context())
+    staged_handle = reserve(authority, issue(authority, 2))
+
+    authority.begin_shutdown()
+    altered = replace(direct.claims, lease_number=direct.claims.lease_number + 1)
+    with pytest.raises(TicketAuthorityError):
+        authority.acknowledge_cleanup(altered, cleanup_state="ATTACH_PTY_CLOSED")
+    old_handle = replace(staged_handle)
+    with pytest.raises(TicketAuthorityError):
+        authority.acknowledge_staged_cleanup(
+            old_handle,
+            connection_id=staged_handle.connection_id,
+            cleanup_state="ATTACH_PTY_CLOSED",
+            failure_audited=True,
+        )
+    authority.acknowledge_cleanup(direct.claims, cleanup_state="ATTACH_PTY_CLOSED")
+    assert authority.stage(staged_handle) is S.FENCED
+    assert not authority.shutdown_clean
+    with pytest.raises(TicketAuthorityError):
+        authority.acknowledge_cleanup(direct.claims, cleanup_state="ATTACH_PTY_CLOSED")
+    authority.acknowledge_staged_cleanup(
+        staged_handle,
+        connection_id=staged_handle.connection_id,
+        cleanup_state="ATTACH_PTY_CLOSED",
+        failure_audited=True,
+    )
+    assert cast(Any, authority).shutdown_clean
 
 
 def test_sensitive_handles_and_ticket_are_redacted() -> None:

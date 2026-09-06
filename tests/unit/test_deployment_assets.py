@@ -36,6 +36,7 @@ def test_service_identities_and_loopback_configuration_are_separated() -> None:
     assert "ReadWritePaths=/srv/agentbox/projects" not in api
     assert "ReadWritePaths=/srv/agentbox/projects" not in worker
     assert "ReadWritePaths=/var/lib/agentbox" not in runtime
+    assert "/var/lib/agentbox-waw/bindings-v1" in runtime
     for unit in (api, worker, runtime, helper):
         assert "CapabilityBoundingSet=\n" in unit
         assert "AmbientCapabilities=\n" in unit

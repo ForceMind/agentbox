@@ -1,6 +1,7 @@
 import type { ApiError } from '../../lib/api'
 import type { WorkspaceAction } from './useWorkspaceActions'
 import type { WorkspaceStatusView } from './useWorkspaceStatus'
+import type { WAWAttachmentView } from './useWAWBrowserAttachment'
 
 export type WorkspaceAgent = 'claude' | 'codex'
 export type WorkspaceProjectChoice = { id: string; displayName: string }
@@ -21,11 +22,17 @@ export type WorkspacePageModel = {
   lifecycleState: string | null
   reconciliationState: string | null
   runtimeView: WorkspaceStatusView
+  attachment: WAWAttachmentView
   pending: WorkspaceAction | null
   error: ApiError | null
   notice: WorkspaceNotice | null
   canStart: boolean
   canStop: boolean
+  canConnect: boolean
+  canReconnect: boolean
+  canDetach: boolean
+  canInput: boolean
+  canResize: boolean
   stopTarget: WorkspaceStopTarget | null
   selectProject: (projectId: string) => void
   selectAgent: (agent: WorkspaceAgent) => void
@@ -34,4 +41,11 @@ export type WorkspacePageModel = {
   requestStop: () => void
   cancelStop: () => void
   confirmStop: () => Promise<void>
+  setTerminalSurface: (surface: HTMLElement | null) => void
+  setTerminalViewport: (viewport: HTMLElement | null) => void
+  setTerminalInputClearer: (clearer: (() => void) | null) => void
+  connect: () => Promise<void>
+  reconnect: () => Promise<void>
+  detach: () => Promise<void>
+  sendInput: (text: string) => Promise<void>
 }

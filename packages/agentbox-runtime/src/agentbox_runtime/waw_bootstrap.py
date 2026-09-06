@@ -13,19 +13,17 @@ from __future__ import annotations
 import hmac
 import re
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-
-from agentbox_core.waw_tickets import AttachmentTuple
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
 from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_control_server import WAWControlServer
-from agentbox_runtime.waw_encrypted_server import PeerVerifier, WAWEncryptedServer
+from agentbox_runtime.waw_encrypted_server import WAWEncryptedServer
 from agentbox_runtime.waw_encrypted_stream import (
-    BoundedRedraw,
     RuntimePeer,
     WAWEncryptedAttachmentService,
     WAWEncryptedRegistry,
@@ -57,8 +55,17 @@ from agentbox_runtime.waw_manifest_codecs import (
     verify_api_host_anchor_cross_manifest,
     verify_api_host_anchor_v2_cross_manifest,
 )
+from agentbox_runtime.waw_peer_authority import WAWPeerAuthority, WAWPeerAuthorityError
+from agentbox_runtime.waw_project_binding_store import (
+    WAWProjectBindingStore,
+    WAWProjectBindingStoreError,
+    WAWProjectBindingVerifier,
+    WAWProjectBindingVerifierError,
+)
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
+
+_FILESYSTEM_V2_BINDING_STORE = Path("/var/lib/agentbox-waw/bindings-v1")
 
 
 def create_waw_lifecycle_registry_development_only(
@@ -404,7 +411,7 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
     expected_runtime_gid: int,
     epoch_store: WAWRuntimeEpochStore,
     executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
-    binding_digest_factory: BindingDigestFactory,
+    binding_digest_factory: BindingDigestFactory | None = None,
     expected_runtime_uid: int = 0,
     expected_public_uid: int = 0,
     expected_public_gid: int = 0,
@@ -435,16 +442,31 @@ def create_waw_lifecycle_registry_from_filesystem_bundle(
         expected_max_bytes=expected_max_bytes,
     )
     authority = _issue_verified_execution_authority(manifest)
-    return _compose_verified_v2(
-        manifest=manifest,
-        authority=authority,
-        epoch_store=epoch_store,
-        executor_factory=executor_factory,
-        binding_digest_factory=binding_digest_factory,
-        attestation_store=attestation_store,
-        cgroup_attestation_store=cgroup_attestation_store,
-        cgroup_attestation_factory=cgroup_attestation_factory,
-    )
+    verifier: WAWProjectBindingVerifier | None = None
+    store: WAWProjectBindingStore | None = None
+    try:
+        if binding_digest_factory is None:
+            verifier, store = _filesystem_v2_binding_resources(manifest)
+        return _compose_verified_v2(
+            manifest=manifest,
+            authority=authority,
+            epoch_store=epoch_store,
+            executor_factory=executor_factory,
+            binding_digest_factory=binding_digest_factory,
+            binding_verifier=verifier,
+            binding_store=store,
+            attestation_store=attestation_store,
+            cgroup_attestation_store=cgroup_attestation_store,
+            cgroup_attestation_factory=cgroup_attestation_factory,
+        )
+    except BaseException:
+        if verifier is not None:
+            with suppress(WAWProjectBindingVerifierError):
+                verifier.close()
+        if store is not None:
+            with suppress(WAWProjectBindingStoreError):
+                store.close()
+        raise
 
 
 def _compose_verified_v2(
@@ -453,7 +475,9 @@ def _compose_verified_v2(
     authority: WAWVerifiedExecutionAuthority,
     epoch_store: WAWRuntimeEpochStore,
     executor_factory: Callable[[str, WAWVerifiedExecutionAuthority], WAWSupervisorExecutor],
-    binding_digest_factory: BindingDigestFactory,
+    binding_digest_factory: BindingDigestFactory | None,
+    binding_verifier: WAWProjectBindingVerifier | None = None,
+    binding_store: WAWProjectBindingStore | None = None,
     attestation_store: WAWWorkspaceAttestationStore | None,
     cgroup_attestation_store: WAWCgroupAttestationStore | None,
     cgroup_attestation_factory: CgroupAttestationFactory | None,
@@ -491,12 +515,52 @@ def _compose_verified_v2(
         enrollment_state=manifest.runtime.enrollment_state,
         executor=executor,
         binding_digest_factory=binding_digest_factory,
+        binding_verifier=binding_verifier,
+        binding_store=binding_store,
         runtime_epoch=runtime_epoch,
         attestation_store=attestation_store,
         cgroup_attestation_store=cgroup_attestation_store,
         cgroup_attestation_factory=cgroup_attestation_factory,
     )
     return WAWFixedRuntimeComposition(registry, executor, runtime_epoch, authority)
+
+
+def _filesystem_v2_binding_resources(
+    manifest: CrossManifestPinV2,
+) -> tuple[WAWProjectBindingVerifier, WAWProjectBindingStore]:
+    """Open only the manifest-pinned Project root and fixed Runtime store."""
+
+    try:
+        root_uid = int(manifest.project_root.root_uid)
+        root_gid = int(manifest.project_root.root_gid)
+        if root_uid < 0 or root_gid < 0:
+            raise ValueError
+        verifier = WAWProjectBindingVerifier(
+            Path(manifest.project_root.configured_root),
+            expected_uid=root_uid,
+            expected_gid=root_gid,
+        )
+        try:
+            store = WAWProjectBindingStore(
+                _FILESYSTEM_V2_BINDING_STORE,
+                expected_uid=root_uid,
+                expected_gid=root_gid,
+            )
+        except BaseException:
+            verifier.close()
+            raise
+        return verifier, store
+    except (
+        OSError,
+        ValueError,
+        WAWProjectBindingStoreError,
+        WAWProjectBindingVerifierError,
+    ) as exc:
+        raise RuntimeOperationError(
+            "WAW_BINDING_STORE_UNAVAILABLE",
+            "Runtime Project binding evidence is unavailable",
+            category="unavailable",
+        ) from exc
 
 
 def _create_registry_from_verified_manifest(
@@ -585,8 +649,24 @@ def build_waw_control_server(
     expected_peer_uid: int,
     expected_peer_gid: int,
     timeout_seconds: float = 2.0,
+    max_active_connections: int = 64,
+    max_active_dispatches: int = 16,
 ) -> WAWControlServer:
-    """Bind the registry dispatcher to an already-validated control socket."""
+    """Bind control traffic to the registry's sole API process authority."""
+
+    authority = registry.peer_authority
+    if authority is None:
+        authority = WAWPeerAuthority(
+            expected_uid=expected_peer_uid,
+            expected_gid=expected_peer_gid,
+        )
+        registry.configure_peer_authority(authority)
+    elif (
+        type(authority) is not WAWPeerAuthority
+        or authority.expected_uid != expected_peer_uid
+        or authority.expected_gid != expected_peer_gid
+    ):
+        raise ValueError("registry peer authority does not match the control peer identity")
 
     return WAWControlServer(
         sockets.control,
@@ -594,55 +674,120 @@ def build_waw_control_server(
         expected_peer_uid=expected_peer_uid,
         expected_peer_gid=expected_peer_gid,
         timeout_seconds=timeout_seconds,
+        max_active_connections=max_active_connections,
+        max_active_dispatches=max_active_dispatches,
+        peer_authorizer=authority.observe_control,
     )
 
 
-def build_waw_encrypted_servers(
+def _create_waw_encrypted_servers_test_only(
     *,
     sockets: WAWActivatedSockets,
     registry: WAWLifecycleRegistry,
     executor: WAWSupervisorExecutor,
     runtime_epoch: str,
     static_key: Callable[[], bytes],
-    peer: Callable[[], RuntimePeer],
-    peer_verifier: PeerVerifier,
-    control_peer_authorizer: Callable[[int, int, int, int], bool],
-    capture: Callable[[AttachmentTuple], BoundedRedraw],
+    peer_authority: WAWPeerAuthority,
     expected_peer_uid: int,
     expected_peer_gid: int,
     clock: Callable[[], float],
 ) -> tuple[WAWControlServer, WAWEncryptedServer, WAWEncryptedRegistry]:
     """Non-activating composition of qualified fixed Runtime endpoints.
 
-    No key file is read. Missing capture, process peer/unit, pidfd, named socket
+    No key file is read. Missing fixed redraw, process peer/unit, pidfd, named socket
     or key custody evidence cannot be supplied by this helper; the deployment
     caller must provide qualified ports. Test keys/ports are software evidence.
     """
-    if any(
-        not callable(value)
-        for value in (peer, peer_verifier, control_peer_authorizer, capture, static_key)
-    ):
-        raise ValueError("trusted encrypted Runtime providers are required")
-    streams = WAWEncryptedRegistry(runtime_epoch=runtime_epoch, static_key=static_key, clock=clock)
-    stream_server = WAWEncryptedServer.from_activated(sockets, streams, peer_verifier=peer_verifier)
-    service = WAWEncryptedAttachmentService(
-        streams,
-        peer=peer,
-        supervisor=executor.encrypted_supervisor,
-        capture=capture,
-        current=executor.encrypted_binding_current,
-    )
-    control_server = WAWControlServer(
-        sockets.control,
-        registry.dispatch,
+    stream_server, streams = _build_waw_encrypted_stream_server(
+        sockets=sockets,
+        registry=registry,
+        executor=executor,
+        runtime_epoch=runtime_epoch,
+        static_key=static_key,
+        peer_authority=peer_authority,
         expected_peer_uid=expected_peer_uid,
         expected_peer_gid=expected_peer_gid,
-        peer_authorizer=control_peer_authorizer,
+        clock=clock,
+    )
+    control_server = build_waw_control_server(
+        sockets=sockets,
+        registry=registry,
+        expected_peer_uid=expected_peer_uid,
+        expected_peer_gid=expected_peer_gid,
         max_active_connections=16,
         max_active_dispatches=8,
     )
-    registry.configure_encrypted_attachments(service)
     return control_server, stream_server, streams
+
+
+def _build_waw_encrypted_stream_server(
+    *,
+    sockets: WAWActivatedSockets,
+    registry: WAWLifecycleRegistry,
+    executor: WAWSupervisorExecutor,
+    runtime_epoch: str,
+    static_key: Callable[[], bytes],
+    peer_authority: WAWPeerAuthority,
+    expected_peer_uid: int,
+    expected_peer_gid: int,
+    clock: Callable[[], float],
+) -> tuple[WAWEncryptedServer, WAWEncryptedRegistry]:
+    """Attach the one stream endpoint to an already composed control registry."""
+
+    if not callable(static_key):
+        raise ValueError("trusted encrypted Runtime providers are required")
+    if (
+        type(peer_authority) is not WAWPeerAuthority
+        or registry.peer_authority is not peer_authority
+        or peer_authority.expected_uid != expected_peer_uid
+        or peer_authority.expected_gid != expected_peer_gid
+        or executor.runtime_epoch != runtime_epoch
+    ):
+        raise ValueError("encrypted Runtime requires the registry's exact peer authority")
+
+    def borrow_runtime_peer() -> RuntimePeer:
+        try:
+            lease = peer_authority.borrow()
+        except WAWPeerAuthorityError:
+            raise RuntimeOperationError(
+                "RUNTIME_PEER_FORBIDDEN",
+                "Runtime peer authority is unavailable",
+                category="conflict",
+            ) from None
+        if lease is None:
+            raise RuntimeOperationError(
+                "RUNTIME_PEER_FORBIDDEN",
+                "Runtime peer authority is unavailable",
+                category="conflict",
+            )
+        try:
+            return lease.runtime_peer
+        finally:
+            lease.close()
+
+    def verify_stream(peer_socket: object) -> RuntimePeer | None:
+        lease = peer_authority.observe_stream_socket(peer_socket)
+        if lease is None:
+            return None
+        try:
+            return lease.runtime_peer
+        finally:
+            lease.close()
+
+    streams = WAWEncryptedRegistry(runtime_epoch=runtime_epoch, static_key=static_key, clock=clock)
+    stream_server = WAWEncryptedServer.from_activated(
+        sockets,
+        streams,
+        peer_verifier=verify_stream,
+    )
+    service = WAWEncryptedAttachmentService(
+        streams,
+        peer=borrow_runtime_peer,
+        supervisor=executor.encrypted_supervisor,
+        current=executor.encrypted_binding_current,
+    )
+    registry.configure_encrypted_attachments(service)
+    return stream_server, streams
 
 
 __all__ = [

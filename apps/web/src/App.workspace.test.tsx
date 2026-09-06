@@ -46,7 +46,7 @@ describe('Workspace routes', () => {
       expect(
         await screen.findByRole('heading', { name: 'Interactive workspace' }),
       ).toBeInTheDocument()
-      expect(screen.getByText('Not admitted')).toBeInTheDocument()
+      expect(screen.getByText('Trust provider unavailable')).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Workspace' })).toHaveAttribute(
         'href',
         '/workspace',

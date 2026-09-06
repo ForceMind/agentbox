@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from agentbox_core import __version__
-from agentbox_core.configuration import Settings
+from agentbox_core.configuration import Environment, Settings
 from agentbox_core.errors import AgentBoxError
 from agentbox_core.logging import configure_logging, log_event
 from agentbox_core.services import ControlPlaneServices, build_services
@@ -44,6 +45,12 @@ from agentbox_api.jobs import router as jobs_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
+from agentbox_api.waw_application import (
+    WAW_APPLICATION_SCOPE_KEY,
+    WAWAPIApplication,
+    WAWAPIApplicationError,
+    WAWMode,
+)
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_api.waw_websocket_protocol import NATIVE_SCOPE_KEY, WAWWebSocketProtocol
@@ -52,6 +59,12 @@ from agentbox_api.workspaces import router as workspaces_router
 
 logger = logging.getLogger("agentbox.api")
 _WAW_WORKSPACE_ID = re.compile(r"\Aaws_[0-9a-f]{32}\Z")
+
+
+def _is_waw_http_path(path: str) -> bool:
+    return path.startswith("/api/v1/workspaces") or (
+        path.startswith("/api/v1/projects/") and "/workspaces/" in path
+    )
 
 
 class ImmutableStaticFiles(StaticFiles):
@@ -103,6 +116,8 @@ def create_app(
     claude_runtime: ClaudeRuntimeClient | None = None,
     project_runtime: ProjectRuntimeClient | None = None,
     *,
+    waw_mode: WAWMode = WAWMode.DISABLED,
+    waw_application: WAWAPIApplication | None = None,
     waw_bind_coordinator: WAWRuntimeBindCoordinator | None = None,
     waw_authorization_policy: WorkspaceAuthorizationPolicy | None = None,
     waw_attachment_authority: AttachmentAuthority | None = None,
@@ -110,6 +125,38 @@ def create_app(
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
+    if type(waw_mode) is not WAWMode:
+        raise TypeError("waw_mode must be an exact WAWMode")
+    legacy_waw_components = (
+        waw_bind_coordinator,
+        waw_authorization_policy,
+        waw_attachment_authority,
+        waw_stream_handler,
+    )
+    if waw_application is not None and any(value is not None for value in legacy_waw_components):
+        raise ValueError("WAW API application cannot be combined with fragmented components")
+    if waw_application is not None and type(waw_application) is not WAWAPIApplication:
+        raise TypeError("waw_application must be the exact WAWAPIApplication owner")
+    if actual_settings.env is Environment.PRODUCTION and (
+        waw_application is not None or any(value is not None for value in legacy_waw_components)
+    ):
+        raise ValueError("production WAW composition cannot be injected")
+    if waw_application is not None and (
+        actual_settings.env is not Environment.TEST
+        or waw_mode is not WAWMode.FILESYSTEM_V2
+        or not waw_application.test_only_mode
+    ):
+        raise ValueError("injected WAW applications are test-only")
+    if any(value is not None for value in legacy_waw_components) and (
+        actual_settings.env is not Environment.TEST or waw_mode is not WAWMode.DISABLED
+    ):
+        raise ValueError("fragmented WAW components are test-only")
+    if (
+        waw_mode is WAWMode.FILESYSTEM_V2
+        and actual_settings.env is not Environment.PRODUCTION
+        and waw_application is None
+    ):
+        raise ValueError("filesystem-v2 WAW requires production or a test-only owner")
     actual_services = services or build_services(actual_settings)
     actual_codex_runtime = codex_runtime or UnixCodexRuntimeClient(actual_settings.runtime_socket)
     actual_claude_runtime = claude_runtime or UnixClaudeRuntimeClient(
@@ -118,17 +165,54 @@ def create_app(
     actual_project_runtime = project_runtime or UnixProjectRuntimeClient(
         actual_settings.runtime_socket
     )
+    actual_waw_application = waw_application
+    if waw_mode is WAWMode.FILESYSTEM_V2 and actual_settings.env is Environment.PRODUCTION:
+        actual_waw_application = WAWAPIApplication.production(actual_settings, actual_services)
+    if actual_waw_application is not None:
+        actual_waw_application.bind_control_plane(actual_settings, actual_services)
+    actual_login_executor = BoundedLoginExecutor(
+        actual_services.auth,
+        max_concurrency=actual_settings.argon2_max_concurrency,
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         del application
         try:
-            if waw_bind_coordinator is not None:
+            if actual_waw_application is not None:
+                await actual_waw_application.start()
+            elif waw_bind_coordinator is not None:
                 await waw_bind_coordinator.bind()
             log_event(logger, logging.INFO, "api_started", "Control plane API started")
             yield
         finally:
-            actual_services.database.close()
+            shutdown_failure: BaseException | None = None
+            if actual_waw_application is not None:
+                try:
+                    await actual_waw_application.close()
+                except BaseException as exc:
+                    shutdown_failure = exc
+            try:
+                await actual_login_executor.close()
+                if not actual_login_executor.shutdown_clean:
+                    raise RuntimeError("login executor shutdown is incomplete")
+            except BaseException as exc:
+                if shutdown_failure is None:
+                    shutdown_failure = exc
+            if shutdown_failure is None:
+                try:
+                    actual_services.database.close()
+                except BaseException as exc:
+                    shutdown_failure = exc
+            if shutdown_failure is None and actual_waw_application is not None:
+                try:
+                    actual_waw_application.finalize_after_database_close()
+                except BaseException as exc:
+                    shutdown_failure = exc
+            if shutdown_failure is not None:
+                if actual_waw_application is not None:
+                    actual_waw_application.poison_shutdown(shutdown_failure)
+                raise shutdown_failure
             log_event(logger, logging.INFO, "api_stopped", "Control plane API stopped")
 
     application = FastAPI(
@@ -143,18 +227,35 @@ def create_app(
     application.state.codex_runtime = actual_codex_runtime
     application.state.claude_runtime = actual_claude_runtime
     application.state.project_runtime = actual_project_runtime
+    application.state.waw_mode = waw_mode
     application.state.waw_bind_coordinator = waw_bind_coordinator
     application.state.waw_authorization_policy = waw_authorization_policy
     application.state.waw_attachment_authority = waw_attachment_authority
     application.state.waw_stream_handler = waw_stream_handler
-    application.state.login_executor = BoundedLoginExecutor(
-        actual_services.auth,
-        max_concurrency=actual_settings.argon2_max_concurrency,
-    )
+    application.state.login_executor = actual_login_executor
     application.add_middleware(
         ControlPlaneHttpMiddleware,
         max_body_bytes=actual_settings.request_body_limit,
     )
+    if actual_waw_application is not None:
+
+        @application.middleware("http")
+        async def bind_waw_owner(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            request.scope[WAW_APPLICATION_SCOPE_KEY] = actual_waw_application
+            task = None
+            registered = False
+            if _is_waw_http_path(request.url.path):
+                task = asyncio.current_task()
+                if task is not None:
+                    with suppress(WAWAPIApplicationError):
+                        registered = actual_waw_application.register_route(task)
+            try:
+                return await call_next(request)
+            finally:
+                if registered and task is not None:
+                    actual_waw_application.unregister_route(task)
 
     @application.exception_handler(AgentBoxError)
     async def handle_agentbox_error(request: Request, exc: AgentBoxError) -> JSONResponse:
@@ -213,6 +314,8 @@ def create_app(
             "database": actual_services.database.check_connection(),
             "migrations": actual_services.database.migrations_current(),
         }
+        if actual_waw_application is not None:
+            checks.update(actual_waw_application.readiness_checks)
         ready = all(checks.values())
         payload = ReadinessResponse(status="ready" if ready else "not_ready", checks=checks)
         if ready:
@@ -246,7 +349,12 @@ def create_app(
         if _WAW_WORKSPACE_ID.fullmatch(workspace_id) is None or websocket.query_params:
             await websocket.close(code=1008)
             return
-        handler = getattr(application.state, "waw_stream_handler", None)
+        handler = None
+        if actual_waw_application is not None:
+            with suppress(WAWAPIApplicationError):
+                handler = actual_waw_application.stream_handler
+        else:
+            handler = getattr(application.state, "waw_stream_handler", None)
         native = websocket.scope.get("extensions", {}).get(NATIVE_SCOPE_KEY)
         if not callable(handler) or type(native) is not WAWWebSocketProtocol:
             await websocket.close(code=1013)

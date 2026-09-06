@@ -5,6 +5,11 @@ import { useProjects } from '../projects/useProjects'
 import { useWorkspaceActions } from './useWorkspaceActions'
 import { useWorkspaceStatus } from './useWorkspaceStatus'
 import {
+  useWAWBrowserAttachment,
+  type WAWAttachmentDependencies,
+} from './useWAWBrowserAttachment'
+import { WAWBrowserControllerError } from './wawBrowserController'
+import {
   isProjectId,
   isWorkspaceId,
   parseWorkspaceList,
@@ -24,14 +29,27 @@ type Lookup = {
   row: WorkspaceMetadata | null
   error: ApiError | null
 }
+
+type ScopedActionError = {
+  readonly error: ApiError
+  readonly scope: string
+  readonly selectionKey: string
+  readonly attachmentKey: string | null
+}
 function failure(error: unknown): ApiError {
-  return error instanceof ApiError
-    ? error
-    : new ApiError({
-        code: 'WAW_METADATA_INVALID',
-        message: '工作区信息不完整，请刷新后重试',
-        status: 0,
-      })
+  if (error instanceof ApiError) return error
+  if (error instanceof WAWBrowserControllerError) {
+    return new ApiError({
+      code: error.code,
+      message: 'Browser terminal operation could not be completed',
+      status: 0,
+    })
+  }
+  return new ApiError({
+    code: 'WAW_METADATA_INVALID',
+    message: '工作区信息不完整，请刷新后重试',
+    status: 0,
+  })
 }
 
 /** Metadata/lifecycle workflow only. No ticket acquisition or admission is inferred. */
@@ -39,6 +57,8 @@ export function useWorkspaceController(options: {
   workspaceId?: string
   projectId?: string
   agentType?: string
+  /** @internal Test-only composition seam; production always uses managed Chromium trust. */
+  attachmentDependencies?: WAWAttachmentDependencies
 }): WorkspacePageModel {
   const { api, auth } = useAuth()
   const projects = useProjects()
@@ -62,15 +82,19 @@ export function useWorkspaceController(options: {
     error: null,
   })
   const [notice, setNotice] = useState<WorkspaceNotice | null>(null)
-  const [actionError, setActionError] = useState<ApiError | null>(null)
+  const [actionError, setActionError] = useState<ScopedActionError | null>(null)
   const [confirmation, setConfirmation] = useState<
     (WorkspaceStopTarget & { key: string; runtimeFingerprint: string }) | null
   >(null)
   const requestSequence = useRef(0)
   const selectionEpoch = useRef(0)
+  const attachmentFence = useRef<() => void>(() => undefined)
+  const attachmentIdentityRef = useRef<string | null>(null)
   const mounted = useRef(false)
   const routeResolved = useRef(false)
   const authScope = auth ? `${auth.session.id}:${auth.csrf_token}` : ''
+  const authScopeRef = useRef(authScope)
+  authScopeRef.current = authScope
   const key = `${authScope}:${selection.projectId}:${selection.agentType}`
   const choices = useMemo(
     () =>
@@ -91,6 +115,7 @@ export function useWorkspaceController(options: {
   const selectedReady = readyIds.includes(selection.projectId)
 
   const invalidate = useCallback(() => {
+    attachmentFence.current()
     selectionEpoch.current++
     requestSequence.current++
   }, [])
@@ -286,6 +311,43 @@ export function useWorkspaceController(options: {
         observed.runtime_epoch,
       ].join(':')
     : ''
+  const attachment = useWAWBrowserAttachment({
+    actions,
+    agentType: selection.agentType,
+    authScope,
+    contextEpoch: selectionEpoch,
+    generation: row ? String(row.generation) : null,
+    projectId: row?.project_id ?? null,
+    runtime: observed,
+    workspaceId: row?.id ?? null,
+    dependencies: options.attachmentDependencies,
+  })
+  attachmentFence.current = attachment.fence
+  attachmentIdentityRef.current = attachment.identity?.key ?? null
+  const actionStillCurrent = (
+    epoch: number,
+    scope: string,
+    attachmentKey: string | null,
+  ) =>
+    mounted.current &&
+    selectionEpoch.current === epoch &&
+    authScopeRef.current === scope &&
+    attachmentIdentityRef.current === attachmentKey
+  const setScopedActionError = (error: ApiError) => {
+    setActionError({
+      error,
+      scope: authScope,
+      selectionKey: key,
+      attachmentKey: attachment.identity?.key ?? null,
+    })
+  }
+  const currentActionError =
+    actionError !== null &&
+    actionError.scope === authScope &&
+    actionError.selectionKey === key &&
+    actionError.attachmentKey === attachment.identity?.key
+      ? actionError.error
+      : null
   const validCurrentRow = () =>
     !!row &&
     row.project_id === selectionRef.current.projectId &&
@@ -326,11 +388,13 @@ export function useWorkspaceController(options: {
   async function start() {
     if (!canStart || !validCurrentRow() || !row) return
     const epoch = selectionEpoch.current
+    const scope = authScope
+    const attachmentKey = attachment.identity?.key ?? null
     setNotice(null)
     setActionError(null)
     try {
       const response = await actions.start(row.project_id, row.agent_type)
-      if (!mounted.current || selectionEpoch.current !== epoch) return
+      if (!actionStillCurrent(epoch, scope, attachmentKey)) return
       if (!response || response.workspace_id !== row.id)
         throw new ApiError({
           code: 'PROJECT_IDENTITY_CHANGED',
@@ -340,8 +404,8 @@ export function useWorkspaceController(options: {
       setNotice('START_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
-      if (mounted.current && selectionEpoch.current === epoch)
-        setActionError(failure(error))
+      if (actionStillCurrent(epoch, scope, attachmentKey))
+        setScopedActionError(failure(error))
     }
   }
   function requestStop() {
@@ -369,15 +433,40 @@ export function useWorkspaceController(options: {
     }
     const target = confirmation
     const epoch = selectionEpoch.current
+    const scope = authScope
+    const attachmentKey = attachment.identity?.key ?? null
     setActionError(null)
     try {
-      const response = await actions.stop(
-        target.workspaceId,
-        target.generation,
-        row.agent_type,
-      )
-      if (!mounted.current || selectionEpoch.current !== epoch) return
-      if (!response || response.state !== 'STOPPED')
+      const attached = attachment.view.attached
+      let state: string
+      if (attached !== null) {
+        if (
+          !attachment.canControlStop ||
+          attached.workspaceId !== target.workspaceId ||
+          attached.generation !== target.generation ||
+          attached.projectId !== row.project_id ||
+          attached.agentType !== row.agent_type
+        ) {
+          throw new WAWBrowserControllerError('CONTEXT_CHANGED')
+        }
+        const outcome = await attachment.stop()
+        if (!outcome.detachConfirmed) {
+          throw new WAWBrowserControllerError('DETACH_FAILED')
+        }
+        state = outcome.stop.state
+      } else {
+        attachment.fence()
+        state = (
+          await actions.stop(
+            target.workspaceId,
+            target.generation,
+            row.agent_type,
+            attachment.controlSignal(),
+          )
+        ).state
+      }
+      if (!actionStillCurrent(epoch, scope, attachmentKey)) return
+      if (state !== 'STOPPED')
         throw new ApiError({
           code: 'RECONCILIATION_REQUIRED',
           message: '停止尚未确认，请刷新状态',
@@ -387,9 +476,9 @@ export function useWorkspaceController(options: {
       setNotice('STOP_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
-      if (mounted.current && selectionEpoch.current === epoch) {
+      if (actionStillCurrent(epoch, scope, attachmentKey)) {
         setConfirmation(null)
-        setActionError(failure(error))
+        setScopedActionError(failure(error))
       }
     }
   }
@@ -398,6 +487,78 @@ export function useWorkspaceController(options: {
     setActionError(null)
     await projects.refresh()
     if (mounted.current) setReload((value) => value + 1)
+  }
+  async function connectTerminal() {
+    const epoch = selectionEpoch.current
+    const scope = authScope
+    const attachmentKey = attachment.identity?.key ?? null
+    setActionError(null)
+    try {
+      await attachment.connect()
+    } catch (error) {
+      if (
+        mounted.current &&
+        selectionEpoch.current === epoch &&
+        authScopeRef.current === scope &&
+        attachmentIdentityRef.current === attachmentKey
+      ) {
+        setScopedActionError(failure(error))
+      }
+    }
+  }
+  async function reconnectTerminal() {
+    const epoch = selectionEpoch.current
+    const scope = authScope
+    const attachmentKey = attachment.identity?.key ?? null
+    setActionError(null)
+    try {
+      await attachment.reconnect()
+    } catch (error) {
+      if (
+        mounted.current &&
+        selectionEpoch.current === epoch &&
+        authScopeRef.current === scope &&
+        attachmentIdentityRef.current === attachmentKey
+      ) {
+        setScopedActionError(failure(error))
+      }
+    }
+  }
+  async function detachTerminal() {
+    const epoch = selectionEpoch.current
+    const scope = authScope
+    const attachmentKey = attachment.identity?.key ?? null
+    setActionError(null)
+    try {
+      await attachment.detach()
+    } catch (error) {
+      if (
+        mounted.current &&
+        selectionEpoch.current === epoch &&
+        authScopeRef.current === scope &&
+        attachmentIdentityRef.current === attachmentKey
+      ) {
+        setScopedActionError(failure(error))
+      }
+    }
+  }
+  async function sendTerminalInput(text: string) {
+    const epoch = selectionEpoch.current
+    const scope = authScope
+    const attachmentKey = attachment.identity?.key ?? null
+    setActionError(null)
+    try {
+      await attachment.sendInput(text)
+    } catch (error) {
+      if (
+        mounted.current &&
+        selectionEpoch.current === epoch &&
+        authScopeRef.current === scope &&
+        attachmentIdentityRef.current === attachmentKey
+      ) {
+        setScopedActionError(failure(error))
+      }
+    }
   }
   return {
     projects: choices,
@@ -420,11 +581,17 @@ export function useWorkspaceController(options: {
           }),
         }
       : status.view,
+    attachment: attachment.view,
     pending: actions.pending,
-    error: actionError ?? currentLookup.error,
+    error: currentActionError ?? currentLookup.error ?? attachment.error,
     notice: runtimeNeedsRecovery ? 'RUNTIME_RECOVERY_REQUIRED' : notice,
     canStart,
     canStop,
+    canConnect: attachment.canConnect && !actions.pending,
+    canReconnect: attachment.canReconnect && !actions.pending,
+    canDetach: attachment.canDetach && !actions.pending,
+    canInput: attachment.canInput && !actions.pending,
+    canResize: attachment.canResize && !actions.pending,
     stopTarget:
       confirmation?.key === key &&
       confirmation.runtimeFingerprint === runtimeFingerprint &&
@@ -442,5 +609,12 @@ export function useWorkspaceController(options: {
     requestStop,
     cancelStop: () => setConfirmation(null),
     confirmStop,
+    setTerminalSurface: attachment.setSurface,
+    setTerminalViewport: attachment.setViewport,
+    setTerminalInputClearer: attachment.setInputClearer,
+    connect: connectTerminal,
+    reconnect: reconnectTerminal,
+    detach: detachTerminal,
+    sendInput: sendTerminalInput,
   }
 }

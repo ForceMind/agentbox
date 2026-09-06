@@ -318,6 +318,14 @@ button:disabled {
   color: var(--muted);
   font-size: 0.76rem;
 }
+.app-version {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.app-version code {
+  color: inherit;
+}
 
 .control-pulse {
   display: inline-flex;

@@ -148,6 +148,47 @@ describe('useWorkspaceActions', () => {
     })
   })
 
+  it('clears its owned pending marker when a page control signal aborts', async () => {
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          )
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+    const { result } = renderHook(() => useWorkspaceActions(), {
+      wrapper: wrapper(new ApiClient()),
+    })
+    let pending: Promise<unknown>
+    act(() => {
+      pending = result.current.connect(
+        'aws_0123456789abcdef0123456789abcdef',
+        'claude',
+        controller.signal,
+      )
+    })
+    await waitFor(() => expect(result.current.pending).toBe('connect'))
+    await act(async () => {
+      controller.abort()
+      await expect(pending!).rejects.toMatchObject({ code: 'WAW_ACTION_STALE' })
+    })
+    await waitFor(() => expect(result.current.pending).toBeNull())
+    await act(async () => {
+      await expect(
+        result.current.connect(
+          'aws_0123456789abcdef0123456789abcdef',
+          'claude',
+          controller.signal,
+        ),
+      ).rejects.toMatchObject({ code: 'WAW_ACTION_STALE' })
+    })
+  })
+
   it('rejects Stop and Detach replies for a different generation or lease', async () => {
     const workspaceId = 'aws_' + '1'.repeat(32)
     const stop = {

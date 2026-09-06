@@ -6,10 +6,12 @@ import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from agentbox_core.clock import Clock
 from agentbox_core.database import Database
@@ -21,6 +23,7 @@ from agentbox_core.errors import (
 )
 from agentbox_core.models import Project
 from agentbox_core.security import new_identifier
+from agentbox_core.waw_models import AgentWorkspaceSessionRecord
 
 _SLUG = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
 _LEGACY_KEY = re.compile(r"[^/\\\x00-\x1f\x7f]{1,80}")
@@ -33,6 +36,8 @@ _RESERVED_SLUGS = frozenset(
     | {f"com{index}" for index in range(1, 10)}
     | {f"lpt{index}" for index in range(1, 10)}
 )
+_PROJECT_FENCE_EXCLUDED_WORKSPACE_STATES = ("EXITED", "STOPPED", "STOPPING")
+_MAX_SQLITE_SEQUENCE = 2**63 - 1
 
 
 @dataclass(frozen=True)
@@ -188,6 +193,7 @@ class ProjectService:
             source_type=source_type,
             repository_url=repository_url,
             state="creating",
+            revision=1,
             created_at=now,
             updated_at=now,
         )
@@ -200,10 +206,14 @@ class ProjectService:
         except IntegrityError as exc:
             raise ProjectConflict() from exc
 
-    def discard_reservation(self, project_id: str) -> None:
+    def discard_reservation(self, project_id: str, *, expected_revision: int | None = None) -> None:
         with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             project = session.get(Project, project_id)
-            if project is not None and project.state == "creating":
+            if project is None:
+                return
+            self._validate_expected_revision(project, expected_revision)
+            if project.state == "creating":
                 session.delete(project)
 
     def reconcile_existing(self, relative_paths: tuple[str, ...]) -> tuple[Project, ...]:
@@ -230,6 +240,7 @@ class ProjectService:
                     relative_path=relative_path,
                     source_type="existing",
                     state="ready",
+                    revision=1,
                     created_at=now,
                     updated_at=now,
                 )
@@ -244,21 +255,95 @@ class ProjectService:
                 )
             )
 
-    def mark_ready(self, project_id: str, *, default_branch: str | None = None) -> None:
+    def mark_ready(
+        self,
+        project_id: str,
+        *,
+        default_branch: str | None = None,
+        expected_revision: int | None = None,
+    ) -> None:
         with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             project = session.get(Project, project_id)
             if project is None:
                 raise ProjectNotFound()
-            project.state = "ready"
-            project.default_branch = default_branch[:128] if default_branch else None
-            project.updated_at = self._clock.now()
+            self._validate_expected_revision(project, expected_revision)
+            normalized_branch = default_branch[:128] if default_branch else None
+            if project.state == "ready" and project.default_branch == normalized_branch:
+                return
+            self._cas_project(
+                session,
+                project,
+                state="ready",
+                default_branch=normalized_branch,
+            )
 
-    def mark_error(self, project_id: str) -> None:
+    def mark_error(self, project_id: str, *, expected_revision: int | None = None) -> None:
         with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
             project = session.get(Project, project_id)
-            if project is not None:
-                project.state = "error"
-                project.updated_at = self._clock.now()
+            if project is None:
+                return
+            self._validate_expected_revision(project, expected_revision)
+            if project.state == "error":
+                return
+            self._cas_project(session, project, state="error")
+
+    @staticmethod
+    def _validate_expected_revision(project: Project, expected_revision: int | None) -> None:
+        if expected_revision is None:
+            return
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise ProjectConflict()
+        if project.revision != expected_revision:
+            raise ProjectConflict()
+
+    def _cas_project(self, session: Session, project: Project, **values: object) -> None:
+        if project.revision >= _MAX_SQLITE_SEQUENCE:
+            raise ProjectConflict()
+        now = self._clock.now()
+        statement = (
+            update(Project)
+            .where(Project.id == project.id, Project.revision == project.revision)
+            .values(
+                **values,
+                revision=project.revision + 1,
+                updated_at=now,
+            )
+        )
+        updated_id = session.execute(statement.returning(Project.id)).scalar_one_or_none()
+        if updated_id != project.id:
+            raise ProjectConflict()
+        self._fence_nonterminal_workspaces(session, project.id, now)
+
+    @staticmethod
+    def _fence_nonterminal_workspaces(session: Session, project_id: str, now: datetime) -> None:
+        """Atomically retire active generations when formal Project identity changes."""
+
+        base = AgentWorkspaceSessionRecord.state.not_in(_PROJECT_FENCE_EXCLUDED_WORKSPACE_STATES)
+        exhausted = session.scalar(
+            select(AgentWorkspaceSessionRecord.id)
+            .where(
+                AgentWorkspaceSessionRecord.project_id == project_id,
+                base,
+                AgentWorkspaceSessionRecord.revision >= _MAX_SQLITE_SEQUENCE,
+            )
+            .limit(1)
+        )
+        if exhausted is not None:
+            raise ProjectConflict()
+        session.execute(
+            update(AgentWorkspaceSessionRecord)
+            .where(AgentWorkspaceSessionRecord.project_id == project_id, base)
+            .values(
+                state="UNKNOWN",
+                reconciliation_state="reconciliation_required",
+                failure_code="PROJECT_BINDING_STALE",
+                revision=AgentWorkspaceSessionRecord.revision + 1,
+                updated_at=now,
+                last_seen_at=now,
+            )
+        )
 
     @staticmethod
     def _valid_legacy_key(value: str) -> bool:

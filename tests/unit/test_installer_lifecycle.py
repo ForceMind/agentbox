@@ -15,7 +15,7 @@ from agentbox_installer.artifact import (
     sha256_file,
 )
 from agentbox_installer.host import HostMutationError, HostOperations
-from agentbox_installer.layout import InstallLayout
+from agentbox_installer.layout import DIRECTORIES, InstallLayout
 from agentbox_installer.lifecycle import (
     AgentBoxInstaller,
     InstallError,
@@ -66,6 +66,17 @@ def _installer(tmp_path: Path) -> tuple[AgentBoxInstaller, InstallLayout]:
     return AgentBoxInstaller(layout, HostOperations(real_host=False)), layout
 
 
+def test_waw_binding_store_layout_is_runtime_private() -> None:
+    binding_store = next(spec for spec in DIRECTORIES if spec.path.endswith("/bindings-v1"))
+
+    assert binding_store.path == "/var/lib/agentbox-waw/bindings-v1"
+    assert (binding_store.owner, binding_store.group, binding_store.mode) == (
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+    )
+
+
 def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: Path) -> None:
     installer, layout = _installer(tmp_path)
     artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "0002_project_jobs")
@@ -81,6 +92,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     first = installer.apply(artifact, digest)
     assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
     assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/bindings-v1")) == 0o700
     assert layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json").read_text() == (
         '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}'
     )
@@ -128,6 +140,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/run/agentbox")) == 0o3770
     assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
     assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/bindings-v1")) == 0o700
     assert epoch_path.read_text() == ('{"epoch":"2","schema_version":"waw-runtime-epoch-v1"}')
 
 

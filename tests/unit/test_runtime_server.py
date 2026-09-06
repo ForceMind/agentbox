@@ -6,11 +6,13 @@ import shutil
 import tempfile
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from agentbox_core.waw import AgentType
 from agentbox_runtime import server as server_subject
+from agentbox_runtime import waw_peer_authority as peer_authority_subject
 from agentbox_runtime.claude import ClaudeAdapter, ClaudeSessionManager
 from agentbox_runtime.codex import CodexAdapter, CodexManager
 from agentbox_runtime.models import RuntimeOperationError
@@ -18,7 +20,7 @@ from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.server import (
     _ACTIONS,
     RuntimeExecutorServer,
-    build_runtime_server_from_filesystem_v2,
+    _build_runtime_server_from_filesystem_v2,
 )
 from agentbox_runtime.tmux import TmuxAdapter
 from agentbox_runtime.waw_auth_probe import (
@@ -37,6 +39,11 @@ from agentbox_runtime.waw_conflicts import (
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
+from agentbox_runtime.waw_peer_authority import (
+    WAWPeerAuthority,
+    WAWPeerBindStatus,
+    WAWPeerCandidate,
+)
 from agentbox_runtime.waw_process_profile import INTERACTIVE_PROFILE_CONSTANTS_V1
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
@@ -179,7 +186,21 @@ def _composition(tmp_path: Path, epoch: str = "2") -> WAWFixedRuntimeComposition
         execution_authority=authority,
         auth_probe=auth,
     )
-    return WAWFixedRuntimeComposition(cast(Any, object()), executor, epoch, authority)
+
+    class Registry:
+        def __init__(self) -> None:
+            self.peer_authority = WAWPeerAuthority(
+                expected_uid=os.geteuid(),
+                expected_gid=os.getegid(),
+            )
+
+        async def begin_shutdown(self) -> None:
+            return None
+
+        async def wait_shutdown_workers(self) -> None:
+            return None
+
+    return WAWFixedRuntimeComposition(cast(Any, Registry()), executor, epoch, authority)
 
 
 def _epoch_store(tmp_path: Path) -> WAWRuntimeEpochStore:
@@ -190,14 +211,9 @@ def _epoch_store(tmp_path: Path) -> WAWRuntimeEpochStore:
     return store
 
 
-def _issued_control(composition: WAWFixedRuntimeComposition) -> WAWControlServer:
+def _issued_binding(composition: WAWFixedRuntimeComposition) -> Any:
     control = object.__new__(WAWControlServer)
-    with server_subject._CONTROL_SERVER_ISSUE_LOCK:
-        server_subject._CONTROL_SERVER_ISSUES[control] = (
-            composition,
-            composition.runtime_epoch,
-        )
-    return control
+    return server_subject._issue_runtime_composition_binding(composition, control)
 
 
 def test_legacy_only_server_keeps_fixed_process_inert(tmp_path: Path) -> None:
@@ -214,6 +230,423 @@ def test_legacy_only_server_keeps_fixed_process_inert(tmp_path: Path) -> None:
     assert server.waw_auth_probe_cache is None
     assert codex.conflict_coordinator is None
     assert claude.conflict_coordinator is None
+
+
+@pytest.mark.anyio
+async def test_clean_nonfixed_restart_reuses_consumed_epoch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex, claude = _managers(tmp_path)
+    calls = 0
+
+    class EpochStore:
+        def consume(self) -> int:
+            nonlocal calls
+            calls += 1
+            return 7
+
+    class RuntimeServer:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+        async def start_serving(self) -> None:
+            return None
+
+        def close(self) -> None:
+            self.path.unlink(missing_ok=True)
+
+        async def wait_closed(self) -> None:
+            return None
+
+    async def create_server(*_args: Any, path: Path, **_kwargs: Any) -> Any:
+        Path(path).touch()
+        return RuntimeServer(Path(path))
+
+    monkeypatch.setattr(asyncio, "start_unix_server", create_server)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+        waw_epoch_store=cast(Any, EpochStore()),
+    )
+    await server.start()
+    await server.close()
+    await server.start()
+    assert server.waw_runtime_epoch == 7 and calls == 1
+    await server.close()
+
+
+@pytest.mark.anyio
+async def test_close_is_shared_and_caller_cancellation_does_not_cancel_cleanup(
+    tmp_path: Path,
+) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    class Control:
+        def close(self) -> Any:
+            nonlocal calls
+            calls += 1
+            entered.set()
+
+            async def finish() -> None:
+                await release.wait()
+
+            return finish()
+
+    server._waw_control_server = cast(Any, Control())
+    first = asyncio.create_task(server.close())
+    await entered.wait()
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    assert server._close_operation is not None and not server._close_operation.done()
+
+    release.set()
+    await server.close()
+    await server.close()
+    assert calls == 1
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await server.start()
+
+
+@pytest.mark.anyio
+async def test_close_during_start_owns_and_closes_late_listener(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+    events: list[str] = []
+
+    class LateServer:
+        def close(self) -> None:
+            events.append("close")
+
+        async def wait_closed(self) -> None:
+            events.append("wait")
+
+        async def start_serving(self) -> None:
+            raise AssertionError("closed start must not serve")
+
+    async def delayed_start(*_args: Any, **_kwargs: Any) -> Any:
+        entered.set()
+        await release.wait()
+        return LateServer()
+
+    monkeypatch.setattr(asyncio, "start_unix_server", delayed_start)
+    start = asyncio.create_task(server.start())
+    await entered.wait()
+    closing = server.close()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await start
+    await closing
+
+    assert events == []
+    assert server._server is None
+    assert server._close_operation is not None and server._close_operation.done()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancel_stage", ["listener", "control"])
+async def test_start_cancellation_cleans_partial_listener(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cancel_stage: str,
+) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    entered = asyncio.Event()
+    events: list[str] = []
+
+    class PartialServer:
+        def close(self) -> None:
+            events.append("listener-close")
+
+        async def wait_closed(self) -> None:
+            events.append("listener-wait")
+
+        async def start_serving(self) -> None:
+            if cancel_stage == "listener":
+                entered.set()
+                await asyncio.Event().wait()
+
+    class Control:
+        async def start(self) -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+        def close(self) -> Any:
+            async def finish() -> None:
+                events.append("control-close")
+
+            return finish()
+
+    async def create_server(*_args: Any, path: Path, **_kwargs: Any) -> Any:
+        Path(path).touch()
+        return PartialServer()
+
+    monkeypatch.setattr(asyncio, "start_unix_server", create_server)
+    if cancel_stage == "control":
+        server._waw_control_server = cast(Any, Control())
+    start = asyncio.create_task(server.start())
+    await entered.wait()
+    start.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await start
+    assert server._server is None
+    assert events.count("listener-close") == 1
+    assert events.count("listener-wait") == 1
+
+
+@pytest.mark.anyio
+async def test_close_cancels_waiting_connection_worker(tmp_path: Path) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    entered = asyncio.Event()
+
+    async def worker() -> None:
+        entered.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(worker())
+    server._connection_tasks.add(task)
+    await entered.wait()
+    await server.close()
+    assert task.cancelled() and not server._connection_tasks
+
+
+@pytest.mark.anyio
+async def test_cancellation_resistant_connection_poison_is_bounded_and_sticky(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server_subject, "_CONNECTION_SHUTDOWN_GRACE_SECONDS", 0.001)
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    entered, cancelled, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def worker() -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+
+    task = asyncio.create_task(worker())
+    server._connection_tasks.add(task)
+    await entered.wait()
+    try:
+        with pytest.raises(RuntimeError, match="timed out") as first:
+            await server.close()
+        await cancelled.wait()
+        assert server._poisoned and not task.done()
+        with pytest.raises(RuntimeError) as repeated:
+            await server.close()
+        assert repeated.value is first.value
+    finally:
+        release.set()
+        await task
+
+
+@pytest.mark.anyio
+async def test_direct_close_operation_cancellation_becomes_sticky_failure(tmp_path: Path) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class Control:
+        def close(self) -> Any:
+            async def finish() -> None:
+                entered.set()
+                await release.wait()
+
+            return finish()
+
+    server._waw_control_server = cast(Any, Control())
+    waiting = asyncio.create_task(server.close())
+    await entered.wait()
+    assert server._close_operation is not None
+    server._close_operation.cancel()
+    release.set()
+    with pytest.raises(RuntimeError, match="cancelled") as first:
+        await waiting
+    assert server._poisoned
+    with pytest.raises(RuntimeError) as repeated:
+        await server.close()
+    assert repeated.value is first.value
+
+
+@pytest.mark.anyio
+async def test_close_preserves_first_error_but_completes_later_stages(tmp_path: Path) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    events: list[str] = []
+    first_error = RuntimeError("synthetic-control-close-failure")
+    worker_release = asyncio.Event()
+
+    class Control:
+        def close(self) -> Any:
+            events.append("control")
+
+            async def finish() -> None:
+                raise first_error
+
+            return finish()
+
+    class RuntimeServer:
+        def close(self) -> None:
+            events.append("runtime-close")
+
+        async def wait_closed(self) -> None:
+            events.append("runtime-wait")
+
+    class Authority:
+        def close(self) -> None:
+            events.append("authority")
+            worker_release.set()
+
+    class Lifecycle:
+        async def begin_shutdown(self) -> None:
+            events.append("lifecycle-begin")
+
+        async def wait_shutdown_workers(self) -> None:
+            events.append("lifecycle-wait")
+
+    class FixedRuntime:
+        registry = Lifecycle()
+
+    class Writer:
+        def close(self) -> None:
+            events.append("writer")
+
+    async def worker() -> None:
+        await worker_release.wait()
+        events.append("worker")
+
+    task = asyncio.create_task(worker())
+    server._waw_control_server = cast(Any, Control())
+    server._server = cast(Any, RuntimeServer())
+    server._waw_fixed_runtime = cast(Any, FixedRuntime())
+    server._waw_peer_authority = cast(Any, Authority())
+    server._writers.add(cast(Any, Writer()))
+    server._connection_tasks.add(task)
+
+    with pytest.raises(RuntimeError) as raised:
+        await server.close()
+    assert raised.value is first_error
+    assert events == [
+        "control",
+        "runtime-close",
+        "lifecycle-begin",
+        "authority",
+        "lifecycle-wait",
+        "runtime-wait",
+        "writer",
+    ]
+    with pytest.raises(RuntimeError) as repeated:
+        await server.close()
+    assert repeated.value is first_error
+
+
+@pytest.mark.anyio
+async def test_close_invalidates_runtime_peer_and_closes_retained_pidfd_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex, claude = _managers(tmp_path)
+    server = RuntimeExecutorServer(
+        tmp_path / "runtime.sock",
+        codex,
+        allowed_peer_uids=frozenset({os.geteuid()}),
+        claude_manager=claude,
+    )
+    authority = WAWPeerAuthority(expected_uid=os.geteuid(), expected_gid=os.getegid())
+    read_fd, write_fd = os.pipe()
+    candidate = authority.observe_control(101, os.geteuid(), os.getegid(), read_fd)
+    assert type(candidate) is WAWPeerCandidate
+    plan = authority.prepare_bind(
+        candidate,
+        api_authority_epoch="9",
+        nonce_digest=b"a" * 32,
+    )
+    assert authority.commit_bind(plan) is WAWPeerBindStatus.BOUND
+    lease = authority.borrow()
+    assert lease is not None
+    runtime_peer = lease.runtime_peer
+    lease.close()
+    retained = authority._current
+    assert retained is not None
+    retained_pidfd = retained.pidfd
+    close_calls = 0
+    original_close = authority.close
+
+    def counted_close() -> None:
+        nonlocal close_calls
+        close_calls += 1
+        original_close()
+
+    monkeypatch.setattr(authority, "close", counted_close)
+    monkeypatch.setattr(peer_authority_subject, "_pidfd_current", lambda _fd: True)
+    server._waw_peer_authority = authority
+    try:
+        assert runtime_peer.current()
+        await server.close()
+        assert not runtime_peer.current()
+        with pytest.raises(OSError):
+            os.fstat(retained_pidfd)
+        await server.close()
+        assert close_calls == 1
+    finally:
+        original_close()
+        os.close(read_fd)
+        os.close(write_fd)
 
 
 @pytest.mark.anyio
@@ -255,8 +688,7 @@ async def test_server_uses_preconsumed_composition_without_second_epoch(
         claude_manager=claude,
         enable_waw_fixed_process=True,
         formal_project_id_for_legacy=_Providers.formal_project_id,
-        waw_control_server=_issued_control(composition),
-        waw_fixed_runtime=composition,
+        waw_composition_binding=_issued_binding(composition),
     )
     try:
         await server.start(create_development_parent=True)
@@ -283,8 +715,7 @@ def test_server_rejects_epoch_store_or_mismatched_composition_before_effects(
             claude_manager=claude,
             enable_waw_fixed_process=True,
             formal_project_id_for_legacy=_Providers.formal_project_id,
-            waw_control_server=_issued_control(composition),
-            waw_fixed_runtime=composition,
+            waw_composition_binding=_issued_binding(composition),
             waw_epoch_store=store,
         )
     assert codex.conflict_coordinator is None
@@ -304,8 +735,7 @@ def test_server_rejects_epoch_store_or_mismatched_composition_before_effects(
             claude_manager=claude,
             enable_waw_fixed_process=True,
             formal_project_id_for_legacy=_Providers.formal_project_id,
-            waw_control_server=_issued_control(mismatched),
-            waw_fixed_runtime=mismatched,
+            waw_composition_binding=_issued_binding(mismatched),
         )
     assert codex.conflict_coordinator is None
     assert claude.conflict_coordinator is None
@@ -316,10 +746,17 @@ def test_server_rejects_unissued_or_wrong_composition_control_before_effects(
     tmp_path: Path,
 ) -> None:
     composition = _composition(tmp_path)
-    for index, control in enumerate(
+    cases = (
+        {
+            "waw_control_server": object.__new__(WAWControlServer),
+            "waw_fixed_runtime": composition,
+        },
+        {"waw_composition_binding": _issued_binding(replace(composition, runtime_epoch="3"))},
+    )
+    for index, extra in enumerate(
         (
-            object.__new__(WAWControlServer),
-            _issued_control(replace(composition, runtime_epoch="3")),
+            cases[0],
+            cases[1],
         )
     ):
         manager_root = tmp_path / f"control-{index}"
@@ -334,8 +771,7 @@ def test_server_rejects_unissued_or_wrong_composition_control_before_effects(
                 claude_manager=claude,
                 enable_waw_fixed_process=True,
                 formal_project_id_for_legacy=_Providers.formal_project_id,
-                waw_control_server=control,
-                waw_fixed_runtime=composition,
+                **cast(Any, extra),
             )
         assert codex.conflict_coordinator is None
         assert claude.conflict_coordinator is None
@@ -351,12 +787,18 @@ def test_filesystem_v2_builder_retains_the_only_composition(
         lambda **_kwargs: composition,
     )
     control = object.__new__(WAWControlServer)
-    monkeypatch.setattr(server_subject, "build_waw_control_server", lambda **_kwargs: control)
+    control_arguments: dict[str, Any] = {}
+
+    def build_control(**kwargs: Any) -> WAWControlServer:
+        control_arguments.update(kwargs)
+        return control
+
+    monkeypatch.setattr(server_subject, "build_waw_control_server", build_control)
     manager_root = tmp_path / "builder"
     manager_root.mkdir()
     codex, claude = _managers(manager_root)
 
-    server = build_runtime_server_from_filesystem_v2(
+    server = _build_runtime_server_from_filesystem_v2(
         socket_path=tmp_path / "builder.sock",
         manager=codex,
         claude_manager=claude,
@@ -375,6 +817,8 @@ def test_filesystem_v2_builder_retains_the_only_composition(
     )
     assert server.waw_fixed_runtime is composition
     assert server.waw_runtime_epoch == 2
+    assert server.waw_peer_authority is composition.registry.peer_authority
+    assert control_arguments["registry"] is composition.registry
 
 
 def test_local_login_and_trust_are_not_runtime_rpc_actions() -> None:
@@ -539,3 +983,38 @@ async def test_server_refreshes_auth_only_through_injected_qualified_runner(
         )
         == evidence
     )
+
+
+@pytest.mark.anyio
+async def test_fixed_legacy_handler_obeys_same_application_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = object.__new__(RuntimeExecutorServer)
+    server._closing = False
+    server._closed = False
+    server._writers = set()
+    server._waw_fixed_runtime = cast(
+        Any,
+        SimpleNamespace(registry=SimpleNamespace(application_gate_open=False)),
+    )
+    errors: list[tuple[str, str]] = []
+
+    async def write_error(_writer: Any, code: str, message: str) -> None:
+        errors.append((code, message))
+
+    monkeypatch.setattr(server, "_write_error", write_error)
+    monkeypatch.setattr(
+        server,
+        "_peer_allowed",
+        lambda _writer: (_ for _ in ()).throw(AssertionError("gate must run first")),
+    )
+
+    class Writer:
+        def close(self) -> None:
+            return None
+
+        async def wait_closed(self) -> None:
+            return None
+
+    await server._handle(asyncio.StreamReader(), cast(Any, Writer()))
+    assert errors == [("RUNTIME_UNAVAILABLE", "Runtime application is not ready")]

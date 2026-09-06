@@ -8,8 +8,13 @@ import {
   formatNumber,
   formatPlural,
   I18nMessageError,
+  KNOWN_API_ERROR_MESSAGES,
+  localizeApiError,
+  MESSAGE_DOMAINS,
   MESSAGE_KEYS,
+  messageDomain,
   messageCatalogs,
+  technicalApiIdentifier,
   technicalValue,
 } from './index'
 import type { MessageKey } from './index'
@@ -49,6 +54,12 @@ describe('catalogs and formatters', () => {
         Object.values(catalog).every((value) => typeof value === 'function'),
       ).toBe(true)
     }
+  })
+
+  it('assigns every key to an approved product domain', () => {
+    expect(MESSAGE_KEYS.map(messageDomain)).toEqual(
+      expect.arrayContaining([...MESSAGE_DOMAINS]),
+    )
   })
 
   it('formats named message parameters without a source-text fallback', () => {
@@ -98,5 +109,38 @@ describe('technical values', () => {
     ]) {
       expect(() => technicalValue(value)).toThrow(TypeError)
     }
+  })
+})
+
+describe('API error localization', () => {
+  it('uses only the code mapping and never server-provided prose', () => {
+    expect(localizeApiError('en', 'WAW_INVALID_AGENT')).toBe(
+      'The selected AgentType is not valid.',
+    )
+    expect(localizeApiError('zh-CN', 'WAW_INVALID_AGENT')).toBe(
+      '所选 AgentType 无效。',
+    )
+    expect(localizeApiError('en', 'UNTRUSTED_SERVER_PROSE')).toBe(
+      'The operation could not be completed. Try again.',
+    )
+  })
+
+  it('maps every known API error to an existing localized message', () => {
+    for (const [code, key] of Object.entries(KNOWN_API_ERROR_MESSAGES)) {
+      expect(localizeApiError('en', code)).toBe(formatMessage('en', key, {}))
+      expect(localizeApiError('zh-CN', code)).toBe(
+        formatMessage('zh-CN', key, {}),
+      )
+    }
+  })
+
+  it('keeps valid codes and request IDs technical, and drops invalid values', () => {
+    expect(technicalApiIdentifier('WAW_INVALID_AGENT')).toEqual(
+      technicalValue('WAW_INVALID_AGENT'),
+    )
+    expect(technicalApiIdentifier('req_2026-09-05:1')).toEqual(
+      technicalValue('req_2026-09-05:1'),
+    )
+    expect(technicalApiIdentifier('错误')).toBeNull()
   })
 })

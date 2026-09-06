@@ -138,8 +138,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc5"
-    assert npm_version("0.3.0rc5") == "0.3.0-rc.5"
+    assert verify_version_consistency(root) == "0.3.0rc6"
+    assert npm_version("0.3.0rc6") == "0.3.0-rc.6"
 
 
 def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> None:
@@ -290,13 +290,13 @@ def test_release_artifact_does_not_union_waw_assets_across_wheels() -> None:
     checker.collect_agentbox_waw_assets(
         "wheelhouse/dependency-1.0-py3-none-any.whl",
         dependency_payload.getvalue(),
-        agentbox_wheel_member="wheelhouse/agentbox-0.3.0rc5-py3-none-any.whl",
+        agentbox_wheel_member="wheelhouse/agentbox-0.3.0rc6-py3-none-any.whl",
         wheel_assets=observed,
     )
     checker.collect_agentbox_waw_assets(
-        "wheelhouse/agentbox-0.3.0rc5-py3-none-any.whl",
+        "wheelhouse/agentbox-0.3.0rc6-py3-none-any.whl",
         agentbox_payload.getvalue(),
-        agentbox_wheel_member="wheelhouse/agentbox-0.3.0rc5-py3-none-any.whl",
+        agentbox_wheel_member="wheelhouse/agentbox-0.3.0rc6-py3-none-any.whl",
         wheel_assets=observed,
     )
 

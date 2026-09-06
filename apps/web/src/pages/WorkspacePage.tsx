@@ -1,7 +1,14 @@
 import { AlertTriangle, MonitorUp, RefreshCw, ShieldAlert } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
+import { MAX_INPUT_BYTES } from '../features/workspace/wawCryptoProfile'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { currentLocale, technicalValue, type Locale } from '../i18n'
 import './WorkspacePage.css'
@@ -11,7 +18,7 @@ const COPY = {
   en: {
     title: 'Interactive workspace',
     description:
-      'Manage the controlled Claude or Codex workspace lifecycle for a formal READY Project. Terminal connection is not yet available.',
+      'Manage the controlled Claude or Codex workspace lifecycle for a formal READY Project. Terminal access requires local trust admission.',
     selectionEyebrow: 'Workspace selection',
     selectionTitle: 'Select a Project and AgentType',
     readyProject: 'Formal READY Project',
@@ -45,9 +52,27 @@ const COPY = {
     },
     terminalEyebrow: 'Terminal viewport',
     terminalTitle: 'Controlled terminal',
-    notAdmitted: 'Not admitted',
     terminalPlaceholder:
-      'Terminal connection is not yet available. This page currently provides status and lifecycle management only.',
+      'Connect only after the current Project, Runtime and local trust provider are admitted.',
+    providerUnavailable:
+      'The managed browser trust provider is unavailable, so no terminal ticket was requested.',
+    connectionStatus: 'Connection status',
+    terminalStatuses: {
+      IDLE: 'Ready to connect',
+      ACQUIRING_TICKET: 'Requesting terminal ticket',
+      AUTHORIZING_TRUST: 'Checking local trust',
+      CONNECTING: 'Connecting transport',
+      HANDSHAKING: 'Verifying terminal channel',
+      CONNECTED: 'Connected',
+      DETACHING: 'Disconnecting',
+      DETACHED: 'Disconnected',
+      STOPPING: 'Stopping workspace',
+      STOPPED: 'Stopped',
+      FENCED: 'Connection fenced',
+      UNAVAILABLE: 'Trust provider unavailable',
+    },
+    redrawTruncated:
+      'The initial terminal redraw was bounded. Refreshing the terminal starts a new bounded redraw.',
     storageWarning:
       'Terminal content is not stored in browser storage or offered as a history download.',
     start: 'Start workspace',
@@ -55,9 +80,14 @@ const COPY = {
     connect: 'Connect terminal',
     reconnect: 'Reconnect',
     detach: 'Disconnect',
-    keyboard: 'Keyboard input',
-    futureNote:
-      'Terminal connection, reconnect, disconnect and keyboard input will be enabled after the real connection capability is complete.',
+    keyboard: 'Send input',
+    inputPlaceholder: 'Type terminal input and press Enter',
+    inputPasteRejected: 'Multi-line paste is not sent through this input.',
+    inputTooLong: 'Terminal input is limited to 16 KiB.',
+    inputSending: 'Sending terminal input…',
+    inputRateLimited: 'Input was rate limited and was not sent. Try again.',
+    inputUncertain: 'Input delivery is uncertain and will not be resent.',
+    viewportResize: 'Terminal size follows the visible viewport.',
     confirmTitle: 'Confirm workspace stop',
     confirmDescription:
       'Stop only the managed process and preserve Project and Git changes.',
@@ -85,7 +115,7 @@ const COPY = {
   'zh-CN': {
     title: '交互式工作区',
     description:
-      '在正式 READY Project 中管理受控的 Claude 或 Codex 工作区生命周期。终端连接尚未开放。',
+      '在正式 READY Project 中管理受控的 Claude 或 Codex 工作区生命周期。终端访问需要完成本地信任准入。',
     selectionEyebrow: '工作区选择',
     selectionTitle: '选择 Project 与 AgentType',
     readyProject: '正式 READY Project',
@@ -112,17 +142,40 @@ const COPY = {
     },
     terminalEyebrow: '终端视口',
     terminalTitle: '受控终端',
-    notAdmitted: '尚未准入',
-    terminalPlaceholder: '终端连接尚未开放。当前页面仅提供状态与生命周期管理。',
+    terminalPlaceholder:
+      '仅在当前 Project、Runtime 与本地信任 provider 完成准入后连接终端。',
+    providerUnavailable:
+      '受管浏览器信任 provider 不可用，因此未请求终端 ticket。',
+    connectionStatus: '连接状态',
+    terminalStatuses: {
+      IDLE: '可以连接',
+      ACQUIRING_TICKET: '正在请求终端 ticket',
+      AUTHORIZING_TRUST: '正在核对本地信任',
+      CONNECTING: '正在连接传输',
+      HANDSHAKING: '正在验证终端通道',
+      CONNECTED: '已连接',
+      DETACHING: '正在断开',
+      DETACHED: '已断开',
+      STOPPING: '正在停止工作区',
+      STOPPED: '已停止',
+      FENCED: '连接已围栏',
+      UNAVAILABLE: '信任 provider 不可用',
+    },
+    redrawTruncated: '初始终端重绘已受限。刷新终端会开始新的受限重绘。',
     storageWarning: '终端内容不写入浏览器存储，也不提供历史记录下载。',
     start: '启动工作区',
     stop: '停止工作区',
     connect: '连接终端',
     reconnect: '重新连接',
     detach: '断开连接',
-    keyboard: '键盘输入',
-    futureNote:
-      '连接终端、重新连接、断开连接与键盘输入将在真实连接能力完成后开放。',
+    keyboard: '发送输入',
+    inputPlaceholder: '输入终端内容后按 Enter 发送',
+    inputPasteRejected: '此输入框不会发送多行粘贴内容。',
+    inputTooLong: '终端输入最多为 16 KiB。',
+    inputSending: '正在发送终端输入…',
+    inputRateLimited: '输入已被限流，未发送到终端。请稍后重试。',
+    inputUncertain: '输入结果不确定，系统不会自动重发。',
+    viewportResize: '终端尺寸会跟随可见视口。',
     confirmTitle: '确认停止工作区',
     confirmDescription: '仅停止受管进程，保留 Project 和 Git 修改。',
     workspaceId: '工作区 ID',
@@ -165,6 +218,30 @@ function TechnicalValue({ value }: { value: string }) {
   }
 }
 
+function inputResultNotice(
+  copy: Readonly<{
+    inputRateLimited: string
+    inputUncertain: string
+  }>,
+  outcome: WorkspacePageModel['attachment']['lastInputOutcome'],
+): string | null {
+  if (outcome === null) return null
+  if (
+    outcome.state === 'rejected' &&
+    outcome.reasonCode === 'INPUT_RATE_LIMITED'
+  ) {
+    return copy.inputRateLimited
+  }
+  if (
+    outcome.state === 'write_uncertain' ||
+    outcome.state === 'local_uncertain' ||
+    outcome.state === 'rejected'
+  ) {
+    return copy.inputUncertain
+  }
+  return null
+}
+
 export function WorkspacePage({
   model,
   locale = currentLocale(),
@@ -174,7 +251,11 @@ export function WorkspacePage({
 }) {
   const copy = COPY[locale]
   usePageTitle(copy.title)
+  const { setTerminalInputClearer } = model
   const stopDialog = useRef<HTMLDialogElement>(null)
+  const terminalInput = useRef<HTMLInputElement>(null)
+  const composingTerminalInput = useRef(false)
+  const [inputNotice, setInputNotice] = useState<string | null>(null)
   const busy = model.pending !== null
   const metadata =
     model.runtimeView.status === 'loaded'
@@ -185,6 +266,23 @@ export function WorkspacePage({
   const lifecycleCode = model.lifecycleState ? (
     <TechnicalValue value={model.lifecycleState} />
   ) : null
+  const attachmentStatus = model.attachment.status
+  const settledInputNotice = inputResultNotice(
+    copy,
+    model.attachment.lastInputOutcome,
+  )
+  const attachmentTone =
+    attachmentStatus === 'CONNECTED'
+      ? 'good'
+      : attachmentStatus === 'FENCED' || attachmentStatus === 'UNAVAILABLE'
+        ? 'warning'
+        : 'muted'
+  const terminalInputScope = [
+    model.workspaceId ?? '',
+    model.generation ?? '',
+    model.attachment.attached?.attachmentId ?? '',
+    attachmentStatus === 'CONNECTED' ? 'connected' : 'closed',
+  ].join(':')
   useEffect(() => {
     const dialog = stopDialog.current
     if (model.stopTarget && dialog && !dialog.open) {
@@ -192,6 +290,36 @@ export function WorkspacePage({
     }
     if (!model.stopTarget && dialog?.open) dialog.close()
   }, [model.stopTarget])
+  useLayoutEffect(() => {
+    const clear = () => {
+      if (terminalInput.current) terminalInput.current.value = ''
+      composingTerminalInput.current = false
+    }
+    setTerminalInputClearer(clear)
+    return () => setTerminalInputClearer(null)
+  }, [setTerminalInputClearer])
+  useLayoutEffect(() => {
+    if (terminalInput.current) terminalInput.current.value = ''
+    composingTerminalInput.current = false
+    setInputNotice(null)
+  }, [terminalInputScope])
+  function submitInput(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const input = terminalInput.current
+    if (!input || !model.canInput || busy || composingTerminalInput.current)
+      return
+    const value = `${input.value}\r`
+    const encoded = new TextEncoder().encode(value)
+    const tooLong = encoded.byteLength > MAX_INPUT_BYTES
+    encoded.fill(0)
+    if (tooLong) {
+      setInputNotice(copy.inputTooLong)
+      return
+    }
+    input.value = ''
+    setInputNotice(null)
+    void model.sendInput(value)
+  }
   return (
     <>
       <PageHeader
@@ -344,6 +472,11 @@ export function WorkspacePage({
             <TechnicalValue value={model.error.code} />
           </p>
         )}
+        {model.runtimeView.status === 'error' && runtimeError && (
+          <p className="error-panel" role="alert">
+            {copy.infoUnavailable} <TechnicalValue value={runtimeError} />
+          </p>
+        )}
       </section>
       <section className="runtime-card" aria-labelledby="workspace-terminal">
         <div className="runtime-card-heading">
@@ -351,14 +484,45 @@ export function WorkspacePage({
             <p className="eyebrow">{copy.terminalEyebrow}</p>
             <h2 id="workspace-terminal">{copy.terminalTitle}</h2>
           </div>
-          <StatusBadge tone="muted">{copy.notAdmitted}</StatusBadge>
+          <StatusBadge tone={attachmentTone}>
+            {copy.terminalStatuses[attachmentStatus]}
+          </StatusBadge>
         </div>
-        <pre
-          aria-label={copy.terminalTitle}
-          className="workspace-terminal-placeholder"
+        <p className="workspace-connection-state" role="status">
+          {copy.connectionStatus}
+          {copy.technicalSeparator}
+          {copy.terminalStatuses[attachmentStatus]}
+          {model.attachment.reason && (
+            <>
+              {' '}
+              <TechnicalValue value={model.attachment.reason} />
+            </>
+          )}
+        </p>
+        <div
+          className="workspace-terminal-frame"
+          ref={model.setTerminalViewport}
         >
-          {copy.terminalPlaceholder}
-        </pre>
+          <div
+            aria-label={copy.terminalTitle}
+            aria-live="off"
+            className="workspace-terminal-surface"
+            ref={model.setTerminalSurface}
+            role="log"
+          />
+          {attachmentStatus !== 'CONNECTED' && (
+            <p className="workspace-terminal-placeholder">
+              {attachmentStatus === 'UNAVAILABLE'
+                ? copy.providerUnavailable
+                : copy.terminalPlaceholder}
+            </p>
+          )}
+        </div>
+        {model.attachment.freshRedrawTruncated && (
+          <p className="interaction-notice" role="status">
+            {copy.redrawTruncated}
+          </p>
+        )}
         <p className="sensitive-output workspace-sensitive-warning">
           <ShieldAlert aria-hidden="true" />
           {copy.storageWarning}
@@ -384,20 +548,92 @@ export function WorkspacePage({
           </button>
         </div>
         <div className="action-row">
-          <button className="secondary-button" disabled type="button">
+          <button
+            className="secondary-button"
+            disabled={!model.canConnect || busy}
+            onClick={() => void model.connect()}
+            type="button"
+          >
             {copy.connect}
           </button>
-          <button className="secondary-button" disabled type="button">
+          <button
+            className="secondary-button"
+            disabled={!model.canReconnect || busy}
+            onClick={() => void model.reconnect()}
+            type="button"
+          >
             {copy.reconnect}
           </button>
-          <button className="secondary-button" disabled type="button">
+          <button
+            className="secondary-button"
+            disabled={!model.canDetach || busy}
+            onClick={() => void model.detach()}
+            type="button"
+          >
             {copy.detach}
           </button>
-          <button className="secondary-button" disabled type="button">
+        </div>
+        <form className="workspace-terminal-input" onSubmit={submitInput}>
+          <input
+            aria-label={copy.keyboard}
+            autoComplete="off"
+            disabled={!model.canInput || busy}
+            onCompositionEnd={() => {
+              composingTerminalInput.current = false
+            }}
+            onCompositionStart={() => {
+              composingTerminalInput.current = true
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Enter' &&
+                (composingTerminalInput.current ||
+                  event.nativeEvent.isComposing)
+              ) {
+                event.preventDefault()
+              }
+            }}
+            onPaste={(event) => {
+              const value = event.clipboardData.getData('text')
+              if (/\r|\n/.test(value)) {
+                event.preventDefault()
+                setInputNotice(copy.inputPasteRejected)
+              }
+            }}
+            placeholder={copy.inputPlaceholder}
+            ref={terminalInput}
+            spellCheck={false}
+            type="text"
+          />
+          <button
+            className="secondary-button"
+            disabled={!model.canInput || busy}
+            type="submit"
+          >
             {copy.keyboard}
           </button>
-        </div>
-        <p className="stop-note">{copy.futureNote}</p>
+        </form>
+        {inputNotice && (
+          <p className="interaction-notice" role="status">
+            {inputNotice}
+          </p>
+        )}
+        {model.attachment.input !== null && (
+          <p className="workspace-connection-state" role="status">
+            {copy.inputSending}
+          </p>
+        )}
+        {settledInputNotice && (
+          <p className="interaction-notice" role="status">
+            {settledInputNotice}{' '}
+            {model.attachment.lastInputOutcome?.reasonCode && (
+              <TechnicalValue
+                value={model.attachment.lastInputOutcome.reasonCode}
+              />
+            )}
+          </p>
+        )}
+        <p className="workspace-connection-state">{copy.viewportResize}</p>
       </section>
       <dialog
         className="workspace-stop-dialog"

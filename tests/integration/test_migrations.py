@@ -30,6 +30,7 @@ from sqlalchemy.engine import Engine
 PHASE11_TABLES = {
     "waw_runtime_host_installations",
     "waw_agent_workspace_sessions",
+    "waw_project_bindings",
     "waw_workspace_stop_operations",
     "runtime_installations",
     "provider_definitions",
@@ -51,6 +52,9 @@ PHASE11_TRIGGERS = {
     "trg_session_bindings_valid_snapshot",
     "trg_session_bindings_immutable_update",
     "trg_session_bindings_immutable_delete",
+    "trg_waw_project_bindings_immutable_identity",
+    "trg_waw_project_bindings_legal_transition",
+    "trg_waw_project_bindings_immutable_delete",
     "trg_compatibility_evidence_valid_scope",
     "trg_compatibility_evidence_sets_start_building",
     "trg_compatibility_expected_dimension",
@@ -498,7 +502,7 @@ def test_0005_unsafe_downgrade_rolls_back_schema_and_version(tmp_path: Path) -> 
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0007_waw_host_identity_fence"
+                == "0009_waw_project_binding_ledger"
             )
             assert "confirmation_challenges" in inspect(engine).get_table_names()
             assert "auth_epoch" in {
@@ -529,7 +533,8 @@ def test_phase11_migration_matches_orm_metadata_and_installs_exact_triggers(
                         "OR name LIKE 'trg_runtime_profiles_%' "
                         "OR name LIKE 'trg_runtime_bindings_%' "
                         "OR name LIKE 'trg_compatibility_%' "
-                        "OR name LIKE 'trg_provider_compatibility_%')"
+                        "OR name LIKE 'trg_provider_compatibility_%' "
+                        "OR name LIKE 'trg_waw_project_bindings_%')"
                     )
                 )
             }
@@ -839,7 +844,7 @@ def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> Non
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(path) as connection:
         expected_revision = (
-            "0007_waw_host_identity_fence"
+            "0009_waw_project_binding_ledger"
             if target == "heads"
             else "0005_phase11_control_plane_ownership_approval"
         )

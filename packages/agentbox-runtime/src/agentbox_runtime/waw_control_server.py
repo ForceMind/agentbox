@@ -15,8 +15,11 @@ import re
 import socket
 import struct
 import time
-from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass
+from enum import Enum
+from threading import Lock
+from typing import Any, Protocol, cast, runtime_checkable
 
 from agentbox_protocol.waw_control import (
     MAX_CONTROL_ENVELOPE,
@@ -27,6 +30,7 @@ from agentbox_protocol.waw_control import (
 )
 
 _REQUEST_ID = re.compile(rb"wreq_[0-9a-f]{32}")
+FIXED_BACKLOG = 64
 
 
 class WAWControlDispatchError(RuntimeError):
@@ -38,11 +42,53 @@ class WAWControlDispatchError(RuntimeError):
         self.retryable = retryable
 
 
+@runtime_checkable
+class WAWControlPeerContext(Protocol):
+    """One authorizer-issued process context owned by a dispatch child."""
+
+    def close(self) -> None: ...
+
+
 Dispatch = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+PeerAwareDispatch = Callable[[dict[str, Any], WAWControlPeerContext], Awaitable[dict[str, Any]]]
+PeerAuthorizer = Callable[[int, int, int, int], WAWControlPeerContext | None]
+
+
+@dataclass(frozen=True)
+class _ControlPeerCredentials:
+    pid: int
+    uid: int
+    gid: int
+    pidfd: int
+
+
+class _PeerContextOwner:
+    """Close one dispatch peer context exactly once across all task exits."""
+
+    def __init__(self, peer: WAWControlPeerContext | None) -> None:
+        self._peer = peer
+        self._lock = Lock()
+
+    def close(self) -> bool:
+        with self._lock:
+            peer, self._peer = self._peer, None
+        if peer is None:
+            return True
+        try:
+            peer.close()
+        except Exception:
+            return False
+        return True
 
 
 class _WAWControlDispatchPoisoned(TimeoutError):
     """The dispatcher did not stop within the bounded cancellation grace."""
+
+
+class _SocketOwnership(Enum):
+    RAW = "RAW"
+    IN_FLIGHT = "IN_FLIGHT"
+    TRANSFERRED = "TRANSFERRED"
 
 
 class WAWControlServer:
@@ -51,7 +97,7 @@ class WAWControlServer:
     def __init__(
         self,
         sock: socket.socket,
-        dispatch: Dispatch,
+        dispatch: Dispatch | PeerAwareDispatch,
         *,
         expected_peer_uid: int,
         expected_peer_gid: int,
@@ -60,7 +106,7 @@ class WAWControlServer:
         max_active_connections: int = 64,
         max_active_dispatches: int = 16,
         monotonic: Callable[[], float] = time.monotonic,
-        peer_authorizer: Callable[[int, int, int, int], bool] | None = None,
+        peer_authorizer: PeerAuthorizer | None = None,
     ) -> None:
         if sock.family != socket.AF_UNIX or sock.type != socket.SOCK_STREAM:
             raise ValueError("WAW control socket must be AF_UNIX SOCK_STREAM")
@@ -93,6 +139,9 @@ class WAWControlServer:
         self._server: asyncio.AbstractServer | None = None
         self._poisoned = False
         self._closing = False
+        self._closed = False
+        self._socket_ownership = _SocketOwnership.RAW
+        self._raw_socket_closed = False
         self._connection_tasks: set[asyncio.Task[Any]] = set()
         self._writers: set[asyncio.StreamWriter] = set()
         self._dispatch_tasks: set[asyncio.Task[Any]] = set()
@@ -105,28 +154,109 @@ class WAWControlServer:
         # half way through (or make a later close report a false clean
         # state).
         self._close_operation: asyncio.Task[None] | None = None
+        self._start_operation: asyncio.Task[None] | None = None
 
-    async def start(self) -> None:
-        if self._server is not None:
-            raise RuntimeError("WAW control server is already started")
-        if self._poisoned:
-            raise RuntimeError("WAW control server is poisoned")
-        self._closing = False
-        self._sock.setblocking(False)
-        self._server = await asyncio.start_unix_server(
-            self._handle,
-            sock=self._sock,
-            start_serving=True,
-            limit=MAX_CONTROL_LINE + 1,
+    @property
+    def shutdown_clean(self) -> bool:
+        """Whether every listener-owned resource reached a clean terminal state."""
+
+        tasks = self._connection_tasks | self._dispatch_tasks | self._io_tasks | self._cleanup_tasks
+        return (
+            self._closed
+            and not self._closing
+            and not self._poisoned
+            and self._server is None
+            and (self._socket_ownership is not _SocketOwnership.RAW or self._raw_socket_closed)
+            and (self._start_operation is None or self._start_operation.done())
+            and (self._close_operation is None or self._close_operation.done())
+            and not self._writers
+            and all(task.done() for task in tasks)
         )
 
-    async def close(self) -> None:
+    async def start(self) -> None:
+        if self._poisoned:
+            raise RuntimeError("WAW control server is poisoned")
+        if self._closing or self._closed or self._close_operation is not None:
+            raise RuntimeError("WAW control server is unavailable")
+        if self._server is not None:
+            return
+        operation = self._start_operation
+        if operation is None:
+            operation = asyncio.create_task(self._perform_start())
+            self._start_operation = operation
+            operation.add_done_callback(self._consume_start_operation)
+        await asyncio.shield(operation)
+
+    async def _perform_start(self) -> None:
+        if self._poisoned or self._closing or self._closed:
+            raise RuntimeError("WAW control server is unavailable")
+        if self._server is not None:
+            return
+        self._closing = False
+        try:
+            self._sock.listen(FIXED_BACKLOG)
+            self._sock.setblocking(False)
+            self._socket_ownership = _SocketOwnership.IN_FLIGHT
+            server = await asyncio.start_unix_server(
+                self._handle,
+                sock=self._sock,
+                backlog=FIXED_BACKLOG,
+                start_serving=True,
+                limit=MAX_CONTROL_LINE + 1,
+            )
+            self._socket_ownership = _SocketOwnership.TRANSFERRED
+            if self._closing or self._closed:
+                server.close()
+                with contextlib.suppress(OSError):
+                    await server.wait_closed()
+                raise RuntimeError("WAW control server closed during activation")
+            self._server = server
+        except asyncio.CancelledError:
+            self._fail_start()
+            raise
+        except (OSError, RuntimeError, ValueError):
+            self._fail_start()
+            raise RuntimeError("WAW control listener activation failed") from None
+        except BaseException:
+            self._fail_start()
+            raise
+
+    def _consume_start_operation(self, task: asyncio.Task[None]) -> None:
+        if self._start_operation is task:
+            self._start_operation = None
+        with contextlib.suppress(BaseException):
+            task.result()
+
+    def _fail_start(self) -> None:
+        self._poisoned = True
+        self._closing = True
+        self._closed = True
+        if self._server is not None:
+            with contextlib.suppress(OSError):
+                self._server.close()
+            self._server = None
+        if self._socket_ownership is _SocketOwnership.RAW:
+            self._close_raw_socket()
+
+    def _close_raw_socket(self) -> None:
+        if self._raw_socket_closed or self._socket_ownership is not _SocketOwnership.RAW:
+            return
+        self._raw_socket_closed = True
+        with contextlib.suppress(OSError, AttributeError):
+            self._sock.close()
+
+    def close(self) -> Coroutine[Any, Any, None]:
+        self._closing = True
+        self._closed = True
         operation = self._close_operation
         if operation is None or operation.done():
             operation = asyncio.create_task(self._perform_close())
             self._close_operation = operation
             self._cleanup_tasks.add(operation)
             operation.add_done_callback(self._consume_cleanup_task)
+        return self._await_close(operation)
+
+    async def _await_close(self, operation: asyncio.Task[None]) -> None:
         try:
             # Shield the operation from cancellation of this caller.  The
             # operation owns all cleanup and remains observable through the
@@ -169,6 +299,19 @@ class WAWControlServer:
 
     async def _perform_close_body(self) -> None:
         self._closing = True
+        self._closed = True
+        start_operation = self._start_operation
+        start_pending = False
+        if start_operation is not None and not start_operation.done():
+            done, _ = await asyncio.wait(
+                {start_operation}, timeout=self._cancellation_grace_seconds
+            )
+            start_pending = start_operation not in done
+            if start_pending:
+                self._poison_listener(exclude={start_operation})
+            else:
+                with contextlib.suppress(BaseException):
+                    start_operation.result()
         if self._server is not None:
             self._server.close()
             try:
@@ -186,6 +329,8 @@ class WAWControlServer:
                 self._poison_listener()
                 raise
             self._server = None
+        elif not start_pending and self._socket_ownership is _SocketOwnership.RAW:
+            self._close_raw_socket()
         # Close and cancellation are deliberately bounded.  A dispatcher
         # which refuses cancellation is poisoned and is never admitted again.
         current = asyncio.current_task()
@@ -235,6 +380,7 @@ class WAWControlServer:
         # observer returned while a detached child is still alive.
         if (
             self._poisoned
+            or start_pending
             or self._connection_tasks
             or self._dispatch_tasks
             or self._io_tasks
@@ -260,10 +406,10 @@ class WAWControlServer:
         self._connection_tasks.add(current)
         self._writers.add(writer)
         deadline = self._monotonic() + self._timeout_seconds
-        peer_pidfd: int | None = None
+        peer_credentials: _ControlPeerCredentials | None = None
         try:
-            peer_pidfd = self._peer_pidfd(writer)
-            if peer_pidfd is None:
+            peer_credentials = self._peer_credentials(writer)
+            if peer_credentials is None:
                 return
             try:
                 raw = await self._with_deadline(reader.readline(), deadline)
@@ -292,8 +438,17 @@ class WAWControlServer:
                     writer, request["request_id"], "PROTOCOL_INVALID", deadline=deadline
                 )
                 return
+            peer_context: WAWControlPeerContext | None = None
+            if self._peer_authorizer is not None:
+                peer_context = self._authorize_peer(peer_credentials)
+                if peer_context is None:
+                    return
             try:
-                response = await self._dispatch_with_deadline(request, deadline)
+                response = await self._dispatch_with_deadline(
+                    request,
+                    deadline,
+                    peer_context=peer_context,
+                )
             except _WAWControlDispatchPoisoned:
                 # The dispatcher may still be executing after cancellation.  A
                 # late mutation is unsafe to expose through this server, so
@@ -325,12 +480,17 @@ class WAWControlServer:
         finally:
             self._connection_tasks.discard(current)
             self._writers.discard(writer)
-            await self._close_writer(writer)
-            if peer_pidfd is not None:
-                with contextlib.suppress(OSError):
-                    os.close(peer_pidfd)
+            detached_credentials, peer_credentials = peer_credentials, None
+            try:
+                await self._close_writer(writer)
+            finally:
+                if detached_credentials is not None:
+                    try:
+                        os.close(detached_credentials.pidfd)
+                    except OSError:
+                        self._poison_listener()
 
-    def _peer_pidfd(self, writer: asyncio.StreamWriter) -> int | None:
+    def _peer_credentials(self, writer: asyncio.StreamWriter) -> _ControlPeerCredentials | None:
         peer_socket = writer.get_extra_info("socket")
         if peer_socket is None or not hasattr(peer_socket, "getsockopt"):
             return None
@@ -348,19 +508,24 @@ class WAWControlServer:
             return None
         try:
             pidfd = os.pidfd_open(pid, 0)
-            try:
-                if (
-                    self._peer_authorizer is not None
-                    and self._peer_authorizer(pid, uid, gid, pidfd) is not True
-                ):
-                    os.close(pidfd)
-                    return None
-            except Exception:
-                os.close(pidfd)
-                return None
-            return pidfd
+            return _ControlPeerCredentials(pid, uid, gid, pidfd)
         except (OSError, OverflowError, ValueError):
             return None
+
+    def _authorize_peer(self, credentials: _ControlPeerCredentials) -> WAWControlPeerContext | None:
+        authorizer = self._peer_authorizer
+        if authorizer is None:
+            return None
+        try:
+            peer = authorizer(
+                credentials.pid,
+                credentials.uid,
+                credentials.gid,
+                credentials.pidfd,
+            )
+        except Exception:
+            return None
+        return peer if isinstance(peer, WAWControlPeerContext) else None
 
     async def _send_error(
         self, writer: asyncio.StreamWriter, request_id: str | None, code: str, *, deadline: float
@@ -502,7 +667,11 @@ class WAWControlServer:
             task.result()
 
     async def _dispatch_with_deadline(
-        self, request: dict[str, Any], deadline: float
+        self,
+        request: dict[str, Any],
+        deadline: float,
+        *,
+        peer_context: WAWControlPeerContext | None = None,
     ) -> dict[str, Any]:
         """Run dispatch with a hard observation deadline.
 
@@ -515,17 +684,36 @@ class WAWControlServer:
         unsafe dispatcher.
         """
 
+        peer_owner = _PeerContextOwner(peer_context)
         if self._poisoned or self._closing:
+            self._close_peer_owner(peer_owner)
             raise WAWControlDispatchError("CONTROL_UNAVAILABLE", retryable=True)
         if len(self._dispatch_tasks) >= self._max_active_dispatches:
+            self._close_peer_owner(peer_owner)
             raise WAWControlDispatchError("CONTROL_BUSY", retryable=True)
 
         async def invoke() -> dict[str, Any]:
-            return await self._dispatch(request)
+            try:
+                if peer_context is None:
+                    response = await cast(Dispatch, self._dispatch)(request)
+                else:
+                    response = await cast(PeerAwareDispatch, self._dispatch)(request, peer_context)
+            except BaseException:
+                self._close_peer_owner(peer_owner)
+                raise
+            if not self._close_peer_owner(peer_owner):
+                raise WAWControlDispatchError("CONTROL_UNAVAILABLE", retryable=True)
+            return response
 
-        task: asyncio.Task[dict[str, Any]] = asyncio.create_task(invoke())
+        try:
+            task: asyncio.Task[dict[str, Any]] = asyncio.create_task(invoke())
+        except BaseException:
+            self._close_peer_owner(peer_owner)
+            raise
         self._dispatch_tasks.add(task)
-        task.add_done_callback(self._consume_dispatch_task)
+        task.add_done_callback(
+            lambda finished: self._consume_dispatch_task(finished, peer_owner=peer_owner)
+        )
         remaining = deadline - self._monotonic()
         try:
             if remaining > 0:
@@ -558,10 +746,28 @@ class WAWControlServer:
         self._poison_listener()
         raise _WAWControlDispatchPoisoned("WAW control dispatcher did not cancel")
 
-    def _consume_dispatch_task(self, task: asyncio.Task[Any]) -> None:
+    def _consume_dispatch_task(
+        self, task: asyncio.Task[Any], *, peer_owner: _PeerContextOwner | None = None
+    ) -> None:
         self._dispatch_tasks.discard(task)
+        if peer_owner is not None:
+            self._close_peer_owner(peer_owner)
         with contextlib.suppress(BaseException):
             task.result()
 
+    def _close_peer_owner(self, owner: _PeerContextOwner) -> bool:
+        if not owner.close():
+            self._poison_listener()
+            return False
+        return True
 
-__all__ = ["Dispatch", "WAWControlDispatchError", "WAWControlServer"]
+
+__all__ = [
+    "Dispatch",
+    "FIXED_BACKLOG",
+    "PeerAuthorizer",
+    "PeerAwareDispatch",
+    "WAWControlDispatchError",
+    "WAWControlPeerContext",
+    "WAWControlServer",
+]

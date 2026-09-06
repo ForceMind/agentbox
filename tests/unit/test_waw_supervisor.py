@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,8 +20,10 @@ from agentbox_runtime.waw_codex_command import WAWCodexCommand
 from agentbox_runtime.waw_command import WAWClaudeCommand
 from agentbox_runtime.waw_managed_command import WAWManagedCommand, validate_managed_command
 from agentbox_runtime.waw_pty import PtyGeometry
+from agentbox_runtime.waw_redraw import BoundedRedraw
 from agentbox_runtime.waw_stream_bridge import WAWStreamBridge, WAWStreamState
 from agentbox_runtime.waw_supervisor import (
+    RuntimeAttachmentLease,
     RuntimeProbeEvidence,
     RuntimeProbeState,
     RuntimeStartEvidence,
@@ -43,6 +46,8 @@ class FakeTransport:
         self.workspace_id = ""
         self.generation = 1
         self.marker = ""
+        self.redraw = BoundedRedraw(b"", False)
+        self.redraw_calls = 0
 
     def start(self, command: WAWManagedCommand, geometry: PtyGeometry) -> RuntimeStartEvidence:
         assert command.argv == (("remote-control",) if type(command) is WAWClaudeCommand else ())
@@ -69,6 +74,10 @@ class FakeTransport:
 
     def resize(self, geometry: PtyGeometry) -> None:
         self.resizes.append(geometry)
+
+    def capture_redraw(self, _deadline: float) -> BoundedRedraw:
+        self.redraw_calls += 1
+        return self.redraw
 
     def stop(self) -> RuntimeStopEvidence:
         self.stopped = True
@@ -692,6 +701,171 @@ def test_missing_probe_never_falls_back_to_running_snapshot(
     with pytest.raises(RuntimeOperationError, match="observation is unavailable"):
         supervisor.probe()
     assert supervisor.state is SupervisorState.RUNNING
+
+
+def _runtime_attachment(workspace: str, current: Any = lambda: True) -> RuntimeAttachmentLease:
+    return RuntimeAttachmentLease(
+        _attachment(workspace).claims,
+        "1",
+        100.0,
+        current,
+    )
+
+
+def _reserve_redraw(
+    supervisor: WAWSupervisor,
+    transport: FakeTransport,
+    lease: RuntimeAttachmentLease,
+) -> None:
+    transport.close_attachment = lambda _lease: None  # type: ignore[attr-defined]
+    supervisor.reserve_runtime_attachment(lease)
+
+
+def test_fresh_redraw_allocates_one_atomic_cursor_baseline(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    lease = _runtime_attachment(workspace)
+    _reserve_redraw(supervisor, transport, lease)
+    transport.redraw = BoundedRedraw(b"a" * 40_000, True)
+
+    publication = supervisor.publish_fresh_redraw(lease)
+
+    assert [len(frame.payload) for frame in publication.frames] == [32 * 1024, 7_232]
+    assert publication.frames[0].start_cursor == 1
+    assert publication.baseline_cursor == publication.frames[-1].end_cursor == 40_000
+    assert publication.has_more
+    assert supervisor.snapshot().next_cursor == 40_001
+    live_end = supervisor.append_output(supervisor.output_source(), b"live")
+    assert live_end == 40_004
+
+
+def test_fresh_redraw_failure_does_not_allocate_cursor(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    lease = _runtime_attachment(workspace)
+    _reserve_redraw(supervisor, transport, lease)
+    before = supervisor.snapshot()
+    transport.capture_redraw = lambda _deadline: object()  # type: ignore[method-assign,assignment,return-value]
+
+    with pytest.raises(RuntimeOperationError, match="Fixed redraw result is invalid"):
+        supervisor.publish_fresh_redraw(lease)
+
+    assert supervisor.snapshot() == before
+
+
+def test_fresh_redraw_rechecks_revoked_lease_before_cursor_commit(tmp_path: Path) -> None:
+    current = True
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    lease = _runtime_attachment(workspace, lambda: current)
+    _reserve_redraw(supervisor, transport, lease)
+    transport.redraw = BoundedRedraw(b"must-not-publish", False)
+    capture = transport.capture_redraw
+
+    def revoke_before_return(deadline: float) -> BoundedRedraw:
+        nonlocal current
+        result = capture(deadline)
+        current = False
+        return result
+
+    transport.capture_redraw = revoke_before_return  # type: ignore[method-assign,assignment]
+    before = supervisor.snapshot()
+
+    with pytest.raises(RuntimeOperationError, match="no longer current"):
+        supervisor.publish_fresh_redraw(lease)
+
+    assert supervisor.snapshot() == before
+
+
+def test_empty_fresh_redraw_preserves_existing_baseline(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    supervisor.append_output(supervisor.output_source(), b"existing")
+    lease = _runtime_attachment(workspace)
+    _reserve_redraw(supervisor, transport, lease)
+
+    publication = supervisor.publish_fresh_redraw(lease)
+
+    assert publication.frames == ()
+    assert publication.baseline_cursor == len(b"existing")
+
+
+def test_fresh_redraw_blocks_live_output_until_baseline_is_published(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    lease = _runtime_attachment(workspace)
+    _reserve_redraw(supervisor, transport, lease)
+    entered, release, appended = threading.Event(), threading.Event(), threading.Event()
+    capture = transport.capture_redraw
+
+    def blocked_capture(deadline: float) -> BoundedRedraw:
+        entered.set()
+        assert release.wait(1)
+        return BoundedRedraw(b"redraw", False)
+
+    transport.capture_redraw = blocked_capture  # type: ignore[method-assign,assignment]
+    publications: list[Any] = []
+    redraw_thread = threading.Thread(
+        target=lambda: publications.append(supervisor.publish_fresh_redraw(lease))
+    )
+    redraw_thread.start()
+    assert entered.wait(1)
+
+    live_ends: list[int] = []
+
+    def append_live() -> None:
+        live_ends.append(supervisor.append_output(supervisor.output_source(), b"live"))
+        appended.set()
+
+    live_thread = threading.Thread(target=append_live)
+    live_thread.start()
+    assert not appended.wait(0.05)
+    release.set()
+    redraw_thread.join(1)
+    live_thread.join(1)
+    transport.capture_redraw = capture  # type: ignore[method-assign]
+
+    publication = publications[0]
+    assert publication.baseline_cursor == len(b"redraw")
+    assert live_ends == [publication.baseline_cursor + len(b"live")]
+
+
+@pytest.mark.parametrize(("finished", "passes"), [(0.999, True), (1.0, False)])
+def test_fresh_redraw_uses_one_exact_deadline_boundary(
+    tmp_path: Path,
+    finished: float,
+    passes: bool,
+) -> None:
+    now = 0.0
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor._clock = lambda: now
+    supervisor.start()
+    lease = _runtime_attachment(workspace)
+    _reserve_redraw(supervisor, transport, lease)
+
+    def capture(deadline: float) -> BoundedRedraw:
+        nonlocal now
+        assert deadline == 1.0
+        now = finished
+        return BoundedRedraw(b"deadline", False)
+
+    transport.capture_redraw = capture  # type: ignore[method-assign,assignment]
+    before = supervisor.snapshot()
+    if passes:
+        assert supervisor.publish_fresh_redraw(lease).baseline_cursor == len(b"deadline")
+    else:
+        with pytest.raises(RuntimeOperationError, match="deadline expired"):
+            supervisor.publish_fresh_redraw(lease)
+        assert supervisor.snapshot() == before
+
+
+def test_runtime_attachment_reservation_requires_redraw_capability(tmp_path: Path) -> None:
+    supervisor, transport, workspace = _supervisor(tmp_path)
+    supervisor.start()
+    transport.capture_redraw = None  # type: ignore[method-assign,assignment]
+    transport.close_attachment = lambda _lease: None  # type: ignore[attr-defined]
+    with pytest.raises(RuntimeOperationError, match="redraw port"):
+        supervisor.reserve_runtime_attachment(_runtime_attachment(workspace))
 
 
 @pytest.mark.parametrize("agent_type", list(AgentType))

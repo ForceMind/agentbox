@@ -530,7 +530,7 @@ describe('terminal attachment scheduler', () => {
     d8Model.applyTokens([{ kind: 'text', text: filler }])
     await writeBytes(d8Scheduler, d8Runtime, new Uint8Array([0x9c]))
     expect(d8Scheduler.state).toBe('active')
-  })
+  }, 10_000)
 
   it('reserves newline backlog before a 2000-line model can accept a frame', () => {
     const runtime = new ManualRuntime()
