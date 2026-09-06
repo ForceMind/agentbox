@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 
+import packageMetadata from '../../package.json'
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
 import { useAuth } from '../features/auth/AuthContext'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -119,6 +120,12 @@ export function LoginPage() {
         <div className="login-footer">
           <ControlPlanePulse />
           <span>Local administrator access only</span>
+          <small className="app-version">
+            Version{' '}
+            <code dir="ltr" lang="en" translate="no">
+              {packageMetadata.version}
+            </code>
+          </small>
         </div>
       </section>
       <aside className="login-context" aria-label="AgentBox product context">

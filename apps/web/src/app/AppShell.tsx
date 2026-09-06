@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
+import packageMetadata from '../../package.json'
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
 import { useAuth } from '../features/auth/AuthContext'
 import { currentLocale, type Locale } from '../i18n'
@@ -63,6 +64,7 @@ const COPY = {
     logoutFailed: 'Logout could not be completed',
     openNavigation: 'Open navigation',
     closeNavigation: 'Close navigation',
+    version: 'Version',
   },
   'zh-CN': {
     controlPlane: '控制平面',
@@ -73,8 +75,11 @@ const COPY = {
     logoutFailed: '无法完成退出登录',
     openNavigation: '打开导航',
     closeNavigation: '关闭导航',
+    version: '版本',
   },
 } as const satisfies Record<Locale, Record<string, string>>
+
+const APP_VERSION = packageMetadata.version
 
 function Navigation({
   locale,
@@ -138,6 +143,12 @@ export function AppShell() {
         <Navigation locale={locale} />
         <div className="sidebar-footer">
           <ControlPlanePulse />
+          <small className="app-version">
+            {copy.version}{' '}
+            <code dir="ltr" lang="en" translate="no">
+              {APP_VERSION}
+            </code>
+          </small>
           <p>{copy.signedIn}</p>
           <strong>{auth?.user.username}</strong>
           <button
@@ -180,6 +191,12 @@ export function AppShell() {
           <div className="mobile-drawer-meta">
             <ControlPlanePulse />
             <span>{auth?.user.username}</span>
+            <small className="app-version">
+              {copy.version}{' '}
+              <code dir="ltr" lang="en" translate="no">
+                {APP_VERSION}
+              </code>
+            </small>
           </div>
           <Navigation locale={locale} onNavigate={() => setMenuOpen(false)} />
           <button

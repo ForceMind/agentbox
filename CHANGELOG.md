@@ -3,6 +3,30 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc6] - Unreleased
+
+### Added
+
+- R11 rc6 composes the browser terminal page with the existing typed controller,
+  bounded DOM renderer, managed-provider availability, viewport-only resize and
+  localized English/Chinese Workspace controls.
+- Current Project/binding read-back now fences WebSocket admission and active
+  relay publication; a post-Start drift creates a durable exact Stop operation
+  and records only a positive Stop acknowledgement as `STOPPED`.
+
+### Fixed
+
+- Page lifecycle, input ownership, stale action errors and exact Stop preserve
+  the controller's control identity without retaining browser plaintext.
+- The terminal renderer uses closed fixed-cell classes for normal, wide and
+  sparse cells; no output is parsed as HTML or placed in a dynamic style.
+
+### Known limitations
+
+- This source candidate remains software evidence only. Signed Chromium
+  enrollment, trustd installation, real CLI/PTY and host qualification remain
+  R12 work.
+
 ## [0.3.0rc5] - Unreleased
 
 ### Added
