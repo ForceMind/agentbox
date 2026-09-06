@@ -22,6 +22,8 @@ versioning for release display and PEP 440 for the Python package.
   desktop and mobile widths, preventing horizontal viewport overflow.
 - The Workspace Project selector and terminal input can shrink within their
   mobile rows.
+- Long status badges wrap within mobile runtime-card headings without hiding
+  their state text.
 
 ### Verification status
 

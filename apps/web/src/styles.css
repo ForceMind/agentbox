@@ -513,6 +513,18 @@ button:disabled {
   color: var(--warning);
 }
 
+@media (max-width: 639px) {
+  .runtime-card-heading .status-badge {
+    min-width: 0;
+    max-width: 50%;
+    justify-content: flex-end;
+    overflow-wrap: anywhere;
+    text-align: end;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
 .metric-grid,
 .planned-grid {
   display: grid;

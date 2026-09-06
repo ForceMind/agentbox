@@ -132,8 +132,8 @@ repository: "ForceMind/agentbox"
   text components reject raw-HTML props at compile time. Project and
   Project-detail technical values have shrink/wrap boundaries for the desktop
   and mobile viewport matrix; the Workspace Project selector and terminal input
-  can shrink inside their rows at 390px. This local record does not substitute
-  for GitHub evidence.
+  can shrink inside their rows at 390px, and long runtime status badges wrap in
+  a bounded heading. This local record does not substitute for GitHub evidence.
   This is not delivery evidence: exact-head CI, normal merge, merge read-back and
   post-main verification are all pending. rc8 historical jobs must be `success`
   on rc8 and exact `skipped` on rc9; other release-gate checks remain required.
