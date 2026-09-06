@@ -27,6 +27,10 @@
   rc6–rc9 composition, failure, artifact/operations and bilingual UI contract.
 - [R11 execution plan](../WAW_R11_EXECUTION_PLAN.md): active rc6–rc9 work-unit
   ownership, state-machine, Project binding, controller and acceptance plan.
+- [R11 rc8 artifact and operations rehearsal](../WAW_R11_RC8_ARTIFACT_OPERATIONS.md):
+  frozen provenance, artifact-only synthetic and dual-artifact operations
+  evidence, current candidate status, and the R12 boundary.
+
 - [R11 rc6 first use](../WAW_R11_RC6_FIRST_USE.md): typed Project binding,
   generation-one creation and Runtime executable-evidence checkpoint, with its
   verification and remaining boundaries.

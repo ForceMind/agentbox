@@ -66,15 +66,18 @@ separately tracked in R12.
   was delivered by PR #80; rc7-A deterministic composed failure injection is
   delivered by PR #81 (`b0eaef2...`) after 20/20 exact-head CI and six successful
   post-main workflows. PR #82 fixes `87f5bce...` as the versioned rc7 predecessor;
-  rc8 artifact/operations P0 contract and `0.3.0rc8` candidate are locally
-  verified and await their own exact-head CI. P1 core is local-only until the
-  required exact-artifact Linux workflow completes without a skipped socket path.
+  rc8 candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 has completed its full exact-artifact Linux
+  workflow and all 26 exact-head checks: separate predecessor/candidate
+  artifacts, 3.11/3.12/3.13 imports, non-skipping artifact synthetic flow,
+  upgrade/rollback and dynamic canary scans. This documentation head requires
+  fresh exact-head CI before review, normal merge and exact read-back; this is
+  not R12 host evidence.
 - Parallel multi-agent execution and per-stage GitHub/document updates are
   authorized by Owner on 2026-09-03. The active checklist is `EXECUTION_PLAN.md`.
 
 ## Next
 
-- F1: execute R11 rc6–rc9 controller integration, failure injection, operations
-  and full browser-selected Chinese/English UI.
+- F1: complete rc8 documentation review, fresh exact-head CI, normal merge and
+  read-back; then execute the rc9 full browser-selected Chinese/English UI.
 - F2: real Linux host activation, isolation/CLI/PTY/reboot qualification and
   product acceptance remain independently gated.

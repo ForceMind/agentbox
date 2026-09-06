@@ -1,9 +1,12 @@
 # R11 rc8 artifact and operations rehearsal
 
-Status: P0 contract frozen. This document defines the software-only rc8
-rehearsal. It does not install a release, activate a host, create a GitHub
-Release, enroll a browser extension, use a real credential, or establish R12
-product qualification.
+Status: implementation checkpoint c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2
+completed the P1 candidate exact-head verification. This documentation
+synchronization requires a fresh full exact-head CI before final review, normal
+merge and exact read-back.
+This document defines the software-only rc8 rehearsal. It does not install a
+release, activate a host, create a GitHub Release, enroll a browser extension,
+use a real credential, or establish R12 product qualification.
 
 ## Provenance
 
@@ -116,7 +119,7 @@ described as real-host qualification.
 4. add exact upgrade/rollback and canary scan rehearsal;
 5. integrate workflow gates, independent review, release record and read-back.
 
-## Current core checkpoint
+## Candidate exact-head checkpoint
 
 The P1 core supplies local fail-closed scripts for unpacked artifact provenance,
 artifact-bound upgrade/rollback evidence and encoded canary scanning. It also
@@ -124,15 +127,31 @@ adds a source-composition synthetic TCP/AF_UNIX/PTY foundation and fixes a relay
 lease-clock race found by that foundation. The synthetic test skips only where a
 local sandbox forbids loopback bind; it is not counted as a successful local run.
 
-This is an intermediate checkpoint, not rc8 acceptance. The required workflow
-now gates candidate artifact provenance/import on 3.11/3.12/3.13 and fails if
-the source synthetic loopback path skips. Commit `3f97bf0848f8aa5e1cd2cfe0baf1227a062629f0`
-also completed its exact-head Linux artifact synthetic path in the 3.11 member:
-the native build, no-index artifact venv, parent/API/Runtime origin fences and
-real TCP/AF_UNIX/RFC6455/PTY flow all passed. The 3.12/3.13 members remained
-wheelhouse import evidence only.
+The first artifact checkpoint was intentionally incomplete: commit
+3f97bf0848f8aa5e1cd2cfe0baf1227a062629f0 proved the candidate artifact
+synthetic path on Linux CPython 3.11 and independent wheelhouse imports on
+3.12/3.13. It did not yet prove the predecessor/candidate operations boundary.
 
-The required next slice still must build the exact rc7 predecessor and rc8
-candidate together, persist both artifact-only environments, dynamically
-inject and scan every canary surface, and run the full operations rehearsal.
-Until that evidence exists, rc8 remains incomplete.
+Candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed the full P1
+software gate in the Release Candidate workflow. The workflow first validates
+the frozen contract, builds the exact rc7 predecessor and exact candidate from
+separate source trees, and binds each result to its own manifest and digest. It
+creates fresh artifact-only environments, imports the candidate on CPython
+3.11/3.12/3.13, and runs the full 3.11 synthetic TCP/AF_UNIX/RFC6455/PTY path
+from the candidate artifact environment. The operations member applies the
+predecessor, upgrades through the candidate artifact, performs the
+receipt-bound rollback, and verifies the final predecessor version, manifest
+source, health/ready/meta endpoints, migrations and non-secret durable state.
+
+The same member dynamically generates payload, ticket and ephemeral-private-key
+canaries, captures its private child evidence, scans every declared surface
+before public reporting, and uploads only the safe result receipt. Its receipt
+records synthetic_waw=passed, upgrade_rollback=passed, canary_scan=passed,
+contains_secrets=false and host_qualification=false. The artifact operations job
+is 101476798319 in GitHub Actions run 34029558191. All 26 PR checks for that
+exact candidate reached terminal success.
+
+This completes the rc8 P1 software implementation and CI-evidence gate. It is
+not a delivery record until independent final review, normal merge and exact
+read-back are complete, and it remains neither a publication nor R12
+qualification.

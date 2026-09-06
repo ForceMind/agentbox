@@ -234,8 +234,11 @@ Web lint/typecheck/build/format, and independent Sol review `P0=0/P1=0`.
 The Mac `/tmp` real-UDS bind `PermissionError`, constrained synthetic diagnostic
 export and a Node runner without a Storage authority remain local evidence
 limits; Linux CI supplies the UDS result and none replaces production diagnostics,
-real-browser or host qualification. rc8 artifact/operations rehearsal is now the
-next R11 software slice; R12 remains separate.
+real-browser or host qualification. Candidate
+c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 subsequently completed the rc8
+software evidence gate; this documentation head must complete fresh exact-head
+CI before final review, normal merge and read-back before rc9 begins. R12 remains
+separate.
 
 ## rc8: artifact and operations rehearsal
 
@@ -275,6 +278,34 @@ It then completes the real synthetic socket/PTY path without a skip. CPython
 This checkpoint does not yet provide the exact predecessor artifact, dual
 artifact upgrade/rollback, dynamic canary scan, real host activation or R12
 qualification.
+
+### rc8 P1 full artifact-operations checkpoint
+
+Candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed the full
+artifact-operations gate on exact-head Linux CI. It builds the exact rc7
+release-record predecessor and rc8 candidate from separate source trees, binds
+the two artifacts to separate manifests/digests, and creates separate
+artifact-only environments. CPython 3.11/3.12/3.13 independently prove the
+candidate wheelhouse imports; the 3.11 candidate environment runs the complete
+artifact synthetic API/Runtime/RFC6455/PTY flow without a skip.
+
+The operations runner applies the predecessor, upgrades through the candidate
+artifact, completes receipt-bound rollback, and checks final predecessor
+version/source, health/ready/meta, Alembic schema, non-secret durable state and
+receipt/journal/backup integrity. It dynamically injects payload, ticket and
+ephemeral-private-key canaries into the declared inputs, scans all declared
+private and artifact surfaces before public output, and publishes only a safe
+receipt. The receipt reports passed synthetic, upgrade/rollback and canary scan
+with no secrets and no host qualification. All 26 checks for this candidate
+completed successfully. A bounded WAW background-close deadline was also added
+after a cancellation-resistant close exposed a CI teardown hang; unresolved
+work retains ownership and reaches the existing typed incomplete-shutdown state.
+
+The implementation evidence gate is complete on c998. Any later documentation
+head requires fresh full exact-head CI before independent final review, normal
+merge and exact read-back can deliver rc8. None of this enables a host capability
+or advances R12.
+
 
 ## rc9: complete browser-selected bilingual UI
 

@@ -1,4 +1,4 @@
-# Remaining development plan — 2026-09-03
+# Remaining development plan — 2026-09-06
 
 ## Goal and completion standard
 
@@ -26,10 +26,9 @@ Mac 是当前开发平台。缺少真实 Linux 目标不阻止独立的软件实
 ## 2026-09-05 execution rebaseline
 
 当前执行目标是完成 R11 软件交付。详细、可验收的 work-unit 计划见
-[WAW R11 execution plan](../WAW_R11_EXECUTION_PLAN.md)。它将 rc6 拆为 API
-process ownership、Project binding persistence/first-use provisioning 与 browser
-controller 三项；三项完成后才进入 rc7 failure matrix、rc8 artifact rehearsal 和
-rc9 full bilingual UI。
+[WAW R11 execution plan](../WAW_R11_EXECUTION_PLAN.md)。rc6 controller
+composition 与 rc7 failure matrix 已交付；rc8 candidate 已完成软件证据并等待其
+文档审查、fresh exact-head CI、merge/read-back，之后进入 rc9 full bilingual UI。
 
 Live evidence at this rebaseline: `main`/`origin/main` are
 `341a69bf855f48f90cbecfb5c6872c3bf8c28360`; Draft PR #80 head
@@ -85,9 +84,12 @@ PR #79 final head `0d9e7c7...` 的 20/20 exact-head checks、正常 merge、精�
 admission、stream、restart/shutdown、browser lifecycle、exact Stop 和 canary scans，已由
 PR #81 `04ef0ae...` 的20/20 exact-head CI、merge `b0eaef2...`、six post-main SUCCESS
 交付。PR #82 then records the unified `0.3.0rc7` version as merge `87f5bce...`;
-下一项为以该 SHA 为 predecessor 的 rc8 artifact/operations rehearsal。其 local P1
-core 已完成，仍待 exact-artifact Linux workflow、dynamic canary injection 和 zero-skip
-synthetic/operations evidence。
+下一项 rc8 的完整软件证据已在候选
+c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 上完成：26/26 exact-head checks
+成功，覆盖双 artifact、3.11/3.12/3.13 artifact import、零 skip synthetic
+WAW、upgrade/rollback 与 dynamic all-surface canary scan。最终文档审查、
+新文档 head 的完整 CI、normal merge 与 exact read-back 仍待完成；不构成
+R12 或真实 host 资格。
 
 ## Confirmed issue and unresolved observations
 
@@ -121,7 +123,7 @@ synthetic/operations evidence。
 | R8 API ciphertext relay | 已完成 | API stream relay/raw transport/auth integration | PR #77 已经独立复审、19/19 exact-head CI、正常合并、精确回读与六组 post-main SUCCESS；API 无 channel key/plaintext |
 | R9 browser trust + terminal | 已完成 | trust consumer、受管Chromium/Native Messaging/trustd provider core、bounded terminal model、Workspace双语边界 | PR #78经121 trust、185 terminal、915 Web、64 E2E、独立复审和19/19 exact-head CI合并为`15a4632f...`；真实安装与controller全链路仍属R11/R12 |
 | R10 fixed interactive process | 已完成 | 固定 runtime profile/bootstrap/bridge/attach；installer 模板 | PR #79 final head `0d9e7c7...` 经20/20 CI、正常合并`341a69bf...`、精确回读、六组post-main和Dependency Graph SUCCESS。真实 vendor/host 证据仍属 R12 |
-| R11 software integration | 进行中 | rc8 artifact/operations、rc9 全页面双语 | R4–R10；rc6 page composition、binding-drift Stop、`0.3.0rc6` version source、独立复审、117 API/relay、64 E2E、20/20 exact CI 与 merge `8480bf8...` 已完成。rc7-A is delivered by PR #81: 29 focused Python、341 related Python、997 Web、Linux-target mypy、independent P0=0/P1=0、20/20 exact CI、merge `b0eaef2...` and six post-main SUCCESS. PR #82 fixes the unified `0.3.0rc7` versioned predecessor at `87f5bce...`; rc8 P0 contract is frozen and rc8 is next. production main、real key/provider和host仍关闭。 |
+| R11 software integration | 进行中 | rc8 artifact/operations、rc9 全页面双语 | R4–R10；rc6 page composition、binding-drift Stop、0.3.0rc6 version source、独立复审、117 API/relay、64 E2E、20/20 exact CI 与 merge 8480bf8 已完成。rc7-A is delivered by PR #81: 29 focused Python、341 related Python、997 Web、Linux-target mypy、independent P0=0/P1=0、20/20 exact CI、merge b0eaef2 and six post-main SUCCESS. PR #82 fixes the unified 0.3.0rc7 versioned predecessor at 87f5bce. rc8 candidate c998fb9 completed 26/26 exact-head CI for separate artifacts, artifact-only imports, zero-skip synthetic WAW, upgrade/rollback and dynamic canary scans; documentation review, fresh documentation-head CI, merge and read-back remain. production main、real key/provider和host仍关闭。 |
 | R12 host + product acceptance | 未开始 | 授权目标的运行证据、恢复与上线记录 | R11 与 host/real-key 授权；systemd/socket/proc/cgroup/namespace/LSM/seccomp/CLI/login/reboot 与支持范围逐项验证 |
 
 API singleton 的当前未提交基础已实现 `AttachmentAuthority.begin_shutdown()`：

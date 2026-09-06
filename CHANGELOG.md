@@ -5,21 +5,33 @@ versioning for release display and PEP 440 for the Python package.
 
 ## [0.3.0rc8] - Unreleased
 
-### Planned rehearsal
+### Added
 
-- R11 rc8 is the P0 artifact and operations rehearsal candidate: it will build
-  native helpers from unpacked artifact source, import only from an artifact
-  wheelhouse environment, and use a synthetic key/peer/trust/PTY harness for
-  typed attach, input, output, resize, detach and exact Stop paths.
-- The planned upgrade then rollback rehearsal uses rc7 release-record merge
-  `87f5bce964eba231a6a7ade73eaedac7e54646ae` as its exact predecessor and
+- R11 rc8 adds the artifact and operations rehearsal: it builds native helpers
+  from unpacked artifact source, imports only from an artifact wheelhouse
+  environment, and uses a synthetic key/peer/trust/PTY harness for typed attach,
+  input, output, resize, detach and exact Stop paths.
+- The upgrade then rollback rehearsal uses rc7 release-record merge
+  87f5bce964eba231a6a7ade73eaedac7e54646ae as its exact predecessor and
   verifies non-secret database, Project, Runtime-home and epoch canaries plus
   receipt and journal integrity.
 
+### Verification
+
+- Candidate c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 completed all 26
+  exact-head checks. The full Linux gate verifies separate exact artifacts,
+  CPython 3.11/3.12/3.13 artifact imports, a non-skipping 3.11 synthetic path,
+  upgrade/rollback and all-surface dynamic canary scans.
+- The candidate also bounds cancellation-resistant WAW work-ledger shutdown so
+  unresolved cleanup retains ownership and enters the typed incomplete-shutdown
+  state rather than hanging the caller.
+
 ### Status
 
-- Artifact construction, rehearsal execution, rollback evidence, tags, GitHub
-  Releases and host actions are not completed by this version-source update.
+- The c998 implementation checkpoint and its candidate CI evidence are
+  complete. This documentation head requires fresh full exact-head CI before
+  final review, normal merge, exact read-back, tags, GitHub Releases and host
+  actions.
 
 ## [0.3.0rc7] - Unreleased
 
@@ -40,9 +52,10 @@ versioning for release display and PEP 440 for the Python package.
 
 ### Known limitations
 
-- This remains test-only software evidence. R12 host qualification and rc8
-  artifact/upgrade/rollback rehearsal and rc9 full route/state localization
-  are unfinished.
+- At the rc7 release-record checkpoint, rc8 artifact/upgrade/rollback and rc9
+  full route/state localization were unfinished. The rc8 section above records
+  its candidate software evidence; R12 host qualification and rc9 remain
+  unfinished.
 
 ## [0.3.0rc6] - Unreleased
 
