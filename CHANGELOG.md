@@ -18,6 +18,8 @@ versioning for release display and PEP 440 for the Python package.
   remain disabled.
 - Safe text component contracts reject raw-HTML props while preserving the
   repository browser-source execution boundary.
+- Project and Project-detail technical values now wrap inside their cards at
+  desktop and mobile widths, preventing horizontal viewport overflow.
 
 ### Verification status
 

@@ -129,8 +129,10 @@ repository: "ForceMind/agentbox"
   links 256; workflow action pins 48 references across 7 audited sources. The
   E2E runner rebuilds then fail-closes if production `dist` contains a Workspace
   harness marker. The repository browser-source boundary check passes and safe
-  text components reject raw-HTML props at compile time. This local record does
-  not substitute for GitHub evidence.
+  text components reject raw-HTML props at compile time. Project and
+  Project-detail technical values have shrink/wrap boundaries for the desktop
+  and mobile viewport matrix. This local record does not substitute for GitHub
+  evidence.
   This is not delivery evidence: exact-head CI, normal merge, merge read-back and
   post-main verification are all pending. rc8 historical jobs must be `success`
   on rc8 and exact `skipped` on rc9; other release-gate checks remain required.

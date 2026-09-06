@@ -108,6 +108,22 @@ textarea {
   margin-top: 1rem;
 }
 
+/* External identifiers and user names may be longer than a card or grid cell. */
+.project-grid > *,
+.project-detail-grid > *,
+.runtime-card-heading > *,
+.runtime-details,
+.runtime-details div,
+.runtime-details dd,
+.inline-form > * {
+  min-width: 0;
+}
+
+.runtime-card bdi {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 @media (min-width: 720px) {
   .project-forms,
   .project-grid,
