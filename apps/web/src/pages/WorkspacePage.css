@@ -21,7 +21,14 @@
 .workspace-current-selection bdi {
   overflow-wrap: anywhere;
 }
+.workspace-selection-card .project-forms,
+.workspace-selection-card .project-forms label {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .workspace-selection-card .project-forms select {
+  width: 100%;
   min-width: 0;
   min-height: 44px;
   max-width: 100%;
