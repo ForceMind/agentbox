@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import binascii
 import contextlib
 import fcntl
 import hashlib
@@ -25,6 +26,7 @@ import secrets
 import select
 import shutil
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -111,6 +113,7 @@ _CONTROL_HEADER = struct.Struct("!I")
 _WINSIZE = struct.Struct("HHHH")
 _ARTIFACT_VENV_ENV = "AGENTBOX_RC8_EXPECTED_VENV_ROOT"
 _ARTIFACT_VERSION_ENV = "AGENTBOX_RC8_EXPECTED_ARTIFACT_VERSION"
+_EVIDENCE_DIRECTORY_ENV = "AGENTBOX_RC8_EVIDENCE_DIR"
 _ARTIFACT_MODULES = (
     "agentbox_api",
     "agentbox_browser_trust",
@@ -122,6 +125,7 @@ _ARTIFACT_MODULES = (
     "agentbox_runtime",
     "agentbox_worker",
 )
+_CANARY_KINDS = ("payload", "private_key", "ticket")
 _ECHO_CHILD = """
 import os
 while True:
@@ -130,6 +134,98 @@ while True:
         break
     os.write(1, b\"PTY:\" + value)
 """
+
+
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for name, value in pairs:
+        if name in result:
+            raise ValueError("synthetic canary registry is invalid")
+        result[name] = value
+    return result
+
+
+def _read_canary_registry(path: Path) -> dict[str, bytes]:
+    try:
+        details = path.lstat()
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or details.st_mode & 0o077
+            or details.st_size > 16_384
+        ):
+            raise ValueError("synthetic canary registry is invalid")
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_strict_json_object)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("synthetic canary registry is invalid") from exc
+    if not isinstance(value, dict) or set(value) != {"schema_version", "canaries"}:
+        raise ValueError("synthetic canary registry is invalid")
+    entries = value.get("canaries")
+    if value.get("schema_version") != 1 or not isinstance(entries, list) or len(entries) != 2:
+        raise ValueError("synthetic canary registry is invalid")
+    result: dict[str, bytes] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"kind", "value_base64"}:
+            raise ValueError("synthetic canary registry is invalid")
+        kind = entry.get("kind")
+        encoded = entry.get("value_base64")
+        if kind not in {"payload", "private_key"} or not isinstance(encoded, str):
+            raise ValueError("synthetic canary registry is invalid")
+        try:
+            decoded = base64.b64decode(encoded.encode("ascii"), validate=True)
+        except (UnicodeError, ValueError, binascii.Error) as exc:
+            raise ValueError("synthetic canary registry is invalid") from exc
+        if base64.b64encode(decoded).decode("ascii") != encoded or kind in result:
+            raise ValueError("synthetic canary registry is invalid")
+        result[kind] = decoded
+    if set(result) != {"payload", "private_key"} or not 16 <= len(result["payload"]) <= 16_384:
+        raise ValueError("synthetic canary registry is invalid")
+    if len(result["private_key"]) != 32:
+        raise ValueError("synthetic canary registry is invalid")
+    return result
+
+
+def _write_completed_canary_registry(path: Path, values: dict[str, bytes]) -> None:
+    if (
+        set(values) != set(_CANARY_KINDS)
+        or any(type(value) is not bytes or len(value) < 16 for value in values.values())
+        or len(values["private_key"]) != 32
+    ):
+        raise ValueError("synthetic canary registry is invalid")
+    temporary = path.with_name(f".{path.name}.complete")
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "canaries": [
+                            {
+                                "kind": kind,
+                                "value_base64": base64.b64encode(values[kind]).decode("ascii"),
+                            }
+                            for kind in _CANARY_KINDS
+                        ],
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+            )
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        if path.stat().st_mode & 0o077:
+            raise OSError("synthetic canary registry permissions changed")
+    except (OSError, TypeError, ValueError) as exc:
+        with contextlib.suppress(OSError):
+            temporary.unlink()
+        raise ValueError("synthetic canary registry is invalid") from exc
 
 
 def _verify_artifact_import_origins() -> None:
@@ -165,6 +261,74 @@ def _verify_artifact_import_origins() -> None:
     distribution_root = Path(str(distribution.locate_file(""))).resolve()
     if distribution.version != version or not distribution_root.is_relative_to(root):
         raise RuntimeError("artifact synthetic import provenance is invalid")
+
+
+def _synthetic_evidence_directory() -> Path | None:
+    value = os.environ.get(_EVIDENCE_DIRECTORY_ENV)
+    if value is None:
+        return None
+    root = Path(value)
+    try:
+        details = root.lstat()
+    except OSError as exc:
+        raise RuntimeError("synthetic evidence directory is invalid") from exc
+    if not root.is_absolute() or root.is_symlink() or not root.is_dir() or details.st_mode & 0o077:
+        raise RuntimeError("synthetic evidence directory is invalid")
+    return root.resolve()
+
+
+def _prepare_synthetic_evidence() -> Path | None:
+    root = _synthetic_evidence_directory()
+    if root is None:
+        return None
+    try:
+        for role in ("api", "runtime", "pty"):
+            for stream in ("stdout", "stderr"):
+                path = root / f"{role}.{stream}"
+                descriptor = os.open(
+                    path,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o600,
+                )
+                os.close(descriptor)
+    except OSError as exc:
+        raise RuntimeError("synthetic evidence directory is invalid") from exc
+    return root
+
+
+def _redirect_synthetic_streams(role: str) -> None:
+    root = _synthetic_evidence_directory()
+    if root is None:
+        return
+    try:
+        for descriptor_number, stream in ((1, "stdout"), (2, "stderr")):
+            path = root / f"{role}.{stream}"
+            details = path.lstat()
+            if path.is_symlink() or not stat.S_ISREG(details.st_mode) or details.st_mode & 0o077:
+                raise OSError("synthetic evidence stream is invalid")
+            descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+            try:
+                os.dup2(descriptor, descriptor_number)
+            finally:
+                os.close(descriptor)
+    except OSError as exc:
+        raise RuntimeError("synthetic evidence stream is invalid") from exc
+
+
+def _record_pty_event(event: str) -> None:
+    root = _synthetic_evidence_directory()
+    if root is None:
+        return
+    if event not in {"started", "output_forwarded", "stopped"}:
+        raise RuntimeError("synthetic PTY evidence event is invalid")
+    path = root / "pty.stdout"
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+            stream.write(f"pty:{event}\n")
+            stream.flush()
+    except OSError as exc:
+        raise RuntimeError("synthetic PTY evidence stream is invalid") from exc
 
 
 def _canonical_trust_record(value: Mapping[str, object]) -> bytes:
@@ -337,6 +501,7 @@ class _RealPtyTransport:
         os.set_blocking(self._attachment, False)
         self._process = process
         self._geometry = geometry
+        _record_pty_event("started")
         return RuntimeStartEvidence(
             command.workspace_id,
             GENERATION,
@@ -371,6 +536,7 @@ class _RealPtyTransport:
             sink = self._sink
             if sink is not None:
                 sink(payload)
+                _record_pty_event("output_forwarded")
 
     def write(self, data: bytes) -> None:
         with self._lock:
@@ -464,6 +630,7 @@ class _RealPtyTransport:
                         os.close(fd)
                     setattr(self, name, -1)
         closed = process is None or process.poll() is not None
+        _record_pty_event("stopped")
         return RuntimeStopEvidence(
             WORKSPACE_ID,
             GENERATION,
@@ -703,6 +870,7 @@ def _runtime_entry(
     public_channel: socket.socket,
 ) -> None:
     _verify_artifact_import_origins()
+    _redirect_synthetic_streams("runtime")
     root, control, stream = Path(root_raw), Path(control_raw), Path(stream_raw)
     try:
         private_key = X25519PrivateKey.generate()
@@ -993,8 +1161,7 @@ async def _http_response(
     reason = {200: "OK", 409: "Conflict"}.get(status, "Bad Request")
     writer.write(
         f"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\n"
-        f"Content-Length: {len(raw)}\r\nConnection: close\r\n\r\n".encode("ascii")
-        + raw
+        f"Content-Length: {len(raw)}\r\nConnection: close\r\n\r\n".encode("ascii") + raw
     )
     await writer.drain()
 
@@ -1257,6 +1424,7 @@ def _api_entry(
     trust_record: dict[str, str | int],
 ) -> None:
     _verify_artifact_import_origins()
+    _redirect_synthetic_streams("api")
     root, control, stream = Path(root_raw), Path(control_raw), Path(stream_raw)
     try:
         asyncio.run(_api_main(listener, root, control, stream, runtime_fingerprint, trust_record))
@@ -1405,6 +1573,7 @@ def synthetic_waw_cluster(tmp_path: Path) -> Iterator[SyntheticWAWCluster]:
     del tmp_path
     root = Path(tempfile.mkdtemp(prefix=".waw-rc8-", dir=Path.cwd()))
     root.chmod(0o700)
+    evidence_root = _prepare_synthetic_evidence()
     control_path, stream_path = root / "c.sock", root / "s.sock"
     context = multiprocessing.get_context("spawn")
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1469,7 +1638,16 @@ def synthetic_waw_cluster(tmp_path: Path) -> Iterator[SyntheticWAWCluster]:
             if child.is_alive():
                 child.terminate()
                 child.join(timeout=2)
-        shutil.rmtree(root, ignore_errors=True)
+        if evidence_root is None:
+            shutil.rmtree(root, ignore_errors=True)
+        else:
+            destination = evidence_root / "fixture"
+            try:
+                if destination.exists() or destination.is_symlink():
+                    raise OSError("synthetic fixture evidence already exists")
+                root.rename(destination)
+            except OSError as exc:
+                raise RuntimeError("synthetic fixture evidence could not be preserved") from exc
 
 
 def run_synthetic_path(
@@ -1477,6 +1655,7 @@ def run_synthetic_path(
     *,
     plaintext: bytes = b"synthetic-rc8-input\n",
     browser_ephemeral_private_key: bytes | None = None,
+    ticket_observer: Callable[[str], None] | None = None,
 ) -> str:
     """Exercise the closed API/Runtime/browser/PTY path without pytest.
 
@@ -1510,6 +1689,8 @@ def run_synthetic_path(
         ticket = started.get("ticket")
         if not isinstance(ticket, str) or not ticket.startswith("wat_"):
             raise RuntimeError("synthetic ticket is invalid")
+        if ticket_observer is not None:
+            ticket_observer(ticket)
         trust_record = started.get("trust_record")
         if not isinstance(trust_record, dict):
             raise RuntimeError("synthetic trust record is invalid")
@@ -1710,11 +1891,30 @@ def run_synthetic_path(
 def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--require-loopback", action="store_true")
+    parser.add_argument("--canary-file", type=Path)
     args = parser.parse_args(argv)
     if args.require_loopback and not loopback_bind_permitted():
         return 1
     try:
-        run_synthetic_path(Path.cwd())
+        if args.canary_file is None:
+            run_synthetic_path(Path.cwd())
+        else:
+            canaries = _read_canary_registry(args.canary_file)
+
+            def record_ticket(ticket: str) -> None:
+                _write_completed_canary_registry(
+                    args.canary_file,
+                    {**canaries, "ticket": ticket.encode("ascii")},
+                )
+
+            ticket = run_synthetic_path(
+                Path.cwd(),
+                plaintext=canaries["payload"],
+                browser_ephemeral_private_key=canaries["private_key"],
+                ticket_observer=record_ticket,
+            )
+            if not ticket.startswith("wat_"):
+                raise RuntimeError("synthetic canary ticket registration differs")
     except Exception:
         return 1
     print("rc8 artifact synthetic path passed.")

@@ -32,6 +32,26 @@ def _canary_file(root: Path, values: tuple[bytes, ...]) -> Path:
     return path
 
 
+def _typed_canary_file(root: Path, values: tuple[bytes, bytes, bytes]) -> Path:
+    path = root / "typed-canaries.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "canaries": [
+                    {"kind": kind, "value_base64": base64.b64encode(value).decode("ascii")}
+                    for kind, value in zip(
+                        ("payload", "private_key", "ticket"), values, strict=True
+                    )
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    path.chmod(0o600)
+    return path
+
+
 @pytest.mark.parametrize(
     "form",
     ("raw", "hex", "upper_hex", "base64", "base64url", "base64_no_pad", "base64url_no_pad"),
@@ -90,6 +110,47 @@ def test_scan_allows_clean_evidence_and_reads_safe_canary_file(tmp_path: Path) -
     values = module.read_canary_file(canary_file)
     assert values == (canary,)
     module.scan_surfaces({"evidence": evidence}, values)
+
+
+def test_scan_requires_the_three_typed_dynamic_canaries(tmp_path: Path) -> None:
+    module = _module()
+    values = (
+        b"rc8-payload-canary-0123456789",
+        bytes(range(32)),
+        b"wat_0123456789abcdef0123456789abcdef",
+    )
+    canary_file = _typed_canary_file(tmp_path, values)
+
+    assert module.read_canary_file(canary_file) == values
+    value = json.loads(canary_file.read_text(encoding="utf-8"))
+    value["canaries"].pop()
+    canary_file.write_text(json.dumps(value), encoding="utf-8")
+    canary_file.chmod(0o600)
+    with pytest.raises(module.RehearsalCanaryError, match="canary input"):
+        module.read_canary_file(canary_file)
+
+
+def test_scan_rejects_canary_in_archive_names_and_zip_metadata(tmp_path: Path) -> None:
+    module = _module()
+    canary = b"rc8-archive-name-canary"
+    archive = tmp_path / "candidate.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.comment = base64.b64encode(canary)
+        bundle.writestr("clean.txt", b"clean")
+
+    with pytest.raises(module.RehearsalCanaryError, match="bundle"):
+        module.scan_surfaces({"bundle": archive}, (canary,))
+
+
+def test_scan_rejects_canary_in_regular_file_and_directory_names(tmp_path: Path) -> None:
+    module = _module()
+    canary = b"rc8-file-name-canary"
+    directory = tmp_path / base64.urlsafe_b64encode(canary).rstrip(b"=").decode("ascii")
+    directory.mkdir()
+    (directory / "clean.txt").write_text("clean", encoding="utf-8")
+
+    with pytest.raises(module.RehearsalCanaryError, match="surface"):
+        module.scan_surfaces({"surface": tmp_path}, (canary,))
 
 
 def test_scan_rejects_unsafe_canary_input_and_surface_symlink(tmp_path: Path) -> None:

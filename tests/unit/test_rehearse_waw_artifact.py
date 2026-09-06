@@ -9,15 +9,18 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 import virtualenv
+from agentbox_installer.artifact import extract_verified_tar, verify_release
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/rehearse-waw-artifact.py"
+OPERATIONS_SCRIPT = ROOT / "scripts/rehearse-release-operations.py"
 VERSION = "0.3.0rc8"
 SOURCE_COMMIT = "a" * 40
 MODULES = (
@@ -48,6 +51,16 @@ def _script_module() -> Any:
     if spec is None or spec.loader is None:
         raise RuntimeError("fixture could not load rehearsal script")
     module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _operations_module() -> Any:
+    spec = importlib.util.spec_from_file_location("rehearse_release_operations", OPERATIONS_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("fixture could not load operations rehearsal script")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -403,24 +416,78 @@ def test_retained_workspace_emits_an_artifact_bound_environment_proof(tmp_path: 
     proof = json.loads((workspace / "environment-proof.json").read_text(encoding="utf-8"))
     environment = workspace / "environment"
     site_packages = Path(proof["site_packages"])
+    wheel_path = f"wheelhouse/agentbox-{VERSION}-py3-none-any.whl"
+    wheel_sha256 = _sha256(workspace / "unpacked" / wheel_path)
     assert proof == {
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_sha256": _sha256(bundle["artifact"]),
         "source_sha": SOURCE_COMMIT,
+        "source_ref_kind": "pull_request_head",
         "version": VERSION,
         "environment_prefix": str(environment.resolve()),
-        "python": str((environment / "bin/python").resolve()),
+        "python_entry": str(environment / "bin/python"),
+        "python_realpath": str((environment / "bin/python").resolve()),
         "site_packages": str(site_packages),
-        "wheel_path": f"wheelhouse/agentbox-{VERSION}-py3-none-any.whl",
-        "wheel_sha256": _sha256(
-            workspace / "unpacked" / f"wheelhouse/agentbox-{VERSION}-py3-none-any.whl"
-        ),
+        "agentbox_wheel": {"path": wheel_path, "sha256": wheel_sha256},
+        "pip_report": {
+            "path": str((workspace / "pip-report.json").resolve()),
+            "sha256": _sha256(workspace / "pip-report.json"),
+        },
+        "installed_distributions": [
+            {
+                "name": "agentbox",
+                "version": VERSION,
+                "wheel_path": wheel_path,
+                "wheel_sha256": wheel_sha256,
+            }
+        ],
+        "module_origins": {name: str(site_packages / name / "__init__.py") for name in MODULES},
+        "include_system_site_packages": False,
+        "pth_files": [],
         "installer_module": str(site_packages / "agentbox_installer/lifecycle.py"),
     }
     assert (workspace / "unpacked/RELEASE_MANIFEST.json").is_file()
     assert (workspace / "pip-report.json").is_file()
     assert not list(site_packages.glob("*.pth"))
     assert (workspace / "environment-proof.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_retained_proof_round_trips_into_operations_environment_validation(tmp_path: Path) -> None:
+    bundle = _build_bundle(tmp_path)
+    workspace = tmp_path / "operations-workspace"
+    completed = subprocess.run(
+        [*_command(bundle), "--skip-native", "--workspace-root", str(workspace)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    operations = _operations_module()
+    with tempfile.TemporaryDirectory(dir=tmp_path) as temporary:
+        release = Path(temporary) / "release"
+        extract_verified_tar(bundle["artifact"], release)
+        manifest = verify_release(release)
+        artifact = operations.ArtifactInput(
+            artifact=bundle["artifact"],
+            sha256=_sha256(bundle["artifact"]),
+            version=VERSION,
+            source_sha=SOURCE_COMMIT,
+            python=workspace / "environment/bin/python",
+            environment_root=workspace / "environment",
+            environment_proof=workspace / "environment-proof.json",
+        )
+        wheel_sha256, installer_module = operations._validate_environment_binding(
+            artifact,
+            manifest,
+            release,
+            "candidate",
+        )
+    assert wheel_sha256 == _sha256(
+        workspace / "unpacked/wheelhouse/agentbox-0.3.0rc8-py3-none-any.whl"
+    )
+    assert installer_module.endswith("agentbox_installer/lifecycle.py")
 
 
 def test_artifact_synthetic_requires_a_manifest_hashed_runner(tmp_path: Path) -> None:

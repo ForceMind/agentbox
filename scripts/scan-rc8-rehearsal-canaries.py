@@ -36,6 +36,15 @@ class RehearsalCanaryError(RuntimeError):
         super().__init__(surface)
 
 
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for name, item in pairs:
+        if name in value:
+            _fail("canary input")
+        value[name] = item
+    return value
+
+
 def _fail(surface: str) -> NoReturn:
     raise RehearsalCanaryError(surface)
 
@@ -43,6 +52,12 @@ def _fail(surface: str) -> NoReturn:
 class _Budget:
     def __init__(self) -> None:
         self.total = 0
+        self.members = 0
+
+    def member(self, surface: str) -> None:
+        self.members += 1
+        if self.members > _MAX_FILES:
+            _fail(surface)
 
     def consume(self, amount: int, surface: str) -> None:
         if amount < 0 or amount > _MAX_MEMBER_BYTES:
@@ -77,7 +92,7 @@ def canary_forms(canaries: Iterable[bytes]) -> tuple[bytes, ...]:
 
 
 def read_canary_file(path: Path) -> tuple[bytes, ...]:
-    """Read a 0600 JSON list of standard-base64 dynamic canaries."""
+    """Read a 0600 legacy list or the typed rc8 payload/key/ticket registry."""
 
     try:
         details = path.lstat()
@@ -88,11 +103,43 @@ def read_canary_file(path: Path) -> tuple[bytes, ...]:
             or details.st_mode & 0o077
         ):
             _fail("canary input")
-        value: Any = json.loads(path.read_text(encoding="utf-8"))
+        value: Any = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_strict_object)
     except RehearsalCanaryError:
         raise
     except (OSError, UnicodeError, json.JSONDecodeError):
         _fail("canary input")
+    if isinstance(value, dict):
+        if set(value) != {"schema_version", "canaries"} or value.get("schema_version") != 1:
+            _fail("canary input")
+        entries = value.get("canaries")
+        if not isinstance(entries, list) or len(entries) != 3:
+            _fail("canary input")
+        typed: dict[str, str] = {}
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != {"kind", "value_base64"}:
+                _fail("canary input")
+            kind = entry.get("kind")
+            encoded = entry.get("value_base64")
+            if kind not in {"payload", "private_key", "ticket"} or not isinstance(encoded, str):
+                _fail("canary input")
+            if kind in typed:
+                _fail("canary input")
+            typed[kind] = encoded
+        if set(typed) != {"payload", "private_key", "ticket"}:
+            _fail("canary input")
+        value = [typed["payload"], typed["private_key"], typed["ticket"]]
+        try:
+            decoded_typed = [
+                base64.b64decode(item.encode("ascii"), validate=True) for item in value
+            ]
+        except (UnicodeError, binascii.Error):
+            _fail("canary input")
+        if (
+            not 16 <= len(decoded_typed[0]) <= _MAX_CANARY_BYTES
+            or len(decoded_typed[1]) != 32
+            or not decoded_typed[2].startswith(b"wat_")
+        ):
+            _fail("canary input")
     if not isinstance(value, list):
         _fail("canary input")
     decoded: list[bytes] = []
@@ -106,7 +153,12 @@ def read_canary_file(path: Path) -> tuple[bytes, ...]:
     return tuple(decoded)
 
 
-def _files(path: Path, surface: str) -> Iterable[Path]:
+def _files(
+    path: Path,
+    forms: tuple[bytes, ...],
+    budget: _Budget,
+    surface: str,
+) -> Iterable[Path]:
     try:
         details = path.lstat()
     except OSError:
@@ -114,12 +166,14 @@ def _files(path: Path, surface: str) -> Iterable[Path]:
     if stat.S_ISLNK(details.st_mode):
         _fail(surface)
     if stat.S_ISREG(details.st_mode):
+        budget.member(surface)
+        if _contains_text(path.name, forms, surface):
+            _fail(surface)
         yield path
         return
     if not stat.S_ISDIR(details.st_mode):
         _fail(surface)
     pending = [path]
-    count = 0
     while pending:
         directory = pending.pop()
         try:
@@ -127,9 +181,7 @@ def _files(path: Path, surface: str) -> Iterable[Path]:
         except OSError:
             _fail(surface)
         for entry in entries:
-            count += 1
-            if count > _MAX_FILES:
-                _fail(surface)
+            budget.member(surface)
             try:
                 entry_details = entry.stat(follow_symlinks=False)
             except OSError:
@@ -137,6 +189,8 @@ def _files(path: Path, surface: str) -> Iterable[Path]:
             if stat.S_ISLNK(entry_details.st_mode):
                 _fail(surface)
             candidate = Path(entry.path)
+            if _contains_text(entry.name, forms, surface):
+                _fail(surface)
             if stat.S_ISREG(entry_details.st_mode):
                 yield candidate
             elif stat.S_ISDIR(entry_details.st_mode):
@@ -180,6 +234,13 @@ def _looks_like_archive(name: str) -> bool:
 
 def _contains_bytes(payload: bytes, forms: tuple[bytes, ...]) -> bool:
     return any(form in payload for form in forms)
+
+
+def _contains_text(value: str, forms: tuple[bytes, ...], surface: str) -> bool:
+    try:
+        return _contains_bytes(value.encode("utf-8", "strict"), forms)
+    except UnicodeError:
+        _fail(surface)
 
 
 def _scan_archive_payload(
@@ -229,10 +290,18 @@ def _scan_tar(
     depth: int,
 ) -> bool:
     members = archive.getmembers()
-    if len(members) > _MAX_FILES:
-        _fail(surface)
     for member in members:
+        budget.member(surface)
         _safe_member_name(member.name, surface)
+        if (
+            _contains_text(member.name, forms, surface)
+            or _contains_text(member.linkname, forms, surface)
+            or any(
+                _contains_text(name, forms, surface) or _contains_text(value, forms, surface)
+                for name, value in member.pax_headers.items()
+            )
+        ):
+            return True
         if member.isdir():
             continue
         if (
@@ -262,11 +331,14 @@ def _scan_zip(
     surface: str,
     depth: int,
 ) -> bool:
+    if _contains_bytes(archive.comment, forms):
+        return True
     members = archive.infolist()
-    if len(members) > _MAX_FILES:
-        _fail(surface)
     for member in members:
+        budget.member(surface)
         _safe_member_name(member.filename, surface)
+        if _contains_text(member.filename, forms, surface) or _contains_bytes(member.extra, forms):
+            return True
         mode = (member.external_attr >> 16) & 0o170000
         if stat.S_ISLNK(mode) or member.file_size > _MAX_MEMBER_BYTES:
             _fail(surface)
@@ -282,18 +354,38 @@ def _scan_zip(
     return False
 
 
+def _open_regular(path: Path, surface: str) -> IO[bytes]:
+    try:
+        before = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(before.st_mode):
+            _fail(surface)
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        after = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(after.st_mode)
+            or before.st_dev != after.st_dev
+            or before.st_ino != after.st_ino
+        ):
+            os.close(descriptor)
+            _fail(surface)
+        return os.fdopen(descriptor, "rb")
+    except RehearsalCanaryError:
+        raise
+    except OSError:
+        _fail(surface)
+
+
 def _scan_path(path: Path, forms: tuple[bytes, ...], budget: _Budget, surface: str) -> bool:
     try:
-        details = path.lstat()
-        if path.is_symlink() or not stat.S_ISREG(details.st_mode):
-            _fail(surface)
-        if _looks_like_archive(path.name):
-            if path.name.casefold().endswith((".zip", ".whl")):
-                with zipfile.ZipFile(path) as archive:
-                    return _scan_zip(archive, forms, budget, surface, 0)
-            with tarfile.open(path, mode="r:*") as archive:
-                return _scan_tar(archive, forms, budget, surface, 0)
-        with path.open("rb") as stream:
+        if _contains_text(path.name, forms, surface):
+            return True
+        with _open_regular(path, surface) as stream:
+            if _looks_like_archive(path.name):
+                if path.name.casefold().endswith((".zip", ".whl")):
+                    with zipfile.ZipFile(stream) as archive:
+                        return _scan_zip(archive, forms, budget, surface, 0)
+                with tarfile.open(fileobj=stream, mode="r:*") as archive:
+                    return _scan_tar(archive, forms, budget, surface, 0)
             return _contains_stream(stream, forms, budget, surface)
     except RehearsalCanaryError:
         raise
@@ -315,7 +407,7 @@ def scan_surfaces(surfaces: Mapping[str, Path], canaries: Iterable[bytes]) -> No
         ):
             _fail("surface input")
         budget = _Budget()
-        for path in _files(root, surface):
+        for path in _files(root, forms, budget, surface):
             if _scan_path(path, forms, budget, surface):
                 _fail(surface)
 

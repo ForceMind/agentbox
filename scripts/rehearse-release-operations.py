@@ -79,6 +79,17 @@ _ROLLBACK_STEPS = (
     "rollback_verified",
     "receipt_written",
 )
+_ENVIRONMENT_MODULES = (
+    "agentbox_api",
+    "agentbox_browser_trust",
+    "agentbox_cli",
+    "agentbox_core",
+    "agentbox_helper",
+    "agentbox_installer",
+    "agentbox_protocol",
+    "agentbox_runtime",
+    "agentbox_worker",
+)
 
 
 class RehearsalError(RuntimeError):
@@ -474,7 +485,9 @@ class ArtifactPythonRunner:
             expected_database_revision=(
                 evidence.database_revision
                 if action == "apply"
-                else outcome.database_revision if action == "rollback" else None
+                else outcome.database_revision
+                if action == "rollback"
+                else None
             ),
         )
         return outcome
@@ -550,10 +563,11 @@ class LoopbackHealthProbe:
                     _fail("health", "API process command provenance mismatch")
                 if release_root != expected.release_root:
                     _fail("health", "API process release-root provenance mismatch")
-                listener_owned = self._process_owns_listener(process_root)
-                if listener_owned:
+                listener_port = self._process_listener_port(process_root)
+                listener_owned = listener_port is not None
+                if listener_port is not None:
                     try:
-                        observed = self._read_endpoints()
+                        observed = self._read_endpoints(listener_port)
                     except (OSError, UnicodeError, ValueError, urllib.error.URLError):
                         time.sleep(0.05)
                         continue
@@ -604,7 +618,7 @@ class LoopbackHealthProbe:
             expected.current_link,
         )
 
-    def _read_endpoints(self) -> dict[str, Mapping[str, object]]:
+    def _read_endpoints(self, port: int) -> dict[str, Mapping[str, object]]:
         observed: dict[str, Mapping[str, object]] = {}
         for name, endpoint in (
             ("health", "healthz"),
@@ -612,7 +626,7 @@ class LoopbackHealthProbe:
             ("meta", "api/v1/meta"),
         ):
             with urllib.request.urlopen(  # noqa: S310 - validated fixed loopback base
-                f"{self._base_url}/{endpoint}", timeout=2
+                f"http://127.0.0.1:{port}/{endpoint}", timeout=2
             ) as response:
                 payload = response.read(4097)
                 if response.status != 200 or len(payload) > 4096:
@@ -623,7 +637,7 @@ class LoopbackHealthProbe:
             observed[name] = cast(dict[str, object], value)
         return observed
 
-    def _process_owns_listener(self, process_root: Path) -> bool:
+    def _process_listener_port(self, process_root: Path) -> int | None:
         socket_inodes: set[str] = set()
         try:
             for descriptor in (process_root / "fd").iterdir():
@@ -634,17 +648,27 @@ class LoopbackHealthProbe:
             rows = Path("/proc/net/tcp").read_text(encoding="ascii").splitlines()[1:]
         except (OSError, UnicodeError) as exc:
             raise RehearsalError("health: API listener ownership is unavailable") from exc
-        expected_local = f"0100007F:{self._port:04X}"
+        ports: set[int] = set()
         for row in rows:
             fields = row.split()
+            local = fields[1] if len(fields) >= 2 else ""
+            address, separator, port_value = local.partition(":")
             if (
                 len(fields) >= 10
-                and fields[1] == expected_local
+                and separator == ":"
+                and address == "0100007F"
                 and fields[3] == "0A"
                 and fields[9] in socket_inodes
             ):
-                return True
-        return False
+                try:
+                    port = int(port_value, 16)
+                except ValueError:
+                    _fail("health", "API listener port provenance is invalid")
+                if self._port in {0, port}:
+                    ports.add(port)
+        if len(ports) != 1:
+            return None
+        return ports.pop()
 
 
 def _validate_operation_outcome(
@@ -688,6 +712,172 @@ def _validate_operation_outcome(
         _fail(action, "environment proof unexpectedly performed an operation")
 
 
+def _canonical_distribution_name(value: object, surface: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 200:
+        _fail(surface, "distribution name is invalid")
+    normalized = re.sub(r"[-_.]+", "-", value).casefold()
+    if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,199}", normalized) is None:
+        _fail(surface, "distribution name is invalid")
+    return normalized
+
+
+def _read_pip_report_inventory(
+    report: Path,
+    unpacked_root: Path,
+    manifest: ReleaseManifest,
+    surface: str,
+) -> tuple[dict[str, str], ...]:
+    value = _read_json(report, f"{surface}_pip_report")
+    installed = value.get("install")
+    if not isinstance(installed, list) or not installed:
+        _fail(surface, "pip report install inventory is invalid")
+    wheelhouse = unpacked_root / "wheelhouse"
+    if wheelhouse.is_symlink() or not wheelhouse.is_dir():
+        _fail(surface, "unpacked wheelhouse is unavailable")
+    values: list[dict[str, str]] = []
+    names: set[str] = set()
+    wheels: set[Path] = set()
+    for item in installed:
+        if not isinstance(item, dict):
+            _fail(surface, "pip report install inventory is invalid")
+        metadata = item.get("metadata")
+        download = item.get("download_info")
+        if not isinstance(metadata, dict) or not isinstance(download, dict):
+            _fail(surface, "pip report install inventory is invalid")
+        name = _canonical_distribution_name(metadata.get("name"), surface)
+        version = metadata.get("version")
+        url = download.get("url")
+        archive = download.get("archive_info")
+        if (
+            not isinstance(version, str)
+            or not version
+            or not isinstance(url, str)
+            or not isinstance(archive, dict)
+        ):
+            _fail(surface, "pip report install inventory is invalid")
+        parsed = urllib.parse.urlsplit(url)
+        if (
+            parsed.scheme != "file"
+            or parsed.netloc not in {"", "localhost"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            _fail(surface, "pip report install inventory is invalid")
+        wheel = Path(urllib.parse.unquote(parsed.path)).resolve()
+        try:
+            relative = wheel.relative_to(unpacked_root).as_posix()
+        except ValueError as exc:
+            raise RehearsalError(f"{surface}: pip report wheel escaped unpacked artifact") from exc
+        hashes = archive.get("hashes")
+        expected_digest = manifest.files.get(relative)
+        if (
+            name in names
+            or wheel in wheels
+            or not relative.startswith("wheelhouse/")
+            or wheel.is_symlink()
+            or not wheel.is_file()
+            or not isinstance(hashes, dict)
+            or hashes.get("sha256") != expected_digest
+            or expected_digest is None
+            or sha256_file(wheel) != expected_digest
+        ):
+            _fail(surface, "pip report wheel provenance is invalid")
+        names.add(name)
+        wheels.add(wheel)
+        values.append(
+            {
+                "name": name,
+                "version": version,
+                "wheel_path": relative,
+                "wheel_sha256": expected_digest,
+            }
+        )
+    return tuple(sorted(values, key=lambda item: item["name"]))
+
+
+def _site_distribution_inventory(site_packages: Path, surface: str) -> tuple[dict[str, str], ...]:
+    try:
+        entries = sorted(site_packages.iterdir(), key=lambda path: path.name)
+    except OSError as exc:
+        raise RehearsalError(f"{surface}: site packages are unavailable") from exc
+    values: list[dict[str, str]] = []
+    names: set[str] = set()
+    for entry in entries:
+        if entry.name.endswith(".egg-info"):
+            _fail(surface, "legacy distribution metadata is forbidden")
+        if not entry.name.endswith(".dist-info"):
+            continue
+        try:
+            details = entry.lstat()
+        except OSError as exc:
+            raise RehearsalError(f"{surface}: distribution metadata is unavailable") from exc
+        if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
+            _fail(surface, "distribution metadata is unsafe")
+        metadata = entry / "METADATA"
+        try:
+            raw = metadata.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise RehearsalError(f"{surface}: distribution metadata is unavailable") from exc
+        if len(raw) > _MAX_JSON_BYTES:
+            _fail(surface, "distribution metadata exceeds its limit")
+        name_matches = re.findall(r"(?m)^Name: ([^\r\n]+)$", raw)
+        version_matches = re.findall(r"(?m)^Version: ([^\r\n]+)$", raw)
+        if len(name_matches) != 1 or len(version_matches) != 1 or not version_matches[0]:
+            _fail(surface, "distribution metadata is invalid")
+        name = _canonical_distribution_name(name_matches[0], surface)
+        if name in names:
+            _fail(surface, "distribution metadata is duplicated")
+        names.add(name)
+        values.append({"name": name, "version": version_matches[0]})
+    return tuple(sorted(values, key=lambda item: item["name"]))
+
+
+def _verify_installed_wheel_payload(
+    wheel: Path,
+    site_packages: Path,
+    surface: str,
+) -> None:
+    try:
+        scan_wheel_bytes(wheel.read_bytes(), ())
+        with zipfile.ZipFile(wheel) as archive:
+            observed: set[str] = set()
+            for member in archive.infolist():
+                canonical_name = member.filename.rstrip("/")
+                relative = PurePosixPath(canonical_name)
+                if (
+                    not canonical_name
+                    or relative.is_absolute()
+                    or any(part in {"", ".", ".."} for part in canonical_name.split("/"))
+                    or "\\" in canonical_name
+                    or canonical_name in observed
+                ):
+                    _fail(surface, "wheel contains an unsafe path")
+                observed.add(canonical_name)
+                unix_mode = member.external_attr >> 16
+                file_type = stat.S_IFMT(unix_mode)
+                if file_type and not (stat.S_ISREG(unix_mode) or stat.S_ISDIR(unix_mode)):
+                    _fail(surface, "wheel contains a special filesystem object")
+                if member.is_dir() or member.filename.endswith(".dist-info/RECORD"):
+                    continue
+                if ".data/" in member.filename:
+                    _fail(surface, "wheel data scheme is unsupported")
+                target = site_packages.joinpath(*relative.parts)
+                try:
+                    details = target.lstat()
+                except OSError as exc:
+                    raise RehearsalError(
+                        f"{surface}: installed wheel payload is incomplete"
+                    ) from exc
+                if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
+                    _fail(surface, "installed wheel payload is unsafe")
+                if sha256_file(target) != hashlib.sha256(archive.read(member)).hexdigest():
+                    _fail(surface, "installed wheel payload digest mismatch")
+    except RehearsalError:
+        raise
+    except (ArtifactError, OSError, KeyError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise RehearsalError(f"{surface}: wheel verification failed") from exc
+
+
 def _validate_environment_binding(
     spec: ArtifactInput,
     manifest: ReleaseManifest,
@@ -699,12 +889,18 @@ def _validate_environment_binding(
         "schema_version",
         "artifact_sha256",
         "source_sha",
+        "source_ref_kind",
         "version",
         "environment_prefix",
-        "python",
+        "python_entry",
+        "python_realpath",
         "site_packages",
-        "wheel_path",
-        "wheel_sha256",
+        "agentbox_wheel",
+        "pip_report",
+        "installed_distributions",
+        "module_origins",
+        "include_system_site_packages",
+        "pth_files",
         "installer_module",
     }:
         _fail(surface, "environment proof schema is invalid")
@@ -719,21 +915,39 @@ def _validate_environment_binding(
     wheel_sha256 = manifest.files[wheel_path]
     environment_prefix = Path(os.path.abspath(spec.environment_root))
     python = Path(os.path.abspath(spec.python))
+    python_realpath = python.resolve()
     site_packages_value = proof.get("site_packages")
     installer_module_value = proof.get("installer_module")
-    if not isinstance(site_packages_value, str) or not isinstance(installer_module_value, str):
+    agentbox_wheel = proof.get("agentbox_wheel")
+    pip_report = proof.get("pip_report")
+    installed_distributions = proof.get("installed_distributions")
+    module_origins = proof.get("module_origins")
+    if (
+        not isinstance(site_packages_value, str)
+        or not isinstance(installer_module_value, str)
+        or not isinstance(agentbox_wheel, dict)
+        or set(agentbox_wheel) != {"path", "sha256"}
+        or not isinstance(pip_report, dict)
+        or set(pip_report) != {"path", "sha256"}
+        or not isinstance(installed_distributions, list)
+        or not isinstance(module_origins, dict)
+    ):
         _fail(surface, "environment proof paths are invalid")
     site_packages = Path(os.path.abspath(site_packages_value))
     installer_module = Path(os.path.abspath(installer_module_value))
     if (
-        proof.get("schema_version") != 1
+        proof.get("schema_version") != 2
         or proof.get("artifact_sha256") != spec.sha256
         or proof.get("source_sha") != spec.source_sha
+        or proof.get("source_ref_kind") != manifest.source_ref_kind
         or proof.get("version") != spec.version
         or proof.get("environment_prefix") != str(environment_prefix)
-        or proof.get("python") != str(python)
-        or proof.get("wheel_path") != wheel_path
-        or proof.get("wheel_sha256") != wheel_sha256
+        or proof.get("python_entry") != str(python)
+        or proof.get("python_realpath") != str(python_realpath)
+        or agentbox_wheel.get("path") != wheel_path
+        or agentbox_wheel.get("sha256") != wheel_sha256
+        or proof.get("include_system_site_packages") is not False
+        or proof.get("pth_files") != []
     ):
         _fail(surface, "environment proof is not bound to the exact artifact")
     try:
@@ -794,6 +1008,75 @@ def _validate_environment_binding(
         raise RehearsalError(f"{surface}: AgentBox wheel verification failed") from exc
     if not installer_member_found:
         _fail(surface, "AgentBox wheel does not contain the exact installer module")
+
+    report_path_value = pip_report.get("path")
+    report_sha256 = pip_report.get("sha256")
+    workspace = environment_prefix.parent
+    expected_report = workspace / "pip-report.json"
+    unpacked_root = workspace / "unpacked"
+    if (
+        not isinstance(report_path_value, str)
+        or not isinstance(report_sha256, str)
+        or _SHA256.fullmatch(report_sha256) is None
+        or Path(os.path.abspath(report_path_value)) != expected_report
+        or Path(os.path.abspath(spec.environment_proof)) != workspace / "environment-proof.json"
+        or unpacked_root.is_symlink()
+        or not unpacked_root.is_dir()
+        or expected_report.is_symlink()
+        or not expected_report.is_file()
+        or sha256_file(expected_report) != report_sha256
+    ):
+        _fail(surface, "environment proof workspace is invalid")
+    report_distributions = _read_pip_report_inventory(
+        expected_report,
+        unpacked_root,
+        manifest,
+        surface,
+    )
+    if (
+        any(
+            not isinstance(item, dict)
+            or set(item) != {"name", "version", "wheel_path", "wheel_sha256"}
+            or not all(isinstance(item.get(name), str) for name in item)
+            for item in installed_distributions
+        )
+        or tuple(installed_distributions) != report_distributions
+    ):
+        _fail(surface, "environment proof distribution inventory is invalid")
+    expected_site_distributions = tuple(
+        {"name": item["name"], "version": item["version"]} for item in report_distributions
+    )
+    if _site_distribution_inventory(site_packages, surface) != expected_site_distributions:
+        _fail(surface, "installed distribution inventory differs from pip report")
+    if any(site_packages.glob("*.pth")) or any(
+        (site_packages / name).exists() for name in ("sitecustomize.py", "usercustomize.py")
+    ):
+        _fail(surface, "site customization is present")
+    config = environment_prefix / "pyvenv.cfg"
+    try:
+        config_values = {
+            line.partition("=")[0].strip(): line.partition("=")[2].strip()
+            for line in config.read_text(encoding="utf-8").splitlines()
+            if "=" in line
+        }
+    except (OSError, UnicodeError) as exc:
+        raise RehearsalError(
+            f"{surface}: virtual environment configuration is unavailable"
+        ) from exc
+    if config_values.get("include-system-site-packages", "").casefold() != "false":
+        _fail(surface, "virtual environment includes system packages")
+    if set(module_origins) != set(_ENVIRONMENT_MODULES):
+        _fail(surface, "module origin inventory is invalid")
+    for name in _ENVIRONMENT_MODULES:
+        origin = module_origins.get(name)
+        expected_origin = site_packages / name / "__init__.py"
+        if not isinstance(origin, str) or Path(os.path.abspath(origin)) != expected_origin:
+            _fail(surface, "module origin escaped the artifact environment")
+    for item in report_distributions:
+        wheel = unpacked_root / item["wheel_path"]
+        if sha256_file(wheel) != item["wheel_sha256"]:
+            _fail(surface, "unpacked wheel digest differs from pip report")
+        _verify_installed_wheel_payload(wheel, site_packages, surface)
     return wheel_sha256, str(installer_module)
 
 

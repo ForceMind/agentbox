@@ -376,14 +376,22 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     assert "--requirement requirements-release-packaging.lock" in workflow
     assert "python -m pip_audit --local --skip-editable" in workflow
     assert (
-        "needs: [packaging-toolchain, release-candidate, rc8-artifact-import, "
-        "rc8-synthetic-source]" in workflow
+        "needs: [packaging-toolchain, release-candidate, rc8-predecessor-artifact, "
+        "rc8-artifact-import, rc8-synthetic-source, rc8-artifact-operations]" in workflow
     )
     assert 'test "$PACKAGING_TOOLCHAIN_RESULT" = "success"' in workflow
     assert 'test "$RELEASE_CANDIDATE_RESULT" = "success"' in workflow
+    assert 'test "$RC8_PREDECESSOR_ARTIFACT_RESULT" = "success"' in workflow
     assert 'test "$RC8_ARTIFACT_IMPORT_RESULT" = "success"' in workflow
     assert 'test "$RC8_SYNTHETIC_SOURCE_RESULT" = "success"' in workflow
+    assert 'test "$RC8_ARTIFACT_OPERATIONS_RESULT" = "success"' in workflow
     assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
+    assert "rc8-predecessor-artifact" in workflow
+    assert "rc8-artifact-operations" in workflow
+    assert "scripts/rehearse-rc8-workflow.py" in workflow
+    assert "scripts/check-rc8-rehearsal-contract.py" in workflow
+    assert "systemctl" not in workflow
+    assert "sudo" not in workflow
     assert "rc8-artifact-import" in workflow
     assert (
         'PYTHONPATH=installer/src python scripts/rehearse-waw-artifact.py "${args[@]}"' in workflow

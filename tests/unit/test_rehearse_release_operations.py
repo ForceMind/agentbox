@@ -42,6 +42,11 @@ operations: Any = _load_script()
 def _wheel(version: str) -> bytes:
     payload = io.BytesIO()
     modules = {
+        "agentbox_api/__init__.py": "",
+        "agentbox_browser_trust/__init__.py": "",
+        "agentbox_cli/__init__.py": "",
+        "agentbox_core/__init__.py": "",
+        "agentbox_helper/__init__.py": "",
         "agentbox_installer/__init__.py": "",
         "agentbox_installer/artifact.py": (
             "from dataclasses import dataclass\n"
@@ -66,6 +71,9 @@ def _wheel(version: str) -> bytes:
             "class InstallLayout:\n    def __init__(self, root): self.root = root\n"
         ),
         "agentbox_installer/lifecycle.py": "class AgentBoxInstaller: pass\n",
+        "agentbox_protocol/__init__.py": "",
+        "agentbox_runtime/__init__.py": "",
+        "agentbox_worker/__init__.py": "",
     }
     with zipfile.ZipFile(payload, "w") as archive:
         for name, content in modules.items():
@@ -82,7 +90,12 @@ def _wheel(version: str) -> bytes:
 
 
 def _artifact(
-    tmp_path: Path, *, version: str, source_sha: str, revision: str
+    tmp_path: Path,
+    *,
+    version: str,
+    source_sha: str,
+    revision: str,
+    source_ref_kind: str | None = None,
 ) -> tuple[Path, str, str]:
     wheel = _wheel(version)
     files = {
@@ -106,18 +119,30 @@ def _artifact(
             f"revision = {revision!r}\ndown_revision = None\n"
         ).encode("ascii"),
     }
+    for abi in ("cp311", "cp312", "cp313"):
+        files[f"wheelhouse/fixture-1.0-{abi}-{abi}-manylinux_2_28_x86_64.whl"] = b"fixture\n"
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "version": version,
         "database_revision": revision,
         "database_backward_compatible": False,
         "files": {name: hashlib.sha256(content).hexdigest() for name, content in files.items()},
         "source_commit": source_sha,
+        "source_ref_kind": source_ref_kind
+        or ("main" if version == "0.3.0rc7" else "pull_request_head"),
         "target_platform": "linux",
         "target_architecture": "x86_64",
         "build_mode": "release-candidate",
         "file_allowlist": sorted(files),
-        "required_python": ">=3.11",
+        "required_python": ">=3.11,<3.14",
+        "supported_python_abis": ["cp311", "cp312", "cp313"],
+        "build_toolchain": {
+            "node": "22.23.2",
+            "pip": "26.2.1",
+            "pnpm": "11.20.0",
+            "setuptools": "83.0.0",
+            "wheel": "0.46.2",
+        },
         "platform_support": [
             {
                 "distribution": "fixture",
@@ -156,7 +181,8 @@ def _environment(
     wheel_sha256: str,
     real_venv: bool = False,
 ) -> tuple[Path, Path, Path]:
-    root = tmp_path / name
+    workspace = tmp_path / name
+    root = workspace / "environment"
     if real_venv:
         venv.EnvBuilder(with_pip=False).create(root)
     else:
@@ -164,6 +190,7 @@ def _environment(
         python.parent.mkdir(parents=True)
         python.write_text("#!/bin/sh\nexit 99\n", encoding="ascii")
         python.chmod(0o755)
+        (root / "pyvenv.cfg").write_text("include-system-site-packages = false\n", encoding="ascii")
     python = root / "bin/python"
     if real_venv:
         completed = subprocess.run(
@@ -187,6 +214,9 @@ def _environment(
         if stream is None:
             raise RuntimeError("fixture wheel is unavailable")
         wheel_payload = stream.read()
+    unpacked_wheel = workspace / "unpacked" / wheel_path
+    unpacked_wheel.parent.mkdir(parents=True, exist_ok=True)
+    unpacked_wheel.write_bytes(wheel_payload)
     with zipfile.ZipFile(io.BytesIO(wheel_payload)) as wheel_archive:
         for member in wheel_archive.infolist():
             if member.is_dir():
@@ -195,19 +225,63 @@ def _environment(
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(wheel_archive.read(member))
     installer_module = site_packages / "agentbox_installer/lifecycle.py"
-    proof = tmp_path / f"{name}-proof.json"
+    source_ref_kind = "main" if version == "0.3.0rc7" else "pull_request_head"
+    report = workspace / "pip-report.json"
+    _write_json(
+        report,
+        {
+            "version": "1",
+            "pip_version": "26.2.1",
+            "install": [
+                {
+                    "metadata": {"name": "agentbox", "version": version},
+                    "download_info": {
+                        "url": unpacked_wheel.as_uri(),
+                        "archive_info": {"hashes": {"sha256": wheel_sha256}},
+                    },
+                }
+            ],
+        },
+    )
+    proof = workspace / "environment-proof.json"
     _write_json(
         proof,
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "artifact_sha256": artifact_sha256,
             "source_sha": source_sha,
+            "source_ref_kind": source_ref_kind,
             "version": version,
             "environment_prefix": str(root),
-            "python": str(python),
+            "python_entry": str(python),
+            "python_realpath": str(python.resolve()),
             "site_packages": str(site_packages),
-            "wheel_path": wheel_path,
-            "wheel_sha256": wheel_sha256,
+            "agentbox_wheel": {"path": wheel_path, "sha256": wheel_sha256},
+            "pip_report": {"path": str(report), "sha256": sha256_file(report)},
+            "installed_distributions": [
+                {
+                    "name": "agentbox",
+                    "version": version,
+                    "wheel_path": wheel_path,
+                    "wheel_sha256": wheel_sha256,
+                }
+            ],
+            "module_origins": {
+                name: str(site_packages / name / "__init__.py")
+                for name in (
+                    "agentbox_api",
+                    "agentbox_browser_trust",
+                    "agentbox_cli",
+                    "agentbox_core",
+                    "agentbox_helper",
+                    "agentbox_installer",
+                    "agentbox_protocol",
+                    "agentbox_runtime",
+                    "agentbox_worker",
+                )
+            },
+            "include_system_site_packages": False,
+            "pth_files": [],
             "installer_module": str(installer_module),
         },
     )
@@ -360,8 +434,7 @@ class SyntheticRunner:
                     (evidence.database_revision,),
                 )
                 connection.execute(
-                    "CREATE TABLE durable_data "
-                    "(id INTEGER PRIMARY KEY, value TEXT NOT NULL UNIQUE)"
+                    "CREATE TABLE durable_data (id INTEGER PRIMARY KEY, value TEXT NOT NULL UNIQUE)"
                 )
                 connection.execute("INSERT INTO durable_data VALUES (1,'preserved')")
             previous = None
@@ -851,6 +924,61 @@ def test_environment_payload_is_bound_to_the_artifact_wheel(
         )
 
     assert runner.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda proof: proof.update(source_ref_kind="other"),
+        lambda proof: proof.update(pth_files=["unapproved.pth"]),
+        lambda proof: proof["module_origins"].update(agentbox_core="/tmp/escaped.py"),
+        lambda proof: proof.update(
+            installed_distributions=[
+                *proof["installed_distributions"],
+                {
+                    "name": "ambient",
+                    "version": "1",
+                    "wheel_path": "wheelhouse/ambient-1-py3-none-any.whl",
+                    "wheel_sha256": "0" * 64,
+                },
+            ]
+        ),
+    ),
+)
+def test_environment_proof_rejects_ref_site_module_and_distribution_drift(
+    rehearsal: tuple[Any, Any, Any], mutation: Any
+) -> None:
+    predecessor, candidate, paths = rehearsal
+    proof = json.loads(candidate.environment_proof.read_text(encoding="utf-8"))
+    mutation(proof)
+    _write_json(candidate.environment_proof, proof)
+
+    with pytest.raises(operations.RehearsalError, match="candidate:"):
+        operations.run_rehearsal(
+            predecessor,
+            candidate,
+            paths,
+            runner=SyntheticRunner(paths),
+            health_probe=SyntheticHealth(),
+        )
+
+
+def test_environment_proof_rejects_actual_site_customization(
+    rehearsal: tuple[Any, Any, Any],
+) -> None:
+    predecessor, candidate, paths = rehearsal
+    proof = json.loads(candidate.environment_proof.read_text(encoding="utf-8"))
+    site_packages = Path(proof["site_packages"])
+    (site_packages / "unapproved.pth").write_text("/tmp/ambient\n", encoding="utf-8")
+
+    with pytest.raises(operations.RehearsalError, match="site customization is present"):
+        operations.run_rehearsal(
+            predecessor,
+            candidate,
+            paths,
+            runner=SyntheticRunner(paths),
+            health_probe=SyntheticHealth(),
+        )
 
 
 @pytest.mark.parametrize(

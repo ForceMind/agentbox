@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
 from agentbox_installer.artifact import (
@@ -67,11 +67,15 @@ class ArtifactEnvironment:
         site_packages: Path,
         installer_module: Path,
         pip_report: Path,
+        module_origins: dict[str, str],
+        installed_distributions: tuple[dict[str, str], ...],
     ) -> None:
         self.root = root
         self.site_packages = site_packages
         self.installer_module = installer_module
         self.pip_report = pip_report
+        self.module_origins = module_origins
+        self.installed_distributions = installed_distributions
 
 
 def _run(
@@ -292,7 +296,11 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_pip_report(report: Path, release: Path, manifest: ReleaseManifest) -> None:
+def verify_pip_report(
+    report: Path,
+    release: Path,
+    manifest: ReleaseManifest,
+) -> tuple[dict[str, str], ...]:
     """Bind every newly installed distribution to a manifest-hashed artifact wheel."""
 
     try:
@@ -307,6 +315,8 @@ def verify_pip_report(report: Path, release: Path, manifest: ReleaseManifest) ->
     wheelhouse = (release_root / "wheelhouse").resolve()
     agentbox_versions: list[str] = []
     observed_wheels: set[Path] = set()
+    observed_distributions: list[dict[str, str]] = []
+    distribution_names: set[str] = set()
     for item in installed:
         if not isinstance(item, dict):
             raise RehearsalError("wheelhouse install provenance")
@@ -353,10 +363,23 @@ def verify_pip_report(report: Path, release: Path, manifest: ReleaseManifest) ->
             or _sha256(wheel) != expected_digest
         ):
             raise RehearsalError("wheelhouse install provenance")
-        if re.sub(r"[-_.]+", "-", name).casefold() == "agentbox":
+        normalized_name = re.sub(r"[-_.]+", "-", name).casefold()
+        if normalized_name in distribution_names:
+            raise RehearsalError("wheelhouse install provenance")
+        distribution_names.add(normalized_name)
+        observed_distributions.append(
+            {
+                "name": normalized_name,
+                "version": version,
+                "wheel_path": relative,
+                "wheel_sha256": expected_digest,
+            }
+        )
+        if normalized_name == "agentbox":
             agentbox_versions.append(version)
     if agentbox_versions != [manifest.version]:
         raise RehearsalError("wheelhouse install provenance")
+    return tuple(sorted(observed_distributions, key=lambda item: item["name"]))
 
 
 PROBE = r"""
@@ -364,6 +387,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import json
+import re
 import site
 import sys
 import sysconfig
@@ -396,6 +420,25 @@ if any(site_packages.glob("*.pth")) or any(
     (site_packages / name).exists() for name in ("sitecustomize.py", "usercustomize.py")
 ):
     raise RuntimeError("site customization is present")
+config = venv / "pyvenv.cfg"
+config_values = {
+    line.partition("=")[0].strip(): line.partition("=")[2].strip()
+    for line in config.read_text(encoding="utf-8").splitlines()
+    if "=" in line
+} if config.is_file() else {}
+if config_values.get("include-system-site-packages", "").casefold() != "false":
+    raise RuntimeError("system site packages are enabled")
+distributions = []
+for item in importlib.metadata.distributions():
+    name = item.metadata.get("Name")
+    if not isinstance(name, str) or not name or not isinstance(item.version, str):
+        raise RuntimeError("installed distribution metadata is invalid")
+    distributions.append({"name": re.sub(r"[-_.]+", "-", name).casefold(), "version": item.version})
+if any(len(value["name"]) == 0 for value in distributions):
+    raise RuntimeError("installed distribution metadata is invalid")
+if len({value["name"] for value in distributions}) != len(distributions):
+    raise RuntimeError("installed distribution metadata is duplicated")
+distributions.sort(key=lambda value: value["name"])
 installer = importlib.import_module("agentbox_installer.lifecycle")
 installer_origin = getattr(getattr(installer, "__spec__", None), "origin", None)
 if not isinstance(installer_origin, str):
@@ -411,6 +454,9 @@ print(json.dumps({
     "manifest_source_ref_kind": manifest.get("source_ref_kind"),
     "manifest_version": manifest.get("version"),
     "modules": observed,
+    "distributions": distributions,
+    "include_system_site_packages": False,
+    "pth_files": [],
     "site_packages": str(site_packages),
 }, sort_keys=True))
 """.strip()
@@ -420,12 +466,25 @@ def verify_isolated_imports(
     output: str,
     venv: Path,
     manifest: ReleaseManifest,
-) -> tuple[Path, Path]:
+    expected_distributions: tuple[dict[str, str], ...],
+) -> tuple[Path, Path, dict[str, str]]:
     try:
         value: Any = json.loads(output)
     except json.JSONDecodeError as exc:
         raise RehearsalError("isolated import provenance") from exc
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or set(value) != {
+        "distribution_root",
+        "distribution_version",
+        "installer_module",
+        "manifest_source_commit",
+        "manifest_source_ref_kind",
+        "manifest_version",
+        "modules",
+        "distributions",
+        "include_system_site_packages",
+        "pth_files",
+        "site_packages",
+    }:
         raise RehearsalError("isolated import provenance")
     modules = value.get("modules")
     if not isinstance(modules, dict) or set(modules) != set(AGENTBOX_MODULES):
@@ -444,6 +503,18 @@ def verify_isolated_imports(
         or value.get("manifest_source_ref_kind") != manifest.source_ref_kind
     ):
         raise RehearsalError("isolated import provenance")
+    distributions = value.get("distributions")
+    expected_live_distributions = tuple(
+        {"name": item["name"], "version": item["version"]} for item in expected_distributions
+    )
+    if (
+        not isinstance(distributions, list)
+        or any(not isinstance(item, dict) for item in distributions)
+        or tuple(distributions) != expected_live_distributions
+        or value.get("include_system_site_packages") is not False
+        or value.get("pth_files") != []
+    ):
+        raise RehearsalError("isolated import provenance")
     site_packages_value = value.get("site_packages")
     installer_module_value = value.get("installer_module")
     if not isinstance(site_packages_value, str) or not isinstance(installer_module_value, str):
@@ -456,7 +527,7 @@ def verify_isolated_imports(
         or installer_module != site_packages / "agentbox_installer/lifecycle.py"
     ):
         raise RehearsalError("isolated import provenance")
-    return site_packages, installer_module
+    return site_packages, installer_module, cast(dict[str, str], modules)
 
 
 def rehearse_wheelhouse(
@@ -477,6 +548,7 @@ def rehearse_wheelhouse(
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
         "PATH": os.defpath,
+        "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
     }
     _run(
@@ -544,7 +616,7 @@ def rehearse_wheelhouse(
         env=pip_env,
         surface="artifact wheelhouse install",
     )
-    verify_pip_report(report, release, manifest)
+    installed_distributions = verify_pip_report(report, release, manifest)
     probe_output = _run(
         (
             str(python),
@@ -559,8 +631,20 @@ def rehearse_wheelhouse(
         env=pip_env,
         surface="isolated agentbox imports",
     )
-    site_packages, installer_module = verify_isolated_imports(probe_output, venv, manifest)
-    return ArtifactEnvironment(venv, site_packages, installer_module, report)
+    site_packages, installer_module, module_origins = verify_isolated_imports(
+        probe_output,
+        venv,
+        manifest,
+        installed_distributions,
+    )
+    return ArtifactEnvironment(
+        venv,
+        site_packages,
+        installer_module,
+        report,
+        module_origins,
+        installed_distributions,
+    )
 
 
 def _agentbox_wheel(release: Path, manifest: ReleaseManifest) -> tuple[str, str]:
@@ -611,20 +695,29 @@ def write_environment_proof(
 ) -> Path:
     """Persist the exact schema consumed by the upgrade/rollback rehearsal."""
 
-    if manifest.source_commit is None:
+    if manifest.source_commit is None or manifest.source_ref_kind is None:
         raise RehearsalError("environment proof")
     wheel_path, wheel_sha256 = _agentbox_wheel(release, manifest)
     proof = root / "environment-proof.json"
     value = {
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_sha256": _sha256(artifact),
         "source_sha": manifest.source_commit,
+        "source_ref_kind": manifest.source_ref_kind,
         "version": manifest.version,
         "environment_prefix": str(environment.root.resolve()),
-        "python": str((environment.root / "bin/python").resolve()),
+        "python_entry": str(environment.root / "bin/python"),
+        "python_realpath": str((environment.root / "bin/python").resolve()),
         "site_packages": str(environment.site_packages),
-        "wheel_path": wheel_path,
-        "wheel_sha256": wheel_sha256,
+        "agentbox_wheel": {"path": wheel_path, "sha256": wheel_sha256},
+        "pip_report": {
+            "path": str(environment.pip_report.resolve()),
+            "sha256": _sha256(environment.pip_report),
+        },
+        "installed_distributions": list(environment.installed_distributions),
+        "module_origins": environment.module_origins,
+        "include_system_site_packages": False,
+        "pth_files": [],
         "installer_module": str(environment.installer_module),
     }
     try:
