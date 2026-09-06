@@ -34,6 +34,16 @@ that environment, and that distribution version and manifest provenance match.
 The import matrix runs on CPython 3.11, 3.12 and 3.13; the full WAW rehearsal
 runs on 3.11.
 
+The 3.11 artifact runner is a manifest-hashed closed source file at
+`rehearsal/waw_rc8_synthetic.py`. It is copied only from the reviewed test
+fixture during the artifact build, then runs with the artifact venv's
+`python -I`; it does not import AgentBox code from the checkout. Its parent,
+API child and Runtime child each reject an `agentbox_*` origin outside that
+venv before opening sockets, generating keys or starting a PTY. The venv starts
+without pip, uses the manifest-hashed bootstrap pip wheel only to install into
+the venv's site-packages, and rejects `.pth`, `sitecustomize.py`,
+`usercustomize.py`, user site and non-wheelhouse pip-report inputs.
+
 ### Synthetic WAW path
 
 The test harness uses separate API and Runtime processes, real AF_UNIX control
@@ -116,8 +126,13 @@ local sandbox forbids loopback bind; it is not counted as a successful local run
 
 This is an intermediate checkpoint, not rc8 acceptance. The required workflow
 now gates candidate artifact provenance/import on 3.11/3.12/3.13 and fails if
-the source synthetic loopback path skips. It still must build the exact rc7
-predecessor and rc8 candidate together, execute the synthetic path from
-artifact-only environments, dynamically inject/scan every canary surface, and
-run the full operations rehearsal. Until that evidence exists, rc8 remains
-incomplete.
+the source synthetic loopback path skips. Commit `3f97bf0848f8aa5e1cd2cfe0baf1227a062629f0`
+also completed its exact-head Linux artifact synthetic path in the 3.11 member:
+the native build, no-index artifact venv, parent/API/Runtime origin fences and
+real TCP/AF_UNIX/RFC6455/PTY flow all passed. The 3.12/3.13 members remained
+wheelhouse import evidence only.
+
+The required next slice still must build the exact rc7 predecessor and rc8
+candidate together, persist both artifact-only environments, dynamically
+inject and scan every canary surface, and run the full operations rehearsal.
+Until that evidence exists, rc8 remains incomplete.

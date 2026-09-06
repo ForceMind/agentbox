@@ -337,6 +337,14 @@ data-preserving uninstall. Existing fault matrices remain the update/rollback
 rehearsal. No CI job writes runner `/etc`/`/opt`, uses production credentials,
 creates a tag/Release, or connects to a real server.
 
+The rc8 artifact path additionally starts its venv with `--without-pip`, uses
+only the manifest-hashed bootstrap pip wheel to install manifest-hashed
+wheelhouse distributions, and fails if `.pth`, `sitecustomize.py`,
+`usercustomize.py`, user site or an AgentBox module origin escapes the venv. The
+manifest-hashed synthetic runner is then executed with `python -I` on Linux
+CPython 3.11; its parent, API child and Runtime child independently enforce the
+same origin fence before their real TCP/AF_UNIX/RFC6455/PTY fixture starts.
+
 R10 additionally checks that every inert WAW policy template is package data,
 the Codex exact-two TOML policy bundle is canonical and digest-pinned, the fixed
 interactive-process document is release inventory, and native helper source/

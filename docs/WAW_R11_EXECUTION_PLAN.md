@@ -261,6 +261,21 @@ It requires artifact-local native compilation, isolated wheelhouse imports,
 synthetic API/Runtime/RFC6455/PTY execution, exact rc7→rc8→rc7
 upgrade/rollback and canary scans before rc8 may be delivered.
 
+### rc8 P1 artifact synthetic checkpoint
+
+Commit `3f97bf0848f8aa5e1cd2cfe0baf1227a062629f0` completed the first required
+artifact execution evidence on Linux CI. The candidate bundle includes one
+closed manifest-hashed rehearsal runner. CPython 3.11 creates a fresh
+`--without-pip` venv, bootstraps pip only from the bundle's reviewed wheel,
+installs no-index from the bundle wheelhouse and uses `python -I` to prove the
+parent, API child and Runtime child import every AgentBox module from that venv.
+It then completes the real synthetic socket/PTY path without a skip. CPython
+3.12 and 3.13 independently prove artifact wheelhouse imports.
+
+This checkpoint does not yet provide the exact predecessor artifact, dual
+artifact upgrade/rollback, dynamic canary scan, real host activation or R12
+qualification.
+
 ## rc9: complete browser-selected bilingual UI
 
 Only `navigator.languages[0]` is read once per browser document. A primary `zh`

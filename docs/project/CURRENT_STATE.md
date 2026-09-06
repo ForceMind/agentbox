@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T05:01:44Z"
-verified_by: "codex-r11-rc8-p1-core-local"
+verified_at_utc: "2026-09-06T06:57:14Z"
+verified_by: "codex-r11-rc8-p1-artifact-ci"
 repository: "ForceMind/agentbox"
 ---
 
@@ -98,8 +98,12 @@ repository: "ForceMind/agentbox"
   zero-skip Linux evidence remain required; rc8 is still incomplete.
 - The first rc8 required workflow gate validates candidate artifact provenance
   imports across CPython 3.11/3.12/3.13 and requires the real source synthetic
-  loopback path. Exact dual-artifact operations and injected all-surface canary
-  evidence remain unimplemented.
+  loopback path. Commit `3f97bf0848f8aa5e1cd2cfe0baf1227a062629f0` added and
+  passed the non-skipping 3.11 artifact-only synthetic path: the manifest-hashed
+  runner, artifact bootstrap-pip/no-index venv and parent/API/Runtime module
+  origin fences all ran on Linux CI. The 3.12/3.13 members remain independent
+  artifact import evidence. Exact dual-artifact operations and injected
+  all-surface canary evidence remain unimplemented.
 - Earlier paragraphs labeled “current uncommitted” are retained historical
   checkpoints. The branch/CI status in this opening section and the rc6 current
   composition checkpoint supersede them.

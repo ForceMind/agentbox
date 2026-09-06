@@ -29,9 +29,12 @@ blocker is resolved. Do not request the same software approval again.
   declared surface. rc8 is not complete until that workflow evidence exists.
 - The first required workflow gate now runs candidate artifact provenance/import
   across Python 3.11/3.12/3.13 and requires the real source synthetic loopback
-  path. Extend it next with exact rc7/rc8 dual-artifact operations and dynamic
-  canary injection/scanning; source-only synthetic success is not artifact
-  execution evidence.
+  path. Commit `3f97bf0...` also completed the 3.11 artifact-only synthetic
+  path on Linux: its manifest-hashed runner, no-index venv and parent/API/Runtime
+  origin fences passed without a skip. Extend it next with exact rc7/rc8
+  dual-artifact operations and dynamic canary injection/scanning; source-only
+  synthetic success is no longer the sole synthetic evidence, but it does not
+  replace operations or canary acceptance.
 - Execute the 2026-09-05 R11 work-unit plan in
   `docs/WAW_R11_EXECUTION_PLAN.md`: rc6-A API lifecycle, rc6-B Project binding
   persistence/first use and rc6-C browser controller are delivered by PR #80
