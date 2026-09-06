@@ -157,3 +157,21 @@ def test_environment_surfaces_exclude_venv_bin_symlinks(tmp_path: Path) -> None:
     assert "candidate_environment" not in surfaces
     assert surfaces["candidate_site_packages"] == site_packages
     assert all("/bin" not in str(path) for path in surfaces.values())
+
+
+def test_operations_failure_summary_is_strict_and_never_echoes_stderr(tmp_path: Path) -> None:
+    module = _module()
+    stdout = tmp_path / "stdout"
+    stderr = tmp_path / "stderr"
+    stdout.write_bytes(b"")
+    stderr.write_text(
+        "release operations rehearsal failed: candidate: installed wheel payload digest mismatch\n",
+        encoding="utf-8",
+    )
+    assert module._operations_failure_surface(stdout, stderr) == "upgrade-rollback.candidate"
+
+    stderr.write_text(
+        "release operations rehearsal failed: payload: rc8-secret-canary\n",
+        encoding="utf-8",
+    )
+    assert module._operations_failure_surface(stdout, stderr) == "upgrade-rollback"

@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -34,6 +35,26 @@ _PREDECESSOR_VERSION = "0.3.0rc7"
 _CANDIDATE_VERSION = "0.3.0rc8"
 _PREDECESSOR_SHA = "87f5bce964eba231a6a7ade73eaedac7e54646ae"
 _CANARY_ORDER = ("payload", "private_key", "ticket")
+_OPERATIONS_FAILURE_SURFACES = frozenset(
+    {
+        "predecessor",
+        "candidate",
+        "provenance",
+        "health",
+        "apply",
+        "rollback",
+        "predecessor_apply",
+        "candidate_apply",
+        "database",
+        "backup",
+        "receipt",
+        "journal",
+        "projects",
+        "runtime_home",
+        "epoch",
+        "binding_store",
+    }
+)
 
 
 class WorkflowError(RuntimeError):
@@ -244,6 +265,7 @@ def _capture_command(
     env: dict[str, str],
     evidence: Path,
     timeout: int,
+    failure_surface: Callable[[Path, Path], str] | None = None,
 ) -> None:
     """Capture bounded child output; no child log reaches workflow stdout/stderr."""
 
@@ -357,6 +379,8 @@ def _capture_command(
     ):
         _fail(label)
     if drain_incomplete or timed_out or exceeded.is_set() or process.returncode != 0:
+        if failure_surface is not None:
+            _fail(failure_surface(stdout_path, stderr_path))
         _fail(label)
 
 
@@ -654,6 +678,23 @@ def _operations_summary(path: Path) -> dict[str, object]:
     if any(not isinstance(value[name], str) for name in required - {"health_verified"}):
         _fail("operations report")
     return value
+
+
+def _operations_failure_surface(_stdout: Path, stderr: Path) -> str:
+    """Expose only a fixed operations surface after private stderr is scanned."""
+
+    try:
+        raw = stderr.read_bytes()
+        text = raw.decode("utf-8", "strict")
+    except (OSError, UnicodeError):
+        return "upgrade-rollback"
+    match = re.fullmatch(
+        r"release operations rehearsal failed: ([a-z][a-z0-9_]{0,63}): [A-Za-z0-9 _.:-]{1,300}\n",
+        text,
+    )
+    if match is None or match.group(1) not in _OPERATIONS_FAILURE_SURFACES:
+        return "upgrade-rollback"
+    return f"upgrade-rollback.{match.group(1)}"
 
 
 def _write_result(
@@ -1110,6 +1151,7 @@ def rehearse(arguments: argparse.Namespace) -> dict[str, object]:
             env=operations_environment,
             evidence=evidence,
             timeout=900,
+            failure_surface=_operations_failure_surface,
         )
     )
     environments = guarded(
