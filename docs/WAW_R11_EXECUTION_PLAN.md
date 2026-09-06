@@ -236,9 +236,10 @@ export and a Node runner without a Storage authority remain local evidence
 limits; Linux CI supplies the UDS result and none replaces production diagnostics,
 real-browser or host qualification. Candidate
 c998fb9981553e6fbd6e411f7fe79f57ddc8ebb2 subsequently completed the rc8
-software evidence gate; this documentation head must complete fresh exact-head
-CI before final review, normal merge and read-back before rc9 begins. R12 remains
-separate.
+software evidence gate. Documentation head 710ceef then completed a fresh
+26-check matrix, merged normally as 95bf65d6114008b962985f7311941499c961a7b8 with exact parents 87f5bce and
+710ceef, and all six post-main workflows succeeded. rc8 is delivered as
+software evidence; rc9 begins next. R12 remains separate.
 
 ## rc8: artifact and operations rehearsal
 
@@ -301,10 +302,11 @@ completed successfully. A bounded WAW background-close deadline was also added
 after a cancellation-resistant close exposed a CI teardown hang; unresolved
 work retains ownership and reaches the existing typed incomplete-shutdown state.
 
-The implementation evidence gate is complete on c998. Any later documentation
-head requires fresh full exact-head CI before independent final review, normal
-merge and exact read-back can deliver rc8. None of this enables a host capability
-or advances R12.
+Implementation checkpoint c998 and documentation head 710ceef each completed
+their 26-check exact-head matrix. PR #83 merged normally as 95bf65d6114008b962985f7311941499c961a7b8 with exact
+parents 87f5bce/710ceef, and all six post-main workflows succeeded. rc8 is
+delivered as software evidence. None of this enables a host capability or
+advances R12.
 
 
 ## rc9: complete browser-selected bilingual UI

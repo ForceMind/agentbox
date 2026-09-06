@@ -26,12 +26,18 @@ versioning for release display and PEP 440 for the Python package.
   unresolved cleanup retains ownership and enters the typed incomplete-shutdown
   state rather than hanging the caller.
 
+### Merge read-back
+
+- Documentation head 710ceef696757a8a1f2a9165f2312672db57bb1e completed a fresh
+  26 exact-head matrix and merged normally in PR #83 as
+  95bf65d6114008b962985f7311941499c961a7b8, with exact parents 87f5bce and
+  710ceef. Security, Deployment, Frontend, E2E, Release Candidate and Backend
+  all completed success on that merge.
+
 ### Status
 
-- The c998 implementation checkpoint and its candidate CI evidence are
-  complete. This documentation head requires fresh full exact-head CI before
-  final review, normal merge, exact read-back, tags, GitHub Releases and host
-  actions.
+- The rc8 software rehearsal is delivered. It remains unreleased: no tag,
+  GitHub Release, host action, credential use or R12 qualification occurred.
 
 ## [0.3.0rc7] - Unreleased
 
