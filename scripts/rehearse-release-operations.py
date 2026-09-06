@@ -860,7 +860,18 @@ def _verify_installed_wheel_payload(
                 if member.is_dir() or member.filename.endswith(".dist-info/RECORD"):
                     continue
                 if ".data/" in member.filename:
-                    _fail(surface, "wheel data scheme is unsupported")
+                    data_parts = relative.parts
+                    if (
+                        len(data_parts) < 3
+                        or not data_parts[0].endswith(".data")
+                        or data_parts[1] != "headers"
+                    ):
+                        _fail(surface, "wheel data scheme is unsupported")
+                    # pip --target does not install wheel header entries under
+                    # the target site-packages tree. They remain manifest-bound
+                    # bundle content and are scanned there, but have no runtime
+                    # payload to compare under this artifact environment.
+                    continue
                 target = site_packages.joinpath(*relative.parts)
                 try:
                     details = target.lstat()

@@ -926,6 +926,40 @@ def test_environment_payload_is_bound_to_the_artifact_wheel(
     assert runner.calls == []
 
 
+def test_target_environment_ignores_manifest_bound_wheel_headers_only(tmp_path: Path) -> None:
+    site_packages = tmp_path / "site-packages"
+    (site_packages / "fixture-1.0.dist-info").mkdir(parents=True)
+    (site_packages / "fixture/__init__.py").parent.mkdir(parents=True)
+    (site_packages / "fixture/__init__.py").write_text("", encoding="utf-8")
+    (site_packages / "fixture-1.0.dist-info/METADATA").write_text(
+        "Metadata-Version: 2.1\nName: fixture\nVersion: 1.0\n",
+        encoding="utf-8",
+    )
+    (site_packages / "fixture-1.0.dist-info/WHEEL").write_text(
+        "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        encoding="utf-8",
+    )
+    wheel = tmp_path / "fixture-1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("fixture/__init__.py", "")
+        archive.writestr(
+            "fixture-1.0.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: fixture\nVersion: 1.0\n",
+        )
+        archive.writestr(
+            "fixture-1.0.dist-info/WHEEL",
+            "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        )
+        archive.writestr("fixture-1.0.data/headers/fixture.h", "header\n")
+        archive.writestr("fixture-1.0.dist-info/RECORD", "")
+
+    operations._verify_installed_wheel_payload(wheel, site_packages, "candidate")
+    with zipfile.ZipFile(wheel, "a") as archive:
+        archive.writestr("fixture-1.0.data/scripts/fixture", "#!/bin/sh\n")
+    with pytest.raises(operations.RehearsalError, match="wheel data scheme"):
+        operations._verify_installed_wheel_payload(wheel, site_packages, "candidate")
+
+
 @pytest.mark.parametrize(
     "mutation",
     (
