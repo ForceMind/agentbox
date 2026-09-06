@@ -1,8 +1,10 @@
 import type { ComponentPropsWithoutRef } from 'react'
 
+import type { RawHtmlProperty } from './rawHtmlProperty'
+
 export interface OpaqueUserValueProps extends Omit<
   ComponentPropsWithoutRef<'bdi'>,
-  'children' | 'dangerouslySetInnerHTML' | 'dir' | 'translate'
+  'children' | RawHtmlProperty | 'dir' | 'translate'
 > {
   readonly value: string
 }

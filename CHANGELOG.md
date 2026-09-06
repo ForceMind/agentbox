@@ -16,6 +16,8 @@ versioning for release display and PEP 440 for the Python package.
 - The test-only Workspace harness has a distinct origin and is excluded from the
   production bundle. Sensitive E2E artifacts (trace, video and screenshots)
   remain disabled.
+- Safe text component contracts reject raw-HTML props while preserving the
+  repository browser-source execution boundary.
 
 ### Verification status
 

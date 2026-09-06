@@ -7,6 +7,7 @@ import {
   type Locale,
 } from '../../i18n'
 import { TechnicalValue } from './TechnicalValue'
+import type { RawHtmlProperty } from './rawHtmlProperty'
 
 export interface LocalizableApiError {
   readonly code: string
@@ -16,7 +17,7 @@ export interface LocalizableApiError {
 
 export interface LocalizedApiErrorProps extends Omit<
   HTMLAttributes<HTMLSpanElement>,
-  'children' | 'dangerouslySetInnerHTML'
+  'children' | RawHtmlProperty
 > {
   readonly error: LocalizableApiError
   readonly locale?: Locale

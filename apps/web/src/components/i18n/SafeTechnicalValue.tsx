@@ -1,10 +1,11 @@
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { technicalValue } from '../../i18n'
+import type { RawHtmlProperty } from './rawHtmlProperty'
 
 export interface SafeTechnicalValueProps extends Omit<
   ComponentPropsWithoutRef<'bdi'>,
-  'children' | 'dangerouslySetInnerHTML' | 'dir' | 'lang' | 'translate'
+  'children' | RawHtmlProperty | 'dir' | 'lang' | 'translate'
 > {
   readonly fallback: ReactNode
   readonly value: unknown
