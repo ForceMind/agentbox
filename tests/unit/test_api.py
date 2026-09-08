@@ -5,13 +5,18 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+import agentbox_api.main as api_main
 import httpx
 import pytest
+import uvicorn
 from agentbox_api.main import create_app
+from agentbox_api.waw_application import WAWAPIApplication, WAWMode
+from agentbox_api.waw_deployment_profile import WAWDeploymentProfileObservation
 from agentbox_core import __version__
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.services import ControlPlaneServices
 from conftest import FakeClaudeRuntime, FakeCodexRuntime, FakeProjectRuntime
+from fastapi import APIRouter, FastAPI
 from sqlalchemy.engine import make_url
 
 
@@ -22,6 +27,227 @@ class FakeWAWBindCoordinator:
     async def bind(self) -> dict[str, object]:
         self.calls += 1
         return {"status": "BOUND"}
+
+
+def test_installed_module_app_and_run_settings_are_singletons() -> None:
+    assert api_main.app.state.settings is api_main._installed_settings
+
+
+def test_run_uses_the_installed_app_without_rebuilding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def unexpected_factory(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("run must not rebuild the API")
+
+    def unexpected_profile() -> object:
+        raise AssertionError("run must not reread the deployment profile")
+
+    def captured_run(application: object, **kwargs: object) -> None:
+        captured["application"] = application
+        captured.update(kwargs)
+
+    monkeypatch.setattr(api_main, "create_app", unexpected_factory)
+    monkeypatch.setattr(api_main, "load_waw_deployment_profile", unexpected_profile)
+    monkeypatch.setattr(uvicorn, "run", captured_run)
+    api_main.run()
+
+    assert captured["application"] is api_main.app
+    assert captured["host"] == api_main._installed_settings.bind_host
+    assert captured["port"] == api_main._installed_settings.bind_port
+
+
+def _profile(mode: WAWMode) -> WAWDeploymentProfileObservation:
+    return WAWDeploymentProfileObservation(
+        mode=mode,
+        source="missing_default" if mode is WAWMode.DISABLED else "installed_profile",
+        raw_sha256=None if mode is WAWMode.DISABLED else "a" * 64,
+        parent_identity=(1,),
+        file_identity=None if mode is WAWMode.DISABLED else (2,),
+    )
+
+
+def test_factory_failure_closes_only_services_created_by_this_factory(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = 0
+
+    def close() -> None:
+        nonlocal closed
+        closed += 1
+
+    static_root = tmp_path / "static"
+    static_root.mkdir()
+    broken = settings.model_copy(update={"static_dir": static_root})
+    monkeypatch.setattr(services.database, "close", close)
+    monkeypatch.setattr(api_main, "build_services", lambda _settings: services)
+
+    with pytest.raises(RuntimeError, match="frontend artifact"):
+        create_app(broken)
+    assert closed == 1
+
+
+def test_factory_failure_preserves_caller_owned_services(
+    tmp_path: Path,
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = 0
+
+    def close() -> None:
+        nonlocal closed
+        closed += 1
+
+    static_root = tmp_path / "static"
+    static_root.mkdir()
+    broken = settings.model_copy(update={"static_dir": static_root})
+    monkeypatch.setattr(services.database, "close", close)
+
+    with pytest.raises(RuntimeError, match="frontend artifact"):
+        create_app(broken, services)
+    assert closed == 0
+
+
+def test_middleware_registration_failure_uses_the_owned_services_cleanup_boundary(
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = 0
+
+    def close() -> None:
+        nonlocal closed
+        closed += 1
+
+    def failed_middleware(self: FastAPI, *_args: object, **_kwargs: object) -> None:
+        del self
+        raise RuntimeError("synthetic middleware registration failure")
+
+    monkeypatch.setattr(services.database, "close", close)
+    monkeypatch.setattr(api_main, "build_services", lambda _settings: services)
+    monkeypatch.setattr(FastAPI, "add_middleware", failed_middleware)
+
+    with pytest.raises(RuntimeError, match="synthetic middleware registration failure"):
+        create_app(settings)
+    assert closed == 1
+
+
+@pytest.mark.parametrize("caller_owns_services", [False, True])
+@pytest.mark.parametrize(
+    ("registration_method", "failed_path"),
+    [
+        ("add_api_route", "/healthz"),
+        ("add_api_websocket_route", "/api/v1/workspaces/{workspace_id}/stream"),
+    ],
+)
+def test_decorated_route_registration_failure_respects_service_ownership(
+    caller_owns_services: bool,
+    registration_method: str,
+    failed_path: str,
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = 0
+    original_registration = getattr(APIRouter, registration_method)
+
+    def close() -> None:
+        nonlocal closed
+        closed += 1
+
+    def register(router: APIRouter, path: str, *args: object, **kwargs: object) -> None:
+        if path == failed_path:
+            raise RuntimeError("synthetic decorated route registration failure")
+        original_registration(router, path, *args, **kwargs)
+
+    monkeypatch.setattr(services.database, "close", close)
+    monkeypatch.setattr(api_main, "build_services", lambda _settings: services)
+    monkeypatch.setattr(APIRouter, registration_method, register)
+
+    with pytest.raises(RuntimeError, match="synthetic decorated route registration failure"):
+        create_app(settings, services if caller_owns_services else None)
+    assert closed == (0 if caller_owns_services else 1)
+
+
+@pytest.mark.parametrize("caller_owns_services", [False, True])
+def test_production_waw_factory_failure_respects_service_ownership(
+    caller_owns_services: bool,
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = 0
+
+    def close() -> None:
+        nonlocal closed
+        closed += 1
+
+    production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    monkeypatch.setattr(services.database, "close", close)
+    monkeypatch.setattr(
+        api_main, "load_waw_deployment_profile", lambda: _profile(WAWMode.FILESYSTEM_V2)
+    )
+    monkeypatch.setattr(
+        WAWAPIApplication,
+        "production",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("synthetic WAW factory failure")),
+    )
+    if not caller_owns_services:
+        monkeypatch.setattr(api_main, "build_services", lambda _settings: services)
+
+    with pytest.raises(RuntimeError, match="synthetic WAW factory failure"):
+        create_app(production, services if caller_owns_services else None)
+    assert closed == (0 if caller_owns_services else 1)
+
+
+@pytest.mark.parametrize("caller_owns_services", [False, True])
+def test_factory_and_owned_database_cleanup_failure_preserve_both_failures(
+    caller_owns_services: bool,
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    close_calls = 0
+
+    def failing_close() -> None:
+        nonlocal close_calls
+        close_calls += 1
+        raise RuntimeError("synthetic database cleanup failure")
+
+    monkeypatch.setattr(services.database, "close", failing_close)
+    monkeypatch.setattr(
+        api_main, "load_waw_deployment_profile", lambda: _profile(WAWMode.FILESYSTEM_V2)
+    )
+    monkeypatch.setattr(
+        WAWAPIApplication,
+        "production",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("synthetic WAW factory failure")),
+    )
+    if not caller_owns_services:
+        monkeypatch.setattr(api_main, "build_services", lambda _settings: services)
+
+    if caller_owns_services:
+        with pytest.raises(RuntimeError, match="synthetic WAW factory failure"):
+            create_app(production, services)
+        assert close_calls == 0
+    else:
+        with pytest.raises(BaseExceptionGroup) as raised:
+            create_app(production)
+        assert (
+            str(raised.value)
+            == "API factory failed and owned database cleanup failed (2 sub-exceptions)"
+        )
+        assert [str(error) for error in raised.value.exceptions] == [
+            "synthetic WAW factory failure",
+            "synthetic database cleanup failure",
+        ]
+        assert close_calls == 1
 
 
 @pytest.mark.anyio

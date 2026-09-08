@@ -539,13 +539,13 @@ blocked遵守工具规定，不用其表示普通等待或困难。后台定时�
 | --- | --- | --- |
 | 本轮完整计划 | 已完成 | 内容/链接检查及两项独立复核通过；Owner已明确批准执行 |
 | R12-A | 进行中 | host checklist已更新；API软件契约已收敛；[target record](R12_TARGET_RECORD.md)区分稳定决定与外部输入，Runtime契约继续收敛 |
-| R12-B | 进行中 | Terra/high按[API bootstrap契约](../WAW_R12_API_BOOTSTRAP.md)实现；无host不阻断软件，未声称安装可用 |
-| R12-C | 进行中 | Sol/high按[C1 key-port契约](../WAW_R12_RUNTIME_KEY_PORT.md)实现；C2 production auth-isolation/executor、C3 main仍待推进 |
+| R12-B | 待验证 | rc11实现与82定向tests、51发布检查、2版本checks、Ruff/Black/Linuxmypy通过；Architecture/Security/Test发现已修复并最终PASS，等待exact-head CI/merge回读 |
+| R12-C | 进行中 | [C1 key port](../WAW_R12_RUNTIME_KEY_PORT.md)实现与65定向tests通过，Architecture/Security最终PASS；独立交付/CI待完成，C2 auth-isolation/executor、C3 main待推进 |
 | R12-D/E/F | 未开始 | 对应稳定契约/输入齐备后开始；不使用测试provider接通main |
 | R12-G/H/I | 未开始 | 需要所选目标和具体外部操作范围，以及真实证据 |
 | R12-J/K | 未开始 | 需要先前gate通过及对应生产/发行授权 |
 | 后续产品路线 | Proposed | 按第11节逐项建立有限执行范围 |
-| Git同步 | 进行中 | 批准记录已commit/push为`edbcab6d19470254a51b3265557bb09f26d86a29`，PR #89进行CI；R12-A合同将跟随该文档PR交付，API源码另批提交 |
+| Git同步 | 进行中 | PR #89 final head `f58a41a...`完成26检查并合并`6db8d62...`，精确parents回读完成；六个post-main流程成功（Frontend同SHA重跑后成功）；API/C1源码分别待交付 |
 
 规划交付验证记录（2026-09-08，执行前历史）：
 

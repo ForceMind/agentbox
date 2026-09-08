@@ -175,8 +175,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc10"
-    assert npm_version("0.3.0rc10") == "0.3.0-rc.10"
+    assert verify_version_consistency(root) == "0.3.0rc11"
+    assert npm_version("0.3.0rc11") == "0.3.0-rc.11"
 
 
 def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> None:
@@ -512,7 +512,7 @@ def _successful_gate_results(candidate_version: str) -> dict[str, str]:
     }
 
 
-@pytest.mark.parametrize("candidate_version", ["0.3.0rc8", "0.3.0rc9", "0.3.0rc10"])
+@pytest.mark.parametrize("candidate_version", ["0.3.0rc8", "0.3.0rc9", "0.3.0rc10", "0.3.0rc11"])
 def test_release_gate_cli_accepts_exact_version_contract(candidate_version: str) -> None:
     root = Path(__file__).resolve().parents[2]
 
@@ -537,7 +537,7 @@ def test_release_gate_cli_rejects_missing_argument(missing: str) -> None:
     assert "the following arguments are required:" in completed.stderr
 
 
-@pytest.mark.parametrize("candidate_version", ["", "0.3.0rc7", "0.3.0rc11"])
+@pytest.mark.parametrize("candidate_version", ["", "0.3.0rc7", "0.3.0rc12"])
 def test_release_gate_cli_rejects_unknown_version(candidate_version: str) -> None:
     root = Path(__file__).resolve().parents[2]
     completed = _run_release_gate(root, candidate_version, _successful_gate_results("0.3.0rc8"))
@@ -553,6 +553,8 @@ def test_release_gate_cli_rejects_unknown_version(candidate_version: str) -> Non
         ("0.3.0rc9", "rc8-predecessor-artifact", "success"),
         ("0.3.0rc10", "rc8-predecessor-artifact", "success"),
         ("0.3.0rc10", "packaging-toolchain", "skipped"),
+        ("0.3.0rc11", "rc8-predecessor-artifact", "success"),
+        ("0.3.0rc11", "packaging-toolchain", "skipped"),
         ("0.3.0rc8", "rc8-artifact-import", "skipped"),
         ("0.3.0rc8", "packaging-toolchain", "failure"),
         ("0.3.0rc8", "release-candidate", "cancelled"),

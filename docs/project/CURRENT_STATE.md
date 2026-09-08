@@ -7,6 +7,39 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## R12-B candidate and R12-C1 work in progress
+
+PR #89 delivered the approved plan and initial R12 software contracts. Exact
+head `f58a41a9723bbe0c81bbc0e4ea38c3b996ccf636` completed 26 terminal checks
+(24 success, two prescribed rc8 skips). Normal merge at 2026-09-08T06:45:45Z is
+`6db8d62896bf573ad4e1bc6c253db55003c87275`; Git read-back verified parents
+`1ab28e524d018df3d59e6c48f01646bb1021a978` and
+`f58a41a9723bbe0c81bbc0e4ea38c3b996ccf636`. Local main and origin/main were
+fast-forwarded to this merge; all API/Runtime WIP was preserved on
+`codex/r12-api-bootstrap` without reset/stash.
+
+Post-main Backend `34196104692`, Deployment `34196104777`, E2E `34196104741`,
+Security `34196104744`, Release Candidate `34196104784` succeeded. Frontend
+`34196104716` first failed one unchanged exact-Stop case with a 5000ms timeout
+and PROTOCOL_INVALID; attempt 2 on the same SHA succeeded. The same unchanged
+two-case file passed a one-worker local rerun. No timeout/assertion was relaxed;
+the first failure remains recorded and does not establish a resolved root cause.
+
+R12-B is the rc11 candidate: final local API/profile/application tests passed
+82 cases. Architecture/Security/Test reviews passed after repairing parent-entry
+replacement, missing-leaf recheck, cleanup-error visibility and a single factory
+boundary covering all decorator/router/static registration. Ruff/Black and
+Linux-target mypy passed; exact-head CI and software merge are pending.
+Main-agent release validation passed 51 cases and the extension version check
+passed 2 via direct Node/Vitest. An initial pnpm
+wrapper dependency-repair attempt aborted; no forced cache/module purge followed.
+
+R12-C1 has separate Runtime-only key/authority WIP with 65 targeted passes and
+final Architecture/Security PASS after construction cleanup repair;
+it is excluded from the API candidate's staged files and eventual PR. C2 needs
+a real fixed auth-isolation provider before C3 can connect Runtime main.
+No real host/client/key/credential/CLI/reboot or production operation occurred.
+
 ## R12 execution snapshot
 
 On 2026-09-08 the Owner explicitly approved PRP-2026-09-08-v1 and instructed
