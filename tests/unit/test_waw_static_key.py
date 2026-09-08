@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import grp
 import hashlib
 import inspect
 import os
+import pwd
 import stat
 from dataclasses import replace
 from pathlib import Path
@@ -12,7 +14,7 @@ from typing import Any
 
 import pytest
 from agentbox_runtime import waw_static_key as static_key_subject
-from agentbox_runtime.waw_bootstrap import _issue_verified_execution_authority
+from agentbox_runtime.waw_fixed_transport import _issue_verified_execution_authority
 from agentbox_runtime.waw_static_key import (
     WAWRuntimeStaticKeyConstructionCleanupError,
     WAWRuntimeStaticKeyError,
@@ -85,16 +87,16 @@ def test_production_factory_uses_only_fixed_system_identity(
         observed.update(kwargs)
         return sentinel
 
-    monkeypatch.setattr(static_key_subject.pwd, "getpwnam", passwd)
-    monkeypatch.setattr(static_key_subject.grp, "getgrnam", group)
+    monkeypatch.setattr(pwd, "getpwnam", passwd)
+    monkeypatch.setattr(grp, "getgrnam", group)
     monkeypatch.setattr(
-        static_key_subject.os,
+        os,
         "getresuid",
         lambda: (1201, 1201, 1201),
         raising=False,
     )
     monkeypatch.setattr(
-        static_key_subject.os,
+        os,
         "getresgid",
         lambda: (1202, 1202, 1202),
         raising=False,
@@ -132,17 +134,17 @@ def test_production_factory_rejects_non_exact_system_identity(
     gids: tuple[int, int, int],
 ) -> None:
     monkeypatch.setattr(
-        static_key_subject.pwd,
+        pwd,
         "getpwnam",
         lambda _name: SimpleNamespace(pw_uid=account_uid, pw_gid=account_gid),
     )
     monkeypatch.setattr(
-        static_key_subject.grp,
+        grp,
         "getgrnam",
         lambda _name: SimpleNamespace(gr_gid=group_gid),
     )
-    monkeypatch.setattr(static_key_subject.os, "getresuid", lambda: uids, raising=False)
-    monkeypatch.setattr(static_key_subject.os, "getresgid", lambda: gids, raising=False)
+    monkeypatch.setattr(os, "getresuid", lambda: uids, raising=False)
+    monkeypatch.setattr(os, "getresgid", lambda: gids, raising=False)
     monkeypatch.setattr(
         static_key_subject,
         "_open_fixed_key",
@@ -397,8 +399,9 @@ def test_key_rejects_wrong_fingerprint_and_non_v2_authority_without_leak(
     v1_root = _fixture_tree(tmp_path / "v1")
     v1 = _open_waw_runtime_static_key_test_only(v1_root)
     v1.preflight()
+    invalid_authority: Any = SimpleNamespace(runtime_attestation_x25519_fingerprint=_fingerprint())
     with pytest.raises(WAWRuntimeStaticKeyError, match="authority is invalid"):
-        v1.bind_authority(SimpleNamespace(runtime_attestation_x25519_fingerprint=_fingerprint()))
+        v1.bind_authority(invalid_authority)
     assert v1.close()
 
 
