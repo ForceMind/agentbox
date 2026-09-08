@@ -1,5 +1,13 @@
 # Decision and Architecture Index
 
+- `R12-EXECUTION-2026-09-08`: Owner explicitly approved
+  [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md) and instructed execution.
+  R12-A–K is the finite checklist, one Goal is active, and stable software
+  contracts may be closed before concrete host inputs arrive. Mac Chrome/Edge
+  terminal and mobile management/Stop are the approved suggested scope;
+  new client qualification, real host/key/credential operations and production/
+  publication are not implied by software-plan approval.
+
 - `WORKSTATION-EVOLUTION-2026-09-08`: the Owner requested a seven-project
   evidence-based audit and the first independently verifiable improvement within
   current authority. [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md) and

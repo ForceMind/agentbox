@@ -1,5 +1,9 @@
 # AgentBox Project Context Index
 
+- [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；
+  R12 软件接线、客户端、真实主机/CLI、恢复与有限生产的依赖、验收和授权范围。
+  R12-A已开始；软件执行、host资格化与生产准入分开记录。
+
 本目录是治理执行入口。每个任务执行前按顺序读取：
 
 1. `CHARTER.md`
