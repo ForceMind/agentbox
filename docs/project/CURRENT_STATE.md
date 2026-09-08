@@ -24,6 +24,19 @@ is Mac Chrome/Edge terminal and mobile management/exact Stop; neither is newly
 qualified. Concrete host/Origin and Mac management/distribution inputs have
 been requested while independent software work continues.
 
+The approval-record commit `edbcab6d19470254a51b3265557bb09f26d86a29` is pushed
+in PR #89; CI is in progress and no merge is claimed. The host checklist has
+been updated to v2/current five-gate semantics, with all field observations
+NOT RUN. [R12 API bootstrap](../WAW_R12_API_BOOTSTRAP.md) is the stable software
+contract now being implemented by Terra/high. [R12 target record](R12_TARGET_RECORD.md)
+records pending external inputs and the separate local Mac read-only observation.
+
+R12-C1 is being implemented by Sol/high under
+[the fixed key-port contract](../WAW_R12_RUNTIME_KEY_PORT.md). It binds the key
+to the same verified manifest authority before epoch commit and retains exact
+ownership/cleanup. Production auth-isolation is a separate C2 prerequisite;
+Runtime main stays closed until C1/C2 and the C3 entrypoint are complete.
+
 No real host/client activation, key/credential operation, paid CLI call, reboot,
 production deployment or publication has occurred. Source version is still
 `0.3.0rc10`; all five product gates remain unqualified. The planning snapshot

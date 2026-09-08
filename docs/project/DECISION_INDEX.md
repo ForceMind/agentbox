@@ -1,5 +1,11 @@
 # Decision and Architecture Index
 
+- `R12-API-PROFILE-V1`: under approvedPRP software scope,
+  [fixed API bootstrap](../WAW_R12_API_BOOTSTRAP.md) uses one installer-owned,
+  bounded root-owned profile and retains disabled compatibility only for a
+  verified absent leaf; ordinary environment/request input cannot enable WAW.
+  Implementation and target qualification remain separate from this contract.
+
 - `R12-EXECUTION-2026-09-08`: Owner explicitly approved
   [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md) and instructed execution.
   R12-A–K is the finite checklist, one Goal is active, and stable software

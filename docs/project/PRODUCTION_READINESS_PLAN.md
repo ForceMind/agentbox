@@ -475,7 +475,7 @@ input uncertain却需要重试；Stop/cleanup不确定；预算超限；数据�
 ## 10. Goal、模型、协作与Git交付
 
 计划批准后主智能体先 `get_goal`：存在一致有效Goal则沿用；无Goal则创建一个主目标。
-本轮查到无Goal，但不提前启动执行。阶段清单留在本文第12节，同任务不为每个阶段重复建Goal。
+执行前查到无Goal，Owner批准后已创建active主Goal。阶段清单留在本文第12节，同任务不为每个阶段重复建Goal。
 若已有不一致的未完成Goal，保留并报告冲突；不得覆盖或伪造完成。
 
 建议主目标文本：完成获批R12范围的production API/Runtime接线、服务器与客户端制品，
@@ -538,12 +538,14 @@ blocked遵守工具规定，不用其表示普通等待或困难。后台定时�
 | 工作 | 当前状态 | 成果/剩余条件 |
 | --- | --- | --- |
 | 本轮完整计划 | 已完成 | 内容/链接检查及两项独立复核通过；Owner已明确批准执行 |
-| R12-A | 进行中 | active Goal已创建；并行收敛API/Runtime契约与当前host checklist；host/Origin/分发/key/预算输入待具体化 |
-| R12-B/C/D/E/F | 未开始 | 稳定软件契约冻结后逐项开始；无host不阻断独立软件工作 |
+| R12-A | 进行中 | host checklist已更新；API软件契约已收敛；[target record](R12_TARGET_RECORD.md)区分稳定决定与外部输入，Runtime契约继续收敛 |
+| R12-B | 进行中 | Terra/high按[API bootstrap契约](../WAW_R12_API_BOOTSTRAP.md)实现；无host不阻断软件，未声称安装可用 |
+| R12-C | 进行中 | Sol/high按[C1 key-port契约](../WAW_R12_RUNTIME_KEY_PORT.md)实现；C2 production auth-isolation/executor、C3 main仍待推进 |
+| R12-D/E/F | 未开始 | 对应稳定契约/输入齐备后开始；不使用测试provider接通main |
 | R12-G/H/I | 未开始 | 需要所选目标和具体外部操作范围，以及真实证据 |
 | R12-J/K | 未开始 | 需要先前gate通过及对应生产/发行授权 |
 | 后续产品路线 | Proposed | 按第11节逐项建立有限执行范围 |
-| Git同步 | 进行中 | 既有仓库的文档/软件批次CI、正常merge与回读已获批；当前尚无本计划commit/push/PR |
+| Git同步 | 进行中 | 批准记录已commit/push为`edbcab6d19470254a51b3265557bb09f26d86a29`，PR #89进行CI；R12-A合同将跟随该文档PR交付，API源码另批提交 |
 
 规划交付验证记录（2026-09-08，执行前历史）：
 
