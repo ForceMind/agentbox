@@ -1,5 +1,14 @@
 # AgentBox Roadmap
 
+## Current execution: approved R12 plan
+
+Owner approved [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md) on 2026-09-08.
+R12-A contract/input closure is in progress; dependency-ready B/C/D/E/F software
+follows. G/H/I real host/client/CLI qualification and J/K production/publication
+remain separately authorized and evidence-bound. R11 and WEV-1 stay delivered;
+later workstation features remain Proposed. The earlier snapshot below records
+the starting state and does not override this execution update.
+
 ## Current increment: workstation evolution
 
 The 2026-09-08 task adds an audit and evidence-backed product evolution to this

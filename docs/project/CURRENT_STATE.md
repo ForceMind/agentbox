@@ -1,11 +1,70 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-08T03:51:55Z"
-verified_by: "codex-workstation-evolution-merge-readback"
+verified_at_utc: "2026-09-08T06:21:24Z"
+verified_by: "codex-r12-execution-preflight"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## R12 execution snapshot
+
+On 2026-09-08 the Owner explicitly approved PRP-2026-09-08-v1 and instructed
+execution. The current branch is `codex/production-readiness-plan`; the three
+planning-document changes are retained task-owned WIP. Fetch and Git/GitHub
+preflight exited 0: HEAD, main, origin/main and merge-base remain
+`1ab28e524d018df3d59e6c48f01646bb1021a978`, with six successful exact-main
+workflows and only historical Draft PR #42 open.
+
+One persistent Goal is active. R12-A is in progress: Sol/ultra owns read-only
+API contract planning, Sol/high owns read-only Runtime provider planning,
+Terra/high owns the current host-checklist update, and the main agent owns
+shared plan/state/integration/Git delivery. The approved suggested client scope
+is Mac Chrome/Edge terminal and mobile management/exact Stop; neither is newly
+qualified. Concrete host/Origin and Mac management/distribution inputs have
+been requested while independent software work continues.
+
+The approval-record commit `edbcab6d19470254a51b3265557bb09f26d86a29` is pushed
+in PR #89; CI is in progress and no merge is claimed. The host checklist has
+been updated to v2/current five-gate semantics, with all field observations
+NOT RUN. [R12 API bootstrap](../WAW_R12_API_BOOTSTRAP.md) is the stable software
+contract now being implemented by Terra/high. [R12 target record](R12_TARGET_RECORD.md)
+records pending external inputs and the separate local Mac read-only observation.
+
+R12-C1 is being implemented by Sol/high under
+[the fixed key-port contract](../WAW_R12_RUNTIME_KEY_PORT.md). It binds the key
+to the same verified manifest authority before epoch commit and retains exact
+ownership/cleanup. Production auth-isolation is a separate C2 prerequisite;
+Runtime main stays closed until C1/C2 and the C3 entrypoint are complete.
+
+No real host/client activation, key/credential operation, paid CLI call, reboot,
+production deployment or publication has occurred. Source version is still
+`0.3.0rc10`; all five product gates remain unqualified. The planning snapshot
+below is historical and no longer requires execution confirmation.
+
+## Production readiness planning snapshot
+
+The Owner requested a complete plan after the read-only project assessment.
+Live preflight returned exit 0: clean `main`, `origin/main`, HEAD and merge-base
+were `1ab28e524d018df3d59e6c48f01646bb1021a978`, the observed merge of PR #88.
+All six exact-main workflows are terminal success. Only historical Draft PR #42
+is open. This supersedes older branch/baseline snapshots below, not their evidence.
+
+The document-only branch is `codex/production-readiness-plan`.
+[PRODUCTION_READINESS_PLAN](PRODUCTION_READINESS_PLAN.md) records the complete
+R12 software, artifact, host, client, CLI, recovery and limited-production plan,
+plus separately proposed later product work. The requested client preference has
+not yet been supplied; Mac Chrome/Edge terminal plus mobile management/Stop is a
+recommendation only. Host, Origin, key and external-operation scopes remain to
+be concretized. Plan delivery is complete: independent Sol/ultra planning and
+Sol/high deployment reviews passed after repairs; all 378 relative documentation
+links and whitespace checks passed. Execution confirmation is still pending;
+implementation has not begun. These are document-review results, not host evidence.
+
+The current Goal lookup returned null. No execution Goal, code/version change,
+host/client installation, credential/key operation, commit/push/PR/merge, tag or
+release is performed by this planning task. The source stays `0.3.0rc10` and
+production remains NOT ADMITTED. R11 and WEV-1 remain delivered software.
 
 ## Workstation evolution task snapshot
 

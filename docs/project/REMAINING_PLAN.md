@@ -1,5 +1,14 @@
 # Remaining development plan — 2026-09-06
 
+## Approved R12 execution — 2026-09-08
+
+Owner approved [PRODUCTION_READINESS_PLAN](PRODUCTION_READINESS_PLAN.md) and
+instructed execution. Its R12-A–K sub-stages are the current finite checklist;
+R12-A is in progress under one active Goal. Completed R0–R11/WEV-1 evidence is
+preserved. Target-independent software continues while concrete host/client/
+key/production inputs and qualifications remain pending. Later product domains
+are not automatically started by this approval.
+
 ## Current task extension — 2026-09-08
 
 R11 remains delivered. The Owner's workstation-evolution task delivered WEV-1

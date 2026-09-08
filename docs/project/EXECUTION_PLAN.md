@@ -1,5 +1,14 @@
 # AgentBox Execution Plan
 
+## Approved production-readiness execution — 2026-09-08
+
+Owner approved [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md). Its R12-A–K
+checklist now governs remaining work; R12-A has started and one persistent Goal
+is active. Software implementation and CI-gated repository delivery proceed
+within the plan. Real host/client/key/login/reboot and production/publication
+operations still require their concrete authorized scope and actual evidence.
+The workstation-evolution record below is retained delivery history.
+
 ## Current task record — 2026-09-08
 
 R11 rc6–rc9 is delivered. The Owner's new workstation evolution task continues

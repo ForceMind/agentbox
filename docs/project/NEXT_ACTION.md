@@ -1,5 +1,21 @@
 # Current Authorized Action
 
+## 2026-09-08 approved R12 execution
+
+The Owner explicitly approved [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md)
+and instructed execution. Begin R12-A contract/input closure, then continue
+dependency-ready R12-B/C/D/E/F software work on feature branches with CI,
+normal merge and exact read-back. One persistent Goal is active; the main agent
+owns the checklist and shared files. Mac Chrome/Edge terminal and mobile
+management/exact Stop follow the plan's suggested scope, without claiming new
+platform qualification.
+
+Concrete host, Origin, client distribution and real key/login/paid-call/reboot
+scope remain external inputs. Missing host evidence does not block independent
+software work. Host/client activation and production/publication retain the
+separate boundaries in the approved plan. The WEV-1 section below is historical
+delivery context, not the current execution instruction.
+
 ## 2026-09-08 workstation evolution
 
 The Owner requested a bounded incremental audit/research/implementation task.
