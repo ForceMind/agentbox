@@ -1,6 +1,6 @@
 # AgentBox 私人 AI 开发工作站：增量研究与决策
 
-状态：研究与首增量契约已完成；WEV-1 实现/验收进行中。研究建议不会自动改变 Accepted 架构或开放 R12。
+状态：研究与首增量契约已完成；WEV-1 实现/验收已完成。研究建议不会自动改变 Accepted 架构或开放 R12。
 研究日期：2026-09-08。面向单台 Linux 工作站、单管理员。
 
 ## 阅读路径与证据规则
@@ -196,9 +196,9 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | A: 实时基线与本仓审计 | 已完成 | 基线 Git/六项 push CI；10 个 Job/backup 与9个status单测；真实host未运行 |
 | A: 七仓研究 | 已完成 | 七仓固定 commit、license/Unknown、调用链与测试观察；第三方未运行 |
 | B: 研究/能力矩阵/依赖决策 | 已完成 | WEV-1 改善已接受的恢复契约；其他产品建议保持 Proposed |
-| C: WEV-1 | 待验证 | 实现、聚焦回归与独立审查通过；等待当前提交 CI/合并 |
-| D: CI、审查、合并、回读 | 进行中 | 本地集成验收通过；提交与当前提交 CI 待完成 |
-| E: 后续增量 | 未开始 | 仅在前置契约与权限满足时执行；R12单独列阻碍 |
+| C: WEV-1 | 已完成 | 实现、聚焦回归、独立审查与精确提交 CI 通过，PR #87 已合并 |
+| D: CI、审查、合并、回读 | 已完成 | 24 success / 2 expected skip；merge parents 与六组 post-main success 已回读 |
+| E: 后续范围判定 | 已完成 | 本轮可执行增量已交付；下一项 R12 需具体目标与范围，WEV-2–5 仍为 Proposed，不隐含启动 |
 
 ### 本轮验证与审查记录
 
@@ -240,6 +240,39 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | 研究文档独立复核 | gpt-5.6-terra / high | 只读 |
 | Architecture/Test、Security 独立复核 | gpt-5.6-sol / high | 两个独立只读角色 |
 | 总协调与集成 | 当前主智能体 | E2E、文档、版本集成、GitHub 与验收回读 |
+
+### PR #87 交付证据
+
+实现分支 `codex/workstation-evolution` 的最终提交
+`80a6972466a514aa67577bb7812cf4c649a5983c` 通过 26 个 terminal checks：
+24 success，另两项 `rc8-predecessor-artifact` / `rc8-artifact-operations` 按 rc10
+显式门禁为 expected skipped；current-candidate 与 release-gate 均 success。
+该提交的 Frontend CI 实际运行 Web 44 files / 1109 tests 和 extension 3 files /
+6 tests，全部通过。完整 Linux CI 解决了本地并发失败留下的全量验证缺口。
+
+[PR #87](https://github.com/ForceMind/agentbox/pull/87) 于
+`2026-09-08T03:44:14Z` 正常合并为
+`b3e9cd5dbfbdca0c5e0cd652dc0cce7e1e53214e`。Git fetch/read-back 核实 exact parents：
+`b72f6ea67647d63ce26ae5610094e8aec34f7a78` 与
+`80a6972466a514aa67577bb7812cf4c649a5983c`，exit 0；本地 main 已快进到该 merge。
+
+| Workflow | PR exact-head run | merge post-main run |
+| --- | --- | --- |
+| Backend | [34184168080](https://github.com/ForceMind/agentbox/actions/runs/34184168080) | [34184541214](https://github.com/ForceMind/agentbox/actions/runs/34184541214) |
+| Frontend | [34184168103](https://github.com/ForceMind/agentbox/actions/runs/34184168103) | [34184541210](https://github.com/ForceMind/agentbox/actions/runs/34184541210) |
+| E2E | [34184168094](https://github.com/ForceMind/agentbox/actions/runs/34184168094) | [34184541241](https://github.com/ForceMind/agentbox/actions/runs/34184541241) |
+| Deployment | [34184168073](https://github.com/ForceMind/agentbox/actions/runs/34184168073) | [34184541277](https://github.com/ForceMind/agentbox/actions/runs/34184541277) |
+| Security | [34184168153](https://github.com/ForceMind/agentbox/actions/runs/34184168153) | [34184541219](https://github.com/ForceMind/agentbox/actions/runs/34184541219) |
+| Release Candidate | [34184168083](https://github.com/ForceMind/agentbox/actions/runs/34184168083) | [34184541208](https://github.com/ForceMind/agentbox/actions/runs/34184541208) |
+
+PR 六组与该 merge 的六组 post-main 均已 terminal success，已逐组回读确认。
+后续文档回读使用 `codex/wev1-merge-readback`，沿用 rc10，不新增软件行为。
+本记录不授予 R12，也未执行 tag、Release、部署、真实登录、Secret 或主机激活。
+
+本轮研究、取舍与首个软件增量的验收已达成；最终状态文档按本分支流程同步。
+产品总愿景仍未完成：
+先取得 R12 的具体目标和权限范围，闭合五项 bootstrap/host 门禁，再按已有 Roadmap
+决定首页投影、只读 Files/Diff 等后续契约；不以新增依赖页面代替真实核心流程验收。
 
 ## 指定项目研究：会话与恢复
 

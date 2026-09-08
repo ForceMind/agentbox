@@ -2,12 +2,15 @@
 
 ## Current task extension — 2026-09-08
 
-R11 remains delivered. The Owner's workstation-evolution task adds WEV-1 as an
-independent, bounded repair of browser return-state validity. Its goal, research,
+R11 remains delivered. The Owner's workstation-evolution task delivered WEV-1
+through PR #87 as a bounded repair of browser return-state validity. Its goal, research,
 contract, evidence and dependencies live in [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md).
 The earlier R0–R12 sequence is retained below as history; “R12 is the only
 remaining goal” described that completed sequence, not this new incremental task.
 R12 and all production/Secret/publication gates remain unchanged.
+The next product-flow work is the five-part R12 bootstrap/host checklist;
+Active Work, read-only Files/Diff, Discovery/Resume, Approval and Task/Worktree
+remain contract-dependent proposals rather than implicitly started stages.
 
 ## Goal and completion standard
 

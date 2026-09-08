@@ -32,7 +32,7 @@ CI 栏指基线提交的已完成 CI，R 指本次实际测试。R12 当前未�
 | GitHub PR摘要/Draft PR | Accepted | 已实现 | CI/受控gh fixtures | 实际仓库身份与认证决定可用性 | AB07 | 保留现状 |
 | 测试结果归因 | Proposed 展示目标 | 未实现可信聚合 | 未测试 | 终端文本/文件改动不能推导测试通过或Agent归属 | AB04/AB11 | 后续吸收；P2 |
 | Detach/Reconnect | Accepted | 已实现组合 | CI/模拟transport | 不等于Stop/Resume；真实CLI需R12 | AB05/AB10 | 保留协议；WEV-1改善返回状态 |
-| 返回页面状态新鲜度 | Accepted恢复约束 | WEV-1已实现 | status18/controller24/page18单测；Chromium中英四场景 | 浏览器事件合成验收通过；等待本次CI/合并，真实OS恢复未验收 | AB12 | 现在吸收；WEV-1 P1 |
+| 返回页面状态新鲜度 | Accepted恢复约束 | WEV-1已合并 | status18/controller24/page18单测；Chromium中英四场景；PR #87 CI/post-main | 软件验收完成；真实OS恢复未验收 | AB12 | 已改善；WEV-1完成 |
 | Resume/History | 能力观察Accepted，产品执行未闭合 | 部分基础 | capability CI；产品未测试 | 不能承诺明天恢复原进程 | AB08/AB10 | 后续吸收；P1依vendor证据 |
 | Existing Session Discovery/Adopt | observation基础Accepted，其余Proposed | 部分基础 | CI；实际发现接管未验证 | 不扫描整机/其他HOME，发现不授予Stop | AB08 | 后续吸收；Unknown不得当支持 |
 | 移动端布局/短输入/Stop | Accepted | 已实现 | 本地+Linux Chromium矩阵 | 软件证据；真实连接仍需R12 | AB10/AB12 | 改善现有实现；P2 |

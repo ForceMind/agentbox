@@ -7,8 +7,10 @@ existing roadmap. [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md) defines
 the sequence; [CAPABILITY_MATRIX](../CAPABILITY_MATRIX.md) separates design,
 implementation, validation and availability.
 
-1. WEV-1 — in progress: revalidate Workspace observations when returning to the
-   browser; no automatic Agent lifecycle operation and no new data domain.
+1. WEV-1 — merged in PR #87 as `b3e9cd5`: revalidate Workspace observations when
+   returning to the browser; no automatic Agent lifecycle operation or new data
+   domain. Exact-head CI and independent reviews passed; delivery read-back is
+   recorded in the evolution document.
 2. R12 — not started: concrete authorized host/trust/provider/bootstrap and
    real CLI/recovery acceptance; remains the first real product-flow blocker.
    Use the five-part [bootstrap/host checklist](../WORKSTATION_EVOLUTION.md#r12-production-bootstrap-and-host-gates):

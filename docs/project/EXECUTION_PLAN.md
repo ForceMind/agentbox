@@ -3,7 +3,9 @@
 ## Current task record — 2026-09-08
 
 R11 rc6–rc9 is delivered. The Owner's new workstation evolution task continues
-with [WEV-1 and its research/acceptance record](../WORKSTATION_EVOLUTION.md).
+with [WEV-1 and its research/acceptance record](../WORKSTATION_EVOLUTION.md),
+now merged as PR #87 after exact-head CI and independent reviews. The same
+record holds the precise merge parents and post-main checks.
 The A–F and F1 checkpoints below are retained historical plans; their earlier
 in-progress wording does not restart completed work. R12/F2 real-host authority
 is separate. Use `NEXT_ACTION.md` for the current bounded execution scope.

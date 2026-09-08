@@ -14,6 +14,18 @@ versioning for release display and PEP 440 for the Python package.
   frozen rc8 rehearsal evidence and unknown-version rejection remain intact.
 - Validation and delivery status are tracked in `docs/WORKSTATION_EVOLUTION.md`.
 
+### Delivery evidence
+
+- PR #87 head `80a6972466a514aa67577bb7812cf4c649a5983c` completed the 26-check
+  contract: 24 success and two prescribed rc8 historical skips. It merged normally
+  as `b3e9cd5dbfbdca0c5e0cd652dc0cce7e1e53214e` at `2026-09-08T03:44:14Z`,
+  with verified parents `b72f6ea...` and `80a6972...`.
+- All six post-main workflows succeeded on that exact merge.
+- Web CI passed 1109 tests; browser-trust extension CI passed 6; final local
+  Chromium acceptance passed 96 with 28 existing matrix skips. Independent
+  Architecture/Test/Security reviews passed after the recorded repairs.
+- No tag, Release, deployment, real-host activation or R12 qualification.
+
 ## [0.3.0rc9] - Unreleased
 
 ### Added
