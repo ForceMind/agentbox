@@ -1,7 +1,7 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-08T03:36:02Z"
-verified_by: "codex-workstation-evolution-local-validation"
+verified_at_utc: "2026-09-08T03:51:55Z"
+verified_by: "codex-workstation-evolution-merge-readback"
 repository: "ForceMind/agentbox"
 ---
 
@@ -17,17 +17,26 @@ PR #42 was open. This is the starting snapshot, not a prediction of this task's
 future commit or merge SHA.
 
 The 2026-09-08 Owner task authorizes research of seven named projects and the
-first independent improvement within existing boundaries. Current branch:
+first independent improvement within existing boundaries. Implementation branch:
 `codex/workstation-evolution`; Goal and task checklist are recorded in
 [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md). WEV-1 repairs Runtime
 observation validity on browser return. Research/plan commit
 `418bc678a3fdf78e9df66060d785c6cf9c01e7b5` is pushed. Source candidate rc10
-implementation and independent Architecture/Test/Security review are complete;
-current-commit CI, merge and read-back remain pending. Local final evidence is
+implementation and independent Architecture/Test/Security review are complete.
+PR #87 head `80a6972466a514aa67577bb7812cf4c649a5983c` completed 26 terminal
+checks: 24 success and two prescribed rc8 historical skips. It merged normally
+at `2026-09-08T03:44:14Z` as `b3e9cd5dbfbdca0c5e0cd652dc0cce7e1e53214e`,
+with exact parents `b72f6ea...` and `80a6972...` verified by Git read-back.
+All six post-main workflows succeeded; exact run IDs are in the evolution record.
+Web CI passed 1109 tests and extension CI passed 6. Local final evidence is
 status 18, controller 24 and page 18 unit passes, 48 release-candidate passes,
 and Chromium 96 passed / 28 expected matrix skips. The initial parallel Mac
 Web run failed with timeouts; all four failed files passed 92/92 with one
 worker and unchanged assertions. See the task record for the full distinction.
+The bounded software increment is delivered; this snapshot is synchronized
+on `codex/wev1-merge-readback` without changing software behavior or version.
+It records the verified PR #87 result and does not predict a later documentation
+merge SHA or replace live Git/GitHub.
 
 Production is still NOT ADMITTED: API's default WAW mode, Runtime concrete
 providers/bootstrap and managed-browser trust installation require separate

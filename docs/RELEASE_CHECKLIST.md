@@ -1,11 +1,11 @@
 # AgentBox MVP Release Candidate Checklist
 
 Current source candidate: `0.3.0rc10`. This checklist does not authorize a tag.
-The historical rc9 checks below record PR #85 only; WEV-1 verification is in
+The historical rc9 checks below record PR #85 only; PR #87/WEV-1 verification is in
 `WORKSTATION_EVOLUTION.md` and `releases/0.3.0rc10.md`.
 
 Completing the preparation boxes does not authorize a tag, GitHub Release, or
-stable-support claim. PR #85 has merged; publication boxes remain future manual
+stable-support claim. PR #87 has merged; publication boxes remain future manual
 work and require review before any tag or GitHub Release.
 
 ## Source and version

@@ -10,8 +10,15 @@ interruption and re-read them on return before exposing lifecycle controls.
 No automatic Start/Resume/Connect, new API/DB domain or production activation is
 authorized by this increment. Branch: `codex/workstation-evolution`.
 
-Complete the seven-project research, WEV-1 implementation, focused recovery
-tests, bilingual browser coverage, independent review and normal CI/merge/read-back.
+The seven-project research and WEV-1 implementation are merged through PR #87.
+Head `80a6972466a514aa67577bb7812cf4c649a5983c` passed the complete 26-check
+contract (24 success, two prescribed skips); merge
+`b3e9cd5dbfbdca0c5e0cd652dc0cce7e1e53214e` has verified parents and six successful
+post-main workflows. Preserve the completed tests, reviews and delivery record.
+
+The next product-flow action is to establish the concrete R12 target and
+authorized Runtime/Project/trust/key handling, then implement and verify the
+five gates below. No other proposed feature is implicitly activated by WEV-1.
 Later Files/Diff, Attention/Approval, Discovery/Resume and Task/Worktree proposals
 need their own bounded contracts. R12 is still blocked on concrete target,
 Runtime/trust/Secret scope and real-host evidence. The completed R11 record

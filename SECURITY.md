@@ -7,15 +7,17 @@ AgentBox source is the `0.3.0rc10` development candidate, advancing from the
 typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
 operations, native installation, systemd deployment, staged update, and
 verified rollback for a single-server/single-administrator Linux x86_64 model.
-PR #85 final head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed all 26
-exact-head checks, merged normally as `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`,
-and completed post-main verification. R11 software rc6–rc9 is delivered; R12
-remains independently unstarted and host-gated. This is a pre-release—not a production-readiness, penetration-test, or broad
-platform-support claim.
+PR #87 head `80a6972466a514aa67577bb7812cf4c649a5983c` completed 26 terminal
+checks (24 success and two prescribed historical skips), then merged normally
+as `b3e9cd5dbfbdca0c5e0cd652dc0cce7e1e53214e`. R11 software rc6–rc9 and WEV-1
+have software evidence; R12 remains independently unstarted and host-gated.
+This pre-release does not claim production readiness, penetration testing or
+broad platform support.
 
-The WEV-1 candidate changes browser observation validity and action guards only.
-It adds no Runtime/Secret authority or production activation. The previous rc9
-delivery evidence above is not a verification result for this new candidate.
+WEV-1 changes browser observation validity and action guards only, with independent
+Architecture/Test/Security review. It adds no Runtime/Secret authority or
+production activation. Its exact CI and host limits are recorded in
+`docs/WORKSTATION_EVOLUTION.md`.
 
 R10 packages inert WAW process-policy templates and native helper source/build
 checks. It does not install or enable a unit/socket, create a native helper
