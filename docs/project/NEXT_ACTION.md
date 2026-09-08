@@ -1,5 +1,29 @@
 # Current Authorized Action
 
+## 2026-09-08 workstation evolution
+
+The Owner requested a bounded incremental audit/research/implementation task.
+Use [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md) as its task record and
+[CAPABILITY_MATRIX](../CAPABILITY_MATRIX.md) as the evidence index. The current
+software increment is WEV-1: invalidate browser Runtime observations after
+interruption and re-read them on return before exposing lifecycle controls.
+No automatic Start/Resume/Connect, new API/DB domain or production activation is
+authorized by this increment. Branch: `codex/workstation-evolution`.
+
+Complete the seven-project research, WEV-1 implementation, focused recovery
+tests, bilingual browser coverage, independent review and normal CI/merge/read-back.
+Later Files/Diff, Attention/Approval, Discovery/Resume and Task/Worktree proposals
+need their own bounded contracts. R12 is still blocked on concrete target,
+Runtime/trust/Secret scope and real-host evidence. The completed R11 record
+below is historical context, not a command to repeat its work.
+
+R12 must close all five [production bootstrap and host gates](../WORKSTATION_EVOLUTION.md#r12-production-bootstrap-and-host-gates):
+production API mode/composition; Runtime filesystem-v2 builder and concrete
+executor/key provider; activated sockets and peer/cgroup/isolation; managed CRX,
+Native Messaging and trustd enrollment; real CLI login, input, return/reconnect,
+exact Stop and reboot recovery. This is implementation plus host acceptance,
+not a feature-flag change or a request to rerun synthetic tests.
+
 Action ID: `DELEGATED-RUNTIME-RELAY-2026-09-03`
 
 The Owner explicitly delegated software goal, plan and architecture decisions to

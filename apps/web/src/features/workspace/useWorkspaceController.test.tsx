@@ -388,6 +388,29 @@ describe('Workspace metadata controller', () => {
     )
   })
 
+  it('keeps Start disabled when Runtime status is unavailable and sends no POST', async () => {
+    const { fetcher } = fixture()
+    const original = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((input, init) =>
+      input.toString().endsWith('/status')
+        ? Promise.resolve(
+            json({ error: { code: 'WAW_STATUS_UNAVAILABLE' } }, 503),
+          )
+        : original(input, init),
+    )
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.runtimeView.status).toBe('error'))
+
+    expect(result.current.canStart).toBe(false)
+    await act(async () => result.current.start())
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+  })
+
   it('discards a late lookup after selecting another Project', async () => {
     const { fetcher } = fixture()
     const original = fetcher.getMockImplementation()!
@@ -456,6 +479,49 @@ describe('Workspace metadata controller', () => {
       await starting
     })
     expect(result.current.workspaceId).toBe(otherWorkspace)
+    expect(result.current.notice).toBeNull()
+    expect(result.current.error).toBeNull()
+  })
+
+  it('does not publish a late Start result across page invalidation', async () => {
+    const { fetcher } = fixture()
+    const original = fetcher.getMockImplementation()!
+    let release!: (response: Response) => void
+    const delayed = new Promise<Response>((resolve) => {
+      release = resolve
+    })
+    fetcher.mockImplementation((input, init) =>
+      input.toString().endsWith('/start') ? delayed : original(input, init),
+    )
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStart).toBe(true))
+    let starting!: Promise<void>
+    act(() => {
+      starting = result.current.start()
+    })
+    await waitFor(() =>
+      expect(
+        fetcher.mock.calls.filter(([, init]) => init?.method === 'POST'),
+      ).toHaveLength(1),
+    )
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    release(
+      json({
+        request_id: 'req_late_start',
+        workspace_id: workspaceId,
+        project_id: projectId,
+        agent_type: 'codex',
+        generation: '7',
+        state: 'RUNNING',
+      }),
+    )
+    await act(async () => starting)
+
+    expect(result.current.runtimeView.status).toBe('stale')
     expect(result.current.notice).toBeNull()
     expect(result.current.error).toBeNull()
   })
@@ -545,7 +611,26 @@ describe('Workspace metadata controller', () => {
     ).toBe(false)
   })
 
-  it('uses the retained attachment controller for pagehide Stop and never falls back to direct Stop', async () => {
+  it('revokes an old action notice permanently when the page observation is invalidated', async () => {
+    fixture()
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStart).toBe(true))
+    await act(async () => result.current.start())
+    await waitFor(() => expect(result.current.notice).toBe('START_CONFIRMED'))
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(result.current.notice).toBeNull()
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    await waitFor(() =>
+      expect(result.current.runtimeView.status).toBe('loaded'),
+    )
+    expect(result.current.notice).toBeNull()
+  })
+
+  it('fences the retained attachment on pagehide and sends no Stop from a stale handler', async () => {
     const { fetcher } = fixture('RUNNING')
     const seam = attachmentSeam()
     const { result } = renderHook(
@@ -572,12 +657,123 @@ describe('Workspace metadata controller', () => {
     await act(async () => {
       await result.current.confirmStop()
     })
-    expect(seam.controller.stop).toHaveBeenCalledTimes(1)
+    expect(result.current.stopTarget).toBeNull()
+    expect(seam.controller.stop).not.toHaveBeenCalled()
     expect(
       fetcher.mock.calls.some(([url]) =>
         url.toString().endsWith(`/workspaces/${workspaceId}/stop`),
       ),
     ).toBe(false)
+  })
+
+  it('never restores an old Stop confirmation after the same fingerprint is revalidated', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const oldConfirm = result.current.confirmStop
+    expect(result.current.stopTarget).not.toBeNull()
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    expect(result.current.stopTarget).toBeNull()
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    expect(result.current.stopTarget).toBeNull()
+
+    await act(async () => oldConfirm())
+    expect(result.current.stopTarget).toBeNull()
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+  })
+
+  it('rejects a captured Start handler after observation invalidation', async () => {
+    const { fetcher } = fixture()
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStart).toBe(true))
+    const oldStart = result.current.start
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    await act(async () => oldStart())
+
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+  })
+
+  it('rejects a captured Connect handler after observation invalidation', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const seam = attachmentSeam()
+    const { result } = renderHook(
+      () =>
+        useWorkspaceController({
+          projectId,
+          agentType: 'codex',
+          attachmentDependencies: seam.dependencies,
+        }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => {
+      result.current.setTerminalViewport(document.createElement('div'))
+      result.current.setTerminalSurface(document.createElement('div'))
+    })
+    await waitFor(() => expect(result.current.canConnect).toBe(true))
+    const oldConnect = result.current.connect
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    await act(async () => oldConnect())
+
+    expect(seam.controller.connect).not.toHaveBeenCalled()
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+  })
+
+  it('rejects captured terminal input synchronously when offline fires before React commits', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const seam = attachmentSeam()
+    const { result } = renderHook(
+      () =>
+        useWorkspaceController({
+          projectId,
+          agentType: 'codex',
+          attachmentDependencies: seam.dependencies,
+        }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => {
+      result.current.setTerminalViewport(document.createElement('div'))
+      result.current.setTerminalSurface(document.createElement('div'))
+    })
+    await waitFor(() => expect(result.current.canConnect).toBe(true))
+    await act(async () => result.current.connect())
+    await waitFor(() => expect(result.current.canInput).toBe(true))
+    const capturedSendInput = result.current.sendInput
+    const postsBeforeOffline = fetcher.mock.calls.filter(
+      ([, init]) => init?.method === 'POST',
+    ).length
+    let sending!: Promise<void>
+
+    act(() => {
+      window.dispatchEvent(new Event('offline'))
+      sending = capturedSendInput('stale input\r')
+    })
+    await act(async () => sending)
+
+    expect(seam.controller.sendInput).not.toHaveBeenCalled()
+    expect(
+      fetcher.mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(postsBeforeOffline)
+    expect(result.current.notice).toBeNull()
+    expect(result.current.runtimeView.status).toBe('stale')
   })
   it('clears a Stop target when selection changes and rejects the captured old handler', async () => {
     const { fetcher } = fixture('RUNNING')
@@ -641,6 +837,80 @@ describe('Workspace metadata controller', () => {
     )
     await waitFor(() => expect(result.current.runtimeView.status).toBe('error'))
     expect(result.current.canStop).toBe(false)
+  })
+
+  it('does not Start from an old STOPPED row after fresh Runtime returns RUNNING', async () => {
+    const { fetcher, rows } = fixture('STOPPED')
+    const original = fetcher.getMockImplementation()!
+    let observedState = 'STOPPED'
+    fetcher.mockImplementation((input, init) => {
+      if (!input.toString().endsWith('/status')) return original(input, init)
+      const observation = runtime(rows[0])
+      observation.data.state = observedState
+      observation.data.process_state =
+        observedState === 'RUNNING' ? 'RUNNING' : 'NOT_STARTED'
+      return Promise.resolve(json(observation))
+    })
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStart).toBe(true))
+    const capturedStart = result.current.start
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    observedState = 'RUNNING'
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    await waitFor(() =>
+      expect(result.current.runtimeView.status).toBe('loaded'),
+    )
+
+    expect(result.current.canStart).toBe(false)
+    await act(async () => {
+      await capturedStart()
+      await result.current.start()
+    })
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+  })
+
+  it('does not Stop from an old RUNNING row after fresh Runtime returns STOPPED', async () => {
+    const { fetcher, rows } = fixture('RUNNING')
+    const original = fetcher.getMockImplementation()!
+    let observedState = 'RUNNING'
+    fetcher.mockImplementation((input, init) => {
+      if (!input.toString().endsWith('/status')) return original(input, init)
+      const observation = runtime(rows[0])
+      observation.data.state = observedState
+      observation.data.process_state =
+        observedState === 'RUNNING' ? 'RUNNING' : 'NOT_STARTED'
+      return Promise.resolve(json(observation))
+    })
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    const capturedRequestStop = result.current.requestStop
+
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    observedState = 'STOPPED'
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    await waitFor(() =>
+      expect(result.current.runtimeView.status).toBe('loaded'),
+    )
+
+    expect(result.current.canStop).toBe(false)
+    act(() => {
+      capturedRequestStop()
+      result.current.requestStop()
+    })
+    await act(async () => result.current.confirmStop())
+    expect(result.current.stopTarget).toBeNull()
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
   })
   it('resolves a workspace deep link to the exact READY Project and AgentType', async () => {
     fixture('RUNNING')

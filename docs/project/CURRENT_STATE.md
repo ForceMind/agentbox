@@ -1,13 +1,42 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-06T18:04:17Z"
-verified_by: "codex-r11-rc9-merge-readback"
+verified_at_utc: "2026-09-08T03:36:02Z"
+verified_by: "codex-workstation-evolution-local-validation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## Current authorized implementation
+## Workstation evolution task snapshot
+
+Acquired baseline: `main`, `origin/main`, HEAD and merge-base were
+`b72f6ea67647d63ce26ae5610094e8aec34f7a78`, with a clean working tree.
+`git fetch origin --prune` and GitHub identity/open-PR/CI checks exited 0.
+The baseline's six push workflows completed success; only historical Draft
+PR #42 was open. This is the starting snapshot, not a prediction of this task's
+future commit or merge SHA.
+
+The 2026-09-08 Owner task authorizes research of seven named projects and the
+first independent improvement within existing boundaries. Current branch:
+`codex/workstation-evolution`; Goal and task checklist are recorded in
+[WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md). WEV-1 repairs Runtime
+observation validity on browser return. Research/plan commit
+`418bc678a3fdf78e9df66060d785c6cf9c01e7b5` is pushed. Source candidate rc10
+implementation and independent Architecture/Test/Security review are complete;
+current-commit CI, merge and read-back remain pending. Local final evidence is
+status 18, controller 24 and page 18 unit passes, 48 release-candidate passes,
+and Chromium 96 passed / 28 expected matrix skips. The initial parallel Mac
+Web run failed with timeouts; all four failed files passed 92/92 with one
+worker and unchanged assertions. See the task record for the full distinction.
+
+Production is still NOT ADMITTED: API's default WAW mode, Runtime concrete
+providers/bootstrap and managed-browser trust installation require separate
+closure. R11 software CI does not substitute for those R12 dependencies.
+
+## Historical R11 implementation and delivery record
+
+The following dated checkpoints are retained as history. Their former “current”
+or “next” wording does not override the task snapshot above or live Git/GitHub.
 
 - Live revalidation on 2026-09-05: `git fetch origin --prune` exited `0`;
   `main`, `origin/main` and the branch merge-base equal

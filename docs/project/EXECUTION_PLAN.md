@@ -1,5 +1,13 @@
 # AgentBox Execution Plan
 
+## Current task record — 2026-09-08
+
+R11 rc6–rc9 is delivered. The Owner's new workstation evolution task continues
+with [WEV-1 and its research/acceptance record](../WORKSTATION_EVOLUTION.md).
+The A–F and F1 checkpoints below are retained historical plans; their earlier
+in-progress wording does not restart completed work. R12/F2 real-host authority
+is separate. Use `NEXT_ACTION.md` for the current bounded execution scope.
+
 ## 目标与完成标准
 
 目标用户是管理单台服务器的管理员。最终操作路径是：登录 AgentBox →

@@ -1,5 +1,15 @@
 # Decision and Architecture Index
 
+- `WORKSTATION-EVOLUTION-2026-09-08`: the Owner requested a seven-project
+  evidence-based audit and the first independently verifiable improvement within
+  current authority. [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md) and
+  [CAPABILITY_MATRIX](../CAPABILITY_MATRIX.md) record scope and Proposed follow-ups.
+- `WEV-1-BROWSER-RETURN`: an implementation refinement of the existing WAW3
+  browser-lifecycle contract: interruption invalidates the current Runtime
+  observation and confirmation; return re-reads status without automatic
+  lifecycle actions. No new wire/API/DB/host/Secret authority is created.
+  Local reception time is descriptive only; no new TTL or trust-time guarantee.
+
 ## Current execution policy
 
 - `GOV-AUTOMATION-1` is superseded for routine repository work: the Coding Agent

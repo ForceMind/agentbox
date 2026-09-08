@@ -53,6 +53,30 @@ const project = {
   id: 'prj_0123456789abcdef0123456789abcdef',
   displayName: 'Demo Project',
 }
+function loadedRuntime(receivedAt: number): WorkspacePageModel['runtimeView'] {
+  return {
+    status: 'loaded',
+    receivedAt,
+    observationToken: 3,
+    response: {
+      request_id: 'wreq_status',
+      data: {
+        workspace_id: 'aws_0123456789abcdef0123456789abcdef',
+        project_id: project.id,
+        agent_type: 'claude',
+        generation: '7',
+        binding_revision: '1',
+        binding_digest: 'a'.repeat(64),
+        state: 'RUNNING',
+        reconciliation_state: 'authoritative',
+        runtime_epoch: '9',
+        process_state: 'RUNNING',
+        exit_code: null,
+        attachment_capacity: { admitted: '0', pending: '0', limit: '1' },
+      },
+    },
+  }
+}
 function model(
   overrides: Partial<WorkspacePageModel> = {},
 ): WorkspacePageModel {
@@ -346,6 +370,81 @@ describe('WorkspacePage', () => {
       screen.getByText('Workspace status is temporarily unavailable.'),
     ).toBeVisible()
     expect(screen.getByText('WAW_STATUS_UNAVAILABLE')).toBeVisible()
+  })
+
+  it('shows the client receive time only for a current loaded snapshot', () => {
+    const receivedAt = Date.parse('2026-09-06T10:11:12.000Z')
+    const { container, rerender } = render(
+      <WorkspacePage
+        model={model({ runtimeView: loadedRuntime(receivedAt) })}
+      />,
+    )
+    const time = container.querySelector('time')
+    expect(time).not.toBeNull()
+    expect(time).toHaveAttribute('dateTime', '2026-09-06T10:11:12.000Z')
+    expect(time?.textContent).not.toBe('')
+    expect(screen.getByText('Status received')).toBeVisible()
+
+    rerender(
+      <WorkspacePage
+        model={model({
+          runtimeView: { status: 'stale', receivedAt },
+          canStart: false,
+          canStop: false,
+        })}
+      />,
+    )
+    expect(container.querySelector('time')).toBeNull()
+    expect(
+      screen.getByText(
+        'The previous Runtime snapshot is no longer current. Workspace actions are paused.',
+      ),
+    ).toBeVisible()
+  })
+
+  it('renders revalidation as a local paused state without Runtime data', () => {
+    render(
+      <WorkspacePage
+        model={model({
+          runtimeView: {
+            status: 'revalidating',
+            receivedAt: Date.parse('2026-09-06T10:11:12.000Z'),
+          },
+          canStart: false,
+          canStop: false,
+        })}
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        'Reconfirming the current Runtime status. Workspace actions remain paused.',
+      ),
+    ).toBeVisible()
+    expect(screen.queryByText('Status received')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Refresh workspace status' }),
+    ).toBeDisabled()
+    expect(
+      screen.queryByText('unsafe server status prose'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('localizes the stale snapshot state in Chinese', () => {
+    currentLocaleMock.mockReturnValue('zh-CN')
+    render(
+      <WorkspacePage
+        model={model({
+          runtimeView: { status: 'stale', receivedAt: null },
+          canStart: false,
+          canStop: false,
+        })}
+      />,
+    )
+
+    expect(
+      screen.getByText('之前的 Runtime 快照已失效，工作区操作已暂停。'),
+    ).toBeVisible()
   })
 
   it('requires exact Stop confirmation and supports cancel', async () => {

@@ -121,6 +121,10 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
     model.runtimeView.status === 'loaded'
       ? model.runtimeView.response.data
       : null
+  const statusReceivedAt =
+    model.runtimeView.status === 'loaded'
+      ? new Date(model.runtimeView.receivedAt)
+      : null
   const selectedProject = model.projects.find(
     (project) => project.id === model.selectedProjectId,
   )
@@ -379,10 +383,34 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
             </div>
           </dl>
         )}
+        {model.runtimeView.status === 'stale' && (
+          <p className="interaction-notice" role="status">
+            {copy(locale, 'workspace.statusStale')}
+          </p>
+        )}
+        {model.runtimeView.status === 'revalidating' && (
+          <p className="loading-panel" role="status">
+            {copy(locale, 'workspace.statusRevalidating')}
+          </p>
+        )}
+        {statusReceivedAt && (
+          <p className="workspace-state-line">
+            <span>{copy(locale, 'workspace.lastReceived')}</span>
+            <time dateTime={statusReceivedAt.toISOString()}>
+              {new Intl.DateTimeFormat(locale, {
+                dateStyle: 'medium',
+                timeStyle: 'medium',
+              }).format(statusReceivedAt)}
+            </time>
+          </p>
+        )}
         <button
           aria-label={copy(locale, 'workspace.refresh')}
           className="icon-button"
-          disabled={model.runtimeView.status === 'loading'}
+          disabled={
+            model.runtimeView.status === 'loading' ||
+            model.runtimeView.status === 'revalidating'
+          }
           onClick={() => void model.refresh()}
           type="button"
         >

@@ -2,7 +2,7 @@
 
 ## Current maturity
 
-AgentBox source is the `0.3.0rc9` delivered software evidence, advancing from the
+AgentBox source is the `0.3.0rc10` development candidate, advancing from the
 `0.3.0rc1` MVP artifact baseline. It implements authentication,
 typed Runtime control, ephemeral Pair Code delivery, Project/Git/GitHub
 operations, native installation, systemd deployment, staged update, and
@@ -12,6 +12,10 @@ exact-head checks, merged normally as `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`
 and completed post-main verification. R11 software rc6–rc9 is delivered; R12
 remains independently unstarted and host-gated. This is a pre-release—not a production-readiness, penetration-test, or broad
 platform-support claim.
+
+The WEV-1 candidate changes browser observation validity and action guards only.
+It adds no Runtime/Secret authority or production activation. The previous rc9
+delivery evidence above is not a verification result for this new candidate.
 
 R10 packages inert WAW process-policy templates and native helper source/build
 checks. It does not install or enable a unit/socket, create a native helper
