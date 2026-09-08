@@ -1,5 +1,14 @@
 # Remaining development plan — 2026-09-06
 
+## Current task extension — 2026-09-08
+
+R11 remains delivered. The Owner's workstation-evolution task adds WEV-1 as an
+independent, bounded repair of browser return-state validity. Its goal, research,
+contract, evidence and dependencies live in [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md).
+The earlier R0–R12 sequence is retained below as history; “R12 is the only
+remaining goal” described that completed sequence, not this new incremental task.
+R12 and all production/Secret/publication gates remain unchanged.
+
 ## Goal and completion standard
 
 目标用户是管理服务器与正式 Project 的管理员。最终交付路径是：登录 →

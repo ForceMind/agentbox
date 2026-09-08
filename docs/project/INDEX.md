@@ -11,6 +11,11 @@
 7. `GOVERNANCE_AUTOMATION.md`
 8. `EXECUTION_PLAN.md` — 当前目标、阶段状态、职责、验收与交付流程。
 
+- [Workstation evolution](../WORKSTATION_EVOLUTION.md)：2026-09-08 增量任务的
+  事实基线、七仓研究、取舍、WEV-1 契约与阶段验收记录。
+- [Capability matrix](../CAPABILITY_MATRIX.md)：设计、实现、验证、产品状态分别记录；
+  R12 不因新增产品研究而开放。
+
 - [WAW encrypted stream supplemental decision](WAW_ENCRYPTED_STREAM_DECISION.md): accepted full wire/admission/trust contract under explicit Owner-delegated software decision authority; R4/R5 are merged and Runtime/API integration is in progress.
 
 - [Fixed Noise NX core](../WAW_NOISE_CORE.md): implementation limits, independent vector provenance and Python/WebCrypto interoperability.
@@ -25,7 +30,7 @@
   packaging inputs, digest-pinned policy boundary, and R11/R12 separation.
 - [R11 production integration](../WAW_R11_CONTROLLER_COMPOSITION.md): accepted
   rc6–rc9 composition, failure, artifact/operations and bilingual UI contract.
-- [R11 execution plan](../WAW_R11_EXECUTION_PLAN.md): active rc6–rc9 work-unit
+- [R11 execution plan](../WAW_R11_EXECUTION_PLAN.md): delivered rc6–rc9 work-unit
   ownership, state-machine, Project binding, controller and acceptance plan.
 - [R11 rc8 artifact and operations rehearsal](../WAW_R11_RC8_ARTIFACT_OPERATIONS.md):
   frozen provenance, artifact-only synthetic and dual-artifact operations

@@ -39,6 +39,19 @@ compatibility claim.
 
 ## Web Agent Workspace software boundary
 
+Current correction (2026-09-08): R11 rc6–rc9 delivered controller, crypto,
+transport, renderer and recovery-composition software with CI evidence. The
+dated pre-R11 limitations below describe the earlier implementation, not missing
+crypto or controller code in the current source. Production is still NOT ADMITTED:
+the shipped API defaults to disabled WAW, the Runtime production providers and
+bootstrap are not installed/wired, and the managed trust extension is inert.
+See [the current capability matrix](CAPABILITY_MATRIX.md) and
+[R11 integration contract](WAW_R11_CONTROLLER_COMPOSITION.md). WEV-1 changes only
+browser-return observation validity. Real CLI/PTY/host/reboot qualification
+remains R12.
+
+### Historical pre-R11 implementation limits
+
 - READY Project/Claude/Codex metadata selection, explicit Start and exact Stop
   are implemented; Start requires a pre-registered trusted Runtime binding.
 - Codex WAW API/ticket contracts are separate from legacy Remote Control.

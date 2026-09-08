@@ -1,5 +1,23 @@
 # AgentBox Roadmap
 
+## Current increment: workstation evolution
+
+The 2026-09-08 task adds an audit and evidence-backed product evolution to this
+existing roadmap. [WORKSTATION_EVOLUTION](../WORKSTATION_EVOLUTION.md) defines
+the sequence; [CAPABILITY_MATRIX](../CAPABILITY_MATRIX.md) separates design,
+implementation, validation and availability.
+
+1. WEV-1 — in progress: revalidate Workspace observations when returning to the
+   browser; no automatic Agent lifecycle operation and no new data domain.
+2. R12 — not started: concrete authorized host/trust/provider/bootstrap and
+   real CLI/recovery acceptance; remains the first real product-flow blocker.
+3. Proposed follow-ups — bounded Active Work/Attention projection, read-only
+   Changes/Files, then capability-bound Discovery/Resume and structured Approval.
+   Task/Worktree and external notification remain later, contract-dependent work.
+
+The completed R11 software evidence below remains valid; it does not claim
+end-to-end production availability or authorize new host/Secret operations.
+
 ## Completed
 
 - Phase 0 through Phase 10 (as per existing repository governance).

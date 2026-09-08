@@ -1,5 +1,11 @@
 # WAW Software Readiness — 2026-09-03
 
+Historical readiness checkpoint. For the delivered R11 composition and the
+remaining production bootstrap/host gates, use
+[WORKSTATION_EVOLUTION](WORKSTATION_EVOLUTION.md),
+[CAPABILITY_MATRIX](CAPABILITY_MATRIX.md) and `project/CURRENT_STATE.md`.
+Earlier “unimplemented” statements below retain their original date.
+
 ## Decision
 
 **Software contracts and metadata workflow are delivered; the interactive
