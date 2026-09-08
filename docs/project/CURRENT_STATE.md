@@ -30,12 +30,17 @@ R12-B is the rc11 candidate: final local API/profile/application tests passed
 replacement, missing-leaf recheck, cleanup-error visibility and a single factory
 boundary covering all decorator/router/static registration. Ruff/Black and
 Linux-target mypy passed; exact-head CI and software merge are pending.
+PR #90 first head `fd7ad036d7aa7a38292e3483558c27c3884c89b9` failed Frontend
+only on two stale rc10 shell-version expectations. The follow-up preserves the
+exact assertions and updates Web/E2E expected versions to rc11; the two shell
+tests and Prettier passed locally. New exact-head CI is required before merge.
 Main-agent release validation passed 51 cases and the extension version check
 passed 2 via direct Node/Vitest. An initial pnpm
 wrapper dependency-repair attempt aborted; no forced cache/module purge followed.
 
-R12-C1 has separate Runtime-only key/authority WIP with 65 targeted passes and
-final Architecture/Security PASS after construction cleanup repair;
+R12-C1 has separate Runtime-only key/authority WIP with 72 targeted passes and
+final Architecture/Security PASS after construction cleanup repair; Test
+coverage for production identity and post-bind/close reads is being closed;
 it is excluded from the API candidate's staged files and eventual PR. C2 needs
 a real fixed auth-isolation provider before C3 can connect Runtime main.
 No real host/client/key/credential/CLI/reboot or production operation occurred.
