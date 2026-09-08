@@ -24,6 +24,9 @@ export interface WorkspaceMessageParameters {
   readonly 'workspace.runtimeStatus': NoMessageParameters
   readonly 'workspace.processStatus': NoMessageParameters
   readonly 'workspace.reconciliationStatus': NoMessageParameters
+  readonly 'workspace.statusStale': NoMessageParameters
+  readonly 'workspace.statusRevalidating': NoMessageParameters
+  readonly 'workspace.lastReceived': NoMessageParameters
   readonly 'workspace.refresh': NoMessageParameters
   readonly 'workspace.noticeStartConfirmed': NoMessageParameters
   readonly 'workspace.noticeStopConfirmed': NoMessageParameters
@@ -112,6 +115,11 @@ export const workspaceCatalog = defineCatalogShard<WorkspaceMessageParameters>(
       'workspace.runtimeStatus': () => 'Runtime status',
       'workspace.processStatus': () => 'Process status',
       'workspace.reconciliationStatus': () => 'Reconciliation status',
+      'workspace.statusStale': () =>
+        'The previous Runtime snapshot is no longer current. Workspace actions are paused.',
+      'workspace.statusRevalidating': () =>
+        'Reconfirming the current Runtime status. Workspace actions remain paused.',
+      'workspace.lastReceived': () => 'Status received',
       'workspace.refresh': () => 'Refresh workspace status',
       'workspace.noticeStartConfirmed': () =>
         'The start request was confirmed. Process status and browser terminal connection status are shown separately.',
@@ -207,6 +215,11 @@ export const workspaceCatalog = defineCatalogShard<WorkspaceMessageParameters>(
       'workspace.runtimeStatus': () => 'Runtime 状态',
       'workspace.processStatus': () => '进程状态',
       'workspace.reconciliationStatus': () => 'Reconciliation 状态',
+      'workspace.statusStale': () =>
+        '之前的 Runtime 快照已失效，工作区操作已暂停。',
+      'workspace.statusRevalidating': () =>
+        '正在重新确认当前 Runtime 状态，工作区操作仍处于暂停状态。',
+      'workspace.lastReceived': () => '状态接收时间',
       'workspace.refresh': () => '刷新工作区状态',
       'workspace.noticeStartConfirmed': () =>
         '启动请求已确认。进程状态与浏览器终端连接状态分别显示。',

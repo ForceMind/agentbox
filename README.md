@@ -6,7 +6,7 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is now the **pre-release `0.3.0rc9` delivered software evidence** for
+AgentBox source is the **pre-release `0.3.0rc10` development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 PR #85 final head `751d4d010f92e18780bd6d96fdb3c9ea23107464` completed all 26
@@ -14,6 +14,10 @@ exact-head checks, merged normally as
 `b07f944ef2c7b590e5a3f1fa50354d6f492d6c31`, and completed post-main verification.
 R11 software rc6–rc9 is delivered as software evidence; R12 remains independently
 unstarted and host-gated.
+The next bounded increment revalidates Workspace state when returning to the
+browser. Its [workstation research and execution record](docs/WORKSTATION_EVOLUTION.md)
+and [capability matrix](docs/CAPABILITY_MATRIX.md) distinguish existing software,
+proposed product changes and the remaining real-host qualification.
 This is not a stable-release, production-readiness, penetration-test,
 enterprise-support, or broad platform-support claim.
 

@@ -53,11 +53,27 @@ port 的具体提供方仍只有测试实现。浏览器生成的 `WAW_TRUST_EXT
 普通 MV3 包保持 inert。因此 R12 要分别闭合 production bootstrap/provider、activated
 socket/隔离和受管浏览器信任安装，不能仅添加开关或把合成 harness 改成生产入口。
 
+### R12 production bootstrap and host gates
+
+以下是同一 R12 的实施与验收缺口，不是本轮 WEV-1 的隐含授权。每项必须在具体
+目标主机、Runtime user、Project、浏览器信任和凭据范围获准后单独留证。
+
+| 门禁 | 当前源码事实 | 完成证据与失败处理 |
+| --- | --- | --- |
+| 生产 API composition | `create_app()` 默认 `WAWMode.DISABLED`，模块入口未选择 production WAW 组合 | 显式、可审计的 mode/composition 与依赖验证；缺项保持未准入，不以测试 harness 或开关绕过 |
+| Runtime production provider | `server.py::_main` 仍构造 legacy executor；filesystem-v2 builder 存在，concrete executor/static-key port 尚缺生产接线 | 固定 executor、Runtime 专属 key authority 和 builder 的真实组合；启动失败保持 fail-closed，并可恢复原受限管理服务 |
+| 已安装的 socket 与隔离 | 软件有 typed/control/stream 组合证据，当前安装入口未激活完整 WAW 路径 | 目标主机 socket activation、peer identity、cgroup/namespace/LSM/seccomp 与断启恢复证据；不降级为任意 shell 或宽权限 |
+| 受管浏览器信任安装 | 生成 extension ID 为 `null`，普通 MV3 包 inert | managed CRX identity、Native Messaging host、trustd enrollment/撤销与恢复记录；未知或失配身份拒绝终端准入 |
+| 真实用户工作流 | CI/夹具不能证明已安装 CLI 可用或断电后恢复 | 明确版本的 Claude/Codex 登录、正式 Project 启动、输入 ACK、离开/返回、detach/reconnect、exact Stop、服务与主机重启验收；记录失效分类及恢复步骤，不把重启称作 Resume |
+
+对应实现与测试入口见 [AB09](CAPABILITY_MATRIX.md#本仓证据索引)；主机条件继续使用
+[现有 host gate](WAW1_HOST_GATE_CHECKLIST.md)，不另建竞争性的准入规则。
+
 ## 本仓库调用链与能力事实
 
 - **正式项目和后台工作**：`ProjectsPage` → `useProjects` → `projects.py` 的 create/clone
   → `ProjectService`/`JobService.enqueue` → Worker `_execute_project_job` → Runtime
-  `ProjectRuntimeClient` → `WorkspaceManager`/`GitAdapter`。READY 发生在 Runtime
+  `ProjectRuntimeClient` → `ProjectWorkspaceManager`/`GitAdapter`。READY 发生在 Runtime
   workspace 激活后；Job 到期进入 `needs_attention`，不会自动重放不确定副作用。
 - **诊断**：`DoctorPage` → `useDoctor` → `/api/v1/doctor` → 五项 Runtime typed probes
   与 Control Plane checks。Doctor ready 是控制平面结果；不是 WAW admission。
@@ -156,6 +172,8 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
   single-flight，无后台轮询/持久存储、无任意 TTL。
 - **动作**：Start/Stop/Connect/Reconnect 只在当前 lifecycle epoch 的 identity 一致且
   Runtime evidence 可用时评估；旧 Stop dialog 永久撤销，新 GET 不使旧确认再次出现。
+  Start/Stop 还同时校验 metadata row 与 fresh Runtime state 的原有动作允许集；
+  同 generation 的状态分歧不能让旧 row 单独授权 POST。
   隐藏不等于 Agent stopped；返回不会产生 Start/Resume/Attachment POST。
 - **文案**：沿用首浏览器语言契约和 typed catalogs，显示状态刷新/不可用及本地接收时间，
   不暴露 server prose、凭据或终端数据。
@@ -178,9 +196,50 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | A: 实时基线与本仓审计 | 已完成 | 基线 Git/六项 push CI；10 个 Job/backup 与9个status单测；真实host未运行 |
 | A: 七仓研究 | 已完成 | 七仓固定 commit、license/Unknown、调用链与测试观察；第三方未运行 |
 | B: 研究/能力矩阵/依赖决策 | 已完成 | WEV-1 改善已接受的恢复契约；其他产品建议保持 Proposed |
-| C: WEV-1 | 进行中 | 基线新增两例失败已复现；实现和对应回归进行中 |
-| D: CI、审查、合并、回读 | 未开始 | 不预填未来提交或结果 |
+| C: WEV-1 | 待验证 | 实现、聚焦回归与独立审查通过；等待当前提交 CI/合并 |
+| D: CI、审查、合并、回读 | 进行中 | 本地集成验收通过；提交与当前提交 CI 待完成 |
 | E: 后续增量 | 未开始 | 仅在前置契约与权限满足时执行；R12单独列阻碍 |
+
+### 本轮验证与审查记录
+
+- 研究/计划阶段已提交并推送 `418bc678a3fdf78e9df66060d785c6cf9c01e7b5`；
+  该 feature push 本身未触发 PR CI，不作为实现验证证据。
+- 基线追加事件负例为 9 pass / 2 fail，复现 hidden 保留 loaded、返回不发新 GET。
+  修复后 status 18、page 18、最终 controller 24 项通过；controller 包括 offline
+  同一事件轮次调用旧 input handler 无调用/无 POST，以及同 identity 的双向状态分歧。
+- Mac 第一次完整 Web run 为 1097 pass / 9 fail，并有超时清理产生的 1 个 rejection；
+  该运行不算通过。当时有多个测试进程并行、可用内存较低。未改测试时限或断言，
+  以 `vitest run src/App.test.tsx src/features/workspace/terminalModel.test.ts
+  src/features/workspace/terminalScheduler.test.ts
+  src/features/workspace/wawBrowserLifecycle.rc7.test.ts --maxWorkers=1` 重跑全部四个
+  失败文件，92/92 pass、exit 0。完整 Linux CI 仍是合并前必需证据。
+- release-candidate/gate 单测 48 pass；extension version checks 2 pass，typecheck
+  pass；Web typecheck、完整 ESLint/Prettier 和 source-boundary check 均 exit 0。
+- 状态分歧修复后 `node scripts/run-e2e.mjs` 完整 Chromium matrix 为
+  96 pass / 28 expected skip、exit 0；skip 沿用既有矩阵去重，新 WEV-1 四个
+  locale/viewport cases 均执行，production bundle 的 test-only marker 扫描通过。
+  浏览器 lifecycle 事件是模拟派发，不证明真实 OS
+  后台、BFCache、冻结或网络切换已取得产品资格。
+- 实际渲染自查：使用正常 production build 和仅有非敏感合成 metadata 的独立
+  Playwright context，核对中英文 × desktop/mobile × fresh/stale 共八张页面。
+  接收时间、本地失效提示与技术字段可读，未见新增遮挡或横向溢出。临时视觉夹具
+  首次因多余 envelope 字段被严格 parser 拒绝，修正夹具后完成；未修改产品 parser，
+  未采集真实终端、Pair Code 或凭据，未向仓库加入截图/测试开关。
+- 独立文档审查：测试索引、R12 入口和 D/C/T/R 标签问题已整改复核关闭。
+  独立 Architecture/Test 审查发现 row/Runtime state 分歧，已先复现两例失败再修复；
+  最终审查通过。独立 Security 的 captured offline input 覆盖缺口已补齐，最终
+  P0/P1/P2 均为 0。审查与本地集成测试分别记录，不代替 CI/真实主机证据。
+
+| 派工职责 | 实际指定模型/强度 | 写入边界 |
+| --- | --- | --- |
+| 完整增量规划 | gpt-5.6-sol / ultra | 只读本仓与方案分解 |
+| 三个最接近产品的源码研究 | gpt-5.6-sol / high | 隔离研究报告，不写实现 |
+| 其余四仓研究 | gpt-5.6-terra / medium | 隔离研究报告，不写实现 |
+| WEV-1 状态与交互实现 | gpt-5.6-sol / high | status/controller/page/catalog 与直接单测 |
+| 版本与 release gate | gpt-5.6-terra / medium | 统一 rc10 版本与对应断言 |
+| 研究文档独立复核 | gpt-5.6-terra / high | 只读 |
+| Architecture/Test、Security 独立复核 | gpt-5.6-sol / high | 两个独立只读角色 |
+| 总协调与集成 | 当前主智能体 | E2E、文档、版本集成、GitHub 与验收回读 |
 
 ## 指定项目研究：会话与恢复
 
@@ -353,13 +412,13 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | 实际访问 URL | <https://github.com/milisp/codexia> |
 | default branch / exact commit | `master` / [`b74d21e63d8fa61ca68e8a3af61d32c110d99502`](https://github.com/milisp/codexia/commit/b74d21e63d8fa61ca68e8a3af61d32c110d99502) |
 | 许可证 | 根目录 `LICENSE`：MIT |
-| 活动、归档、release | API 观察：未归档；push `2026-09-07T16:26:36Z`；latest release [`v0.50.1`](https://github.com/milisp/codexia/releases/tag/v0.50.1)，`2026-09-07T16:32:05Z` |
+| 活动、归档、release | [外部元数据观察] GitHub API：未归档；push `2026-09-07T16:26:36Z`；latest release [`v0.50.1`](https://github.com/milisp/codexia/releases/tag/v0.50.1)，`2026-09-07T16:32:05Z` |
 
-`代码观察`的最小调用链是：`AcpManager::start` 为一次启动生成 `connection_id`，调用 `AcpClient::spawn`，再尝试 `client.new_session(cwd)` 并把 `sessionId` 返回给 UI；后续 `prompt/cancel` 以 live `connection_id` 查找 client，而 `load_session` 明确要求 Agent 宣称 `agentCapabilities.loadSession`。见固定源码 [`crates/acp/src/state.rs#L39-L120`](https://github.com/milisp/codexia/blob/b74d21e63d8fa61ca68e8a3af61d32c110d99502/crates/acp/src/state.rs#L39-L120)。这是一条可采纳的组织原则：**持久的 Session 标识不等于仍存活的连接/进程，Resume 必须受 Runtime capability 限制**。
+**[C 代码观察]**的最小调用链是：`AcpManager::start` 为一次启动生成 `connection_id`，调用 `AcpClient::spawn`，再尝试 `client.new_session(cwd)` 并把 `sessionId` 返回给 UI；后续 `prompt/cancel` 以 live `connection_id` 查找 client，而 `load_session` 明确要求 Agent 宣称 `agentCapabilities.loadSession`。见固定源码 [`crates/acp/src/state.rs#L39-L120`](https://github.com/milisp/codexia/blob/b74d21e63d8fa61ca68e8a3af61d32c110d99502/crates/acp/src/state.rs#L39-L120)。这是一条可采纳的组织原则：**持久的 Session 标识不等于仍存活的连接/进程，Resume 必须受 Runtime capability 限制**。
 
-任务/工作区方面，自动化任务可选择项目目录或 per-task linked Git worktree；worktree 操作先以路径锁串行化，并检查 `.git/worktrees/*/gitdir` 是否确实指向目标路径，见 [`crates/git/src/worktree.rs#L10-L110`](https://github.com/milisp/codexia/blob/b74d21e63d8fa61ca68e8a3af61d32c110d99502/crates/git/src/worktree.rs#L10-L110)。`代码观察`同时发现其清理例程会强制移除 worktree 和元数据（[`#L116-L150`](https://github.com/milisp/codexia/blob/b74d21e63d8fa61ca68e8a3af61d32c110d99502/crates/git/src/worktree.rs#L116-L150)）；这不符合本项目禁止自动清理用户工作区的边界，不能照搬。
+任务/工作区方面，自动化任务可选择项目目录或 per-task linked Git worktree；worktree 操作先以路径锁串行化，并检查 `.git/worktrees/*/gitdir` 是否确实指向目标路径，见 [`crates/git/src/worktree.rs#L10-L110`](https://github.com/milisp/codexia/blob/b74d21e63d8fa61ca68e8a3af61d32c110d99502/crates/git/src/worktree.rs#L10-L110)。**[C 代码观察]**同时发现其清理例程会强制移除 worktree 和元数据（[`#L116-L150`](https://github.com/milisp/codexia/blob/b74d21e63d8fa61ca68e8a3af61d32c110d99502/crates/git/src/worktree.rs#L116-L150)）；这不符合本项目禁止自动清理用户工作区的边界，不能照搬。
 
-相关测试路径（测试文件观察）：`crates/git/src/tests.rs`、`src/lib/pairing.test.ts`、`src/services/apiAdapt/routes.test.ts`。本次运行：未运行。
+**[T 测试文件观察]** 相关路径：`crates/git/src/tests.rs`、`src/lib/pairing.test.ts`、`src/services/apiAdapt/routes.test.ts`。**[R 本次运行]** 未运行。
 
 权衡：可在 AgentBox 后续 Proposed 设计中采用“Project/Workspace/Session 与 live Process/connection 分层、由 capability 决定 Resume”；不应因为任务隔离需求默认创建 worktree，更不应采纳其强制清理路径。
 
@@ -370,13 +429,13 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | 实际访问 URL | <https://github.com/slopus/happy> |
 | default branch / exact commit | `main` / [`ac64b9b4677870f7b7a9eacfd0780959229717f1`](https://github.com/slopus/happy/commit/ac64b9b4677870f7b7a9eacfd0780959229717f1) |
 | 许可证 | GitHub API：MIT；未逐项核验子目录许可 |
-| 活动、归档、release | API 观察：未归档；push `2026-09-07T07:23:56Z`；latest release [`cli-1.2.3`](https://github.com/slopus/happy/releases/tag/cli-1.2.3)，`2026-09-05T10:11:46Z` |
+| 活动、归档、release | [外部元数据观察] GitHub API：未归档；push `2026-09-07T07:23:56Z`；latest release [`cli-1.2.3`](https://github.com/slopus/happy/releases/tag/cli-1.2.3)，`2026-09-05T10:11:46Z` |
 
-`代码观察`到 CLI、Server、Client 的目录分工：`packages/happy-cli`、`packages/happy-server`、`packages/happy-app`。其 CLI 端加密辅助把临时公钥、nonce 与密文打包为一个 blob（[`packages/happy-cli/src/api/encryption.ts#L62-L78`](https://github.com/slopus/happy/blob/ac64b9b4677870f7b7a9eacfd0780959229717f1/packages/happy-cli/src/api/encryption.ts#L62-L78)）；同文件也包含 secretbox/AES-GCM 编解码。它证明项目存在加密实现，**不**证明端到端威胁模型、密钥保管、服务端不可解密性或部署安全均已验证。
+**[C 代码观察]**到 CLI、Server、Client 的目录分工：`packages/happy-cli`、`packages/happy-server`、`packages/happy-app`。其 CLI 端加密辅助把临时公钥、nonce 与密文打包为一个 blob（[`packages/happy-cli/src/api/encryption.ts#L62-L78`](https://github.com/slopus/happy/blob/ac64b9b4677870f7b7a9eacfd0780959229717f1/packages/happy-cli/src/api/encryption.ts#L62-L78)）；同文件也包含 secretbox/AES-GCM 编解码。它证明项目存在加密实现，**不**证明端到端威胁模型、密钥保管、服务端不可解密性或部署安全均已验证。
 
-远程审批的关键调用链是：Claude SDK 的 `canCallTool` 回调 → `PermissionHandler.handleToolCall` → 用 `agentID:toolUseID` 生成请求 ID → pending map 等待具体响应或 abort；`AskUserQuestion` 与 `ExitPlanMode` 强制走审批，其他工具依模式和结构化 descriptor 决定是否允许，见 [`packages/happy-cli/src/claude/utils/permissionHandler.ts#L156-L240`](https://github.com/slopus/happy/blob/ac64b9b4677870f7b7a9eacfd0780959229717f1/packages/happy-cli/src/claude/utils/permissionHandler.ts#L156-L240)。这是比“从终端文本猜 yes/no”更可取的模式，但其 `allowedBashPrefixes` 等策略不应直接移植到 AgentBox。
+**[C 代码观察]** 远程审批的关键调用链是：Claude SDK 的 `canCallTool` 回调 → `PermissionHandler.handleToolCall` → 用 `agentID:toolUseID` 生成请求 ID → pending map 等待具体响应或 abort；`AskUserQuestion` 与 `ExitPlanMode` 强制走审批，其他工具依模式和结构化 descriptor 决定是否允许，见 [`packages/happy-cli/src/claude/utils/permissionHandler.ts#L156-L240`](https://github.com/slopus/happy/blob/ac64b9b4677870f7b7a9eacfd0780959229717f1/packages/happy-cli/src/claude/utils/permissionHandler.ts#L156-L240)。这是比“从终端文本猜 yes/no”更可取的模式，但其 `allowedBashPrefixes` 等策略不应直接移植到 AgentBox。
 
-相关测试路径（测试文件观察）：`packages/happy-cli/src/api/encryption.test.ts`、`packages/happy-cli/src/claude/utils/permissionHandler.test.ts`、`packages/happy-cli/src/claude/claudeRemote.test.ts`、`packages/happy-server/sources/app/api/routes/v3SessionRoutes.test.ts`、`packages/happy-app/sources/sync/encryption/encryptor.appspec.ts`。本次运行：未运行。
+**[T 测试文件观察]** 相关路径：`packages/happy-cli/src/api/encryption.test.ts`、`packages/happy-cli/src/claude/utils/permissionHandler.test.ts`、`packages/happy-cli/src/claude/claudeRemote.test.ts`、`packages/happy-server/sources/app/api/routes/v3SessionRoutes.test.ts`、`packages/happy-app/sources/sync/encryption/encryptor.appspec.ts`。**[R 本次运行]** 未运行。
 
 权衡：可在 Proposed 方案保留“只能从受信 Runtime adapter 接收、绑定运行代次/请求 ID、可取消且一次性消费的结构化 ApprovalRequest”；不能把 Happy 的实现或加密声明当作 AgentBox 现有 WAW、Provider Secret 或浏览器信任边界的替代品。
 
@@ -387,11 +446,11 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | 实际访问 URL | <https://github.com/madarco/agentbox> |
 | default branch / exact commit | `main` / [`53e5f8afac5b68cb17dadf4612887e513c94f489`](https://github.com/madarco/agentbox/commit/53e5f8afac5b68cb17dadf4612887e513c94f489) |
 | 许可证 | 根目录 `LICENSE`：MIT |
-| 活动、归档、release | API 观察：未归档；push `2026-09-07T18:23:37Z`；latest release [`tray-latest`](https://github.com/madarco/agentbox/releases/tag/tray-latest)，`2026-09-05T16:43:49Z` |
+| 活动、归档、release | [外部元数据观察] GitHub API：未归档；push `2026-09-07T18:23:37Z`；latest release [`tray-latest`](https://github.com/madarco/agentbox/releases/tag/tray-latest)，`2026-09-05T16:43:49Z` |
 
-`文档宣称`：这是面向多个隔离“box”的 npm CLI/Hub，覆盖本地 Docker、remote-docker 与多个云 provider，并把 checkpoint 描述为 docker commit 或 provider snapshot；README 还列出持久 shell、detach/attach、pause/unpause。源码说明链路更具体：`<agent> start/attach` 进入 `startOrAttach`；若 tmux session 已运行，只 attach；否则检查 box 状态，按 paused/stopped 做 unpause/start 后再启动/attach（[`apps/cli/src/agents/command/start-attach.ts#L1-L8`](https://github.com/madarco/agentbox/blob/53e5f8afac5b68cb17dadf4612887e513c94f489/apps/cli/src/agents/command/start-attach.ts#L1-L8)、[`#L85-L147`](https://github.com/madarco/agentbox/blob/53e5f8afac5b68cb17dadf4612887e513c94f489/apps/cli/src/agents/command/start-attach.ts#L85-L147)）。Checkpoint 经 Hub API 的 `POST /boxes/{id}/checkpoint` 创建、经 `/checkpoints` 枚举（[`apps/cli/src/control-plane/hub-api-client.ts#L701-L733`](https://github.com/madarco/agentbox/blob/53e5f8afac5b68cb17dadf4612887e513c94f489/apps/cli/src/control-plane/hub-api-client.ts#L701-L733)）。
+**[D 文档宣称]**：这是面向多个隔离“box”的 npm CLI/Hub，覆盖本地 Docker、remote-docker 与多个云 provider，并把 checkpoint 描述为 docker commit 或 provider snapshot；README 还列出持久 shell、detach/attach、pause/unpause。**[C 代码观察]** 调用链：`<agent> start/attach` 进入 `startOrAttach`；若 tmux session 已运行，只 attach；否则检查 box 状态，按 paused/stopped 做 unpause/start 后再启动/attach（[`apps/cli/src/agents/command/start-attach.ts#L1-L8`](https://github.com/madarco/agentbox/blob/53e5f8afac5b68cb17dadf4612887e513c94f489/apps/cli/src/agents/command/start-attach.ts#L1-L8)、[`#L85-L147`](https://github.com/madarco/agentbox/blob/53e5f8afac5b68cb17dadf4612887e513c94f489/apps/cli/src/agents/command/start-attach.ts#L85-L147)）。Checkpoint 经 Hub API 的 `POST /boxes/{id}/checkpoint` 创建、经 `/checkpoints` 枚举（[`apps/cli/src/control-plane/hub-api-client.ts#L701-L733`](https://github.com/madarco/agentbox/blob/53e5f8afac5b68cb17dadf4612887e513c94f489/apps/cli/src/control-plane/hub-api-client.ts#L701-L733)）。
 
-相关测试路径（测试文件观察）：`packages/sandbox-docker/test/checkpoint.test.ts`、`packages/sandbox-docker/test/checkpoint-manifest-schema.test.ts`、`packages/sandbox-cloud/test/checkpoint.test.ts`、`packages/sandbox-cloud/test/attach-no-tty.test.ts`、`packages/sandbox-remote-docker/test/build-attach.test.ts`。本次运行：未运行。
+**[T 测试文件观察]** 相关路径：`packages/sandbox-docker/test/checkpoint.test.ts`、`packages/sandbox-docker/test/checkpoint-manifest-schema.test.ts`、`packages/sandbox-cloud/test/checkpoint.test.ts`、`packages/sandbox-cloud/test/attach-no-tty.test.ts`、`packages/sandbox-remote-docker/test/build-attach.test.ts`。**[R 本次运行]** 未运行。
 
 同名不代表同一产品或可替换关系。此项目以 box/container/VM 及可复制的 Host 配置为中心，包含通用 `shell`、Docker/provider 操作和多云 Secret/SSH 处理；当前 ForceMind/agentbox 是 Web 控制面、fixed allowlisted Runtime action、Root Helper 与 Provider Secret authority 分离的个人 Linux 工作站。命名会造成用户、搜索、Issue 和安全假设混淆风险，但本研究不建议擅自改名。
 
@@ -404,10 +463,10 @@ Attention 和多 Worktree 没有解决首缺口，不建新表。后续扩展先
 | 实际访问 URL | <https://github.com/coder/coder> |
 | default branch / exact commit | `main` / [`93089d447f3337e325f3f675fe6b3da781c1df39`](https://github.com/coder/coder/commit/93089d447f3337e325f3f675fe6b3da781c1df39) |
 | 许可证 | GitHub API：AGPL-3.0；未逐项核验子目录/Enterprise 相关材料范围 |
-| 活动、归档、release | API 观察：未归档；push `2026-09-08T02:43:45Z`；latest release [`v2.36.4`](https://github.com/coder/coder/releases/tag/v2.36.4)，`2026-09-01T05:07:25Z` |
+| 活动、归档、release | [外部元数据观察] GitHub API：未归档；push `2026-09-08T02:43:45Z`；latest release [`v2.36.4`](https://github.com/coder/coder/releases/tag/v2.36.4)，`2026-09-01T05:07:25Z` |
 
-`代码观察`的关键链路是：workspace 创建 API 校验 template/version 选择和权限 → 由 `wsbuilder.New(workspace, WorkspaceTransitionStart, ...)` 构造启动 build → 转换为 API build 响应（[`coderd/workspaces.go#L434-L503`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/workspaces.go#L434-L503)、[`#L541-L837`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/workspaces.go#L541-L837)）。后续 build API 接收显式 transition，并在内部路径处理状态、previous build 与 orchestration；它同时写入 background audit（[`coderd/workspacebuilds.go#L333-L521`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/workspacebuilds.go#L333-L521)）。审计读取路径查询、分页并转换数据库记录，见 [`coderd/audit.go#L46-L107`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/audit.go#L46-L107)。
+**[C 代码观察]**的关键链路是：workspace 创建 API 校验 template/version 选择和权限 → 由 `wsbuilder.New(workspace, WorkspaceTransitionStart, ...)` 构造启动 build → 转换为 API build 响应（[`coderd/workspaces.go#L434-L503`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/workspaces.go#L434-L503)、[`#L541-L837`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/workspaces.go#L541-L837)）。后续 build API 接收显式 transition，并在内部路径处理状态、previous build 与 orchestration；它同时写入 background audit（[`coderd/workspacebuilds.go#L333-L521`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/workspacebuilds.go#L333-L521)）。审计读取路径查询、分页并转换数据库记录，见 [`coderd/audit.go#L46-L107`](https://github.com/coder/coder/blob/93089d447f3337e325f3f675fe6b3da781c1df39/coderd/audit.go#L46-L107)。
 
-相关测试路径（测试文件观察）：`coderd/workspaces_test.go`、`coderd/workspacebuilds_test.go`、`coderd/workspaceagents_test.go`、`coderd/templates_test.go`、`coderd/audit_test.go`、`coderd/authorize_test.go`。本次运行：未运行。
+**[T 测试文件观察]** 相关路径：`coderd/workspaces_test.go`、`coderd/workspacebuilds_test.go`、`coderd/workspaceagents_test.go`、`coderd/templates_test.go`、`coderd/audit_test.go`、`coderd/authorize_test.go`。**[R 本次运行]** 未运行。
 
 适合单人工作站的部分：正式 Project 的受控 Runtime profile（借鉴 template 的版本化输入思想）、可审计的明确 lifecycle transition、对 Workspace Agent 状态和最后观察时间的模型。现在不适合吸收：组织/多租户/RBAC、provisioner fleet、企业认证集成、复杂模板生态与资源调度。这些解决企业多用户供应面的问题，会扩大 AgentBox 的攻击面、部署和恢复成本。

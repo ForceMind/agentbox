@@ -11,6 +11,10 @@ implementation, validation and availability.
    browser; no automatic Agent lifecycle operation and no new data domain.
 2. R12 — not started: concrete authorized host/trust/provider/bootstrap and
    real CLI/recovery acceptance; remains the first real product-flow blocker.
+   Use the five-part [bootstrap/host checklist](../WORKSTATION_EVOLUTION.md#r12-production-bootstrap-and-host-gates):
+   production API composition, Runtime filesystem-v2/provider composition,
+   activated sockets/isolation, managed CRX/Native Messaging/trustd, and real
+   CLI login/input/return/reconnect/exact Stop/reboot acceptance.
 3. Proposed follow-ups — bounded Active Work/Attention projection, read-only
    Changes/Files, then capability-bound Discovery/Resume and structured Approval.
    Task/Worktree and external notification remain later, contract-dependent work.

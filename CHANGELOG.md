@@ -3,6 +3,17 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc10] - Unreleased
+
+- WEV-1 candidate: invalidate stale Workspace Runtime observations and Stop
+  confirmations after browser lifecycle interruptions; re-read state on return
+  without automatically sending Agent lifecycle operations.
+- Adds the workstation evolution research, capability matrix and bounded
+  follow-up decisions; R12 host, Secret and publication gates stay independent.
+- Advances the unified version and explicitly admits rc10 in the release gate;
+  frozen rc8 rehearsal evidence and unknown-version rejection remain intact.
+- Validation and delivery status are tracked in `docs/WORKSTATION_EVOLUTION.md`.
+
 ## [0.3.0rc9] - Unreleased
 
 ### Added

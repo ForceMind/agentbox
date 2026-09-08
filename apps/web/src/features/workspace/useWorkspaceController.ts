@@ -41,6 +41,21 @@ function failure(error: unknown): WorkspaceApiErrorView {
   return workspaceApiError(error, 'WAW_METADATA_INVALID')
 }
 
+function combineAbortSignals(...signals: AbortSignal[]) {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  for (const signal of signals) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', abort, { once: true })
+  }
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const signal of signals) signal.removeEventListener('abort', abort)
+    },
+  }
+}
+
 /** Metadata/lifecycle workflow only. No ticket acquisition or admission is inferred. */
 export function useWorkspaceController(options: {
   workspaceId?: string
@@ -73,7 +88,12 @@ export function useWorkspaceController(options: {
   const [notice, setNotice] = useState<WorkspaceNotice | null>(null)
   const [actionError, setActionError] = useState<ScopedActionError | null>(null)
   const [confirmation, setConfirmation] = useState<
-    (WorkspaceStopTarget & { key: string; runtimeFingerprint: string }) | null
+    | (WorkspaceStopTarget & {
+        key: string
+        observationToken: number
+        runtimeFingerprint: string
+      })
+    | null
   >(null)
   const requestSequence = useRef(0)
   const selectionEpoch = useRef(0)
@@ -111,6 +131,9 @@ export function useWorkspaceController(options: {
   useEffect(() => {
     mounted.current = true
     invalidate()
+    setConfirmation(null)
+    setNotice(null)
+    setActionError(null)
     return () => {
       mounted.current = false
       invalidate()
@@ -259,7 +282,16 @@ export function useWorkspaceController(options: {
           error: null,
         }
   const row = currentLookup.row
-  const status = useWorkspaceStatus(row?.id, `${reload}:${row?.revision ?? ''}`)
+  const revokeObservationState = useCallback(() => {
+    setConfirmation(null)
+    setNotice(null)
+    setActionError(null)
+  }, [])
+  const status = useWorkspaceStatus(
+    row?.id,
+    `${reload}:${row?.revision ?? ''}`,
+    revokeObservationState,
+  )
   const observed =
     status.view.status === 'loaded' ? status.view.response.data : null
   const runtimeMismatch =
@@ -301,11 +333,13 @@ export function useWorkspaceController(options: {
     epoch: number,
     scope: string,
     attachmentKey: string | null,
+    observationToken: number,
   ) =>
     mounted.current &&
     selectionEpoch.current === epoch &&
     authScopeRef.current === scope &&
-    attachmentIdentityRef.current === attachmentKey
+    attachmentIdentityRef.current === attachmentKey &&
+    status.isCurrent(observationToken)
   const setScopedActionError = (error: WorkspaceApiErrorView) => {
     setActionError({
       error,
@@ -321,8 +355,10 @@ export function useWorkspaceController(options: {
     actionError.attachmentKey === (attachment.identity?.key ?? null)
       ? actionError.error
       : null
-  const validCurrentRow = () =>
+  const validCurrentRow = (token = status.observationToken) =>
     !!row &&
+    !!observed &&
+    status.isCurrent(token) &&
     row.project_id === selectionRef.current.projectId &&
     row.agent_type === selectionRef.current.agentType &&
     selectedReady &&
@@ -335,9 +371,12 @@ export function useWorkspaceController(options: {
     currentLookup.status === 'ready' &&
     !actions.pending &&
     selectedReady &&
+    !!observed &&
+    status.isCurrent(status.observationToken) &&
     !runtimeMismatch &&
     !runtimeNeedsRecovery &&
     ['STARTING', 'STOPPED', 'EXITED'].includes(row.state) &&
+    ['STARTING', 'STOPPED', 'EXITED'].includes(observed.state) &&
     !['unknown', 'reconciliation_required'].includes(row.reconciliation_state)
   const canStop =
     !!row &&
@@ -346,6 +385,7 @@ export function useWorkspaceController(options: {
     currentLookup.status === 'ready' &&
     !actions.pending &&
     selectedReady &&
+    !!observed &&
     !runtimeMismatch &&
     !runtimeNeedsRecovery &&
     [
@@ -354,35 +394,72 @@ export function useWorkspaceController(options: {
       'TRUST_REQUIRED',
       'LOGIN_REQUIRED',
     ].includes(row.state) &&
+    [
+      'RUNNING',
+      'NEEDS_INTERACTION',
+      'TRUST_REQUIRED',
+      'LOGIN_REQUIRED',
+    ].includes(observed.state) &&
     row.reconciliation_state === 'authoritative' &&
-    !!observed &&
+    status.isCurrent(status.observationToken) &&
     observed.reconciliation_state === 'authoritative'
+  const canConnect =
+    attachment.canConnect && !actions.pending && validCurrentRow()
+  const canReconnect =
+    attachment.canReconnect && !actions.pending && validCurrentRow()
+  const canDetach =
+    attachment.canDetach && !actions.pending && validCurrentRow()
+  const canInput = attachment.canInput && !actions.pending && validCurrentRow()
+  const canResize =
+    attachment.canResize && !actions.pending && validCurrentRow()
 
   async function start() {
-    if (!canStart || !validCurrentRow() || !row) return
+    const observationToken = status.observationToken
+    const signal = status.observationSignal
+    if (
+      observationToken === null ||
+      !canStart ||
+      !validCurrentRow(observationToken) ||
+      !row ||
+      !signal
+    )
+      return
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
     setNotice(null)
     setActionError(null)
     try {
-      const response = await actions.start(row.project_id, row.agent_type)
-      if (!actionStillCurrent(epoch, scope, attachmentKey)) return
+      const response = await actions.start(
+        row.project_id,
+        row.agent_type,
+        signal,
+      )
+      if (!actionStillCurrent(epoch, scope, attachmentKey, observationToken))
+        return
       if (!response || response.workspace_id !== row.id)
         throw workspaceError('PROJECT_IDENTITY_CHANGED')
       setNotice('START_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
-      if (actionStillCurrent(epoch, scope, attachmentKey))
+      if (actionStillCurrent(epoch, scope, attachmentKey, observationToken))
         setScopedActionError(failure(error))
     }
   }
   function requestStop() {
-    if (!canStop || !validCurrentRow() || !row) return
+    const observationToken = status.observationToken
+    if (
+      observationToken === null ||
+      !canStop ||
+      !validCurrentRow(observationToken) ||
+      !row
+    )
+      return
     setConfirmation({
       key,
       workspaceId: row.id,
       generation: String(row.generation),
+      observationToken,
       runtimeFingerprint,
     })
   }
@@ -392,7 +469,7 @@ export function useWorkspaceController(options: {
       confirmation.key !== key ||
       !row ||
       !canStop ||
-      !validCurrentRow() ||
+      !validCurrentRow(confirmation.observationToken) ||
       confirmation.workspaceId !== row.id ||
       confirmation.generation !== String(row.generation) ||
       confirmation.runtimeFingerprint !== runtimeFingerprint
@@ -401,6 +478,11 @@ export function useWorkspaceController(options: {
       return
     }
     const target = confirmation
+    const signal = status.observationSignal
+    if (!signal) {
+      setConfirmation(null)
+      return
+    }
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
@@ -425,22 +507,37 @@ export function useWorkspaceController(options: {
         state = outcome.stop.state
       } else {
         attachment.fence()
-        state = (
-          await actions.stop(
-            target.workspaceId,
-            target.generation,
-            row.agent_type,
-            attachment.controlSignal(),
-          )
-        ).state
+        const control = combineAbortSignals(signal, attachment.controlSignal())
+        try {
+          state = (
+            await actions.stop(
+              target.workspaceId,
+              target.generation,
+              row.agent_type,
+              control.signal,
+            )
+          ).state
+        } finally {
+          control.dispose()
+        }
       }
-      if (!actionStillCurrent(epoch, scope, attachmentKey)) return
+      if (
+        !actionStillCurrent(
+          epoch,
+          scope,
+          attachmentKey,
+          target.observationToken,
+        )
+      )
+        return
       if (state !== 'STOPPED') throw workspaceError('RECONCILIATION_REQUIRED')
       setConfirmation(null)
       setNotice('STOP_CONFIRMED')
       setReload((value) => value + 1)
     } catch (error) {
-      if (actionStillCurrent(epoch, scope, attachmentKey)) {
+      if (
+        actionStillCurrent(epoch, scope, attachmentKey, target.observationToken)
+      ) {
         setConfirmation(null)
         setScopedActionError(failure(error))
       }
@@ -448,11 +545,14 @@ export function useWorkspaceController(options: {
   }
   async function refresh() {
     setConfirmation(null)
+    setNotice(null)
     setActionError(null)
     await projects.refresh()
     if (mounted.current) setReload((value) => value + 1)
   }
   async function connectTerminal() {
+    const observationToken = status.observationToken
+    if (!canConnect || !validCurrentRow(observationToken)) return
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
@@ -464,13 +564,16 @@ export function useWorkspaceController(options: {
         mounted.current &&
         selectionEpoch.current === epoch &&
         authScopeRef.current === scope &&
-        attachmentIdentityRef.current === attachmentKey
+        attachmentIdentityRef.current === attachmentKey &&
+        status.isCurrent(observationToken)
       ) {
         setScopedActionError(failure(error))
       }
     }
   }
   async function reconnectTerminal() {
+    const observationToken = status.observationToken
+    if (!canReconnect || !validCurrentRow(observationToken)) return
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
@@ -482,13 +585,16 @@ export function useWorkspaceController(options: {
         mounted.current &&
         selectionEpoch.current === epoch &&
         authScopeRef.current === scope &&
-        attachmentIdentityRef.current === attachmentKey
+        attachmentIdentityRef.current === attachmentKey &&
+        status.isCurrent(observationToken)
       ) {
         setScopedActionError(failure(error))
       }
     }
   }
   async function detachTerminal() {
+    const observationToken = status.observationToken
+    if (!canDetach || !validCurrentRow(observationToken)) return
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
@@ -500,13 +606,16 @@ export function useWorkspaceController(options: {
         mounted.current &&
         selectionEpoch.current === epoch &&
         authScopeRef.current === scope &&
-        attachmentIdentityRef.current === attachmentKey
+        attachmentIdentityRef.current === attachmentKey &&
+        status.isCurrent(observationToken)
       ) {
         setScopedActionError(failure(error))
       }
     }
   }
   async function sendTerminalInput(text: string) {
+    const observationToken = status.observationToken
+    if (!canInput || !validCurrentRow(observationToken)) return
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
@@ -518,7 +627,8 @@ export function useWorkspaceController(options: {
         mounted.current &&
         selectionEpoch.current === epoch &&
         authScopeRef.current === scope &&
-        attachmentIdentityRef.current === attachmentKey
+        attachmentIdentityRef.current === attachmentKey &&
+        status.isCurrent(observationToken)
       ) {
         setScopedActionError(failure(error))
       }
@@ -544,17 +654,23 @@ export function useWorkspaceController(options: {
     attachment: attachment.view,
     pending: actions.pending,
     error: currentActionError ?? currentLookup.error ?? attachment.error,
-    notice: runtimeNeedsRecovery ? 'RUNTIME_RECOVERY_REQUIRED' : notice,
+    notice:
+      status.isCurrent(status.observationToken) && runtimeNeedsRecovery
+        ? 'RUNTIME_RECOVERY_REQUIRED'
+        : status.isCurrent(status.observationToken)
+          ? notice
+          : null,
     canStart,
     canStop,
-    canConnect: attachment.canConnect && !actions.pending,
-    canReconnect: attachment.canReconnect && !actions.pending,
-    canDetach: attachment.canDetach && !actions.pending,
-    canInput: attachment.canInput && !actions.pending,
-    canResize: attachment.canResize && !actions.pending,
+    canConnect,
+    canReconnect,
+    canDetach,
+    canInput,
+    canResize,
     stopTarget:
       confirmation?.key === key &&
       confirmation.runtimeFingerprint === runtimeFingerprint &&
+      status.isCurrent(confirmation.observationToken) &&
       !runtimeNeedsRecovery
         ? confirmation
         : null,

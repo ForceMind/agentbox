@@ -17,6 +17,13 @@ need their own bounded contracts. R12 is still blocked on concrete target,
 Runtime/trust/Secret scope and real-host evidence. The completed R11 record
 below is historical context, not a command to repeat its work.
 
+R12 must close all five [production bootstrap and host gates](../WORKSTATION_EVOLUTION.md#r12-production-bootstrap-and-host-gates):
+production API mode/composition; Runtime filesystem-v2 builder and concrete
+executor/key provider; activated sockets and peer/cgroup/isolation; managed CRX,
+Native Messaging and trustd enrollment; real CLI login, input, return/reconnect,
+exact Stop and reboot recovery. This is implementation plus host acceptance,
+not a feature-flag change or a request to rerun synthetic tests.
+
 Action ID: `DELEGATED-RUNTIME-RELAY-2026-09-03`
 
 The Owner explicitly delegated software goal, plan and architecture decisions to
