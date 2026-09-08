@@ -1,6 +1,7 @@
 # R12-C1 Runtime static-key custody contract
 
-状态：按已批准PRP软件范围冻结，2026-09-08；实现进行中，未激活。
+状态：按已批准PRP软件范围冻结，2026-09-08；C1/rc12实现、72项定向验证与独立
+Architecture/Security/Test复审通过，exact-head CI与merge/read-back待完成；未激活。
 这是R12-C的第一独立软件切片，不代表C2 executor/auth-isolation或C3 production main完成。
 
 ## 现有缺口与拆分

@@ -2,7 +2,9 @@
 
 状态：2026-09-08，按Owner已批准的[PRP-v1](project/PRODUCTION_READINESS_PLAN.md)
 冻结的R12-A稳定软件契约；R12-B/rc11本地实现、82项定向验证与独立Architecture/
-Security/Test复审通过，exact-head CI和merge/read-back待完成。无host/client/key激活。
+Security/Test复审通过。PR #90 final head `64d45e7...`完成26检查，正常合并为
+`e126e47172491f382efb2f5daaeac1e22a550ad6`，精确回读与六个post-main流程成功。
+这是B软件交付；无host/client/key激活。
 基线：`1ab28e524d018df3d59e6c48f01646bb1021a978`。
 
 ## 固定配置来源

@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `R12-AUTH-PROBE-NATIVE-V1`: the approved software objective is refined by
+  [the fixed auth-probe contract](../WAW_R12_RUNTIME_AUTH_PROBE.md): separate
+  160-byte AWP1/8-byte AWRP ABI, no Project/PTY/bridge/tmux authority, offline
+  fixed status commands and one generation-bound cgroup borrow. It preserves
+  old interactive ABI; Python integration and actual host/vendor qualification
+  remain required before claiming C2 or Runtime main availability.
+
 - `R12-API-PROFILE-V1`: under approvedPRP software scope,
   [fixed API bootstrap](../WAW_R12_API_BOOTSTRAP.md) uses one installer-owned,
   bounded root-owned profile and retains disabled compatibility only for a

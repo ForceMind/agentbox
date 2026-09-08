@@ -45,6 +45,8 @@ class WAWRuntimeStaticKeyPort(Protocol):
 
     def preflight(self) -> None: ...
 
+    def bind_authority(self, authority: WAWVerifiedExecutionAuthority) -> None: ...
+
     def take(self) -> WAWRuntimeStaticKeyPort: ...
 
     def private_key(self) -> bytes: ...
@@ -92,6 +94,26 @@ class WAWRuntimeShutdownEvidence:
 
 _APPLICATION_TOKEN = object()
 _CONSTRUCTION_TOKEN = object()
+
+
+class _AuthorityBoundExecutorFactory:
+    """Bind the key to the verified manifest before epoch preparation completes."""
+
+    def __init__(
+        self,
+        key_port: WAWRuntimeStaticKeyPort,
+        provider: WAWRuntimeExecutorProvider,
+    ) -> None:
+        self._key_port = key_port
+        self._provider = provider
+
+    def __call__(
+        self,
+        runtime_epoch: str,
+        authority: WAWVerifiedExecutionAuthority,
+    ) -> WAWSupervisorExecutor:
+        self._key_port.bind_authority(authority)
+        return self._provider.create_executor(runtime_epoch, authority)
 
 
 class WAWRuntimeConstructionCleanup:
@@ -509,7 +531,7 @@ async def build_waw_runtime_application_from_filesystem_v2(
             public_directory=public_directory,
             expected_runtime_gid=expected_runtime_gid,
             epoch_store=epoch_store,
-            executor_factory=owned_provider.create_executor,
+            executor_factory=_AuthorityBoundExecutorFactory(owned_key, owned_provider),
             binding_digest_factory=binding_digest_factory,
             project_manager=project_manager,
             capability_collector=capability_collector,

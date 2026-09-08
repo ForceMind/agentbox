@@ -154,6 +154,9 @@ class _KeyPort:
     def preflight(self) -> None:
         return None
 
+    def bind_authority(self, _authority: Any) -> None:
+        self.events.append("key.bind")
+
     def private_key(self) -> bytes:
         return b"private-key-canary"
 
@@ -175,8 +178,9 @@ class _Provider:
         self.closed = False
         self.taken: _Provider | None = None
 
-    def create_executor(self, _epoch: str, _authority: Any) -> Any:
-        raise AssertionError("behavior tests use already composed components")
+    def create_executor(self, epoch: str, authority: Any) -> Any:
+        self.events.append("provider.create")
+        return SimpleNamespace(runtime_epoch=epoch, execution_authority=authority)
 
     def take(self) -> _Provider:
         if self.taken is not None:
@@ -471,7 +475,8 @@ async def test_production_builder_uses_one_composition_and_typed_port_methods(
         )
 
         assert type(app) is WAWRuntimeApplication
-        assert getattr(captured["executor_factory"], "__self__", None) is provider.taken
+        assert captured["executor_factory"]._provider is provider.taken
+        assert captured["executor_factory"]._key_port is key.taken
         assert getattr(captured["static_key"], "__self__", None) is key.taken
         assert captured["peer_authority"] is authority
         assert captured["registry"] is registry and captured["executor"] is executor
@@ -491,9 +496,14 @@ async def test_builder_failure_after_runtime_reverses_owned_resources(
     tmp_path: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from agentbox_runtime.waw_fixed_transport import _issue_verified_execution_authority
+    from test_waw_bootstrap import _epoch_store, _verified_v2_pin
     from test_waw_lifecycle import registry as lifecycle_registry
 
     events: list[str] = []
+    epoch_store = _epoch_store(tmp_path)
+    assert epoch_store.bootstrap() == 1
+    execution_authority = _issue_verified_execution_authority(_verified_v2_pin())
     runtime = object.__new__(RuntimeExecutorServer)
     registry = lifecycle_registry()
     authority = WAWPeerAuthority(expected_uid=1001, expected_gid=1002)
@@ -517,6 +527,15 @@ async def test_builder_failure_after_runtime_reverses_owned_resources(
         nonlocal owned
         owned = kwargs["activated_sockets"]
         events.append("runtime.build")
+
+        def validate(prepared: Any, epoch: str) -> None:
+            assert prepared.runtime_epoch == epoch
+            assert prepared.execution_authority is execution_authority
+
+        epoch_store.consume_prepared(
+            lambda epoch: kwargs["executor_factory"](epoch, execution_authority),
+            validate,
+        )
         return runtime
 
     def fail_stream(**_kwargs: Any) -> Any:
@@ -551,7 +570,7 @@ async def test_builder_failure_after_runtime_reverses_owned_resources(
                 runtime_manifest_path=tmp_path / "runtime.json",
                 public_directory=tmp_path,
                 expected_runtime_gid=1002,
-                epoch_store=cast(Any, object()),
+                epoch_store=epoch_store,
                 executor_provider=provider,
                 key_port=key,
                 binding_digest_factory=lambda _request: "a" * 64,
@@ -564,11 +583,88 @@ async def test_builder_failure_after_runtime_reverses_owned_resources(
         stream_peer.close()
     assert events == [
         "runtime.build",
+        "key.bind",
+        "provider.create",
         "stream.build",
         "runtime.close",
         "key.close",
         "provider.close",
     ]
+    assert epoch_store.consume() == 3
+
+
+@pytest.mark.anyio
+async def test_key_authority_mismatch_creates_no_stream_and_does_not_commit_epoch(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentbox_runtime.waw_fixed_transport import _issue_verified_execution_authority
+    from test_waw_bootstrap import _epoch_store, _verified_v2_pin
+
+    store = _epoch_store(tmp_path)
+    assert store.bootstrap() == 1
+    execution_authority = _issue_verified_execution_authority(_verified_v2_pin())
+    events: list[str] = []
+
+    class MismatchedKey(_KeyPort):
+        def take(self) -> MismatchedKey:
+            if self.taken is not None:
+                raise RuntimeError("key port already taken")
+            self.taken = MismatchedKey(self.events)
+            return self.taken
+
+        def bind_authority(self, _authority: Any) -> None:
+            self.events.append("key.bind")
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "synthetic key mismatch",
+                category="unavailable",
+            )
+
+    def build_runtime(**kwargs: Any) -> RuntimeExecutorServer:
+        def prepare(epoch: str) -> Any:
+            return kwargs["executor_factory"](epoch, execution_authority)
+
+        store.consume_prepared(prepare, lambda _prepared, _epoch: None)
+        raise AssertionError("mismatched key cannot complete Runtime composition")
+
+    def build_stream(**_kwargs: Any) -> Any:
+        events.append("stream.build")
+        raise AssertionError("mismatched key cannot create a stream")
+
+    monkeypatch.setattr(subject, "_build_runtime_server_from_filesystem_v2", build_runtime)
+    monkeypatch.setattr(subject, "_build_waw_encrypted_stream_server", build_stream)
+    control, control_peer = socket.socketpair()
+    stream_socket, stream_peer = socket.socketpair()
+    key = MismatchedKey(events)
+    provider = _Provider(events)
+    try:
+        with pytest.raises(RuntimeOperationError, match="synthetic key mismatch"):
+            await build_waw_runtime_application_from_filesystem_v2(
+                socket_path=tmp_path / "runtime.sock",
+                manager=cast(Any, object()),
+                claude_manager=cast(Any, object()),
+                allowed_peer_uids=frozenset({1001}),
+                allowed_peer_gids=frozenset({1002}),
+                formal_project_id_for_legacy=lambda _value: None,
+                activated_sockets=WAWActivatedSockets(control, stream_socket),
+                waw_control_peer_uid=1001,
+                waw_control_peer_gid=1002,
+                runtime_manifest_path=tmp_path / "runtime.json",
+                public_directory=tmp_path,
+                expected_runtime_gid=1002,
+                epoch_store=store,
+                executor_provider=provider,
+                key_port=key,
+                binding_digest_factory=lambda _request: "a" * 64,
+                clock=lambda: 0.0,
+            )
+        assert "stream.build" not in events
+        assert store.consume() == 2
+        assert events == ["key.bind", "key.close", "provider.close"]
+    finally:
+        control_peer.close()
+        stream_peer.close()
 
 
 @pytest.mark.anyio
