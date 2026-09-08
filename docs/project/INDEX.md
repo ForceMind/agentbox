@@ -8,6 +8,8 @@
   root-owned读取、启动currentness与API生产入口契约。
 - [R12 Runtime key port](../WAW_R12_RUNTIME_KEY_PORT.md)：C1固定Runtime-only key custody、
   同一manifest authority绑定、epoch时点与关闭契约；C2/C3尚未完成。
+- [R12 fixed auth probe](../WAW_R12_RUNTIME_AUTH_PROBE.md)：C2的closed native ABI、
+  同generation借用、offline status、shared cache与cleanup契约；实现与host资格分开。
 
 本目录是治理执行入口。每个任务执行前按顺序读取：
 

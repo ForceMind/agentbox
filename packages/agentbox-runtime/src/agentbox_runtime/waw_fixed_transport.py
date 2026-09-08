@@ -127,6 +127,10 @@ class WAWVerifiedExecutionAuthority:
         return self._manifest.runtime.runtime_host_installation_revision
 
     @property
+    def runtime_attestation_x25519_fingerprint(self) -> str:
+        return self._manifest.runtime.runtime_attestation_x25519_fingerprint
+
+    @property
     def host_manifest_digest(self) -> str:
         return self._manifest.runtime_manifest_digest
 

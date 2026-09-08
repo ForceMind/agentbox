@@ -3,6 +3,15 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc12] - Unreleased
+
+- R12-C1 candidate: fixed Runtime-only X25519 static-key file custody, exact
+  process/filesystem identity and one-shot ownership without key creation.
+- Bind the derived public fingerprint to the same verified v2 authority before
+  executor creation and epoch commit; construction/close uncertainty stays visible.
+- No Runtime main activation, auth-isolation provider or real key operation.
+- Validation and delivery status: `docs/releases/0.3.0rc12.md`.
+
 ## [0.3.0rc11] - Unreleased
 
 - R12-B candidate: resolve production WAW mode from one fixed installer-owned

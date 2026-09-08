@@ -51,7 +51,7 @@ describe('AppShell', () => {
       </AuthContext.Provider>,
     )
 
-    expect(screen.getByText('0.3.0-rc.11', { exact: true })).toBeVisible()
+    expect(screen.getByText('0.3.0-rc.12', { exact: true })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(
       await screen.findByText('Logout could not be completed'),
@@ -85,7 +85,7 @@ describe('AppShell', () => {
       expect(username).toHaveAttribute('dir', 'auto')
       expect(username).toHaveAttribute('translate', 'no')
     }
-    for (const version of screen.getAllByText('0.3.0-rc.11', { exact: true })) {
+    for (const version of screen.getAllByText('0.3.0-rc.12', { exact: true })) {
       expect(version).toHaveAttribute('lang', 'en')
       expect(version).toHaveAttribute('dir', 'ltr')
       expect(version).toHaveAttribute('translate', 'no')

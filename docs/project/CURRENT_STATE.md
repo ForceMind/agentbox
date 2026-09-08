@@ -1,11 +1,39 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-08T06:21:24Z"
-verified_by: "codex-r12-execution-preflight"
+verified_at_utc: "2026-09-08T08:25:52Z"
+verified_by: "codex-rc11-merge-readback-rc12-candidate"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## R12-B delivered; R12-C1 candidate
+
+PR #90 final head `64d45e7434999f163ab35e0418ae1ea6da00d87c` completed all 26
+terminal checks: 24 success and the two prescribed rc8 historical skips.
+It merged normally at 2026-09-08T08:00:23Z as
+`e126e47172491f382efb2f5daaeac1e22a550ad6`; exact Git read-back verified parents
+`6db8d62896bf573ad4e1bc6c253db55003c87275` and the final PR head.
+The earlier Web/E2E version expectations and proxy/Cookie fixture dependency
+failures were fixed without weakening security assertions or production checks.
+
+All six post-main workflows succeeded: Security `34202185144`, Frontend
+`34202185164`, Deployment `34202185013`, Release Candidate `34202185006`,
+Backend `34202185189`, E2E `34202185177`. R12-B software is delivered.
+Local main and origin/main were fast-forwarded to the observed merge, preserving
+all C1 source WIP on `codex/r12-runtime-key`.
+
+C1/rc12 has 72 focused static-key/application/bootstrap passes and final
+Architecture/Security/Test PASS. Constructor cleanup errors remain explicit;
+production identity and post-bind/close access tests are included. The main agent
+passed 54 release checks, 2 extension-version cases and 2 Web-shell version cases.
+Full fixed-transport local results remain 95 passed / 9 skipped / 2 existing UDS
+PermissionError failures; Linux CI is required. C1 exact-head CI/merge is pending.
+
+C2 native auth-probe implementation has separate native-file ownership. It must
+not change old interactive ABI/bridge or claim full C2 completion before the
+Python lease/cache/provider path and Linux evidence are complete. Runtime main,
+real keys, CLI login, client installation and production admission stay closed.
 
 ## R12-B candidate and R12-C1 work in progress
 

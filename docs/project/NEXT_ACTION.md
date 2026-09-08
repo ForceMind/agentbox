@@ -1,5 +1,15 @@
 # Current Authorized Action
 
+## R12-B delivered; C1 candidate and C2 native work
+
+R12-B/rc11 is delivered by PR #90: final head `64d45e7...` completed the exact
+26-check contract, normal merge `e126e47172491f382efb2f5daaeac1e22a550ad6`
+has verified parents and six successful post-main workflows. Preserve this result.
+Continue the independently reviewed C1 static-key candidate on
+`codex/r12-runtime-key`, followed by C2 fixed auth-isolation/executor and C3 main.
+Native C2 work has separate file ownership; Python shared-file writes wait for C1
+delivery. No actual host/client/key/CLI activation follows from the software merge.
+
 ## 2026-09-08 approved R12 execution
 
 The Owner explicitly approved [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md)
