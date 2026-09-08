@@ -3,6 +3,16 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc11] - Unreleased
+
+- R12-B candidate: resolve production WAW mode from one fixed installer-owned
+  API profile; a safely absent leaf preserves disabled management compatibility.
+- Reject unsafe/noncanonical/replaced profiles and production mode injection;
+  revalidate the startup snapshot before serving and reuse one installed app.
+- Clean factory-owned database resources on construction failure while preserving
+  caller-owned services. Runtime provider/host/client qualification remains separate.
+- Candidate validation, review and delivery status: `docs/releases/0.3.0rc11.md`.
+
 ## [0.3.0rc10] - Unreleased
 
 - WEV-1 candidate: invalidate stale Workspace Runtime observations and Stop

@@ -8,6 +8,7 @@ import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import NoReturn
 
 from agentbox_core import __version__
 from agentbox_core.configuration import Environment, Settings
@@ -53,6 +54,11 @@ from agentbox_api.waw_application import (
 )
 from agentbox_api.waw_authorization import WorkspaceAuthorizationPolicy
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
+from agentbox_api.waw_deployment_profile import (
+    WAWDeploymentProfileObservation,
+    load_waw_deployment_profile,
+    revalidate_waw_deployment_profile,
+)
 from agentbox_api.waw_websocket_protocol import NATIVE_SCOPE_KEY, WAWWebSocketProtocol
 from agentbox_api.workspaces import project_workspaces_router
 from agentbox_api.workspaces import router as workspaces_router
@@ -116,7 +122,7 @@ def create_app(
     claude_runtime: ClaudeRuntimeClient | None = None,
     project_runtime: ProjectRuntimeClient | None = None,
     *,
-    waw_mode: WAWMode = WAWMode.DISABLED,
+    waw_mode: WAWMode | None = None,
     waw_application: WAWAPIApplication | None = None,
     waw_bind_coordinator: WAWRuntimeBindCoordinator | None = None,
     waw_authorization_policy: WorkspaceAuthorizationPolicy | None = None,
@@ -125,8 +131,6 @@ def create_app(
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
-    if type(waw_mode) is not WAWMode:
-        raise TypeError("waw_mode must be an exact WAWMode")
     legacy_waw_components = (
         waw_bind_coordinator,
         waw_authorization_policy,
@@ -137,234 +141,277 @@ def create_app(
         raise ValueError("WAW API application cannot be combined with fragmented components")
     if waw_application is not None and type(waw_application) is not WAWAPIApplication:
         raise TypeError("waw_application must be the exact WAWAPIApplication owner")
-    if actual_settings.env is Environment.PRODUCTION and (
-        waw_application is not None or any(value is not None for value in legacy_waw_components)
-    ):
-        raise ValueError("production WAW composition cannot be injected")
+    deployment_profile: WAWDeploymentProfileObservation | None = None
+    if actual_settings.env is Environment.PRODUCTION:
+        if waw_mode is not None:
+            raise ValueError("production WAW mode must come from the fixed deployment profile")
+        if waw_application is not None or any(value is not None for value in legacy_waw_components):
+            raise ValueError("production WAW composition cannot be injected")
+        deployment_profile = load_waw_deployment_profile()
+        actual_waw_mode = deployment_profile.mode
+    else:
+        actual_waw_mode = WAWMode.DISABLED if waw_mode is None else waw_mode
+        if type(actual_waw_mode) is not WAWMode:
+            raise TypeError("waw_mode must be an exact WAWMode")
+        if (
+            actual_settings.env is Environment.DEVELOPMENT
+            and actual_waw_mode is not WAWMode.DISABLED
+        ):
+            raise ValueError("development WAW mode must be disabled")
     if waw_application is not None and (
         actual_settings.env is not Environment.TEST
-        or waw_mode is not WAWMode.FILESYSTEM_V2
+        or actual_waw_mode is not WAWMode.FILESYSTEM_V2
         or not waw_application.test_only_mode
     ):
         raise ValueError("injected WAW applications are test-only")
     if any(value is not None for value in legacy_waw_components) and (
-        actual_settings.env is not Environment.TEST or waw_mode is not WAWMode.DISABLED
+        actual_settings.env is not Environment.TEST or actual_waw_mode is not WAWMode.DISABLED
     ):
         raise ValueError("fragmented WAW components are test-only")
     if (
-        waw_mode is WAWMode.FILESYSTEM_V2
+        actual_waw_mode is WAWMode.FILESYSTEM_V2
         and actual_settings.env is not Environment.PRODUCTION
         and waw_application is None
     ):
         raise ValueError("filesystem-v2 WAW requires production or a test-only owner")
+    owns_services = services is None
     actual_services = services or build_services(actual_settings)
-    actual_codex_runtime = codex_runtime or UnixCodexRuntimeClient(actual_settings.runtime_socket)
-    actual_claude_runtime = claude_runtime or UnixClaudeRuntimeClient(
-        actual_settings.runtime_socket
-    )
-    actual_project_runtime = project_runtime or UnixProjectRuntimeClient(
-        actual_settings.runtime_socket
-    )
-    actual_waw_application = waw_application
-    if waw_mode is WAWMode.FILESYSTEM_V2 and actual_settings.env is Environment.PRODUCTION:
-        actual_waw_application = WAWAPIApplication.production(actual_settings, actual_services)
-    if actual_waw_application is not None:
-        actual_waw_application.bind_control_plane(actual_settings, actual_services)
-    actual_login_executor = BoundedLoginExecutor(
-        actual_services.auth,
-        max_concurrency=actual_settings.argon2_max_concurrency,
-    )
 
-    @asynccontextmanager
-    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        del application
+    def close_owned_services_after_factory_failure() -> BaseException | None:
+        if not owns_services:
+            return None
         try:
-            if actual_waw_application is not None:
-                await actual_waw_application.start()
-            elif waw_bind_coordinator is not None:
-                await waw_bind_coordinator.bind()
-            log_event(logger, logging.INFO, "api_started", "Control plane API started")
-            yield
-        finally:
-            shutdown_failure: BaseException | None = None
-            if actual_waw_application is not None:
-                try:
-                    await actual_waw_application.close()
-                except BaseException as exc:
-                    shutdown_failure = exc
+            actual_services.database.close()
+        except BaseException as exc:
+            return exc
+        return None
+
+    def reraise_factory_failure(failure: BaseException) -> NoReturn:
+        cleanup_failure = close_owned_services_after_factory_failure()
+        if cleanup_failure is not None:
+            raise BaseExceptionGroup(
+                "API factory failed and owned database cleanup failed",
+                [failure, cleanup_failure],
+            ) from None
+        raise failure
+
+    try:
+        actual_codex_runtime = codex_runtime or UnixCodexRuntimeClient(
+            actual_settings.runtime_socket
+        )
+        actual_claude_runtime = claude_runtime or UnixClaudeRuntimeClient(
+            actual_settings.runtime_socket
+        )
+        actual_project_runtime = project_runtime or UnixProjectRuntimeClient(
+            actual_settings.runtime_socket
+        )
+        actual_waw_application = waw_application
+        if (
+            actual_waw_mode is WAWMode.FILESYSTEM_V2
+            and actual_settings.env is Environment.PRODUCTION
+        ):
+            actual_waw_application = WAWAPIApplication.production(actual_settings, actual_services)
+        if actual_waw_application is not None:
+            actual_waw_application.bind_control_plane(actual_settings, actual_services)
+        actual_login_executor = BoundedLoginExecutor(
+            actual_services.auth,
+            max_concurrency=actual_settings.argon2_max_concurrency,
+        )
+
+        @asynccontextmanager
+        async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+            del application
             try:
-                await actual_login_executor.close()
-                if not actual_login_executor.shutdown_clean:
-                    raise RuntimeError("login executor shutdown is incomplete")
-            except BaseException as exc:
-                if shutdown_failure is None:
-                    shutdown_failure = exc
-            if shutdown_failure is None:
-                try:
-                    actual_services.database.close()
-                except BaseException as exc:
-                    shutdown_failure = exc
-            if shutdown_failure is None and actual_waw_application is not None:
-                try:
-                    actual_waw_application.finalize_after_database_close()
-                except BaseException as exc:
-                    shutdown_failure = exc
-            if shutdown_failure is not None:
+                if deployment_profile is not None:
+                    revalidate_waw_deployment_profile(deployment_profile)
                 if actual_waw_application is not None:
-                    actual_waw_application.poison_shutdown(shutdown_failure)
-                raise shutdown_failure
-            log_event(logger, logging.INFO, "api_stopped", "Control plane API stopped")
-
-    application = FastAPI(
-        title="AgentBox",
-        version=__version__,
-        description="AgentBox capability-aware control plane",
-        lifespan=lifespan,
-        debug=False,
-    )
-    application.state.settings = actual_settings
-    application.state.services = actual_services
-    application.state.codex_runtime = actual_codex_runtime
-    application.state.claude_runtime = actual_claude_runtime
-    application.state.project_runtime = actual_project_runtime
-    application.state.waw_mode = waw_mode
-    application.state.waw_bind_coordinator = waw_bind_coordinator
-    application.state.waw_authorization_policy = waw_authorization_policy
-    application.state.waw_attachment_authority = waw_attachment_authority
-    application.state.waw_stream_handler = waw_stream_handler
-    application.state.login_executor = actual_login_executor
-    application.add_middleware(
-        ControlPlaneHttpMiddleware,
-        max_body_bytes=actual_settings.request_body_limit,
-    )
-    if actual_waw_application is not None:
-
-        @application.middleware("http")
-        async def bind_waw_owner(
-            request: Request, call_next: Callable[[Request], Awaitable[Response]]
-        ) -> Response:
-            request.scope[WAW_APPLICATION_SCOPE_KEY] = actual_waw_application
-            task = None
-            registered = False
-            if _is_waw_http_path(request.url.path):
-                task = asyncio.current_task()
-                if task is not None:
-                    with suppress(WAWAPIApplicationError):
-                        registered = actual_waw_application.register_route(task)
-            try:
-                return await call_next(request)
+                    await actual_waw_application.start()
+                elif waw_bind_coordinator is not None:
+                    await waw_bind_coordinator.bind()
+                log_event(logger, logging.INFO, "api_started", "Control plane API started")
+                yield
             finally:
-                if registered and task is not None:
-                    actual_waw_application.unregister_route(task)
+                shutdown_failure: BaseException | None = None
+                if actual_waw_application is not None:
+                    try:
+                        await actual_waw_application.close()
+                    except BaseException as exc:
+                        shutdown_failure = exc
+                try:
+                    await actual_login_executor.close()
+                    if not actual_login_executor.shutdown_clean:
+                        raise RuntimeError("login executor shutdown is incomplete")
+                except BaseException as exc:
+                    if shutdown_failure is None:
+                        shutdown_failure = exc
+                if shutdown_failure is None:
+                    try:
+                        actual_services.database.close()
+                    except BaseException as exc:
+                        shutdown_failure = exc
+                if shutdown_failure is None and actual_waw_application is not None:
+                    try:
+                        actual_waw_application.finalize_after_database_close()
+                    except BaseException as exc:
+                        shutdown_failure = exc
+                if shutdown_failure is not None:
+                    if actual_waw_application is not None:
+                        actual_waw_application.poison_shutdown(shutdown_failure)
+                    raise shutdown_failure
+                log_event(logger, logging.INFO, "api_stopped", "Control plane API stopped")
 
-    @application.exception_handler(AgentBoxError)
-    async def handle_agentbox_error(request: Request, exc: AgentBoxError) -> JSONResponse:
-        return _error_response(
-            request,
-            status_code=exc.status_code,
-            code=exc.code,
-            category=exc.category,
-            message=exc.message,
-            retryable=exc.retryable,
-            retry_after=exc.retry_after,
+        application = FastAPI(
+            title="AgentBox",
+            version=__version__,
+            description="AgentBox capability-aware control plane",
+            lifespan=lifespan,
+            debug=False,
         )
+        application.state.settings = actual_settings
+        application.state.services = actual_services
+        application.state.codex_runtime = actual_codex_runtime
+        application.state.claude_runtime = actual_claude_runtime
+        application.state.project_runtime = actual_project_runtime
+        application.state.waw_mode = actual_waw_mode
+        application.state.waw_bind_coordinator = waw_bind_coordinator
+        application.state.waw_authorization_policy = waw_authorization_policy
+        application.state.waw_attachment_authority = waw_attachment_authority
+        application.state.waw_stream_handler = waw_stream_handler
+        application.state.login_executor = actual_login_executor
+        application.add_middleware(
+            ControlPlaneHttpMiddleware,
+            max_body_bytes=actual_settings.request_body_limit,
+        )
+        if actual_waw_application is not None:
 
-    @application.exception_handler(RequestValidationError)
-    async def handle_validation_error(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
-        fields = [
-            {
-                "field": ".".join(str(part) for part in error["loc"] if part != "body")[:128],
-                "type": str(error["type"])[:64],
+            @application.middleware("http")
+            async def bind_waw_owner(
+                request: Request, call_next: Callable[[Request], Awaitable[Response]]
+            ) -> Response:
+                request.scope[WAW_APPLICATION_SCOPE_KEY] = actual_waw_application
+                task = None
+                registered = False
+                if _is_waw_http_path(request.url.path):
+                    task = asyncio.current_task()
+                    if task is not None:
+                        with suppress(WAWAPIApplicationError):
+                            registered = actual_waw_application.register_route(task)
+                try:
+                    return await call_next(request)
+                finally:
+                    if registered and task is not None:
+                        actual_waw_application.unregister_route(task)
+
+        @application.exception_handler(AgentBoxError)
+        async def handle_agentbox_error(request: Request, exc: AgentBoxError) -> JSONResponse:
+            return _error_response(
+                request,
+                status_code=exc.status_code,
+                code=exc.code,
+                category=exc.category,
+                message=exc.message,
+                retryable=exc.retryable,
+                retry_after=exc.retry_after,
+            )
+
+        @application.exception_handler(RequestValidationError)
+        async def handle_validation_error(
+            request: Request, exc: RequestValidationError
+        ) -> JSONResponse:
+            fields = [
+                {
+                    "field": ".".join(str(part) for part in error["loc"] if part != "body")[:128],
+                    "type": str(error["type"])[:64],
+                }
+                for error in exc.errors()[:16]
+            ]
+            return _error_response(
+                request,
+                status_code=422,
+                code="REQUEST_VALIDATION_FAILED",
+                category="validation",
+                message="Request validation failed",
+                details={"fields": fields},
+            )
+
+        @application.exception_handler(Exception)
+        async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+            del exc
+            logger.error(
+                "Unhandled API exception",
+                extra={"event": "unhandled_exception", "request_id": _request_id(request)},
+            )
+            return _error_response(
+                request,
+                status_code=500,
+                code="INTERNAL_ERROR",
+                category="internal",
+                message="The request could not be completed",
+            )
+
+        @application.get("/healthz", response_model=HealthResponse, tags=["system"])
+        async def health() -> HealthResponse:
+            return HealthResponse()
+
+        @application.get("/readyz", response_model=ReadinessResponse, tags=["system"])
+        async def readiness() -> JSONResponse | ReadinessResponse:
+            checks = {
+                "database": actual_services.database.check_connection(),
+                "migrations": actual_services.database.migrations_current(),
             }
-            for error in exc.errors()[:16]
-        ]
-        return _error_response(
-            request,
-            status_code=422,
-            code="REQUEST_VALIDATION_FAILED",
-            category="validation",
-            message="Request validation failed",
-            details={"fields": fields},
-        )
+            if actual_waw_application is not None:
+                checks.update(actual_waw_application.readiness_checks)
+            ready = all(checks.values())
+            payload = ReadinessResponse(status="ready" if ready else "not_ready", checks=checks)
+            if ready:
+                return payload
+            return JSONResponse(status_code=503, content=payload.model_dump(mode="json"))
 
-    @application.exception_handler(Exception)
-    async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-        del exc
-        logger.error(
-            "Unhandled API exception",
-            extra={"event": "unhandled_exception", "request_id": _request_id(request)},
-        )
-        return _error_response(
-            request,
-            status_code=500,
-            code="INTERNAL_ERROR",
-            category="internal",
-            message="The request could not be completed",
-        )
+        @application.get("/api/v1/meta", response_model=MetaResponse, tags=["system"])
+        async def metadata() -> MetaResponse:
+            return MetaResponse(version=__version__, environment=actual_settings.env.value)
 
-    @application.get("/healthz", response_model=HealthResponse, tags=["system"])
-    async def health() -> HealthResponse:
-        return HealthResponse()
+        application.include_router(auth_router)
+        application.include_router(codex_router)
+        application.include_router(claude_router)
+        application.include_router(projects_router)
+        application.include_router(workspaces_router)
+        application.include_router(project_workspaces_router)
+        application.include_router(github_router)
+        application.include_router(jobs_router)
+        application.include_router(doctor_router)
 
-    @application.get("/readyz", response_model=ReadinessResponse, tags=["system"])
-    async def readiness() -> JSONResponse | ReadinessResponse:
-        checks = {
-            "database": actual_services.database.check_connection(),
-            "migrations": actual_services.database.migrations_current(),
-        }
-        if actual_waw_application is not None:
-            checks.update(actual_waw_application.readiness_checks)
-        ready = all(checks.values())
-        payload = ReadinessResponse(status="ready" if ready else "not_ready", checks=checks)
-        if ready:
-            return payload
-        return JSONResponse(status_code=503, content=payload.model_dump(mode="json"))
+        @application.websocket("/api/v1/workspaces/{workspace_id}/stream")
+        async def waw_stream(websocket: WebSocket, workspace_id: str) -> None:
+            """Fail-closed WAW stream boundary until an approved handler is wired.
 
-    @application.get("/api/v1/meta", response_model=MetaResponse, tags=["system"])
-    async def metadata() -> MetaResponse:
-        return MetaResponse(version=__version__, environment=actual_settings.env.value)
+            The route is deliberately registered before the static frontend
+            catch-all.  It performs only scope/query and opaque identity checks;
+            no cookie, ticket, terminal payload, Noise key or Runtime process is
+            read when the stream handler is unavailable.
+            """
 
-    application.include_router(auth_router)
-    application.include_router(codex_router)
-    application.include_router(claude_router)
-    application.include_router(projects_router)
-    application.include_router(workspaces_router)
-    application.include_router(project_workspaces_router)
-    application.include_router(github_router)
-    application.include_router(jobs_router)
-    application.include_router(doctor_router)
+            if _WAW_WORKSPACE_ID.fullmatch(workspace_id) is None or websocket.query_params:
+                await websocket.close(code=1008)
+                return
+            handler = None
+            if actual_waw_application is not None:
+                with suppress(WAWAPIApplicationError):
+                    handler = actual_waw_application.stream_handler
+            else:
+                handler = getattr(application.state, "waw_stream_handler", None)
+            native = websocket.scope.get("extensions", {}).get(NATIVE_SCOPE_KEY)
+            if not callable(handler) or type(native) is not WAWWebSocketProtocol:
+                await websocket.close(code=1013)
+                return
+            await handler(websocket)
 
-    @application.websocket("/api/v1/workspaces/{workspace_id}/stream")
-    async def waw_stream(websocket: WebSocket, workspace_id: str) -> None:
-        """Fail-closed WAW stream boundary until an approved handler is wired.
-
-        The route is deliberately registered before the static frontend
-        catch-all.  It performs only scope/query and opaque identity checks;
-        no cookie, ticket, terminal payload, Noise key or Runtime process is
-        read when the stream handler is unavailable.
-        """
-
-        if _WAW_WORKSPACE_ID.fullmatch(workspace_id) is None or websocket.query_params:
-            await websocket.close(code=1008)
-            return
-        handler = None
-        if actual_waw_application is not None:
-            with suppress(WAWAPIApplicationError):
-                handler = actual_waw_application.stream_handler
-        else:
-            handler = getattr(application.state, "waw_stream_handler", None)
-        native = websocket.scope.get("extensions", {}).get(NATIVE_SCOPE_KEY)
-        if not callable(handler) or type(native) is not WAWWebSocketProtocol:
-            await websocket.close(code=1013)
-            return
-        await handler(websocket)
-
-    static_root = actual_settings.static_dir
-    if static_root is not None:
-        _register_static_web(application, static_root)
-    return application
+        static_root = actual_settings.static_dir
+        if static_root is not None:
+            _register_static_web(application, static_root)
+        return application
+    except BaseException as exc:
+        reraise_factory_failure(exc)
 
 
 def _register_static_web(application: FastAPI, static_root: Path) -> None:
@@ -399,7 +446,8 @@ def _register_static_web(application: FastAPI, static_root: Path) -> None:
         )
 
 
-app = create_app()
+_installed_settings = Settings()
+app = create_app(_installed_settings)
 
 
 def run() -> None:
@@ -407,11 +455,10 @@ def run() -> None:
     import uvicorn
 
     configure_logging()
-    settings = Settings()
     uvicorn.run(
-        create_app(settings),
-        host=settings.bind_host,
-        port=settings.bind_port,
+        app,
+        host=_installed_settings.bind_host,
+        port=_installed_settings.bind_port,
         access_log=False,
         ws=WAWWebSocketProtocol,
         ws_per_message_deflate=False,

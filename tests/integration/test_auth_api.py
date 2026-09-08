@@ -7,7 +7,10 @@ from pathlib import Path
 
 import httpx
 import pytest
+from agentbox_api import main as api_main
 from agentbox_api.main import create_app
+from agentbox_api.waw_application import WAWMode
+from agentbox_api.waw_deployment_profile import WAWDeploymentProfileObservation
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.models import (
     AdminUser,
@@ -891,6 +894,7 @@ async def test_proxy_source_and_secure_cookie_semantics_are_explicit(
     tmp_path: Path,
     trusted_proxies: tuple[str, ...],
     expected_source: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     data_dir = tmp_path / ("trusted" if trusted_proxies else "untrusted")
     data_dir.mkdir(mode=0o700)
@@ -916,9 +920,18 @@ async def test_proxy_source_and_secure_cookie_semantics_are_explicit(
         password_manager=PasswordManager(time_cost=1, memory_cost=8192, parallelism=1),
     )
     services.admin.initialize("maintainer", PASSWORD)
-    # Database fixture paths are intentionally temporary; switch only the cookie
-    # policy after service construction so the request exercises production semantics.
+    # Keep production construction and request policy. This proxy/Cookie fixture
+    # supplies a test-only disabled profile observation instead of requiring a
+    # real installation; filesystem/bootstrap behavior has dedicated coverage.
     settings.env = Environment.PRODUCTION
+    profile = WAWDeploymentProfileObservation(
+        mode=WAWMode.DISABLED,
+        source="missing_default",
+        raw_sha256=None,
+        parent_identity=(1,),
+        file_identity=None,
+    )
+    monkeypatch.setattr(api_main, "load_waw_deployment_profile", lambda: profile)
     application = create_app(
         settings,
         services,
@@ -926,6 +939,8 @@ async def test_proxy_source_and_secure_cookie_semantics_are_explicit(
         FakeClaudeRuntime(),
         FakeProjectRuntime(),
     )
+    assert application.state.settings.env is Environment.PRODUCTION
+    assert application.state.waw_mode is WAWMode.DISABLED
     try:
         transport = httpx.ASGITransport(app=application, client=("127.0.0.1", 44000))
         async with httpx.AsyncClient(

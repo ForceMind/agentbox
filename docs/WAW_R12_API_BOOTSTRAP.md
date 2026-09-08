@@ -1,7 +1,8 @@
 # R12 API production bootstrap contract
 
 状态：2026-09-08，按Owner已批准的[PRP-v1](project/PRODUCTION_READINESS_PLAN.md)
-冻结的R12-A稳定软件契约；R12-B实现与验证尚未完成。无host/client/key激活。
+冻结的R12-A稳定软件契约；R12-B/rc11本地实现、82项定向验证与独立Architecture/
+Security/Test复审通过，exact-head CI和merge/read-back待完成。无host/client/key激活。
 基线：`1ab28e524d018df3d59e6c48f01646bb1021a978`。
 
 ## 固定配置来源
@@ -36,6 +37,8 @@
   任何对外失败仅用有界code，不附profile正文、路径、inode或anchor内容。
 
 profile在process启动时读取，作为整个API lifespan的快照；无热重载、TTL或mtime授权。
+每级目录entry都通过上级held FD进行nofollow stat，与child FD核验；absence返回前
+再次确认leaf ENOENT，不能只fstat一个已被rename到别处的旧parent FD。
 构造期间保留可重新核验的observation，在lifespan开始、WAW owner启动/发布前再次核验，
 关闭持有资源后才继续；absence observation也要检查leaf没有在启动间隙出现。
 发生替换、取消、失败或close不确定时拒绝启动，不能继续使用旧观察或重试可能复用的FD。
@@ -62,6 +65,8 @@ module级ASGI `app`与console `run()`复用同一installed app及settings，避�
 在profile安全核验前不建立新的ControlPlaneServices；构造失败时清理仅本次创建的资源，
 不能关闭调用方注入的services。profile observation的所有权由factory移交lifespan，
 取消/启动失败有明确close路径；不新增生产callback或可配置loader端口。
+整个factory构造/注册段共享一个异常边界，包含HTTP/WebSocket装饰器。owned DB只
+清理一次；原factory与DB清理同时失败时保留两项异常，不能吞掉cleanup incomplete。
 
 ## Installer后继契约
 

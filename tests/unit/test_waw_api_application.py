@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import agentbox_api.main as api_main
 import httpx
 import pytest
 from agentbox_api import waw_application
@@ -29,6 +30,7 @@ from agentbox_api.waw_application import (
 from agentbox_api.waw_authorization import SingleAdminWorkspacePolicy
 from agentbox_api.waw_binding import WAWRuntimeBindCoordinator
 from agentbox_api.waw_control_client import WAWControlClientError
+from agentbox_api.waw_deployment_profile import WAWDeploymentProfileObservation
 from agentbox_api.waw_relay import DurableAdmissionAudit, WAWStreamHandler
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.models import Project
@@ -877,30 +879,212 @@ def test_production_rejects_injected_owner(
         create_app(
             production,
             services,
-            waw_mode=WAWMode.FILESYSTEM_V2,
             waw_application=owner,
         )
 
 
 @pytest.mark.anyio
-async def test_filesystem_v2_production_is_lazy_and_missing_fixed_lock_fails_closed(
+def test_production_rejects_raw_mode_before_loading_any_waw_components(
+    settings: Settings,
+    services: ControlPlaneServices,
+) -> None:
+    production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    with pytest.raises(ValueError, match="deployment profile"):
+        create_app(production, services, waw_mode=WAWMode.FILESYSTEM_V2)
+
+
+def test_production_disabled_profile_does_not_construct_waw_owner(
     settings: Settings,
     services: ControlPlaneServices,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    profile = WAWDeploymentProfileObservation(
+        mode=WAWMode.DISABLED,
+        source="missing_default",
+        raw_sha256=None,
+        parent_identity=(1,),
+        file_identity=None,
+    )
+    calls = 0
 
-    def unavailable(_lock: WAWAPIProcessLock) -> None:
-        raise WAWAPIApplicationError(
-            "WAW_API_SINGLETON_UNAVAILABLE", "synthetic fixed lock is unavailable"
-        )
+    monkeypatch.setattr(api_main, "load_waw_deployment_profile", lambda: profile)
 
-    monkeypatch.setattr(WAWAPIProcessLock, "acquire", unavailable)
-    application = create_app(production, services, waw_mode=WAWMode.FILESYSTEM_V2)
-    with pytest.raises(WAWAPIApplicationError) as raised:
+    def unexpected_factory(*_args: object) -> WAWAPIApplication:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("disabled profile must not construct WAW")
+
+    monkeypatch.setattr(WAWAPIApplication, "production", unexpected_factory)
+    application = create_app(production, services)
+    assert application.state.waw_mode is WAWMode.DISABLED
+    assert calls == 0
+
+
+@pytest.mark.anyio
+async def test_production_profile_is_revalidated_before_one_owner_starts(
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    profile = WAWDeploymentProfileObservation(
+        mode=WAWMode.FILESYSTEM_V2,
+        source="installed_profile",
+        raw_sha256="a" * 64,
+        parent_identity=(1,),
+        file_identity=(2,),
+    )
+    events: list[str] = []
+
+    class Owner:
+        def bind_control_plane(self, _settings: Settings, _services: ControlPlaneServices) -> None:
+            events.append("bound")
+
+        async def start(self) -> None:
+            events.append("started")
+
+        async def close(self) -> None:
+            events.append("closed")
+
+        def finalize_after_database_close(self) -> None:
+            events.append("finalized")
+
+        def poison_shutdown(self, _failure: BaseException) -> None:
+            events.append("poisoned")
+
+        @property
+        def readiness_checks(self) -> dict[str, bool]:
+            return {}
+
+    owner = Owner()
+    monkeypatch.setattr(api_main, "load_waw_deployment_profile", lambda: profile)
+    monkeypatch.setattr(
+        api_main,
+        "revalidate_waw_deployment_profile",
+        lambda value: events.append("revalidated") if value is profile else None,
+    )
+    monkeypatch.setattr(WAWAPIApplication, "production", lambda *_args: owner)
+
+    application = create_app(production, services)
+    async with application.router.lifespan_context(application):
+        assert events == ["bound", "revalidated", "started"]
+    assert events == ["bound", "revalidated", "started", "closed", "finalized"]
+
+
+@pytest.mark.anyio
+async def test_profile_revalidation_failure_never_starts_owner_and_cleans_in_order(
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    profile = WAWDeploymentProfileObservation(
+        mode=WAWMode.FILESYSTEM_V2,
+        source="installed_profile",
+        raw_sha256="a" * 64,
+        parent_identity=(1,),
+        file_identity=(2,),
+    )
+    events: list[str] = []
+
+    class Owner:
+        def bind_control_plane(self, _settings: Settings, _services: ControlPlaneServices) -> None:
+            events.append("bound")
+
+        async def start(self) -> None:
+            events.append("started")
+
+        async def close(self) -> None:
+            events.append("owner_close")
+
+        def finalize_after_database_close(self) -> None:
+            events.append("finalized")
+
+        def poison_shutdown(self, _failure: BaseException) -> None:
+            events.append("poisoned")
+
+    class LoginExecutor:
+        shutdown_clean = True
+
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def close(self) -> None:
+            events.append("login_close")
+
+    owner = Owner()
+    monkeypatch.setattr(api_main, "load_waw_deployment_profile", lambda: profile)
+    monkeypatch.setattr(
+        api_main,
+        "revalidate_waw_deployment_profile",
+        lambda _profile: (_ for _ in ()).throw(RuntimeError("synthetic profile drift")),
+    )
+    monkeypatch.setattr(WAWAPIApplication, "production", lambda *_args: owner)
+    monkeypatch.setattr(api_main, "BoundedLoginExecutor", LoginExecutor)
+    monkeypatch.setattr(services.database, "close", lambda: events.append("database_close"))
+
+    application = create_app(production, services)
+    with pytest.raises(RuntimeError, match="synthetic profile drift"):
         async with application.router.lifespan_context(application):
-            raise AssertionError("filesystem-v2 startup must fail without its fixed lock")
-    assert raised.value.code == "WAW_API_SINGLETON_UNAVAILABLE"
+            raise AssertionError("profile drift must stop startup")
+    assert events == ["bound", "owner_close", "login_close", "database_close", "finalized"]
+
+
+@pytest.mark.anyio
+async def test_owner_close_failure_poison_shutdown_preserves_database_and_finalize(
+    settings: Settings,
+    services: ControlPlaneServices,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production = settings.model_copy(update={"env": Environment.PRODUCTION})
+    profile = WAWDeploymentProfileObservation(
+        mode=WAWMode.FILESYSTEM_V2,
+        source="installed_profile",
+        raw_sha256="a" * 64,
+        parent_identity=(1,),
+        file_identity=(2,),
+    )
+    events: list[str] = []
+
+    class Owner:
+        def bind_control_plane(self, _settings: Settings, _services: ControlPlaneServices) -> None:
+            events.append("bound")
+
+        async def start(self) -> None:
+            events.append("started")
+
+        async def close(self) -> None:
+            events.append("owner_close")
+            raise RuntimeError("synthetic owner close failure")
+
+        def finalize_after_database_close(self) -> None:
+            events.append("finalized")
+
+        def poison_shutdown(self, _failure: BaseException) -> None:
+            events.append("poisoned")
+
+    class LoginExecutor:
+        shutdown_clean = True
+
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def close(self) -> None:
+            events.append("login_close")
+
+    owner = Owner()
+    monkeypatch.setattr(api_main, "load_waw_deployment_profile", lambda: profile)
+    monkeypatch.setattr(api_main, "revalidate_waw_deployment_profile", lambda _profile: None)
+    monkeypatch.setattr(WAWAPIApplication, "production", lambda *_args: owner)
+    monkeypatch.setattr(api_main, "BoundedLoginExecutor", LoginExecutor)
+    monkeypatch.setattr(services.database, "close", lambda: events.append("database_close"))
+
+    application = create_app(production, services)
+    with pytest.raises(RuntimeError, match="synthetic owner close failure"):
+        async with application.router.lifespan_context(application):
+            assert events == ["bound", "started"]
+    assert events == ["bound", "started", "owner_close", "login_close", "poisoned"]
 
 
 @pytest.mark.anyio
