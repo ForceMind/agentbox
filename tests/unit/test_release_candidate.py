@@ -513,7 +513,15 @@ def _successful_gate_results(candidate_version: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize(
-    "candidate_version", ["0.3.0rc8", "0.3.0rc9", "0.3.0rc10", "0.3.0rc11", "0.3.0rc12", "0.3.0rc13"]
+    "candidate_version",
+    [
+        "0.3.0rc8",
+        "0.3.0rc9",
+        "0.3.0rc10",
+        "0.3.0rc11",
+        "0.3.0rc12",
+        "0.3.0rc13",
+    ],
 )
 def test_release_gate_cli_accepts_exact_version_contract(candidate_version: str) -> None:
     root = Path(__file__).resolve().parents[2]

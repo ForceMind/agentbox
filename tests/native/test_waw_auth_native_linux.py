@@ -538,9 +538,9 @@ def test_auth_probe_fixed_record_fds_environment_offline_and_exit_status(
         _send_record_and_close(control, _auth_record(agent))
         control.settimeout(5.0)
         assert control.recv(8) == b"AWRP\x01\x01\x00\x00"
+        assert process.wait(timeout=5.0) == 23
         assert _read_to_eof(stdout_fd) == b"AUTH-OK\n"
         assert _read_to_eof(stderr_fd) == b"AUTH-ERR-OK\n"
-        assert process.wait(timeout=5.0) == 23
         _wait_cgroup_empty()
         assert (SCRATCH_SOURCE / "vendor-residue").read_text() == "residue\n"
         _cleanup_auth_scratch_owner()
@@ -686,7 +686,7 @@ def test_auth_probe_wrong_generation_cgroup_never_emits_placed_ready(
         control.settimeout(1.0)
         assert control.recv(8) == b""
         _wait_cgroup_empty()
-        assert _cgroup_populated(WRONG_CGROUP) == 0
+        assert _cgroup_populated(WRONG_CGROUP) == (1 if wrong_before else 0)
         assert _cgroup_members(WRONG_CGROUP) == wrong_before
     finally:
         control.close()
@@ -749,9 +749,9 @@ def test_auth_probe_closes_unexpected_inherited_fd_before_vendor_exec(
         _send_record_and_close(control, _auth_record())
         control.settimeout(5.0)
         assert control.recv(8) == b"AWRP\x01\x01\x00\x00"
+        assert process.wait(timeout=5.0) == 23
         assert _read_to_eof(stdout_fd) == b"AUTH-OK\n"
         assert _read_to_eof(stderr_fd) == b"AUTH-ERR-OK\n"
-        assert process.wait(timeout=5.0) == 23
         _wait_cgroup_empty()
         assert (SCRATCH_SOURCE / "vendor-residue").read_text() == "residue\n"
         _cleanup_auth_scratch_owner()
