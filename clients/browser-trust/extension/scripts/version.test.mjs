@@ -9,7 +9,7 @@ import { manifestVersionForPackage, packagedManifest } from "./version.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("MV3 package version", () => {
-  it("derives the packaged rc12 manifest version from package metadata", async () => {
+  it("derives the packaged rc13 manifest version from package metadata", async () => {
     const packageMetadata = JSON.parse(
       await readFile(resolve(root, "package.json"), "utf8"),
     );
@@ -17,17 +17,17 @@ describe("MV3 package version", () => {
       await readFile(resolve(root, "manifest.inert.json"), "utf8"),
     );
 
-    expect(packageMetadata.version).toBe("0.3.0-rc.12");
-    expect(manifestVersionForPackage(packageMetadata.version)).toBe("0.3.0.12");
+    expect(packageMetadata.version).toBe("0.3.0-rc.13");
+    expect(manifestVersionForPackage(packageMetadata.version)).toBe("0.3.0.13");
     expect(
       packagedManifest(inertManifest, packageMetadata.version).version,
-    ).toBe("0.3.0.12");
+    ).toBe("0.3.0.13");
   });
 
   it("rejects package and manifest versions that cannot produce the fixed MV3 identity", () => {
     expect(() => manifestVersionForPackage("0.3.0")).toThrow("must use");
     expect(() =>
-      packagedManifest({ version: "0.3.0.11" }, "0.3.0-rc.12"),
+      packagedManifest({ version: "0.3.0.12" }, "0.3.0-rc.13"),
     ).toThrow("does not match");
   });
 });

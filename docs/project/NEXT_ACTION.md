@@ -1,5 +1,13 @@
 # Current Authorized Action
 
+## R12-C2 native auth-probe execution — 2026-09-13
+
+C1/rc12 is merged as PR #91 merge `ae8c730ad40abb1191413634ac445e1045cf7709`.
+The current branch contains C2 native auth-probe source/test WIP and rc13 metadata.
+Finish Linux host-gated normal/sanitizer tests, then review and deliver the native
+substrate separately. Python sealed auth lease/cache/provider, Runtime executor
+start/resume timeout ownership and C3 Runtime main remain subsequent slices.
+
 ## R12-B delivered; C1 candidate and C2 native work
 
 R12-B/rc11 is delivered by PR #90: final head `64d45e7...` completed the exact

@@ -1,11 +1,30 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-08T08:25:52Z"
-verified_by: "codex-rc11-merge-readback-rc12-candidate"
+verified_at_utc: "2026-09-13T16:20:00Z"
+verified_by: "codex-r12-c2-native-ci-preparation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## R12-C2 native auth-probe candidate
+
+After the verified PR #91 merge `ae8c730ad40abb1191413634ac445e1045cf7709`,
+C2 native auth-probe work is in progress on `codex/r12-auth-native`. The working
+tree contains only native auth-probe sources, its Linux host-gated test module,
+workflow setup, and the rc13 version/release metadata; no Python lease/cache,
+executor or Runtime main wiring is present yet.
+
+The native path now checks `SO_PEERCRED`, requires sender half-close after the
+single AWP1 record, uses separate AWRP placement, and keeps the interactive ABI
+unchanged. The workflow creates sibling parent/target cgroups and root-owned
+auth mount anchors. Local portable build/gate and five existing native/helper
+tests pass; Linux auth cases remain skipped on macOS. Exact-head CI is the
+authority for namespace/cgroup/sanitizer behavior.
+
+C2 is not complete: Python sealed auth leases/cache, five-second operation
+ownership, Runtime executor integration and C3 main wiring remain. Host/client
+activation, real CLI login, key operation and production remain closed.
 
 ## R12-B delivered; R12-C1 candidate
 

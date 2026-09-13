@@ -27,6 +27,16 @@ struct agentbox_waw_bridge_config {
     char profile_digest[65];
 };
 
+struct agentbox_waw_auth_probe_config {
+    uint64_t generation;
+    uint32_t runtime_uid;
+    uint32_t runtime_gid;
+    uint8_t agent_type;
+    uint8_t reserved[3];
+    char workspace_hash[65];
+    char profile_digest[65];
+};
+
 int agentbox_waw_is_hex_digest(const char *value);
 int agentbox_waw_parse_agent(const char *value, enum agentbox_waw_agent_type *agent);
 const char *agentbox_waw_agent_name(enum agentbox_waw_agent_type agent);
@@ -48,6 +58,7 @@ int agentbox_waw_wait_child(int pid, int pidfd);
 int agentbox_waw_confirm_exec(int status_fd, int pidfd);
 int agentbox_waw_confirm_exec_timeout(int status_fd, int pidfd, int timeout_ms);
 int agentbox_waw_send_ready(int fd);
+int agentbox_waw_send_auth_placed(int fd);
 void agentbox_waw_terminate_and_reap(int pid, int pidfd);
 
 #endif

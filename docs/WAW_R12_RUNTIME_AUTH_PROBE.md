@@ -40,11 +40,14 @@ FD3接收一个exact 160-byte SOCK_SEQPACKET record，network byte order：
 | 92 | profile_digest[64] | lowercase ASCII hex |
 | 156 | reserved[4] | 全零 |
 
-recvmsg必须拒绝truncated/oversize/undersize、ancillary和第二个record；不从argv/env取字段。
+Runtime parent在FD3的`SO_PEERCRED`必须与record中的PID/UID/GID及当前Runtime身份一致；仅payload字段不能证明peer。发送端在唯一record后执行`shutdown(SHUT_WR)`，helper在placement前等待EOF；任何第二个record、ancillary、truncated/oversize/undersize或未封口连接都拒绝。不从argv/env取字段。
 fixed FD角色为0 devnull只读stdin、1 stdout pipe、2 stderr pipe、3 config/placed-ready
 SOCK_SEQPACKET、4 generation cgroup directory、5 held vendor executable、6 selected
 vendor HOME、7 auth scratch/TMP、8 selected policy directory；无Project/bridge/PTY/tmux/WBR。
-逐一核验type/ownership及角色身份，不允许混用或额外泄露Runtime/key descriptors。
+逐一核验type/ownership及角色身份，不允许混用或额外泄露Runtime/key descriptors。`profile_digest`
+是Runtime sealed lease对已验证profile的声明；native auth helper只验证格式和held executable
+类型，不能单独把任意FD5提升为可信profile。Python production owner必须在发出record前将
+FD5、AgentType、executable digest与同一manifest/authority绑定，并拒绝不匹配的lease。
 
 helper验证record、parent身份与FD后，先写FD4/cgroup.procs并回读，再验证既有
 `ws-<hash>-g<generation>/workload` marker；发送独立placed-ready后才能建立隔离并exec vendor。
@@ -66,13 +69,15 @@ TERM=dumb，不继承Runtime完整环境。selected HOME/policy只提供所需�
 auth namespace增加CLONE_NEWNET、无接口配置，auth-only seccomp禁止network socket/
 connect/bind/listen/accept/send等。需要联网才能status的vendor版本保持unsupported，
 不得在实现中临时开放网络或更换认证方式。
+目标Project root若存在必须被auth mount遮蔽；测试应放置固定Project canary并确认不可见。
 
 ## Borrow lease与cleanup
 
 复用prepare_start已准备且尚未用于interactive的generation cgroup，不新增另一套cgroup
 schema。exact transport一次只借出一个sealed auth lease，dup上述必要FD，借用前后
 都要求cgroup empty。native probe返回完整cleanup proof后才归还interactive launch能力。
-probe不能删除后续interactive还需使用的cgroup；只清理自身auth scratch/子进程和FD。
+probe不能删除后续interactive还需使用的cgroup；native不删除host source scratch目录或vendor residue；Python sealed lease owner在收到
+cleanup proof后独占清理source/残留，并在归还interactive launch前证明目录为空。
 不确定cleanup则poison该transport/owner，不能交还或复用launcher FD。
 
 从spawn到正常退出共享5.0s；stdout+stderr总4096bytes，第4097字节触发overflow。
