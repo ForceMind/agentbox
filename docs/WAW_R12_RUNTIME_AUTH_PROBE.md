@@ -111,18 +111,21 @@ poison lease+transport+owner、production callback已从`from_verified_execution
 确认profile不产生嵌套残留。Python native port（AWP1 spawn）、executor接线、五秒操作
 所有权与C3 main仍未开始。
 
-实施状态（2026-09-15，`codex/r12-auth-executor-m4` M4）：executor 集成已实现并经独立
-审查：exact `WAWProductionAuthOwner` 时 start/resume 经 `probe_with_lease`（sealed窗口
-`sample ≤ checked_at 且 age < 30s` 替代严格 echo，非 owner probe 的 echo 路径不变）；
-awaiting-login（start attempted + inspector.login_required）可再借同一 cgroup 供 resume
-probe；supervisor 经 LOGIN_REQUIRED 门控暴露 transport。五秒预算归属：5.0s spawn→exit
-（+0.25s grace +1.0s drain margin）归 probe port 内部；control listener 仅放大
-`workspace.workspace.start` 的 dispatch+response deadline 至 8.0s 信封，其余 action 保持
-2.0s（决策 `R12-AUTH-PROBE-BUDGET-V1`）。**未核对项（C3 必须闭环）**：API 进程侧
-`WAWControlClient` 默认 2.0s（connect+write+read 全程）尚未与该 8.0s 信封核对；C3 把
-owner 接入 executor 并接通生产组合前，任何 >2s 的真实 probe 会使 client 超时并 poison
-整条 control transport。`waw_bootstrap` 组合校验当前仍钉死 `WAWCachedPublicAuthProbe`，
-owner 无生产构造点。C3 Runtime main 与生产组合（owner/profiles/信封/API 信封）仍未开始。
+实施状态（2026-09-15，`codex/r12-runtime-main` C3-a）：生产组合闭环已实现并经独立审查
+PASS：owner 新增一次性 `bind_native_probe_path`（解开 owner↔factory↔process_port 构造
+循环：owner 先建、port 用 owner 构造、factory 用 port 构造、owner 再 bind，校验与构造
+kwargs 双入口等价互斥）；factory vendor digest 改用 manifest inventory 条目 per-entry
+`max_bytes`（真实 vendor 二进制远超 64KiB 默认值）；`_compose_verified_v2` 与
+`RuntimeExecutorServer` fixed 组合的 auth_probe 钉从 `WAWCachedPublicAuthProbe` 换成
+`WAWProductionAuthOwner`（dev `_configure_waw_auth` 路径不变）。API 侧信封已核对：
+`WAWControlClient` 新增 per-action `action_timeout_seconds`，生产组合对
+`workspace.workspace.start` 用 9.0s（server 8.0s 信封 + 1.0s 传输余量），其余 action
+保持 2.0s（决策 `R12-AUTH-PROBE-BUDGET-V1` 闭环）。profiles 生产可行性结论：
+`profile_id`/`agent_type`/`probe_id`/`parser_id`/`executable` 可派生（仓内常量+manifest
+entry.path）；`vendor_version` 与 `codex_unauthenticated_output_sha256` 必须外部输入
+（D/G/H），缺失时组合 fail-closed，无 synthetic 回退。C3-b（生产 executor provider 与
+`_main` 生产分支接线：activated sockets、static key、epoch store、provider、application
+builder）仍未开始。
 
 ## 验收
 
