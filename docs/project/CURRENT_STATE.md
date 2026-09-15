@@ -1,37 +1,47 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-15T07:28:47Z"
-verified_by: "codex-r12-c2-native-anchor-fix"
+verified_at_utc: "2026-09-15T07:47:42Z"
+verified_by: "codex-r12-c2-python-auth-lease-start"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## R12-C2 native auth-probe substrate verified; merge pending
+## R12-C2 native auth-probe substrate delivered; Python slice started
 
-On `codex/r12-auth-native`, head `6148e959d95eafea0dda5824fc46de9b09a19aff`
-carries the closed auth probe substrate plus its Linux host-gated fix.
-Exact-head CI completed all 26 terminal checks: 24 success and the two
-prescribed rc8 historical skips. The Backend native job (normal and sanitized)
-passes the full 107-case Linux matrix, including the seven auth cases that
-failed at head `0f98bf3e7e34ff94d03f3491686ba744eedbfa29`.
+PR #92 final head `f8834757e9d620b74d6be60fb7ca3b1266590db0` completed all 26
+terminal checks: 24 success and the two prescribed rc8 historical skips. It
+merged normally as `fc52c40b2c3513832e417d3b2caacc932eca58c4`; exact Git
+read-back verified parents `ae8c730ad40abb1191413634ac445e1045cf7709` and the
+final PR head. All six post-main workflows succeeded: Security `34942690441`,
+Frontend `34942690538`, Deployment `34942690665`, Release Candidate
+`34942690616`, E2E `34942690405`, Backend `34942690521`.
 
-Root cause of the earlier seven-failure run: `setup_auth_mounts` required the
-root-owned `/run/agentbox-waw/auth-probe` anchor to stat as `st_uid == 0`
-while already running inside the first user namespace, where the host root
-owner is unmapped and reports as the overflow uid, so every conforming host
-failed closed with 71 after AWRP. Anchor ownership is now verified in
-`agentbox_waw_launch_auth_probe` (initial user namespace, fail-closed 71);
-the in-namespace gate revalidates only type and mode. The wrong-cgroup test's
-membership snapshot moved before spawn to remove its inherent PID race. No
-security assertion was relaxed; the interactive ABI, AWP1/AWRP protocol and
-exit-code semantics are unchanged. Independent Security/Architecture/Test
-review: PASS with no P0/P1; its P2 (document the root:root 0755 anchor
-provisioning contract) is recorded in `docs/WAW_R12_RUNTIME_AUTH_PROBE.md`.
+The earlier seven-failure native run (head `0f98bf3e`) was caused by
+`setup_auth_mounts` requiring the root-owned `/run/agentbox-waw/auth-probe`
+anchor to stat as `st_uid == 0` while already running inside the first user
+namespace, where the host root owner is unmapped and reports as the overflow
+uid, so every conforming host failed closed with 71 after AWRP. Fix `6148e95e`
+verifies anchor ownership in `agentbox_waw_launch_auth_probe` (initial user
+namespace, fail-closed 71) and keeps only type/mode revalidation inside the
+namespace; the wrong-cgroup test's membership snapshot moved before spawn to
+remove its inherent PID race. No security assertion was relaxed; the
+interactive ABI, AWP1/AWRP protocol and exit-code semantics are unchanged.
+Independent Security/Architecture/Test review reported PASS with no P0/P1;
+its P2 anchor provisioning contract is recorded in
+`docs/WAW_R12_RUNTIME_AUTH_PROBE.md`.
 
-C2 is not complete: Python sealed auth leases/cache, five-second operation
-ownership, Runtime executor integration and C3 main wiring remain. Host/client
-activation, real CLI login, key operation and production remain closed.
+The closed native path checks `SO_PEERCRED`, requires sender half-close after
+the single AWP1 record, uses separate AWRP placement, and keeps the
+interactive ABI unchanged. The Linux native/sanitizer matrix covers placement
+before exec, exact FD/environment, offline enforcement, cleanup of hanging
+namespace descendants and malformed/role-fault rejection.
+
+C2 is not complete: the current branch `codex/r12-auth-lease` starts the
+Python sealed auth lease/cache/provider slice; five-second operation
+ownership, Runtime executor integration and C3 main wiring remain after it.
+Host/client activation, real CLI login, key operation and production remain
+closed.
 
 ## R12-B delivered; R12-C1 candidate
 

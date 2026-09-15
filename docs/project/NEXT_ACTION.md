@@ -1,16 +1,20 @@
 # Current Authorized Action
 
-## R12-C2 native substrate delivered; Python auth provider next — 2026-09-15
+## R12-C2 Python sealed auth lease/cache/provider — 2026-09-15
 
-C1/rc12 is merged as PR #91 merge `ae8c730ad40abb1191413634ac445e1045cf7709`.
-The C2 native auth-probe substrate is verified at head
-`6148e959d95eafea0dda5824fc46de9b09a19aff`: all 26 exact-head terminal checks
-(24 success, two prescribed rc8 skips), full 107-case Linux native/sanitizer
-matrix, and independent Security/Architecture/Test PASS. Its normal merge and
-exact read-back complete this slice. Continue with the Python sealed auth
-lease/cache/provider slice (`WAWPublicAuthProbeCache`, fixed-transport sealed
-leases, production callback removal), then five-second operation ownership and
-Runtime executor integration, then C3 Runtime main.
+The C2 native auth-probe substrate is delivered by PR #92: final head
+`f8834757e9d620b74d6be60fb7ca3b1266590db0` completed all 26 terminal checks
+(24 success, two prescribed rc8 skips), merged normally as
+`fc52c40b2c3513832e417d3b2caacc932eca58c4` with exact parent read-back, and
+all six post-main workflows succeeded. Preserve this result.
+
+The current branch `codex/r12-auth-lease` implements the Python slice:
+`WAWPublicAuthProbeCache`, fixed-transport sealed auth leases, production
+callback removal, cache-hit release of unused leases and one-probe-per-workspace
+ownership per `docs/WAW_R12_RUNTIME_AUTH_PROBE.md`. Five-second operation
+ownership, Runtime executor integration and C3 Runtime main remain subsequent
+slices. No actual host/client/key/CLI activation follows from the software
+merge.
 
 ## R12-B delivered; C1 candidate and C2 native work
 
