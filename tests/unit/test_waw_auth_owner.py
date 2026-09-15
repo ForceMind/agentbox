@@ -207,7 +207,7 @@ def _transport(
     transport = object.__new__(WAWFixedTransport)
     transport._identity = identity
     transport._production = True
-    transport._handles = SimpleNamespace(cgroup=handle)
+    transport._handles = cast(Any, SimpleNamespace(cgroup=handle))
     transport._port = SimpleNamespace(execution_authority=authority)
     transport._start_attempted = False
     transport._closed = False
@@ -274,7 +274,7 @@ def _evidence(
 
 def _error_code(exc: BaseException) -> str:
     assert isinstance(exc, RuntimeOperationError)
-    return cast(RuntimeOperationError, exc).code
+    return exc.code
 
 
 def test_constructor_rejects_type_and_authority_drift(

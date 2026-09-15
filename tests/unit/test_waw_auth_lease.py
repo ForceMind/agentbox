@@ -109,7 +109,7 @@ def _transport(
     transport = object.__new__(WAWFixedTransport)
     transport._identity = identity
     transport._production = production
-    transport._handles = SimpleNamespace(cgroup=handle)
+    transport._handles = cast(Any, SimpleNamespace(cgroup=handle))
     transport._port = SimpleNamespace(execution_authority=authority)
     transport._start_attempted = False
     transport._closed = False
@@ -136,7 +136,15 @@ def rig(
 
 def _error_code(exc: BaseException) -> str:
     assert isinstance(exc, RuntimeOperationError)
-    return cast(RuntimeOperationError, exc).code
+    return exc.code
+
+
+def _auth_lease_slot(transport: WAWFixedTransport) -> object:
+    return transport._auth_lease
+
+
+def _auth_borrowed(handle: LinuxCgroupControlHandle) -> bool:
+    return handle.auth_borrowed
 
 
 def test_borrow_and_release_round_trip(
@@ -169,8 +177,8 @@ def test_borrow_and_release_round_trip(
     owner.release(lease)
 
     assert not scratch.exists()
-    assert transport._auth_lease is None
-    assert not handle.auth_borrowed
+    assert _auth_lease_slot(transport) is None
+    assert not _auth_borrowed(handle)
     assert lease._state == "RELEASED"
     with pytest.raises(RuntimeOperationError) as stale:
         lease.cgroup_fd()
@@ -260,9 +268,7 @@ def test_borrow_rejects_unqualified_transport(
 ) -> None:
     owner, transport, handle, _workspace = rig
     identity = fixed_identity()
-    development = _transport(
-        identity, cast(WAWVerifiedExecutionAuthority, handle._authority), handle, production=False
-    )
+    development = _transport(identity, handle._authority, handle, production=False)
     with pytest.raises(RuntimeOperationError) as nonproduction:
         owner.borrow(development)
     assert _error_code(nonproduction.value) == "WAW_AUTH_LEASE_STALE"
@@ -406,9 +412,7 @@ def test_foreign_release_poisons_calling_owner(
 ) -> None:
     owner, transport, _handle, _workspace = rig
     other_fd, _other_workspace = _scratch_tree(tmp_path / "other")
-    other = WAWAuthLeaseOwner(
-        cast(WAWVerifiedExecutionAuthority, owner.authority), scratch_root=other_fd
-    )
+    other = WAWAuthLeaseOwner(owner.authority, scratch_root=other_fd)
     os.close(other_fd)
     lease = owner.borrow(transport)
     with pytest.raises(RuntimeOperationError) as poisoned:
@@ -447,7 +451,7 @@ def test_cgroup_auth_borrow_token_gate(
 
 
 def test_constructor_rejects_invalid_scratch_root(tmp_path: Path) -> None:
-    authority = cast(WAWVerifiedExecutionAuthority, object.__new__(WAWVerifiedExecutionAuthority))
+    authority = object.__new__(WAWVerifiedExecutionAuthority)
     with pytest.raises(TypeError):
         WAWAuthLeaseOwner(cast(Any, object()), scratch_root=0)
     with pytest.raises(TypeError):
