@@ -1,13 +1,13 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-15T07:47:42Z"
-verified_by: "codex-r12-c2-python-auth-lease-start"
+verified_at_utc: "2026-09-15T08:20:00Z"
+verified_by: "codex-r12-c2-python-auth-lease"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## R12-C2 native auth-probe substrate delivered; Python slice started
+## R12-C2 Python auth lease/owner slice on review hold
 
 PR #92 final head `f8834757e9d620b74d6be60fb7ca3b1266590db0` completed all 26
 terminal checks: 24 success and the two prescribed rc8 historical skips. It
@@ -17,31 +17,29 @@ final PR head. All six post-main workflows succeeded: Security `34942690441`,
 Frontend `34942690538`, Deployment `34942690665`, Release Candidate
 `34942690616`, E2E `34942690405`, Backend `34942690521`.
 
-The earlier seven-failure native run (head `0f98bf3e`) was caused by
-`setup_auth_mounts` requiring the root-owned `/run/agentbox-waw/auth-probe`
-anchor to stat as `st_uid == 0` while already running inside the first user
-namespace, where the host root owner is unmapped and reports as the overflow
-uid, so every conforming host failed closed with 71 after AWRP. Fix `6148e95e`
-verifies anchor ownership in `agentbox_waw_launch_auth_probe` (initial user
-namespace, fail-closed 71) and keeps only type/mode revalidation inside the
-namespace; the wrong-cgroup test's membership snapshot moved before spawn to
-remove its inherent PID race. No security assertion was relaxed; the
-interactive ABI, AWP1/AWRP protocol and exit-code semantics are unchanged.
-Independent Security/Architecture/Test review reported PASS with no P0/P1;
-its P2 anchor provisioning contract is recorded in
-`docs/WAW_R12_RUNTIME_AUTH_PROBE.md`.
+On `codex/r12-auth-lease`, the Python sealed auth lease/cache/provider slice is
+implemented and under milestone review hold (2026-09-15 instruction): new
+`waw_auth_lease.py` (`WAWAuthLeaseOwner`/`WAWSealedAuthLease`: one lease per
+transport, cgroup-empty borrow/release fences, synchronous release ceremony,
+exclusive scratch cleanup, poison triple on any uncertainty) and new
+`waw_auth_owner.py` (`WAWProductionAuthOwner`: internally constructed
+cache/adapter, per-workspace probe serialization, cache-hit full release,
+cancellation-safe custody, fail-closed `authenticated` gate). The production
+`authenticated` callback is removed from
+`NativeHelperProcessPort.from_verified_execution_authority`; only an exact
+authority-bound owner is accepted. Local evidence: 38 new unit tests pass, 189
+related regression tests pass (9 Linux-only skips), ruff/black/`git diff
+--check` clean, mypy identical to baseline (17 pre-existing macOS attr-defined
+errors; zero in new modules). Independent Security/Architecture/Test review:
+PASS with no P0/P1; five P2 hardening items were fixed in-slice (scratch chmod
+symlink TOCTOU, fd-dup docstring, stop-during-lease refusal, factory poisoned
+owner rejection, five added tests); two P2 wiring constraints (cache-hit
+checked_at vs executor echo, nested-scratch poison strictness) are recorded in
+`docs/WAW_R12_RUNTIME_AUTH_PROBE.md` for the executor-integration slice.
 
-The closed native path checks `SO_PEERCRED`, requires sender half-close after
-the single AWP1 record, uses separate AWRP placement, and keeps the
-interactive ABI unchanged. The Linux native/sanitizer matrix covers placement
-before exec, exact FD/environment, offline enforcement, cleanup of hanging
-namespace descendants and malformed/role-fault rejection.
-
-C2 is not complete: the current branch `codex/r12-auth-lease` starts the
-Python sealed auth lease/cache/provider slice; five-second operation
-ownership, Runtime executor integration and C3 main wiring remain after it.
-Host/client activation, real CLI login, key operation and production remain
-closed.
+C2 is not complete: Python native port (AWP1 spawn), five-second operation
+ownership, Runtime executor integration and C3 main wiring remain. Host/client
+activation, real CLI login, key operation and production remain closed.
 
 ## R12-B delivered; R12-C1 candidate
 
