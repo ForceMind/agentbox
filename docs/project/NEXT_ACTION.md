@@ -1,31 +1,30 @@
 # Current Authorized Action
 
-## R12-C2 M3 native port delivered for review; M4 executor next — 2026-09-15
+## R12-C2 M4 executor integration delivered for review; C3 next — 2026-09-15
 
-M2 Python sealed auth lease/owner is delivered by PR #93: final head
-`fd3b1ef47cb803e6374c25ef4546149bc282728b` completed all 26 terminal checks
+M3 native auth-probe port is delivered by PR #94: final head
+`72d7c7a2968435c2eacf8d7305a9e6bb762881e3` completed all 26 terminal checks
 (24 success, two prescribed rc8 skips), merged normally as
-`cdde43ab54d4894ec6e4a3c00c739430da68b4f6` with exact parent read-back, and
+`a6fbf775d471d388abac32b9db689f6e2bd8d495` with exact parent read-back, and
 all six post-main workflows succeeded. Preserve this result.
 
-The current branch `codex/r12-auth-executor` carries M3, the Python native
-auth-probe port: `WAWNativeAuthProbePort` (single-use, token-gated, AWP1/AWRP,
-FD0-8 held-fd spawn, bounded concurrent drain, TERM/KILL/cgroup.kill cleanup
-with borrowed-cgroup proof, cancellation-safe) and
-`WAWNativeAuthProbePortFactory` (digest-pinned helper/vendor executables bound
-to one authority), with the owner's native `probe_with_lease` path. Local
-evidence: 38 port tests plus the wider matrix pass, ruff/black/diff clean,
-mypy identical to baseline. Independent Security/Architecture/Test review
-found one P1 (burst-write overflow masking); it is fixed with a deterministic
-boundary regression test, one P2 hardening item (single port issuance per
-lease) is implemented, and the vendor `max_bytes` wiring parameter is recorded
-in the contract document. Owner review is held before merge per the
-2026-09-15 milestone-review instruction.
+The current branch `codex/r12-auth-executor-m4` carries M4: executor
+start/resume integration through `probe_with_lease` for an exact
+`WAWProductionAuthOwner` (sealed freshness window replaces the strict echo
+only on this path), awaiting-login re-borrow for the resume probe, and the
+five-second ownership split (probe-internal budget; 8.0s
+`workspace.workspace.start` control envelope, decision
+`R12-AUTH-PROBE-BUDGET-V1`). Independent review PASS; the recorded open item
+for C3 is the API-side `WAWControlClient` 2.0s default, which must be
+reconciled with the 8.0s server envelope before any live start can carry a
+real probe. Owner review is held before merge per the 2026-09-15
+milestone-review instruction.
 
-M4 after review/merge: executor integration (`_fresh_auth` echo vs lease path,
-awaiting-login borrow), the control outer deadline vs the 5.0s probe budget,
-then C3 Runtime main. No actual host/client/key/CLI activation follows from
-the software merge.
+C3 after review/merge: production composition and Runtime main wiring — sealed
+owner binding (replacing the `WAWCachedPublicAuthProbe` composition pin),
+enrollment-derived profiles, vendor digest `max_bytes` per inventory entry,
+API client envelope reconciliation, then `_main`. No actual host/client/key/CLI
+activation follows from the software merge.
 
 ## R12-B delivered; C1 candidate and C2 native work
 

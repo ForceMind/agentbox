@@ -1,5 +1,16 @@
 # Decision and Architecture Index
 
+- `R12-AUTH-PROBE-BUDGET-V1`: the fixed 5.0s spawn-to-exit probe budget (plus
+  0.25s TERM grace and 1.0s drain margin) is owned inside the probe port; the
+  control listener's per-connection deadline is only an envelope, so
+  `build_waw_control_server` widens exactly the `workspace.workspace.start`
+  dispatch-plus-response deadline to `WAW_START_OPERATION_TIMEOUT_SECONDS`
+  (8.0s) while every other action keeps 2.0s. The API-side
+  `WAWControlClient` 2.0s default is NOT yet reconciled with this envelope;
+  that reconciliation is assigned to the C3 composition slice that wires the
+  sealed auth owner into the executor, and must land before any live start
+  can carry a real probe.
+
 - `R12-AUTH-PROBE-NATIVE-V1`: the approved software objective is refined by
   [the fixed auth-probe contract](../WAW_R12_RUNTIME_AUTH_PROBE.md): separate
   160-byte AWP1/8-byte AWRP ABI, no Project/PTY/bridge/tmux authority, offline

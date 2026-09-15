@@ -46,6 +46,7 @@ from agentbox_runtime.waw_conflicts import (
     WAWConflictLease,
 )
 from agentbox_runtime.waw_fixed_transport import (
+    AUTH_EVIDENCE_MAX_AGE_SECONDS,
     WAWFixedTransport,
     WAWVerifiedExecutionAuthority,
 )
@@ -68,6 +69,13 @@ from agentbox_runtime.waw_supervisor import (
     WAWSupervisor,
     WAWTransport,
 )
+
+# Outer envelope for one workspace start operation: the probe owns its
+# internal 5.0s shared budget plus 0.25s TERM grace and 1.0s drain margin,
+# and prepare/finish plus control read/write headroom completes the rest.
+# The five-second budget ownership stays inside the probe; this deadline is
+# only the envelope around it.
+WAW_START_OPERATION_TIMEOUT_SECONDS = 8.0
 
 
 @dataclass(frozen=True)
@@ -296,9 +304,7 @@ class WAWSupervisorExecutor:
                             "Auth-gated start requires the fixed transport",
                             category="unavailable",
                         )
-                    evidence = await self._fresh_auth(
-                        key, prepared.transport.executable_fingerprint
-                    )
+                    evidence = await self._fresh_auth_with_lease(key, prepared.transport)
                     prepared.transport.set_initial_auth_evidence(evidence)
                     return await asyncio.to_thread(
                         self._finish_start, key, prepared, operation_token
@@ -483,6 +489,8 @@ class WAWSupervisorExecutor:
         if self._auth_probe is not None:
 
             async def authorized_operation() -> WAWLifecycleObservation:
+                from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
+
                 lease = await self._acquire_conflict_lease_async(key)
                 try:
                     with self._map_lock:
@@ -493,8 +501,12 @@ class WAWSupervisorExecutor:
                             "Exact workspace supervisor is unavailable",
                             category="conflict",
                         )
-                    fingerprint = supervisor.fixed_executable_fingerprint()
-                    fresh = await self._fresh_auth(key, fingerprint)
+                    if type(self._auth_probe) is WAWProductionAuthOwner:
+                        transport = supervisor.fixed_auth_probe_transport()
+                        fresh = await self._fresh_auth_with_lease(key, transport)
+                    else:
+                        fingerprint = supervisor.fixed_executable_fingerprint()
+                        fresh = await self._fresh_auth(key, fingerprint)
                     if fresh.result is not WAWPublicAuthResult.AUTHENTICATED:
                         raise RuntimeOperationError(
                             "WORKSPACE_AUTH_REQUIRED",
@@ -831,6 +843,65 @@ class WAWSupervisorExecutor:
                 "WAW_AUTH_UNKNOWN", "Public auth probe failed closed", category="conflict"
             ) from exc
         if validated.checked_at_monotonic != float(checked_at):
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth evidence sample is stale", category="conflict"
+            )
+        if validated.result is WAWPublicAuthResult.UNKNOWN:
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth state is unknown", category="conflict"
+            )
+        if validated.result is WAWPublicAuthResult.UNSUPPORTED:
+            raise RuntimeOperationError(
+                "WAW_PROFILE_UNSUPPORTED",
+                "Vendor auth profile is unsupported",
+                category="conflict",
+            )
+        return validated
+
+    async def _fresh_auth_with_lease(
+        self, key: _SupervisorKey, transport: WAWFixedTransport
+    ) -> WAWPublicAuthEvidence:
+        """Probe through the sealed owner lease; non-owners keep the echo path."""
+
+        from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
+
+        probe = self._auth_probe
+        if type(probe) is not WAWProductionAuthOwner:
+            return await self._fresh_auth(key, transport.executable_fingerprint)
+        checked_at = self._clock()
+        if isinstance(checked_at, bool) or not isinstance(checked_at, (int, float)):
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth clock is invalid", category="conflict"
+            )
+        try:
+            evidence = await probe.probe_with_lease(
+                transport,
+                agent_type=AgentType(key.agent_type),
+                runtime_host_installation_id=key.runtime_host_installation_id,
+                runtime_host_installation_revision=key.runtime_host_installation_revision,
+                executable_fingerprint=transport.executable_fingerprint,
+                checked_at_monotonic=float(checked_at),
+            )
+            validated = validate_waw_public_auth_probe_evidence(
+                evidence,
+                agent_type=AgentType(key.agent_type),
+                runtime_host_installation_id=key.runtime_host_installation_id,
+                runtime_host_installation_revision=key.runtime_host_installation_revision,
+                executable_fingerprint=transport.executable_fingerprint,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise RuntimeOperationError(
+                "WAW_AUTH_UNKNOWN", "Public auth probe failed closed", category="conflict"
+            ) from exc
+        sample = validated.checked_at_monotonic
+        # Lease path: the sealed owner may serve a fresh cache hit with its
+        # original sample; the strict echo is replaced by this sealed window.
+        if (
+            sample > float(checked_at)
+            or float(checked_at) - sample >= AUTH_EVIDENCE_MAX_AGE_SECONDS
+        ):
             raise RuntimeOperationError(
                 "WAW_AUTH_UNKNOWN", "Public auth evidence sample is stale", category="conflict"
             )

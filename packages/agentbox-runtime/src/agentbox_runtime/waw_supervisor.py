@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from threading import Lock, RLock
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from agentbox_core.waw import (
     StopResult,
@@ -47,6 +47,11 @@ from agentbox_runtime.waw_redraw import (
     RuntimeRedrawPublication,
     WAWRedrawError,
 )
+
+if TYPE_CHECKING:
+    # Lazy at runtime: the fixed transport module imports this supervisor
+    # module, so an eager import here would be circular.
+    from agentbox_runtime.waw_fixed_transport import WAWFixedTransport
 
 
 class RuntimePublicationInvalidator:
@@ -315,6 +320,25 @@ class WAWSupervisor:
                     category="unavailable",
                 )
             return value
+
+    def fixed_auth_probe_transport(self) -> WAWFixedTransport:
+        """Return the exact fixed transport for one sealed awaiting-login probe."""
+
+        with self._lock:
+            if self._state is not SupervisorState.LOGIN_REQUIRED:
+                raise RuntimeOperationError(
+                    "WAW_RESUME_INVALID", "Workspace is not waiting for login", category="conflict"
+                )
+            transport = self._transport
+        from agentbox_runtime.waw_fixed_transport import WAWFixedTransport
+
+        if type(transport) is not WAWFixedTransport:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Fixed auth probe transport is unavailable",
+                category="unavailable",
+            )
+        return transport
 
     @contextmanager
     def stopped_generation_guard(self, operation: WorkspaceStopOperation) -> Iterator[None]:
