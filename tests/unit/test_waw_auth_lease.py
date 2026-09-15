@@ -541,6 +541,25 @@ def test_stop_during_outstanding_lease_is_refused(
     owner.release(lease)
 
 
+def test_abort_unstarted_on_poisoned_transport_releases_resources(
+    rig: tuple[WAWAuthLeaseOwner, WAWFixedTransport, LinuxCgroupControlHandle, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner, transport, handle, _workspace = rig
+    lease = owner.borrow(transport)
+    monkeypatch.setattr(LinuxCgroupControlHandle, "populated", lambda _self: 1)
+    with pytest.raises(RuntimeOperationError) as poisoned:
+        owner.release(lease)
+    assert _error_code(poisoned.value) == "WAW_AUTH_LEASE_POISONED"
+    assert transport._auth_poisoned
+    monkeypatch.setattr(LinuxCgroupControlHandle, "populated", lambda _self: 0)
+    with pytest.raises(RuntimeOperationError) as terminal:
+        transport.abort_unstarted()
+    assert _error_code(terminal.value) == "WAW_AUTH_LEASE_POISONED"
+    assert handle._closed
+    assert transport._closed
+
+
 def test_borrow_serializes_concurrent_borrows(
     rig: tuple[WAWAuthLeaseOwner, WAWFixedTransport, LinuxCgroupControlHandle, Path],
 ) -> None:

@@ -3200,6 +3200,23 @@ class WAWFixedTransport:
     def abort_unstarted(self) -> bool:
         """Close every launch-owned resource before the first process effect."""
 
+        if getattr(self, "_auth_poisoned", False):
+            # A poisoned transport is terminally unusable, but its
+            # launch-owned descriptors are still released best-effort before
+            # the terminal state is surfaced.
+            with contextlib.suppress(Exception):
+                self._close_owned_launch_descriptors()
+            with contextlib.suppress(Exception):
+                endpoint = self._handles.wbr_endpoint
+                if type(endpoint) is NativeWBREndpoint:
+                    endpoint.native.close()
+                    endpoint.controller.close()
+            with contextlib.suppress(Exception):
+                cgroup = self._handles.cgroup
+                if type(cgroup) is LinuxCgroupControlHandle:
+                    cgroup.close()
+            self._closed = True
+            self._require_auth_lease_clear()
         self._require_auth_lease_clear()
         if self._start_attempted:
             return False
@@ -3242,12 +3259,23 @@ class WAWFixedTransport:
         """Fail-closed gate before the sealed auth lease owner borrows this transport."""
 
         self._require_auth_lease_clear()
-        if self._start_attempted or self._closed or self._aborted_unstarted:
+        if self._closed or self._aborted_unstarted:
             raise RuntimeOperationError(
                 "WAW_AUTH_LEASE_BUSY",
                 "Fixed transport can no longer lend its cgroup",
                 category="conflict",
             )
+        if self._start_attempted:
+            # Awaiting-login borrow: after an UNAUTHENTICATED start the cgroup
+            # is still unspawned, so the sealed owner may re-borrow it for the
+            # resume probe while the inspector proves LOGIN_REQUIRED.
+            inspector = getattr(self, "_inspector", None)
+            if inspector is None or getattr(inspector, "login_required", False) is not True:
+                raise RuntimeOperationError(
+                    "WAW_AUTH_LEASE_BUSY",
+                    "Fixed transport can no longer lend its cgroup",
+                    category="conflict",
+                )
 
     def _borrow_auth_lease(self, lease: object) -> None:
         """Install one outstanding sealed auth lease after the token cgroup borrow."""

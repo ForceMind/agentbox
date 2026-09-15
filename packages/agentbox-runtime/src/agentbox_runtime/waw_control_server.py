@@ -10,12 +10,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import math
 import os
 import re
 import socket
 import struct
 import time
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from threading import Lock
@@ -92,7 +93,14 @@ class _SocketOwnership(Enum):
 
 
 class WAWControlServer:
-    """One-request/one-response WAW control listener over an existing socket."""
+    """One-request/one-response WAW control listener over an existing socket.
+
+    Every operation shares ``timeout_seconds`` as its read/dispatch/response
+    deadline by default.  ``operation_timeout_overrides`` widens only the
+    dispatch-plus-response envelope of the named actions (the read phase
+    still runs under the original short deadline); the protocol shape is
+    unchanged.
+    """
 
     def __init__(
         self,
@@ -107,6 +115,7 @@ class WAWControlServer:
         max_active_dispatches: int = 16,
         monotonic: Callable[[], float] = time.monotonic,
         peer_authorizer: PeerAuthorizer | None = None,
+        operation_timeout_overrides: Mapping[str, float] | None = None,
     ) -> None:
         if sock.family != socket.AF_UNIX or sock.type != socket.SOCK_STREAM:
             raise ValueError("WAW control socket must be AF_UNIX SOCK_STREAM")
@@ -126,6 +135,24 @@ class WAWControlServer:
             raise ValueError("expected_peer_uid must be a non-negative integer")
         if type(expected_peer_gid) is not int or expected_peer_gid < 0:
             raise ValueError("expected_peer_gid must be a non-negative integer")
+        if operation_timeout_overrides is None:
+            operation_timeouts: dict[str, float] = {}
+        else:
+            if not isinstance(operation_timeout_overrides, Mapping):
+                raise ValueError("operation_timeout_overrides must be a mapping")
+            operation_timeouts = {}
+            for action, value in operation_timeout_overrides.items():
+                if not isinstance(action, str) or not action:
+                    raise ValueError("operation timeout action must be a non-empty string")
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    or value <= 0
+                    or value > 30
+                ):
+                    raise ValueError("operation timeout must be within (0, 30] seconds")
+                operation_timeouts[action] = float(value)
         self._sock = sock
         self._dispatch = dispatch
         self._peer_authorizer = peer_authorizer
@@ -136,6 +163,7 @@ class WAWControlServer:
         self._expected_peer_uid = expected_peer_uid
         self._expected_peer_gid = expected_peer_gid
         self._monotonic = monotonic
+        self._operation_timeouts = operation_timeouts
         self._server: asyncio.AbstractServer | None = None
         self._poisoned = False
         self._closing = False
@@ -443,6 +471,12 @@ class WAWControlServer:
                 peer_context = self._authorize_peer(peer_credentials)
                 if peer_context is None:
                     return
+            # Per-action envelope: the named operation widens only the
+            # dispatch-plus-response deadline; the read phase above already
+            # ran under the original short deadline.
+            override = self._operation_timeouts.get(request["action"])
+            if override is not None:
+                deadline = self._monotonic() + override
             try:
                 response = await self._dispatch_with_deadline(
                     request,

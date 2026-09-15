@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hmac
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +41,7 @@ from agentbox_runtime.waw_host_manifest import (
     load_verified_canonical_waw_manifest_bundle_v2,
 )
 from agentbox_runtime.waw_lifecycle import (
+    _START,
     BindingDigestFactory,
     CgroupAttestationFactory,
     WAWLifecycleExecutor,
@@ -62,7 +63,10 @@ from agentbox_runtime.waw_project_binding_store import (
     WAWProjectBindingVerifier,
     WAWProjectBindingVerifierError,
 )
-from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
+from agentbox_runtime.waw_runtime_executor import (
+    WAW_START_OPERATION_TIMEOUT_SECONDS,
+    WAWSupervisorExecutor,
+)
 from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 
 _FILESYSTEM_V2_BINDING_STORE = Path("/var/lib/agentbox-waw/bindings-v1")
@@ -651,8 +655,14 @@ def build_waw_control_server(
     timeout_seconds: float = 2.0,
     max_active_connections: int = 64,
     max_active_dispatches: int = 16,
+    operation_timeout_overrides: Mapping[str, float] | None = None,
 ) -> WAWControlServer:
-    """Bind control traffic to the registry's sole API process authority."""
+    """Bind control traffic to the registry's sole API process authority.
+
+    By default only the workspace start action receives the widened
+    dispatch-plus-response envelope that covers the sealed auth-probe
+    budget; every other action keeps ``timeout_seconds``.
+    """
 
     authority = registry.peer_authority
     if authority is None:
@@ -668,6 +678,11 @@ def build_waw_control_server(
     ):
         raise ValueError("registry peer authority does not match the control peer identity")
 
+    if operation_timeout_overrides is None:
+        # ``waw_lifecycle._START`` is the lifecycle registry's dispatch key
+        # for one workspace start operation.
+        operation_timeout_overrides = {_START: WAW_START_OPERATION_TIMEOUT_SECONDS}
+
     return WAWControlServer(
         sockets.control,
         registry.dispatch,
@@ -677,6 +692,7 @@ def build_waw_control_server(
         max_active_connections=max_active_connections,
         max_active_dispatches=max_active_dispatches,
         peer_authorizer=authority.observe_control,
+        operation_timeout_overrides=operation_timeout_overrides,
     )
 
 
