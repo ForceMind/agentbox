@@ -61,6 +61,10 @@ from agentbox_runtime.waw_auth_lease import (
     WAWAuthLeaseOwner,
     WAWSealedAuthLease,
 )
+from agentbox_runtime.waw_auth_native_port import (
+    WAWNativeAuthProbePort,
+    WAWNativeAuthProbePortFactory,
+)
 from agentbox_runtime.waw_auth_owner import (
     WAWProductionAuthOwner,
 )
@@ -290,6 +294,8 @@ __all__ = [
     "validate_waw_public_auth_probe_evidence",
     "WAWAuthLeaseOwner",
     "WAWSealedAuthLease",
+    "WAWNativeAuthProbePort",
+    "WAWNativeAuthProbePortFactory",
     "WAWProductionAuthOwner",
     "WAWCgroupAttachmentLeaf",
     "WAWCgroupAttestation",
