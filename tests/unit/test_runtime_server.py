@@ -23,6 +23,7 @@ from agentbox_runtime.server import (
     _build_runtime_server_from_filesystem_v2,
 )
 from agentbox_runtime.tmux import TmuxAdapter
+from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
 from agentbox_runtime.waw_auth_probe import (
     WAWCachedPublicAuthProbe,
     WAWPublicAuthProbeCache,
@@ -167,7 +168,7 @@ def _composition(tmp_path: Path, epoch: str = "2") -> WAWFixedRuntimeComposition
     projects.mkdir(exist_ok=True)
     providers = _Providers()
     coordinator = WAWConflictCoordinator(providers)
-    auth = object.__new__(WAWCachedPublicAuthProbe)
+    auth = object.__new__(WAWProductionAuthOwner)
     auth._cache = WAWPublicAuthProbeCache()
     authority = object.__new__(WAWVerifiedExecutionAuthority)
 

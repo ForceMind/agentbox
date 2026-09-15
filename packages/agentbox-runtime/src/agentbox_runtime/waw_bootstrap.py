@@ -19,7 +19,7 @@ from pathlib import Path
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_activation import WAWActivatedSockets
-from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
+from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
 from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_encrypted_server import WAWEncryptedServer
@@ -500,7 +500,7 @@ def _compose_verified_v2(
             or executor.runtime_epoch != runtime_epoch
             or executor.conflict_coordinator is None
             or executor.execution_authority is not authority
-            or type(executor.auth_probe) is not WAWCachedPublicAuthProbe
+            or type(executor.auth_probe) is not WAWProductionAuthOwner
         ):
             raise RuntimeOperationError(
                 "WAW_RUNTIME_EPOCH_INVALID",

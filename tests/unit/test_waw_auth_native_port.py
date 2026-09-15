@@ -246,14 +246,19 @@ def _control_pair() -> tuple[socket.socket, socket.socket]:
 def _sha256_fd_check(descriptor: int, expected: str, *, max_bytes: int = 64 * 1024) -> None:
     """Test stand-in for the host-qualified digest read-back (no uid-0 gate)."""
 
-    del max_bytes
     digest = hashlib.sha256()
     offset = 0
     while True:
-        block = os.pread(descriptor, 8192, offset)
+        block = os.pread(descriptor, min(8192, max_bytes - offset + 1), offset)
         if not block:
             break
         offset += len(block)
+        if offset > max_bytes:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "held descriptor is oversized",
+                category="unavailable",
+            )
         digest.update(block)
     if not hmac.compare_digest(digest.hexdigest(), expected):
         raise RuntimeOperationError(
@@ -907,6 +912,7 @@ class _FactoryRig:
         tamper_asset: str | None = None,
         production: bool = True,
         drift: bool = False,
+        vendor_max_bytes: int = 4096,
     ) -> None:
         tmp_path.mkdir(parents=True, exist_ok=True)
         _patch_platform_sockets(monkeypatch)
@@ -936,12 +942,12 @@ class _FactoryRig:
                     SimpleNamespace(
                         kind="claude",
                         sha256=self.fingerprints[AgentType.CLAUDE],
-                        max_bytes=4096,
+                        max_bytes=vendor_max_bytes,
                     ),
                     SimpleNamespace(
                         kind="codex",
                         sha256=self.fingerprints[AgentType.CODEX],
-                        max_bytes=4096,
+                        max_bytes=vendor_max_bytes,
                     ),
                 )
             )
@@ -1031,6 +1037,19 @@ def test_factory_rejects_digest_mismatch(
     rig = _FactoryRig(tmp_path, monkeypatch, tamper_asset=asset)
     try:
         with pytest.raises(RuntimeOperationError, match="does not match"):
+            rig.build()
+    finally:
+        rig.close()
+
+
+def test_factory_rejects_vendor_entry_above_its_max_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A per-entry budget below the real vendor size fails closed at
+    # construction, before any lease can receive a port.
+    rig = _FactoryRig(tmp_path, monkeypatch, vendor_max_bytes=4)
+    try:
+        with pytest.raises(RuntimeOperationError, match="oversized"):
             rig.build()
     finally:
         rig.close()
@@ -1235,6 +1254,7 @@ class _OwnerNativeRig:
         out: bytes = b"",
         err: bytes = b"",
         codex_digest: str = "0" * 64,
+        bind: bool = False,
     ) -> None:
         self.factory_rig = _FactoryRig(tmp_path, monkeypatch)
         self.factory = self.factory_rig.build()
@@ -1289,16 +1309,28 @@ class _OwnerNativeRig:
             original_close(port)
 
         monkeypatch.setattr(WAWNativeAuthProbePort, "close", close_spy)
-        self.owner = WAWProductionAuthOwner(
-            self.authority,
-            runner=self.runner,
-            bindings=_bindings(self.factory_rig.fingerprints),
-            lease_owner=self.lease_owner,
-            clock=lambda: self.now[0],
-            max_age_seconds=30.0,
-            native_port_factory=self.factory,
-            profiles=self.profiles,
-        )
+        if bind:
+            # Production composition order: owner first, factory bound after.
+            self.owner = WAWProductionAuthOwner(
+                self.authority,
+                runner=self.runner,
+                bindings=_bindings(self.factory_rig.fingerprints),
+                lease_owner=self.lease_owner,
+                clock=lambda: self.now[0],
+                max_age_seconds=30.0,
+            )
+            self.owner.bind_native_probe_path(self.factory, self.profiles)
+        else:
+            self.owner = WAWProductionAuthOwner(
+                self.authority,
+                runner=self.runner,
+                bindings=_bindings(self.factory_rig.fingerprints),
+                lease_owner=self.lease_owner,
+                clock=lambda: self.now[0],
+                max_age_seconds=30.0,
+                native_port_factory=self.factory,
+                profiles=self.profiles,
+            )
 
     def probe_kwargs(self) -> dict[str, Any]:
         return {
@@ -1392,6 +1424,26 @@ async def test_owner_native_probe_with_lease_authenticated(
         assert cached is evidence
         assert len(rig.ports_created) == 1
         assert rig.transport._auth_lease is None
+    finally:
+        rig.close()
+
+
+@pytest.mark.anyio
+async def test_owner_native_probe_with_lease_after_sealed_bind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The production composition order (owner first, one-time sealed bind of
+    # factory+profiles afterwards) reaches the same native probe path.
+    rig = _OwnerNativeRig(tmp_path, monkeypatch, bind=True)
+    try:
+        evidence = await rig.owner.probe_with_lease(rig.transport, **rig.probe_kwargs())
+        assert evidence.result is WAWPublicAuthResult.AUTHENTICATED
+        assert evidence.checked_at_monotonic == 1000.0
+        assert len(rig.ports_created) == 1
+        assert rig.closed_ports == rig.ports_created
+        assert rig.transport._auth_lease is None
+        assert not rig.handle.auth_borrowed
+        assert rig.owner.authenticated(rig.identity) is True
     finally:
         rig.close()
 
