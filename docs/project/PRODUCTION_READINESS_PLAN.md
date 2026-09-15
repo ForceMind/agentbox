@@ -540,7 +540,7 @@ blocked遵守工具规定，不用其表示普通等待或困难。后台定时�
 | 本轮完整计划 | 已完成 | 内容/链接检查及两项独立复核通过；Owner已明确批准执行 |
 | R12-A | 进行中 | host checklist已更新；API软件契约已收敛；[target record](R12_TARGET_RECORD.md)区分稳定决定与外部输入，Runtime契约继续收敛 |
 | R12-B | 已完成 | rc11/PR #90 final head`64d45e7...`完成26检查，merge`e126e47...`精确回读及六个post-main流程成功；原审查/CI问题已修，host/client资格不包含 |
-| R12-C | 进行中 | C1/rc12与native auth-probe substrate（PR #92，merge`fc52c40...`）已合并；Python sealed auth lease/owner slice已实现并经独立审查PASS，按里程碑复核节奏待Owner审阅后合并；Python native port、executor集成、C3 main仍待推进 |
+| R12-C | 进行中 | C1/rc12、native substrate（PR #92）与Python sealed lease/owner（PR #93）已合并；M3 native auth-probe port已实现、独立审查P1已修复，按里程碑复核节奏待Owner审阅后合并；M4 executor集成与C3 main仍待推进 |
 | R12-D/E/F | 未开始 | 对应稳定契约/输入齐备后开始；不使用测试provider接通main |
 | R12-G/H/I | 未开始 | 需要所选目标和具体外部操作范围，以及真实证据 |
 | R12-J/K | 未开始 | 需要先前gate通过及对应生产/发行授权 |

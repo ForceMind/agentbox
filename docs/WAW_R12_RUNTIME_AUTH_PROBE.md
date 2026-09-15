@@ -111,6 +111,17 @@ poison lease+transport+owner、production callback已从`from_verified_execution
 确认profile不产生嵌套残留。Python native port（AWP1 spawn）、executor接线、五秒操作
 所有权与C3 main仍未开始。
 
+实施状态（2026-09-15，`codex/r12-auth-executor` M3）：Python native auth-probe port
+（`waw_auth_native_port.py`）已实现并经独立审查：AWP1 record编码、独立AWRP接收、
+FD0-8映射spawn、并发drain与4096+1预算（含突发写竞态复查）、TERM grace→KILL+
+cgroup.kill、以borrowed cgroup `populated==0`为后代证据的cleanup proof、取消时cleanup
+完成才传播。factory把helper/vendor executable digest绑定到同一authority（契约L47-50）。
+已知接线参数：vendor digest校验当前用`_verify_fd_digest`默认`max_bytes`（64KiB），生产
+接线必须改用vendor inventory条目的per-entry `max_bytes`（helper路径已用条目值），否则
+真实vendor二进制必被拒；port预算由owner内部runner默认值固定5.0s/0.25s/4096。executor
+集成（`_fresh_auth` echo与lease路径放宽、awaiting-login状态borrow）、control外层
+deadline与probe 5.0s的核对、C3 main仍未开始。
+
 ## 验收
 
 Python验证exact owner/authority/cache、固定argv/env/预算、freshness/clock rollback、

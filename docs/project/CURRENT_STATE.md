@@ -1,45 +1,47 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-15T08:20:00Z"
-verified_by: "codex-r12-c2-python-auth-lease"
+verified_at_utc: "2026-09-15T10:05:00Z"
+verified_by: "codex-r12-c2-native-port"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## R12-C2 Python auth lease/owner slice on review hold
+## R12-C2 M3 native auth-probe port on review hold
 
-PR #92 final head `f8834757e9d620b74d6be60fb7ca3b1266590db0` completed all 26
+PR #93 final head `fd3b1ef47cb803e6374c25ef4546149bc282728b` completed all 26
 terminal checks: 24 success and the two prescribed rc8 historical skips. It
-merged normally as `fc52c40b2c3513832e417d3b2caacc932eca58c4`; exact Git
-read-back verified parents `ae8c730ad40abb1191413634ac445e1045cf7709` and the
-final PR head. All six post-main workflows succeeded: Security `34942690441`,
-Frontend `34942690538`, Deployment `34942690665`, Release Candidate
-`34942690616`, E2E `34942690405`, Backend `34942690521`.
+merged normally as `cdde43ab54d4894ec6e4a3c00c739430da68b4f6`; exact Git
+read-back verified parents `fc52c40b2c3513832e417d3b2caacc932eca58c4` and the
+final PR head. All six post-main workflows succeeded: Security `34958326104`,
+Frontend `34958326205`, Deployment `34958326288`, E2E `34958326146`,
+Release Candidate `34958326070`, Backend `34958326042`.
 
-On `codex/r12-auth-lease`, the Python sealed auth lease/cache/provider slice is
+On `codex/r12-auth-executor`, the M3 Python native auth-probe port slice is
 implemented and under milestone review hold (2026-09-15 instruction): new
-`waw_auth_lease.py` (`WAWAuthLeaseOwner`/`WAWSealedAuthLease`: one lease per
-transport, cgroup-empty borrow/release fences, synchronous release ceremony,
-exclusive scratch cleanup, poison triple on any uncertainty) and new
-`waw_auth_owner.py` (`WAWProductionAuthOwner`: internally constructed
-cache/adapter, per-workspace probe serialization, cache-hit full release,
-cancellation-safe custody, fail-closed `authenticated` gate). The production
-`authenticated` callback is removed from
-`NativeHelperProcessPort.from_verified_execution_authority`; only an exact
-authority-bound owner is accepted. Local evidence: 38 new unit tests pass, 189
-related regression tests pass (9 Linux-only skips), ruff/black/`git diff
---check` clean, mypy identical to baseline (17 pre-existing macOS attr-defined
-errors; zero in new modules). Independent Security/Architecture/Test review:
-PASS with no P0/P1; five P2 hardening items were fixed in-slice (scratch chmod
-symlink TOCTOU, fd-dup docstring, stop-during-lease refusal, factory poisoned
-owner rejection, five added tests); two P2 wiring constraints (cache-hit
-checked_at vs executor echo, nested-scratch poison strictness) are recorded in
-`docs/WAW_R12_RUNTIME_AUTH_PROBE.md` for the executor-integration slice.
+`waw_auth_native_port.py` (`WAWNativeAuthProbePort`: token-gated single-use
+`WAWProcessIsolationPort` subclass over the fixed `--auth-probe` helper ABI —
+AWP1 record, independent AWRP receive, FD0-8 held-fd posix_spawn, concurrent
+4096+1 bounded drain with burst-race recheck, TERM/grace/KILL plus
+`cgroup.kill`, borrowed-cgroup cleanup proof, cancellation completes cleanup
+before propagation; `WAWNativeAuthProbePortFactory`: digest-pinned
+helper/vendor executable dups bound to one verified authority, one port per
+lease) and the owner's native `probe_with_lease` path (per-probe runner, port
+closed after every outcome, checked_at echo preserved). Local evidence: 38 new
+port tests and the wider matrix pass (260 related tests, 9 Linux-only skips),
+ruff/black/`git diff --check` clean, mypy identical to baseline (17/3 and
+23/7 pre-existing macOS attr-defined; zero in new code). Independent
+Security/Architecture/Test review initially FAIL on one P1 (burst-write
+output overflow masked on the success path); fixed with a post-drain overflow
+recheck plus a deterministic 4096/4097 boundary regression test, one P2
+hardening item (single port issuance per lease) implemented, and the vendor
+digest `max_bytes` wiring parameter recorded in
+`docs/WAW_R12_RUNTIME_AUTH_PROBE.md` for the production composition slice.
 
-C2 is not complete: Python native port (AWP1 spawn), five-second operation
-ownership, Runtime executor integration and C3 main wiring remain. Host/client
-activation, real CLI login, key operation and production remain closed.
+C2 is not complete: M4 (executor integration: `_fresh_auth` echo vs lease
+path, awaiting-login borrow, control outer deadline vs the 5.0s probe budget)
+and C3 Runtime main wiring remain. Host/client activation, real CLI login,
+key operation and production remain closed.
 
 ## R12-B delivered; R12-C1 candidate
 

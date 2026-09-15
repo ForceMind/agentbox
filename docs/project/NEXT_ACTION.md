@@ -1,26 +1,31 @@
 # Current Authorized Action
 
-## R12-C2 Python auth lease/owner delivered for review — 2026-09-15
+## R12-C2 M3 native port delivered for review; M4 executor next — 2026-09-15
 
-The C2 native auth-probe substrate is delivered by PR #92: final head
-`f8834757e9d620b74d6be60fb7ca3b1266590db0` completed all 26 terminal checks
+M2 Python sealed auth lease/owner is delivered by PR #93: final head
+`fd3b1ef47cb803e6374c25ef4546149bc282728b` completed all 26 terminal checks
 (24 success, two prescribed rc8 skips), merged normally as
-`fc52c40b2c3513832e417d3b2caacc932eca58c4` with exact parent read-back, and
+`cdde43ab54d4894ec6e4a3c00c739430da68b4f6` with exact parent read-back, and
 all six post-main workflows succeeded. Preserve this result.
 
-The current branch `codex/r12-auth-lease` carries the Python sealed auth
-lease/cache/provider slice: `WAWAuthLeaseOwner`/`WAWSealedAuthLease`
-(borrow/release ceremony, scratch custody, poison triple) and
-`WAWProductionAuthOwner` (sealed cache/adapter construction, per-workspace
-serialization, cache-hit release, cancellation-safe lease custody), with the
-production `authenticated` callback removed from
-`NativeHelperProcessPort.from_verified_execution_authority`. Owner review is
-held before merge per the 2026-09-15 milestone-review instruction.
+The current branch `codex/r12-auth-executor` carries M3, the Python native
+auth-probe port: `WAWNativeAuthProbePort` (single-use, token-gated, AWP1/AWRP,
+FD0-8 held-fd spawn, bounded concurrent drain, TERM/KILL/cgroup.kill cleanup
+with borrowed-cgroup proof, cancellation-safe) and
+`WAWNativeAuthProbePortFactory` (digest-pinned helper/vendor executables bound
+to one authority), with the owner's native `probe_with_lease` path. Local
+evidence: 38 port tests plus the wider matrix pass, ruff/black/diff clean,
+mypy identical to baseline. Independent Security/Architecture/Test review
+found one P1 (burst-write overflow masking); it is fixed with a deterministic
+boundary regression test, one P2 hardening item (single port issuance per
+lease) is implemented, and the vendor `max_bytes` wiring parameter is recorded
+in the contract document. Owner review is held before merge per the
+2026-09-15 milestone-review instruction.
 
-Next slices after review/merge: Python native port (AWP1 spawn), five-second
-operation ownership and Runtime executor integration (honouring the documented
-checked_at echo and nested-scratch constraints), then C3 Runtime main. No
-actual host/client/key/CLI activation follows from the software merge.
+M4 after review/merge: executor integration (`_fresh_auth` echo vs lease path,
+awaiting-login borrow), the control outer deadline vs the 5.0s probe budget,
+then C3 Runtime main. No actual host/client/key/CLI activation follows from
+the software merge.
 
 ## R12-B delivered; C1 candidate and C2 native work
 
