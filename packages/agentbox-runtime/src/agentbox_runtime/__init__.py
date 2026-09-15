@@ -57,6 +57,13 @@ from agentbox_runtime.waw_activation import (
     WAWActivationError,
     load_waw_activated_sockets,
 )
+from agentbox_runtime.waw_auth_lease import (
+    WAWAuthLeaseOwner,
+    WAWSealedAuthLease,
+)
+from agentbox_runtime.waw_auth_owner import (
+    WAWProductionAuthOwner,
+)
 from agentbox_runtime.waw_auth_probe import (
     WAWPublicAuthEvidence,
     WAWPublicAuthProbe,
@@ -281,6 +288,9 @@ __all__ = [
     "WAWPublicAuthProbeError",
     "WAWPublicAuthResult",
     "validate_waw_public_auth_probe_evidence",
+    "WAWAuthLeaseOwner",
+    "WAWSealedAuthLease",
+    "WAWProductionAuthOwner",
     "WAWCgroupAttachmentLeaf",
     "WAWCgroupAttestation",
     "WAWCgroupAttestationError",

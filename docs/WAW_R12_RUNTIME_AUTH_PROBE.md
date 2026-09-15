@@ -101,6 +101,16 @@ fixed transport的sealed lease与production callback移除、executor/bootstrap/
 仍有owner、同一workspace最多一个probe、Stop/Start并发不复用busy cgroup；不得用全局
 可替换callback或未受约束map注册代替sealed ownership。Native-only代码不单独宣称C2完成。
 
+实施状态（2026-09-15，`codex/r12-auth-lease`）：sealed auth lease（`waw_auth_lease.py`）
+与sealed production auth owner（`waw_auth_owner.py`）已按本节语义实现：一次一个lease、
+借用/归还前后cgroup empty、release同步ceremony、cache hit走完整release、不确定即
+poison lease+transport+owner、production callback已从`from_verified_execution_authority`
+移除（只收exact owner且authority绑定校验）。接线约束留给后续slice：`probe_with_lease`
+的cache hit返回原checked_at，executor `_fresh_auth`的echo校验须用始终live的`probe()`
+或为lease路径另行放宽；scratch嵌套非空即poison的严格性须由下一slice的fake vendor矩阵
+确认profile不产生嵌套残留。Python native port（AWP1 spawn）、executor接线、五秒操作
+所有权与C3 main仍未开始。
+
 ## 验收
 
 Python验证exact owner/authority/cache、固定argv/env/预算、freshness/clock rollback、

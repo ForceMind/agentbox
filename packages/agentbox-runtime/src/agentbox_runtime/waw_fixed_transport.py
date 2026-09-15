@@ -30,7 +30,7 @@ import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from agentbox_core.waw import AgentType
 
@@ -91,6 +91,9 @@ from agentbox_runtime.waw_supervisor import (
     RuntimeStopEvidence,
     SupervisorState,
 )
+
+if TYPE_CHECKING:
+    from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
 
 MAX_NATIVE_OUTPUT_BYTES = 32 * 1024
 AUTH_EVIDENCE_MAX_AGE_SECONDS = 30.0
@@ -245,6 +248,7 @@ class CgroupControlHandle(Protocol):
 
 
 _CGROUP_HANDLE_TOKEN = object()
+_CGROUP_AUTH_TOKEN = object()
 
 
 class LinuxCgroupControlHandle:
@@ -272,6 +276,7 @@ class LinuxCgroupControlHandle:
         self._mount_identity = mount_identity
         self._consumed = False
         self._closed = False
+        self._auth_borrowed = False
         self._lock = threading.RLock()
 
     @classmethod
@@ -336,6 +341,43 @@ class LinuxCgroupControlHandle:
         with self._lock:
             return self._consumed
 
+    @property
+    def auth_borrowed(self) -> bool:
+        with self._lock:
+            return bool(getattr(self, "_auth_borrowed", False))
+
+    def _set_auth_borrowed(self, token: object, value: bool) -> None:
+        """Move the auth-borrowed flag; only the sealed auth lease owns the token."""
+
+        if token is not _CGROUP_AUTH_TOKEN:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Cgroup auth borrow is sealed",
+                category="unavailable",
+            )
+        if type(value) is not bool:
+            raise TypeError("cgroup auth borrow flag must be bool")
+        with self._lock:
+            if self._closed:
+                raise RuntimeOperationError(
+                    "WAW_AUTH_LEASE_POISONED",
+                    "Cgroup handle is closed",
+                    category="conflict",
+                )
+            if value and (self._consumed or getattr(self, "_auth_borrowed", False)):
+                raise RuntimeOperationError(
+                    "WAW_AUTH_LEASE_BUSY",
+                    "Cgroup is already consumed or auth-borrowed",
+                    category="conflict",
+                )
+            if not value and not getattr(self, "_auth_borrowed", False):
+                raise RuntimeOperationError(
+                    "WAW_AUTH_LEASE_POISONED",
+                    "Cgroup auth borrow state is inconsistent",
+                    category="conflict",
+                )
+            self._auth_borrowed = value
+
     def production_qualified_for(
         self,
         authority: WAWVerifiedExecutionAuthority,
@@ -356,6 +398,12 @@ class LinuxCgroupControlHandle:
 
     def take_launcher_fd(self, identity: FixedProcessIdentity) -> int:
         with self._lock:
+            if getattr(self, "_auth_borrowed", False):
+                raise RuntimeOperationError(
+                    "WAW_AUTH_LEASE_BUSY",
+                    "Cgroup is borrowed by a sealed auth lease",
+                    category="conflict",
+                )
             if self._closed or self._consumed or identity != self._identity:
                 raise RuntimeOperationError(
                     "WAW_START_UNCONFIRMED",
@@ -859,6 +907,16 @@ class _NativeAttachment:
         return RuntimeAttachmentCleanupEvidence(self._lease, True, 0)
 
 
+def _production_auth_callback_removed(_identity: FixedProcessIdentity) -> bool:
+    """Fail-closed placeholder: production gates on the sealed auth owner only."""
+
+    raise RuntimeOperationError(
+        "RUNTIME_UNAVAILABLE",
+        "Production authenticated callback was removed; sealed auth owner is required",
+        category="unavailable",
+    )
+
+
 class NativeHelperProcessPort(LinuxNativeProcessPort):
     """Linux adapter for the fixed native helper ABI using held descriptors.
 
@@ -908,6 +966,7 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
             raise
         self._helpers = NativeHelperHandles(*duplicated)
         self._authenticated = authenticated
+        self._auth_owner: WAWProductionAuthOwner | None = None
         self._stop_timeout = float(stop_timeout_seconds)
         self._bindings: dict[int, _NativeProcessResources] = {}
         self._attachments: dict[int, _NativeAttachment] = {}
@@ -928,7 +987,7 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
         *,
         tmux_socket_directory: int,
         tmux_config: int,
-        authenticated: Callable[[FixedProcessIdentity], bool],
+        auth_owner: WAWProductionAuthOwner,
         stop_timeout_seconds: float = 1.0,
     ) -> NativeHelperProcessPort:
         """Consume exact-six one-shot handles bound to one issued v2 authority."""
@@ -939,6 +998,23 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
             )
         if type(authority) is not WAWVerifiedExecutionAuthority:
             raise TypeError("verified execution authority is required")
+        # Deferred import: the sealed auth owner imports this module's types.
+        from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner as _SealedAuthOwner
+
+        if type(auth_owner) is not _SealedAuthOwner:
+            raise TypeError("sealed production auth owner is required")
+        if auth_owner.authority is not authority:
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Production auth owner is not bound to the execution authority",
+                category="unavailable",
+            )
+        if getattr(auth_owner, "_poisoned", False):
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Production auth owner is poisoned",
+                category="unavailable",
+            )
         manifest = authority._manifest
         expected_kinds = tuple(WAWExecutableKind)
         if type(executable_handles) is not tuple or len(executable_handles) != len(expected_kinds):
@@ -983,7 +1059,7 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
                     tmux_socket_directory,
                     tmux_config,
                 ),
-                authenticated=authenticated,
+                authenticated=_production_auth_callback_removed,
                 stop_timeout_seconds=stop_timeout_seconds,
             )
             for kind in (
@@ -1005,6 +1081,7 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
         for descriptor in consumed.values():
             _close_fd(descriptor)
         result._execution_authority = authority
+        result._auth_owner = auth_owner
         result.production_qualified = True
         return result
 
@@ -1141,7 +1218,12 @@ class NativeHelperProcessPort(LinuxNativeProcessPort):
         self._require_open()
         if type(request) is not FixedLaunchRequest:
             raise TypeError("fixed launch request is required")
-        if not self._authenticated(request.identity):
+        auth_owner = getattr(self, "_auth_owner", None)
+        if auth_owner is not None:
+            authenticated = auth_owner.authenticated(request.identity)
+        else:
+            authenticated = self._authenticated(request.identity)
+        if not authenticated:
             return FixedStartProof(request, FixedStartState.LOGIN_REQUIRED, None, 0)
         role_fds, endpoint, cgroup = self._launch_roles(request)
         listener, launch_path, listener_identity = _bind_fixed_launch_listener(request.identity)
@@ -3035,6 +3117,8 @@ class WAWFixedTransport:
         ) = None
         self._output_sink: OutputSink | None = None
         self._initial_auth_evidence: WAWPublicAuthEvidence | None = None
+        self._auth_lease: object | None = None
+        self._auth_poisoned = False
         self._start_attempted = False
         self._closed = False
         self._aborted_unstarted = False
@@ -3116,6 +3200,7 @@ class WAWFixedTransport:
     def abort_unstarted(self) -> bool:
         """Close every launch-owned resource before the first process effect."""
 
+        self._require_auth_lease_clear()
         if self._start_attempted:
             return False
         if self._aborted_unstarted:
@@ -3137,6 +3222,64 @@ class WAWFixedTransport:
         self._closed = True
         return True
 
+    def _require_auth_lease_clear(self) -> None:
+        """Fence interactive launch while an auth lease is outstanding or poisoned."""
+
+        if getattr(self, "_auth_poisoned", False):
+            raise RuntimeOperationError(
+                "WAW_AUTH_LEASE_POISONED",
+                "Fixed transport was poisoned by an uncertain auth lease",
+                category="conflict",
+            )
+        if getattr(self, "_auth_lease", None) is not None:
+            raise RuntimeOperationError(
+                "WAW_AUTH_LEASE_BUSY",
+                "Fixed transport auth lease is outstanding",
+                category="conflict",
+            )
+
+    def _auth_borrow_precheck(self) -> None:
+        """Fail-closed gate before the sealed auth lease owner borrows this transport."""
+
+        self._require_auth_lease_clear()
+        if self._start_attempted or self._closed or self._aborted_unstarted:
+            raise RuntimeOperationError(
+                "WAW_AUTH_LEASE_BUSY",
+                "Fixed transport can no longer lend its cgroup",
+                category="conflict",
+            )
+
+    def _borrow_auth_lease(self, lease: object) -> None:
+        """Install one outstanding sealed auth lease after the token cgroup borrow."""
+
+        self._auth_borrow_precheck()
+        cgroup = self._handles.cgroup
+        if type(cgroup) is not LinuxCgroupControlHandle or not getattr(
+            cgroup, "_auth_borrowed", False
+        ):
+            raise RuntimeOperationError(
+                "WAW_AUTH_LEASE_BUSY",
+                "Auth lease requires the token-borrowed cgroup",
+                category="conflict",
+            )
+        self._auth_lease = lease
+
+    def _release_auth_lease(self, lease: object) -> None:
+        """Clear the outstanding lease slot; only the exact lease may release."""
+
+        if getattr(self, "_auth_lease", None) is not lease:
+            raise RuntimeOperationError(
+                "WAW_AUTH_LEASE_POISONED",
+                "Fixed transport auth lease slot is inconsistent",
+                category="conflict",
+            )
+        self._auth_lease = None
+
+    def _poison_from_auth_lease(self) -> None:
+        """Enter the terminal poisoned state after an uncertain auth lease."""
+
+        self._auth_poisoned = True
+
     def bind_output_sink(self, sink: OutputSink) -> None:
         if self._output_sink is not None or not callable(sink):
             raise RuntimeOperationError(
@@ -3149,6 +3292,7 @@ class WAWFixedTransport:
             raise RuntimeOperationError(
                 "WAW_START_INVALID", "Fixed process start is not reusable", category="conflict"
             )
+        self._require_auth_lease_clear()
         validated = validate_managed_command(command)
         self._check_command(validated)
         request = FixedLaunchRequest(self._identity, self._handles, geometry)
@@ -3321,6 +3465,7 @@ class WAWFixedTransport:
         return self._inspector.probe()
 
     def stop(self) -> RuntimeStopEvidence:
+        self._require_auth_lease_clear()
         had_process = self._inspector.binding is not None
         if self._attachment is not None:
             lease = self._attachment_lease
