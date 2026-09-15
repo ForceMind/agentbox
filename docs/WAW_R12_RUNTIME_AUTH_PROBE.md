@@ -69,6 +69,11 @@ TERM=dumb，不继承Runtime完整环境。selected HOME/policy只提供所需�
 auth namespace增加CLONE_NEWNET、无接口配置，auth-only seccomp禁止network socket/
 connect/bind/listen/accept/send等。需要联网才能status的vendor版本保持unsupported，
 不得在实现中临时开放网络或更换认证方式。
+auth scratch anchor`/run/agentbox-waw/auth-probe`必须由host provisioning创建为
+root:root 0755；helper在进入第一层user namespace前（初始namespace，uid 0有意义的
+上下文）fail-closed校验其type/ownership/mode，namespace内仅复验type/mode。生产
+provisioning必须保证`/run/agentbox-waw`不被非root（含Runtime uid）写入，否则该
+anchor约定的安全意义减弱；此前提属于D/G/H host资格化范围，不由CI synthetic证据替代。
 目标Project root若存在必须被auth mount遮蔽；测试应放置固定Project canary并确认不可见。
 
 ## Borrow lease与cleanup

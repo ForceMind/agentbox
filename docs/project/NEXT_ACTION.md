@@ -1,12 +1,16 @@
 # Current Authorized Action
 
-## R12-C2 native auth-probe execution — 2026-09-13
+## R12-C2 native substrate delivered; Python auth provider next — 2026-09-15
 
 C1/rc12 is merged as PR #91 merge `ae8c730ad40abb1191413634ac445e1045cf7709`.
-The current branch contains C2 native auth-probe source/test WIP and rc13 metadata.
-Finish Linux host-gated normal/sanitizer tests, then review and deliver the native
-substrate separately. Python sealed auth lease/cache/provider, Runtime executor
-start/resume timeout ownership and C3 Runtime main remain subsequent slices.
+The C2 native auth-probe substrate is verified at head
+`6148e959d95eafea0dda5824fc46de9b09a19aff`: all 26 exact-head terminal checks
+(24 success, two prescribed rc8 skips), full 107-case Linux native/sanitizer
+matrix, and independent Security/Architecture/Test PASS. Its normal merge and
+exact read-back complete this slice. Continue with the Python sealed auth
+lease/cache/provider slice (`WAWPublicAuthProbeCache`, fixed-transport sealed
+leases, production callback removal), then five-second operation ownership and
+Runtime executor integration, then C3 Runtime main.
 
 ## R12-B delivered; C1 candidate and C2 native work
 
