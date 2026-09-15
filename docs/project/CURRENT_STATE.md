@@ -1,47 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-15T10:05:00Z"
-verified_by: "codex-r12-c2-native-port"
+verified_at_utc: "2026-09-15T12:10:00Z"
+verified_by: "codex-r12-c2-executor-m4"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## R12-C2 M3 native auth-probe port on review hold
+## R12-C2 M4 executor integration on review hold
 
-PR #93 final head `fd3b1ef47cb803e6374c25ef4546149bc282728b` completed all 26
+PR #94 final head `72d7c7a2968435c2eacf8d7305a9e6bb762881e3` completed all 26
 terminal checks: 24 success and the two prescribed rc8 historical skips. It
-merged normally as `cdde43ab54d4894ec6e4a3c00c739430da68b4f6`; exact Git
-read-back verified parents `fc52c40b2c3513832e417d3b2caacc932eca58c4` and the
-final PR head. All six post-main workflows succeeded: Security `34958326104`,
-Frontend `34958326205`, Deployment `34958326288`, E2E `34958326146`,
-Release Candidate `34958326070`, Backend `34958326042`.
+merged normally as `a6fbf775d471d388abac32b9db689f6e2bd8d495`; exact Git
+read-back verified parents `cdde43ab54d4894ec6e4a3c00c739430da68b4f6` and the
+final PR head. All six post-main workflows succeeded: Backend, Release
+Candidate, E2E, Deployment, Security, Frontend (run set for `a6fbf77`).
 
-On `codex/r12-auth-executor`, the M3 Python native auth-probe port slice is
-implemented and under milestone review hold (2026-09-15 instruction): new
-`waw_auth_native_port.py` (`WAWNativeAuthProbePort`: token-gated single-use
-`WAWProcessIsolationPort` subclass over the fixed `--auth-probe` helper ABI —
-AWP1 record, independent AWRP receive, FD0-8 held-fd posix_spawn, concurrent
-4096+1 bounded drain with burst-race recheck, TERM/grace/KILL plus
-`cgroup.kill`, borrowed-cgroup cleanup proof, cancellation completes cleanup
-before propagation; `WAWNativeAuthProbePortFactory`: digest-pinned
-helper/vendor executable dups bound to one verified authority, one port per
-lease) and the owner's native `probe_with_lease` path (per-probe runner, port
-closed after every outcome, checked_at echo preserved). Local evidence: 38 new
-port tests and the wider matrix pass (260 related tests, 9 Linux-only skips),
-ruff/black/`git diff --check` clean, mypy identical to baseline (17/3 and
-23/7 pre-existing macOS attr-defined; zero in new code). Independent
-Security/Architecture/Test review initially FAIL on one P1 (burst-write
-output overflow masked on the success path); fixed with a post-drain overflow
-recheck plus a deterministic 4096/4097 boundary regression test, one P2
-hardening item (single port issuance per lease) implemented, and the vendor
-digest `max_bytes` wiring parameter recorded in
-`docs/WAW_R12_RUNTIME_AUTH_PROBE.md` for the production composition slice.
+On `codex/r12-auth-executor-m4`, the M4 executor-integration slice is
+implemented and under milestone review hold (2026-09-15 instruction): with an
+exact `WAWProductionAuthOwner`, `start()` and `resume_after_login()` probe
+through `probe_with_lease` (sealed window `sample <= checked_at` and age <
+`AUTH_EVIDENCE_MAX_AGE_SECONDS` replaces the strict echo only on this path;
+non-owner probes keep the echo path byte-for-byte). Awaiting-login transports
+(`start_attempted` plus inspector `login_required`) may be re-borrowed for the
+resume probe; the supervisor exposes its transport only behind the
+LOGIN_REQUIRED gate. Five-second ownership: the probe owns its internal
+5.0s/0.25s/1.0s budget; the control listener widens exactly the
+`workspace.workspace.start` dispatch-plus-response envelope to
+`WAW_START_OPERATION_TIMEOUT_SECONDS` (8.0s), every other action keeps 2.0s
+(decision `R12-AUTH-PROBE-BUDGET-V1`). **Recorded open item for C3**: the
+API-side `WAWControlClient` 2.0s default is not yet reconciled with the 8.0s
+server envelope; it must be closed in the C3 composition slice before any live
+start can carry a real probe. Local evidence: 29 new M4 tests and 140 related
+tests pass (9 Linux-only skips), ruff/black/`git diff --check` clean, mypy
+identical to baseline. Independent Security/Architecture/Test review: PASS
+with one recording-obligation P1 (now closed in the decision index, contract
+and state docs) and one P2 (poisoned `abort_unstarted` now releases resources
+best-effort before surfacing the terminal state, with a pinning test).
 
-C2 is not complete: M4 (executor integration: `_fresh_auth` echo vs lease
-path, awaiting-login borrow, control outer deadline vs the 5.0s probe budget)
-and C3 Runtime main wiring remain. Host/client activation, real CLI login,
-key operation and production remain closed.
+C2 is not complete: C3 Runtime main and the production composition (sealed
+owner, profiles, envelope reconciliation on the API side) remain. Host/client
+activation, real CLI login, key operation and production remain closed.
 
 ## R12-B delivered; R12-C1 candidate
 

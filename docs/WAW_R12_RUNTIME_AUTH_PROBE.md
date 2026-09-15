@@ -111,16 +111,18 @@ poison lease+transport+owner、production callback已从`from_verified_execution
 确认profile不产生嵌套残留。Python native port（AWP1 spawn）、executor接线、五秒操作
 所有权与C3 main仍未开始。
 
-实施状态（2026-09-15，`codex/r12-auth-executor` M3）：Python native auth-probe port
-（`waw_auth_native_port.py`）已实现并经独立审查：AWP1 record编码、独立AWRP接收、
-FD0-8映射spawn、并发drain与4096+1预算（含突发写竞态复查）、TERM grace→KILL+
-cgroup.kill、以borrowed cgroup `populated==0`为后代证据的cleanup proof、取消时cleanup
-完成才传播。factory把helper/vendor executable digest绑定到同一authority（契约L47-50）。
-已知接线参数：vendor digest校验当前用`_verify_fd_digest`默认`max_bytes`（64KiB），生产
-接线必须改用vendor inventory条目的per-entry `max_bytes`（helper路径已用条目值），否则
-真实vendor二进制必被拒；port预算由owner内部runner默认值固定5.0s/0.25s/4096。executor
-集成（`_fresh_auth` echo与lease路径放宽、awaiting-login状态borrow）、control外层
-deadline与probe 5.0s的核对、C3 main仍未开始。
+实施状态（2026-09-15，`codex/r12-auth-executor-m4` M4）：executor 集成已实现并经独立
+审查：exact `WAWProductionAuthOwner` 时 start/resume 经 `probe_with_lease`（sealed窗口
+`sample ≤ checked_at 且 age < 30s` 替代严格 echo，非 owner probe 的 echo 路径不变）；
+awaiting-login（start attempted + inspector.login_required）可再借同一 cgroup 供 resume
+probe；supervisor 经 LOGIN_REQUIRED 门控暴露 transport。五秒预算归属：5.0s spawn→exit
+（+0.25s grace +1.0s drain margin）归 probe port 内部；control listener 仅放大
+`workspace.workspace.start` 的 dispatch+response deadline 至 8.0s 信封，其余 action 保持
+2.0s（决策 `R12-AUTH-PROBE-BUDGET-V1`）。**未核对项（C3 必须闭环）**：API 进程侧
+`WAWControlClient` 默认 2.0s（connect+write+read 全程）尚未与该 8.0s 信封核对；C3 把
+owner 接入 executor 并接通生产组合前，任何 >2s 的真实 probe 会使 client 超时并 poison
+整条 control transport。`waw_bootstrap` 组合校验当前仍钉死 `WAWCachedPublicAuthProbe`，
+owner 无生产构造点。C3 Runtime main 与生产组合（owner/profiles/信封/API 信封）仍未开始。
 
 ## 验收
 
