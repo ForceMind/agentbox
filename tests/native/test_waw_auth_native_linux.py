@@ -674,12 +674,12 @@ def test_auth_probe_wrong_generation_cgroup_never_emits_placed_ready(
     native_binaries: Path,
     auth_fake_vendors: tuple[Path, ...],
 ) -> None:
+    wrong_before = _cgroup_members(WRONG_CGROUP)
     process, control, _stdout, _stderr, descriptors = _mapped_process(
         native_binaries,
         auth_fake_vendors[0],
         role_fault="cgroup",
     )
-    wrong_before = _cgroup_members(WRONG_CGROUP)
     try:
         _send_record_and_close(control, _auth_record())
         assert process.wait(timeout=5.0) == 71

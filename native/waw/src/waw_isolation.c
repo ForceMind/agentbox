@@ -474,9 +474,12 @@ static int setup_auth_mounts(const struct agentbox_waw_auth_probe_config *config
         "/srv/agentbox/projects",
         "/root",
     };
+    /* Anchor ownership is verified in agentbox_waw_launch_auth_probe: inside
+       this first user namespace the host root owner is unmapped and reports
+       as the overflow uid, so a uid check here could never pass for the
+       intended root-owned anchor. Only type and mode are revalidated. */
     if (agent == NULL || lstat(AGENTBOX_WAW_AUTH_SCRATCH_PATH, &scratch_target) != 0 ||
-        !S_ISDIR(scratch_target.st_mode) || scratch_target.st_uid != 0U ||
-        (scratch_target.st_mode & 07777U) != 0755U ||
+        !S_ISDIR(scratch_target.st_mode) || (scratch_target.st_mode & 07777U) != 0755U ||
         mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
         return 151;
     }
@@ -1247,11 +1250,16 @@ static void auth_namespace_builder(const struct agentbox_waw_auth_probe_config *
 int agentbox_waw_launch_auth_probe(const struct agentbox_waw_auth_probe_config *config) {
     int ready_pipe[2] = {-1, -1};
     int mapped_pipe[2] = {-1, -1};
+    struct stat scratch_anchor;
     pid_t child;
     int child_pidfd;
     unsigned char byte = 0U;
     int result;
-    if (config == NULL || pipe2(ready_pipe, O_CLOEXEC) != 0) {
+    /* Verify the root-owned scratch anchor in this initial user namespace,
+       where uid 0 is meaningful; the builder revalidates type and mode. */
+    if (config == NULL || lstat(AGENTBOX_WAW_AUTH_SCRATCH_PATH, &scratch_anchor) != 0 ||
+        !S_ISDIR(scratch_anchor.st_mode) || scratch_anchor.st_uid != 0U ||
+        (scratch_anchor.st_mode & 07777U) != 0755U || pipe2(ready_pipe, O_CLOEXEC) != 0) {
         return 71;
     }
     if (pipe2(mapped_pipe, O_CLOEXEC) != 0) {
