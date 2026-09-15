@@ -3,6 +3,17 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc13] - Unreleased
+
+- R12-C2 native auth-probe substrate: closed AWP1/AWRP records, Runtime-peer
+  credentials, per-generation cgroup placement, auth-only namespaces and fixed
+  Claude/Codex status environments.
+- Preserve the interactive WAW ABI and bridge while adding Linux host-gated
+  auth-probe tests and sibling cgroup setup. Python lease/cache/executor wiring
+  and Runtime main activation remain separate C2/C3 work.
+- Validation and delivery status: pending exact-head CI in
+  `docs/releases/0.3.0rc13.md`.
+
 ## [0.3.0rc12] - Unreleased
 
 - R12-C1 candidate: fixed Runtime-only X25519 static-key file custody, exact

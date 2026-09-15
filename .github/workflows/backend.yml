@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       WORKSPACE_HASH: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      AUTH_WORKSPACE_HASH: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -26,21 +27,27 @@ jobs:
           sudo apt-get install -y tmux
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /run/agentbox-waw /run/agentbox-waw/tmux /run/agentbox-waw/tmp
-          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "/run/agentbox-waw/tmp/${WORKSPACE_HASH}"
+          sudo install -d -m 0755 -o root -g root /run/agentbox-waw/auth-probe
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "/run/agentbox-waw/tmp/${WORKSPACE_HASH}" "/run/agentbox-waw/tmp/${AUTH_WORKSPACE_HASH}"
           sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes/claude /var/lib/agentbox-waw/vendor-homes/codex
-          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /etc/claude-code /etc/codex
+          sudo install -d -m 0755 -o root -g root /etc/claude-code /etc/codex
+          sudo install -d -m 0755 -o root -g root /srv/agentbox/projects
+          sudo install -m 0644 -o root -g root /dev/null /srv/agentbox/projects/auth-probe-canary
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /var/lib/agentbox-waw/runtime-epoch-v1
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /var/lib/agentbox-waw/vendor-homes/codex/forbidden-canary
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /var/lib/agentbox-waw/vendor-homes/claude/forbidden-canary
           sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" /dev/null /home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1/canary
           sudo mkdir -p "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload"
+          sudo mkdir -p "/sys/fs/cgroup/agentbox-waw-test/ws-${AUTH_WORKSPACE_HASH}-g8/workload"
+          sudo chown "$(id -u):$(id -g)" /sys/fs/cgroup/agentbox-waw-test/cgroup.procs
+          sudo chown "$(id -u):$(id -g)" "/sys/fs/cgroup/agentbox-waw-test/ws-${AUTH_WORKSPACE_HASH}-g8/workload/cgroup.procs"
       - run: python scripts/build-waw-native.py --output build/native/waw
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw --no-build
       - run: |
           echo $$ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload/cgroup.procs" >/dev/null
-          python -m pytest -q tests/unit/test_waw_native_helpers.py tests/unit/test_waw_fixed_transport.py tests/native/test_waw_native_linux.py
+          python -m pytest -q tests/unit/test_waw_native_helpers.py tests/unit/test_waw_fixed_transport.py tests/native/test_waw_native_linux.py tests/native/test_waw_auth_native_linux.py
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
@@ -48,11 +55,15 @@ jobs:
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw-sanitized --no-build
       - run: |
           echo $$ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload/cgroup.procs" >/dev/null
-          python -m pytest -q tests/native/test_waw_native_linux.py
+          python -m pytest -q tests/native/test_waw_native_linux.py tests/native/test_waw_auth_native_linux.py
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw-sanitized
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
+          # LeakSanitizer is disabled because the namespace/fork test process
+          # cannot attribute all teardown allocations reliably; cgroup/FD
+          # cleanup is asserted by the auth tests. UBSan remains fail-fast.
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
 
   quality:
     runs-on: ubuntu-latest

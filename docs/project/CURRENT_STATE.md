@@ -1,11 +1,37 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-08T08:25:52Z"
-verified_by: "codex-rc11-merge-readback-rc12-candidate"
+verified_at_utc: "2026-09-15T07:28:47Z"
+verified_by: "codex-r12-c2-native-anchor-fix"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## R12-C2 native auth-probe substrate verified; merge pending
+
+On `codex/r12-auth-native`, head `6148e959d95eafea0dda5824fc46de9b09a19aff`
+carries the closed auth probe substrate plus its Linux host-gated fix.
+Exact-head CI completed all 26 terminal checks: 24 success and the two
+prescribed rc8 historical skips. The Backend native job (normal and sanitized)
+passes the full 107-case Linux matrix, including the seven auth cases that
+failed at head `0f98bf3e7e34ff94d03f3491686ba744eedbfa29`.
+
+Root cause of the earlier seven-failure run: `setup_auth_mounts` required the
+root-owned `/run/agentbox-waw/auth-probe` anchor to stat as `st_uid == 0`
+while already running inside the first user namespace, where the host root
+owner is unmapped and reports as the overflow uid, so every conforming host
+failed closed with 71 after AWRP. Anchor ownership is now verified in
+`agentbox_waw_launch_auth_probe` (initial user namespace, fail-closed 71);
+the in-namespace gate revalidates only type and mode. The wrong-cgroup test's
+membership snapshot moved before spawn to remove its inherent PID race. No
+security assertion was relaxed; the interactive ABI, AWP1/AWRP protocol and
+exit-code semantics are unchanged. Independent Security/Architecture/Test
+review: PASS with no P0/P1; its P2 (document the root:root 0755 anchor
+provisioning contract) is recorded in `docs/WAW_R12_RUNTIME_AUTH_PROBE.md`.
+
+C2 is not complete: Python sealed auth leases/cache, five-second operation
+ownership, Runtime executor integration and C3 main wiring remain. Host/client
+activation, real CLI login, key operation and production remain closed.
 
 ## R12-B delivered; R12-C1 candidate
 

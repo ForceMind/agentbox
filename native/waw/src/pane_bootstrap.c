@@ -21,6 +21,11 @@
 
 #include <sys/prctl.h>
 
+_Static_assert(AGENTBOX_WAW_AUTH_OFFSET_RESERVED + AGENTBOX_WAW_AUTH_RESERVED_BYTES ==
+                   AGENTBOX_WAW_AUTH_RECORD_BYTES,
+               "auth record layout");
+_Static_assert(AGENTBOX_WAW_AUTH_READY_FRAME_BYTES == 8U, "auth ready layout");
+
 struct launch_values {
     enum agentbox_waw_agent_type agent;
     uint64_t generation;
@@ -31,6 +36,241 @@ struct launch_values {
     char workspace_hash[65];
     char profile_digest[65];
 };
+
+static uint32_t auth_network_u32(const unsigned char *value) {
+    return ((uint32_t)value[0] << 24U) | ((uint32_t)value[1] << 16U) |
+           ((uint32_t)value[2] << 8U) | (uint32_t)value[3];
+}
+
+static uint64_t auth_network_u64(const unsigned char *value) {
+    return ((uint64_t)auth_network_u32(value) << 32U) |
+           (uint64_t)auth_network_u32(value + 4U);
+}
+
+static void close_ancillary_fds(struct msghdr *message) {
+    struct cmsghdr *header;
+    for (header = CMSG_FIRSTHDR(message); header != NULL;
+         header = CMSG_NXTHDR(message, header)) {
+        if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS &&
+            header->cmsg_len >= CMSG_LEN(0U)) {
+            const size_t payload = header->cmsg_len - CMSG_LEN(0U);
+            const size_t count = payload / sizeof(int);
+            const int *descriptors = (const int *)CMSG_DATA(header);
+            size_t index;
+            for (index = 0; index < count; ++index) {
+                (void)close(descriptors[index]);
+            }
+        }
+    }
+}
+
+static int validate_auth_peer(uint32_t runtime_pid, uint32_t runtime_uid,
+                              uint32_t runtime_gid) {
+#if defined(SO_PEERCRED)
+    struct ucred credentials;
+    socklen_t length = (socklen_t)sizeof(credentials);
+    if (getsockopt(AGENTBOX_WAW_AUTH_CONTROL_FD, SOL_SOCKET, SO_PEERCRED, &credentials,
+                   &length) != 0 ||
+        length != (socklen_t)sizeof(credentials) || credentials.pid != (pid_t)runtime_pid ||
+        credentials.uid != (uid_t)runtime_uid || credentials.gid != (gid_t)runtime_gid) {
+        errno = EACCES;
+        return -1;
+    }
+    return 0;
+#else
+    (void)runtime_pid;
+    (void)runtime_uid;
+    (void)runtime_gid;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+static int receive_auth_record(unsigned char raw[AGENTBOX_WAW_AUTH_RECORD_BYTES]) {
+    unsigned char packet[AGENTBOX_WAW_AUTH_RECORD_BYTES + 1U];
+    unsigned char extra = 0U;
+    unsigned char control[CMSG_SPACE(sizeof(int) * 16U)];
+    struct iovec vector;
+    struct msghdr message;
+    ssize_t received;
+    memset(&message, 0, sizeof(message));
+    memset(control, 0, sizeof(control));
+    vector.iov_base = packet;
+    vector.iov_len = sizeof(packet);
+    message.msg_iov = &vector;
+    message.msg_iovlen = 1U;
+    message.msg_control = control;
+    message.msg_controllen = sizeof(control);
+    received = recvmsg(AGENTBOX_WAW_AUTH_CONTROL_FD, &message, MSG_CMSG_CLOEXEC);
+    if (message.msg_controllen != 0U) {
+        close_ancillary_fds(&message);
+    }
+    if (received != (ssize_t)AGENTBOX_WAW_AUTH_RECORD_BYTES ||
+        (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0 ||
+        message.msg_controllen != 0U) {
+        errno = EPROTO;
+        return -1;
+    }
+    memcpy(raw, packet, (size_t)AGENTBOX_WAW_AUTH_RECORD_BYTES);
+
+    memset(&message, 0, sizeof(message));
+    memset(control, 0, sizeof(control));
+    vector.iov_base = &extra;
+    vector.iov_len = sizeof(extra);
+    message.msg_iov = &vector;
+    message.msg_iovlen = 1U;
+    message.msg_control = control;
+    message.msg_controllen = sizeof(control);
+    received = recvmsg(AGENTBOX_WAW_AUTH_CONTROL_FD, &message, MSG_CMSG_CLOEXEC);
+    if (message.msg_controllen != 0U) {
+        close_ancillary_fds(&message);
+    }
+    if (received != 0 || (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0 ||
+        message.msg_controllen != 0U) {
+        errno = EPROTO;
+        return -1;
+    }
+    return 0;
+}
+
+static int parse_auth_record(const unsigned char raw[AGENTBOX_WAW_AUTH_RECORD_BYTES],
+                             struct agentbox_waw_auth_probe_config *config,
+                             uint32_t *runtime_pid) {
+    size_t index;
+    if (memcmp(raw + AGENTBOX_WAW_AUTH_OFFSET_MAGIC, AGENTBOX_WAW_AUTH_RECORD_MAGIC, 4U) != 0 ||
+        raw[AGENTBOX_WAW_AUTH_OFFSET_VERSION] != AGENTBOX_WAW_AUTH_RECORD_VERSION ||
+        (raw[AGENTBOX_WAW_AUTH_OFFSET_AGENT_TYPE] !=
+             (unsigned char)AGENTBOX_WAW_AGENT_CLAUDE &&
+         raw[AGENTBOX_WAW_AUTH_OFFSET_AGENT_TYPE] !=
+             (unsigned char)AGENTBOX_WAW_AGENT_CODEX) ||
+        raw[AGENTBOX_WAW_AUTH_OFFSET_FLAGS] != 0U ||
+        raw[AGENTBOX_WAW_AUTH_OFFSET_FLAGS + 1U] != 0U) {
+        errno = EPROTO;
+        return -1;
+    }
+    for (index = 0; index < (size_t)AGENTBOX_WAW_AUTH_RESERVED_BYTES; ++index) {
+        if (raw[AGENTBOX_WAW_AUTH_OFFSET_RESERVED + index] != 0U) {
+            errno = EPROTO;
+            return -1;
+        }
+    }
+    memset(config, 0, sizeof(*config));
+    config->agent_type = raw[AGENTBOX_WAW_AUTH_OFFSET_AGENT_TYPE];
+    *runtime_pid = auth_network_u32(raw + AGENTBOX_WAW_AUTH_OFFSET_RUNTIME_PID);
+    config->runtime_uid = auth_network_u32(raw + AGENTBOX_WAW_AUTH_OFFSET_RUNTIME_UID);
+    config->runtime_gid = auth_network_u32(raw + AGENTBOX_WAW_AUTH_OFFSET_RUNTIME_GID);
+    config->generation = auth_network_u64(raw + AGENTBOX_WAW_AUTH_OFFSET_GENERATION);
+    memcpy(config->workspace_hash, raw + AGENTBOX_WAW_AUTH_OFFSET_WORKSPACE_HASH,
+           (size_t)AGENTBOX_WAW_WORKSPACE_HASH_BYTES);
+    memcpy(config->profile_digest, raw + AGENTBOX_WAW_AUTH_OFFSET_PROFILE_DIGEST,
+           (size_t)AGENTBOX_WAW_PROFILE_DIGEST_BYTES);
+    config->workspace_hash[AGENTBOX_WAW_WORKSPACE_HASH_BYTES] = '\0';
+    config->profile_digest[AGENTBOX_WAW_PROFILE_DIGEST_BYTES] = '\0';
+    if (*runtime_pid == 0U || config->runtime_uid == 0U || config->generation == 0U ||
+        !agentbox_waw_is_hex_digest(config->workspace_hash) ||
+        !agentbox_waw_is_hex_digest(config->profile_digest)) {
+        errno = EPROTO;
+        return -1;
+    }
+    return 0;
+}
+
+static int validate_auth_devnull(void) {
+    struct stat supplied;
+    struct stat expected;
+    int flags = fcntl(AGENTBOX_WAW_AUTH_STDIN_FD, F_GETFL);
+    return flags >= 0 && (flags & O_ACCMODE) == O_RDONLY &&
+                   fstat(AGENTBOX_WAW_AUTH_STDIN_FD, &supplied) == 0 &&
+                   stat("/dev/null", &expected) == 0 && S_ISCHR(supplied.st_mode) &&
+                   supplied.st_dev == expected.st_dev && supplied.st_ino == expected.st_ino &&
+                   supplied.st_rdev == expected.st_rdev
+               ? 0
+               : -1;
+}
+
+static int validate_auth_pipe(int fd, struct stat *status) {
+    int flags = fcntl(fd, F_GETFL);
+    return flags >= 0 && (flags & O_ACCMODE) == O_WRONLY && fstat(fd, status) == 0 &&
+                   S_ISFIFO(status->st_mode)
+               ? 0
+               : -1;
+}
+
+static int validate_owned_directory(int fd, uid_t owner, int private_directory,
+                                    struct stat *status) {
+    if (agentbox_waw_validate_directory_fd(fd) != 0 || fstat(fd, status) != 0 ||
+        status->st_uid != owner ||
+        (private_directory != 0 && (status->st_mode & (S_IRWXG | S_IRWXO)) != 0) ||
+        (status->st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    return 0;
+}
+
+static int descriptor_matches_directory(int fd, const char *path) {
+    struct stat supplied;
+    struct stat expected;
+    if (fstat(fd, &supplied) != 0 || lstat(path, &expected) != 0 ||
+        !S_ISDIR(supplied.st_mode) || !S_ISDIR(expected.st_mode) ||
+        supplied.st_dev != expected.st_dev || supplied.st_ino != expected.st_ino ||
+        supplied.st_mode != expected.st_mode || supplied.st_uid != expected.st_uid ||
+        supplied.st_gid != expected.st_gid) {
+        errno = EXDEV;
+        return -1;
+    }
+    return 0;
+}
+
+static int validate_auth_roles(const struct agentbox_waw_auth_probe_config *config) {
+    struct stat output;
+    struct stat error;
+    struct stat cgroup;
+    struct stat executable;
+    struct stat home;
+    struct stat scratch;
+    struct stat policy;
+    char scratch_path[192];
+    const char *home_path = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
+                                ? "/var/lib/agentbox-waw/vendor-homes/claude"
+                                : "/var/lib/agentbox-waw/vendor-homes/codex";
+    const char *policy_path = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
+                                  ? "/etc/claude-code"
+                                  : "/etc/codex";
+    int scratch_length = snprintf(scratch_path, sizeof(scratch_path),
+                                  AGENTBOX_WAW_RUN_ROOT "/tmp/%s/auth-probe-g%llu",
+                                  config->workspace_hash,
+                                  (unsigned long long)config->generation);
+    if (scratch_length < 0 || (size_t)scratch_length >= sizeof(scratch_path) ||
+        validate_auth_devnull() != 0 ||
+        validate_auth_pipe(AGENTBOX_WAW_AUTH_STDOUT_FD, &output) != 0 ||
+        validate_auth_pipe(AGENTBOX_WAW_AUTH_STDERR_FD, &error) != 0 ||
+        (output.st_dev == error.st_dev && output.st_ino == error.st_ino) ||
+        agentbox_waw_validate_seqpacket_fd(AGENTBOX_WAW_AUTH_CONTROL_FD) != 0 ||
+        agentbox_waw_validate_directory_fd(AGENTBOX_WAW_AUTH_CGROUP_FD) != 0 ||
+        fstat(AGENTBOX_WAW_AUTH_CGROUP_FD, &cgroup) != 0 ||
+        agentbox_waw_validate_executable_fd(AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD) != 0 ||
+        fstat(AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD, &executable) != 0 ||
+        validate_owned_directory(AGENTBOX_WAW_AUTH_HOME_FD, (uid_t)config->runtime_uid, 1,
+                                 &home) != 0 ||
+        descriptor_matches_directory(AGENTBOX_WAW_AUTH_HOME_FD, home_path) != 0 ||
+        validate_owned_directory(AGENTBOX_WAW_AUTH_SCRATCH_FD, (uid_t)config->runtime_uid, 1,
+                                 &scratch) != 0 ||
+        descriptor_matches_directory(AGENTBOX_WAW_AUTH_SCRATCH_FD, scratch_path) != 0 ||
+        validate_owned_directory(AGENTBOX_WAW_AUTH_POLICY_FD, 0U, 0, &policy) != 0 ||
+        descriptor_matches_directory(AGENTBOX_WAW_AUTH_POLICY_FD, policy_path) != 0 ||
+        (home.st_mode & 07777U) != 0700U || (scratch.st_mode & 07777U) != 0700U ||
+        (policy.st_mode & 07777U) != 0755U ||
+        (home.st_dev == scratch.st_dev && home.st_ino == scratch.st_ino) ||
+        (home.st_dev == policy.st_dev && home.st_ino == policy.st_ino) ||
+        (scratch.st_dev == policy.st_dev && scratch.st_ino == policy.st_ino) ||
+        (cgroup.st_dev == home.st_dev && cgroup.st_ino == home.st_ino) ||
+        (executable.st_dev == policy.st_dev && executable.st_ino == policy.st_ino)) {
+        errno = EINVAL;
+        return -1;
+    }
+    return 0;
+}
 
 static int parse_cli_positive(const char *raw, uint64_t maximum, uint64_t *result) {
     const char *cursor = raw;
@@ -52,7 +292,7 @@ static int parse_cli_positive(const char *raw, uint64_t maximum, uint64_t *resul
     return 0;
 }
 
-static int place_self_in_cgroup(void) {
+static int place_self_in_cgroup(int cgroup_fd) {
     char pid[32];
     char observed[4096];
     int descriptor;
@@ -62,8 +302,7 @@ static int place_self_in_cgroup(void) {
     if (length <= 0 || (size_t)length >= sizeof(pid)) {
         return -1;
     }
-    descriptor = openat(AGENTBOX_WAW_LAUNCHER_CGROUP_FD, "cgroup.procs",
-                        O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    descriptor = openat(cgroup_fd, "cgroup.procs", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
     if (descriptor < 0 || agentbox_waw_write_exact(descriptor, pid, (size_t)length) != 0 ||
         close(descriptor) != 0) {
         if (descriptor >= 0) {
@@ -71,8 +310,7 @@ static int place_self_in_cgroup(void) {
         }
         return -1;
     }
-    descriptor = openat(AGENTBOX_WAW_LAUNCHER_CGROUP_FD, "cgroup.procs",
-                        O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    descriptor = openat(cgroup_fd, "cgroup.procs", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (descriptor < 0) {
         return -1;
     }
@@ -137,7 +375,7 @@ static int launch_tmux(const char *workspace_hash, enum agentbox_waw_agent_type 
         session_length < 0 || (size_t)session_length >= sizeof(session) ||
         bootstrap_length < 0 || (size_t)bootstrap_length >= sizeof(bootstrap_path) ||
         config_length < 0 || (size_t)config_length >= sizeof(config_path) ||
-        place_self_in_cgroup() != 0 ||
+        place_self_in_cgroup(AGENTBOX_WAW_LAUNCHER_CGROUP_FD) != 0 ||
         agentbox_waw_send_ready(AGENTBOX_WAW_LAUNCHER_READY_FD) != 0 ||
         close(AGENTBOX_WAW_LAUNCHER_READY_FD) != 0 ||
         agentbox_waw_set_cloexec(AGENTBOX_WAW_LAUNCHER_CGROUP_FD, 1) != 0 ||
@@ -308,6 +546,43 @@ static int validate_cgroup_marker(const char *workspace_hash, uint64_t generatio
             errno = EPROTO;
             return -1;
         }
+    }
+    return 0;
+}
+
+static int validate_auth_cgroup_marker(const char *workspace_hash, uint64_t generation) {
+    char cgroup[1024];
+    char path[1200];
+    struct stat supplied;
+    struct stat expected;
+    int fd;
+    ssize_t size;
+    int length;
+    if (validate_cgroup_marker(workspace_hash, generation) != 0) {
+        return -1;
+    }
+    fd = open("/proc/self/cgroup", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+        return -1;
+    }
+    size = read(fd, cgroup, sizeof(cgroup) - 1U);
+    (void)close(fd);
+    if (size <= 3 || (size_t)size >= sizeof(cgroup) || memcmp(cgroup, "0::", 3U) != 0) {
+        errno = EPROTO;
+        return -1;
+    }
+    cgroup[(size_t)size] = '\0';
+    if (cgroup[(size_t)size - 1U] == '\n') {
+        cgroup[(size_t)size - 1U] = '\0';
+    }
+    length = snprintf(path, sizeof(path), "/sys/fs/cgroup%s", cgroup + 3U);
+    if (length < 0 || (size_t)length >= sizeof(path) || stat(path, &expected) != 0 ||
+        fstat(AGENTBOX_WAW_AUTH_CGROUP_FD, &supplied) != 0 ||
+        supplied.st_dev != expected.st_dev || supplied.st_ino != expected.st_ino ||
+        supplied.st_mode != expected.st_mode || supplied.st_uid != expected.st_uid ||
+        supplied.st_gid != expected.st_gid) {
+        errno = EXDEV;
+        return -1;
     }
     return 0;
 }
@@ -658,6 +933,41 @@ static int run_bootstrap(const char *workspace_hash, enum agentbox_waw_agent_typ
                                         bridge_argv, bridge_env);
 }
 
+static int run_auth_probe(void) {
+    unsigned char raw[AGENTBOX_WAW_AUTH_RECORD_BYTES];
+    struct agentbox_waw_auth_probe_config config;
+    uint32_t runtime_pid = 0U;
+    pid_t expected_parent = getppid();
+    int kept[] = {AGENTBOX_WAW_AUTH_CONTROL_FD, AGENTBOX_WAW_AUTH_CGROUP_FD,
+                  AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD, AGENTBOX_WAW_AUTH_HOME_FD,
+                  AGENTBOX_WAW_AUTH_SCRATCH_FD, AGENTBOX_WAW_AUTH_POLICY_FD};
+    size_t index;
+    if (expected_parent <= 1 || (uintmax_t)expected_parent > (uintmax_t)UINT32_MAX ||
+        prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != expected_parent ||
+        receive_auth_record(raw) != 0 || parse_auth_record(raw, &config, &runtime_pid) != 0 ||
+        runtime_pid != (uint32_t)expected_parent || config.runtime_uid != (uint32_t)geteuid() ||
+        config.runtime_gid != (uint32_t)getegid() ||
+        validate_auth_peer(runtime_pid, config.runtime_uid, config.runtime_gid) != 0 ||
+        validate_auth_roles(&config) != 0 ||
+        getppid() != expected_parent) {
+        return 65;
+    }
+    for (index = 0; index < sizeof(kept) / sizeof(kept[0]); ++index) {
+        if (agentbox_waw_set_cloexec(kept[index], 1) != 0) {
+            return 71;
+        }
+    }
+    if (place_self_in_cgroup(AGENTBOX_WAW_AUTH_CGROUP_FD) != 0 ||
+        validate_auth_cgroup_marker(config.workspace_hash, config.generation) != 0 ||
+        agentbox_waw_close_except(kept, sizeof(kept) / sizeof(kept[0])) != 0 ||
+        agentbox_waw_apply_basic_limits() != 0 ||
+        agentbox_waw_send_auth_placed(AGENTBOX_WAW_AUTH_CONTROL_FD) != 0 ||
+        close(AGENTBOX_WAW_AUTH_CONTROL_FD) != 0) {
+        return 71;
+    }
+    return agentbox_waw_launch_auth_probe(&config);
+}
+
 int main(int argc, char **argv) {
     enum agentbox_waw_agent_type agent;
     uint64_t runtime_pid;
@@ -665,6 +975,9 @@ int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         (void)puts("agentbox-waw-pane-bootstrap " AGENTBOX_WAW_NATIVE_VERSION);
         return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--auth-probe") == 0) {
+        return run_auth_probe();
     }
     if (argc == 10 && strcmp(argv[1], "--launch-tmux") == 0 &&
         strcmp(argv[2], "--workspace-hash") == 0 &&

@@ -7,3 +7,4 @@ allowBuilds:
 
 overrides:
   nanoid: 3.3.18
+  js-yaml: 4.3.2

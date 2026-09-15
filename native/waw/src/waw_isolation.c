@@ -53,6 +53,10 @@ static int write_file_at(int directory, const char *path, const char *value) {
     return result;
 }
 
+static int create_auth_namespace(int namespaces) {
+    return unshare(namespaces);
+}
+
 static int write_user_maps(int proc_directory, pid_t child, uid_t inner_uid, uid_t parent_uid,
                            gid_t inner_gid, gid_t parent_gid) {
     char path[64];
@@ -435,6 +439,117 @@ static int setup_mounts(const struct agentbox_waw_bridge_config *config,
     return 0;
 }
 
+static int setup_auth_mounts(const struct agentbox_waw_auth_probe_config *config,
+                             const struct agentbox_waw_descriptor_hints *hints) {
+    const char *agent = agentbox_waw_agent_name((enum agentbox_waw_agent_type)config->agent_type);
+    const char *other = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE ? "codex" : "claude";
+    const char *policy = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
+                             ? "/etc/claude-code"
+                             : "/etc/codex";
+    const char *other_policy = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
+                                   ? "/etc/codex"
+                                   : "/etc/claude-code";
+    char home_target[128];
+    char other_home[128];
+    char mask_directory[160];
+    char mask_file[160];
+    int mask_fd;
+    int length;
+    struct stat scratch_target;
+    size_t index;
+    static const char *const fixed_masks[] = {
+        "/var/lib/agentbox-waw/runtime-epoch-v1",
+        "/var/lib/agentbox-waw/runtime-attestation-x25519.key",
+        "/var/lib/agentbox-waw/runtime-attestation-x25519.pub",
+        "/var/lib/agentbox-waw/runtime-host-installation.v2.json",
+        "/var/lib/agentbox-waw/bindings-v1",
+        "/var/lib/agentbox-waw/workspace-attestations-v1",
+        "/var/lib/agentbox-waw/cgroup-attestations-v1",
+        "/var/lib/agentbox-waw/keys-v1",
+        "/home/agentbox-runtime/.local/share/agentbox/provider-secrets/v1",
+        "/run/agentbox-waw/workspace-control.sock",
+        "/run/agentbox-waw/workspace-stream.sock",
+        "/run/agentbox-waw/tmux",
+        "/run/agentbox-waw/tmp",
+        "/srv/agentbox/projects",
+        "/root",
+    };
+    /* Anchor ownership is verified in agentbox_waw_launch_auth_probe: inside
+       this first user namespace the host root owner is unmapped and reports
+       as the overflow uid, so a uid check here could never pass for the
+       intended root-owned anchor. Only type and mode are revalidated. */
+    if (agent == NULL || lstat(AGENTBOX_WAW_AUTH_SCRATCH_PATH, &scratch_target) != 0 ||
+        !S_ISDIR(scratch_target.st_mode) || (scratch_target.st_mode & 07777U) != 0755U ||
+        mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
+        return 151;
+    }
+    length = snprintf(home_target, sizeof(home_target), AGENTBOX_WAW_STATE_ROOT "/vendor-homes/%s",
+                      agent);
+    if (length < 0 || (size_t)length >= sizeof(home_target)) {
+        return 152;
+    }
+    length = snprintf(other_home, sizeof(other_home), AGENTBOX_WAW_STATE_ROOT "/vendor-homes/%s",
+                      other);
+    if (length < 0 || (size_t)length >= sizeof(other_home)) {
+        return 152;
+    }
+    length = snprintf(mask_directory, sizeof(mask_directory), "%s/.masked",
+                      AGENTBOX_WAW_AUTH_SCRATCH_PATH);
+    if (length < 0 || (size_t)length >= sizeof(mask_directory)) {
+        return 152;
+    }
+    length = snprintf(mask_file, sizeof(mask_file), "%s/.masked-file",
+                      AGENTBOX_WAW_AUTH_SCRATCH_PATH);
+    if (length < 0 || (size_t)length >= sizeof(mask_file)) {
+        return 152;
+    }
+    {
+        int bind_status =
+            bind_descriptor(AGENTBOX_WAW_AUTH_SCRATCH_FD, hints->temporary,
+                            AGENTBOX_WAW_AUTH_SCRATCH_PATH, 0);
+        if (bind_status != 0) {
+            return 160 + bind_status;
+        }
+    }
+    if (ensure_directory(mask_directory, 0700) != 0 || chmod(mask_directory, 0700) != 0) {
+        return 173;
+    }
+    mask_fd = open(mask_file, O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (mask_fd < 0 || close(mask_fd) != 0) {
+        return 174;
+    }
+    {
+        int bind_status =
+            bind_descriptor(AGENTBOX_WAW_AUTH_HOME_FD, hints->home, home_target, 0);
+        if (bind_status != 0) {
+            return 180 + bind_status;
+        }
+    }
+    {
+        int bind_status =
+            bind_descriptor(AGENTBOX_WAW_AUTH_POLICY_FD, hints->policy, policy, 1);
+        if (bind_status != 0) {
+            return 200 + bind_status;
+        }
+    }
+    for (index = 0; index < sizeof(fixed_masks) / sizeof(fixed_masks[0]); ++index) {
+        if (mask_existing(fixed_masks[index], mask_directory, mask_file) != 0) {
+            return 213;
+        }
+    }
+    if (mask_existing(other_home, mask_directory, mask_file) != 0 ||
+        mask_existing(other_policy, mask_directory, mask_file) != 0 ||
+        chmod(mask_directory, 0000) != 0 || chmod(mask_file, 0000) != 0 ||
+        chdir(AGENTBOX_WAW_AUTH_SCRATCH_PATH) != 0) {
+        return 214;
+    }
+    if (mount("proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC,
+              "hidepid=2,subset=pid") != 0) {
+        return 215;
+    }
+    return 0;
+}
+
 static uint64_t landlock_base_rights(void) {
     uint64_t rights = LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_WRITE_FILE |
                       LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR |
@@ -555,10 +670,71 @@ static int apply_landlock(const struct agentbox_waw_bridge_config *config, int b
 #endif
 }
 
-static int apply_seccomp(void) {
-    int denied[32];
+static int apply_auth_landlock(const struct agentbox_waw_auth_probe_config *config) {
+#if defined(SYS_landlock_create_ruleset) && defined(SYS_landlock_add_rule) && defined(SYS_landlock_restrict_self)
+    struct landlock_ruleset_attr ruleset_attr;
+    uint64_t rights = landlock_base_rights();
+    uint64_t read_only = LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_READ_FILE |
+                         LANDLOCK_ACCESS_FS_READ_DIR;
+    char home[128];
+    const char *agent = agentbox_waw_agent_name((enum agentbox_waw_agent_type)config->agent_type);
+    int abi = (int)syscall(SYS_landlock_create_ruleset, NULL, 0U, LANDLOCK_CREATE_RULESET_VERSION);
+    int ruleset;
+    int length;
+    static const char *const system_paths[] = {"/usr", "/bin", "/lib", "/lib64", "/etc",
+                                                "/dev", "/proc"};
+    size_t index;
+    if (abi < 1 || agent == NULL) {
+        return -1;
+    }
+#ifdef LANDLOCK_ACCESS_FS_REFER
+    if (abi < 2) {
+        rights &= ~((uint64_t)LANDLOCK_ACCESS_FS_REFER);
+    }
+#endif
+#ifdef LANDLOCK_ACCESS_FS_TRUNCATE
+    if (abi < 3) {
+        rights &= ~((uint64_t)LANDLOCK_ACCESS_FS_TRUNCATE);
+    }
+#endif
+    memset(&ruleset_attr, 0, sizeof(ruleset_attr));
+    ruleset_attr.handled_access_fs = rights;
+    ruleset = (int)syscall(SYS_landlock_create_ruleset, &ruleset_attr, sizeof(ruleset_attr), 0U);
+    if (ruleset < 0) {
+        return -1;
+    }
+    length = snprintf(home, sizeof(home), AGENTBOX_WAW_STATE_ROOT "/vendor-homes/%s", agent);
+    if (length < 0 || (size_t)length >= sizeof(home)) {
+        (void)close(ruleset);
+        return -1;
+    }
+    for (index = 0; index < sizeof(system_paths) / sizeof(system_paths[0]); ++index) {
+        if (add_landlock_path(ruleset, system_paths[index], read_only) != 0) {
+            (void)close(ruleset);
+            return -1;
+        }
+    }
+    if (add_landlock_path(ruleset, home, rights) != 0 ||
+        add_landlock_path(ruleset, AGENTBOX_WAW_AUTH_SCRATCH_PATH, rights) != 0 ||
+        add_landlock_fd(ruleset, AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD,
+                        LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_READ_FILE) != 0 ||
+        prctl(PR_SET_NO_NEW_PRIVS, 1UL, 0UL, 0UL, 0UL) != 0 ||
+        syscall(SYS_landlock_restrict_self, ruleset, 0U) != 0L) {
+        (void)close(ruleset);
+        return -1;
+    }
+    return close(ruleset);
+#else
+    (void)config;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+static int apply_seccomp(int deny_network) {
+    int denied[64];
     size_t denied_count = 0;
-    struct sock_filter filters[72];
+    struct sock_filter filters[160];
     struct sock_fprog program;
     size_t index = 0;
 #define DENY_SYSCALL(name) do { denied[denied_count++] = SYS_##name; } while (0)
@@ -622,6 +798,71 @@ static int apply_seccomp(void) {
 #ifdef SYS_mount_setattr
     DENY_SYSCALL(mount_setattr);
 #endif
+    if (deny_network != 0) {
+#ifdef SYS_socket
+        DENY_SYSCALL(socket);
+#endif
+#ifdef SYS_socketpair
+        DENY_SYSCALL(socketpair);
+#endif
+#ifdef SYS_connect
+        DENY_SYSCALL(connect);
+#endif
+#ifdef SYS_bind
+        DENY_SYSCALL(bind);
+#endif
+#ifdef SYS_listen
+        DENY_SYSCALL(listen);
+#endif
+#ifdef SYS_accept
+        DENY_SYSCALL(accept);
+#endif
+#ifdef SYS_accept4
+        DENY_SYSCALL(accept4);
+#endif
+#ifdef SYS_sendto
+        DENY_SYSCALL(sendto);
+#endif
+#ifdef SYS_sendmsg
+        DENY_SYSCALL(sendmsg);
+#endif
+#ifdef SYS_sendmmsg
+        DENY_SYSCALL(sendmmsg);
+#endif
+#ifdef SYS_recvfrom
+        DENY_SYSCALL(recvfrom);
+#endif
+#ifdef SYS_recvmsg
+        DENY_SYSCALL(recvmsg);
+#endif
+#ifdef SYS_recvmmsg
+        DENY_SYSCALL(recvmmsg);
+#endif
+#ifdef SYS_shutdown
+        DENY_SYSCALL(shutdown);
+#endif
+#ifdef SYS_getsockname
+        DENY_SYSCALL(getsockname);
+#endif
+#ifdef SYS_getpeername
+        DENY_SYSCALL(getpeername);
+#endif
+#ifdef SYS_getsockopt
+        DENY_SYSCALL(getsockopt);
+#endif
+#ifdef SYS_setsockopt
+        DENY_SYSCALL(setsockopt);
+#endif
+#ifdef SYS_io_uring_setup
+        DENY_SYSCALL(io_uring_setup);
+#endif
+#ifdef SYS_io_uring_enter
+        DENY_SYSCALL(io_uring_enter);
+#endif
+#ifdef SYS_io_uring_register
+        DENY_SYSCALL(io_uring_register);
+#endif
+    }
 #undef DENY_SYSCALL
 #if defined(__x86_64__)
     filters[index++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS,
@@ -653,7 +894,9 @@ static int apply_seccomp(void) {
         BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
     filters[index++] = (struct sock_filter)BPF_JUMP(
         BPF_JMP | BPF_JSET | BPF_K,
-        (uint32_t)(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC), 0U, 1U);
+        (uint32_t)(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC |
+                   (deny_network != 0 ? CLONE_NEWNET : 0)),
+        0U, 1U);
     filters[index++] = (struct sock_filter)BPF_STMT(BPF_RET | BPF_K,
                                                      SECCOMP_RET_ERRNO | (uint32_t)EPERM);
     filters[index++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS,
@@ -755,7 +998,7 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
         if (apply_landlock(config, bridge_executable) != 0) {
             _exit(71);
         }
-        if (apply_seccomp() != 0) {
+        if (apply_seccomp(0) != 0) {
             _exit(71);
         }
         (void)close(builder_pidfd);
@@ -776,7 +1019,7 @@ static void namespace_builder(const struct agentbox_waw_bridge_config *config,
     if (clear_setup_capability() != 0) {
         release_workload = 0;
     }
-    if (apply_seccomp() != 0) {
+    if (apply_seccomp(0) != 0) {
         release_workload = 0;
     }
     if (close(workload_ready[0]) != 0) {
@@ -841,6 +1084,229 @@ int agentbox_waw_launch_isolated(const struct agentbox_waw_bridge_config *config
     return child_status(status);
 }
 
+static int build_auth_environment(const struct agentbox_waw_auth_probe_config *config,
+                                  char storage[11][192], char *environment[12]) {
+    const char *agent = agentbox_waw_agent_name((enum agentbox_waw_agent_type)config->agent_type);
+    const char *state_variable = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
+                                     ? "CLAUDE_CONFIG_DIR"
+                                     : "CODEX_HOME";
+    const char *state_leaf = config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE
+                                 ? ".config/claude"
+                                 : ".config/codex";
+    int lengths[11];
+    size_t index;
+    if (agent == NULL) {
+        return -1;
+    }
+    lengths[0] = snprintf(storage[0], sizeof(storage[0]),
+                          "HOME=/var/lib/agentbox-waw/vendor-homes/%s", agent);
+    lengths[1] = snprintf(storage[1], sizeof(storage[1]),
+                          "XDG_CONFIG_HOME=/var/lib/agentbox-waw/vendor-homes/%s/.config", agent);
+    lengths[2] = snprintf(storage[2], sizeof(storage[2]),
+                          "XDG_CACHE_HOME=/var/lib/agentbox-waw/vendor-homes/%s/.cache", agent);
+    lengths[3] = snprintf(storage[3], sizeof(storage[3]),
+                          "XDG_DATA_HOME=/var/lib/agentbox-waw/vendor-homes/%s/.local/share", agent);
+    lengths[4] = snprintf(storage[4], sizeof(storage[4]),
+                          "XDG_STATE_HOME=/var/lib/agentbox-waw/vendor-homes/%s/.local/state", agent);
+    lengths[5] = snprintf(storage[5], sizeof(storage[5]), "TMPDIR=%s",
+                          AGENTBOX_WAW_AUTH_SCRATCH_PATH);
+    lengths[6] = snprintf(storage[6], sizeof(storage[6]),
+                          "PATH=/usr/bin:/opt/agentbox/current/libexec");
+    lengths[7] = snprintf(storage[7], sizeof(storage[7]), "LANG=C.UTF-8");
+    lengths[8] = snprintf(storage[8], sizeof(storage[8]), "LC_CTYPE=C.UTF-8");
+    lengths[9] = snprintf(storage[9], sizeof(storage[9]), "TERM=dumb");
+    lengths[10] = snprintf(storage[10], sizeof(storage[10]),
+                           "%s=/var/lib/agentbox-waw/vendor-homes/%s/%s", state_variable, agent,
+                           state_leaf);
+    for (index = 0; index < 11U; ++index) {
+        if (lengths[index] < 0 || (size_t)lengths[index] >= sizeof(storage[index])) {
+            return -1;
+        }
+        environment[index] = storage[index];
+    }
+    environment[11] = NULL;
+    return 0;
+}
+
+static void auth_exec_vendor(const struct agentbox_waw_auth_probe_config *config) {
+    char environment_storage[11][192];
+    char *environment[12];
+    char *arguments[4];
+    const char *agent = agentbox_waw_agent_name((enum agentbox_waw_agent_type)config->agent_type);
+    int kept[1] = {AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD};
+    if (agent == NULL || build_auth_environment(config, environment_storage, environment) != 0 ||
+        agentbox_waw_set_cloexec(AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD, 1) != 0 ||
+        agentbox_waw_close_except(kept, sizeof(kept) / sizeof(kept[0])) != 0) {
+        _exit(71);
+    }
+    arguments[0] = (char *)agent;
+    if (config->agent_type == (uint8_t)AGENTBOX_WAW_AGENT_CLAUDE) {
+        arguments[1] = (char *)"auth";
+    } else {
+        arguments[1] = (char *)"login";
+    }
+    arguments[2] = (char *)"status";
+    arguments[3] = NULL;
+    (void)agentbox_waw_exec_held(AGENTBOX_WAW_AUTH_VENDOR_EXECUTABLE_FD, arguments,
+                                 environment);
+    _exit(71);
+}
+
+static void auth_namespace_builder(const struct agentbox_waw_auth_probe_config *config,
+                                   int ready_write, int mapped_read) {
+    unsigned char byte = 1U;
+    int host_proc = -1;
+    int workload_ready[2] = {-1, -1};
+    int workload_mapped[2] = {-1, -1};
+    pid_t inner;
+    pid_t expected_parent = getppid();
+    int builder_pidfd;
+    int release_workload = 1;
+    int status;
+    int release_only[1];
+    struct agentbox_waw_descriptor_hints hints;
+    if (expected_parent <= 1 || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
+        getppid() != expected_parent ||
+        read_descriptor_hint(AGENTBOX_WAW_AUTH_HOME_FD, hints.home, sizeof(hints.home)) != 0 ||
+        read_descriptor_hint(AGENTBOX_WAW_AUTH_SCRATCH_FD, hints.temporary,
+                             sizeof(hints.temporary)) != 0 ||
+        read_descriptor_hint(AGENTBOX_WAW_AUTH_POLICY_FD, hints.policy,
+                             sizeof(hints.policy)) != 0 ||
+        (host_proc = open("/proc", O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)) < 0 ||
+        create_auth_namespace(CLONE_NEWUSER) != 0 ||
+        agentbox_waw_write_exact(ready_write, &byte, sizeof(byte)) != 0 ||
+        agentbox_waw_read_exact(mapped_read, &byte, sizeof(byte)) != 0 || byte != 1U ||
+        geteuid() != 0U || getegid() != 0U || prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 ||
+        getppid() != expected_parent ||
+        (builder_pidfd = agentbox_waw_pidfd_open((int)getpid())) < 0 ||
+        create_auth_namespace(CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC | CLONE_NEWNET) != 0 ||
+        pipe2(workload_ready, O_CLOEXEC) != 0 || pipe2(workload_mapped, O_CLOEXEC) != 0) {
+        _exit(71);
+    }
+    (void)close(ready_write);
+    (void)close(mapped_read);
+    inner = fork();
+    if (inner < 0) {
+        _exit(71);
+    }
+    if (inner == 0) {
+        struct pollfd parent_alive;
+        (void)close(workload_ready[0]);
+        (void)close(workload_mapped[1]);
+        (void)close(host_proc);
+        parent_alive.fd = builder_pidfd;
+        parent_alive.events = POLLIN;
+        parent_alive.revents = 0;
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || poll(&parent_alive, 1U, 0) != 0 ||
+            getpid() != 1 || set_exact_setup_capability() != 0 ||
+            setup_auth_mounts(config, &hints) != 0 ||
+            create_auth_namespace(CLONE_NEWUSER) != 0 ||
+            agentbox_waw_write_exact(workload_ready[1], &byte, sizeof(byte)) != 0 ||
+            agentbox_waw_read_exact(workload_mapped[0], &byte, sizeof(byte)) != 0 || byte != 1U ||
+            geteuid() != (uid_t)AGENTBOX_WAW_INNER_UID ||
+            getegid() != (gid_t)AGENTBOX_WAW_INNER_GID ||
+            prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || poll(&parent_alive, 1U, 0) != 0 ||
+            agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0) {
+            _exit(71);
+        }
+        (void)close(workload_ready[1]);
+        (void)close(workload_mapped[0]);
+        if (apply_auth_landlock(config) != 0 || apply_seccomp(1) != 0 ||
+            close(builder_pidfd) != 0) {
+            _exit(71);
+        }
+        auth_exec_vendor(config);
+    }
+    (void)close(workload_ready[1]);
+    (void)close(workload_mapped[0]);
+    (void)close(builder_pidfd);
+    if (agentbox_waw_read_exact(workload_ready[0], &byte, sizeof(byte)) != 0 || byte != 1U ||
+        write_user_maps(host_proc, inner, (uid_t)AGENTBOX_WAW_INNER_UID, 0U,
+                        (gid_t)AGENTBOX_WAW_INNER_GID, 0U) != 0 ||
+        agentbox_waw_apply_no_new_privs() != 0 || clear_setup_capability() != 0 ||
+        apply_seccomp(0) != 0 || close(workload_ready[0]) != 0 || close(host_proc) != 0) {
+        release_workload = 0;
+    }
+    release_only[0] = workload_mapped[1];
+    if (agentbox_waw_close_except(release_only, 1U) != 0) {
+        release_workload = 0;
+    }
+    if (release_workload != 0 &&
+        agentbox_waw_write_exact(workload_mapped[1], &byte, sizeof(byte)) != 0) {
+        release_workload = 0;
+    }
+    (void)close(workload_mapped[1]);
+    if (release_workload == 0) {
+        (void)kill(inner, SIGKILL);
+    }
+    while (waitpid(inner, &status, 0) < 0) {
+        if (errno != EINTR) {
+            _exit(71);
+        }
+    }
+    _exit(child_status(status));
+}
+
+int agentbox_waw_launch_auth_probe(const struct agentbox_waw_auth_probe_config *config) {
+    int ready_pipe[2] = {-1, -1};
+    int mapped_pipe[2] = {-1, -1};
+    struct stat scratch_anchor;
+    pid_t child;
+    int child_pidfd;
+    unsigned char byte = 0U;
+    int result;
+    /* Verify the root-owned scratch anchor in this initial user namespace,
+       where uid 0 is meaningful; the builder revalidates type and mode. */
+    if (config == NULL || lstat(AGENTBOX_WAW_AUTH_SCRATCH_PATH, &scratch_anchor) != 0 ||
+        !S_ISDIR(scratch_anchor.st_mode) || scratch_anchor.st_uid != 0U ||
+        (scratch_anchor.st_mode & 07777U) != 0755U || pipe2(ready_pipe, O_CLOEXEC) != 0) {
+        return 71;
+    }
+    if (pipe2(mapped_pipe, O_CLOEXEC) != 0) {
+        (void)close(ready_pipe[0]);
+        (void)close(ready_pipe[1]);
+        return 71;
+    }
+    child = fork();
+    if (child < 0) {
+        (void)close(ready_pipe[0]);
+        (void)close(ready_pipe[1]);
+        (void)close(mapped_pipe[0]);
+        (void)close(mapped_pipe[1]);
+        return 71;
+    }
+    if (child == 0) {
+        (void)close(ready_pipe[0]);
+        (void)close(mapped_pipe[1]);
+        auth_namespace_builder(config, ready_pipe[1], mapped_pipe[0]);
+    }
+    child_pidfd = agentbox_waw_pidfd_open((int)child);
+    if (child_pidfd < 0) {
+        (void)kill(child, SIGKILL);
+        while (waitpid(child, NULL, 0) < 0 && errno == EINTR) {
+        }
+        (void)close(ready_pipe[0]);
+        (void)close(ready_pipe[1]);
+        (void)close(mapped_pipe[0]);
+        (void)close(mapped_pipe[1]);
+        return 71;
+    }
+    (void)close(ready_pipe[1]);
+    (void)close(mapped_pipe[0]);
+    if (agentbox_waw_read_exact(ready_pipe[0], &byte, sizeof(byte)) != 0 || byte != 1U ||
+        write_user_maps(AT_FDCWD, child, 0U, geteuid(), 0U, getegid()) != 0 ||
+        agentbox_waw_write_exact(mapped_pipe[1], &byte, sizeof(byte)) != 0) {
+        (void)kill(child, SIGKILL);
+    }
+    (void)close(ready_pipe[0]);
+    (void)close(mapped_pipe[1]);
+    result = agentbox_waw_wait_child((int)child, child_pidfd);
+    if (close(child_pidfd) != 0) {
+        return 71;
+    }
+    return result;
+}
+
 #else
 
 int agentbox_waw_launch_isolated(const struct agentbox_waw_bridge_config *config,
@@ -849,6 +1315,11 @@ int agentbox_waw_launch_isolated(const struct agentbox_waw_bridge_config *config
     (void)bridge_executable;
     (void)argv;
     (void)envp;
+    return 78;
+}
+
+int agentbox_waw_launch_auth_probe(const struct agentbox_waw_auth_probe_config *config) {
+    (void)config;
     return 78;
 }
 

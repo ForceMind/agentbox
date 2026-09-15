@@ -404,6 +404,20 @@ int agentbox_waw_send_ready(int fd) {
 #endif
 }
 
+int agentbox_waw_send_auth_placed(int fd) {
+#if defined(__linux__) && !defined(AGENTBOX_WAW_PORTABLE_CHECK)
+    static const unsigned char frame[AGENTBOX_WAW_AUTH_READY_FRAME_BYTES] = {
+        'A', 'W', 'R', 'P', AGENTBOX_WAW_AUTH_READY_VERSION,
+        AGENTBOX_WAW_AUTH_READY_STATUS_PLACED, 0U, 0U};
+    ssize_t sent = send(fd, frame, sizeof(frame), MSG_DONTWAIT | MSG_NOSIGNAL);
+    return sent == (ssize_t)sizeof(frame) ? 0 : -1;
+#else
+    (void)fd;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
 int agentbox_waw_wait_child(int pid, int pidfd) {
     int status = 0;
 #if defined(__linux__) && !defined(AGENTBOX_WAW_PORTABLE_CHECK)
