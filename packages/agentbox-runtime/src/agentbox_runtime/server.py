@@ -36,6 +36,7 @@ from agentbox_runtime.rpc import (
 )
 from agentbox_runtime.tmux import TmuxAdapter
 from agentbox_runtime.waw_activation import WAWActivatedSockets
+from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
 from agentbox_runtime.waw_auth_probe import (
     WAWCachedPublicAuthProbe,
     WAWPublicAuthEvidence,
@@ -261,7 +262,7 @@ class RuntimeExecutorServer:
             peer_authority = waw_fixed_runtime.registry.peer_authority
             if (
                 type(coordinator) is not WAWConflictCoordinator
-                or type(auth_probe) is not WAWCachedPublicAuthProbe
+                or type(auth_probe) is not WAWProductionAuthOwner
                 or type(peer_authority) is not WAWPeerAuthority
                 or waw_fixed_runtime.executor.runtime_epoch != waw_fixed_runtime.runtime_epoch
                 or waw_fixed_runtime.executor.execution_authority

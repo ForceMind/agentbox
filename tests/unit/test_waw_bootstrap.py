@@ -11,7 +11,7 @@ from agentbox_runtime import waw_bootstrap as bootstrap_subject
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.waw_activation import WAWActivatedSockets
-from agentbox_runtime.waw_auth_probe import WAWCachedPublicAuthProbe
+from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
 from agentbox_runtime.waw_bootstrap import (
     _create_waw_encrypted_servers_test_only,
     build_waw_control_server,
@@ -638,7 +638,7 @@ def _fixed_executor(tmp_path: Path, epoch: str, authority: Any = None) -> WAWSup
         attachment_validator=lambda _attachment: True,
         conflict_coordinator=WAWConflictCoordinator(EmptyConflictProbe()),
         execution_authority=authority,
-        auth_probe=object.__new__(WAWCachedPublicAuthProbe),
+        auth_probe=object.__new__(WAWProductionAuthOwner),
     )
 
 

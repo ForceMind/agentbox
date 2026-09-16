@@ -540,7 +540,7 @@ blocked遵守工具规定，不用其表示普通等待或困难。后台定时�
 | 本轮完整计划 | 已完成 | 内容/链接检查及两项独立复核通过；Owner已明确批准执行 |
 | R12-A | 进行中 | host checklist已更新；API软件契约已收敛；[target record](R12_TARGET_RECORD.md)区分稳定决定与外部输入，Runtime契约继续收敛 |
 | R12-B | 已完成 | rc11/PR #90 final head`64d45e7...`完成26检查，merge`e126e47...`精确回读及六个post-main流程成功；原审查/CI问题已修，host/client资格不包含 |
-| R12-C | 进行中 | C1/rc12、native substrate（PR #92）、Python sealed lease/owner（PR #93）、native port（PR #94）已合并；M4 executor集成（lease路径/awaiting-login/8.0s start信封）已实现并经独立审查PASS，待Owner审阅后合并；C3 main与生产组合（含API client信封核对）仍待推进 |
+| R12-C | 进行中 | C1/rc12、native substrate（PR #92）、sealed lease/owner（PR #93）、native port（PR #94）、executor集成（PR #95）已合并；C3-a组合闭环（bind/max_bytes/owner钉/API信封）已实现并经独立审查PASS，待Owner审阅后合并；C3-b生产provider与`_main`接线仍待推进（profiles需D/G/H外部enrollment输入，fail-closed） |
 | R12-D/E/F | 未开始 | 对应稳定契约/输入齐备后开始；不使用测试provider接通main |
 | R12-G/H/I | 未开始 | 需要所选目标和具体外部操作范围，以及真实证据 |
 | R12-J/K | 未开始 | 需要先前gate通过及对应生产/发行授权 |

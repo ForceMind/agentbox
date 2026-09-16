@@ -1,30 +1,27 @@
 # Current Authorized Action
 
-## R12-C2 M4 executor integration delivered for review; C3 next — 2026-09-15
+## R12-C2 C3-a composition closure delivered for review; C3-b next — 2026-09-15
 
-M3 native auth-probe port is delivered by PR #94: final head
-`72d7c7a2968435c2eacf8d7305a9e6bb762881e3` completed all 26 terminal checks
+M4 executor integration is delivered by PR #95: final head
+`dfcefe87a2d53bac6eff73c7a63ea42d9ef52caf` completed all 26 terminal checks
 (24 success, two prescribed rc8 skips), merged normally as
-`a6fbf775d471d388abac32b9db689f6e2bd8d495` with exact parent read-back, and
+`4f374aef102c820a001517e14c49803da3e0ff73` with exact parent read-back, and
 all six post-main workflows succeeded. Preserve this result.
 
-The current branch `codex/r12-auth-executor-m4` carries M4: executor
-start/resume integration through `probe_with_lease` for an exact
-`WAWProductionAuthOwner` (sealed freshness window replaces the strict echo
-only on this path), awaiting-login re-borrow for the resume probe, and the
-five-second ownership split (probe-internal budget; 8.0s
-`workspace.workspace.start` control envelope, decision
-`R12-AUTH-PROBE-BUDGET-V1`). Independent review PASS; the recorded open item
-for C3 is the API-side `WAWControlClient` 2.0s default, which must be
-reconciled with the 8.0s server envelope before any live start can carry a
-real probe. Owner review is held before merge per the 2026-09-15
-milestone-review instruction.
+The current branch `codex/r12-runtime-main` carries C3-a: the one-shot
+`bind_native_probe_path` closing the owner↔factory↔process-port construction
+loop, vendor digest per-entry `max_bytes`, the fixed-composition pin moved to
+`WAWProductionAuthOwner`, and the API client per-action envelope
+(`workspace.workspace.start` at 9.0s), closing decision
+`R12-AUTH-PROBE-BUDGET-V1`. Independent review PASS with no P0/P1. Owner
+review is held before merge per the 2026-09-15 milestone-review instruction.
 
-C3 after review/merge: production composition and Runtime main wiring — sealed
-owner binding (replacing the `WAWCachedPublicAuthProbe` composition pin),
-enrollment-derived profiles, vendor digest `max_bytes` per inventory entry,
-API client envelope reconciliation, then `_main`. No actual host/client/key/CLI
-activation follows from the software merge.
+C3-b after review/merge: production executor provider and the `_main`
+production branch (activated sockets, static key, epoch store, provider,
+application builder). Production profiles additionally require external
+enrollment inputs (`vendor_version`, `codex_unauthenticated_output_sha256`,
+D/G/H) and fail closed without them. No actual host/client/key/CLI activation
+follows from the software merge.
 
 ## R12-B delivered; C1 candidate and C2 native work
 

@@ -1361,6 +1361,13 @@ def _build_production_components(
         expected_peer_gid=runtime_gid,
         expected_socket_uid=0,
         expected_socket_gid=ipc_gid,
+        # Decision R12-AUTH-PROBE-BUDGET-V1: the server widens exactly the
+        # workspace.workspace.start dispatch+response envelope to 8.0s so a
+        # real auth probe fits; the API client reconciles its single
+        # connect+write+read deadline to 9.0s (8.0s server envelope + 1.0s
+        # transport margin) for that action only.  Every other action keeps
+        # the default 2.0s envelope.
+        action_timeout_seconds={"workspace.workspace.start": 9.0},
         background_owner=work_ledger,
     )
     coordinator = WAWRuntimeBindCoordinator(

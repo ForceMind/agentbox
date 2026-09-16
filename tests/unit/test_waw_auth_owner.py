@@ -11,7 +11,8 @@ from typing import Any, cast
 import pytest
 from agentbox_core.waw import AgentType, managed_marker, workspace_id
 from agentbox_runtime.models import RuntimeOperationError
-from agentbox_runtime.waw_auth_lease import WAWAuthLeaseOwner
+from agentbox_runtime.waw_auth_lease import WAWAuthLeaseOwner, WAWSealedAuthLease
+from agentbox_runtime.waw_auth_native_port import WAWNativeAuthProbePortFactory
 from agentbox_runtime.waw_auth_owner import WAWProductionAuthOwner
 from agentbox_runtime.waw_auth_probe import (
     WAWPublicAuthEvidence,
@@ -34,10 +35,14 @@ from agentbox_runtime.waw_process_inspector import (
 from agentbox_runtime.waw_process_profile import INTERACTIVE_PROFILE_CONSTANTS_V1
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_vendor_probe import (
+    WAWIsolatedProbeCompletion,
+    WAWProcessIsolationKind,
+    WAWProcessIsolationPort,
     WAWVendorProbeEvidence,
     WAWVendorProbeFailure,
     WAWVendorProbeId,
     WAWVendorProbeParserId,
+    WAWVendorProbeProfile,
     WAWVendorProbeResult,
     WAWVendorProbeRunner,
 )
@@ -659,3 +664,146 @@ def test_authenticated_is_false_when_lease_owner_closed(
     assert rig.owner.authenticated(rig.identity) is True
     rig.lease_owner.close()
     assert rig.owner.authenticated(rig.identity) is False
+
+
+def _native_profiles() -> dict[AgentType, WAWVendorProbeProfile]:
+    return {
+        agent_type: WAWVendorProbeProfile(
+            str(INTERACTIVE_PROFILE_CONSTANTS_V1[agent_type.value]["profile_id"]),
+            agent_type,
+            VERSIONS[agent_type],
+            PROBE_IDS[agent_type],
+            PARSER_IDS[agent_type],
+            Path("/usr/bin/fake-vendor"),
+            Path("/tmp"),
+            (("PATH", "/usr/bin:/bin"),),
+            codex_unauthenticated_output_sha256=(
+                "0" * 64 if agent_type is AgentType.CODEX else None
+            ),
+        )
+        for agent_type in AgentType
+    }
+
+
+class _FakeNativePort(WAWProcessIsolationPort):
+    """Issued-port stand-in; the monkeypatched runner never executes it."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            isolation_kind=WAWProcessIsolationKind.PREBIRTH_CGROUP,
+            production_qualified=True,
+        )
+        self.closed = 0
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> WAWIsolatedProbeCompletion:
+        raise AssertionError("bind tests never execute the issued native port")
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def _fake_factory(authority: WAWVerifiedExecutionAuthority) -> WAWNativeAuthProbePortFactory:
+    factory = object.__new__(WAWNativeAuthProbePortFactory)
+    factory._authority = authority
+    return factory
+
+
+@pytest.mark.anyio
+async def test_bind_native_probe_path_binds_once_and_enables_native_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _Rig(tmp_path, monkeypatch)
+    factory = _fake_factory(rig.authority)
+    port = _FakeNativePort()
+    issued: list[WAWSealedAuthLease] = []
+
+    def fake_port_for_lease(
+        _factory: WAWNativeAuthProbePortFactory, lease: WAWSealedAuthLease
+    ) -> _FakeNativePort:
+        issued.append(lease)
+        return port
+
+    monkeypatch.setattr(WAWNativeAuthProbePortFactory, "port_for_lease", fake_port_for_lease)
+    profiles = _native_profiles()
+    rig.owner.bind_native_probe_path(factory, profiles)
+    assert rig.owner._native_port_factory is factory
+    assert rig.owner._profiles == profiles
+
+    evidence = await rig.owner.probe_with_lease(rig.transport, **rig.probe_kwargs())
+
+    assert len(issued) == 1
+    assert port.closed == 1
+    assert rig.control.calls == [AgentType.CODEX]
+    assert evidence.result is WAWPublicAuthResult.AUTHENTICATED
+    assert evidence.checked_at_monotonic == 1000.0
+    assert rig.transport._auth_lease is None
+    assert not rig.handle.auth_borrowed
+    assert rig.owner.authenticated(rig.identity) is True
+
+
+def test_bind_native_probe_path_rejects_second_bind_and_constructor_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _Rig(tmp_path, monkeypatch)
+    factory = _fake_factory(rig.authority)
+    profiles = _native_profiles()
+    rig.owner.bind_native_probe_path(factory, profiles)
+    with pytest.raises(RuntimeOperationError) as busy:
+        rig.owner.bind_native_probe_path(factory, profiles)
+    assert _error_code(busy.value) == "WAW_AUTH_PROBE_BUSY"
+
+    given = WAWProductionAuthOwner(
+        rig.authority,
+        runner=rig.runner,
+        bindings=_bindings(),
+        lease_owner=rig.lease_owner,
+        clock=lambda: 0.0,
+        native_port_factory=factory,
+        profiles=profiles,
+    )
+    with pytest.raises(RuntimeOperationError) as given_busy:
+        given.bind_native_probe_path(factory, profiles)
+    assert _error_code(given_busy.value) == "WAW_AUTH_PROBE_BUSY"
+
+
+def test_bind_native_probe_path_rejects_poisoned_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _Rig(tmp_path, monkeypatch)
+    rig.owner._poison()
+    with pytest.raises(RuntimeOperationError) as poisoned:
+        rig.owner.bind_native_probe_path(_fake_factory(rig.authority), _native_profiles())
+    assert _error_code(poisoned.value) == "WAW_AUTH_LEASE_POISONED"
+
+
+def test_bind_native_probe_path_replays_constructor_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _Rig(tmp_path, monkeypatch)
+    profiles = _native_profiles()
+    with pytest.raises(TypeError):
+        rig.owner.bind_native_probe_path(cast(Any, object()), profiles)
+    foreign = _fake_factory(object.__new__(WAWVerifiedExecutionAuthority))
+    with pytest.raises(WAWPublicAuthProbeError, match="not bound"):
+        rig.owner.bind_native_probe_path(foreign, profiles)
+    factory = _fake_factory(rig.authority)
+    with pytest.raises(TypeError):
+        rig.owner.bind_native_probe_path(factory, cast(Any, object()))
+    incomplete = {AgentType.CODEX: profiles[AgentType.CODEX]}
+    with pytest.raises(WAWPublicAuthProbeError, match="per AgentType"):
+        rig.owner.bind_native_probe_path(factory, cast(Any, incomplete))
+    mismatched = dict(profiles)
+    mismatched[AgentType.CLAUDE] = profiles[AgentType.CODEX]
+    with pytest.raises(WAWPublicAuthProbeError, match="does not match"):
+        rig.owner.bind_native_probe_path(factory, mismatched)
+    # Every rejection left the owner unbound; a valid bind still succeeds.
+    rig.owner.bind_native_probe_path(factory, profiles)
+    assert rig.owner._native_port_factory is factory
+    assert rig.owner._profiles == profiles
+
+
+def test_cache_property_exposes_the_internal_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _Rig(tmp_path, monkeypatch)
+    assert rig.owner.cache is rig.owner._cache

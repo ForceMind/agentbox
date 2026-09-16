@@ -48,6 +48,36 @@ def _poisoned_failure() -> RuntimeOperationError:
     )
 
 
+def _validated_native_profiles(
+    authority: WAWVerifiedExecutionAuthority,
+    native_port_factory: WAWNativeAuthProbePortFactory,
+    profiles: Mapping[AgentType, WAWVendorProbeProfile],
+) -> dict[AgentType, WAWVendorProbeProfile]:
+    """Validate one native probe path pairing against the same authority."""
+
+    from agentbox_runtime.waw_auth_native_port import (
+        WAWNativeAuthProbePortFactory as _NativePortFactory,
+    )
+
+    if type(native_port_factory) is not _NativePortFactory:
+        raise TypeError("native port factory must be WAWNativeAuthProbePortFactory")
+    if native_port_factory.authority is not authority:
+        raise WAWPublicAuthProbeError("native port factory is not bound to the execution authority")
+    if not isinstance(profiles, Mapping):
+        raise TypeError("native probe profiles must be a mapping")
+    copied_profiles = dict(profiles)
+    # Same profile discipline as the bounded vendor runner.
+    if set(copied_profiles) != set(AgentType):
+        raise WAWPublicAuthProbeError("one native probe profile per AgentType is required")
+    for profile_agent, profile in copied_profiles.items():
+        if type(profile_agent) is not AgentType or type(profile) is not WAWVendorProbeProfile:
+            raise WAWPublicAuthProbeError("native probe profile entry is invalid")
+        profile.__post_init__()
+        if profile.agent_type is not profile_agent:
+            raise WAWPublicAuthProbeError("native probe profile key does not match AgentType")
+    return copied_profiles
+
+
 class WAWProductionAuthOwner:
     """One authority-bound sealed production auth provider."""
 
@@ -105,34 +135,8 @@ class WAWProductionAuthOwner:
             )
         native_profiles: dict[AgentType, WAWVendorProbeProfile] | None = None
         if native_port_factory is not None:
-            from agentbox_runtime.waw_auth_native_port import (
-                WAWNativeAuthProbePortFactory as _NativePortFactory,
-            )
-
-            if type(native_port_factory) is not _NativePortFactory:
-                raise TypeError("native port factory must be WAWNativeAuthProbePortFactory")
-            if native_port_factory.authority is not authority:
-                raise WAWPublicAuthProbeError(
-                    "native port factory is not bound to the execution authority"
-                )
-            if not isinstance(profiles, Mapping):
-                raise TypeError("native probe profiles must be a mapping")
-            copied_profiles = dict(profiles)
-            # Same profile discipline as the bounded vendor runner.
-            if set(copied_profiles) != set(AgentType):
-                raise WAWPublicAuthProbeError("one native probe profile per AgentType is required")
-            for profile_agent, profile in copied_profiles.items():
-                if (
-                    type(profile_agent) is not AgentType
-                    or type(profile) is not WAWVendorProbeProfile
-                ):
-                    raise WAWPublicAuthProbeError("native probe profile entry is invalid")
-                profile.__post_init__()
-                if profile.agent_type is not profile_agent:
-                    raise WAWPublicAuthProbeError(
-                        "native probe profile key does not match AgentType"
-                    )
-            native_profiles = copied_profiles
+            assert profiles is not None
+            native_profiles = _validated_native_profiles(authority, native_port_factory, profiles)
         self._authority = authority
         self._adapter = adapter
         self._cache = WAWPublicAuthProbeCache(max_age_seconds=max_age_seconds)
@@ -151,6 +155,41 @@ class WAWProductionAuthOwner:
     @property
     def poisoned(self) -> bool:
         return self._poisoned
+
+    @property
+    def cache(self) -> WAWPublicAuthProbeCache:
+        """The internal freshness cache, shaped like the cached probe's."""
+
+        return self._cache
+
+    def bind_native_probe_path(
+        self,
+        native_port_factory: WAWNativeAuthProbePortFactory,
+        profiles: Mapping[AgentType, WAWVendorProbeProfile],
+    ) -> None:
+        """Bind the native probe path exactly once after construction.
+
+        The production composition builds the owner before the production
+        process port exists: the port needs the owner, the factory needs the
+        port, and the owner needs the factory.  This one-time sealed bind
+        closes that construction loop with the exact same validation
+        discipline as the constructor kwargs.  Binding twice, binding after a
+        constructor-time configuration, or binding a poisoned owner is
+        refused.
+        """
+
+        if self._poisoned or self._lease_owner.poisoned or self._lease_owner.closed:
+            raise _poisoned_failure()
+        with self._lock:
+            if self._native_port_factory is not None:
+                raise RuntimeOperationError(
+                    "WAW_AUTH_PROBE_BUSY",
+                    "Native probe path is already bound",
+                    category="conflict",
+                )
+            validated = _validated_native_profiles(self._authority, native_port_factory, profiles)
+            self._profiles = validated
+            self._native_port_factory = native_port_factory
 
     def authenticated(self, identity: FixedProcessIdentity) -> bool:
         """Fail-closed cached gate used by the production native port."""

@@ -732,9 +732,22 @@ class WAWNativeAuthProbePortFactory:
             ):
                 vendor = _duplicate_role_fd(process_port._qualified_executables[kind], "executable")
                 held.append(vendor)
+                vendor_entries = [entry for entry in inventory if entry.kind == kind.value]
+                if len(vendor_entries) != 1:
+                    raise RuntimeOperationError(
+                        "RUNTIME_UNAVAILABLE",
+                        "Vendor executable authority is unavailable",
+                        category="unavailable",
+                    )
                 # Contract (WAW_R12_RUNTIME_AUTH_PROBE.md): FD5, AgentType and
                 # the executable digest are bound to the same authority here.
-                _verify_fd_digest(vendor, authority.vendor_executable_fingerprint(agent_type))
+                # Real vendor binaries far exceed the 64KiB default; the
+                # per-entry manifest budget bounds the digest read-back.
+                _verify_fd_digest(
+                    vendor,
+                    authority.vendor_executable_fingerprint(agent_type),
+                    max_bytes=vendor_entries[0].max_bytes,
+                )
                 vendors[agent_type] = vendor
         except BaseException:
             for descriptor in reversed(held):

@@ -9,7 +9,7 @@ import tempfile
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import agentbox_api.waw_control_client as control_subject
 import pytest
@@ -899,3 +899,97 @@ async def test_client_close_failure_is_sticky_after_candidate_fd_detaches(
         monkeypatch.setattr(os, "close", original_close)
         original_close(retained)
         original_close(writer)
+
+
+def _timed_client(
+    path: Path,
+    *,
+    action_timeout_seconds: dict[str, float] | None = None,
+) -> WAWControlClient:
+    return WAWControlClient(
+        path,
+        expected_peer_uid=os.geteuid(),
+        expected_peer_gid=os.getegid(),
+        expected_socket_uid=os.geteuid(),
+        expected_socket_gid=os.getegid(),
+        monotonic=lambda: 100.0,
+        action_timeout_seconds=action_timeout_seconds,
+    )
+
+
+@pytest.mark.anyio
+async def test_action_timeout_override_applies_per_action_deadline(
+    socket_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = socket_dir / "control.sock"
+    server = await _serve_once(path, b"")
+    deadlines: list[float] = []
+
+    async def capture(
+        self: WAWControlClient, deadline: float
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter, socket.socket]:
+        deadlines.append(deadline)
+        raise TimeoutError("deadline captured")
+
+    monkeypatch.setattr(WAWControlClient, "_open_registered_connection", capture)
+    try:
+        start_client = _timed_client(
+            path, action_timeout_seconds={"workspace.workspace.start": 9.0}
+        )
+        with pytest.raises(WAWControlClientError):
+            await start_client._request_unbound_test_only("workspace.workspace.start", _request())
+        assert deadlines == [109.0]
+
+        other_client = _timed_client(
+            path, action_timeout_seconds={"workspace.workspace.start": 9.0}
+        )
+        stop_request = _request() | {"action": "workspace.workspace.stop"}
+        with pytest.raises(WAWControlClientError):
+            await other_client._request_unbound_test_only("workspace.workspace.stop", stop_request)
+        assert deadlines == [109.0, 102.0]
+
+        default_client = _timed_client(path)
+        with pytest.raises(WAWControlClientError):
+            await default_client._request_unbound_test_only("workspace.workspace.start", _request())
+        assert deadlines == [109.0, 102.0, 102.0]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+def test_action_timeout_seconds_rejects_invalid_overrides() -> None:
+    path = Path("unused.sock")
+    base: dict[str, Any] = {
+        "expected_peer_uid": os.geteuid(),
+        "expected_peer_gid": os.getegid(),
+        "expected_socket_uid": os.geteuid(),
+        "expected_socket_gid": os.getegid(),
+    }
+    with pytest.raises(ValueError):
+        WAWControlClient(path, action_timeout_seconds=cast(Any, ["x"]), **base)
+    with pytest.raises(ValueError):
+        WAWControlClient(path, action_timeout_seconds={"": 1.0}, **base)
+    with pytest.raises(ValueError):
+        WAWControlClient(path, action_timeout_seconds={cast(Any, 1): 1.0}, **base)
+    for bad in (True, "1", float("inf"), float("nan"), 0.0, -1.0, 30.5):
+        with pytest.raises(ValueError):
+            WAWControlClient(path, action_timeout_seconds={"a": cast(Any, bad)}, **base)
+    client = WAWControlClient(path, action_timeout_seconds={"a": 30, "b": 0.5}, **base)
+    assert client._action_timeouts == {"a": 30.0, "b": 0.5}
+    empty = WAWControlClient(path, action_timeout_seconds=None, **base)
+    assert empty._action_timeouts == {}
+
+
+@pytest.mark.anyio
+async def test_replacement_carries_action_timeouts(socket_dir: Path) -> None:
+    client = _timed_client(
+        socket_dir / "unused.sock",
+        action_timeout_seconds={"workspace.workspace.start": 9.0},
+    )
+    await client.close()
+    assert client.shutdown_clean
+
+    replacement = client.replacement_after_close()
+
+    assert replacement._action_timeouts == {"workspace.workspace.start": 9.0}
+    await replacement.close()

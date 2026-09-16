@@ -6,10 +6,11 @@
   `build_waw_control_server` widens exactly the `workspace.workspace.start`
   dispatch-plus-response deadline to `WAW_START_OPERATION_TIMEOUT_SECONDS`
   (8.0s) while every other action keeps 2.0s. The API-side
-  `WAWControlClient` 2.0s default is NOT yet reconciled with this envelope;
-  that reconciliation is assigned to the C3 composition slice that wires the
-  sealed auth owner into the executor, and must land before any live start
-  can carry a real probe.
+  `WAWControlClient` is reconciled through a per-action
+  `action_timeout_seconds` map: the production composition assigns exactly
+  `workspace.workspace.start` 9.0s (8.0s server envelope plus 1.0s transport
+  margin, so the server's bounded response arrives before the client would
+  poison its transport), and every other action keeps the 2.0s default.
 
 - `R12-AUTH-PROBE-NATIVE-V1`: the approved software objective is refined by
   [the fixed auth-probe contract](../WAW_R12_RUNTIME_AUTH_PROBE.md): separate

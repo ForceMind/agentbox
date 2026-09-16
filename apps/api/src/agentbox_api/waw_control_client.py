@@ -12,6 +12,7 @@ import contextlib
 import errno
 import hmac
 import inspect
+import math
 import os
 import select
 import socket
@@ -19,7 +20,7 @@ import stat
 import struct
 import threading
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -646,6 +647,7 @@ class WAWControlClient:
         expected_socket_gid: int,
         expected_socket_mode: int = 0o660,
         timeout_seconds: float = 2.0,
+        action_timeout_seconds: Mapping[str, float] | None = None,
         cancellation_grace_seconds: float = 0.05,
         monotonic: Callable[[], float] = time.monotonic,
         background_owner: BackgroundWorkOwner | None = None,
@@ -654,6 +656,23 @@ class WAWControlClient:
             raise TypeError("socket_path must be a Path")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if action_timeout_seconds is None:
+            action_timeouts: dict[str, float] = {}
+        else:
+            if not isinstance(action_timeout_seconds, Mapping):
+                raise ValueError("action_timeout_seconds must be a mapping")
+            action_timeouts = {}
+            for action_name, override in action_timeout_seconds.items():
+                if type(action_name) is not str or not action_name:
+                    raise ValueError("action_timeout_seconds keys must be non-empty strings")
+                if (
+                    isinstance(override, bool)
+                    or not isinstance(override, (int, float))
+                    or not math.isfinite(float(override))
+                    or not 0 < float(override) <= 30.0
+                ):
+                    raise ValueError("action_timeout_seconds values must be finite in (0, 30]")
+                action_timeouts[action_name] = float(override)
         if not 0 < cancellation_grace_seconds <= _MAX_CANCELLATION_GRACE_SECONDS:
             raise ValueError("cancellation_grace_seconds must be in (0, 1]")
         if type(expected_peer_uid) is not int or expected_peer_uid < 0:
@@ -673,6 +692,7 @@ class WAWControlClient:
         self._expected_socket_gid = expected_socket_gid
         self._expected_socket_mode = expected_socket_mode
         self._timeout_seconds = timeout_seconds
+        self._action_timeouts = action_timeouts
         self._cancellation_grace_seconds = cancellation_grace_seconds
         self._monotonic = monotonic
         self._background_owner = background_owner
@@ -858,7 +878,7 @@ class WAWControlClient:
             raise WAWControlClientError("PROTOCOL_INVALID", "WAW control request is oversized")
 
         try:
-            deadline = self._monotonic() + self._timeout_seconds
+            deadline = self._monotonic() + self._action_timeouts.get(action, self._timeout_seconds)
             before_path = _check_socket_path(
                 self._socket_path,
                 expected_uid=self._expected_socket_uid,
@@ -1145,6 +1165,7 @@ class WAWControlClient:
             expected_socket_gid=self._expected_socket_gid,
             expected_socket_mode=self._expected_socket_mode,
             timeout_seconds=self._timeout_seconds,
+            action_timeout_seconds=self._action_timeouts,
             cancellation_grace_seconds=self._cancellation_grace_seconds,
             monotonic=self._monotonic,
             background_owner=self._background_owner,

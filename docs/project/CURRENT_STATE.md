@@ -1,46 +1,44 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-15T12:10:00Z"
-verified_by: "codex-r12-c2-executor-m4"
+verified_at_utc: "2026-09-15T14:30:00Z"
+verified_by: "codex-r12-c3-composition"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## R12-C2 M4 executor integration on review hold
+## R12-C2 C3-a composition closure on review hold
 
-PR #94 final head `72d7c7a2968435c2eacf8d7305a9e6bb762881e3` completed all 26
+PR #95 final head `dfcefe87a2d53bac6eff73c7a63ea42d9ef52caf` completed all 26
 terminal checks: 24 success and the two prescribed rc8 historical skips. It
-merged normally as `a6fbf775d471d388abac32b9db689f6e2bd8d495`; exact Git
-read-back verified parents `cdde43ab54d4894ec6e4a3c00c739430da68b4f6` and the
-final PR head. All six post-main workflows succeeded: Backend, Release
-Candidate, E2E, Deployment, Security, Frontend (run set for `a6fbf77`).
+merged normally as `4f374aef102c820a001517e14c49803da3e0ff73`; exact Git
+read-back verified parents `a6fbf775d471d388abac32b9db689f6e2bd8d495` and the
+final PR head. All six post-main workflows succeeded (run set for `4f374ae`).
 
-On `codex/r12-auth-executor-m4`, the M4 executor-integration slice is
-implemented and under milestone review hold (2026-09-15 instruction): with an
-exact `WAWProductionAuthOwner`, `start()` and `resume_after_login()` probe
-through `probe_with_lease` (sealed window `sample <= checked_at` and age <
-`AUTH_EVIDENCE_MAX_AGE_SECONDS` replaces the strict echo only on this path;
-non-owner probes keep the echo path byte-for-byte). Awaiting-login transports
-(`start_attempted` plus inspector `login_required`) may be re-borrowed for the
-resume probe; the supervisor exposes its transport only behind the
-LOGIN_REQUIRED gate. Five-second ownership: the probe owns its internal
-5.0s/0.25s/1.0s budget; the control listener widens exactly the
-`workspace.workspace.start` dispatch-plus-response envelope to
-`WAW_START_OPERATION_TIMEOUT_SECONDS` (8.0s), every other action keeps 2.0s
-(decision `R12-AUTH-PROBE-BUDGET-V1`). **Recorded open item for C3**: the
-API-side `WAWControlClient` 2.0s default is not yet reconciled with the 8.0s
-server envelope; it must be closed in the C3 composition slice before any live
-start can carry a real probe. Local evidence: 29 new M4 tests and 140 related
-tests pass (9 Linux-only skips), ruff/black/`git diff --check` clean, mypy
-identical to baseline. Independent Security/Architecture/Test review: PASS
-with one recording-obligation P1 (now closed in the decision index, contract
-and state docs) and one P2 (poisoned `abort_unstarted` now releases resources
-best-effort before surfacing the terminal state, with a pinning test).
+On `codex/r12-runtime-main`, the C3-a composition-closure slice is implemented
+and under milestone review hold (2026-09-15 instruction): the owner gains a
+one-shot `bind_native_probe_path` that closes the owner↔factory↔process-port
+construction loop with constructor-equivalent validation; the factory's vendor
+digest check now uses the manifest inventory per-entry `max_bytes` (real
+vendor binaries far exceed the old 64KiB default); the fixed-composition
+auth-probe pin moved from `WAWCachedPublicAuthProbe` to
+`WAWProductionAuthOwner` in both `_compose_verified_v2` and
+`RuntimeExecutorServer` (the dev `_configure_waw_auth` path is unchanged); and
+the API-side envelope is reconciled through a per-action
+`action_timeout_seconds` map with the production composition assigning
+`workspace.workspace.start` 9.0s (8.0s server envelope plus 1.0s transport
+margin), closing decision `R12-AUTH-PROBE-BUDGET-V1`. Local evidence: 202
+related unit tests and 242 integration tests pass, ruff/black/`git diff
+--check` clean, mypy identical to baseline. Independent
+Security/Architecture/Test review: PASS with no P0/P1 (review follow-ups:
+bind publication order swapped; contract and decision documents updated).
 
-C2 is not complete: C3 Runtime main and the production composition (sealed
-owner, profiles, envelope reconciliation on the API side) remain. Host/client
-activation, real CLI login, key operation and production remain closed.
+C2 is not complete: C3-b (production executor provider and `_main` production
+branch: activated sockets, static key, epoch store, provider, application
+builder) remains; production profiles additionally require external
+enrollment inputs (`vendor_version`, `codex_unauthenticated_output_sha256`,
+D/G/H) and fail closed without them. Host/client activation, real CLI login,
+key operation and production remain closed.
 
 ## R12-B delivered; R12-C1 candidate
 
