@@ -27,6 +27,22 @@ checks passed. Exact-head CI and PR are pending. The legacy Claude/Codex
 live state source, provider binding and production `_main` are still absent;
 this snapshot alone does not close R12-C3-b or qualify a host.
 
+Official Codex CLI documentation does not specify a `remote-control status`
+subcommand, and the development Mac's `codex-cli 0.153.4` help does not list
+one. The target Linux CLI was not inspected. Positive absence of a legacy
+Codex Remote daemon is therefore still an unresolved G2/C3-b input, not
+evidence that no conflict exists.
+
+PR #104's intermediate head `bc3669ec3ea528390535df2c9b7dc58292c125c2`
+ran 106 native cases successfully and one failed while a test's
+`tmux wait-for` client timed out after its pane-died hook could already have
+signalled. Another test on PR #102 had the same five-second wait failure and
+passed on a same-head rerun. The candidate test repair removes that one-shot
+hook race and polls the exact retained pane's `pane_dead`, exit status and
+signal within the unchanged five-second budget; wrong exit and lost pane fail.
+Linux exact-head verification of this repair remains pending. It changes no
+native or production execution code.
+
 The original checkout's WIP remains untouched. The Owner's full parity
 scope and unresolved broad-permission semantics remain as recorded in the
 full capability plan. Sections below are historical point-in-time snapshots

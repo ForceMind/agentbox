@@ -16,8 +16,17 @@ After this snapshot, bind a single closed production conflict probe to the
 same executor and legacy managers. The legacy Claude/Codex observations need
 bounded, fresh, read-only source evidence within the R12 start envelope;
 do not use an always-ABSENT callback or a stale manager status cache to make
-the software path appear complete. Then close `_main` and remaining installer
+the software path appear complete. The [official Codex CLI command reference](https://learn.chatgpt.com/docs/developer-commands)
+does not document `remote-control status`; local `codex-cli 0.153.4` help
+also lacks it. Confirm a positive target-specific daemon state source rather
+than interpreting an absent process match as stopped. Then close `_main` and remaining installer
 manifest/native inputs, keeping real host/key/client/CLI gates separate.
+
+PR #104's Linux native job reported 106 passed and one `tmux wait-for`
+timeout in a pane-death test. The follow-up polls the exact retained pane
+state and exact exit code within the same five-second budget, eliminating a
+one-shot hook/waiter ordering race without relaxing the behavior assertion.
+Require a new exact-head native/Backend pass before merge.
 
 ## Historical 2026-09-28 R12-D API disabled profile and singleton lock
 
