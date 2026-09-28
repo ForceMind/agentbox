@@ -85,17 +85,23 @@ class WAWProductionAuthOwner:
         self,
         authority: WAWVerifiedExecutionAuthority,
         *,
-        runner: WAWVendorProbeRunner,
+        runner: WAWVendorProbeRunner | None,
         bindings: Mapping[AgentType, WAWVendorPublicAuthBinding],
         lease_owner: WAWAuthLeaseOwner,
         clock: Callable[[], float],
         max_age_seconds: float = 30.0,
         native_port_factory: WAWNativeAuthProbePortFactory | None = None,
         profiles: Mapping[AgentType, WAWVendorProbeProfile] | None = None,
+        native_unbound: bool = False,
     ) -> None:
         if type(authority) is not WAWVerifiedExecutionAuthority:
             raise TypeError("verified execution authority is required")
-        if type(runner) is not WAWVendorProbeRunner:
+        if type(native_unbound) is not bool:
+            raise TypeError("native_unbound must be bool")
+        if native_unbound:
+            if runner is not None or native_port_factory is not None or profiles is not None:
+                raise TypeError("unbound native owner cannot accept a runner or native port")
+        elif type(runner) is not WAWVendorProbeRunner:
             raise TypeError("runner must be WAWVendorProbeRunner")
         if type(lease_owner) is not WAWAuthLeaseOwner:
             raise TypeError("lease owner must be WAWAuthLeaseOwner")
@@ -117,8 +123,23 @@ class WAWProductionAuthOwner:
                 raise WAWPublicAuthProbeError("auth owner clock is invalid")
         if float(second) < float(first):
             raise WAWPublicAuthProbeError("auth owner clock is not monotonic")
-        adapter = WAWVendorPublicAuthProbeAdapter(runner, bindings)
-        for agent_type, binding in bindings.items():
+        if not isinstance(bindings, Mapping):
+            raise TypeError("bindings must be a mapping")
+        copied_bindings = dict(bindings)
+        if set(copied_bindings) != set(AgentType):
+            raise WAWPublicAuthProbeError("one public-auth binding per AgentType is required")
+        for agent_type, binding in copied_bindings.items():
+            if type(agent_type) is not AgentType or type(binding) is not WAWVendorPublicAuthBinding:
+                raise WAWPublicAuthProbeError("public-auth binding is invalid")
+            binding.__post_init__()
+            if binding.agent_type is not agent_type:
+                raise WAWPublicAuthProbeError("public-auth binding key does not match AgentType")
+        adapter = (
+            WAWVendorPublicAuthProbeAdapter(runner, copied_bindings)
+            if type(runner) is WAWVendorProbeRunner
+            else None
+        )
+        for agent_type, binding in copied_bindings.items():
             if (
                 binding.runtime_host_installation_id != authority.runtime_host_installation_id
                 or binding.runtime_host_installation_revision
@@ -139,6 +160,7 @@ class WAWProductionAuthOwner:
             native_profiles = _validated_native_profiles(authority, native_port_factory, profiles)
         self._authority = authority
         self._adapter = adapter
+        self._bindings = copied_bindings
         self._cache = WAWPublicAuthProbeCache(max_age_seconds=max_age_seconds)
         self._lease_owner = lease_owner
         self._clock = clock
@@ -232,6 +254,12 @@ class WAWProductionAuthOwner:
 
         if self._poisoned or self._lease_owner.poisoned or self._lease_owner.closed:
             raise _poisoned_failure()
+        if self._native_port_factory is not None or self._adapter is None:
+            raise RuntimeOperationError(
+                "WAW_AUTH_PROBE_BUSY",
+                "Native auth probe requires a sealed transport lease",
+                category="conflict",
+            )
         return await self._cache.refresh_from_probe(
             self._adapter,
             agent_type=agent_type,
@@ -263,6 +291,12 @@ class WAWProductionAuthOwner:
 
         if self._poisoned or self._lease_owner.poisoned or self._lease_owner.closed:
             raise _poisoned_failure()
+        if self._native_port_factory is None and self._adapter is None:
+            raise RuntimeOperationError(
+                "WAW_AUTH_PROBE_BUSY",
+                "Native auth probe path is not bound",
+                category="conflict",
+            )
         _validate_probe_request(
             agent_type=agent_type,
             runtime_host_installation_id=runtime_host_installation_id,
@@ -313,7 +347,14 @@ class WAWProductionAuthOwner:
                         checked_at_monotonic=checked_at_monotonic,
                     )
                 else:
-                    evidence = await self._adapter.probe(
+                    adapter = self._adapter
+                    if adapter is None:
+                        raise RuntimeOperationError(
+                            "WAW_AUTH_PROBE_BUSY",
+                            "Native auth probe path is not bound",
+                            category="conflict",
+                        )
+                    evidence = await adapter.probe(
                         agent_type=agent_type,
                         runtime_host_installation_id=runtime_host_installation_id,
                         runtime_host_installation_revision=runtime_host_installation_revision,
@@ -360,7 +401,7 @@ class WAWProductionAuthOwner:
 
         if self._native_port_factory is None or self._profiles is None:
             raise WAWPublicAuthProbeError("native probe path is not configured")
-        binding = self._adapter._bindings[agent_type]
+        binding = self._bindings[agent_type]
         port = self._native_port_factory.port_for_lease(lease)
         try:
             runner = WAWVendorProbeRunner(self._profiles, port)

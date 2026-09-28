@@ -713,6 +713,14 @@ async def test_bind_native_probe_path_binds_once_and_enables_native_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rig = _Rig(tmp_path, monkeypatch)
+    owner = WAWProductionAuthOwner(
+        rig.authority,
+        runner=None,
+        native_unbound=True,
+        bindings=_bindings(),
+        lease_owner=rig.lease_owner,
+        clock=lambda: rig.now[0],
+    )
     factory = _fake_factory(rig.authority)
     port = _FakeNativePort()
     issued: list[WAWSealedAuthLease] = []
@@ -725,11 +733,11 @@ async def test_bind_native_probe_path_binds_once_and_enables_native_path(
 
     monkeypatch.setattr(WAWNativeAuthProbePortFactory, "port_for_lease", fake_port_for_lease)
     profiles = _native_profiles()
-    rig.owner.bind_native_probe_path(factory, profiles)
-    assert rig.owner._native_port_factory is factory
-    assert rig.owner._profiles == profiles
+    owner.bind_native_probe_path(factory, profiles)
+    assert owner._native_port_factory is factory
+    assert owner._profiles == profiles
 
-    evidence = await rig.owner.probe_with_lease(rig.transport, **rig.probe_kwargs())
+    evidence = await owner.probe_with_lease(rig.transport, **rig.probe_kwargs())
 
     assert len(issued) == 1
     assert port.closed == 1
@@ -738,7 +746,39 @@ async def test_bind_native_probe_path_binds_once_and_enables_native_path(
     assert evidence.checked_at_monotonic == 1000.0
     assert rig.transport._auth_lease is None
     assert not rig.handle.auth_borrowed
-    assert rig.owner.authenticated(rig.identity) is True
+    assert owner.authenticated(rig.identity) is True
+
+
+@pytest.mark.anyio
+async def test_unbound_native_owner_has_no_plain_probe_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _Rig(tmp_path, monkeypatch)
+    with pytest.raises(TypeError, match="runner"):
+        WAWProductionAuthOwner(
+            rig.authority,
+            runner=None,
+            bindings=_bindings(),
+            lease_owner=rig.lease_owner,
+            clock=lambda: rig.now[0],
+        )
+    owner = WAWProductionAuthOwner(
+        rig.authority,
+        runner=None,
+        native_unbound=True,
+        bindings=_bindings(),
+        lease_owner=rig.lease_owner,
+        clock=lambda: rig.now[0],
+    )
+    with pytest.raises(RuntimeOperationError) as unbound:
+        await owner.probe_with_lease(rig.transport, **rig.probe_kwargs())
+    assert _error_code(unbound.value) == "WAW_AUTH_PROBE_BUSY"
+    assert rig.transport._auth_lease is None
+
+    owner.bind_native_probe_path(_fake_factory(rig.authority), _native_profiles())
+    with pytest.raises(RuntimeOperationError) as plain:
+        await owner.probe(**rig.probe_kwargs())
+    assert _error_code(plain.value) == "WAW_AUTH_PROBE_BUSY"
 
 
 def test_bind_native_probe_path_rejects_second_bind_and_constructor_given(

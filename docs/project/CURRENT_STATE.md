@@ -1,11 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T12:16:27Z"
-verified_by: "codex-workbench-attention-rc14"
+verified_at_utc: "2026-09-28T12:57:17Z"
+verified_by: "codex-r12-c3b-resource-foundation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-28 R12-C3-b authority-deferred resource candidate
+
+PR #99 for rc14 final head `ad73f7c783e4cd817bc8a1eb9d6dccc732c92b01`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `986e8fa87c6d14030677c026342813c6921cc6f9` was read back with
+parents `8beeb1ea81a2b94e514e9452a2b5ce15ce8cbbd2` and that head.
+All six Backend/Frontend/E2E/Deployment/Security/Release Candidate post-main
+workflows completed successfully. rc14 remains a source/CI delivery and does
+not qualify the Linux host or real CLI.
+
+The original checkout's five C3-b WIP files were copied byte-for-byte to the
+managed worktree and verified by SHA-256. On branch
+`codex/r12-c3b-resource-factory` at base
+`986e8fa87c6d14030677c026342813c6921cc6f9`, new
+`waw_runtime_resources.py` opens exact-six executable handles and nine
+installed roles only after the filesystem-v2 builder issues its unique
+`WAWVerifiedExecutionAuthority`. A distinct owner returned by `take()`
+transfers that bundle once to the internal provider. The original checkout
+and its `.reasonix/`, `build/`, planning WIP, and provider/test source remain
+untouched. The managed branch currently has uncommitted software and this
+document, without an open PR or exact-head CI.
+
+Local evidence: 162 relevant auth/provider/resources/application/executor/
+bootstrap/key unit tests passed; Linux-target mypy passed 299 source files;
+Ruff, Black, docs links and `git diff --check` passed. Tests use fixtures on
+macOS and do not establish real descriptor, cgroup, native helper or host
+qualification. The [C3-b composition record](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md)
+lists missing `_main` wiring, installer-owned socket/key/epoch/enrollment
+inputs, late Project registration through the actual application, and Linux
+native/sanitizer evidence. No real host, key, CLI login, Secret or production
+operation occurred.
 
 ## 2026-09-28 S02 recent Attention candidate
 
