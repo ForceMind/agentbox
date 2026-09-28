@@ -196,6 +196,48 @@ class ProjectFavoriteLimitExceeded(AgentBoxError):
     status_code = 503
 
 
+class NavigationLabelValidationError(AgentBoxError):
+    code = "NAVIGATION_LABEL_INVALID"
+    category = "validation"
+    message = "Navigation label input is invalid"
+    status_code = 422
+
+
+class NavigationLabelNotFound(AgentBoxError):
+    code = "NAVIGATION_LABEL_NOT_FOUND"
+    category = "unavailable"
+    message = "Navigation label was not found"
+    status_code = 404
+
+
+class NavigationLabelNameTaken(AgentBoxError):
+    code = "NAVIGATION_LABEL_NAME_TAKEN"
+    category = "conflict"
+    message = "Navigation label name is already used"
+    status_code = 409
+
+
+class NavigationLabelConflict(AgentBoxError):
+    code = "NAVIGATION_LABEL_CONFLICT"
+    category = "conflict"
+    message = "Navigation label revision changed"
+    status_code = 409
+
+
+class NavigationLabelLimitExceeded(AgentBoxError):
+    code = "NAVIGATION_LABEL_LIMIT_EXCEEDED"
+    category = "unavailable"
+    message = "Navigation label capacity is exceeded"
+    status_code = 503
+
+
+class ProjectLabelConflict(AgentBoxError):
+    code = "PROJECT_LABEL_CONFLICT"
+    category = "conflict"
+    message = "Project label set revision changed"
+    status_code = 409
+
+
 class JobNotFound(AgentBoxError):
     code = "JOB_NOT_FOUND"
     category = "unavailable"

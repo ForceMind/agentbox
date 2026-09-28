@@ -9,8 +9,9 @@ does not replace the license text distributed by each upstream project.
 
 ## Adapted source code
 
-The AgentBox Web Changes file-tree and diff-ordering code includes adaptations
-of getpaseo/paseo source at commit
+The AgentBox Web Changes file-tree and diff-ordering code, and the Control
+Plane navigation-label name/color/catalog behavior, include adaptations of
+getpaseo/paseo source at commit
 `30178c4f58b67f8472901356e1484022bd835de0`.
 Copyright (c) 2025-present Mohamed Boudra. Licensed under Apache-2.0; the
 license text is included in `LICENSE`. The adapted files retain source and

@@ -175,8 +175,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc23"
-    assert npm_version("0.3.0rc23") == "0.3.0-rc.23"
+    assert verify_version_consistency(root) == "0.3.0rc24"
+    assert npm_version("0.3.0rc24") == "0.3.0-rc.24"
 
 
 def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> None:
@@ -531,6 +531,7 @@ def _successful_gate_results(candidate_version: str) -> dict[str, str]:
         "0.3.0rc21",
         "0.3.0rc22",
         "0.3.0rc23",
+        "0.3.0rc24",
     ],
 )
 def test_release_gate_cli_accepts_exact_version_contract(candidate_version: str) -> None:
@@ -599,6 +600,8 @@ def test_release_gate_cli_rejects_unknown_version(candidate_version: str) -> Non
         ("0.3.0rc22", "packaging-toolchain", "skipped"),
         ("0.3.0rc23", "rc8-predecessor-artifact", "success"),
         ("0.3.0rc23", "packaging-toolchain", "skipped"),
+        ("0.3.0rc24", "rc8-predecessor-artifact", "success"),
+        ("0.3.0rc24", "packaging-toolchain", "skipped"),
         ("0.3.0rc8", "rc8-artifact-import", "skipped"),
         ("0.3.0rc8", "packaging-toolchain", "failure"),
         ("0.3.0rc8", "release-candidate", "cancelled"),

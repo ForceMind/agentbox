@@ -1,13 +1,55 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T22:06:44Z"
-verified_by: "codex-workbench-command-center"
+verified_at_utc: "2026-09-28T23:27:36Z"
+verified_by: "codex-workbench-project-labels"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 WS14 command center candidate
+## 2026-09-29 WS14 navigation label backend/API candidate
+
+PR #116 final head `57e819cf8d2be8ea5a3296f0211bc49b734f7914`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Frontend quality's first attempt timed out in an unchanged rc7 WAW browser
+test; the same-SHA failed-job rerun succeeded, while the first failure and
+unproven cause remain recorded. Normal merge
+`3e0069381a4d8f867e333191f298b4847256d751` has parents
+`885c623cf1114d23c5fdc13503f4a2a598985c5b` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main
+workflows all completed successfully on the exact merge SHA. rc23 fixed
+command-center navigation is delivered as software/browser evidence.
+
+Draft PR #117 starts at that merge and adds an A3 Runtime-internal staged
+patch reader. Its exact head `8ef72862514c27b01f5f52a532e0ac4e16f20775`
+completed 26 terminal checks (24 success, two prescribed skips) but remains
+Draft and unmerged: independent security-critical Architecture/Security/Test
+review and the separate content selector/encrypted route are still missing.
+The Owner has been asked for explicit authorization for one read-only review
+subagent; no agent has been started without that answer.
+
+This separate clean worktree began `codex/workbench-project-labels` from
+`3e0069381a4d8f867e333191f298b4847256d751`. Its rc24 candidate adds
+an immutable-ID per-admin label catalog, ordered formal Project assignment
+table, SQLite migration, revision/CAS service, authenticated no-store API,
+Audit and fixed error taxonomy. The related Python matrix completed 164
+passes across new labels/API, full migrations, old favorites, database
+security and release-candidate checks; later additional API rejection
+assertions passed 3/3. Linux-target mypy checked 315 source files. Web
+format/lint/build and four focused AppShell tests passed; the final Web JS
+bundle is 617.49 kB/176.47 kB gzip, in line with rc23. Inert MV3 version
+tests and build passed, with packaged manifest `0.3.0.24`. The full local
+desktop/mobile Chromium E2E completed 108 passes and 28 prescribed skips
+after applying migration `0011`. Documentation links (546) and the updated
+fixed-route source-boundary check passed. Exact-head CI, PR and merge remain
+pending. It does not
+grant Runtime/file/Agent authority. The Web picker/manager, Workspace label
+assignments and cross-host sync are not delivered. Original checkout R12 WIP
+remains untouched; R12 host/Secret/production gates remain separate.
+
+Sections below are historical snapshots.
+
+## Historical 2026-09-29 WS14 command center candidate
 
 PR #115 final head `bb077fd8a4da6738ed4bc492c6c57de98597e5a8`
 completed 26 terminal checks (24 success, two prescribed historical skips).
@@ -37,8 +79,6 @@ browser run, so exact-head CI/browser confirmation remains pending. PR and
 merge are pending. Original checkout WIP is untouched. Named
 labels, wider command actions, A3 content, R12 composition and real-host/
 Secret/production qualification remain open.
-
-Sections below are historical snapshots.
 
 ## Historical 2026-09-29 A3 staged selection policy candidate
 

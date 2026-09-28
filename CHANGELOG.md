@@ -3,6 +3,15 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc24] - Unreleased
+
+- Add a per-administrator navigation label catalog and ordered formal Project
+  assignments with additive migration, revision CAS, atomic Audit and
+  authenticated no-store API routes.
+- Keep the Web picker/manager, Workspace assignments and cross-host label
+  synchronization as subsequent WS14 delivery.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc24.md`.
+
 ## [0.3.0rc23] - Unreleased
 
 - Add an authenticated desktop/mobile command center for fixed page and

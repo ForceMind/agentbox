@@ -1,6 +1,22 @@
 # Current Authorized Action
 
-## 2026-09-29 WS14 authenticated command center
+## 2026-09-29 WS14 label catalog and formal Project assignments
+
+PR #116 delivered rc23 command-center navigation as merge
+`3e0069381a4d8f867e333191f298b4847256d751`; six post-main workflows
+succeeded. Draft PR #117 passed exact-head CI but remains unmerged pending
+independent security-critical review and separate A3 content gates. Continue
+on `codex/workbench-project-labels`: finish rc24 additive migration,
+per-admin immutable label catalog, ordered Project assignment CAS, atomic
+rename/delete, strict authenticated Origin/CSRF/no-store API, Audit,
+capacity/concurrency/upgrade/restart tests and source/version records under
+[Project labels](../WORKBENCH_PROJECT_LABELS.md). Then run exact-head CI,
+normal merge and read-back. The Web picker and Workspace assignment follow
+on the same shared label identity; they are not implied by backend delivery.
+R12 `_main` still needs target fixed inputs and positive legacy Codex Remote
+state; real-host/Secret/production gates remain separate.
+
+## Historical 2026-09-29 WS14 authenticated command center
 
 PR #115 delivered the internal staged Git selection policy as merge
 `885c623cf1114d23c5fdc13503f4a2a598985c5b`; all six post-main

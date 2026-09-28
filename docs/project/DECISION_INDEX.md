@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-NAVIGATION-LABELS-CANDIDATE`: rc24 adds one per-admin
+  immutable-ID label catalog with ten fixed colors, normalized names,
+  revisioned atomic edit/delete and ordered formal Project assignments.
+  Labels are Control Plane metadata, never Runtime or filesystem grants;
+  Web picker and Workspace assignment remain separate. See
+  [Project labels](../WORKBENCH_PROJECT_LABELS.md).
+
 - `WORKBENCH-WS14-COMMAND-CENTER-CANDIDATE`: rc23 adds one authenticated
   AgentBox command center for fixed page/formal Project navigation only.
   Current-session Project reads, bounded results and session fencing do not

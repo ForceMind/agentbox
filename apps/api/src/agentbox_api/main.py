@@ -45,6 +45,7 @@ from agentbox_api.doctor import router as doctor_router
 from agentbox_api.favorites import router as favorites_router
 from agentbox_api.jobs import router as jobs_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
+from agentbox_api.navigation_labels import router as navigation_labels_router
 from agentbox_api.projects import github_router
 from agentbox_api.projects import router as projects_router
 from agentbox_api.waw_application import (
@@ -377,6 +378,7 @@ def create_app(
         application.include_router(claude_router)
         application.include_router(projects_router)
         application.include_router(favorites_router)
+        application.include_router(navigation_labels_router)
         application.include_router(workspaces_router)
         application.include_router(project_workspaces_router)
         application.include_router(github_router)
