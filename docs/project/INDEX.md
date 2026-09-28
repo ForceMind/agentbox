@@ -18,6 +18,8 @@
   同一manifest authority绑定、epoch时点与关闭契约；C2/C3尚未完成。
 - [R12 fixed auth probe](../WAW_R12_RUNTIME_AUTH_PROBE.md)：C2的closed native ABI、
   同generation借用、offline status、shared cache与cleanup契约；实现与host资格分开。
+- [R12-C3-b production composition](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md)：
+  唯一authority的资源签发、native owner、Project绑定与后续 `_main` 接线缺口。
 
 本目录是治理执行入口。每个任务执行前按顺序读取：
 

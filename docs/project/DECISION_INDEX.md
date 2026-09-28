@@ -1,5 +1,14 @@
 # Decision and Architecture Index
 
+- `R12-C3B-AUTHORITY-DEFERRED-RESOURCES-V1`: the filesystem-v2 builder issues
+  exactly one verified Runtime authority. A distinct provider owner opens the
+  six executable handles, nine fixed installed roles and cgroup delegation
+  only after receiving that same authority. Any mismatched Project root,
+  descriptor or incomplete cleanup fails closed before admission. This is a
+  software construction decision under the approved R12 plan; `_main`,
+  installer and real host evidence remain separate. See
+  [C3-b composition closure](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md).
+
 - `R12-AUTH-PROBE-BUDGET-V1`: the fixed 5.0s spawn-to-exit probe budget (plus
   0.25s TERM grace and 1.0s drain margin) is owned inside the probe port; the
   control listener's per-connection deadline is only an envelope, so

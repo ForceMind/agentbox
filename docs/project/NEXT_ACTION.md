@@ -1,5 +1,23 @@
 # Current Authorized Action
 
+## 2026-09-28 C3-b deferred resource foundation — software candidate
+
+Owner-approved [full capability plan](FULL_CAPABILITY_DELIVERY_PLAN.md) keeps
+R12 production Runtime integration first. The latest main is rc14 merge
+`986e8fa87c6d14030677c026342813c6921cc6f9`. An isolated branch
+`codex/r12-c3b-resource-factory` carries the authority-deferred provider,
+fixed executable/descriptor resource builder, distinct application owner,
+native auth-probe path and cleanup repairs. Local related tests and Linux-target
+type checking pass; exact-head CI and merge are pending. This is no production
+entrypoint or host qualification.
+
+The next software action is `_main` composition using installed activated
+sockets, Runtime-only static key, epoch store and external vendor enrollment
+without introducing a second authority. Keep the original checkout's C3-b
+provider/tests, `.reasonix/`, `build/` and planning WIP intact. The exact
+remaining issues and acceptance tests are in
+[C3-b composition closure](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md).
+
 ## R12-C2 C3-a composition closure delivered for review; C3-b next — 2026-09-15
 
 M4 executor integration is delivered by PR #95: final head
