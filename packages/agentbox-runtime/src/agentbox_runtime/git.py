@@ -10,9 +10,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from agentbox_runtime.git_changes import parse_git_change_page, validate_git_changes_cursor
 from agentbox_runtime.models import (
     GitActionResult,
     GitBranch,
+    GitChangePage,
     GitInstallationStatus,
     GitStatus,
     RuntimeOperationError,
@@ -338,6 +340,45 @@ class GitAdapter:
         if result.exit_code != 0:
             raise RuntimeOperationError("GIT_STATUS_FAILED", "Git status failed")
         return await self._parse_status(identity, project, result.stdout)
+
+    async def changes(self, project: Path, cursor: str | None) -> GitChangePage:
+        """List bounded Git path metadata without reading file or patch bodies."""
+
+        validate_git_changes_cursor(cursor)
+        identity = self._require_executable()
+        repository_state = self._repository_state(project)
+        if repository_state == "missing":
+            if cursor is not None:
+                raise RuntimeOperationError(
+                    "GIT_CHANGES_STALE",
+                    "Git changes changed between pages",
+                    category="conflict",
+                )
+            return GitChangePage(False, (), 0, None)
+        if repository_state == "unsafe":
+            raise RuntimeOperationError(
+                "GIT_OWNERSHIP_UNSAFE",
+                "Repository ownership or structure is unsafe",
+                category="forbidden",
+            )
+        await self._assert_safe_repository_config(identity, project)
+        result = await self._run(
+            identity,
+            (
+                "--no-optional-locks",
+                *_SAFE_CONFIG,
+                "status",
+                "--porcelain=v2",
+                "-z",
+                "--untracked-files=all",
+                "--renames",
+            ),
+            cwd=project,
+            stdout_limit=1024 * 1024,
+        )
+        if result.exit_code != 0:
+            raise RuntimeOperationError("GIT_CHANGES_FAILED", "Git changes could not be listed")
+        return parse_git_change_page(result.stdout, cursor)
 
     async def branches(self, project: Path) -> tuple[GitBranch, ...]:
         identity = self._require_repository(project)

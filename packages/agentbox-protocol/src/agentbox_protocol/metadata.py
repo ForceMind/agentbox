@@ -1,9 +1,10 @@
 """Safe control-plane liveness, metadata, and diagnostic contracts."""
 
+import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StrictMetadataModel(BaseModel):
@@ -303,6 +304,62 @@ class GitStatusData(StrictMetadataModel):
     clean: bool
     remote_url: str | None
     submodules_detected: bool
+
+
+class GitChangeEntryData(StrictMetadataModel):
+    path: str
+    previous_path: str | None
+    kind: Literal[
+        "added",
+        "modified",
+        "deleted",
+        "renamed",
+        "copied",
+        "untracked",
+        "conflicted",
+        "typechanged",
+    ]
+    staged: bool
+    unstaged: bool
+
+    @field_validator("path", "previous_path")
+    @classmethod
+    def valid_display_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            raw = value.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise ValueError("Git change path encoding is invalid") from exc
+        if (
+            not raw
+            or len(raw) > 4096
+            or value.startswith("/")
+            or "\x00" in value
+            or any(part in {"", ".", ".."} for part in value.split("/"))
+        ):
+            raise ValueError("Git change path is invalid")
+        return value
+
+
+class GitChangePageData(StrictMetadataModel):
+    is_repository: bool
+    files: list[GitChangeEntryData] = Field(max_length=32)
+    total_count: int = Field(ge=0, le=1_000_000)
+    next_cursor: str | None
+
+    @field_validator("next_cursor")
+    @classmethod
+    def valid_cursor(cls, value: str | None) -> str | None:
+        if value is not None and re.fullmatch(r"[0-9a-f]{64}:[1-9][0-9]{0,6}", value) is None:
+            raise ValueError("Git changes cursor is invalid")
+        return value
+
+
+class GitChangePageResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: GitChangePageData
 
 
 class GitBranchData(StrictMetadataModel):

@@ -64,8 +64,14 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 40 ]]; then
-  printf 'Unexpected Phase 8/WAW API route count: %s\n' "$route_count" >&2
+if [[ "$route_count" -ne 41 ]]; then
+  printf 'Unexpected reviewed AgentBox API route count: %s\n' "$route_count" >&2
+  exit 1
+fi
+if ! grep --fixed-strings --quiet \
+  '@router.get("/{project_id}/git/changes", response_model=GitChangePageResponse)' \
+  apps/api/src/agentbox_api/projects.py; then
+  printf 'Fixed Project-scoped Git Changes read route is missing.\n' >&2
   exit 1
 fi
 

@@ -7,7 +7,12 @@ import httpx
 import pytest
 from agentbox_core.models import AuditEvent, Job, Project
 from agentbox_core.services import ControlPlaneServices
-from agentbox_runtime import GitActionResult, RuntimeOperationError
+from agentbox_runtime import (
+    GitActionResult,
+    GitChangeEntry,
+    GitChangePage,
+    RuntimeOperationError,
+)
 from agentbox_runtime.github import MAX_PR_BODY_BYTES
 from agentbox_worker.main import execute_job
 from conftest import FakeProjectRuntime
@@ -120,6 +125,52 @@ async def test_project_detail_and_github_status_are_authenticated_no_store(
     assert detail.headers["cache-control"] == github.headers["cache-control"] == "no-store"
     assert detail.json()["data"]["git"]["branch"] == "main"
     assert github.json()["data"]["authentication"] == "authenticated"
+
+
+@pytest.mark.anyio
+async def test_git_changes_are_scoped_to_ready_project_and_return_only_path_metadata(
+    client: httpx.AsyncClient,
+    origin_headers: dict[str, str],
+    initialized_services: ControlPlaneServices,
+    project_runtime: FakeProjectRuntime,
+) -> None:
+    project = initialized_services.projects.reconcile_existing(("project-a",))[0]
+    url = f"/api/v1/projects/{project.id}/git/changes"
+    assert (await client.get(url)).status_code == 401
+    await login(client, origin_headers)
+    project_runtime.changes = GitChangePage(
+        True,
+        (GitChangeEntry("src/changed.py", None, "modified", False, True),),
+        1,
+        None,
+    )
+    observed = await client.get(url, params={"path": "/etc/passwd"})
+    assert observed.status_code == 200
+    assert observed.headers["cache-control"] == "no-store"
+    assert observed.json()["data"] == {
+        "is_repository": True,
+        "files": [
+            {
+                "path": "src/changed.py",
+                "previous_path": None,
+                "kind": "modified",
+                "staged": False,
+                "unstaged": True,
+            }
+        ],
+        "total_count": 1,
+        "next_cursor": None,
+    }
+    assert project_runtime.calls == [f"changes:{project.relative_path}:None"]
+    assert "/etc/passwd" not in observed.text
+
+    pending = initialized_services.projects.reserve(
+        name="Pending Git Changes", slug=None, source_type="empty"
+    )
+    blocked = await client.get(f"/api/v1/projects/{pending.id}/git/changes")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "PROJECT_NOT_READY"
+    assert project_runtime.calls == [f"changes:{project.relative_path}:None"]
 
 
 @pytest.mark.anyio

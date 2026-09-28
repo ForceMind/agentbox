@@ -208,6 +208,54 @@ async def test_git_status_parses_porcelain_v2_and_redacts_remote_credentials(
 
 
 @pytest.mark.anyio
+async def test_git_changes_uses_only_fixed_read_only_status_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = RecordingRunner(
+        [(0, b"", b""), (0, b"1 M. N... 100644 100644 100644 a b src/file.py\0", b"")]
+    )
+    adapter = git_adapter(monkeypatch, runner)
+    page = await adapter.changes(repository(tmp_path), None)
+    assert [item.path for item in page.files] == ["src/file.py"]
+    assert page.total_count == 1 and page.next_cursor is None
+    assert len(runner.calls) == 2
+    arguments = runner.calls[1]["arguments"]
+    assert isinstance(arguments, tuple)
+    assert arguments[-5:] == (
+        "status",
+        "--porcelain=v2",
+        "-z",
+        "--untracked-files=all",
+        "--renames",
+    )
+    assert runner.calls[1]["stdout_limit"] == 1024 * 1024
+    assert runner.calls[1]["cwd"] == tmp_path / "project"
+
+
+@pytest.mark.anyio
+async def test_git_changes_rejects_cursor_before_running_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = RecordingRunner([])
+    with pytest.raises(RuntimeOperationError) as raised:
+        await git_adapter(monkeypatch, runner).changes(repository(tmp_path), "../escape")
+    assert raised.value.code == "GIT_CHANGES_CURSOR_INVALID"
+    assert runner.calls == []
+
+
+@pytest.mark.anyio
+async def test_git_changes_reports_stale_cursor_when_repository_disappears(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = RecordingRunner([])
+    adapter = git_adapter(monkeypatch, runner)
+    with pytest.raises(RuntimeOperationError) as raised:
+        await adapter.changes(tmp_path / "missing-project", "a" * 64 + ":1")
+    assert raised.value.code == "GIT_CHANGES_STALE"
+    assert runner.calls == []
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("head", "oid", "detached", "unborn"),
     [

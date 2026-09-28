@@ -21,6 +21,7 @@ from agentbox_runtime import (
     CodexCapabilities,
     CodexStatus,
     GitBranch,
+    GitChangePage,
     GitHubProjectStatus,
     GitHubStatus,
     GitStatus,
@@ -298,6 +299,13 @@ class FakeProjectRuntimeClient:
             upstream="origin/main",
             remote_url="https://github.com/owner/repo.git",
         )
+
+    async def git_changes(
+        self, request_id: str, project_key: str, cursor: str | None
+    ) -> GitChangePage:
+        del request_id, cursor
+        assert project_key == "project-a"
+        return GitChangePage(True, (), 0, None)
 
     async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
         del request_id

@@ -8,6 +8,8 @@
   v1 保留 A0/A1 技术基线与来源规则；全量范围以 v2 为准。
 - [Workbench identity and content ADR](../adr/0009-workbench-identity-and-content-boundary.md)：
   Project、WAW、会话与 UI tab 分域，内容仍须 A3 专项协议和审查。
+- [A3 Git Changes metadata](../WORKBENCH_A3_GIT_CHANGES.md)：
+  READY Project 范围内的只读路径/状态分页合同，不授予正文或 patch 读取。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；
   R12 软件接线、客户端、真实主机/CLI、恢复与有限生产的依赖、验收和授权范围。
   R12-A已开始；软件执行、host资格化与生产准入分开记录。

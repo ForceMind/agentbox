@@ -20,6 +20,8 @@ from agentbox_protocol import (
     GitBranchData,
     GitBranchListData,
     GitBranchListResponse,
+    GitChangePageData,
+    GitChangePageResponse,
     GitHubGlobalData,
     GitHubGlobalResponse,
     GitHubProjectData,
@@ -44,7 +46,7 @@ from agentbox_runtime import (
     validate_pr_body,
     validate_pr_title,
 )
-from fastapi import APIRouter, Cookie, Header, Request, Response, status
+from fastapi import APIRouter, Cookie, Header, Query, Request, Response, status
 
 from agentbox_api.auth import SESSION_COOKIE, _validate_origin, authenticate_request
 from agentbox_api.jobs import job_data
@@ -406,6 +408,29 @@ async def git_status(
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> ProjectResponse:
     return await get_project(project_id, request, response, agentbox_session)
+
+
+@router.get("/{project_id}/git/changes", response_model=GitChangePageResponse)
+async def list_git_changes(
+    project_id: str,
+    request: Request,
+    response: Response,
+    cursor: str | None = Query(default=None, max_length=72),
+    agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+) -> GitChangePageResponse:
+    authenticate_request(request, agentbox_session)
+    project = _services(request).projects.get(project_id, ready=True)
+    try:
+        page = await _runtime(request).git_changes(
+            str(request.state.request_id), project.relative_path, cursor
+        )
+    except RuntimeOperationError as exc:
+        raise _translate(exc) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return GitChangePageResponse(
+        request_id=str(request.state.request_id),
+        data=GitChangePageData.model_validate(page.to_dict()),
+    )
 
 
 @router.get("/{project_id}/git/branches", response_model=GitBranchListResponse)

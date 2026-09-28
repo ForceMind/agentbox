@@ -108,6 +108,11 @@ each produce their exact schemas, source/permission tests, negative cases,
 recovery evidence, and host qualification as applicable before claiming a
 user-visible content or structured-session feature.
 
+The first A3 implementation slice is the
+[Project-scoped Git Changes metadata contract](../WORKBENCH_A3_GIT_CHANGES.md).
+It returns bounded path/status observations only; it does not grant content
+authority or close this ADR's patch, sensitive-file and client requirements.
+
 The acceptance evidence for this ADR is the Owner-approved plan and current
 code-boundary review. It is not an independent security review or a real-host
 qualification. Security-critical implementation will follow the repository's

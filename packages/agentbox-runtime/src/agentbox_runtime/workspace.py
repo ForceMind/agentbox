@@ -17,6 +17,7 @@ from agentbox_runtime.github import GitHubAdapter
 from agentbox_runtime.models import (
     GitActionResult,
     GitBranch,
+    GitChangePage,
     GitHubProjectStatus,
     GitHubPullRequestResult,
     GitHubStatus,
@@ -178,6 +179,9 @@ class ProjectWorkspaceManager:
 
     async def git_status(self, project_key: str) -> GitStatus:
         return await self._git.status(self._projects.resolve(project_key).path)
+
+    async def git_changes(self, project_key: str, cursor: str | None) -> GitChangePage:
+        return await self._git.changes(self._projects.resolve(project_key).path, cursor)
 
     async def git_global_status(self) -> GitInstallationStatus:
         return await self._git.installation_status()

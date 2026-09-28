@@ -1,13 +1,42 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T15:07:35Z"
-verified_by: "codex-r12-runtime-deployment-profile"
+verified_at_utc: "2026-09-28T15:58:42Z"
+verified_by: "codex-workbench-git-changes"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-28 R12 Runtime fixed deployment profile candidate
+## 2026-09-28 S02 A3 Git Changes metadata candidate
+
+PR #105 final head `d33dcf1548b39006d64d292277929d4d63672f33`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `7ffc1734b0ce5a4f6fdc5575eaeac6804f2aca5c` has parents
+`e6a5bf36636c5baf1225368c0acea1d89a73762e` and that final head.
+Backend, Frontend, E2E, Deployment, Security and Release Candidate post-main
+workflows all completed successfully. Runtime's installed mode remains
+disabled; explicit filesystem-v2 still fails until `_main` composition.
+
+Current `codex/workbench-git-changes` starts at that exact merge. It adds
+only Project-scoped Git path/status metadata through a fixed Runtime action,
+strict RPC and authenticated `GET /api/v1/projects/{id}/git/changes`.
+No request path, argv, file body, patch, generic shell or direct API
+filesystem read is introduced. Cursor pages reject a changed snapshot;
+repository data and Runtime frames are bounded. Local parser, real Git,
+RPC and API focused tests pass; 164 Git/Project API/release Python cases,
+four Web/MV3 version tests, Web/MV3 builds and isolated browser E2E
+(98 pass, 28 prescribed skips across desktop/mobile) completed. Python,
+npm and inert MV3 source versions are aligned at rc15. Full Linux exact-head
+CI, PR and merge are pending. The user-visible Changes page and content-specific A3 admission
+remain unfinished. [A3 contract](../WORKBENCH_A3_GIT_CHANGES.md) gives the
+scope and failure behavior.
+
+The original checkout WIP remains untouched. The Owner's full 70-ID parity
+goal and unresolved shell/file/plugin/Hub permission semantics remain.
+Sections below are historical point-in-time snapshots superseded by this
+live branch/CI revalidation.
+
+## Historical 2026-09-28 R12 Runtime fixed deployment profile candidate
 
 PR #104 final head `d147b35aae27dec510b85fa1e57fe4ae3c22dfeb`
 completed 26 terminal checks (24 success, two prescribed historical skips),
