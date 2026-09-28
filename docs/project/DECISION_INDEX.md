@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-PATCH-CONTENT-CANDIDATE`: draft the next bounded Runtime-only
+  extraction and a separate encrypted Project content channel before exposing
+  patch text. Its selector is not path authority; staged/unstaged and unsupported
+  cases have explicit outcomes. This is a proposed software contract, not a
+  shipped action or an Accepted deployment configuration. See
+  [A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
+
 - `WORKBENCH-S02-CHANGED-PATHS-V1`: the rc16 AgentBox Project page links to a
   separate authenticated Changed Paths view backed only by the rc15 metadata
   API. It reuses the upstream-derived directory order but flattens a

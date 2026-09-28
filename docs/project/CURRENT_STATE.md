@@ -1,13 +1,35 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T16:58:00Z"
-verified_by: "codex-workbench-changes-tree"
+verified_at_utc: "2026-09-28T17:14:59Z"
+verified_by: "codex-workbench-patch-contract"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 S02 Changed Paths page candidate
+## 2026-09-29 S02/A3 patch content contract candidate
+
+PR #107 final head `5c4cb801f18c231e95497f8b603df3d5c36674ea`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `87c0913f86324588608b191a8318115b36a59fbc` has parents
+`c285872546f81c173c3e40e1711e8506c164cebc` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully on the merge SHA. rc16 delivered the authenticated
+Changed Paths metadata page, not patch text or file preview. Local rc16 Web
+1149/1149, browser 100 pass/28 prescribed skips, Linux-target mypy 321 files,
+and desktop/mobile screenshots are recorded in the historical section below.
+
+Current `codex/workbench-patch-contract` starts at that exact merge. It is
+drafting [the A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md):
+Runtime-only bounded extraction first, then a scoped selection ID and a
+separately admitted encrypted content channel. This document is a candidate,
+not an implemented Runtime action or API. The existing metadata API and page
+remain read-only. R12 real host/Secret/production evidence and the Owner's
+broad shell/file/plugin/Hub permission choice remain separate and unresolved.
+The original checkout WIP remains untouched. The sections below are
+historical point-in-time snapshots superseded by this live read-back.
+
+## Historical 2026-09-29 S02 Changed Paths page candidate
 
 PR #106 final head `e37383168883990a4fb031ecdd762267757ecb74`
 completed 26 terminal checks (24 success, two prescribed historical skips).

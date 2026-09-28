@@ -1,6 +1,21 @@
 # Current Authorized Action
 
-## 2026-09-29 S02 Changed Paths page
+## 2026-09-29 S02/A3 patch content boundary
+
+PR #107 merged as `87c0913f86324588608b191a8318115b36a59fbc` with
+exact parent read-back and all six post-main workflows successful. Continue
+on `codex/workbench-patch-contract` from that merge. Freeze the bounded,
+sensitivity-aware Runtime Git patch reader and separate encrypted content
+admission in [A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md),
+then implement the Runtime-only extraction slice before any browser content
+route. Require fixed Git argv, current Project/snapshot validation, bounded
+bytes/lines, helper-execution negatives and explicit unsupported states.
+Document-only changes keep rc16; source behavior changes receive the next
+aligned release candidate. Ordinary shell, arbitrary file browsing and
+plugin/Hub authority still await the Owner's semantic choice. R12 `_main`
+and real host/Secret/production gates remain separate.
+
+## Historical 2026-09-29 S02 Changed Paths page
 
 PR #106 merged as `c285872546f81c173c3e40e1711e8506c164cebc` with
 exact parent read-back and six successful post-main workflows. Continue on
