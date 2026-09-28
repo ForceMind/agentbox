@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-GIT-CONTENT-ROOT-CANDIDATE`: an internal rc17 class holds and
+  rechecks only fixed Project/Git directories and metadata-file descriptors.
+  Its purpose is to reject replacement and alternate stores before any
+  content action exists. It exports no fd or bytes and does not yet prove
+  complete object-store or child-cwd provenance. See
+  [A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
+
 - `WORKBENCH-A3-PATCH-CONTENT-CANDIDATE`: draft the next bounded Runtime-only
   extraction and a separate encrypted Project content channel before exposing
   patch text. Its selector is not path authority; staged/unstaged and unsupported

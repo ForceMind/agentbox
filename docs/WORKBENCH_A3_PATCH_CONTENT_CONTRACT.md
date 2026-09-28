@@ -7,6 +7,9 @@ Status: software contract candidate, 2026-09-29. This document follows
 scope and negative cases for the next A3 implementation slices. No content
 endpoint, Runtime patch action, encrypted content channel, or patch UI is
 implemented by this document. rc16's Changed Paths page remains metadata-only.
+The rc17 source candidate implements only internal descriptor custody for the
+fixed Project/Git nodes. It does not close child-cwd or full object-store
+provenance and cannot release content.
 
 ## Authority and delivery order
 

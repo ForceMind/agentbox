@@ -1,6 +1,20 @@
 # Current Authorized Action
 
-## 2026-09-29 S02/A3 patch content boundary
+## 2026-09-29 S02/A3 descriptor-held Git foundation
+
+PR #108 merged as `692f58a5823c4a8fbb438e61f6575fc88150753f`
+with exact parent read-back and six successful post-main workflows. On
+`codex/workbench-git-content-root`, finish the internal rc17 Project/Git
+descriptor custody and negative tests, then exact-head Linux CI, normal
+merge and read-back. This source increment must expose no file bytes, Git
+patch action, API route, browser selector or general filesystem gateway.
+Afterward, prove complete object-store and child-cwd provenance before the
+staged-only patch reader. The [A3 patch contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md)
+keeps encrypted delivery, unstaged content and real-host qualification as
+separate steps. Broad shell/file/plugin/Hub authority still awaits the
+Owner's semantic choice.
+
+## Historical 2026-09-29 S02/A3 patch content boundary
 
 PR #107 merged as `87c0913f86324588608b191a8318115b36a59fbc` with
 exact parent read-back and all six post-main workflows successful. Continue

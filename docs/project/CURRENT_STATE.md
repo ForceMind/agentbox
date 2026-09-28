@@ -1,13 +1,40 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T17:14:59Z"
-verified_by: "codex-workbench-patch-contract"
+verified_at_utc: "2026-09-28T17:42:27Z"
+verified_by: "codex-workbench-git-content-root"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 S02/A3 patch content contract candidate
+## 2026-09-29 S02/A3 Git content-root candidate
+
+PR #108 final head `d824c8c4217c59196f87d5c1d0f49652eb9db200`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `692f58a5823c4a8fbb438e61f6575fc88150753f` has parents
+`87c0913f86324588608b191a8318115b36a59fbc` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully. This merge delivered only the A3 patch contract;
+it introduced no content action.
+
+Current `codex/workbench-git-content-root` starts at that exact merge. Its
+rc17 candidate adds an internal descriptor-held Project/Git provenance class
+with no Git process, Runtime action, API route, patch bytes or browser control.
+It currently holds/rechecks the Project and Git root plus objects/info/pack,
+index/config/HEAD; replaced or unsafe nodes and alternate object stores fail.
+Eleven focused content-root tests and the 165-case Git/release matrix passed;
+Linux-target mypy covered 323 source files. Scoped Ruff/Black and Web/MV3
+format/lint/typecheck/build plus four targeted version tests passed. The Web
+bundle is 598.88 kB/171.21 kB gzip. Isolated desktop/mobile Chromium E2E
+completed 100 passes and 28 prescribed skips. Linux exact-head CI, PR and
+merge are pending.
+The future reader still needs complete object-store provenance and a proven
+child cwd, staged patch extraction, selectors and encrypted content transport.
+R12 real-host/Secret/production evidence remains separate; the Owner's broad
+shell/file/plugin/Hub permission choice remains unanswered. Original checkout
+WIP is untouched. Sections below are historical snapshots.
+
+## Historical 2026-09-29 S02/A3 patch content contract candidate
 
 PR #107 final head `5c4cb801f18c231e95497f8b603df3d5c36674ea`
 completed 26 terminal checks (24 success, two prescribed historical skips).
