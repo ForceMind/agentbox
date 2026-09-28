@@ -119,6 +119,12 @@ verify the actual installed CLI and recovery tuple separately.
    trusted source. It validates the two inherited socket identities before
    `take()`, then constructs the key, epoch store and sealed executor provider
    without reading Provider Secret material in API/Worker or Root Helper.
+   [The fixed Runtime profile](WAW_R12_RUNTIME_PROFILE.md) now specifies the
+   mode source. Its initial software slice installs `disabled`, validates the
+   private profile and rejects explicit `filesystem-v2` before legacy
+   construction until the full application graph replaces that deliberate
+   failure. This avoids a silent fallback but does not complete step 2 or
+   activate any socket or key.
 3. The application builder issues one v2 authority, binds key/provider to
    that same object, consumes exactly one epoch, and publishes one legacy,
    control and encrypted stream graph. It does not fall back to the old

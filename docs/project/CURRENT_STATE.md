@@ -1,13 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T14:31:38Z"
-verified_by: "codex-r12-runtime-conflict-snapshot"
+verified_at_utc: "2026-09-28T15:07:35Z"
+verified_by: "codex-r12-runtime-deployment-profile"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-28 R12-C3-b dynamic conflict snapshot candidate
+## 2026-09-28 R12 Runtime fixed deployment profile candidate
+
+PR #104 final head `d147b35aae27dec510b85fa1e57fe4ae3c22dfeb`
+completed 26 terminal checks (24 success, two prescribed historical skips),
+including 107 Linux native normal and 58 sanitizer cases. Normal merge
+`e6a5bf36636c5baf1225368c0acea1d89a73762e` has parents
+`72b87c8333896eb6403e3a7e02516e4dcdf910c3` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main
+workflows all completed successfully. This delivers a current WAW state
+snapshot and repairs a native test wait race, not production `_main`.
+
+Current `codex/r12-runtime-deployment-profile` starts at that exact merge.
+It adds a root-owned, Runtime-group-readable fixed profile under
+`/var/lib/agentbox-waw`, installed with canonical `disabled` bytes; the
+Runtime loader verifies its parent/leaf identity and rejects drift. An
+explicit `filesystem-v2` value currently fails `_main` before legacy server
+construction, rather than silently falling back. This is a safe intermediate
+software candidate, not WAW activation. Local tests: 121 installer/profile
+cases passed with one macOS `systemd-analyze` skip under an x86_64 fixture;
+16 focused Runtime profile/entrypoint cases passed. Eight older Runtime RPC
+socket cases failed on macOS because `server._peer_allowed` requires Linux
+`SO_PEERCRED`; no peer assertion was changed. Full Linux-target mypy passed
+315 source files. Linux exact-head CI and PR/merge remain pending. Real host,
+key, vendor enrollment, client trust and production are `NOT RUN`.
+
+The original checkout WIP and all full-parity capability IDs remain intact.
+The broad shell/file/plugin/Hub permission choice remains unanswered.
+Sections below are historical point-in-time snapshots superseded by this
+live branch and CI revalidation.
+
+## Historical 2026-09-28 R12-C3-b dynamic conflict snapshot candidate
 
 PR #103 final head `fd3d97d2256895341e83cd8e04419fb74a101e43`
 completed 26 terminal checks (24 success, two prescribed historical skips).

@@ -219,6 +219,9 @@ D 的模板/fixture 可提前，F 必须等全部所选接口；公开发布 K �
   `waw_runtime_application.py`、新的受限 executor/key adapter 与 Runtime tests。
 - `_main` 接入现有 filesystem-v2 builder。loader、epoch、executor、control、stream、
   legacy conflict 和 provider 由同一 application owner 组合，禁止启动第二套 authority。
+- Runtime mode 从[固定私有profile](../WAW_R12_RUNTIME_PROFILE.md)读取，而非普通环境变量
+  或请求；默认 disabled。当前显式 `filesystem-v2` 在完整应用图接线前拒绝，不能
+  静默退回 legacy。API/Runtime 双profile的后续启用必须同一协调事务及现场回读。
 - C3-b 的动态冲突快照从同一个 executor 的现行 Project binding 与 supervisor
   读取；更新中、旧代次隔离或读期间映射变化一律返回阻断态。此软件基础不替代
   同步且有界的 legacy Claude/Codex 真实状态探针，也不等于 `_main` 已接线。
