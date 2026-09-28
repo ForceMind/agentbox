@@ -25,10 +25,10 @@ quality, and project identity rather than network copyleft.
   unless a separate written agreement explicitly says otherwise.
 - Distributed copies must include the license and retain applicable copyright,
   patent, trademark, and attribution notices.
-- AgentBox does not currently include a project `NOTICE` file because no
-  project or bundled attribution has been identified that requires one. Add it
-  when a concrete attribution obligation arises; do not use it to alter the
-  license.
+- AgentBox includes a project [NOTICE](../NOTICE) for adapted third-party
+  source. [The source register](../third_party/upstream-sources.json) records
+  each adopted file, its pinned origin and the change made for AgentBox.
+  This attribution does not alter the Apache-2.0 license.
 - Blanket source-file headers are not currently required. A consistent SPDX
   header policy may be adopted later without changing the project license.
 - Direct and transitive dependency license compatibility remains a release

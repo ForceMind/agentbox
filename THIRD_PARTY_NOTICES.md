@@ -7,6 +7,17 @@ This inventory records the dependency versions selected by
 `pnpm-lock.yaml`; it is not legal advice and
 does not replace the license text distributed by each upstream project.
 
+## Adapted source code
+
+The AgentBox Web Changes file-tree and diff-ordering code includes adaptations
+of getpaseo/paseo source at commit
+`30178c4f58b67f8472901356e1484022bd835de0`.
+Copyright (c) 2025-present Mohamed Boudra. Licensed under Apache-2.0; the
+license text is included in `LICENSE`. The adapted files retain source and
+change notices. The repository records their original paths and digests in
+`third_party/upstream-sources.json`. This attribution does not imply
+affiliation or endorsement.
+
 ## Python runtime dependencies
 
 | Package | Version | Declared license |

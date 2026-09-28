@@ -196,7 +196,7 @@ def test_session_authority_timestamps_round_trip_as_aware_utc6(
         assert stored.created_at.tzinfo is UTC
         assert stored.created_at.utcoffset() == timedelta(0)
     with initialized_services.database.engine.connect() as connection:
-        raw = connection.exec_driver_sql(
+        raw: str = connection.exec_driver_sql(
             "SELECT created_at FROM sessions WHERE id=?", (issued.session_id,)
         ).scalar_one()
     assert len(raw) == 26

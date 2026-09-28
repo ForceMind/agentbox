@@ -1,11 +1,49 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-15T14:30:00Z"
-verified_by: "codex-r12-c3-composition"
+verified_at_utc: "2026-09-28T11:25:34Z"
+verified_by: "codex-workbench-a0-a1"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-28 workbench A0/A1 implementation snapshot
+
+Owner approved [AB-WORKBENCH-2026-09-28-v1](WORKBENCH_INTEGRATION_PLAN.md)
+for software implementation. The main Goal is active. An isolated managed
+worktree at `/Users/wxx110/.codex/worktrees/workbench-integration/agentbox`
+is on `codex/workbench-integration` from
+`a696193fec127595b1beafb1ed1cabf2ae58efa9`; `main` and `origin/main`
+matched that SHA after a successful `git fetch origin --prune`. The original
+checkout's `.reasonix/`, `build/`, and two C3-b provider/test files remain
+untouched and uncommitted.
+
+Upstream getpaseo/paseo was shallow-cloned to a temporary research checkout at
+exact SHA `30178c4f58b67f8472901356e1484022bd835de0`. A0 recorded source
+file paths, digests, license and adapted destinations in
+`third_party/upstream-sources.json`. Four Changes source/test files have been
+adapted to AgentBox-local types, with source notices in their headers. The
+project `NOTICE` and the packaged `THIRD_PARTY_NOTICES.md` carry attribution.
+Only AgentBox Web modules were added; no Paseo service was installed or started.
+
+The A1 thin slice currently passes 23 targeted Vitest cases across two files,
+the Web TypeScript build check, targeted ESLint and Prettier, upstream source
+digest/read-back, and the documentation link check; `git diff --check` passes.
+The [workbench identity/content ADR](../adr/0009-workbench-identity-and-content-boundary.md)
+is accepted for software scope. A3 exact content transport remains unimplemented.
+First offline dependency installation failed because the locked `js-yaml`
+tarball was absent locally; a subsequent lockfile-preserving Web install
+succeeded without running installation scripts. No UI page, backend/Runtime,
+target host, real CLI, credential or production validation is claimed by this
+slice. PR #97 was opened from first head
+`06f956095dd48995d5bfe3d350b5ad6ab9230835` against
+`a696193fec127595b1beafb1ed1cabf2ae58efa9`. Its first Python quality
+matrix failed in 3.11/3.12/3.13 on five existing unannotated scalar locals in
+`database.py`, `test_phase11_approval.py`, and `test_services.py`. The follow-up
+adds only five `str` annotations; the SQL and assertions are unchanged. Local
+mypy with Linux/3.11 target passes all 295 files; targeted Ruff and Black pass.
+New exact-head CI is required. Next: deliver this A1 slice through CI/normal
+merge/read-back, then continue A2 and C3-b according to the approved plan.
 
 ## R12-C2 C3-a composition closure on review hold
 

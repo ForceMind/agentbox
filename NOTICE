@@ -1,0 +1,10 @@
+AgentBox includes adapted source code from getpaseo/paseo at commit
+30178c4f58b67f8472901356e1484022bd835de0.
+
+Copyright (c) 2025-present Mohamed Boudra.
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+The adapted files, their original paths, digests, and changes are recorded in
+third_party/upstream-sources.json. Their file headers identify the adaptation.
+Paseo is a trademark of its respective owner; this notice identifies source
+origin and does not imply affiliation or endorsement.
