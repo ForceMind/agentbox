@@ -7,6 +7,7 @@ export const MESSAGE_DOMAINS = Object.freeze([
   'shell',
   'auth',
   'dashboard',
+  'attention',
   'codex',
   'claude',
   'workspace',

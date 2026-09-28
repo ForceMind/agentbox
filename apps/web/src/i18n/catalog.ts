@@ -2,6 +2,8 @@ import { appCatalog } from './catalogs/app'
 import type { AppMessageParameters } from './catalogs/app'
 import { authCatalog } from './catalogs/auth'
 import type { AuthMessageParameters } from './catalogs/auth'
+import { attentionCatalog } from './catalogs/attention'
+import type { AttentionMessageParameters } from './catalogs/attention'
 import { claudeCatalog } from './catalogs/claude'
 import type { ClaudeMessageParameters } from './catalogs/claude'
 import { codexCatalog } from './catalogs/codex'
@@ -48,6 +50,7 @@ export interface MessageParameters
     ShellMessageParameters,
     AuthMessageParameters,
     DashboardMessageParameters,
+    AttentionMessageParameters,
     CodexMessageParameters,
     ClaudeMessageParameters,
     WorkspaceMessageParameters,
@@ -80,6 +83,7 @@ const catalogShards = Object.freeze([
   shellCatalog,
   authCatalog,
   dashboardCatalog,
+  attentionCatalog,
   codexCatalog,
   claudeCatalog,
   workspaceCatalog,

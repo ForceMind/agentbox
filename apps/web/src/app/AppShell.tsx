@@ -1,5 +1,6 @@
 import {
   Activity,
+  Bell,
   Bot,
   Boxes,
   FileText,
@@ -25,6 +26,11 @@ const navigation = [
     label: (locale: Locale) => formatMessage(locale, 'shell.dashboard', {}),
     path: '/dashboard',
     icon: Gauge,
+  },
+  {
+    label: (locale: Locale) => formatMessage(locale, 'shell.attention', {}),
+    path: '/attention',
+    icon: Bell,
   },
   {
     label: (locale: Locale) => formatMessage(locale, 'shell.codex', {}),

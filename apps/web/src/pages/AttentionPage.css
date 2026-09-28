@@ -1,0 +1,26 @@
+.attention-observed {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.attention-list {
+  display: grid;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attention-item {
+  min-width: 0;
+}
+
+.attention-item h2,
+.attention-item dd,
+.attention-item a {
+  overflow-wrap: anywhere;
+}
+
+.attention-item h2 {
+  margin-top: 0;
+}

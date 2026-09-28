@@ -3,6 +3,7 @@ import type { NoMessageParameters } from './types'
 
 export interface ShellMessageParameters {
   readonly 'shell.dashboard': NoMessageParameters
+  readonly 'shell.attention': NoMessageParameters
   readonly 'shell.codex': NoMessageParameters
   readonly 'shell.claude': NoMessageParameters
   readonly 'shell.workspace': NoMessageParameters
@@ -30,6 +31,7 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
   {
     en: {
       'shell.dashboard': () => 'Dashboard',
+      'shell.attention': () => 'Needs attention',
       'shell.codex': () => 'Codex',
       'shell.claude': () => 'Claude',
       'shell.workspace': () => 'Workspace',
@@ -53,6 +55,7 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
     },
     'zh-CN': {
       'shell.dashboard': () => '概览',
+      'shell.attention': () => '待处理',
       'shell.codex': () => 'Codex',
       'shell.claude': () => 'Claude',
       'shell.workspace': () => '工作区',

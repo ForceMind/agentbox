@@ -25,6 +25,46 @@ async function navigate(page: Page, label: string, expectedPath: string) {
   await expect(page).toHaveURL(new RegExp(`${expectedPath}$`))
 }
 
+test('renders recent Attention from authenticated Jobs without leaking summaries', async ({
+  page,
+}) => {
+  await login(page)
+  const projectId = 'prj_' + 'a'.repeat(32)
+  await page.route('**/api/v1/jobs', async (route) => {
+    const attentionJob = {
+      ...jobData(
+        'job_review',
+        'needs_attention',
+        'PROJECT_RECOVERY_REQUIRED',
+        'private Job summary',
+      ),
+      project_id: projectId,
+      target_id: projectId,
+    }
+    await route.fulfill({
+      json: envelope({
+        jobs: [jobData('job_done', 'succeeded'), attentionJob],
+      }),
+    })
+  })
+
+  await navigate(page, 'Needs attention', '/attention')
+  await expect(
+    page.getByRole('heading', { name: 'Needs attention' }),
+  ).toBeVisible()
+  await expect(page.getByText('job_review')).toBeVisible()
+  await expect(page.getByText('job_done')).toHaveCount(0)
+  await expect(page.getByText('private Job summary')).toHaveCount(0)
+  await expect(
+    page.getByRole('link', { name: /Open project/ }),
+  ).toHaveAttribute('href', `/projects/${projectId}`)
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false)
+})
+
 async function formalClaudeProjectId(page: Page, displayName: string) {
   const projectId = await page.evaluate(async (name) => {
     const response = await fetch('/api/v1/claude/sessions', {
@@ -485,7 +525,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc13', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc14', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

@@ -6,7 +6,7 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is the **pre-release `0.3.0rc13` development candidate** for
+AgentBox source is the **pre-release `0.3.0rc14` development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 WEV-1/rc10 is merged through [PR #87](https://github.com/ForceMind/agentbox/pull/87):
@@ -24,6 +24,10 @@ Runtime-only static-key custody and same-manifest binding through
 the closed native auth-probe substrate and Linux host-gated test setup; its
 [validation record](docs/releases/0.3.0rc13.md) remains separate from Python
 lease/cache/executor wiring, client installation and real-host qualification.
+The rc14 source adds an authenticated read-only view of Jobs in
+`needs_attention` among the 100 most recent operations. Its
+[validation record](docs/releases/0.3.0rc14.md) does not change R12 terminal
+admission or claim a full historical Attention inbox.
 The [workstation research and execution record](docs/WORKSTATION_EVOLUTION.md)
 and [capability matrix](docs/CAPABILITY_MATRIX.md) distinguish existing software,
 proposed product changes and the remaining real-host qualification.
