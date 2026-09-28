@@ -1,6 +1,18 @@
 # Current Authorized Action
 
-## 2026-09-29 S02/WS14 Project search
+## 2026-09-29 WS14 Project favorites
+
+PR #112 merged as `01a0ecd5eb21f74fe8605913bffd0c98bf322165`
+with exact parent read-back and six successful post-main workflows. On
+`codex/workbench-project-favorites`, finish the rc21 additive per-admin
+preference schema, transactional revision/CAS service and typed authenticated
+GET/PUT API under the [favorites contract](../WORKBENCH_PROJECT_FAVORITES.md).
+The API must never call Runtime. Verify migration, concurrent writes, stale
+conflicts, auth/CSRF/Origin and restart before exact-head CI and normal merge.
+The Web toggle/pending/conflict flow, labels, ordering and command center
+remain separate WS14 slices.
+
+## Historical 2026-09-29 S02/WS14 Project search
 
 PR #111 merged as `2d64ccde14877118f13f9c843d0c0aae0808dce0` with
 exact parent read-back and six successful post-main workflows. Continue on

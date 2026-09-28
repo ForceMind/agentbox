@@ -42,6 +42,7 @@ from agentbox_api.auth import router as auth_router
 from agentbox_api.claude import router as claude_router
 from agentbox_api.codex import router as codex_router
 from agentbox_api.doctor import router as doctor_router
+from agentbox_api.favorites import router as favorites_router
 from agentbox_api.jobs import router as jobs_router
 from agentbox_api.middleware import ControlPlaneHttpMiddleware
 from agentbox_api.projects import github_router
@@ -375,6 +376,7 @@ def create_app(
         application.include_router(codex_router)
         application.include_router(claude_router)
         application.include_router(projects_router)
+        application.include_router(favorites_router)
         application.include_router(workspaces_router)
         application.include_router(project_workspaces_router)
         application.include_router(github_router)

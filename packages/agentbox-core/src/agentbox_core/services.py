@@ -42,6 +42,7 @@ from agentbox_core.errors import (
     ReauthenticationRateLimited,
     ReauthenticationUnavailable,
 )
+from agentbox_core.favorites import ProjectFavoriteService
 from agentbox_core.jobs import JobService
 from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession, Job
 from agentbox_core.projects import ProjectService
@@ -1393,6 +1394,7 @@ class ControlPlaneServices:
     reauth_rate_limits: LoginRateLimiter
     audit: AuditService
     projects: ProjectService
+    favorites: ProjectFavoriteService
     providers: ProviderRepository
     approvals: ApprovalService
     jobs: JobService
@@ -1443,6 +1445,7 @@ def build_services(
     )
     admin = AdminService(database, actual_password_manager, audit, actual_clock)
     projects = ProjectService(database, actual_clock)
+    favorites = ProjectFavoriteService(database, actual_clock, audit)
     providers = ProviderRepository(database, actual_clock, audit)
     approvals = ApprovalService(
         database,
@@ -1464,6 +1467,7 @@ def build_services(
         reauth_rate_limits=reauth_rate_limiter,
         audit=audit,
         projects=projects,
+        favorites=favorites,
         providers=providers,
         approvals=approvals,
         jobs=jobs,

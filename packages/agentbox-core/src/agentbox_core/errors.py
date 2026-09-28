@@ -175,6 +175,27 @@ class ProjectValidationError(AgentBoxError):
     status_code = 422
 
 
+class ProjectFavoriteConflict(AgentBoxError):
+    code = "PROJECT_FAVORITE_CONFLICT"
+    category = "conflict"
+    message = "Project favorite revision changed"
+    status_code = 409
+
+
+class ProjectFavoriteValidationError(AgentBoxError):
+    code = "PROJECT_FAVORITE_INVALID"
+    category = "validation"
+    message = "Project favorite input is invalid"
+    status_code = 422
+
+
+class ProjectFavoriteLimitExceeded(AgentBoxError):
+    code = "PROJECT_FAVORITE_LIMIT_EXCEEDED"
+    category = "unavailable"
+    message = "Project favorite list exceeds its supported bound"
+    status_code = 503
+
+
 class JobNotFound(AgentBoxError):
     code = "JOB_NOT_FOUND"
     category = "unavailable"

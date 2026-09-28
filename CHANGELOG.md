@@ -3,6 +3,13 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc21] - Unreleased
+
+- Add per-admin Project favorite metadata with additive migration, revision
+  CAS, atomic Audit and authenticated no-store GET/PUT routes.
+- Keep the Web favorite control and later WS14 labels/command center separate.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc21.md`.
+
 ## [0.3.0rc20] - Unreleased
 
 - Add bounded, local Project search by visible name, slug and printable Git
