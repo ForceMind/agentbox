@@ -1,13 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T15:58:42Z"
-verified_by: "codex-workbench-git-changes"
+verified_at_utc: "2026-09-28T16:58:00Z"
+verified_by: "codex-workbench-changes-tree"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-28 S02 A3 Git Changes metadata candidate
+## 2026-09-29 S02 Changed Paths page candidate
+
+PR #106 final head `e37383168883990a4fb031ecdd762267757ecb74`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `c285872546f81c173c3e40e1711e8506c164cebc` has parents
+`7ffc1734b0ce5a4f6fdc5575eaeac6804f2aca5c` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully. This delivered the rc15 authenticated Git path
+metadata API, not patch content or a page.
+
+Current `codex/workbench-changes-tree` starts at that exact merge. It adds
+a Project-linked read-only Changed Paths page that consumes the rc15 API,
+uses the migrated directory order without fabricated line totals, escapes
+control/invisible path characters, and separates loading, empty, non-Git,
+stale, failed, pagination and refresh states. Source versions align at rc16.
+Local evidence: full Web suite 1149 pass with file parallelism disabled on
+supported Node 22.23.2; six MV3 tests passed; Python release/Project/Git
+matrix 97 passed. Isolated desktop/mobile browser E2E completed 100 pass,
+28 prescribed skips, including this page and no horizontal overflow.
+Desktop and mobile screenshot inspection found the page readable with no
+clipping after correcting banner spacing and sidebar footer separation.
+The rc16 Web main JS bundle is 598.88 kB/171.22 kB gzip versus rc15
+587.01/167.85 kB; the >500 kB warning predates rc16. Linux exact-head CI,
+PR and merge are pending. Patch bodies, file preview, real host and R12
+production evidence remain `NOT RUN` or unfinished as separately recorded.
+
+The original checkout WIP remains untouched. The Owner's full 70-ID parity
+goal and unresolved shell/file/plugin/Hub permission choice remain. Sections
+below are historical point-in-time snapshots superseded by this live state.
+
+## Historical 2026-09-28 S02 A3 Git Changes metadata candidate
 
 PR #105 final head `d33dcf1548b39006d64d292277929d4d63672f33`
 completed 26 terminal checks (24 success, two prescribed historical skips).

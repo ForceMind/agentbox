@@ -21,6 +21,7 @@ import { LogsPage } from './pages/LogsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
+import { ProjectChangesPage } from './pages/ProjectChangesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { useWorkspaceController } from './features/workspace/useWorkspaceController'
@@ -93,6 +94,10 @@ export function App() {
               <Route
                 element={<ProjectDetailPage />}
                 path="/projects/:projectId"
+              />
+              <Route
+                element={<ProjectChangesPage />}
+                path="/projects/:projectId/changes"
               />
               <Route element={<DoctorPage />} path="/doctor" />
               <Route element={<LogsPage />} path="/logs" />

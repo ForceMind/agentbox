@@ -22,6 +22,7 @@ export interface ProjectMessageParameters {
   readonly 'project.git': NoMessageParameters
   readonly 'project.gitClean': NoMessageParameters
   readonly 'project.gitChanges': Readonly<{ count: string }>
+  readonly 'project.openChanges': NoMessageParameters
   readonly 'project.notInitialized': NoMessageParameters
   readonly 'project.branch': NoMessageParameters
   readonly 'project.detachedHead': NoMessageParameters
@@ -140,6 +141,7 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.git': () => 'Git',
       'project.gitClean': () => 'Clean',
       'project.gitChanges': ({ count }) => `${count} changes`,
+      'project.openChanges': () => 'View changed paths',
       'project.notInitialized': () => 'Not initialized',
       'project.branch': () => 'Branch',
       'project.detachedHead': () => 'Detached HEAD',
@@ -259,6 +261,7 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.git': () => 'Git',
       'project.gitClean': () => '干净',
       'project.gitChanges': ({ count }) => `${count} 项变更`,
+      'project.openChanges': () => '查看变更路径',
       'project.notInitialized': () => '未初始化',
       'project.branch': () => '分支',
       'project.detachedHead': () => 'Detached HEAD',

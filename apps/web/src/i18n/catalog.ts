@@ -6,6 +6,8 @@ import { attentionCatalog } from './catalogs/attention'
 import type { AttentionMessageParameters } from './catalogs/attention'
 import { claudeCatalog } from './catalogs/claude'
 import type { ClaudeMessageParameters } from './catalogs/claude'
+import { changesCatalog } from './catalogs/changes'
+import type { ChangesMessageParameters } from './catalogs/changes'
 import { codexCatalog } from './catalogs/codex'
 import type { CodexMessageParameters } from './catalogs/codex'
 import { commonCatalog } from './catalogs/common'
@@ -56,6 +58,7 @@ export interface MessageParameters
     WorkspaceMessageParameters,
     ProjectsMessageParameters,
     ProjectMessageParameters,
+    ChangesMessageParameters,
     DoctorMessageParameters,
     LogsMessageParameters,
     SettingsMessageParameters,
@@ -89,6 +92,7 @@ const catalogShards = Object.freeze([
   workspaceCatalog,
   projectsCatalog,
   projectCatalog,
+  changesCatalog,
   doctorCatalog,
   logsCatalog,
   settingsCatalog,

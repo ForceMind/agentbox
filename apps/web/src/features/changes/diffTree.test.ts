@@ -7,6 +7,7 @@ import {
   collectDirPaths,
   compressSingleChildChains,
   flattenDiffTree,
+  flattenPathTree,
   type DiffTreeRow,
 } from './diffTree'
 import type { DiffFileSummary } from './diffTree'
@@ -184,6 +185,19 @@ describe('flattenDiffTree', () => {
       ['src/nested/b.ts', 1],
       ['src/a.ts', 0],
     ])
+  })
+})
+
+describe('metadata-only path tree', () => {
+  it('keeps the shared directory order without inventing line totals', () => {
+    const root = compressSingleChildChains(
+      buildDiffTree([{ path: 'z.ts' }, { path: 'src/a.ts' }]),
+    )
+    const rows = flattenPathTree(root, new Set())
+    expect(
+      rows.map((row) => (row.kind === 'folder' ? row.dirPath : row.file.path)),
+    ).toEqual(['src', 'src/a.ts', 'z.ts'])
+    expect(rows[0]).not.toHaveProperty('additions')
   })
 })
 

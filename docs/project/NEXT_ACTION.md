@@ -1,6 +1,20 @@
 # Current Authorized Action
 
-## 2026-09-28 S02 A3 bounded Git Changes metadata
+## 2026-09-29 S02 Changed Paths page
+
+PR #106 merged as `c285872546f81c173c3e40e1711e8506c164cebc` with
+exact parent read-back and six successful post-main workflows. Continue on
+`codex/workbench-changes-tree`: connect its authenticated rc15 Project API
+to a read-only AgentBox Changed Paths page. The candidate uses the migrated
+folder ordering without fabricated line stats, presents staged/unstaged
+metadata, and clears stale observations on Project/session change or browser
+hide. Local Node 22 Web 1149/1149, MV3 6/6 and desktop/mobile browser E2E
+100 pass/28 prescribed skips. Run exact-head Linux CI, normally merge and
+read back. Then scope the next A3 sensitivity-aware patch/content contract;
+ordinary shell, arbitrary file browsing and plugin authority still depend
+on the pending Owner choice. See [A3 Git Changes](../WORKBENCH_A3_GIT_CHANGES.md).
+
+## Historical 2026-09-28 S02 A3 bounded Git Changes metadata
 
 PR #105 merged as `7ffc1734b0ce5a4f6fdc5575eaeac6804f2aca5c`
 with exact parent read-back and six successful post-main workflows. R12's

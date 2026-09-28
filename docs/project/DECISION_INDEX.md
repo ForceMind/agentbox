@@ -1,5 +1,15 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-S02-CHANGED-PATHS-V1`: the rc16 AgentBox Project page links to a
+  separate authenticated Changed Paths view backed only by the rc15 metadata
+  API. It reuses the upstream-derived directory order but flattens a
+  path-only tree, so absent line stats are not represented as zero. Browser
+  observations are invalidated on Project/session change and hidden-document
+  return; pagination never merges changed snapshots. Path rendering escapes
+  control/format characters and grants no path-based Runtime action. Patch,
+  preview and editing remain separate A3/S04 contracts. See
+  [A3 Git Changes](../WORKBENCH_A3_GIT_CHANGES.md).
+
 - `WORKBENCH-A3-GIT-CHANGES-METADATA-V1`: a READY formal Project can request
   bounded Git path/status metadata through one fixed Runtime action. No
   request-supplied path, argv, cwd or environment reaches Git. The API keeps

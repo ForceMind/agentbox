@@ -21,6 +21,7 @@ from agentbox_runtime import (
     CodexStatus,
     GitActionResult,
     GitBranch,
+    GitChangeEntry,
     GitChangePage,
     GitHubProjectStatus,
     GitHubPullRequestResult,
@@ -32,6 +33,7 @@ from agentbox_runtime import (
     ProjectWorkspace,
     RemoteActionResult,
     RemoteState,
+    RuntimeOperationError,
     WorkspaceState,
 )
 
@@ -195,7 +197,28 @@ class E2EProjectRuntime:
     async def git_changes(
         self, request_id: str, project_key: str, cursor: str | None
     ) -> GitChangePage:
-        return GitChangePage(True, (), 0, None)
+        if project_key != "project-a":
+            return GitChangePage(True, (), 0, None)
+        if cursor is None:
+            return GitChangePage(
+                True,
+                (
+                    GitChangeEntry("src/b.ts", "src/old-b.ts", "renamed", True, False),
+                    GitChangeEntry("zeta.ts", None, "modified", False, True),
+                ),
+                3,
+                "a" * 64 + ":2",
+            )
+        if cursor == "a" * 64 + ":2":
+            return GitChangePage(
+                True,
+                (GitChangeEntry("src/a.ts", None, "untracked", False, True),),
+                3,
+                None,
+            )
+        raise RuntimeOperationError(
+            "GIT_CHANGES_STALE", "Git changes changed between pages", category="conflict"
+        )
 
     async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
         return (GitBranch("main", True),)

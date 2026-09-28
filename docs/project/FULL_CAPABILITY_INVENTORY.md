@@ -47,7 +47,7 @@
 | WS05 | Git 状态、分支、Pull/Push、commit/PR 关联 | 主仓 `workspace-git-service.ts`、`git/` | 部分 | 固定 Git 动作、冲突与审计 |
 | WS06 | Files 树、搜索/浏览、受限读取和预览 | 主仓 `file-explorer/`、`file-pane/` | 未有 | Project 范围、敏感文件、binary/size/取消 |
 | WS07 | 文件编辑、上传/下载与保存冲突 | 主仓 `session/files/`、`file-upload/` | 未有 | version/CAS、路径/内容/配额与恢复 |
-| WS08 | Changes、diff、双栏/统一、审查与分享 | 主仓 `git/diff-document/`、`review/` | 纯树算法已合并；Project 范围只读 Git 路径元数据候选，页面与 patch 未有 | patch 权威、截断、大文件、评论范围 |
+| WS08 | Changes、diff、双栏/统一、审查与分享 | 主仓 `git/diff-document/`、`review/` | 纯树算法及 Project 范围只读 Git 路径元数据已合并；Changed Paths 页面候选，patch/审查未有 | patch 权威、截断、大文件、评论范围 |
 | WS09 | 独立终端、输入/输出/resize、恢复和多终端 | 主仓 `terminal/`、`public-docs/cli.md` | WAW 终端部分 | 与 Agent 会话分域；权限模型待确认 |
 | WS10 | 终端命令感知、shell integration、活动 hooks | 主仓 `terminal/activity/`、`terminal/agent-hooks/` | 未有 | 明确命令来源、后台状态与权限 |
 | WS11 | Workspace setup/teardown、命名脚本/服务 | 主仓 `public-docs/worktrees.md`、`session/workspace-scripts/` | 未有 | 执行权限与仓库配置来源待决策 |
