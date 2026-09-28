@@ -234,6 +234,43 @@ async def test_runtime_main_rejects_unknown_environment(monkeypatch: pytest.Monk
         await _main()
 
 
+@pytest.mark.anyio
+async def test_project_git_changes_client_rejects_untrusted_response_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = UnixProjectRuntimeClient(Path("/private/tmp/unused-runtime.sock"))
+    response: dict[str, object] = {
+        "is_repository": True,
+        "files": [
+            {
+                "path": "src/file.py",
+                "previous_path": None,
+                "kind": "modified",
+                "staged": True,
+                "unstaged": False,
+            }
+        ],
+        "total_count": 1,
+        "next_cursor": None,
+    }
+
+    async def fake_request(action: str, request_id: str, **parameters: object) -> dict[str, object]:
+        assert (action, request_id, parameters) == (
+            "git.changes.list",
+            "req_changes",
+            {"project_key": "project-a", "cursor": None},
+        )
+        return response
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    page = await client.git_changes("req_changes", "project-a", None)
+    assert page.files[0].path == "src/file.py" and page.files[0].staged
+
+    response["files"] = [{**response["files"][0], "path": "../escape"}]  # type: ignore[index]
+    with pytest.raises(RuntimeOperationError):
+        await client.git_changes("req_changes", "project-a", None)
+
+
 def _production_runtime_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENTBOX_ENV", "production")
     monkeypatch.setenv("AGENTBOX_RUNTIME_SOCKET", "/run/agentbox/runtime.sock")

@@ -25,6 +25,7 @@ from agentbox_runtime import (
     CodexStatus,
     GitActionResult,
     GitBranch,
+    GitChangePage,
     GitHubProjectStatus,
     GitHubPullRequestResult,
     GitHubStatus,
@@ -192,6 +193,7 @@ class FakeProjectRuntime:
     def __init__(self) -> None:
         self.workspaces = (ProjectWorkspace("project-a", "project-a"),)
         self.calls: list[str] = []
+        self.changes = GitChangePage(True, (), 0, None)
 
     async def list_workspaces(self, request_id: str) -> tuple[ProjectWorkspace, ...]:
         return self.workspaces
@@ -220,6 +222,12 @@ class FakeProjectRuntime:
 
     async def git_status(self, request_id: str, project_key: str) -> GitStatus:
         return GitStatus(is_repository=True, branch="main", clean=True)
+
+    async def git_changes(
+        self, request_id: str, project_key: str, cursor: str | None
+    ) -> GitChangePage:
+        self.calls.append(f"changes:{project_key}:{cursor}")
+        return self.changes
 
     async def git_global_status(self, request_id: str) -> GitInstallationStatus:
         return GitInstallationStatus(True, "2.fixture")

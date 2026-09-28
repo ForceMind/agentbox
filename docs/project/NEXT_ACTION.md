@@ -1,6 +1,25 @@
 # Current Authorized Action
 
-## 2026-09-28 R12 Runtime fixed deployment profile
+## 2026-09-28 S02 A3 bounded Git Changes metadata
+
+PR #105 merged as `7ffc1734b0ce5a4f6fdc5575eaeac6804f2aca5c`
+with exact parent read-back and six successful post-main workflows. R12's
+Runtime profile gate is now software-delivered but enabled-mode composition,
+positive legacy conflict observation, fixed manifest/native inputs and real
+host/client/CLI evidence remain separate unfinished work.
+
+Continue on `codex/workbench-git-changes` under
+[A3 Git Changes metadata](../WORKBENCH_A3_GIT_CHANGES.md): complete fixed
+Runtime `git.changes.list`, strict RPC, READY Project API, pagination and
+negative tests. Local Git/Project API/release matrix (164 pass), Web/MV3
+version/build checks and browser E2E (98 pass, 28 prescribed skips) now
+pass. Run exact-head Linux CI, normally merge and read back. Then
+connect the authenticated page to this real list and the migrated tree/order
+logic; patch bodies and Files access need their own bounded sensitivity
+contract. The pending broad-permission decision does not block this read-only
+Project metadata slice.
+
+## Historical 2026-09-28 R12 Runtime fixed deployment profile
 
 PR #104 merged as `e6a5bf36636c5baf1225368c0acea1d89a73762e`
 with exact parent read-back and six successful post-main workflows. Continue

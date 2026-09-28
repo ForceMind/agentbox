@@ -3,6 +3,14 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc15] - Unreleased
+
+- Add an authenticated, READY Project-scoped read-only Git Changes metadata
+  API with bounded porcelain-v2 parsing and snapshot-consistent pagination.
+- Keep file contents, patch extraction, Changes UI, Runtime terminal and
+  real-host qualification outside this candidate.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc15.md`.
+
 ## [0.3.0rc14] - Unreleased
 
 - Add an authenticated read-only Attention page for `needs_attention` Jobs in

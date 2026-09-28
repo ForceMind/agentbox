@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 
 class CapabilityState(StrEnum):
@@ -203,6 +203,39 @@ class GitStatus:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+GitChangeKind = Literal[
+    "added", "modified", "deleted", "renamed", "copied", "untracked", "conflicted", "typechanged"
+]
+
+
+@dataclass(frozen=True)
+class GitChangeEntry:
+    path: str
+    previous_path: str | None
+    kind: GitChangeKind
+    staged: bool
+    unstaged: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class GitChangePage:
+    is_repository: bool
+    files: tuple[GitChangeEntry, ...]
+    total_count: int
+    next_cursor: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "is_repository": self.is_repository,
+            "files": [item.to_dict() for item in self.files],
+            "total_count": self.total_count,
+            "next_cursor": self.next_cursor,
+        }
 
 
 @dataclass(frozen=True)

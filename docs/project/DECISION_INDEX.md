@@ -1,5 +1,15 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-GIT-CHANGES-METADATA-V1`: a READY formal Project can request
+  bounded Git path/status metadata through one fixed Runtime action. No
+  request-supplied path, argv, cwd or environment reaches Git. The API keeps
+  session authentication and no-store; the Runtime owns repository checks,
+  porcelain-v2 parsing, limits and snapshot-digest pagination. Path metadata
+  is display data, not a content/read/edit grant. Patch bodies, file preview
+  and user-visible Changes rendering remain distinct A3 work. See
+  [A3 Git Changes metadata](../WORKBENCH_A3_GIT_CHANGES.md) and
+  [ADR 0009](../adr/0009-workbench-identity-and-content-boundary.md).
+
 - `R12-RUNTIME-FIXED-PROFILE-V1`: Runtime's expected WAW mode comes only from
   fixed `/var/lib/agentbox-waw/runtime-profile.v1.json`, separate from API
   mode and inaccessible to API/Worker. The installer creates exact disabled

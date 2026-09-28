@@ -21,6 +21,7 @@ from agentbox_runtime import (
     CodexStatus,
     GitActionResult,
     GitBranch,
+    GitChangePage,
     GitHubProjectStatus,
     GitHubPullRequestResult,
     GitHubStatus,
@@ -190,6 +191,11 @@ class E2EProjectRuntime:
             clean=True,
             remote_url="https://github.com/ForceMind/agentbox.git",
         )
+
+    async def git_changes(
+        self, request_id: str, project_key: str, cursor: str | None
+    ) -> GitChangePage:
+        return GitChangePage(True, (), 0, None)
 
     async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]:
         return (GitBranch("main", True),)

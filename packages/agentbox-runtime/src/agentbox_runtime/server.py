@@ -91,6 +91,7 @@ _PROJECT_ACTION_KEYS: dict[str, frozenset[str]] = {
     "project.finalize": frozenset({"project_key", "operation_id"}),
     "project.rollback": frozenset({"project_key", "operation_id"}),
     "git.status": frozenset({"project_key"}),
+    "git.changes.list": frozenset({"project_key", "cursor"}),
     "git.global.status": frozenset(),
     "git.branches.list": frozenset({"project_key"}),
     "git.branch.create": frozenset({"project_key", "branch"}),
@@ -1010,6 +1011,15 @@ class RuntimeExecutorServer:
                 return self._project_manager.rollback(project_key, operation_id).to_dict()
             if action == "git.status":
                 return (await self._project_manager.git_status(project_key)).to_dict()
+            if action == "git.changes.list":
+                cursor = request["cursor"]
+                if cursor is not None and type(cursor) is not str:
+                    raise RuntimeOperationError(
+                        "GIT_CHANGES_CURSOR_INVALID",
+                        "Git changes cursor is invalid",
+                        category="validation",
+                    )
+                return (await self._project_manager.git_changes(project_key, cursor)).to_dict()
             if action == "git.global.status":
                 return (await self._project_manager.git_global_status()).to_dict()
             if action == "git.branches.list":

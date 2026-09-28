@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from agentbox_protocol.metadata import GitChangePageData
 from agentbox_protocol.runtime_capabilities import (
     RUNTIME_CAPABILITY_CONTRACT_VERSION,
     RuntimeCapabilityQuery,
@@ -33,6 +34,8 @@ from agentbox_runtime.models import (
     DiagnosticFinding,
     GitActionResult,
     GitBranch,
+    GitChangeEntry,
+    GitChangePage,
     GitHubProjectStatus,
     GitHubPullRequestResult,
     GitHubStatus,
@@ -149,6 +152,9 @@ class ProjectRuntimeClient(Protocol):
         self, request_id: str, project_key: str, operation_id: str
     ) -> GitActionResult: ...
     async def git_status(self, request_id: str, project_key: str) -> GitStatus: ...
+    async def git_changes(
+        self, request_id: str, project_key: str, cursor: str | None
+    ) -> GitChangePage: ...
     async def git_global_status(self, request_id: str) -> GitInstallationStatus: ...
     async def branches(self, request_id: str, project_key: str) -> tuple[GitBranch, ...]: ...
     async def create_branch(
@@ -727,6 +733,41 @@ class UnixProjectRuntimeClient:
                 submodules_detected=bool(data.get("submodules_detected", False)),
             )
         except (KeyError, TypeError, ValueError) as exc:
+            raise _protocol_error() from exc
+
+    async def git_changes(
+        self, request_id: str, project_key: str, cursor: str | None
+    ) -> GitChangePage:
+        data = await self._request(
+            "git.changes.list", request_id, project_key=project_key, cursor=cursor
+        )
+        try:
+            page = GitChangePageData.model_validate(data)
+            paths = [item.path for item in page.files]
+            if (
+                len(paths) != len(set(paths))
+                or page.total_count < len(paths)
+                or (not page.is_repository and (paths or page.total_count or page.next_cursor))
+                or (page.is_repository and page.total_count > 0 and not paths)
+                or (page.next_cursor is not None and not paths)
+                or any(
+                    (item.kind in {"renamed", "copied"}) != (item.previous_path is not None)
+                    for item in page.files
+                )
+            ):
+                raise ValueError("Git changes response is inconsistent")
+            return GitChangePage(
+                page.is_repository,
+                tuple(
+                    GitChangeEntry(
+                        item.path, item.previous_path, item.kind, item.staged, item.unstaged
+                    )
+                    for item in page.files
+                ),
+                page.total_count,
+                page.next_cursor,
+            )
+        except (TypeError, ValueError) as exc:
             raise _protocol_error() from exc
 
     async def git_global_status(self, request_id: str) -> GitInstallationStatus:
