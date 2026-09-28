@@ -72,7 +72,7 @@ def load_waw_activated_sockets(
     control_path: str = _CONTROL_PATH,
     stream_path: str = _STREAM_PATH,
 ) -> WAWActivatedSockets:
-    """Adopt exactly two validated systemd descriptors (FD 3 and FD 4)."""
+    """Adopt exact named FD 3/4 roles without trusting cross-unit FD order."""
 
     if type(expected_uid) is not int or expected_uid < 0:
         raise ValueError("expected_uid must be a non-negative integer")
@@ -87,27 +87,31 @@ def load_waw_activated_sockets(
     if os.environ.get("LISTEN_FDS") != "2":
         raise WAWActivationError("WAW socket descriptor count is incomplete")
     names = os.environ.get("LISTEN_FDNAMES", "").split(":")
-    if names != [_CONTROL_NAME, _STREAM_NAME]:
-        raise WAWActivationError("WAW socket descriptor names are incomplete or reordered")
+    expected_names = {_CONTROL_NAME, _STREAM_NAME}
+    if len(names) != 2 or set(names) != expected_names:
+        raise WAWActivationError("WAW socket descriptor names are incomplete or duplicated")
 
     sockets: list[socket.socket] = []
+    by_name: dict[str, socket.socket] = {}
+    expected_paths = {_CONTROL_NAME: control_path, _STREAM_NAME: stream_path}
     try:
-        for fd, expected_path in ((3, control_path), (4, stream_path)):
+        for fd, name in zip((3, 4), names, strict=True):
             sock: socket.socket | None = None
             try:
                 sock = socket.socket(fileno=fd)
                 sock.set_inheritable(False)
-                _validate_socket(sock, expected_path, expected_uid, expected_gid)
+                _validate_socket(sock, expected_paths[name], expected_uid, expected_gid)
             except (OSError, ValueError, WAWActivationError) as exc:
                 if sock is not None:
                     sock.close()
                 raise WAWActivationError("WAW socket descriptor provenance is invalid") from exc
             sockets.append(sock)
+            by_name[name] = sock
         first = os.stat(control_path, follow_symlinks=False)
         second = os.stat(stream_path, follow_symlinks=False)
         if (first.st_dev, first.st_ino) == (second.st_dev, second.st_ino):
             raise WAWActivationError("WAW control and stream descriptors are duplicated")
-        return WAWActivatedSockets(control=sockets[0], stream=sockets[1])
+        return WAWActivatedSockets(control=by_name[_CONTROL_NAME], stream=by_name[_STREAM_NAME])
     except Exception:
         for sock in sockets:
             sock.close()

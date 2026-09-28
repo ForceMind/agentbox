@@ -1,11 +1,33 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T12:57:17Z"
-verified_by: "codex-r12-c3b-resource-foundation"
+verified_at_utc: "2026-09-28T13:17:18Z"
+verified_by: "codex-r12-named-socket-admission"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-28 R12 named socket admission candidate
+
+PR #100 final head `ad9f31c9dc967c727b8708d9a4d261ffc77e6ca1` completed
+26 terminal checks (24 success, two prescribed historical skips). Normal
+merge `e3eb23930f6a34720ccf3ef604619acbc2d6cf4c` was read back with
+parents `986e8fa87c6d14030677c026342813c6921cc6f9` and that head.
+Backend, Frontend, E2E, Deployment, Security and Release Candidate workflows
+on the merge SHA all completed successfully. This is an authority-deferred
+resource/owner software foundation; `_main` is still not production-wired.
+
+The official systemd socket contract permits multiple socket units to
+activate one service but does not guarantee their relative FD order. The
+`codex/r12-waw-socket-names` branch is based on the PR #100 merge and changes
+only the WAW activation loader, unit tests and associated R12 contracts:
+FD3/4 must be the exact two unique fixed names; each name must match its
+fixed AF_UNIX path and provenance; the result is normalized into control and
+stream. Duplicate/unknown names and name/path drift fail closed. Local macOS
+tests currently report seven pass and seven correctly marked Linux-only
+skips because Darwin rejects AF_UNIX `SO_ACCEPTCONN`; Linux CI is required.
+No systemd unit was installed or started, no real host socket qualified, and
+the branch has not yet run exact-head CI. G3/HG-04 remain `NOT RUN`.
 
 ## 2026-09-28 R12-C3-b authority-deferred resource candidate
 

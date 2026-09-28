@@ -1,5 +1,14 @@
 # Decision and Architecture Index
 
+- `R12-SYSTEMD-NAMED-SOCKETS-V1`: systemd 可以把两个 socket unit 指向同一
+  Runtime 服务，但不保证跨 unit FD 的顺序。Runtime 只接受 FD3/4 恰好两个、
+  各有唯一固定 `LISTEN_FDNAMES`，分别验证名称到 control/stream 固定路径
+  及 owner/gid/mode/inode，再归一化返回。重复/未知名称、错配路径或多余 FD
+  fail closed；真实 PID1 与重启资格另验。来源为
+  [systemd.socket](https://github.com/systemd/systemd/blob/main/man/systemd.socket.xml)；
+  [R12-D](PRODUCTION_READINESS_PLAN.md#r12-dinstallersystemd-与制品)
+  与 [G3/HG-04](../WAW1_HOST_GATE_CHECKLIST.md#g1g5-证据矩阵) 采用同一合同。
+
 - `R12-C3B-AUTHORITY-DEFERRED-RESOURCES-V1`: the filesystem-v2 builder issues
   exactly one verified Runtime authority. A distinct provider owner opens the
   six executable handles, nine fixed installed roles and cgroup delegation

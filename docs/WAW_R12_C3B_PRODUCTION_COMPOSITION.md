@@ -77,7 +77,8 @@ its binding, and prove stale identities fail without a duplicate map.
 
 1. The installer supplies fixed root-owned v2 manifest/public resources,
    exact Runtime UID/GID and directory modes, two systemd WAW sockets in FD
-   3/4 order, Runtime-only static X25519 material, one epoch store, and
+   3/4 with unique fixed names mapped to control/stream paths (cross-unit
+   order is not authoritative), Runtime-only static X25519 material, one epoch store, and
    externally enrolled vendor version/digest inputs. Missing inputs stay
    `NOT RUN` for a target and fail closed in production code.
 2. `_main` chooses the installed production profile only through its fixed
