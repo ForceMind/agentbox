@@ -516,6 +516,7 @@ class AgentBoxInstaller:
                 application_version=target,
                 migration_revision=target_manifest.database_revision,
             )
+        restored_units = self._restored_unit_inventory(backup) if backup is not None else UNIT_NAMES
         transaction_id = secrets.token_hex(16)
         resources = self._snapshot_transaction_resources(target)
         self._write_journal(
@@ -560,11 +561,6 @@ class AgentBoxInstaller:
             if not verified:
                 raise RollbackVerificationError("rollback attempted but verification failed")
             identities = self.host.ensure_identities(self._receipt_identities(receipt))
-            restored_units = (
-                tuple(name for name in UNIT_NAMES if (backup.path / "units" / name).is_file())
-                if backup is not None
-                else UNIT_NAMES
-            )
             self._write_receipt(
                 target_manifest, current, None, identities, managed_units=restored_units
             )
@@ -1405,6 +1401,18 @@ class AgentBoxInstaller:
                 0o644,
             )
         self.host.daemon_reload()
+
+    @staticmethod
+    def _restored_unit_inventory(backup: BackupResult) -> tuple[str, ...]:
+        units_root = backup.path / "units"
+        if not units_root.is_dir() or units_root.is_symlink():
+            raise InstallError("rollback unit inventory is unavailable")
+        names = tuple(name for name in UNIT_NAMES if (units_root / name).is_file())
+        if any(name not in names for name in CORE_UNIT_NAMES):
+            raise InstallError("rollback core unit inventory is incomplete")
+        if any(path.name not in UNIT_NAMES for path in units_root.iterdir()):
+            raise InstallError("rollback unit inventory contains an unknown unit")
+        return names
 
     def _waw_units_to_remove_on_restore(self, backup: BackupResult) -> tuple[Path, ...]:
         """Preflight new unit removal before restoring any database or unit bytes."""

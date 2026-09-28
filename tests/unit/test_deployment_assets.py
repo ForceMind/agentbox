@@ -105,13 +105,13 @@ def test_installer_leaves_waw_sockets_dormant_but_stops_them_before_runtime(
 
     calls.clear()
     host.stop_agentbox()
-    assert calls[0] == ("/usr/bin/systemctl", "stop", *WAW_SOCKET_UNIT_NAMES)
+    assert list(calls[0]) == ["/usr/bin/systemctl", "stop", *WAW_SOCKET_UNIT_NAMES]
     assert calls[1][:2] == ("/usr/bin/systemctl", "stop")
     assert "agentbox-runtime.service" in calls[1]
 
     calls.clear()
     host.disable_and_stop()
-    assert calls[0] == ("/usr/bin/systemctl", "disable", "--now", *WAW_SOCKET_UNIT_NAMES)
+    assert list(calls[0]) == ["/usr/bin/systemctl", "disable", "--now", *WAW_SOCKET_UNIT_NAMES]
     assert calls[1][:3] == ("/usr/bin/systemctl", "disable", "--now")
 
 
