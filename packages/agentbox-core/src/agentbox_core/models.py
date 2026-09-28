@@ -184,6 +184,27 @@ class Project(Base):
     jobs: Mapped[list[Job]] = relationship(back_populates="project")
 
 
+class ProjectFavorite(Base):
+    """Per-admin, revisioned Project navigation metadata; no Runtime authority."""
+
+    __tablename__ = "project_favorites"
+    __table_args__ = (
+        CheckConstraint("favorite IN (0,1)", name="ck_project_favorites_boolean"),
+        CheckConstraint("revision >= 1", name="ck_project_favorites_revision"),
+        CheckConstraint(_utc6("updated_at"), name="ck_project_favorites_updated_at"),
+    )
+
+    admin_user_id: Mapped[str] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    favorite: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Job(Base):
     """Durable, typed single-host work item with sanitized summaries only."""
 

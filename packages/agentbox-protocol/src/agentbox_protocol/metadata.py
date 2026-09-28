@@ -2,9 +2,9 @@
 
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictMetadataModel(BaseModel):
@@ -434,6 +434,42 @@ class ProjectListResponse(StrictMetadataModel):
     api_version: Literal["v1"] = "v1"
     request_id: str
     data: ProjectListData
+
+
+class ProjectFavoriteData(StrictMetadataModel):
+    project_id: str = Field(pattern=r"^prj_[0-9a-f]{32}$")
+    favorite: bool
+    revision: int = Field(ge=0, le=2**63 - 1)
+    updated_at: AwareDatetime | None
+
+    @model_validator(mode="after")
+    def consistent_revision(self) -> Self:
+        if (self.revision == 0 and (self.favorite or self.updated_at is not None)) or (
+            self.revision > 0 and self.updated_at is None
+        ):
+            raise ValueError("Project favorite revision and timestamp are inconsistent")
+        return self
+
+
+class ProjectFavoriteListData(StrictMetadataModel):
+    favorites: list[ProjectFavoriteData] = Field(max_length=10_000)
+
+
+class ProjectFavoriteListResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: ProjectFavoriteListData
+
+
+class ProjectFavoriteSetRequest(StrictMetadataModel):
+    favorite: bool
+    expected_revision: int = Field(ge=0, le=2**63 - 1)
+
+
+class ProjectFavoriteResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: ProjectFavoriteData
 
 
 class ProjectJobData(StrictMetadataModel):

@@ -1,5 +1,11 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-FAVORITES-CANDIDATE`: a per-AdminUser/formal-Project
+  favorite is Control Plane metadata with a revision/CAS contract, not a
+  Runtime or file capability. rc21 implements the backend/API candidate;
+  Web UI and multi-browser acceptance are unfinished. See
+  [Project favorites](../WORKBENCH_PROJECT_FAVORITES.md).
+
 - `WORKBENCH-WS14-PROJECT-SEARCH-CANDIDATE`: rc20 ranks only visible fields
   from the authenticated Project list in volatile page state. No query is
   persisted or sent to an action endpoint; no-match is distinct from no

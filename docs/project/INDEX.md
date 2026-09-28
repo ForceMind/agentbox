@@ -18,6 +18,8 @@
   固定上游来源、AgentBox 路由身份和纯导航生命周期；多会话仍待后续阶段。
 - [Project search](../WORKBENCH_PROJECT_SEARCH.md)：
   固定上游匹配算法来源、只读 Project 列表搜索和未完成的 WS14 同步能力。
+- [Project favorites](../WORKBENCH_PROJECT_FAVORITES.md)：
+  WS14 每位管理员的收藏状态、CAS 并发与 Control Plane 元数据候选合同。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；
   R12 软件接线、客户端、真实主机/CLI、恢复与有限生产的依赖、验收和授权范围。
   R12-A已开始；软件执行、host资格化与生产准入分开记录。

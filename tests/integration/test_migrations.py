@@ -11,7 +11,7 @@ import pytest
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.database import Database
 from agentbox_core.errors import ProviderMetadataNotFound
-from agentbox_core.models import Base
+from agentbox_core.models import AdminUser, Base
 from agentbox_core.provider_models import RuntimeBindingState, RuntimeType
 from agentbox_core.services import ControlPlaneServices, build_services
 from conftest import downgrade_database, migrate_database
@@ -23,6 +23,7 @@ from sqlalchemy import (
     create_engine,
     event,
     inspect,
+    select,
     text,
 )
 from sqlalchemy.engine import Engine
@@ -502,7 +503,7 @@ def test_0005_unsafe_downgrade_rolls_back_schema_and_version(tmp_path: Path) -> 
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0009_waw_project_binding_ledger"
+                == "0010_project_favorites"
             )
             assert "confirmation_challenges" in inspect(engine).get_table_names()
             assert "auth_epoch" in {
@@ -551,6 +552,40 @@ def test_phase11_migration_matches_orm_metadata_and_installs_exact_triggers(
                 )
             }
         assert approval_triggers == APPROVAL_TRIGGERS
+    finally:
+        engine.dispose()
+
+
+def test_project_favorite_migration_matches_orm_and_refuses_downgrade_with_data(
+    initialized_services: ControlPlaneServices,
+    settings: Settings,
+) -> None:
+    services = initialized_services
+    assert _migration_table_signature(
+        services.database.engine, "project_favorites"
+    ) == _orm_table_signature(services.database.engine, "project_favorites")
+    project = services.projects.reserve(name="Favorite migration", slug=None, source_type="empty")
+    with services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser.id).where(AdminUser.is_active.is_(True)))
+        assert admin is not None
+    services.favorites.set(
+        admin,
+        project.id,
+        favorite=True,
+        expected_revision=0,
+        request_id="req_favorite_migration",
+    )
+    services.database.close()
+
+    with pytest.raises(RuntimeError, match="Project favorite rows must be preserved"):
+        downgrade_database(settings.database_url, "0009_waw_project_binding_ledger")
+    engine = create_engine(settings.database_url)
+    try:
+        with engine.connect() as connection:
+            current = connection.execute(text("SELECT version_num FROM alembic_version"))
+            count = connection.execute(text("SELECT count(*) FROM project_favorites"))
+            assert current.scalar_one() == "0010_project_favorites"
+            assert count.scalar_one() == 1
     finally:
         engine.dispose()
 
@@ -844,7 +879,7 @@ def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> Non
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(path) as connection:
         expected_revision = (
-            "0009_waw_project_binding_ledger"
+            "0010_project_favorites"
             if target == "heads"
             else "0005_phase11_control_plane_ownership_approval"
         )
