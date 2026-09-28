@@ -45,6 +45,7 @@ from agentbox_core.errors import (
 from agentbox_core.favorites import ProjectFavoriteService
 from agentbox_core.jobs import JobService
 from agentbox_core.models import AdminUser, AuditEvent, ControlPlaneSession, Job
+from agentbox_core.navigation_labels import NavigationLabelService
 from agentbox_core.projects import ProjectService
 from agentbox_core.providers import ProviderRepository
 from agentbox_core.rate_limit import LoginRateLimiter
@@ -1395,6 +1396,7 @@ class ControlPlaneServices:
     audit: AuditService
     projects: ProjectService
     favorites: ProjectFavoriteService
+    navigation_labels: NavigationLabelService
     providers: ProviderRepository
     approvals: ApprovalService
     jobs: JobService
@@ -1446,6 +1448,7 @@ def build_services(
     admin = AdminService(database, actual_password_manager, audit, actual_clock)
     projects = ProjectService(database, actual_clock)
     favorites = ProjectFavoriteService(database, actual_clock, audit)
+    navigation_labels = NavigationLabelService(database, actual_clock, audit)
     providers = ProviderRepository(database, actual_clock, audit)
     approvals = ApprovalService(
         database,
@@ -1468,6 +1471,7 @@ def build_services(
         audit=audit,
         projects=projects,
         favorites=favorites,
+        navigation_labels=navigation_labels,
         providers=providers,
         approvals=approvals,
         jobs=jobs,

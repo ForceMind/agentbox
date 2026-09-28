@@ -472,6 +472,85 @@ class ProjectFavoriteResponse(StrictMetadataModel):
     data: ProjectFavoriteData
 
 
+NavigationLabelColor = Literal[
+    "violet", "sky", "emerald", "orange", "pink", "indigo", "teal", "red", "amber", "blue"
+]
+
+
+class NavigationLabelData(StrictMetadataModel):
+    id: str = Field(pattern=r"^lbl_[0-9a-f]{32}$")
+    name: str = Field(min_length=1, max_length=64)
+    color: NavigationLabelColor
+    revision: int = Field(ge=1, le=2**53 - 1)
+    updated_at: AwareDatetime
+
+
+class NavigationLabelListData(StrictMetadataModel):
+    labels: list[NavigationLabelData] = Field(max_length=128)
+
+
+class NavigationLabelListResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: NavigationLabelListData
+
+
+class NavigationLabelResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: NavigationLabelData
+
+
+class NavigationLabelCreateRequest(StrictMetadataModel):
+    name: str = Field(min_length=1, max_length=128)
+    color: NavigationLabelColor
+
+
+class NavigationLabelUpdateRequest(NavigationLabelCreateRequest):
+    expected_revision: int = Field(ge=1, le=2**53 - 1)
+
+
+class NavigationLabelDeleteRequest(StrictMetadataModel):
+    expected_revision: int = Field(ge=1, le=2**53 - 1)
+
+
+class NavigationLabelDeleteImpactData(StrictMetadataModel):
+    label_id: str = Field(pattern=r"^lbl_[0-9a-f]{32}$")
+    affected_project_count: int = Field(ge=0, le=10_000)
+
+
+class NavigationLabelDeleteImpactResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: NavigationLabelDeleteImpactData
+
+
+class ProjectLabelSetData(StrictMetadataModel):
+    project_id: str = Field(pattern=r"^prj_[0-9a-f]{32}$")
+    labels: list[NavigationLabelData] = Field(max_length=32)
+    revision: int = Field(ge=0, le=2**53 - 1)
+    updated_at: AwareDatetime | None
+
+    @model_validator(mode="after")
+    def consistent_revision(self) -> Self:
+        if (self.revision == 0 and (self.labels or self.updated_at is not None)) or (
+            self.revision > 0 and self.updated_at is None
+        ):
+            raise ValueError("Project label revision and timestamp are inconsistent")
+        return self
+
+
+class ProjectLabelSetResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: ProjectLabelSetData
+
+
+class ProjectLabelSetRequest(StrictMetadataModel):
+    assigned: bool
+    expected_revision: int = Field(ge=0, le=2**53 - 1)
+
+
 class ProjectJobData(StrictMetadataModel):
     project: ProjectData
     job: JobData

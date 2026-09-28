@@ -11,6 +11,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -203,6 +204,86 @@ class ProjectFavorite(Base):
     favorite: Mapped[bool] = mapped_column(Boolean, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NavigationLabel(Base):
+    """Per-admin label catalog; immutable ID separates rename from assignment."""
+
+    __tablename__ = "navigation_labels"
+    __table_args__ = (
+        UniqueConstraint("admin_user_id", "id", name="uq_navigation_labels_owner_id"),
+        UniqueConstraint("admin_user_id", "name_key", name="uq_navigation_labels_name_key"),
+        CheckConstraint("length(name) BETWEEN 1 AND 64", name="ck_navigation_labels_name"),
+        CheckConstraint("length(name_key) BETWEEN 1 AND 128", name="ck_navigation_labels_key"),
+        CheckConstraint(
+            "color IN ('violet','sky','emerald','orange','pink',"
+            "'indigo','teal','red','amber','blue')",
+            name="ck_navigation_labels_color",
+        ),
+        CheckConstraint(
+            "revision BETWEEN 1 AND 9007199254740991", name="ck_navigation_labels_revision"
+        ),
+        CheckConstraint(_utc6("created_at"), name="ck_navigation_labels_created_at"),
+        CheckConstraint(_utc6("updated_at"), name="ck_navigation_labels_updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    admin_user_id: Mapped[str] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    name_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    color: Mapped[str] = mapped_column(String(16), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProjectLabelSet(Base):
+    """Monotonic per-admin Project assignment revision, retained when empty."""
+
+    __tablename__ = "project_label_sets"
+    __table_args__ = (
+        CheckConstraint(
+            "revision BETWEEN 1 AND 9007199254740991", name="ck_project_label_sets_revision"
+        ),
+        CheckConstraint(_utc6("updated_at"), name="ck_project_label_sets_updated_at"),
+    )
+
+    admin_user_id: Mapped[str] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProjectLabelAssignment(Base):
+    """One ordered label identity in one administrator's formal Project."""
+
+    __tablename__ = "project_label_assignments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["admin_user_id", "project_id"],
+            ["project_label_sets.admin_user_id", "project_label_sets.project_id"],
+            ondelete="CASCADE",
+            name="fk_project_label_assignments_set",
+        ),
+        ForeignKeyConstraint(
+            ["admin_user_id", "label_id"],
+            ["navigation_labels.admin_user_id", "navigation_labels.id"],
+            ondelete="CASCADE",
+            name="fk_project_label_assignments_label",
+        ),
+        CheckConstraint("position >= 0", name="ck_project_label_assignments_position"),
+    )
+
+    admin_user_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class Job(Base):

@@ -754,7 +754,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc23', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc24', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

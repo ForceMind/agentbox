@@ -30,6 +30,18 @@
       "source_sha256": "3b164bfb6d05baeaa1de6ecaf4e47cd7175fb66b3df2aa230fb85ff74a367d50",
       "destination_path": "apps/web/src/features/changes/diffOrder.test.ts",
       "change": "Adapted import paths for AgentBox."
+    },
+    {
+      "source_path": "packages/protocol/src/workspace-labels.ts",
+      "source_sha256": "ec8d8fee223a7cfb8da77846b8a4c1537989037863cc7913f1b5050cfd562875",
+      "destination_path": "packages/agentbox-core/src/agentbox_core/navigation_labels.py",
+      "change": "Adapted name normalization and exact color catalog into AgentBox's per-admin Control Plane model."
+    },
+    {
+      "source_path": "packages/server/src/server/workspace-labels/internal/service.ts",
+      "source_sha256": "f3e91fb421f40601222e68c51cd01a19e7c146d5391a7319506e79a2404a0255",
+      "destination_path": "packages/agentbox-core/src/agentbox_core/navigation_labels.py",
+      "change": "Reimplemented catalog edit/delete and assignment transaction behavior with immutable AgentBox label identity and revision CAS."
     }
   ]
 }

@@ -64,10 +64,23 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 43 ]]; then
+if [[ "$route_count" -ne 50 ]]; then
   printf 'Unexpected reviewed AgentBox API route count: %s\n' "$route_count" >&2
   exit 1
 fi
+for label_route in \
+  '@router.get("", response_model=NavigationLabelListResponse)' \
+  '@router.post("", response_model=NavigationLabelResponse)' \
+  '@router.put("/{label_id}", response_model=NavigationLabelResponse)' \
+  '@router.get("/{label_id}/delete-impact", response_model=NavigationLabelDeleteImpactResponse)' \
+  '@router.post("/{label_id}/delete", response_model=NavigationLabelDeleteImpactResponse)' \
+  '@router.get("/projects/{project_id}", response_model=ProjectLabelSetResponse)' \
+  '@router.put("/projects/{project_id}/{label_id}", response_model=ProjectLabelSetResponse)'; do
+  if ! grep --fixed-strings --quiet "$label_route" apps/api/src/agentbox_api/navigation_labels.py; then
+    printf 'Fixed authenticated navigation label route is missing: %s\n' "$label_route" >&2
+    exit 1
+  fi
+done
 if ! grep --fixed-strings --quiet \
   '@router.get("", response_model=ProjectFavoriteListResponse)' \
   apps/api/src/agentbox_api/favorites.py || \
@@ -95,7 +108,7 @@ fi
 mutation_routes="$(printf '%s\n' "$route_lines" | grep --extended-regexp \
   '@(application|router)\.(post|put|patch|delete)\(' || true)"
 unexpected_mutations="$(printf '%s\n' "$mutation_routes" | grep --invert-match --extended-regexp \
-  '^(apps/api/src/agentbox_api/auth\.py:.*@router\.post\("/(login|logout|reauthenticate)"|apps/api/src/agentbox_api/codex\.py:.*@router\.post\("/(remote/start|remote/stop|pair-codes)"|apps/api/src/agentbox_api/claude\.py:.*@router\.post\("/sessions/\{project_id\}/(start|stop)"|apps/api/src/agentbox_api/projects\.py:.*@router\.post\(|apps/api/src/agentbox_api/favorites\.py:.*@router\.put\("/\{project_id\}"|apps/api/src/agentbox_api/workspaces\.py:.*@(router|project_workspaces_router)\.post\()' || true)"
+  '^(apps/api/src/agentbox_api/auth\.py:.*@router\.post\("/(login|logout|reauthenticate)"|apps/api/src/agentbox_api/codex\.py:.*@router\.post\("/(remote/start|remote/stop|pair-codes)"|apps/api/src/agentbox_api/claude\.py:.*@router\.post\("/sessions/\{project_id\}/(start|stop)"|apps/api/src/agentbox_api/projects\.py:.*@router\.post\(|apps/api/src/agentbox_api/favorites\.py:.*@router\.put\("/\{project_id\}"|apps/api/src/agentbox_api/navigation_labels\.py:.*(@router\.post\("("|/\{label_id\}/delete")|@router\.put\("(/\{label_id\}|/projects/\{project_id\}/\{label_id\})")|apps/api/src/agentbox_api/workspaces\.py:.*@(router|project_workspaces_router)\.post\()' || true)"
 if [[ -n "$unexpected_mutations" ]]; then
   printf 'Unexpected Phase 7 mutation route found:\n%s\n' "$unexpected_mutations" >&2
   exit 1
