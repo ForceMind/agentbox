@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-STAGED-READER-CANDIDATE`: Runtime-internal staged patch
+  observation holds one fixed Project/Git root, checks a bounded local
+  object inventory, uses a descriptor-cwd fixed Git child, and releases
+  bytes only after matching status/OID and two patch observations. It has no
+  content RPC/route; Linux native evidence and independent security-critical
+  review remain open. See [A3 staged reader](../WORKBENCH_A3_STAGED_READER.md).
+
 - `WORKBENCH-WS14-COMMAND-CENTER-CANDIDATE`: rc23 adds one authenticated
   AgentBox command center for fixed page/formal Project navigation only.
   Current-session Project reads, bounded results and session fencing do not

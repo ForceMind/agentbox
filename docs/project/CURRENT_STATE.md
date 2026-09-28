@@ -1,13 +1,38 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T22:06:44Z"
-verified_by: "codex-workbench-command-center"
+verified_at_utc: "2026-09-28T22:45:22Z"
+verified_by: "codex-workbench-staged-patch-reader"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 WS14 command center candidate
+## 2026-09-29 A3 staged patch reader candidate
+
+PR #116 final head `57e819cf8d2be8ea5a3296f0211bc49b734f7914`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Frontend quality first failed in an unchanged rc7 WAW lifecycle test with
+a five-second timeout and `PROTOCOL_INVALID` unhandled rejection. A failed-
+job rerun on the same SHA completed successfully; the first failure remains
+recorded and its cause is not proven. Normal merge
+`3e0069381a4d8f867e333191f298b4847256d751` has parents
+`885c623cf1114d23c5fdc13503f4a2a598985c5b` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully on the exact merge SHA.
+
+This managed worktree started `codex/workbench-staged-patch-reader` cleanly
+from that merge. Its current A3 candidate adds an internal, bounded
+descriptor-cwd staged patch reader and local object-store provenance scan.
+It has no Runtime RPC, API route or browser content access. Local focused
+Git tests passed 47 cases, with one native Linux fd-cwd case skipped on the
+Mac; native CI, broader checks, independent Architecture/Security/Test
+review, PR and merge remain open. The original checkout WIP remains
+untouched. R12 production composition, A3 selector/encrypted channel/UI
+and all real-host/Secret/production gates remain separate.
+
+Sections below are historical snapshots.
+
+## Historical 2026-09-29 WS14 command center candidate
 
 PR #115 final head `bb077fd8a4da6738ed4bc492c6c57de98597e5a8`
 completed 26 terminal checks (24 success, two prescribed historical skips).
@@ -37,8 +62,6 @@ browser run, so exact-head CI/browser confirmation remains pending. PR and
 merge are pending. Original checkout WIP is untouched. Named
 labels, wider command actions, A3 content, R12 composition and real-host/
 Secret/production qualification remain open.
-
-Sections below are historical snapshots.
 
 ## Historical 2026-09-29 A3 staged selection policy candidate
 

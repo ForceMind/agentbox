@@ -1,7 +1,8 @@
-"""Descriptor-held Project/Git provenance for a future content reader.
+"""Descriptor-held Project/Git provenance for the internal staged reader.
 
-This module opens no Git process and returns no file or patch bytes. It is an
-internal prerequisite for the staged-content contract, not a content action.
+This module opens no Git process and returns no file or patch bytes. It
+checks fixed nodes and a bounded local object inventory; it is not a
+browser or API content authorization.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
 _FILE_FLAGS = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
 _DIRECTORIES = ("root", "project", "git", "objects", "info", "pack")
 _FILES = ("index", "config", "head")
+_MAX_OBJECT_NODES = 20_000
+_MAX_OBJECT_DEPTH = 4
 
 
 def _unsafe() -> RuntimeOperationError:
@@ -80,8 +83,9 @@ def _named(parent: int | None, name: str | Path) -> os.stat_result:
 class GitContentRoot:
     """Hold and recheck one same-owner, nonsymlink, nonshared Git repository.
 
-    No descriptor escapes this class. In particular, construction does not
-    authorize Git execution, a browser selector, or a file-content read.
+    No descriptor is returned to an API or browser caller. The internal
+    staged reader may lend the held Project descriptor only to the fixed
+    child-cwd runner. Construction alone authorizes no Git execution or read.
     """
 
     def __init__(
@@ -112,6 +116,7 @@ class GitContentRoot:
         self._gid = expected_gid
         self._fds: dict[str, int] = {}
         self._identities: dict[str, tuple[int, ...]] = {}
+        self._object_snapshot: tuple[tuple[str, tuple[int, ...]], ...] = ()
         try:
             self._take("root", None, root_path)
             self._take("project", "root", relative_key)
@@ -122,10 +127,17 @@ class GitContentRoot:
             self._take("index", "git", "index", file=True)
             self._take("config", "git", "config", file=True)
             self._take("head", "git", "HEAD", file=True)
+            self._object_snapshot = self._scan_objects()
             self.revalidate()
         except BaseException:
             self.close()
             raise
+
+    @property
+    def project_path(self) -> Path:
+        """Named Project path for rechecking a descriptor-bound child cwd."""
+
+        return self._root_path / self._relative_key
 
     def _take(
         self, role: str, parent_role: str | None, name: str | Path, *, file: bool = False
@@ -153,6 +165,51 @@ class GitContentRoot:
         except OSError as exc:
             raise _unavailable() from exc
         raise _unsafe()
+
+    def _scan_objects(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
+        """Snapshot bounded local object nodes without following any symlink.
+
+        This checks provenance, not object bytes. A later reader must still
+        double-observe its selected patch and discard output on any drift.
+        """
+
+        observed: list[tuple[str, tuple[int, ...]]] = []
+
+        def visit(directory_fd: int, prefix: str, depth: int) -> None:
+            if depth > _MAX_OBJECT_DEPTH:
+                raise _unsafe()
+            try:
+                with os.scandir(directory_fd) as iterator:
+                    names: list[str] = []
+                    for entry in iterator:
+                        names.append(entry.name)
+                        if len(names) + len(observed) > _MAX_OBJECT_NODES:
+                            raise _unavailable()
+            except OSError as exc:
+                raise _unavailable() from exc
+            for name in sorted(names):
+                try:
+                    details = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                except OSError as exc:
+                    raise _unavailable() from exc
+                regular = stat.S_ISREG(details.st_mode)
+                _validate(details, file=regular, uid=self._uid, gid=self._gid)
+                path = f"{prefix}/{name}"
+                observed.append((path, _identity(details, file=True)))
+                if len(observed) > _MAX_OBJECT_NODES:
+                    raise _unavailable()
+                if not regular:
+                    child_fd = _open(directory_fd, name, file=False)
+                    try:
+                        held = os.fstat(child_fd)
+                        if _identity(held, file=True) != _identity(details, file=True):
+                            raise _unsafe()
+                        visit(child_fd, path, depth + 1)
+                    finally:
+                        os.close(child_fd)
+
+        visit(self._fds["objects"], "objects", 0)
+        return tuple(observed)
 
     def revalidate(self) -> None:
         """Reject renamed/replaced roots, Git stores, metadata files and alternates."""
@@ -186,6 +243,8 @@ class GitContentRoot:
         self._check_absent("git", "commondir")
         self._check_absent("info", "alternates")
         self._check_absent("info", "http-alternates")
+        if self._scan_objects() != self._object_snapshot:
+            raise _unsafe()
 
     def close(self) -> None:
         while self._fds:

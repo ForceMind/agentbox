@@ -1,6 +1,23 @@
 # Current Authorized Action
 
-## 2026-09-29 WS14 authenticated command center
+## 2026-09-29 A3 Runtime-internal staged patch reader
+
+PR #116 delivered rc23 fixed page/formal Project command-center navigation
+as merge `3e0069381a4d8f867e333191f298b4847256d751`; six post-main
+workflows succeeded. Its Frontend quality had one first-attempt timeout in
+an unchanged WAW test before a successful same-SHA rerun. On
+`codex/workbench-staged-patch-reader`, finish the
+[A3 staged reader candidate](../WORKBENCH_A3_STAGED_READER.md): bounded
+object-store and Git config provenance, fixed Linux fd-cwd status/diff,
+stable double observation, negative fixtures, cancellation cleanup, exact-
+head CI and independent security-critical Architecture/Security/Test review.
+Do not expose patch bytes through RPC/API/Worker/Web or merge this
+security-critical candidate without required review. After that, proceed
+to selector and independent encrypted content transport. R12 `_main` still
+requires fixed target inputs and positive legacy Codex Remote state; real
+host/Secret/production gates remain separate.
+
+## Historical 2026-09-29 WS14 authenticated command center
 
 PR #115 delivered the internal staged Git selection policy as merge
 `885c623cf1114d23c5fdc13503f4a2a598985c5b`; all six post-main
