@@ -6,7 +6,7 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is the **pre-release `0.3.0rc18` development candidate** for
+AgentBox source is the **pre-release `0.3.0rc19` development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 WEV-1/rc10 is merged through [PR #87](https://github.com/ForceMind/agentbox/pull/87):
@@ -42,6 +42,9 @@ route; the [rc17 record](docs/releases/0.3.0rc17.md) preserves that boundary.
 The rc18 source adds bounded Project work tabs for Project, Changed Paths and
 Workspace navigation. The [rc18 record](docs/releases/0.3.0rc18.md) keeps tab
 state separate from Runtime lifecycle and later multi-conversation work.
+The rc19 source adds a Linux-only descriptor-bound child cwd seam for future
+Git content extraction; the [rc19 record](docs/releases/0.3.0rc19.md) still
+exposes no patch action or content route.
 The [workstation research and execution record](docs/WORKSTATION_EVOLUTION.md)
 and [capability matrix](docs/CAPABILITY_MATRIX.md) distinguish existing software,
 proposed product changes and the remaining real-host qualification.

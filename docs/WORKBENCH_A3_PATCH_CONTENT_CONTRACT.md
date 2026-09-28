@@ -10,6 +10,9 @@ implemented by this document. rc16's Changed Paths page remains metadata-only.
 The rc17 source candidate implements only internal descriptor custody for the
 fixed Project/Git nodes. It does not close child-cwd or full object-store
 provenance and cannot release content.
+The rc19 source candidate adds an internal Linux-only held-descriptor child
+cwd seam, still without a patch action or object-file provenance proof. See
+[A3 cwd proof](WORKBENCH_A3_GIT_CWD.md).
 
 ## Authority and delivery order
 

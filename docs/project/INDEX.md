@@ -12,6 +12,8 @@
   READY Project 范围内的只读路径/状态分页合同，不授予正文或 patch 读取。
 - [A3 Git patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md)：
   下一批 Runtime-only patch 读取、选择器及独立加密内容通道的候选合同；尚未实施。
+- [A3 Git child cwd](../WORKBENCH_A3_GIT_CWD.md)：
+  Linux-only 子进程目录 descriptor 前后身份验证基础；尚无内容读取动作。
 - [Project work tabs](../WORKBENCH_PROJECT_TABS.md)：
   固定上游来源、AgentBox 路由身份和纯导航生命周期；多会话仍待后续阶段。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；

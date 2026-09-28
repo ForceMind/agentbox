@@ -3,6 +3,13 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc19] - Unreleased
+
+- Add a Linux-only internal process runner seam that binds a fixed child cwd
+  to a held Project directory descriptor and rejects named-path drift before
+  returning output. No Git patch action or content route is enabled.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc19.md`.
+
 ## [0.3.0rc18] - Unreleased
 
 - Add session-scoped, in-memory Project work tabs for Project detail, Changed
