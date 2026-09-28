@@ -47,7 +47,7 @@ manifest/anchor 必须严格 canonical decode；任一 legacy schema、重复/�
 | --- | --- | --- | --- |
 | G1 Production API | 实际 entrypoint/mode、public anchor、singleton、peer/readiness 与真实连接 | `NOT RUN` | 固定 installer-owned mode；API 只读 public anchor；缺项、第二 API、peer/epoch drift、partial startup/cleanup 都 fail-closed。Doctor/readiness 与 host qualification 分开记录。 |
 | G2 Runtime provider | filesystem-v2 one-owner graph、fixed executor、Runtime-only channel-key provider、Claude/Codex profile | `NOT RUN` | `_main` 使用受限 production composition；固定 binary/profile/held descriptor 与 inventory digest 一致；key 不离开 Runtime；两种 AgentType 分别通过 readiness，legacy 与 WAW 互斥。 |
-| G3 Installed socket/isolation | systemd activation、socket provenance、pidfd、cgroup/namespace/devpts/seccomp/LSM、Stop/cleanup | `NOT RUN` | PID 1 提供严格顺序的 FD 3/4；`LISTEN_PID`、`LISTEN_FDS=2`、`LISTEN_FDNAMES`、AF_UNIX stream、路径、owner/gid/mode、no-follow 与二次 `fstat` 均符合契约；记录 peer、controller/limits、cleanup 和重启结果。 |
+| G3 Installed socket/isolation | systemd activation、socket provenance、pidfd、cgroup/namespace/devpts/seccomp/LSM、Stop/cleanup | `NOT RUN` | PID 1 提供恰好两个 FD 3/4；`LISTEN_PID`、`LISTEN_FDS=2`、两个唯一固定 `LISTEN_FDNAMES` 与对应 AF_UNIX stream 路径、owner/gid/mode、no-follow、二次 `fstat` 均符合契约；路径为 Runtime 属主、FD 为 root:root 或 Runtime 属主；两种 FD 顺序按名称归一化，错误名称/路径映射拒绝；记录 peer、controller/limits、cleanup 和重启结果。 |
 | G4 Managed browser trust | 选定客户端的签名/分发、强制策略、extension、Native Host、trustd、撤销/恢复 | `NOT RUN` | 每个浏览器单独回读安装状态、extension ID、Origin/update policy、Native Host path 与 trustd fingerprint；错误 UID/ID/Origin、shadowing、trustd loss 或 revoke 必须拒绝；正常 restart/sleep/wake 后仅在新鲜信任与重新准入通过后恢复。 |
 | G5 User workflow/operations | 双 CLI 与所选浏览器的真实操作、返回、Stop、重启/upgrade/rollback、runbook | `NOT RUN` | Claude 和 Codex 分别在批准 Project 中完成官方本地 login/Workspace Trust 的 redacted readiness、input/output、resize、detach/reconnect、exact/repeated Stop；API/Runtime/host restart、network loss、upgrade/rollback 与资源/备份恢复留证。 |
 
@@ -62,7 +62,7 @@ manifest/anchor 必须严格 canonical decode；任一 legacy schema、重复/�
 | HG-01 | G1/G2 | 读取 public anchor 与 Runtime v2 bundle，严格 decode 并核验完整 cross-manifest pin、schema、identity、revision、epoch/state 和所有 digest。 | `NOT RUN` |
 | HG-02 | G1 | 在固定 production mode 启动 API；验证缺 anchor/依赖、second process、peer/epoch drift 和 cleanup 均 fail-closed，管理 ready 不冒充 WAW qualified。 | `NOT RUN` |
 | HG-03 | G2 | 核验 Runtime filesystem-v2 composition、fixed executor、held descriptor、inventory/profile 与 Claude/Codex policy pins；确认 key authority 仅在 Runtime。 | `NOT RUN` |
-| HG-04 | G3 | 验证 systemd socket activation 和 control/stream descriptor 的顺序、路径、inode、owner/mode、peer credentials、no-follow/second-`fstat` 与重新 listen 后 identity。 | `NOT RUN` |
+| HG-04 | G3 | 验证 systemd socket activation 恰好交付两个命名 FD；分别核对 control/stream 名称与路径、inode、owner/mode、peer credentials、no-follow/second-`fstat` 与重新 listen 后 identity；两种交付顺序均验证，错误映射拒绝。 | `NOT RUN` |
 | HG-05 | G3 | 验证 cgroup delegation/controller/limits、same-UID write denial、PTY/devpts、setsid/TIOCSCTTY、process group/pidfd、namespace、seccomp、LSM 与 `PrivateDevices`。 | `NOT RUN` |
 | HG-06 | G2/G3 | 验证 Runtime epoch 单调性、host revision/provenance、API/Runtime restart、stale ticket/generation fencing、Detach/Stop race 与 cgroup cleanup。 | `NOT RUN` |
 | HG-07 | G2/G5 | 验证已接受的 WAW transport：authenticated WebSocket、Noise revision、transcript/payload binding、replay/epoch fence、bounded ABWS 和 API/proxy 无 plaintext。 | `NOT RUN` |

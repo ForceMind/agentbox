@@ -1,5 +1,20 @@
 # Current Authorized Action
 
+## 2026-09-28 R12-D named socket admission refinement
+
+PR #100 delivered the C3-b authority-deferred resource foundation as merge
+`e3eb23930f6a34720ccf3ef604619acbc2d6cf4c` after exact-head CI and
+six successful post-main workflows. Continue the production `_main` and
+installer/client software work; do not claim host qualification.
+
+Before writing two systemd socket units, close the loader's old FD ordering
+assumption. [systemd.socket](https://github.com/systemd/systemd/blob/main/man/systemd.socket.xml)
+does not guarantee relative order across socket units targeting one service.
+Current `codex/r12-waw-socket-names` software candidate requires exact-two
+unique control/stream `LISTEN_FDNAMES`, validates each FD's fixed path and
+provenance, then normalizes the result. Linux CI and later PID 1 host evidence
+must separately prove delivery; G3/HG-04 remain `NOT RUN`.
+
 ## 2026-09-28 C3-b deferred resource foundation — software candidate
 
 Owner-approved [full capability plan](FULL_CAPABILITY_DELIVERY_PLAN.md) keeps
