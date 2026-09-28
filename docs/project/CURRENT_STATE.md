@@ -1,13 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T18:52:13Z"
-verified_by: "codex-workbench-git-fd-cwd"
+verified_at_utc: "2026-09-28T19:25:59Z"
+verified_by: "codex-workbench-project-search"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 S02/A3 Git child cwd candidate
+## 2026-09-29 S02/WS14 Project search candidate
+
+PR #111 final head `7e2123c59ec8b4e0c8fad55be75ca2b98114eb6f`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `2d64ccde14877118f13f9c843d0c0aae0808dce0` has parents
+`6cd045dd8831283e2c0d0333a39461671b04bf76` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully. Linux Python 3.11 quality reported 4248 passed,
+78 skipped; the Linux-only fd-cwd tests were admitted in that platform job.
+rc19 remains an uncomposed internal process primitive, not a patch action.
+
+Current `codex/workbench-project-search` starts at that exact merge. Its rc20
+candidate adds local ranked search over already-loaded Project names, visible
+slugs and printable Git branches, with an explicit no-match state and clear.
+It sends no query to Runtime or a new API. Full Node 22 Web unit suite passed
+1159/1159 serially; four pure matcher and four page tests are included.
+Seventy-eight Python release-candidate tests, Web/MV3
+format/lint/typecheck/build, docs links and source-boundary checks also
+passed. The Web bundle is 604.70 kB/173.15 kB gzip versus rc19
+601.72/172.29 kB. Isolated desktop/mobile Chromium E2E completed 104 passes
+and 28 prescribed skips. Both page-top search screenshots were inspected;
+neither showed overlap or document overflow. Exact-head CI, PR and merge are
+pending. WS14 favorites,
+synced labels and command center remain unfinished.
+The Owner's broad permission choice and R12 real-host/Secret/production
+gates remain separate. Original checkout WIP is untouched. Sections below
+are historical snapshots.
+
+## Historical 2026-09-29 S02/A3 Git child cwd candidate
 
 PR #110 final head `3f77e592496575b9bd0104e0fc1a06fd2c6df46c`
 completed 26 terminal checks (24 success, two prescribed historical skips).

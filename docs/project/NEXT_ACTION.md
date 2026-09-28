@@ -1,6 +1,20 @@
 # Current Authorized Action
 
-## 2026-09-29 S02/A3 descriptor-bound Git cwd
+## 2026-09-29 S02/WS14 Project search
+
+PR #111 merged as `2d64ccde14877118f13f9c843d0c0aae0808dce0` with
+exact parent read-back and six successful post-main workflows. Continue on
+`codex/workbench-project-search`: verify the pure ranked matcher and the
+authenticated Projects page against loaded formal Project data, nonmatching
+and failed/loading states, desktop/mobile layout and visible rc20 version.
+Retain the pinned source and attribution in
+[Project search](../WORKBENCH_PROJECT_SEARCH.md), then run exact-head CI,
+normal merge and read-back. Search remains read-only page state; favorites,
+sync and the command center need separate contracts. A3 Git object provenance
+and R12 `_main` are still unfinished, with real-host/Secret/production gates
+separate.
+
+## Historical 2026-09-29 S02/A3 descriptor-bound Git cwd
 
 PR #110 merged as `6cd045dd8831283e2c0d0333a39461671b04bf76` with
 exact parent read-back and six successful post-main workflows. Continue on

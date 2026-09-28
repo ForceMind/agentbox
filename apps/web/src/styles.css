@@ -91,6 +91,34 @@ textarea {
   display: grid;
   gap: 1rem;
 }
+.project-search {
+  display: grid;
+  max-width: 40rem;
+  gap: 0.55rem;
+  margin: 1.25rem 0;
+}
+.project-search > div {
+  display: flex;
+  min-width: 0;
+  gap: 0.55rem;
+}
+.project-search input {
+  min-width: 0;
+  min-height: 2.75rem;
+  flex: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--bg);
+  color: var(--text);
+}
+.project-search button {
+  min-height: 2.75rem;
+}
+.project-search p {
+  margin: 0;
+  color: var(--muted);
+}
 .project-link {
   color: inherit;
   text-decoration: none;

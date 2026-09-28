@@ -1,5 +1,11 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-PROJECT-SEARCH-CANDIDATE`: rc20 ranks only visible fields
+  from the authenticated Project list in volatile page state. No query is
+  persisted or sent to an action endpoint; no-match is distinct from no
+  Projects. Favorites, labels and command center remain separate. See
+  [Project search](../WORKBENCH_PROJECT_SEARCH.md).
+
 - `WORKBENCH-A3-GIT-FD-CWD-CANDIDATE`: rc19 adds an internal Linux-only
   child-cwd descriptor seam with pre/post named identity checks and no
   content authority. It cannot be called by Web/API and is not composed into

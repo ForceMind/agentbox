@@ -44,6 +44,13 @@ export interface ProjectsMessageParameters {
   readonly 'projects.emptyTitle': NoMessageParameters
   readonly 'projects.emptyDescription': NoMessageParameters
   readonly 'projects.gridAria': NoMessageParameters
+  readonly 'projects.slug': NoMessageParameters
+  readonly 'projects.searchLabel': NoMessageParameters
+  readonly 'projects.searchPlaceholder': NoMessageParameters
+  readonly 'projects.clearSearch': NoMessageParameters
+  readonly 'projects.matchCount': Readonly<{ shown: string; total: string }>
+  readonly 'projects.noMatchesTitle': NoMessageParameters
+  readonly 'projects.noMatchesDescription': NoMessageParameters
   readonly 'projects.stateCreating': NoMessageParameters
   readonly 'projects.stateReady': NoMessageParameters
   readonly 'projects.stateError': NoMessageParameters
@@ -112,6 +119,15 @@ export const projectsCatalog = defineCatalogShard<ProjectsMessageParameters>(
       'projects.emptyDescription': () =>
         'Create a bounded workspace or clone an approved GitHub URL.',
       'projects.gridAria': () => 'Projects',
+      'projects.slug': () => 'Project slug:',
+      'projects.searchLabel': () => 'Search Projects',
+      'projects.searchPlaceholder': () => 'Name, slug or branch',
+      'projects.clearSearch': () => 'Clear search',
+      'projects.matchCount': ({ shown, total }) =>
+        `Showing ${shown} of ${total} Projects`,
+      'projects.noMatchesTitle': () => 'No matching Projects',
+      'projects.noMatchesDescription': () =>
+        'Try another Project name, slug or branch.',
       'projects.stateCreating': () => 'Creating',
       'projects.stateReady': () => 'Ready',
       'projects.stateError': () => 'Error',
@@ -176,6 +192,15 @@ export const projectsCatalog = defineCatalogShard<ProjectsMessageParameters>(
       'projects.emptyDescription': () =>
         '创建一个受限工作区，或克隆已批准的 GitHub URL。',
       'projects.gridAria': () => 'Projects',
+      'projects.slug': () => 'Project 标识：',
+      'projects.searchLabel': () => '搜索 Project',
+      'projects.searchPlaceholder': () => '名称、标识或分支',
+      'projects.clearSearch': () => '清除搜索',
+      'projects.matchCount': ({ shown, total }) =>
+        `显示 ${shown} / ${total} 个 Project`,
+      'projects.noMatchesTitle': () => '没有匹配的 Project',
+      'projects.noMatchesDescription': () =>
+        '请尝试其他 Project 名称、标识或分支。',
       'projects.stateCreating': () => '正在创建',
       'projects.stateReady': () => '已就绪',
       'projects.stateError': () => '异常',
