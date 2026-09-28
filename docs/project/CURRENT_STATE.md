@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T20:09:06Z"
+verified_at_utc: "2026-09-28T20:14:57Z"
 verified_by: "codex-workbench-project-favorites"
 repository: "ForceMind/agentbox"
 ---
@@ -27,7 +27,13 @@ mypy covered 327 source files. Web/MV3 format/lint/typecheck/build and six
 targeted version tests passed; the Web bundle remains 604.70 kB/173.15 kB
 gzip. Isolated desktop/mobile Chromium E2E completed 104 passes and 28
 prescribed skips after applying migration 0010; no favorite UI case is
-claimed. Exact-head CI, PR and merge are pending. The Owner's
+claimed. PR #113 initial head `4ff51a7e3969afffa11d276c0048c72b19129fd5`
+failed Python 3.11/3.12/3.13 quality at mypy: a raw SQL `scalar_one()`
+in the migration test lacked an inferred type. The repair uses a typed ORM
+admin-ID query without weakening the migration assertions. Locally the
+CI-scope Linux-target mypy passed 309 files and the focused migration/
+favorites matrix passed 53 cases. New exact-head CI and merge are pending.
+The Owner's
 broad shell/file/plugin/Hub choice and R12 real-host/Secret/production gates
 remain separate. Original checkout WIP is untouched. Sections below are
 historical snapshots.

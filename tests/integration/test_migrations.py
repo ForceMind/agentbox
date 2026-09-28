@@ -11,7 +11,7 @@ import pytest
 from agentbox_core.configuration import Environment, Settings
 from agentbox_core.database import Database
 from agentbox_core.errors import ProviderMetadataNotFound
-from agentbox_core.models import Base
+from agentbox_core.models import AdminUser, Base
 from agentbox_core.provider_models import RuntimeBindingState, RuntimeType
 from agentbox_core.services import ControlPlaneServices, build_services
 from conftest import downgrade_database, migrate_database
@@ -23,6 +23,7 @@ from sqlalchemy import (
     create_engine,
     event,
     inspect,
+    select,
     text,
 )
 from sqlalchemy.engine import Engine
@@ -565,7 +566,8 @@ def test_project_favorite_migration_matches_orm_and_refuses_downgrade_with_data(
     ) == _orm_table_signature(services.database.engine, "project_favorites")
     project = services.projects.reserve(name="Favorite migration", slug=None, source_type="empty")
     with services.database.transaction() as session:
-        admin = session.execute(text("SELECT id FROM admin_users WHERE is_active=1")).scalar_one()
+        admin = session.scalar(select(AdminUser.id).where(AdminUser.is_active.is_(True)))
+        assert admin is not None
     services.favorites.set(
         admin,
         project.id,
