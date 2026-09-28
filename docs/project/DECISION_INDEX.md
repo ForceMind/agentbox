@@ -3,7 +3,9 @@
 - `WORKBENCH-A3-PATCH-CONTENT-CANDIDATE`: draft the next bounded Runtime-only
   extraction and a separate encrypted Project content channel before exposing
   patch text. Its selector is not path authority; staged/unstaged and unsupported
-  cases have explicit outcomes. This is a proposed software contract, not a
+  cases have explicit outcomes. Descriptor-held Project/Git provenance is a
+  prerequisite because current Git metadata uses path-based cwd. This is a
+  proposed software contract, not a
   shipped action or an Accepted deployment configuration. See
   [A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
 

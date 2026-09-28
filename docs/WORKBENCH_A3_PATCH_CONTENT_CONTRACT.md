@@ -18,6 +18,14 @@ the Project observation but does not own Git execution or file content. Root
 Helper, Worker, API and provider adapters receive no file body, patch text,
 Runtime HOME, key, or Provider Secret.
 
+The current `ProjectRegistry.resolve` and `GitAdapter._run` use path and cwd
+checks. They are sufficient for the delivered metadata observation but do
+not prove a descriptor-held content root. Content extraction is blocked
+until a Linux descriptor-bound Project/repository resolver, Git store/index
+provenance checks (including symlink and alternate-object-store rejection),
+and a child-cwd ownership proof are implemented and tested. Rechecking a
+pathname before/after `git diff` alone does not close a path-swap race.
+
 Implement this contract in separable order:
 
 1. Runtime-only bounded Git patch extraction and failure taxonomy, with no
@@ -43,10 +51,12 @@ Project/session, Runtime epoch, or changed Git observation fails closed.
 
 ## Runtime extraction v1
 
-The first patch reader supports tracked, regular, non-conflicted files with
-`modified`, `added`, or `deleted` metadata. A caller chooses
-`staged` or `unstaged` only when that side is present. Each side is observed
-separately; staged and unstaged hunks are never silently combined. Untracked,
+The first extraction slice admits only staged, tracked, regular,
+non-conflicted `modified`, `added`, or `deleted` entries from a verified
+Git index/object store. An unstaged slice follows only after descriptor-bound
+working-file acquisition and a stable content observation are proven. A
+caller chooses `staged` or `unstaged` only when that side is supported and
+present. The two sides are never silently combined. Untracked,
 renamed/copied, conflicted, typechanged, submodule, symlink, binary, and
 non-UTF-8 cases return a fixed `PATCH_UNAVAILABLE_*` reason in v1. These are
 explicit gaps for later A3/Files slices, not clean or empty diffs.
@@ -83,9 +93,10 @@ v1 reader cannot represent missing content as an empty patch. The output is
 treated as untrusted source text, never HTML, SVG, Markdown execution, a
 command, a secret scrubber result, or Audit detail.
 
-To avoid publishing a torn read, extraction checks the Project binding,
-metadata snapshot, selected side and file mode before and after Git, and
-compares two bounded patch observations before releasing bytes. Any drift,
+To avoid publishing a torn read, extraction checks the descriptor-held
+Project/repository binding, metadata snapshot, selected side and file mode
+before and after Git, and compares two bounded patch observations before
+releasing bytes. Any drift,
 cancelled read or uncertain process cleanup returns `PATCH_STALE` or
 `PATCH_UNAVAILABLE` and discards plaintext. This is a best-effort stable
 observation of a mutable worktree, not a filesystem transaction; the UI must
@@ -124,7 +135,8 @@ Runtime profile are independent deployment gates.
   as an empty complete patch.
 - Negative fixtures for traversal, option-like filenames, pathspec magic,
   NUL/control names, unsafe config, external diff/textconv helper, repo swap,
-  stale selector, concurrent file/index mutation, cancellation and child
+  symlink/alternate object store, unsafe index, stale selector, concurrent
+  file/index mutation, cancellation and child
   cleanup. A canary helper must not execute.
 - Protocol tests prove API/Worker observe only ciphertext, strict versioned
   schemas and page budgets, no plaintext logging/persistence, and browser

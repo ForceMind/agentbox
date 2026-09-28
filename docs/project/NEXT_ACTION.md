@@ -7,9 +7,12 @@ exact parent read-back and all six post-main workflows successful. Continue
 on `codex/workbench-patch-contract` from that merge. Freeze the bounded,
 sensitivity-aware Runtime Git patch reader and separate encrypted content
 admission in [A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md),
-then implement the Runtime-only extraction slice before any browser content
-route. Require fixed Git argv, current Project/snapshot validation, bounded
-bytes/lines, helper-execution negatives and explicit unsupported states.
+then establish descriptor-held Project/repository and Git store/index
+provenance before the staged-only Runtime extraction slice. No browser
+content route precedes those proofs. Require fixed Git argv, current
+Project/snapshot validation, bounded bytes/lines, helper-execution negatives
+and explicit unsupported states. Unstaged content additionally needs
+descriptor-bound working-file acquisition.
 Document-only changes keep rc16; source behavior changes receive the next
 aligned release candidate. Ordinary shell, arbitrary file browsing and
 plugin/Hub authority still await the Owner's semantic choice. R12 `_main`
