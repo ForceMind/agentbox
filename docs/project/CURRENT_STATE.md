@@ -1,13 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T21:16:59Z"
-verified_by: "codex-workbench-staged-read-policy"
+verified_at_utc: "2026-09-28T22:06:44Z"
+verified_by: "codex-workbench-command-center"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 A3 staged selection policy candidate
+## 2026-09-29 WS14 command center candidate
+
+PR #115 final head `bb077fd8a4da6738ed4bc492c6c57de98597e5a8`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `885c623cf1114d23c5fdc13503f4a2a598985c5b` has parents
+`a696d900c46dc348fc3b02cab2ae28d1c3edb33d` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully on that exact merge SHA. This is A3 staged index
+eligibility metadata only; it exposes no patch content or Runtime action.
+
+The managed worktree was clean when `codex/workbench-command-center` started
+from that merge. Its rc23 candidate adds an authenticated desktop/mobile
+command center with fixed page and formal Project navigation, current-session
+Project list read, keyboard search/selection, bounded results and failure
+feedback. It invokes no Runtime, file, Agent, plugin or arbitrary command.
+The Node 22 full Web suite passed 1181/1181 before one final abort test was
+added; the final focused AppShell/command-center set passed 11/11. Local
+desktop/mobile Chromium E2E completed 108 passes and 28 prescribed skips
+after updating a menu locator whose accessible name changes on open. The
+first browser run failed from a stale Python editable-install path; its
+environment was corrected to use this worktree. Desktop/mobile command
+center screenshots were inspected and no document overflow was observed.
+Final Web format/lint/typecheck/build, 87 Python release-candidate tests,
+two inert MV3 version tests and 540 documentation links passed. The final
+Web JS bundle is 617.49 kB/176.47 kB gzip versus rc22
+611.77/174.80 kB. The final read-cancellation change followed the full
+browser run, so exact-head CI/browser confirmation remains pending. PR and
+merge are pending. Original checkout WIP is untouched. Named
+labels, wider command actions, A3 content, R12 composition and real-host/
+Secret/production qualification remain open.
+
+Sections below are historical snapshots.
+
+## Historical 2026-09-29 A3 staged selection policy candidate
 
 PR #114 merged as `a696d900c46dc348fc3b02cab2ae28d1c3edb33d`;
 Backend, Frontend, E2E, Deployment, Security and Release Candidate
@@ -23,8 +56,6 @@ mypy passed. It does not execute Git, read patch bytes, expose a Runtime/API
 action or enable Web content. Object-store provenance, stable extraction,
 selector/channel/UI, R12 production composition and host/Secret/production
 qualification remain open. Exact-head CI, PR and merge are pending.
-
-Sections below are historical snapshots.
 
 ## 2026-09-29 WS14 Project favorites UI candidate
 

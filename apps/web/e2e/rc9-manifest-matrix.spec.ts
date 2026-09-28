@@ -374,7 +374,9 @@ test('covers Shell mobile drawer, failed logout, and unavailable health in the r
         await page.goto('/dashboard')
         await assertRc9DocumentLocale(page, locale.expectedLocale)
         if (viewport.name === 'mobile') {
-          const menu = page.locator('.mobile-header button')
+          const menu = page.locator(
+            '.mobile-header button[aria-controls="mobile-navigation"]',
+          )
           await expect(menu).toHaveAccessibleName(copy.openNavigation)
           await assertRc9Focus(menu)
           await menu.click()

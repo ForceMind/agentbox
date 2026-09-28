@@ -82,6 +82,10 @@ _EXPECTED_RESULTS = {
         **dict.fromkeys(_CURRENT_JOBS, "success"),
         **dict.fromkeys(_RC8_HISTORY_JOBS, "skipped"),
     },
+    "0.3.0rc23": {
+        **dict.fromkeys(_CURRENT_JOBS, "success"),
+        **dict.fromkeys(_RC8_HISTORY_JOBS, "skipped"),
+    },
 }
 
 

@@ -419,6 +419,39 @@ test('shows structured Git state without dangerous actions', async ({
   ).toHaveCount(0)
 })
 
+test('opens AgentBox command center and navigates to a real Project', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await page.keyboard.press('Control+k')
+  const dialog = page.getByRole('dialog', { name: 'Command center' })
+  await expect(dialog).toBeVisible()
+  const search = dialog.getByRole('combobox', {
+    name: 'Search pages and Projects',
+  })
+  await expect(search).toBeFocused()
+  await search.fill('project-a')
+  await expect(dialog.getByRole('option', { name: 'project-a' })).toBeVisible()
+  const viewport = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: testInfo.outputPath('command-center.png'),
+      fullPage: true,
+    })
+  }
+  await search.press('Enter')
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  await expect(dialog).toHaveCount(0)
+  await page.getByRole('button', { name: 'Command center' }).click()
+  await expect(dialog).toBeVisible()
+  await search.press('Escape')
+  await expect(dialog).toHaveCount(0)
+})
+
 test('shows Project Git changed paths without file bodies or patch controls', async ({
   page,
 }, testInfo) => {
@@ -721,7 +754,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc22', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc23', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

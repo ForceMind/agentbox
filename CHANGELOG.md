@@ -3,6 +3,14 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc23] - Unreleased
+
+- Add an authenticated desktop/mobile command center for fixed page and
+  formal Project navigation, with keyboard search and session fencing.
+- Keep Agent, file, plugin and arbitrary command actions outside this
+  navigation-only surface until their own contracts are delivered.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc23.md`.
+
 ## [0.3.0rc22] - Unreleased
 
 - Add an accessible Project favorite toggle that waits for server revision

@@ -1,6 +1,21 @@
 # Current Authorized Action
 
-## 2026-09-29 A3 staged selection policy
+## 2026-09-29 WS14 authenticated command center
+
+PR #115 delivered the internal staged Git selection policy as merge
+`885c623cf1114d23c5fdc13503f4a2a598985c5b`; all six post-main
+workflows succeeded. On `codex/workbench-command-center`, finish the rc23
+fixed page/formal Project navigation UI under
+[Command center](../WORKBENCH_COMMAND_CENTER.md): current-session API read,
+desktop/mobile dialog, keyboard/focus behavior, stale-session fences,
+localized errors, version and browser evidence. Then run exact-head CI,
+normal merge and read-back. Wider command actions remain bound to their own
+future permissions and service contracts. Resume A3 object-store provenance
+and descriptor-held staged extraction as the independent content track.
+R12 `_main` still requires actual fixed inputs and a positive legacy Codex
+Remote state source; real-host/Secret/production gates remain separate.
+
+## Historical 2026-09-29 A3 staged selection policy
 
 PR #114 delivered rc22 Project favorites UI and its six post-main workflows
 completed successfully. On `codex/workbench-staged-read-policy`, finish the

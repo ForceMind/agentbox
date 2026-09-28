@@ -1,5 +1,11 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-COMMAND-CENTER-CANDIDATE`: rc23 adds one authenticated
+  AgentBox command center for fixed page/formal Project navigation only.
+  Current-session Project reads, bounded results and session fencing do not
+  authorize file, Agent, Runtime, script or plugin commands. See
+  [Command center](../WORKBENCH_COMMAND_CENTER.md).
+
 - `WORKBENCH-WS14-FAVORITE-UI-CANDIDATE`: rc22 Project cards read the rc21
   per-admin preference API, wait for exact revision ACK, and reconcile
   conflicts/uncertain responses by GET without retrying a PUT. A tab/session
