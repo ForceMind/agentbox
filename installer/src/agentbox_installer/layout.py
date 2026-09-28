@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+WAW_SOCKET_UNIT_NAMES = ("agentbox-waw-control.socket", "agentbox-waw-stream.socket")
+
 
 @dataclass(frozen=True)
 class DirectorySpec:
@@ -13,6 +15,7 @@ class DirectorySpec:
     group: str
     mode: int
     persistent: bool = True
+    strict_existing: bool = False
 
 
 DIRECTORIES = (
@@ -40,10 +43,73 @@ DIRECTORIES = (
         "agentbox-runtime",
         0o700,
     ),
+    # The key directory is provisioned without creating or reading key material.
+    DirectorySpec(
+        "/var/lib/agentbox-waw/keys-v1",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/var/lib/agentbox-waw/vendor-homes",
+        "root",
+        "agentbox-runtime",
+        0o750,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/var/lib/agentbox-waw/vendor-homes/claude",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/var/lib/agentbox-waw/vendor-homes/codex",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+        strict_existing=True,
+    ),
     DirectorySpec("/var/log/agentbox", "agentbox", "agentbox", 0o750),
     # setgid keeps socket group ownership stable; sticky prevents either IPC
     # peer from unlinking a socket owned by the other identity.
     DirectorySpec("/run/agentbox", "root", "agentbox-runtime-ipc", 0o3770, persistent=False),
+    # Runtime can traverse the socket parent but cannot replace a systemd-owned
+    # control/stream socket pathname or the root-owned auth-probe mount anchor.
+    DirectorySpec(
+        "/run/agentbox-waw",
+        "root",
+        "agentbox-runtime-ipc",
+        0o750,
+        persistent=False,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/run/agentbox-waw/tmp",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o755,
+        persistent=False,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/run/agentbox-waw/tmux",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+        persistent=False,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/run/agentbox-waw/auth-probe",
+        "root",
+        "root",
+        0o755,
+        persistent=False,
+        strict_existing=True,
+    ),
     DirectorySpec("/srv/agentbox/projects", "agentbox-runtime", "agentbox-runtime", 0o700),
     DirectorySpec("/opt/agentbox", "root", "root", 0o755),
     DirectorySpec("/opt/agentbox/releases", "root", "root", 0o755),

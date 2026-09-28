@@ -1,13 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T13:17:18Z"
-verified_by: "codex-r12-named-socket-admission"
+verified_at_utc: "2026-09-28T13:44:15Z"
+verified_by: "codex-r12-installer-waw-sockets"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-28 R12 named socket admission candidate
+## 2026-09-28 R12-D dormant installer socket candidate
+
+PR #101 final head `476dccb5b4ddc44006c4e159f632f9a9e474116e`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `3d0ba375b5a616f1432789eb430ef1a7de4f3347` was read back
+with parents `e3eb23930f6a34720ccf3ef604619acbc2d6cf4c` and that head.
+Backend, Frontend, E2E, Deployment, Security and Release Candidate workflows
+on the merge SHA all completed successfully. The loader maps named FD3/4 in
+either order and accepts a PID1 root-owned descriptor paired with a correctly
+Runtime-owned pathname. No PID1 host socket has been qualified.
+
+Current branch `codex/r12-installer-waw-sockets` starts at that exact merge.
+It adds two fixed named socket unit assets and Runtime-only key/vendor/run
+directories, but does not enable WAW sockets, create a static key, install
+vendor policy/manifest, or change the production `_main` path. Simulated
+installer tests on macOS with the platform fixture set to x86_64 completed
+105 passed and one `systemd-analyze` skip; the native macOS aarch64 platform
+is correctly rejected by the installer. Ruff, Black and Linux-target mypy
+pass locally. Exact-head Linux CI, PR and merge are pending. G2/G3/HG-04
+remain `NOT RUN` for a real host.
+
+The original checkout's C3-b WIP remains untouched. The Owner's broad
+permissions choice for ordinary shell, arbitrary file preview, plugins and
+multi-principal Hub remains pending; S01 software work continues independently.
+
+Sections below preserve earlier point-in-time candidates and are superseded
+by this live revalidation for current branch/PR/CI status.
+
+## Historical 2026-09-28 R12 named socket admission candidate
 
 PR #100 final head `ad9f31c9dc967c727b8708d9a4d261ffc77e6ca1` completed
 26 terminal checks (24 success, two prescribed historical skips). Normal
@@ -29,7 +57,7 @@ skips because Darwin rejects AF_UNIX `SO_ACCEPTCONN`; Linux CI is required.
 No systemd unit was installed or started, no real host socket qualified, and
 the branch has not yet run exact-head CI. G3/HG-04 remain `NOT RUN`.
 
-## 2026-09-28 R12-C3-b authority-deferred resource candidate
+## Historical 2026-09-28 R12-C3-b authority-deferred resource candidate
 
 PR #99 for rc14 final head `ad73f7c783e4cd817bc8a1eb9d6dccc732c92b01`
 completed 26 terminal checks (24 success, two prescribed historical skips).
@@ -61,7 +89,7 @@ inputs, late Project registration through the actual application, and Linux
 native/sanitizer evidence. No real host, key, CLI login, Secret or production
 operation occurred.
 
-## 2026-09-28 S02 recent Attention candidate
+## Historical 2026-09-28 S02 recent Attention candidate
 
 PR #98 for the full-capability scope merged normally as
 `8beeb1ea81a2b94e514e9452a2b5ce15ce8cbbd2`; Git read-back verified

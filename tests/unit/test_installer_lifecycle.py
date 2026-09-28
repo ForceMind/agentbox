@@ -8,6 +8,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from agentbox_installer import lifecycle as installer_lifecycle
 from agentbox_installer.artifact import (
     ArtifactError,
     ReleaseManifest,
@@ -15,7 +16,7 @@ from agentbox_installer.artifact import (
     sha256_file,
 )
 from agentbox_installer.host import HostMutationError, HostOperations
-from agentbox_installer.layout import DIRECTORIES, InstallLayout
+from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, InstallLayout
 from agentbox_installer.lifecycle import (
     AgentBoxInstaller,
     InstallError,
@@ -77,6 +78,31 @@ def test_waw_binding_store_layout_is_runtime_private() -> None:
     )
 
 
+def test_waw_socket_and_runtime_resource_layout_is_fixed_and_private() -> None:
+    specs = {item.path: item for item in DIRECTORIES}
+    expected = {
+        "/run/agentbox-waw": ("root", "agentbox-runtime-ipc", 0o750),
+        "/run/agentbox-waw/tmp": ("agentbox-runtime", "agentbox-runtime", 0o755),
+        "/run/agentbox-waw/tmux": ("agentbox-runtime", "agentbox-runtime", 0o700),
+        "/run/agentbox-waw/auth-probe": ("root", "root", 0o755),
+        "/var/lib/agentbox-waw/keys-v1": ("agentbox-runtime", "agentbox-runtime", 0o700),
+        "/var/lib/agentbox-waw/vendor-homes/claude": (
+            "agentbox-runtime",
+            "agentbox-runtime",
+            0o700,
+        ),
+        "/var/lib/agentbox-waw/vendor-homes/codex": (
+            "agentbox-runtime",
+            "agentbox-runtime",
+            0o700,
+        ),
+    }
+    for path, identity in expected.items():
+        spec = specs[path]
+        assert (spec.owner, spec.group, spec.mode) == identity
+    assert all(not specs[path].persistent for path in expected if path.startswith("/run/"))
+
+
 def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: Path) -> None:
     installer, layout = _installer(tmp_path)
     artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "0002_project_jobs")
@@ -84,6 +110,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     plan = installer.plan(artifact, digest)
     assert plan.state == "not_installed"
     assert plan.bind == "127.0.0.1:8787"
+    assert set(WAW_SOCKET_UNIT_NAMES).issubset(plan.units)
     assert "git" in plan.package_changes
     assert sorted(path.relative_to(layout.root).as_posix() for path in layout.root.rglob("*")) == [
         "etc",
@@ -93,6 +120,13 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/var/lib/agentbox-waw")) == 0o750
     assert stat_mode(layout.map("/var/lib/agentbox-waw/runtime-epoch-v1")) == 0o700
     assert stat_mode(layout.map("/var/lib/agentbox-waw/bindings-v1")) == 0o700
+    assert stat_mode(layout.map("/run/agentbox-waw")) == 0o750
+    assert stat_mode(layout.map("/run/agentbox-waw/tmp")) == 0o755
+    assert stat_mode(layout.map("/run/agentbox-waw/tmux")) == 0o700
+    assert stat_mode(layout.map("/run/agentbox-waw/auth-probe")) == 0o755
+    assert stat_mode(layout.map("/var/lib/agentbox-waw/keys-v1")) == 0o700
+    for name in WAW_SOCKET_UNIT_NAMES:
+        assert layout.map(f"/etc/systemd/system/{name}").is_file()
     assert layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json").read_text() == (
         '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}'
     )
@@ -256,6 +290,48 @@ def test_upgrade_creates_verified_backup_and_rollback_restores_database(
         assert connection.execute("SELECT value FROM preserved").fetchone() == ("before-upgrade",)
 
 
+@pytest.mark.parametrize("tampered", [False, True])
+def test_rollback_to_release_without_waw_units_removes_only_exact_new_units(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tampered: bool
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    installer, layout = _installer(tmp_path)
+    first_artifact, first_digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    second_artifact, second_digest = _artifact(tmp_path, "0.2.1+dev.8", "revision_two")
+    all_units = installer_lifecycle.UNIT_NAMES
+    monkeypatch.setattr(
+        installer_lifecycle,
+        "UNIT_NAMES",
+        tuple(name for name in all_units if name not in WAW_SOCKET_UNIT_NAMES),
+    )
+    installer.apply(first_artifact, first_digest)
+    assert all(
+        not layout.map(f"/etc/systemd/system/{name}").exists() for name in WAW_SOCKET_UNIT_NAMES
+    )
+
+    monkeypatch.setattr(installer_lifecycle, "UNIT_NAMES", all_units)
+    installer.apply(second_artifact, second_digest)
+    assert all(
+        layout.map(f"/etc/systemd/system/{name}").is_file() for name in WAW_SOCKET_UNIT_NAMES
+    )
+
+    if tampered:
+        changed = layout.map(f"/etc/systemd/system/{WAW_SOCKET_UNIT_NAMES[0]}")
+        changed.write_text("[Socket]\nListenStream=/unexpected\n")
+        database_before = layout.database.read_bytes()
+        with pytest.raises(RollbackVerificationError, match="verification failed"):
+            installer.rollback()
+        assert layout.database.read_bytes() == database_before
+        assert changed.read_text() == "[Socket]\nListenStream=/unexpected\n"
+    else:
+        result = installer.rollback()
+        assert result.version == "0.2.0+dev.8"
+        assert result.health_verified is True
+        assert all(
+            not layout.map(f"/etc/systemd/system/{name}").exists() for name in WAW_SOCKET_UNIT_NAMES
+        )
+
+
 class FailingMigrationInstaller(AgentBoxInstaller):
     fail_revision: str | None = None
 
@@ -352,6 +428,22 @@ def test_directory_collision_fails_without_overwriting_unknown_file(tmp_path: Pa
     assert collision.read_text() == "unknown"
 
 
+def test_existing_waw_socket_parent_with_wrong_mode_is_not_adopted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    collision = layout.map("/run/agentbox-waw")
+    collision.mkdir(parents=True)
+    collision.chmod(0o777)
+
+    with pytest.raises(InstallError, match="new WAW directory provenance is invalid"):
+        installer.apply(artifact, digest)
+
+    assert stat_mode(collision) == 0o777
+
+
 def test_uninstall_removes_only_program_files_and_preserves_all_data(tmp_path: Path) -> None:
     installer, layout = _installer(tmp_path)
     artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
@@ -392,14 +484,16 @@ def test_uninstall_removes_only_program_files_and_preserves_all_data(tmp_path: P
     )
 
 
+@pytest.mark.parametrize("unit_name", ["agentbox-worker.service", *WAW_SOCKET_UNIT_NAMES])
 def test_uninstall_preflights_every_managed_object_before_stopping_services(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    unit_name: str,
 ) -> None:
     installer, layout = _installer(tmp_path)
     artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
     installer.apply(artifact, digest)
-    unit = layout.map("/etc/systemd/system/agentbox-worker.service")
+    unit = layout.map(f"/etc/systemd/system/{unit_name}")
     unit.write_text("[Service]\nExecStart=/modified\n", encoding="utf-8")
     stopped = False
 

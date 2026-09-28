@@ -70,6 +70,6 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
-已完成：主仓 A0/A1、三仓源码下载与固定 SHA、70 项初版盘点、PR #97/#98/#99/#100 合并和各自六类 post-main workflow 成功回读；rc14 最近 Job Attention 页面已交付，但不是完整历史收件箱；S01 的 authority-deferred 资源基础已交付。进行中：R12 的 systemd 命名 FD 准入修订、C3-b `_main`/installer 软件接线，S02 的其余真数据工作台能力。待定：Owner 对宽权限能力的语义选择；S04/S09/S11 的冲突项在答复前保持未实施。
+已完成：主仓 A0/A1、三仓源码下载与固定 SHA、70 项初版盘点、PR #97–#101 合并和各自六类 post-main workflow 成功回读；rc14 最近 Job Attention 页面已交付，但不是完整历史收件箱；S01 的 authority-deferred 资源基础与 systemd 命名 FD 准入已交付。进行中：R12-D 安装器固定 socket/目录软件批次、C3-b `_main` 接线，S02 的其余真数据工作台能力。待定：Owner 对宽权限能力的语义选择；S04/S09/S11 的冲突项在答复前保持未实施。
 
 下一可执行批次：完成源清单的代码路径交叉检查、将本计划/清单纳入 AgentBox 文档入口并验证；同时在 C3-b 分支核对 Runtime 原生端口、动态 Project binding、资源 cleanup 和 _main 生产接线。在宽权限答复到达后将选择结果和差异验收写入本计划，继续 S02 用户页面的真数据整合。

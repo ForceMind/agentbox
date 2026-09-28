@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import grp
+import importlib.resources
 import os
 import pwd
 import re
@@ -16,6 +17,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentbox_installer.layout import WAW_SOCKET_UNIT_NAMES
 from agentbox_installer.platform import PackageFamily
 
 
@@ -282,6 +284,9 @@ class HostOperations:
 
     def stop_agentbox(self) -> None:
         if self.real_host:
+            waw_units = self._installed_waw_socket_units()
+            if waw_units:
+                self._run(("/usr/bin/systemctl", "stop", *waw_units))
             self._run(
                 (
                     "/usr/bin/systemctl",
@@ -295,6 +300,9 @@ class HostOperations:
     def disable_and_stop(self) -> None:
         if not self.real_host:
             return
+        waw_units = self._installed_waw_socket_units()
+        if waw_units:
+            self._run(("/usr/bin/systemctl", "disable", "--now", *waw_units))
         self._run(
             (
                 "/usr/bin/systemctl",
@@ -306,6 +314,20 @@ class HostOperations:
                 "agentbox-helper.socket",
             )
         )
+
+    @staticmethod
+    def _installed_waw_socket_units() -> tuple[str, ...]:
+        installed: list[str] = []
+        for name in WAW_SOCKET_UNIT_NAMES:
+            path = Path("/etc/systemd/system") / name
+            if path.is_symlink() or (path.exists() and not path.is_file()):
+                raise HostMutationError("WAW socket unit path is unsafe")
+            if path.is_file():
+                source = importlib.resources.files("agentbox_installer") / "assets/systemd" / name
+                if path.read_bytes() != source.read_bytes():
+                    raise HostMutationError("WAW socket unit differs from the installed package")
+                installed.append(name)
+        return tuple(installed)
 
     def restart_agentbox(self) -> None:
         if self.real_host:

@@ -1,0 +1,16 @@
+[Unit]
+Description=AgentBox Interactive Workspace Stream Socket
+
+[Socket]
+ListenStream=/run/agentbox-waw/workspace-stream.sock
+Service=agentbox-runtime.service
+FileDescriptorName=agentbox-waw-stream
+SocketUser=agentbox-runtime
+SocketGroup=agentbox-runtime-ipc
+SocketMode=0660
+DirectoryMode=0750
+Accept=no
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

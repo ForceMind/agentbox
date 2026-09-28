@@ -1,5 +1,18 @@
 # Decision and Architecture Index
 
+- `R12-D-DORMANT-WAW-SOCKETS-V1`: the installer owns exactly two WAW socket
+  units with distinct fixed `FileDescriptorName`, `SocketUser=agentbox-runtime`,
+  `SocketGroup=agentbox-runtime-ipc` and mode 0660. Installation and upgrades
+  do not enable them. `/run/agentbox-waw` remains root-owned and unwritable by
+  Runtime; private scratch, tmux and persistent vendor/key directories have
+  fixed owners/modes. Existing new paths with mismatched provenance are not
+  adopted. Stop/uninstall and rollback to a backed-up pre-WAW release close
+  the exact unit set; changed files fail closed before database restoration.
+  A unit asset change needs an explicit migration path because HostOperations
+  only stops package-identical installed WAW units. This is software/fixture
+  evidence, not G3 host activation. See
+  [R12-D socket substrate](../WAW_R12_D_INSTALLER_SOCKETS.md).
+
 - `R12-SYSTEMD-NAMED-SOCKETS-V1`: systemd 可以把两个 socket unit 指向同一
   Runtime 服务，但不保证跨 unit FD 的顺序。Runtime 只接受 FD3/4 恰好两个、
   各有唯一固定 `LISTEN_FDNAMES`，分别验证名称到 control/stream 固定路径

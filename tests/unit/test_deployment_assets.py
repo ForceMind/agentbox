@@ -12,6 +12,8 @@ from agentbox_installer.hardening import (
     review_unit_hardening,
     systemd_capabilities,
 )
+from agentbox_installer.host import HostOperations
+from agentbox_installer.layout import WAW_SOCKET_UNIT_NAMES
 from agentbox_installer.lifecycle import UNIT_NAMES
 
 
@@ -64,6 +66,53 @@ def test_helper_socket_is_not_world_writable_and_units_are_namespaced() -> None:
     assert "SocketGroup=agentbox" in helper_socket
     assert "SocketMode=0660" in helper_socket
     assert all(re.fullmatch(r"agentbox-[a-z-]+\.(?:service|socket)", name) for name in UNIT_NAMES)
+
+
+def test_waw_socket_units_have_distinct_named_descriptors_and_fixed_runtime_peer() -> None:
+    expected = {
+        "agentbox-waw-control.socket": (
+            "/run/agentbox-waw/workspace-control.sock",
+            "agentbox-waw-control",
+        ),
+        "agentbox-waw-stream.socket": (
+            "/run/agentbox-waw/workspace-stream.sock",
+            "agentbox-waw-stream",
+        ),
+    }
+    assert set(WAW_SOCKET_UNIT_NAMES) == set(expected)
+    for name, (path, descriptor_name) in expected.items():
+        unit = _unit(name)
+        assert f"ListenStream={path}\n" in unit
+        assert f"FileDescriptorName={descriptor_name}\n" in unit
+        assert "Service=agentbox-runtime.service\n" in unit
+        assert "SocketUser=agentbox-runtime\n" in unit
+        assert "SocketGroup=agentbox-runtime-ipc\n" in unit
+        assert "SocketMode=0660\n" in unit
+        assert "Accept=no\n" in unit
+        assert "RemoveOnStop=true\n" in unit
+
+
+def test_installer_leaves_waw_sockets_dormant_but_stops_them_before_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = HostOperations(real_host=True)
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(host, "_run", calls.append)
+    monkeypatch.setattr(host, "_installed_waw_socket_units", lambda: WAW_SOCKET_UNIT_NAMES)
+
+    host.enable_and_start()
+    assert all(not any(name in call for name in WAW_SOCKET_UNIT_NAMES) for call in calls)
+
+    calls.clear()
+    host.stop_agentbox()
+    assert list(calls[0]) == ["/usr/bin/systemctl", "stop", *WAW_SOCKET_UNIT_NAMES]
+    assert calls[1][:2] == ("/usr/bin/systemctl", "stop")
+    assert "agentbox-runtime.service" in calls[1]
+
+    calls.clear()
+    host.disable_and_stop()
+    assert list(calls[0]) == ["/usr/bin/systemctl", "disable", "--now", *WAW_SOCKET_UNIT_NAMES]
+    assert calls[1][:3] == ("/usr/bin/systemctl", "disable", "--now")
 
 
 def test_runtime_environment_has_no_application_secret_or_root_credentials() -> None:
