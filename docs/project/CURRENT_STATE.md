@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T11:18:27Z"
+verified_at_utc: "2026-09-28T11:25:34Z"
 verified_by: "codex-workbench-a0-a1"
 repository: "ForceMind/agentbox"
 ---
@@ -35,10 +35,15 @@ First offline dependency installation failed because the locked `js-yaml`
 tarball was absent locally; a subsequent lockfile-preserving Web install
 succeeded without running installation scripts. No UI page, backend/Runtime,
 target host, real CLI, credential or production validation is claimed by this
-slice. This snapshot precedes the A1 commit; exact CI/PR/merge evidence must
-be read back separately. Next: deliver this A1 slice through CI/normal
-merge/read-back, then continue
-A2 and C3-b according to the approved plan.
+slice. PR #97 was opened from first head
+`06f956095dd48995d5bfe3d350b5ad6ab9230835` against
+`a696193fec127595b1beafb1ed1cabf2ae58efa9`. Its first Python quality
+matrix failed in 3.11/3.12/3.13 on five existing unannotated scalar locals in
+`database.py`, `test_phase11_approval.py`, and `test_services.py`. The follow-up
+adds only five `str` annotations; the SQL and assertions are unchanged. Local
+mypy with Linux/3.11 target passes all 295 files; targeted Ruff and Black pass.
+New exact-head CI is required. Next: deliver this A1 slice through CI/normal
+merge/read-back, then continue A2 and C3-b according to the approved plan.
 
 ## R12-C2 C3-a composition closure on review hold
 

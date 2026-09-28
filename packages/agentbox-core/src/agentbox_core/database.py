@@ -127,7 +127,7 @@ class Database:
 
     def transaction_now(self, session: Session) -> datetime:
         """Return the exact UTC6 observation pinned by this transaction's begin event."""
-        raw = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
+        raw: str = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
         return parse_raw_utc6(raw)
 
     def _get_sqlite_path(self) -> Path | None:

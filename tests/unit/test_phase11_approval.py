@@ -407,11 +407,11 @@ def test_transaction_clock_is_pinned_at_begin(
 ) -> None:
     with initialized_services.database.transaction() as session:
         session.execute(text("BEGIN IMMEDIATE"))
-        first = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
+        first: str = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
         clock.advance(seconds=30)
-        second = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
+        second: str = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
     with initialized_services.database.transaction() as session:
-        third = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
+        third: str = session.execute(text("SELECT agentbox_now_utc6()")).scalar_one()
 
     assert first == second == "2026-08-09 00:00:00.000000"
     assert third == "2026-08-09 00:00:30.000000"
