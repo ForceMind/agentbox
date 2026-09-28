@@ -1,7 +1,11 @@
 # AgentBox Project Context Index
 
+- [Full capability delivery plan](FULL_CAPABILITY_DELIVERY_PLAN.md)：Owner 将范围扩展为
+  吸收全部现有上游功能；按三仓固定提交与 70 项 ID 组织一条分阶段实施路线。
+- [Full capability inventory](FULL_CAPABILITY_INVENTORY.md)：主仓、生产 relay、Hub
+  的功能、现有 AgentBox 状态与逐项验收目标；权限冲突另有待确认选择。
 - [Workbench integration plan](WORKBENCH_INTEGRATION_PLAN.md)：Owner 已批准软件实施；
-  Paseo 源码按固定 commit 逐项迁入 AgentBox，保留必要版权声明；A0/A1 薄切片已实现。
+  v1 保留 A0/A1 技术基线与来源规则；全量范围以 v2 为准。
 - [Workbench identity and content ADR](../adr/0009-workbench-identity-and-content-boundary.md)：
   Project、WAW、会话与 UI tab 分域，内容仍须 A3 专项协议和审查。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；

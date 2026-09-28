@@ -1,11 +1,38 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T11:25:34Z"
-verified_by: "codex-workbench-a0-a1"
+verified_at_utc: "2026-09-28T11:50:25Z"
+verified_by: "codex-full-capability-scope"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-28 full capability scope expansion
+
+Owner explicitly expanded the objective to absorb all existing upstream
+capabilities into AgentBox. The [v2 delivery plan](FULL_CAPABILITY_DELIVERY_PLAN.md)
+and [70-item inventory](FULL_CAPABILITY_INVENTORY.md) cover pinned main,
+production relay, and Hub sources. The identity/content/source rules in the
+earlier workbench plan remain; its selective-scope exclusions and 24–42 batch
+estimate are superseded. A separate Owner decision is pending for ordinary
+shell, arbitrary daemon-readable files, plugins/scripts, and multi-principal
+Hub behavior that conflict with existing AgentBox authority boundaries.
+
+PR #97 final head `ffe08c456d0870c1804644cdf662c7c862be2e4d` completed
+26 terminal checks (24 success and the two prescribed historical skips).
+Normal merge `135eb8cdb22a6b88a825eb214bde86f3f11e8442` was read back in
+Git with parents `a696193fec127595b1beafb1ed1cabf2ae58efa9` and that
+final head. Backend, Frontend, E2E, Deployment, Security, and Release Candidate
+workflows on the merge SHA all completed successfully. This is A0/A1 source
+and pure Changes logic delivery, not an available Files/Changes product.
+
+The original checkout is on `codex/r12-runtime-production` with C3-b provider
+and test WIP, plus older planning-document WIP, `.reasonix/`, and `build/`.
+The isolated worktree is on `codex/full-workbench-parity` based on the merged
+main SHA. C3-b's auth owner/native path and cleanup repairs have 41 focused
+unit passes and four-file Linux-target mypy success, but the production
+`_main` composition, installer inputs, host gates, and review remain open.
+No Host/Secret/client/CLI/production operation was performed.
 
 ## 2026-09-28 workbench A0/A1 implementation snapshot
 
