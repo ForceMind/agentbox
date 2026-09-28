@@ -1,11 +1,30 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T20:51:41Z"
-verified_by: "codex-workbench-project-favorites-ui"
+verified_at_utc: "2026-09-28T21:16:59Z"
+verified_by: "codex-workbench-staged-read-policy"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-29 A3 staged selection policy candidate
+
+PR #114 merged as `a696d900c46dc348fc3b02cab2ae28d1c3edb33d`;
+Backend, Frontend, E2E, Deployment, Security and Release Candidate
+post-main workflows completed successfully on that merge SHA. The original
+checkout WIP remains untouched. This managed worktree starts its rc23 branch
+from that merge.
+
+The rc23 candidate adds a Runtime-only staged Git selection check with
+case-folded sensitive-path denial, exact porcelain-v2 index OID/mode checks,
+and fixed refusals for unsupported kinds or missing selections. It returns
+metadata only. Local focused Git tests passed 36/36; Ruff and one-module
+mypy passed. It does not execute Git, read patch bytes, expose a Runtime/API
+action or enable Web content. Object-store provenance, stable extraction,
+selector/channel/UI, R12 production composition and host/Secret/production
+qualification remain open. Exact-head CI, PR and merge are pending.
+
+Sections below are historical snapshots.
 
 ## 2026-09-29 WS14 Project favorites UI candidate
 

@@ -1,6 +1,18 @@
 # Current Authorized Action
 
-## 2026-09-29 WS14 Project favorites UI and native read-back
+## 2026-09-29 A3 staged selection policy
+
+PR #114 delivered rc22 Project favorites UI and its six post-main workflows
+completed successfully. On `codex/workbench-staged-read-policy`, finish the
+Runtime-only staged path/index eligibility check and negative fixtures under
+[A3 patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
+Run exact-head CI, normal merge and merge read-back. Next, prove object-store
+provenance and a descriptor-held bounded staged extraction before any
+selector or encrypted content route. R12 `_main` still requires actual fixed
+inputs and a positive legacy Codex Remote state source; the production
+profile must keep failing closed until that graph is complete.
+
+## Historical 2026-09-29 WS14 Project favorites UI and native read-back
 
 PR #113 merged as `8fb017f3e294c4a303547da729b007e9605ed9a0`
 with exact parents; its post-main Backend native job first failed on an

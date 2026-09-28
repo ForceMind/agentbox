@@ -14,6 +14,18 @@ The rc19 source candidate adds an internal Linux-only held-descriptor child
 cwd seam, still without a patch action or object-file provenance proof. See
 [A3 cwd proof](WORKBENCH_A3_GIT_CWD.md).
 
+The rc23 internal staged-selection slice adds a Runtime-only path policy and
+porcelain-v2 index eligibility check. It accepts only tracked regular staged
+add/modify/delete rows and records the exact HEAD/index modes and OIDs. It
+rejects ambiguous paths, credential path classes, rename/copy, conflicts,
+untracked, submodule, symlink, invalid OIDs and missing selections with fixed
+reasons. A normal source file named `config.json` remains eligible, while
+`.env*` components, Runtime/credential directories, credential filenames and
+private-key extensions are denied case-insensitively. This is metadata-only:
+no Git child, object read, patch bytes, Runtime action or browser route exists.
+Object-store provenance, snapshot/re-read and encrypted delivery gates below
+remain open.
+
 ## Authority and delivery order
 
 The only entry point is a READY formal Project. The Runtime resolves its
