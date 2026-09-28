@@ -8,6 +8,8 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from agentbox_api.waw_application import WAWMode
+from agentbox_api.waw_deployment_profile import _parse_profile
 from agentbox_installer import lifecycle as installer_lifecycle
 from agentbox_installer.artifact import (
     ArtifactError,
@@ -111,6 +113,8 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert plan.state == "not_installed"
     assert plan.bind == "127.0.0.1:8787"
     assert set(WAW_SOCKET_UNIT_NAMES).issubset(plan.units)
+    assert "/etc/agentbox/waw-api-profile.v1.json" in plan.files
+    assert "/run/agentbox-waw-api/waw-api.v1.lock" in plan.files
     assert "git" in plan.package_changes
     assert sorted(path.relative_to(layout.root).as_posix() for path in layout.root.rglob("*")) == [
         "etc",
@@ -125,6 +129,15 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert stat_mode(layout.map("/run/agentbox-waw/tmux")) == 0o700
     assert stat_mode(layout.map("/run/agentbox-waw/auth-probe")) == 0o755
     assert stat_mode(layout.map("/var/lib/agentbox-waw/keys-v1")) == 0o700
+    profile = layout.map("/etc/agentbox/waw-api-profile.v1.json")
+    lock = layout.map("/run/agentbox-waw-api/waw-api.v1.lock")
+    assert profile.read_bytes() == (
+        b'{"mode":"disabled","schema_version":"agentbox-waw-api-profile.v1"}\n'
+    )
+    assert _parse_profile(profile.read_bytes()) is WAWMode.DISABLED
+    assert stat_mode(profile) == 0o440
+    assert stat_mode(lock.parent) == 0o755
+    assert lock.read_bytes() == b"" and stat_mode(lock) == 0o444
     for name in WAW_SOCKET_UNIT_NAMES:
         assert layout.map(f"/etc/systemd/system/{name}").is_file()
     assert layout.map("/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json").read_text() == (
@@ -442,6 +455,68 @@ def test_existing_waw_socket_parent_with_wrong_mode_is_not_adopted(
         installer.apply(artifact, digest)
 
     assert stat_mode(collision) == 0o777
+
+
+def test_existing_waw_api_profile_is_preserved_and_invalid_content_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    installer, layout = _installer(tmp_path)
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.8", "revision_two")
+    installer.apply(first, first_digest)
+    profile = layout.map("/etc/agentbox/waw-api-profile.v1.json")
+    enabled = b'{"mode":"filesystem-v2","schema_version":"agentbox-waw-api-profile.v1"}\n'
+    profile.chmod(0o600)
+    profile.write_bytes(enabled)
+    profile.chmod(0o440)
+    installer.apply(second, second_digest)
+    assert profile.read_bytes() == enabled
+    assert _parse_profile(profile.read_bytes()) is WAWMode.FILESYSTEM_V2
+    assert stat_mode(profile) == 0o440
+
+    profile.chmod(0o600)
+    profile.write_bytes(b'{"mode":"enabled"}\n')
+    profile.chmod(0o440)
+    with pytest.raises(InstallError, match="WAW API installed resource"):
+        installer._ensure_waw_api_resources()
+    assert profile.read_bytes() == b'{"mode":"enabled"}\n'
+
+
+def test_waw_api_profile_and_lock_reject_unsafe_existing_objects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    installer.apply(artifact, digest)
+    profile = layout.map("/etc/agentbox/waw-api-profile.v1.json")
+    lock = layout.map("/run/agentbox-waw-api/waw-api.v1.lock")
+
+    profile.chmod(0o644)
+    with pytest.raises(InstallError, match="provenance"):
+        installer._ensure_waw_api_resources()
+    profile.chmod(0o440)
+
+    lock.chmod(0o600)
+    lock.write_bytes(b"not-empty")
+    lock.chmod(0o444)
+    with pytest.raises(InstallError, match="WAW API installed resource"):
+        installer._ensure_waw_api_resources()
+    lock.chmod(0o600)
+    lock.write_bytes(b"")
+    lock.chmod(0o444)
+
+    second_link = lock.with_name("lock-hardlink")
+    second_link.hardlink_to(lock)
+    with pytest.raises(InstallError, match="provenance"):
+        installer._ensure_waw_api_resources()
+    second_link.unlink()
+
+    lock.unlink()
+    lock.symlink_to(profile)
+    with pytest.raises(InstallError, match="WAW API installed resource"):
+        installer._ensure_waw_api_resources()
 
 
 def test_uninstall_removes_only_program_files_and_preserves_all_data(tmp_path: Path) -> None:

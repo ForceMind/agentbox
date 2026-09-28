@@ -76,6 +76,14 @@ DIRECTORIES = (
     # setgid keeps socket group ownership stable; sticky prevents either IPC
     # peer from unlinking a socket owned by the other identity.
     DirectorySpec("/run/agentbox", "root", "agentbox-runtime-ipc", 0o3770, persistent=False),
+    DirectorySpec(
+        "/run/agentbox-waw-api",
+        "root",
+        "root",
+        0o755,
+        persistent=False,
+        strict_existing=True,
+    ),
     # Runtime can traverse the socket parent but cannot replace a systemd-owned
     # control/stream socket pathname or the root-owned auth-probe mount anchor.
     DirectorySpec(

@@ -246,6 +246,10 @@ D 的模板/fixture 可提前，F 必须等全部所选接口；公开发布 K �
   socket unit 和固定的非 Secret 目录；默认不启用 socket，不生成 key、不安装
   manifest/policy，也不连接 `_main`。停止与卸载只处理包内字节完全匹配的
   unit；旧版本回滚按备份恢复 unit 清单，受改动的 unit 在数据库恢复前拒绝。
+- [后继 R12-D 软件批次](../WAW_R12_D_API_RESOURCES.md)仅创建 canonical
+  `disabled` API profile 和根拥有目录中的固定单例锁；已存在的合法
+  `filesystem-v2` profile 原样保留，不把安装动作当作启用授权。启用/关闭
+  的 atomic CAS 更新器和现场 read-back 另验。
 - loader 要求 `LISTEN_PID` 匹配、`LISTEN_FDS=2`，且 FD 3/4 的两个
   `LISTEN_FDNAMES` 恰为一次 control 与一次 stream。每个 descriptor 必须
   分别匹配其固定名称对应的路径、owner/gid/mode 和监听身份，最终归一化为
