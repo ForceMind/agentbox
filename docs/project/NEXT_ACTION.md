@@ -1,6 +1,24 @@
 # Current Authorized Action
 
-## 2026-09-28 R12-D named socket admission refinement
+## 2026-09-28 R12-D dormant installer socket substrate
+
+PR #101 merged as `3d0ba375b5a616f1432789eb430ef1a7de4f3347`
+after 24 exact-head successes, two prescribed skips, and six successful
+post-main workflows. Continue R12-D on `codex/r12-installer-waw-sockets`:
+install two fixed named socket units without enabling them; provision only
+fixed non-secret directory structure; keep PID1 G3/HG-04 `NOT RUN`.
+
+The current software candidate checks new directory collisions instead of
+adopting them, stops any installed exact package WAW units before Runtime,
+and removes newly introduced units when rolling back to an older backed-up
+release. Simulated x86_64 fixture tests pass locally, but Linux
+`systemd-analyze`, native installer CI and real host evidence are pending.
+Next, run exact-head CI and normal merge/read-back, then continue fixed
+manifest/policy/key provisioning and `_main` composition under separate
+software and host gates. [R12-D socket substrate](../WAW_R12_D_INSTALLER_SOCKETS.md)
+records the exact paths and incomplete inputs.
+
+## Historical 2026-09-28 R12-D named socket admission refinement
 
 PR #100 delivered the C3-b authority-deferred resource foundation as merge
 `e3eb23930f6a34720ccf3ef604619acbc2d6cf4c` after exact-head CI and

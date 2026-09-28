@@ -37,18 +37,19 @@ from agentbox_installer.backup import BackupResult, create_sqlite_backup, verify
 from agentbox_installer.dependencies import REQUIRED_BASE, detect_dependencies
 from agentbox_installer.hardening import validate_unit_compatibility
 from agentbox_installer.host import HostOperations, IdentityFacts
-from agentbox_installer.layout import DIRECTORIES, InstallLayout
+from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, InstallLayout
 from agentbox_installer.platform import PlatformFacts, detect_platform, resolve_packages
 from agentbox_installer.retention import enforce_retention
 from agentbox_installer.versioning import valid_version, version_precedence
 
-UNIT_NAMES = (
+CORE_UNIT_NAMES = (
     "agentbox-api.service",
     "agentbox-worker.service",
     "agentbox-runtime.service",
     "agentbox-helper.socket",
     "agentbox-helper.service",
 )
+UNIT_NAMES = (*CORE_UNIT_NAMES, *WAW_SOCKET_UNIT_NAMES)
 HARDENED_DATA_LAYOUT_MIN_VERSION = "0.2.5"
 
 
@@ -559,7 +560,14 @@ class AgentBoxInstaller:
             if not verified:
                 raise RollbackVerificationError("rollback attempted but verification failed")
             identities = self.host.ensure_identities(self._receipt_identities(receipt))
-            self._write_receipt(target_manifest, current, None, identities)
+            restored_units = (
+                tuple(name for name in UNIT_NAMES if (backup.path / "units" / name).is_file())
+                if backup is not None
+                else UNIT_NAMES
+            )
+            self._write_receipt(
+                target_manifest, current, None, identities, managed_units=restored_units
+            )
             self._write_journal(
                 status="committed",
                 version=target,
@@ -899,13 +907,20 @@ class AgentBoxInstaller:
         for item in DIRECTORIES:
             target = self.layout.map(item.path)
             self._ensure_trusted_parent_chain(target)
-            if not target.exists() and not target.is_symlink():
+            existed = target.exists() or target.is_symlink()
+            if not existed:
                 target.mkdir(mode=item.mode, parents=False)
             details = target.lstat()
             if stat.S_ISLNK(details.st_mode):
                 raise InstallError(f"refusing symlink at managed directory {item.path}")
             if not stat.S_ISDIR(details.st_mode):
                 raise InstallError(f"managed directory collision at {item.path}")
+            if existed and item.strict_existing:
+                expected_owner = self.host.owner_ids(item.owner, item.group)
+                if stat.S_IMODE(details.st_mode) != item.mode or (
+                    self.host.real_host and (details.st_uid, details.st_gid) != expected_owner
+                ):
+                    raise InstallError(f"new WAW directory provenance is invalid at {item.path}")
             self.host.set_owner_mode(target, item.owner, item.group, item.mode)
 
     def _ensure_waw_epoch(self, *, allow_bootstrap: bool) -> None:
@@ -1353,6 +1368,7 @@ class AgentBoxInstaller:
 
     def _restore_backup(self, backup: BackupResult) -> None:
         self._verify_backup_for_restore(backup)
+        waw_units_to_remove = self._waw_units_to_remove_on_restore(backup)
         self._remove_database_sidecars()
         self._assert_trusted_parent(self.layout.database)
         self.host.copy_file(backup.path / "agentbox.db", self.layout.database, 0o600)
@@ -1379,6 +1395,8 @@ class AgentBoxInstaller:
                         self.layout.map(f"/etc/systemd/system/{name}"),
                         0o644,
                     )
+        for target in waw_units_to_remove:
+            target.unlink()
         tmpfiles_backup = backup.path / "tmpfiles/agentbox.conf"
         if tmpfiles_backup.is_file() and not tmpfiles_backup.is_symlink():
             self.host.copy_file(
@@ -1387,6 +1405,32 @@ class AgentBoxInstaller:
                 0o644,
             )
         self.host.daemon_reload()
+
+    def _waw_units_to_remove_on_restore(self, backup: BackupResult) -> tuple[Path, ...]:
+        """Preflight new unit removal before restoring any database or unit bytes."""
+
+        units_backup = backup.path / "units"
+        removable: list[Path] = []
+        for name in WAW_SOCKET_UNIT_NAMES:
+            backed_up = units_backup / name
+            if backed_up.is_symlink():
+                raise InstallError("WAW socket backup is unsafe")
+            if backed_up.is_file():
+                continue
+            target = self.layout.map(f"/etc/systemd/system/{name}")
+            if not target.exists() and not target.is_symlink():
+                continue
+            source = Path(
+                str(importlib.resources.files("agentbox_installer") / "assets/systemd" / name)
+            )
+            if (
+                target.is_symlink()
+                or not target.is_file()
+                or target.read_bytes() != source.read_bytes()
+            ):
+                raise InstallError("refusing to remove a modified WAW socket unit during rollback")
+            removable.append(target)
+        return tuple(removable)
 
     def _verify_backup_for_restore(self, backup: BackupResult) -> None:
         if self.host.real_host:
@@ -1651,7 +1695,14 @@ class AgentBoxInstaller:
         previous: str | None,
         backup: BackupResult | None,
         identities: IdentityFacts,
+        *,
+        managed_units: tuple[str, ...] | None = None,
     ) -> None:
+        units = UNIT_NAMES if managed_units is None else managed_units
+        if any(name not in units for name in CORE_UNIT_NAMES) or any(
+            name not in UNIT_NAMES for name in units
+        ):
+            raise InstallError("managed unit inventory is incomplete or unknown")
         receipt = {
             "schema_version": 1,
             "active_version": manifest.version,
@@ -1663,10 +1714,9 @@ class AgentBoxInstaller:
             ),
             "installed_at": datetime.now(UTC).isoformat(),
             "identities": asdict(identities),
-            "managed_units": list(UNIT_NAMES),
+            "managed_units": list(units),
             "managed_unit_sha256": {
-                name: self._digest(self.layout.map(f"/etc/systemd/system/{name}"))
-                for name in UNIT_NAMES
+                name: self._digest(self.layout.map(f"/etc/systemd/system/{name}")) for name in units
             },
             "managed_tmpfiles_sha256": self._digest(
                 self.layout.map("/etc/tmpfiles.d/agentbox.conf")

@@ -242,6 +242,10 @@ D 的模板/fixture 可提前，F 必须等全部所选接口；公开发布 K �
 - installer plan 精确列出将新增/替换的资源和 owner/mode；只安装固定资源。接入 WAW
   control/stream socket activation、peer 参数、manifest-v2/public anchor、Project binding
   store、epoch store、cgroup delegation 与固定 native binary 的可追溯构建。
+- [首个 R12-D 软件批次](../WAW_R12_D_INSTALLER_SOCKETS.md)只安装两个具名
+  socket unit 和固定的非 Secret 目录；默认不启用 socket，不生成 key、不安装
+  manifest/policy，也不连接 `_main`。停止与卸载只处理包内字节完全匹配的
+  unit；旧版本回滚按备份恢复 unit 清单，受改动的 unit 在数据库恢复前拒绝。
 - loader 要求 `LISTEN_PID` 匹配、`LISTEN_FDS=2`，且 FD 3/4 的两个
   `LISTEN_FDNAMES` 恰为一次 control 与一次 stream。每个 descriptor 必须
   分别匹配其固定名称对应的路径、owner/gid/mode 和监听身份，最终归一化为
@@ -250,8 +254,9 @@ D 的模板/fixture 可提前，F 必须等全部所选接口；公开发布 K �
   对指向同一服务的多个 socket unit 不保证跨 unit 顺序。真实 PID 1 下仍需
   证明两个 FD/名称均交付并分别通过第二次 provenance 检查。
   `SocketUser=`/`SocketGroup=` 修改的是路径属主；systemd 以 PID 1 建立的
-  socket FD 可以继续是 root:root。loader 对路径要求 Runtime UID/GID，
-  对 FD 仅接受 root:root 或 Runtime UID/GID 的完整配对，禁止错误交叉组合。
+  socket FD 可以继续是 root:root。loader 对路径要求 Runtime UID 与
+  `agentbox-runtime-ipc` GID；对 FD 仅接受 root:root 或同一预期 UID/GID
+  的完整配对，禁止错误交叉组合。
 - 冻结 unit hardening 与实际 kernel/CLI 需求；CI 曾改变的 userns/AppArmor 设置不得照搬
   到主机。若确需系统策略变更，先提供最窄变更及恢复证据。
 - Server release 与 client trust release 分开。前者不夹带客户端密钥/策略私有状态；

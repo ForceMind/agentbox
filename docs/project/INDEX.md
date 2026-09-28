@@ -20,6 +20,8 @@
   同generation借用、offline status、shared cache与cleanup契约；实现与host资格分开。
 - [R12-C3-b production composition](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md)：
   唯一authority的资源签发、native owner、Project绑定与后续 `_main` 接线缺口。
+- [R12-D installer socket substrate](../WAW_R12_D_INSTALLER_SOCKETS.md)：
+  固定具名 socket unit、Runtime 资源目录、安装/回滚与尚未激活的现场边界。
 
 本目录是治理执行入口。每个任务执行前按顺序读取：
 
