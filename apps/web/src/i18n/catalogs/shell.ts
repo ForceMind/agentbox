@@ -13,6 +13,10 @@ export interface ShellMessageParameters {
   readonly 'shell.settings': NoMessageParameters
   readonly 'shell.controlPlane': NoMessageParameters
   readonly 'shell.primaryNavigation': NoMessageParameters
+  readonly 'shell.openWorkTabs': NoMessageParameters
+  readonly 'shell.tabProject': NoMessageParameters
+  readonly 'shell.tabChanges': NoMessageParameters
+  readonly 'shell.closeWorkTab': Readonly<{ tab: string }>
   readonly 'shell.signedInAs': NoMessageParameters
   readonly 'shell.signingOut': NoMessageParameters
   readonly 'shell.signOut': NoMessageParameters
@@ -41,6 +45,10 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
       'shell.settings': () => 'Settings',
       'shell.controlPlane': () => 'Control Plane',
       'shell.primaryNavigation': () => 'Primary navigation',
+      'shell.openWorkTabs': () => 'Open Project views',
+      'shell.tabProject': () => 'Project',
+      'shell.tabChanges': () => 'Changed paths',
+      'shell.closeWorkTab': ({ tab }) => `Close ${tab}`,
       'shell.signedInAs': () => 'Signed in as',
       'shell.signingOut': () => 'Signing out…',
       'shell.signOut': () => 'Sign out',
@@ -65,6 +73,10 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
       'shell.settings': () => '设置',
       'shell.controlPlane': () => '控制平面',
       'shell.primaryNavigation': () => '主导航',
+      'shell.openWorkTabs': () => '已打开的 Project 页面',
+      'shell.tabProject': () => '项目',
+      'shell.tabChanges': () => '变更路径',
+      'shell.closeWorkTab': ({ tab }) => `关闭 ${tab}`,
       'shell.signedInAs': () => '当前登录用户',
       'shell.signingOut': () => '正在退出…',
       'shell.signOut': () => '退出登录',

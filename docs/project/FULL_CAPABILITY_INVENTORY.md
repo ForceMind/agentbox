@@ -41,7 +41,7 @@
 | ID | 上游已有用户能力 | 主要源证据 | AgentBox 状态 | 验收目标 |
 | --- | --- | --- | --- | --- |
 | WS01 | 本地目录、Git/GitHub Project 注册/克隆/打开 | 主仓 `public-docs/workspaces.md`、CLI `project/` | 部分 | 正式 Project ID/READY、来源与生命周期 |
-| WS02 | 同 Project 多 Workspace、多 Session、并列标签 | 主仓 `workspace-tabs/`、`screens/workspace/` | 部分 | 标签不授予权限，切换/返回状态新鲜 |
+| WS02 | 同 Project 多 Workspace、多 Session、并列标签 | 主仓 `workspace-tabs/`、`screens/workspace/` | Project/Changes/Workspace 内存导航标签候选；多会话/拆分未有 | 标签不授予权限，切换/返回状态新鲜 |
 | WS03 | 本地 checkout、managed worktree、PR workspace | 主仓 `worktree-core.ts`、`public-docs/worktrees.md` | 未有 | dirty/WIP、分支、共享 .git 锁、恢复 |
 | WS04 | Workspace archive/restore、自动归档与清理 | 主仓 `workspace-archive-service.ts` | 未有 | metadata 与物理删除分开、引用计数 |
 | WS05 | Git 状态、分支、Pull/Push、commit/PR 关联 | 主仓 `workspace-git-service.ts`、`git/` | 部分 | 固定 Git 动作、冲突与审计 |

@@ -1,13 +1,40 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T17:42:27Z"
-verified_by: "codex-workbench-git-content-root"
+verified_at_utc: "2026-09-28T18:24:35Z"
+verified_by: "codex-workbench-project-tabs"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 S02/A3 Git content-root candidate
+## 2026-09-29 S02 Project work tabs candidate
+
+PR #109 final head `2e8ee2794b32815f84282d2e4fcfef74ee0e143a`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `1e3f463c5aafcc9ffdd266a94cfe35bfdca46c0a` has parents
+`692f58a5823c4a8fbb438e61f6575fc88150753f` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully. rc17 delivered only internal Git content-root
+descriptor custody; no patch action or content transport was added.
+
+Current `codex/workbench-project-tabs` starts at that exact merge. Its rc18
+candidate adds session-scoped, in-memory Project/Changed Paths/Workspace
+navigation tabs, bounded to twelve, adapted from the pinned upstream pane
+model. Close is navigation only; it calls no Runtime lifecycle action.
+Full Node 22 Web suite passed 1154/1154 serially. Focused model/AppShell
+tests passed (seven cases), MV3 version tests passed (two), Python release
+matrix 72 passed, and Web/MV3 format/lint/typecheck/build passed. Isolated
+desktop/mobile Chromium E2E completed 102 passes and 28
+prescribed skips, including active-tab 44px targets and existing Workspace
+routes; screenshots were inspected with no horizontal document overflow.
+The Web main JS bundle is 601.72 kB/172.29 kB gzip versus rc17
+598.88/171.21 kB. Linux exact-head CI, PR and merge are pending. WS02 remains partial because
+multiple conversations, split panes and cross-device state are absent.
+The broad shell/file/plugin/Hub permission choice and R12 real-host/Secret/
+production gates remain separate. Original checkout WIP is untouched.
+Sections below are historical snapshots.
+
+## Historical 2026-09-29 S02/A3 Git content-root candidate
 
 PR #108 final head `d824c8c4217c59196f87d5c1d0f49652eb9db200`
 completed 26 terminal checks (24 success, two prescribed historical skips).

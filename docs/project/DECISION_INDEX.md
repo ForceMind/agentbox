@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-S02-PROJECT-TABS-CANDIDATE`: rc18 keeps up to twelve current-session
+  navigation targets for formal Project, Changed Paths and Project/AgentType
+  Workspace routes. Tabs are not Runtime, file or conversation authority;
+  closing one only navigates. This is partial WS02, without persistent tabs,
+  split panes or multiple conversations. See
+  [Project work tabs](../WORKBENCH_PROJECT_TABS.md).
+
 - `WORKBENCH-A3-GIT-CONTENT-ROOT-CANDIDATE`: an internal rc17 class holds and
   rechecks only fixed Project/Git directories and metadata-file descriptors.
   Its purpose is to reject replacement and alternate stores before any

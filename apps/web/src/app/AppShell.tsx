@@ -12,14 +12,21 @@ import {
   Terminal,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import packageMetadata from '../../package.json'
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
 import { OpaqueUserValue, TechnicalValue } from '../components/i18n'
 import { useAuth } from '../features/auth/AuthContext'
+import {
+  closeWorkTab,
+  openWorkTab,
+  workTabForLocation,
+  type WorkTab,
+} from '../features/workbench/workTabs'
 import { currentLocale, formatMessage, type Locale } from '../i18n'
+import { WorkbenchTabs } from './WorkbenchTabs'
 
 const navigation = [
   {
@@ -105,11 +112,39 @@ export function AppShell({
 } = {}) {
   const { auth, logout } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
+  const sessionId = auth?.session.id ?? null
+  const routeTab = useMemo(
+    () => workTabForLocation(location.pathname, location.search),
+    [location.pathname, location.search],
+  )
+  const [workTabState, setWorkTabState] = useState<{
+    sessionId: string | null
+    tabs: WorkTab[]
+  }>({ sessionId, tabs: [] })
+  const visibleTabs =
+    workTabState.sessionId === sessionId ? workTabState.tabs : []
   const [menuOpen, setMenuOpen] = useState(false)
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
 
   useEffect(() => setMenuOpen(false), [location.pathname])
+
+  useEffect(() => {
+    setWorkTabState((current) => {
+      const tabs = current.sessionId === sessionId ? current.tabs : []
+      return {
+        sessionId,
+        tabs: routeTab ? openWorkTab(tabs, routeTab) : tabs,
+      }
+    })
+  }, [sessionId, location.key, routeTab])
+
+  function closeTab(key: string) {
+    const outcome = closeWorkTab(visibleTabs, key, routeTab?.key ?? null)
+    setWorkTabState({ sessionId, tabs: outcome.tabs })
+    if (outcome.nextHref) void navigate(outcome.nextHref)
+  }
 
   async function handleLogout() {
     setLogoutPending(true)
@@ -227,6 +262,12 @@ export function AppShell({
       )}
 
       <main className="app-content">
+        <WorkbenchTabs
+          activeKey={routeTab?.key ?? null}
+          locale={locale}
+          onClose={closeTab}
+          tabs={visibleTabs}
+        />
         <Outlet />
       </main>
     </div>

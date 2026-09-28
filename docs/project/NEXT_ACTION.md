@@ -1,6 +1,20 @@
 # Current Authorized Action
 
-## 2026-09-29 S02/A3 descriptor-held Git foundation
+## 2026-09-29 S02 Project work tabs
+
+PR #109 merged as `1e3f463c5aafcc9ffdd266a94cfe35bfdca46c0a`
+with exact parent read-back and six successful post-main workflows. Continue
+on `codex/workbench-project-tabs`: finish bounded Project/Changed Paths/
+Workspace navigation tabs with actual desktop/mobile rendering, route and
+session fencing, and no implicit Runtime lifecycle operation. Record fixed
+upstream source and legal attribution in
+[Project work tabs](../WORKBENCH_PROJECT_TABS.md). Then run local regression,
+exact-head Linux CI, normal merge and read-back. WS02 multiple conversations
+and split panes remain separate. A3 patch content still needs complete Git
+object provenance and child-cwd proof before extraction; broad permissions
+await the Owner's semantic choice.
+
+## Historical 2026-09-29 S02/A3 descriptor-held Git foundation
 
 PR #108 merged as `692f58a5823c4a8fbb438e61f6575fc88150753f`
 with exact parent read-back and six successful post-main workflows. On
