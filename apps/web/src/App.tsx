@@ -11,6 +11,7 @@ import { AppShell } from './app/AppShell'
 import { ProtectedRoute, PublicOnlyRoute } from './app/RouteGuards'
 import { useAuth } from './features/auth/AuthContext'
 import { AuthProvider } from './features/auth/AuthProvider'
+import { AttentionPage } from './pages/AttentionPage'
 import { ClaudePage } from './pages/ClaudePage'
 import { CodexPage } from './pages/CodexPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -80,6 +81,7 @@ export function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppShell />}>
               <Route element={<DashboardPage />} path="/dashboard" />
+              <Route element={<AttentionPage />} path="/attention" />
               <Route element={<CodexPage />} path="/codex" />
               <Route element={<ClaudePage />} path="/claude" />
               <Route element={<WorkspaceRoute />} path="/workspace" />

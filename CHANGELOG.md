@@ -3,6 +3,15 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc14] - Unreleased
+
+- Add an authenticated read-only Attention page for `needs_attention` Jobs in
+  the existing 100-record recent Jobs API response. It refreshes on page
+  return and displays only bounded metadata and valid Project links.
+- Keep R12 Runtime, real host/client/CLI qualification, and the complete
+  Attention inbox separate from this page change.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc14.md`.
+
 ## [0.3.0rc13] - Unreleased
 
 - R12-C2 native auth-probe substrate: closed AWP1/AWRP records, Runtime-peer

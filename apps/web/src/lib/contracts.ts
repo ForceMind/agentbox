@@ -400,6 +400,12 @@ export type JobResponse = {
   data: JobData
 }
 
+export type JobListResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { jobs: JobData[] }
+}
+
 type JsonObject = Record<string, unknown>
 
 function object(value: unknown, context: string): JsonObject {
@@ -1401,5 +1407,18 @@ export function parseJobResponse(value: unknown): JobResponse {
     api_version: literal(envelope.api_version, ['v1'], 'API version'),
     request_id: string(envelope.request_id, 'request ID'),
     data: parseJob(envelope.data),
+  }
+}
+
+/** Existing Jobs API returns at most the 100 most recent records. */
+export function parseJobListResponse(value: unknown): JobListResponse {
+  const envelope = object(value, 'Job list')
+  const data = object(envelope.data, 'Job list data')
+  const jobs = array(data.jobs, 'Jobs')
+  if (jobs.length > 100) throw new Error('Job list exceeds its bound')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: { jobs: jobs.map(parseJob) },
   }
 }

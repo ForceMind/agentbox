@@ -1,11 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T11:50:25Z"
-verified_by: "codex-full-capability-scope"
+verified_at_utc: "2026-09-28T12:16:27Z"
+verified_by: "codex-workbench-attention-rc14"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-28 S02 recent Attention candidate
+
+PR #98 for the full-capability scope merged normally as
+`8beeb1ea81a2b94e514e9452a2b5ce15ce8cbbd2`; Git read-back verified
+parents `135eb8cdb22a6b88a825eb214bde86f3f11e8442` and final head
+`2ccf17b231274673f4ce103b646c0d512df0a241`. Backend, Frontend, E2E,
+Deployment, Security, and Release Candidate post-main workflows all completed
+successfully on that merge SHA. The authority decision noted below remains
+pending; the merged plan does not activate any conflicting capability.
+
+In the isolated managed worktree, `codex/workbench-attention` now contains
+local commit `bce12a2874c6422b507f120b123fb9de5f62394d` for the
+`0.3.0rc14` read-only Attention page, plus a normal local merge of the new
+main (`6ab29997f12e72420e9669f1ce5fd16833723263`). The page uses the
+existing authenticated bounded Jobs API, shows stored `needs_attention`
+metadata among the 100 most recent Jobs, and invalidates its observation when
+the document is hidden. It does not provide a full historical inbox or execute
+recovery actions. Python/npm/MV3 visible values match rc14.
+
+Local checks: 49 focused Web tests, two extension-version tests, 60
+release-candidate unit tests, typecheck, format/lint, root Web/MV3 build,
+and the isolated browser E2E (98 pass, 28 prescribed skips). The new E2E case
+passed at desktop 1280×800 and mobile 390×844, including no horizontal
+overflow and no raw Job summary rendering. A same-host Vite 7.3.6 rc13
+baseline was 582.17 kB JS/166.49 kB gzip; rc14 was 587.01/167.85 kB.
+The >500 kB Vite warning existed in rc13. Local browser work was macOS and
+the unit environment used Python 3.14, so Linux/3.11–3.13, target host,
+real CLI and production evidence remain separate. This rc14 branch has not
+yet been pushed or run through exact-head CI.
 
 ## 2026-09-28 full capability scope expansion
 

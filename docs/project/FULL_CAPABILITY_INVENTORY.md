@@ -33,7 +33,7 @@
 | AG13 | 管理的子 Agent、provider 原生子 Agent、后台/嵌套跟踪 | 主仓 `agent-lifecycle.md`、`subagents/` | 未有 | 父子/脱离/归档/失败归属及预算 |
 | AG14 | 多 Agent 分工、handoff、advisor、committee 技能 | 主仓 `public-docs/skills.md`、`orchestration-workflows.md` | 未有 | 受限调用、文件归属、结果回流与权限 |
 | AG15 | Agent 可调用的 MCP/工具目录与跨 Agent 协作 | 主仓 `public-docs/mcp.md`、`server/agent/tools/` | 未有 | 每项工具的项目、主体、资源与审计合同 |
-| AG16 | Agent 使用统计、状态、活动提醒、通知 | 主仓 `provider-usage/`、`agent-stream/`、`push/` | 部分 | 可归因指标、过期/失败/推送许可 |
+| AG16 | Agent 使用统计、状态、活动提醒、通知 | 主仓 `provider-usage/`、`agent-stream/`、`push/` | 最近 Job Attention 只读候选；其余未有 | 可归因指标、过期/失败/推送许可 |
 | AG17 | 自定义标题/摘要等元数据自动生成 | 主仓 `public-docs/metadata-generation.md` | 未有 | 显式模型/费用、失败与不覆盖用户输入 |
 
 ## B. Project、Workspace 与开发工具

@@ -70,6 +70,6 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
-已完成：主仓 A0/A1、三仓源码下载与固定 SHA、70 项初版盘点、PR #97 合并和六类 post-main workflow 成功回读。进行中：C3-b provider 修复、S01/S02 软件。待定：Owner 对宽权限能力的语义选择；S04/S09/S11 的冲突项在答复前保持未实施。
+已完成：主仓 A0/A1、三仓源码下载与固定 SHA、70 项初版盘点、PR #97/#98 合并和各自六类 post-main workflow 成功回读。进行中：C3-b provider 修复、S01/S02 软件；S02 的 rc14 最近 Job Attention 页面已在隔离分支通过本地浏览器和版本检查，远端 CI/merge 尚未完成。待定：Owner 对宽权限能力的语义选择；S04/S09/S11 的冲突项在答复前保持未实施。
 
 下一可执行批次：完成源清单的代码路径交叉检查、将本计划/清单纳入 AgentBox 文档入口并验证；同时在 C3-b 分支核对 Runtime 原生端口、动态 Project binding、资源 cleanup 和 _main 生产接线。在宽权限答复到达后将选择结果和差异验收写入本计划，继续 S02 用户页面的真数据整合。
