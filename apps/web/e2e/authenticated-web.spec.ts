@@ -376,6 +376,53 @@ test('shows Project Git changed paths without file bodies or patch controls', as
   }
 })
 
+test('keeps Project work tabs as navigation and closes without stopping a Workspace', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  const tabs = page.getByRole('navigation', { name: 'Open Project views' })
+  await expect(tabs.getByRole('link', { name: /Project ·/ })).toBeVisible()
+  await page.getByRole('link', { name: 'View changed paths' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Changed paths' }),
+  ).toBeVisible()
+  await expect(
+    tabs.getByRole('link', { name: /Changed paths ·/ }),
+  ).toBeVisible()
+  await tabs.getByRole('button', { name: /Close Changed paths ·/ }).click()
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  await page.getByRole('link', { name: 'Open Interactive Workspace' }).click()
+  await expect(tabs.getByRole('link', { name: /Claude ·/ })).toBeVisible()
+  for (const target of await tabs.locator('a[href], button').all()) {
+    const box = await target.boundingBox()
+    expect(box?.height).toBeGreaterThanOrEqual(44)
+  }
+  const tabViewport = await tabs.boundingBox()
+  const activeTab = await tabs.locator('li.active').boundingBox()
+  if (!tabViewport || !activeTab)
+    throw new Error('Work tab strip layout is unavailable')
+  expect(activeTab.x).toBeGreaterThanOrEqual(tabViewport.x - 1)
+  expect(activeTab.x + activeTab.width).toBeLessThanOrEqual(
+    tabViewport.x + tabViewport.width + 1,
+  )
+  const viewport = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: testInfo.outputPath('project-work-tabs.png'),
+      fullPage: true,
+    })
+  }
+  await tabs.getByRole('button', { name: /Close Claude ·/ }).click()
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  await expect(tabs.getByRole('link', { name: /Project ·/ })).toBeVisible()
+})
+
 test('handles dirty Git, branches, safe failures, Draft PR, and Claude binding', async ({
   page,
 }) => {
@@ -578,7 +625,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc17', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc18', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

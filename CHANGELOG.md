@@ -3,6 +3,13 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc18] - Unreleased
+
+- Add session-scoped, in-memory Project work tabs for Project detail, Changed
+  Paths and Project/AgentType Workspace routes, with bounded deduplication and
+  adjacent navigation on close. Closing a tab never starts or stops a Runtime.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc18.md`.
+
 ## [0.3.0rc17] - Unreleased
 
 - Add an internal descriptor-held Project/Git provenance foundation for the
