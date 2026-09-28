@@ -1,5 +1,15 @@
 # Decision and Architecture Index
 
+- `R12-C3B-DYNAMIC-CONFLICT-SNAPSHOT-V1`: the existing supervisor executor
+  remains the sole source of current WAW state. It maps formal Project IDs to
+  unique current relative keys and exposes a synchronous, read-only state
+  snapshot for legacy-start arbitration. A binding update, inflight operation,
+  restart quarantine, ambiguous mapping or map change during observation
+  yields a blocking state instead of `ABSENT`. The snapshot does not create
+  a second WAW registry, grant browser access or supply legacy Claude/Codex
+  observations; production `_main` needs one later sealed probe composition.
+  See [C3-b composition closure](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md).
+
 - `R12-D-DISABLED-API-RESOURCES-V1`: the installer creates only the canonical
   `disabled` API profile under `/etc/agentbox` and a fixed read-only singleton
   lock under a root-owned `/run/agentbox-waw-api` parent. It validates exact

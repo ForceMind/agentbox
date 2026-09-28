@@ -1,6 +1,25 @@
 # Current Authorized Action
 
-## 2026-09-28 R12-D API disabled profile and singleton lock
+## 2026-09-28 R12-C3-b dynamic Runtime conflict state
+
+PR #103 merged as `72b87c8333896eb6403e3a7e02516e4dcdf910c3`
+with exact parent read-back and six successful post-main workflows. Continue
+on `codex/r12-runtime-conflict-probe` with an internal, read-only snapshot
+that maps current formal Project IDs back to their unique Runtime relative
+keys and reports WAW supervisor/inflight/quarantine state to the existing
+legacy conflict coordinator. Missing binding, ambiguity, concurrent change
+and unknown state must block, never imply absence. Local executor tests pass;
+Linux exact-head CI and merge are pending. See
+[C3-b composition closure](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md).
+
+After this snapshot, bind a single closed production conflict probe to the
+same executor and legacy managers. The legacy Claude/Codex observations need
+bounded, fresh, read-only source evidence within the R12 start envelope;
+do not use an always-ABSENT callback or a stale manager status cache to make
+the software path appear complete. Then close `_main` and remaining installer
+manifest/native inputs, keeping real host/key/client/CLI gates separate.
+
+## Historical 2026-09-28 R12-D API disabled profile and singleton lock
 
 PR #102 merged as `f70a3fdfda2439ad91a58aa9c38deb0e9c0f7417`
 with exact parent read-back and six successful post-main workflows. Continue

@@ -1585,3 +1585,88 @@ async def test_legacy_project_mapper_requires_one_current_unambiguous_binding(
     executor._binding_reserved.clear()
     executor._inflight_project_ids["other-workspace"] = PROJECT
     assert executor.formal_project_id_for_legacy("project-a") is None
+
+
+@pytest.mark.anyio
+async def test_managed_conflict_snapshot_follows_late_binding_and_live_supervisor(
+    tmp_path: Path,
+) -> None:
+    executor, identity, _transport, _ = setup(tmp_path, AgentType.CLAUDE)
+
+    class RuntimeProbe:
+        def legacy_claude(self, _project_id: str) -> WAWLegacyClaudeState:
+            return WAWLegacyClaudeState.ABSENT
+
+        def legacy_codex_remote(self) -> WAWLegacyCodexState:
+            return WAWLegacyCodexState.ABSENT
+
+        def waw_for_project(self, project_id: str) -> tuple[WAWManagedConflictState, ...]:
+            return executor.managed_conflict_states(project_id)
+
+        def waw_for_host(self) -> tuple[WAWManagedConflictState, ...]:
+            return executor.managed_conflict_states()
+
+    coordinator = WAWConflictCoordinator(RuntimeProbe())
+    assert executor.relative_key_for_formal_project(PROJECT) is None
+    assert executor.managed_conflict_states(PROJECT) == ()
+    coordinator.acquire_legacy_claude_start(project_id=PROJECT).release()
+
+    await executor.register_project_binding(binding())
+    assert executor.relative_key_for_formal_project(PROJECT) == "project-a"
+    assert (await executor.start(identity)).state == "RUNNING"
+    assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.RUNNING,)
+    assert executor.managed_conflict_states() == (WAWManagedConflictState.RUNNING,)
+    with pytest.raises(WAWConflictError, match="PROJECT_RUNTIME_ACTIVE"):
+        coordinator.acquire_legacy_claude_start(project_id=PROJECT)
+    with pytest.raises(WAWConflictError, match="CODEX_REMOTE_CONFLICT"):
+        coordinator.acquire_legacy_codex_start()
+
+    assert (await executor.stop(identity)).state == "STOPPED"
+    assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.STOPPED,)
+    coordinator.acquire_legacy_claude_start(project_id=PROJECT).release()
+
+
+@pytest.mark.anyio
+async def test_managed_conflict_snapshot_denies_unsettled_binding_and_quarantine(
+    tmp_path: Path,
+) -> None:
+    executor, identity, _transport, _ = setup(tmp_path, AgentType.CLAUDE)
+    await executor.register_project_binding(binding())
+    assert executor.managed_conflict_states("invalid") == (WAWManagedConflictState.UNKNOWN,)
+    assert executor.relative_key_for_formal_project("invalid") is None
+
+    executor._binding_reserved.add(PROJECT)
+    assert executor.relative_key_for_formal_project(PROJECT) is None
+    assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.UNKNOWN,)
+    assert executor.managed_conflict_states() == (WAWManagedConflictState.UNKNOWN,)
+    executor._binding_reserved.clear()
+
+    executor._inflight_project_ids[identity.workspace_id] = PROJECT
+    assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.UNKNOWN,)
+    executor._inflight_project_ids.clear()
+
+    executor._restart_quarantine[executor._key(identity)] = cast(Any, object())
+    assert executor.managed_conflict_states(PROJECT) == (
+        WAWManagedConflictState.RECONCILIATION_REQUIRED,
+    )
+    assert executor.relative_key_for_formal_project(PROJECT) is None
+
+
+@pytest.mark.anyio
+async def test_managed_conflict_snapshot_detects_map_replacement_while_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executor, identity, _transport, _ = setup(tmp_path, AgentType.CLAUDE)
+    await executor.register_project_binding(binding())
+    await executor.start(identity)
+    key = executor._key(identity)
+    supervisor = executor._supervisors[key]
+    state_before = supervisor.state
+
+    def mutate_during_state_read(_self: object) -> SupervisorState:
+        bound, project = executor._bindings[PROJECT]
+        executor._bindings[PROJECT] = (replace(bound), project)
+        return state_before
+
+    monkeypatch.setattr(type(supervisor), "state", property(mutate_during_state_read))
+    assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.UNKNOWN,)

@@ -73,6 +73,15 @@ relative key. It refuses mismatched formal Project/Workspace IDs. The next
 composed test must register a Project after startup, start it, rotate/revoke
 its binding, and prove stale identities fail without a duplicate map.
 
+The next software candidate also exposes `relative_key_for_formal_project`
+and `managed_conflict_states` from that same executor. They read the live
+binding/supervisor maps under the existing lock, observe supervisor state
+outside the map lock to avoid lock inversion, and recheck map identity before
+returning. Binding changes, inflight work or restart quarantine block legacy
+starts. This closes only the WAW side of the bidirectional conflict probe;
+the bounded, fresh legacy Claude/Codex state source and one-shot production
+probe binding still need implementation and actual application tests.
+
 ## Production entrypoint sequence
 
 1. The installer supplies fixed root-owned v2 manifest/public resources,

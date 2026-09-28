@@ -1,13 +1,38 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T14:06:47Z"
-verified_by: "codex-r12-api-profile-provision"
+verified_at_utc: "2026-09-28T14:31:38Z"
+verified_by: "codex-r12-runtime-conflict-snapshot"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-28 R12-D API disabled resource candidate
+## 2026-09-28 R12-C3-b dynamic conflict snapshot candidate
+
+PR #103 final head `fd3d97d2256895341e83cd8e04419fb74a101e43`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `72b87c8333896eb6403e3a7e02516e4dcdf910c3` has parents
+`f70a3fdfda2439ad91a58aa9c38deb0e9c0f7417` and that head; Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully. The API profile and lock are installed as
+closed-state software resources, without host activation.
+
+Current `codex/r12-runtime-conflict-probe` starts at that merge. It adds
+internal `WAWSupervisorExecutor` read-only snapshots of dynamic formal
+Project bindings and every relevant supervisor, inflight operation or
+restart quarantine. Ambiguity or map drift yields `UNKNOWN`; no Runtime
+request action, API route or shell/file access is added. Local executor suite
+completed 41 passed; full Linux-target mypy (313 source files) and format
+checks passed. Exact-head CI and PR are pending. The legacy Claude/Codex
+live state source, provider binding and production `_main` are still absent;
+this snapshot alone does not close R12-C3-b or qualify a host.
+
+The original checkout's WIP remains untouched. The Owner's full parity
+scope and unresolved broad-permission semantics remain as recorded in the
+full capability plan. Sections below are historical point-in-time snapshots
+superseded by this live branch/CI revalidation.
+
+## Historical 2026-09-28 R12-D API disabled resource candidate
 
 PR #102 final head `6217dd5c56343db731d718c27e5f6b719fea275e`
 completed 26 terminal checks (24 success, two prescribed historical skips).
