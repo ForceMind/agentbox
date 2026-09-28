@@ -6,13 +6,14 @@ import {
   FileText,
   Gauge,
   Menu,
+  Search,
   Settings,
   ShieldCheck,
   Sparkles,
   Terminal,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import packageMetadata from '../../package.json'
@@ -26,6 +27,7 @@ import {
   type WorkTab,
 } from '../features/workbench/workTabs'
 import { currentLocale, formatMessage, type Locale } from '../i18n'
+import { CommandCenter } from './CommandCenter'
 import { WorkbenchTabs } from './WorkbenchTabs'
 
 const navigation = [
@@ -125,10 +127,62 @@ export function AppShell({
   const visibleTabs =
     workTabState.sessionId === sessionId ? workTabState.tabs : []
   const [menuOpen, setMenuOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
+  const previousFocus = useRef<HTMLElement | null>(null)
+  const commandActions = useMemo(
+    () =>
+      navigation.map(({ label, path }) => ({
+        title: label(locale),
+        href: path,
+      })),
+    [locale],
+  )
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
 
   useEffect(() => setMenuOpen(false), [location.pathname])
+  useEffect(() => setCommandOpen(false), [sessionId])
+  useEffect(() => setCommandOpen(false), [location.key])
+
+  useEffect(() => {
+    function shortcut(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.altKey ||
+        event.shiftKey ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== 'k'
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (commandOpen) return
+      previousFocus.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null
+      setCommandOpen(true)
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [commandOpen])
+
+  function openCommandCenter() {
+    previousFocus.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    setMenuOpen(false)
+    setCommandOpen(true)
+  }
+
+  function closeCommandCenter() {
+    setCommandOpen(false)
+    window.setTimeout(() => {
+      if (previousFocus.current?.isConnected) previousFocus.current.focus()
+    }, 0)
+  }
 
   useEffect(() => {
     setWorkTabState((current) => {
@@ -170,6 +224,15 @@ export function AppShell({
             <span>{formatMessage(locale, 'shell.controlPlane', {})}</span>
           </div>
         </div>
+        <button
+          className="command-center-trigger"
+          onClick={openCommandCenter}
+          type="button"
+        >
+          <Search aria-hidden="true" size={18} />
+          <span>{formatMessage(locale, 'shell.commandCenter', {})}</span>
+          <kbd>⌘/Ctrl K</kbd>
+        </button>
         <Navigation locale={locale} />
         <div className="sidebar-footer">
           <ControlPlanePulse locale={locale} />
@@ -210,20 +273,30 @@ export function AppShell({
           </div>
           <strong>{formatMessage(locale, 'app.name', {})}</strong>
         </div>
-        <button
-          aria-controls="mobile-navigation"
-          aria-expanded={menuOpen}
-          aria-label={
-            menuOpen
-              ? formatMessage(locale, 'shell.closeNavigation', {})
-              : formatMessage(locale, 'shell.openNavigation', {})
-          }
-          className="icon-button"
-          onClick={() => setMenuOpen((open) => !open)}
-          type="button"
-        >
-          {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-        </button>
+        <div className="mobile-header-actions">
+          <button
+            aria-label={formatMessage(locale, 'shell.commandCenter', {})}
+            className="icon-button"
+            onClick={openCommandCenter}
+            type="button"
+          >
+            <Search aria-hidden="true" />
+          </button>
+          <button
+            aria-controls="mobile-navigation"
+            aria-expanded={menuOpen}
+            aria-label={
+              menuOpen
+                ? formatMessage(locale, 'shell.closeNavigation', {})
+                : formatMessage(locale, 'shell.openNavigation', {})
+            }
+            className="icon-button"
+            onClick={() => setMenuOpen((open) => !open)}
+            type="button"
+          >
+            {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          </button>
+        </div>
       </header>
 
       {menuOpen && (
@@ -270,6 +343,15 @@ export function AppShell({
         />
         <Outlet />
       </main>
+      {commandOpen && sessionId && (
+        <CommandCenter
+          actions={commandActions}
+          key={sessionId}
+          locale={locale}
+          onClose={closeCommandCenter}
+          onNavigate={(href) => void navigate(href)}
+        />
+      )}
     </div>
   )
 }

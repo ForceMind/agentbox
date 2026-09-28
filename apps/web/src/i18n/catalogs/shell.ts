@@ -28,6 +28,15 @@ export interface ShellMessageParameters {
   readonly 'shell.healthHealthy': NoMessageParameters
   readonly 'shell.healthUnavailable': NoMessageParameters
   readonly 'shell.controlPlaneStatus': Readonly<{ status: string }>
+  readonly 'shell.commandCenter': NoMessageParameters
+  readonly 'shell.closeCommandCenter': NoMessageParameters
+  readonly 'shell.commandSearch': NoMessageParameters
+  readonly 'shell.commandSearchPlaceholder': NoMessageParameters
+  readonly 'shell.commandPage': NoMessageParameters
+  readonly 'shell.commandProject': NoMessageParameters
+  readonly 'shell.commandLoading': NoMessageParameters
+  readonly 'shell.commandLoadFailed': NoMessageParameters
+  readonly 'shell.commandEmpty': NoMessageParameters
 }
 
 export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
@@ -60,6 +69,16 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
       'shell.healthHealthy': () => 'Healthy',
       'shell.healthUnavailable': () => 'Unavailable',
       'shell.controlPlaneStatus': ({ status }) => `Control plane: ${status}`,
+      'shell.commandCenter': () => 'Command center',
+      'shell.closeCommandCenter': () => 'Close command center',
+      'shell.commandSearch': () => 'Search pages and Projects',
+      'shell.commandSearchPlaceholder': () => 'Go to a page or Project…',
+      'shell.commandPage': () => 'Page',
+      'shell.commandProject': () => 'Project',
+      'shell.commandLoading': () => 'Loading Projects…',
+      'shell.commandLoadFailed': () =>
+        'Projects could not be loaded. Page navigation is still available.',
+      'shell.commandEmpty': () => 'No matching page or Project.',
     },
     'zh-CN': {
       'shell.dashboard': () => '概览',
@@ -88,6 +107,15 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
       'shell.healthHealthy': () => '正常',
       'shell.healthUnavailable': () => '不可用',
       'shell.controlPlaneStatus': ({ status }) => `控制平面：${status}`,
+      'shell.commandCenter': () => '命令中心',
+      'shell.closeCommandCenter': () => '关闭命令中心',
+      'shell.commandSearch': () => '搜索页面和项目',
+      'shell.commandSearchPlaceholder': () => '前往页面或项目…',
+      'shell.commandPage': () => '页面',
+      'shell.commandProject': () => '项目',
+      'shell.commandLoading': () => '正在加载项目…',
+      'shell.commandLoadFailed': () => '项目加载失败，仍可打开页面。',
+      'shell.commandEmpty': () => '没有匹配的页面或项目。',
     },
   },
 )

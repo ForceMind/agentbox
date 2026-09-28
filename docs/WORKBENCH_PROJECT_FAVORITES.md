@@ -1,12 +1,12 @@
 # WS14 Project favorites contract
 
-Status: rc21 backend/API merged; rc22 Web UI candidate, 2026-09-29. This extends the approved
+Status: rc21 backend/API and rc22 Web UI merged, 2026-09-29. This extends the approved
 [full capability plan](project/FULL_CAPABILITY_DELIVERY_PLAN.md) after the
 [rc20 Project search](WORKBENCH_PROJECT_SEARCH.md). It specifies metadata-only
 favorites for formal Projects; it does not grant Project, Runtime, file or
 terminal authority. rc21 implements persistence/CAS and typed API; rc22
 connects the Web control. Full multi-client/browser proof and later label
-features remain unfinished.
+features remain unfinished. The rc23 command center is separate navigation.
 
 rc22 local browser evidence covers server-confirmed save, reload read-back,
 synthetic conflict, no PUT replay, and desktop/mobile visible state in 106
