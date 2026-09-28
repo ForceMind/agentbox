@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/getpaseo/paseo",
+    "commit": "30178c4f58b67f8472901356e1484022bd835de0",
+    "license": "Apache-2.0",
+    "license_sha256": "79d5aedce6aa0adc547336dc1bd34c5cc9308ba110fac7079ed97515ee573ad3"
+  },
+  "files": [
+    {
+      "source_path": "packages/app/src/git/diff-tree.ts",
+      "source_sha256": "a1fd2b9127c68ddd54e91cf70b0b982b88108d361659d065f33490c95e8affdf",
+      "destination_path": "apps/web/src/features/changes/diffTree.ts",
+      "change": "Adapted types to AgentBox's minimal diff summary while preserving caller-owned file fields."
+    },
+    {
+      "source_path": "packages/app/src/git/diff-order.ts",
+      "source_sha256": "5ed20b0cc5c5cf425f616fc3506284d9a95a625817c52dd0dece366ee928f107",
+      "destination_path": "apps/web/src/features/changes/diffOrder.ts",
+      "change": "Replaced upstream protocol and path aliases with AgentBox-local types."
+    },
+    {
+      "source_path": "packages/app/src/git/diff-tree.test.ts",
+      "source_sha256": "c26202b408c3dbea22cea8f900398f1aed78f52ef177c11fff89b6651061d0b1",
+      "destination_path": "apps/web/src/features/changes/diffTree.test.ts",
+      "change": "Adapted fixtures and import paths for AgentBox."
+    },
+    {
+      "source_path": "packages/app/src/git/diff-order.test.ts",
+      "source_sha256": "3b164bfb6d05baeaa1de6ecaf4e47cd7175fb66b3df2aa230fb85ff74a367d50",
+      "destination_path": "apps/web/src/features/changes/diffOrder.test.ts",
+      "change": "Adapted import paths for AgentBox."
+    }
+  ]
+}
