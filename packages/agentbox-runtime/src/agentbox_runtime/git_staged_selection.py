@@ -53,9 +53,11 @@ def _reject(code: str) -> RuntimeOperationError:
     category = (
         "forbidden"
         if code in {"PATCH_UNAVAILABLE_PATH", "PATCH_UNAVAILABLE_SENSITIVE_PATH"}
-        else "unsupported"
-        if code in {"PATCH_UNAVAILABLE_KIND", "PATCH_UNAVAILABLE_MODE"}
-        else "unavailable"
+        else (
+            "unsupported"
+            if code in {"PATCH_UNAVAILABLE_KIND", "PATCH_UNAVAILABLE_MODE"}
+            else "unavailable"
+        )
     )
     return RuntimeOperationError(code, "Staged patch is unavailable", category=category)
 
