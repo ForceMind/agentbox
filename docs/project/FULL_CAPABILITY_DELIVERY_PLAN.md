@@ -70,6 +70,6 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
-已完成：主仓 A0/A1、三仓源码下载与固定 SHA、70 项初版盘点、PR #97–#107 合并和各自六类 post-main workflow 成功回读；rc14 最近 Job Attention 页面、rc15 Project 范围 Git 路径元数据 API、rc16 Changed Paths 页面已交付，但不构成完整收件箱或 diff。S01 的 authority-deferred 资源基础、systemd 命名 FD 准入、dormant socket/目录、API/Runtime 关闭态资源和动态 WAW 冲突快照已交付。进行中：C3-b `_main` 接线与 R12-D 其余固定制品；S02 A3 patch 内容合同及其余真数据工作台能力。待定：Owner 对宽权限能力的语义选择；S04/S09/S11 的冲突项在答复前保持未实施。
+已完成：主仓 A0/A1、三仓源码下载与固定 SHA、70 项初版盘点、PR #97–#108 合并和各自六类 post-main workflow 成功回读；rc14 最近 Job Attention 页面、rc15 Project 范围 Git 路径元数据 API、rc16 Changed Paths 页面及 A3 patch 合同已交付，但不构成完整收件箱或 diff。S01 的 authority-deferred 资源基础、systemd 命名 FD 准入、dormant socket/目录、API/Runtime 关闭态资源和动态 WAW 冲突快照已交付。进行中：C3-b `_main` 接线与 R12-D 其余固定制品；S02 rc17 descriptor-held Git 基础及其余真数据工作台能力。待定：Owner 对宽权限能力的语义选择；S04/S09/S11 的冲突项在答复前保持未实施。
 
-下一可执行批次：冻结 Project 范围、有大小和敏感度边界的 [A3 patch 内容合同](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md)，先做 Runtime-only 受限提取和负面验证，再做独立加密内容通道与页面。R12 的 `_main` 生产接线仍需正向 legacy 冲突来源及固定 manifest/native 输入；宽权限答复到达后，将选择结果和差异验收写入本计划，再开展对应的 S04/S09/S11 能力。
+下一可执行批次：按 [A3 patch 内容合同](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md)完成 Project/Git descriptor 基础、完整 object store 与子进程 cwd 证明，先做 staged-only Runtime 提取和负面验证，再做选择器、独立加密内容通道与页面。R12 的 `_main` 生产接线仍需正向 legacy 冲突来源及固定 manifest/native 输入；宽权限答复到达后，将选择结果和差异验收写入本计划，再开展对应的 S04/S09/S11 能力。

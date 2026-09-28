@@ -3,6 +3,13 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc17] - Unreleased
+
+- Add an internal descriptor-held Project/Git provenance foundation for the
+  future A3 staged patch reader. It rejects replaced nodes, symlinks, shared
+  writes and alternate object stores; no patch action or content route exists.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc17.md`.
+
 ## [0.3.0rc16] - Unreleased
 
 - Add an authenticated, read-only Changed Paths page for READY Projects,
