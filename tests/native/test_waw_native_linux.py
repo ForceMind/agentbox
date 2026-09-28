@@ -583,7 +583,7 @@ def _wait_for_exact_pane_death(session: str, exit_code: int) -> None:
             check=False,
             capture_output=True,
             text=True,
-            timeout=min(1.0, remaining),
+            timeout=remaining,
         )
         if result.returncode != 0:
             pytest.fail("exact tmux pane became unavailable before exit evidence")
