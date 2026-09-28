@@ -1,7 +1,8 @@
 # A3 bounded Git Changes metadata
 
-Status: rc15 metadata API merged as PR #106; rc16 Changed Paths UI candidate,
-2026-09-29.
+Status: rc15 metadata API merged as PR #106; rc16 Changed Paths UI merged as
+PR #107, 2026-09-29. The next content boundary is the separate
+[A3 patch contract](WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
 This is the first read-only data contract under
 [ADR 0009](adr/0009-workbench-identity-and-content-boundary.md). It supplies
 paths and change classes to the AgentBox Changes tree; it does not yet supply
