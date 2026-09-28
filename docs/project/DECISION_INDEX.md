@@ -1,5 +1,16 @@
 # Decision and Architecture Index
 
+- `R12-RUNTIME-FIXED-PROFILE-V1`: Runtime's expected WAW mode comes only from
+  fixed `/var/lib/agentbox-waw/runtime-profile.v1.json`, separate from API
+  mode and inaccessible to API/Worker. The installer creates exact disabled
+  bytes; the Runtime verifies a root-owned, Runtime-group-readable 0440 leaf
+  under its root-owned 0750 directory. A proven absent leaf preserves old
+  disabled installations; malformed or drifting state fails. Until C3-b
+  composition exists, an explicit `filesystem-v2` value makes `_main` fail
+  before constructing the legacy listener. Future mode updates require a
+  coordinated API/Runtime CAS transaction and host qualification. See
+  [Runtime profile](../WAW_R12_RUNTIME_PROFILE.md).
+
 - `R12-C3B-DYNAMIC-CONFLICT-SNAPSHOT-V1`: the existing supervisor executor
   remains the sole source of current WAW state. It maps formal Project IDs to
   unique current relative keys and exposes a synchronous, read-only state

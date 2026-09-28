@@ -36,6 +36,7 @@ from agentbox_runtime.rpc import (
 )
 from agentbox_runtime.server import RuntimeExecutorServer, _main
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
+from agentbox_runtime.waw_runtime_profile import WAWRuntimeMode, WAWRuntimeProfileObservation
 
 CANARY = "PAIR-SECRET-CANARY-RPC-4D8P"
 
@@ -231,6 +232,114 @@ async def test_runtime_main_rejects_unknown_environment(monkeypatch: pytest.Monk
     monkeypatch.setenv("AGENTBOX_ENV", "prodution")
     with pytest.raises(RuntimeError, match="AGENTBOX_ENV"):
         await _main()
+
+
+def _production_runtime_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTBOX_ENV", "production")
+    monkeypatch.setenv("AGENTBOX_RUNTIME_SOCKET", "/run/agentbox/runtime.sock")
+    monkeypatch.setenv("AGENTBOX_RUNTIME_ALLOWED_UIDS", str(os.geteuid()))
+    monkeypatch.setenv("AGENTBOX_RUNTIME_ALLOWED_GIDS", str(os.getegid()))
+
+
+def _runtime_profile(mode: WAWRuntimeMode) -> WAWRuntimeProfileObservation:
+    return WAWRuntimeProfileObservation(mode, "installed_profile", "a" * 64, (1,), (2,))
+
+
+@pytest.mark.anyio
+async def test_runtime_main_rejects_enabled_profile_before_legacy_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentbox_runtime import server as subject
+
+    _production_runtime_environment(monkeypatch)
+    observed = _runtime_profile(WAWRuntimeMode.FILESYSTEM_V2)
+    checked: list[WAWRuntimeProfileObservation] = []
+    monkeypatch.setattr(subject, "load_waw_runtime_profile", lambda: observed)
+    monkeypatch.setattr(subject, "revalidate_waw_runtime_profile", checked.append)
+
+    def unexpected_server(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("enabled WAW profile must not construct the legacy Runtime server")
+
+    monkeypatch.setattr(subject, "RuntimeExecutorServer", unexpected_server)
+    with pytest.raises(RuntimeError, match="production composition is not yet available"):
+        await _main()
+    assert checked == [observed]
+
+
+@pytest.mark.anyio
+async def test_runtime_main_revalidates_disabled_profile_and_closes_legacy_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentbox_runtime import server as subject
+
+    _production_runtime_environment(monkeypatch)
+    observed = _runtime_profile(WAWRuntimeMode.DISABLED)
+    events: list[str] = []
+    monkeypatch.setattr(subject, "load_waw_runtime_profile", lambda: observed)
+    monkeypatch.setattr(
+        subject,
+        "revalidate_waw_runtime_profile",
+        lambda item: events.append("profile.current") if item is observed else None,
+    )
+
+    class FakeServer:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            events.append("legacy.construct")
+
+        async def start(self, *, create_development_parent: bool) -> None:
+            assert create_development_parent is False
+            events.append("legacy.start")
+
+        async def serve_forever(self) -> None:
+            events.append("legacy.serve")
+
+        async def close(self) -> None:
+            events.append("legacy.close")
+
+    monkeypatch.setattr(subject, "RuntimeExecutorServer", FakeServer)
+    await _main()
+    assert events == [
+        "legacy.construct",
+        "profile.current",
+        "legacy.start",
+        "legacy.serve",
+        "legacy.close",
+    ]
+
+
+@pytest.mark.anyio
+async def test_runtime_main_profile_drift_closes_unstarted_legacy_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentbox_runtime import server as subject
+
+    _production_runtime_environment(monkeypatch)
+    monkeypatch.setattr(
+        subject,
+        "load_waw_runtime_profile",
+        lambda: _runtime_profile(WAWRuntimeMode.DISABLED),
+    )
+
+    def drift(_observation: WAWRuntimeProfileObservation) -> None:
+        raise RuntimeError("profile drift")
+
+    monkeypatch.setattr(subject, "revalidate_waw_runtime_profile", drift)
+    events: list[str] = []
+
+    class FakeServer:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            events.append("construct")
+
+        async def start(self, *, create_development_parent: bool) -> None:
+            raise AssertionError("profile drift must prevent Runtime startup")
+
+        async def close(self) -> None:
+            events.append("close")
+
+    monkeypatch.setattr(subject, "RuntimeExecutorServer", FakeServer)
+    with pytest.raises(RuntimeError, match="profile drift"):
+        await _main()
+    assert events == ["construct", "close"]
 
 
 @pytest.mark.anyio

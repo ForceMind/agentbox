@@ -1,6 +1,25 @@
 # Current Authorized Action
 
-## 2026-09-28 R12-C3-b dynamic Runtime conflict state
+## 2026-09-28 R12 Runtime fixed deployment profile
+
+PR #104 merged as `e6a5bf36636c5baf1225368c0acea1d89a73762e`
+with exact parent read-back and six successful post-main workflows. Continue
+on `codex/r12-runtime-deployment-profile`: the installer creates only the
+canonical `disabled` Runtime profile at the fixed private path; an exact
+loader checks parent and leaf provenance, and `_main` may run legacy mode
+only when the profile remains disabled at startup. Explicit
+`filesystem-v2` fails until the full application graph is wired. Local
+installer/profile and focused entrypoint tests pass; Linux exact-head CI
+and merge are pending. See [Runtime profile](../WAW_R12_RUNTIME_PROFILE.md).
+
+After this software guard, replace the deliberate enabled-mode rejection
+with one production composition from activated sockets, Runtime-only key,
+epoch, verified manifest, deferred provider, current Project bindings and
+one bounded bidirectional conflict authority. Installer CAS transactions
+must coordinate API and Runtime profiles; no real host mode switch, Secret
+or credential operation follows from a software merge.
+
+## Historical 2026-09-28 R12-C3-b dynamic Runtime conflict state
 
 PR #103 merged as `72b87c8333896eb6403e3a7e02516e4dcdf910c3`
 with exact parent read-back and six successful post-main workflows. Continue

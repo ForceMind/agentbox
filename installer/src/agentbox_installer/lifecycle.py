@@ -55,6 +55,12 @@ _WAW_API_DISABLED_PROFILE = b'{"mode":"disabled","schema_version":"agentbox-waw-
 _WAW_API_ENABLED_PROFILE = (
     b'{"mode":"filesystem-v2","schema_version":"agentbox-waw-api-profile.v1"}\n'
 )
+_WAW_RUNTIME_DISABLED_PROFILE = (
+    b'{"mode":"disabled","schema_version":"agentbox-waw-runtime-profile.v1"}\n'
+)
+_WAW_RUNTIME_ENABLED_PROFILE = (
+    b'{"mode":"filesystem-v2","schema_version":"agentbox-waw-runtime-profile.v1"}\n'
+)
 
 
 def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -191,6 +197,7 @@ class AgentBoxInstaller:
                 "/etc/agentbox/runtime-environment",
                 "/etc/agentbox/helper-environment",
                 "/etc/agentbox/waw-api-profile.v1.json",
+                "/var/lib/agentbox-waw/runtime-profile.v1.json",
                 "/run/agentbox-waw-api/waw-api.v1.lock",
                 "/var/lib/agentbox/agentbox.db",
                 "/var/lib/agentbox/install-receipt.json",
@@ -295,6 +302,7 @@ class AgentBoxInstaller:
         self._ensure_waw_epoch(allow_bootstrap=not self.layout.database.exists())
         self._write_initial_configuration(identities)
         self._ensure_waw_api_resources()
+        self._ensure_waw_runtime_profile()
         self._write_journal(
             status="running",
             version=plan.version,
@@ -980,7 +988,7 @@ class AgentBoxInstaller:
         if not profile.exists() and not profile.is_symlink():
             self._atomic_write(profile, _WAW_API_DISABLED_PROFILE.decode("ascii"), 0o440)
             self.host.set_owner_mode(profile, "root", "agentbox", 0o440)
-        self._validate_waw_api_file(
+        self._validate_fixed_waw_file(
             profile,
             owner="root",
             group="agentbox",
@@ -992,11 +1000,26 @@ class AgentBoxInstaller:
         if not lock.exists() and not lock.is_symlink():
             self._atomic_write(lock, "", 0o444)
             self.host.set_owner_mode(lock, "agentbox", "agentbox", 0o444)
-        self._validate_waw_api_file(
+        self._validate_fixed_waw_file(
             lock, owner="agentbox", group="agentbox", mode=0o444, allowed=(b"",)
         )
 
-    def _validate_waw_api_file(
+    def _ensure_waw_runtime_profile(self) -> None:
+        """Install only disabled Runtime mode; preserve a valid enrolled mode."""
+
+        profile = self.layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json")
+        if not profile.exists() and not profile.is_symlink():
+            self._atomic_write(profile, _WAW_RUNTIME_DISABLED_PROFILE.decode("ascii"), 0o440)
+            self.host.set_owner_mode(profile, "root", "agentbox-runtime", 0o440)
+        self._validate_fixed_waw_file(
+            profile,
+            owner="root",
+            group="agentbox-runtime",
+            mode=0o440,
+            allowed=(_WAW_RUNTIME_DISABLED_PROFILE, _WAW_RUNTIME_ENABLED_PROFILE),
+        )
+
+    def _validate_fixed_waw_file(
         self,
         path: Path,
         *,
@@ -1005,13 +1028,13 @@ class AgentBoxInstaller:
         mode: int,
         allowed: tuple[bytes, ...],
     ) -> None:
-        """Read a fixed small file through a held no-follow descriptor."""
+        """Read an installer-owned fixed file through a held no-follow descriptor."""
 
         try:
             before = path.lstat()
             descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
         except OSError as exc:
-            raise InstallError("WAW API installed resource is unavailable") from exc
+            raise InstallError("WAW installed resource is unavailable") from exc
         try:
             held = os.fstat(descriptor)
             maximum = max(len(value) for value in allowed)
@@ -1034,7 +1057,7 @@ class AgentBoxInstaller:
                     )
                 )
             ):
-                raise InstallError("WAW API installed resource provenance is invalid")
+                raise InstallError("WAW installed resource provenance is invalid")
             payload = os.read(descriptor, maximum + 1)
             after = os.fstat(descriptor)
             entry = path.lstat()
@@ -1046,7 +1069,7 @@ class AgentBoxInstaller:
                 or identity_before != self._waw_api_file_identity(after)
                 or identity_before != self._waw_api_file_identity(entry)
             ):
-                raise InstallError("WAW API installed resource changed while reading")
+                raise InstallError("WAW installed resource changed while reading")
         finally:
             os.close(descriptor)
 
@@ -1673,6 +1696,7 @@ class AgentBoxInstaller:
                 "/etc/agentbox/runtime-environment": "regular_file",
                 "/etc/agentbox/helper-environment": "regular_file",
                 "/etc/agentbox/waw-api-profile.v1.json": "regular_file",
+                "/var/lib/agentbox-waw/runtime-profile.v1.json": "regular_file",
                 "/run/agentbox-waw-api/waw-api.v1.lock": "regular_file",
                 "/var/lib/agentbox/agentbox.db": "regular_file",
                 "/var/lib/agentbox/agentbox.db-wal": "regular_file",

@@ -24,6 +24,8 @@
   固定具名 socket unit、Runtime 资源目录、安装/回滚与尚未激活的现场边界。
 - [R12-D API disabled resources](../WAW_R12_D_API_RESOURCES.md)：
   固定关闭态 API profile、单例锁目录与文件，及后继 CAS 更新门禁。
+- [R12 Runtime fixed profile](../WAW_R12_RUNTIME_PROFILE.md)：
+  Runtime私有关闭态profile、固定加载及 `_main` 拒绝静默回退的入口边界。
 
 本目录是治理执行入口。每个任务执行前按顺序读取：
 

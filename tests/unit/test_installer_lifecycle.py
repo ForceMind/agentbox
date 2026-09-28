@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import sqlite3
 import tarfile
 from pathlib import Path
@@ -25,6 +26,12 @@ from agentbox_installer.lifecycle import (
     RollbackVerificationError,
     RollbackVerifiedError,
     _compare_versions,
+)
+from agentbox_runtime.waw_runtime_profile import (
+    DISABLED_PROFILE_BYTES,
+    FILESYSTEM_V2_PROFILE_BYTES,
+    WAWRuntimeMode,
+    _load_profile_at,
 )
 from support.failure_injection import FailureInjector, InjectedCrash
 
@@ -114,6 +121,7 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     assert plan.bind == "127.0.0.1:8787"
     assert set(WAW_SOCKET_UNIT_NAMES).issubset(plan.units)
     assert "/etc/agentbox/waw-api-profile.v1.json" in plan.files
+    assert "/var/lib/agentbox-waw/runtime-profile.v1.json" in plan.files
     assert "/run/agentbox-waw-api/waw-api.v1.lock" in plan.files
     assert "git" in plan.package_changes
     assert sorted(path.relative_to(layout.root).as_posix() for path in layout.root.rglob("*")) == [
@@ -136,6 +144,18 @@ def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: 
     )
     assert _parse_profile(profile.read_bytes()) is WAWMode.DISABLED
     assert stat_mode(profile) == 0o440
+    runtime_profile = layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json")
+    assert runtime_profile.read_bytes() == DISABLED_PROFILE_BYTES
+    assert stat_mode(runtime_profile) == 0o440
+    assert (
+        _load_profile_at(
+            runtime_profile,
+            root=layout.root,
+            root_uid=os.geteuid(),
+            runtime_gid=runtime_profile.parent.stat().st_gid,
+        ).mode
+        is WAWRuntimeMode.DISABLED
+    )
     assert stat_mode(lock.parent) == 0o755
     assert lock.read_bytes() == b"" and stat_mode(lock) == 0o444
     for name in WAW_SOCKET_UNIT_NAMES:
@@ -478,8 +498,32 @@ def test_existing_waw_api_profile_is_preserved_and_invalid_content_rejected(
     profile.chmod(0o600)
     profile.write_bytes(b'{"mode":"enabled"}\n')
     profile.chmod(0o440)
-    with pytest.raises(InstallError, match="WAW API installed resource"):
+    with pytest.raises(InstallError, match="WAW installed resource"):
         installer._ensure_waw_api_resources()
+    assert profile.read_bytes() == b'{"mode":"enabled"}\n'
+
+
+def test_existing_waw_runtime_profile_is_preserved_and_invalid_content_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    installer, layout = _installer(tmp_path)
+    first, first_digest = _artifact(tmp_path, "0.2.0+dev.8", "revision_one")
+    second, second_digest = _artifact(tmp_path, "0.2.1+dev.8", "revision_two")
+    installer.apply(first, first_digest)
+    profile = layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json")
+    profile.chmod(0o600)
+    profile.write_bytes(FILESYSTEM_V2_PROFILE_BYTES)
+    profile.chmod(0o440)
+    installer.apply(second, second_digest)
+    assert profile.read_bytes() == FILESYSTEM_V2_PROFILE_BYTES
+    assert stat_mode(profile) == 0o440
+
+    profile.chmod(0o600)
+    profile.write_bytes(b'{"mode":"enabled"}\n')
+    profile.chmod(0o440)
+    with pytest.raises(InstallError, match="WAW installed resource"):
+        installer._ensure_waw_runtime_profile()
     assert profile.read_bytes() == b'{"mode":"enabled"}\n'
 
 
@@ -501,7 +545,7 @@ def test_waw_api_profile_and_lock_reject_unsafe_existing_objects(
     lock.chmod(0o600)
     lock.write_bytes(b"not-empty")
     lock.chmod(0o444)
-    with pytest.raises(InstallError, match="WAW API installed resource"):
+    with pytest.raises(InstallError, match="WAW installed resource"):
         installer._ensure_waw_api_resources()
     lock.chmod(0o600)
     lock.write_bytes(b"")
@@ -515,7 +559,7 @@ def test_waw_api_profile_and_lock_reject_unsafe_existing_objects(
 
     lock.unlink()
     lock.symlink_to(profile)
-    with pytest.raises(InstallError, match="WAW API installed resource"):
+    with pytest.raises(InstallError, match="WAW installed resource"):
         installer._ensure_waw_api_resources()
 
 

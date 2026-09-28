@@ -62,6 +62,11 @@ from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
 from agentbox_runtime.waw_lifecycle import BindingDigestFactory
 from agentbox_runtime.waw_peer_authority import WAWPeerAuthority
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
+from agentbox_runtime.waw_runtime_profile import (
+    WAWRuntimeMode,
+    load_waw_runtime_profile,
+    revalidate_waw_runtime_profile,
+)
 from agentbox_runtime.waw_vendor_probe import WAWVendorProbeRunner
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
@@ -1213,6 +1218,10 @@ async def _main() -> None:
     configured_gids = os.environ.get("AGENTBOX_RUNTIME_ALLOWED_GIDS")
     if environment == "production" and (not configured_uids or not configured_gids):
         raise RuntimeError("Runtime peer UID and GID allowlists are required in production")
+    runtime_profile = load_waw_runtime_profile() if environment == "production" else None
+    if runtime_profile is not None and runtime_profile.mode is WAWRuntimeMode.FILESYSTEM_V2:
+        revalidate_waw_runtime_profile(runtime_profile)
+        raise RuntimeError("WAW Runtime production composition is not yet available")
     allowed = (
         frozenset(int(value) for value in configured_uids.split(","))
         if configured_uids
@@ -1254,8 +1263,10 @@ async def _main() -> None:
         project_manager=ProjectWorkspaceManager(project_registry, git, github),
         capability_collector=RuntimeCapabilityCollector(codex_manager, claude_manager),
     )
-    await server.start(create_development_parent=environment != "production")
     try:
+        if runtime_profile is not None:
+            revalidate_waw_runtime_profile(runtime_profile)
+        await server.start(create_development_parent=environment != "production")
         await server.serve_forever()
     finally:
         await server.close()
