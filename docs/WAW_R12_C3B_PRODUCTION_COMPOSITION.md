@@ -73,6 +73,40 @@ relative key. It refuses mismatched formal Project/Workspace IDs. The next
 composed test must register a Project after startup, start it, rotate/revoke
 its binding, and prove stale identities fail without a duplicate map.
 
+The next software candidate also exposes `relative_key_for_formal_project`
+and `managed_conflict_states` from that same executor. They read the live
+binding/supervisor maps under the existing lock, observe supervisor state
+outside the map lock to avoid lock inversion, and recheck map identity before
+returning. Binding changes, inflight work or restart quarantine block legacy
+starts. This closes only the WAW side of the bidirectional conflict probe;
+the bounded, fresh legacy Claude/Codex state source and one-shot production
+probe binding still need implementation and actual application tests. For a
+formal Project lacking a current binding, the snapshot returns `UNKNOWN`;
+host-wide empty state is not authoritative until the future application
+composition has completed binding/restart inventory replay and opened its
+startup gate.
+
+## Legacy Codex Remote positive-state gap
+
+The [current official Codex CLI command reference](https://learn.chatgpt.com/docs/developer-commands)
+documents foreground `codex remote-control`, `start`, `stop` and `pair`, but
+does not document a `status` subcommand. Read-only local inspection of
+`codex-cli 0.153.4` on the development Mac (`codex --version` and
+`codex remote-control --help`, both exit 0) likewise listed only those three
+subcommands. This does not establish the target Linux binary's version or
+behavior, but it invalidates an assumption that every supported CLI has a
+fast positive `remote-control status` command. The existing
+`CodexAdapter._remote_status` falls back to a positive process-running
+inference and `UNKNOWN` on absence; absence is not a verified stopped state.
+
+Before production `_main` binds the conflict coordinator, obtain a bounded,
+read-only *positive* stopped/running observation from the exact enrolled
+target CLI or its fixed daemon identity, with wrong owner/binary, restart,
+stale PID, timeout and unobservable state all blocking. Do not run `start` or
+`stop` as a probe, use an always-ABSENT callback, or enlarge the approved
+start deadline without a revised measured contract. Host qualification must
+verify the actual installed CLI and recovery tuple separately.
+
 ## Production entrypoint sequence
 
 1. The installer supplies fixed root-owned v2 manifest/public resources,

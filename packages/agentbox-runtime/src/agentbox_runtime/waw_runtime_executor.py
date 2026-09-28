@@ -44,6 +44,7 @@ from agentbox_runtime.waw_conflicts import (
     WAWConflictCoordinator,
     WAWConflictError,
     WAWConflictLease,
+    WAWManagedConflictState,
 )
 from agentbox_runtime.waw_fixed_transport import (
     AUTH_EVIDENCE_MAX_AGE_SECONDS,
@@ -275,6 +276,109 @@ class WAWSupervisorExecutor:
                 and not any(key.project_id == project_id for key in self._restart_quarantine)
             ]
             return candidates[0] if len(candidates) == 1 else None
+
+    def relative_key_for_formal_project(self, project_id: str) -> str | None:
+        """Resolve one stable formal binding for a same-Project legacy probe."""
+
+        try:
+            validated = validate_project_id(project_id)
+        except WAWDomainError:
+            return None
+        with self._map_lock:
+            if (
+                validated in self._binding_reserved
+                or validated in self._binding_inflight
+                or validated in self._inflight_project_ids.values()
+                or any(key.project_id == validated for key in self._restart_quarantine)
+            ):
+                return None
+            bound = self._bindings.get(validated)
+            if bound is None:
+                return None
+            relative_key = bound[0].relative_key
+            matches = sum(
+                binding.relative_key == relative_key for binding, _ in self._bindings.values()
+            )
+            if matches != 1:
+                return None
+            return relative_key
+
+    def managed_conflict_states(
+        self, project_id: str | None = None
+    ) -> tuple[WAWManagedConflictState, ...]:
+        """Read every relevant WAW generation for a legacy-start decision.
+
+        The host conflict lock serializes new WAW starts with legacy starts.
+        Binding updates and shutdown do not use that lock, so any observed
+        mutation or unfinished operation returns UNKNOWN instead of ABSENT.
+        """
+
+        if project_id is not None:
+            try:
+                project_id = validate_project_id(project_id)
+            except WAWDomainError:
+                return (WAWManagedConflictState.UNKNOWN,)
+
+        def relevant(value: str) -> bool:
+            return project_id is None or value == project_id
+
+        with self._map_lock:
+            if project_id is not None and project_id not in self._bindings:
+                return (WAWManagedConflictState.UNKNOWN,)
+            if (
+                any(relevant(value) for value in self._binding_reserved)
+                or any(relevant(value) for value in self._binding_inflight)
+                or any(relevant(value) for value in self._inflight_project_ids.values())
+            ):
+                return (WAWManagedConflictState.UNKNOWN,)
+            if any(relevant(key.project_id) for key in self._restart_quarantine):
+                return (WAWManagedConflictState.RECONCILIATION_REQUIRED,)
+            supervisors = tuple(
+                (key, supervisor)
+                for key, supervisor in self._supervisors.items()
+                if relevant(key.project_id)
+            )
+            bindings = {key: bound for key, bound in self._bindings.items() if relevant(key)}
+
+        observed = tuple(
+            self._managed_conflict_state(supervisor.state) for _key, supervisor in supervisors
+        )
+        with self._map_lock:
+            current_supervisors = tuple(
+                (key, supervisor)
+                for key, supervisor in self._supervisors.items()
+                if relevant(key.project_id)
+            )
+            current_bindings = {
+                key: bound for key, bound in self._bindings.items() if relevant(key)
+            }
+            changed = (
+                len(supervisors) != len(current_supervisors)
+                or any(
+                    old_key != new_key or old_supervisor is not new_supervisor
+                    for (old_key, old_supervisor), (new_key, new_supervisor) in zip(
+                        supervisors, current_supervisors, strict=True
+                    )
+                )
+                or bindings.keys() != current_bindings.keys()
+                or any(current_bindings[key] is not bound for key, bound in bindings.items())
+                or any(relevant(value) for value in self._binding_reserved)
+                or any(relevant(value) for value in self._binding_inflight)
+                or any(relevant(value) for value in self._inflight_project_ids.values())
+                or any(relevant(key.project_id) for key in self._restart_quarantine)
+            )
+            return (WAWManagedConflictState.UNKNOWN,) if changed else observed
+
+    @staticmethod
+    def _managed_conflict_state(state: SupervisorState) -> WAWManagedConflictState:
+        if state is SupervisorState.ADMITTED:
+            return WAWManagedConflictState.STARTING
+        if state is SupervisorState.DETACHED:
+            return WAWManagedConflictState.RUNNING
+        try:
+            return WAWManagedConflictState(state.value)
+        except ValueError:
+            return WAWManagedConflictState.UNKNOWN
 
     async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
         key = self._key(identity)

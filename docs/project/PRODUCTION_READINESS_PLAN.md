@@ -219,6 +219,9 @@ D 的模板/fixture 可提前，F 必须等全部所选接口；公开发布 K �
   `waw_runtime_application.py`、新的受限 executor/key adapter 与 Runtime tests。
 - `_main` 接入现有 filesystem-v2 builder。loader、epoch、executor、control、stream、
   legacy conflict 和 provider 由同一 application owner 组合，禁止启动第二套 authority。
+- C3-b 的动态冲突快照从同一个 executor 的现行 Project binding 与 supervisor
+  读取；更新中、旧代次隔离或读期间映射变化一律返回阻断态。此软件基础不替代
+  同步且有界的 legacy Claude/Codex 真实状态探针，也不等于 `_main` 已接线。
 - concrete executor 使用已验证的固定 binary/profile/held descriptor；版本、inode、digest
   和 project authority 不匹配时拒绝。生产 key port 由 Runtime 独占、固定本地入口提供。
 - key 初始化和轮换定义 prepare→public pin/manifest核验→激活→旧key退休的完整事务；
