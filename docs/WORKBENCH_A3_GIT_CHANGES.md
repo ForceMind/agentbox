@@ -1,10 +1,11 @@
 # A3 bounded Git Changes metadata
 
-Status: software candidate on `codex/workbench-git-changes`, 2026-09-28.
+Status: rc15 metadata API merged as PR #106; rc16 Changed Paths UI candidate,
+2026-09-29.
 This is the first read-only data contract under
 [ADR 0009](adr/0009-workbench-identity-and-content-boundary.md). It supplies
 paths and change classes to the AgentBox Changes tree; it does not yet supply
-patch bodies, file previews, comments, staging or a user-visible Changes page.
+patch bodies, file previews, comments or staging.
 
 `GET /api/v1/projects/{project_id}/git/changes` requires the existing
 authenticated administrator session and a READY formal Project. The only
@@ -39,19 +40,32 @@ path bounds and the absence of extra fields. Repositories exceeding the
 1 MiB source or 10,000-entry limit report an explicit error rather than a
 partial success.
 
-This metadata admission does not grant a file-read capability. The next A3
-batch must define bounded, sensitivity-aware patch extraction and a Changes
-page that uses the already migrated tree/order logic. Git content extraction
+This metadata admission does not grant a file-read capability. The rc16
+candidate adds a Project-linked Changed Paths page using the migrated tree
+sort and folder compression without inserting artificial line totals. It
+fetches pages only for the selected Project, hides previous-scope rows on
+Project/session change, invalidates on browser hiding, rejects changed
+cursors, and offers explicit refresh and load-more. Path text escapes control
+and invisible formatting
+characters before display; the page distinguishes loading, empty, non-Git,
+stale and failed states. It explicitly says that only path/status metadata
+is available. The next A3 content batch must define bounded,
+sensitivity-aware patch extraction. Git content extraction
 must explicitly disable external diff/textconv effects as required by
 [ADR 0009](adr/0009-workbench-identity-and-content-boundary.md); a path in
 this response is display data and cannot be passed back as authority.
 
-Local evidence: 164 Git/Project API/release-candidate Python tests passed;
+rc15 local evidence: 164 Git/Project API/release-candidate Python tests passed;
 parser, cursor, real Git rename/untracked, fixed argv, strict RPC and
 authenticated API cases are included. Web/MV3 version tests and builds passed.
 The source-boundary script retains an exact 41-route count and checks that
 the added route is this fixed read-only Project endpoint.
-The isolated browser suite ran 98 passing and 28 prescribed skipped cases
-across desktop and mobile Chromium, validating rc15 version visibility and
-existing flows; no Changes UI exists yet. Linux CI and real-host operation
-remain separate evidence; no production service was changed.
+The rc15 isolated browser suite ran 98 passing and 28 prescribed skipped
+cases. rc16 local evidence: 1149 Web tests passed serially on Node 22.23.2,
+six MV3 tests passed, and the browser suite completed 100 passes and 28
+prescribed skips across desktop/mobile Chromium, including Changed Paths
+navigation, collapse, pagination and no horizontal overflow. Desktop and
+mobile screenshots were inspected after spacing corrections. The rc16 Web
+main JS bundle is 598.88 kB/171.22 kB gzip versus rc15 587.01/167.85 kB;
+the >500 kB warning predates rc16. Linux CI and real-host operation remain
+separate evidence; no production service was changed.

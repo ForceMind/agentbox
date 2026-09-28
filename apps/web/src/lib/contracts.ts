@@ -311,6 +311,35 @@ export type GitStatusData = {
   submodules_detected: boolean
 }
 
+export type GitChangeKind =
+  | 'added'
+  | 'modified'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'untracked'
+  | 'conflicted'
+  | 'typechanged'
+
+export type GitChangeEntryData = {
+  path: string
+  previous_path: string | null
+  kind: GitChangeKind
+  staged: boolean
+  unstaged: boolean
+}
+
+export type GitChangePageResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: {
+    is_repository: boolean
+    files: GitChangeEntryData[]
+    total_count: number
+    next_cursor: string | null
+  }
+}
+
 export type ProjectData = {
   id: string
   slug: string
@@ -1366,6 +1395,100 @@ export function parseGitBranchListResponse(
           current: boolean(branch.current, 'current Git branch'),
         }
       }),
+    },
+  }
+}
+
+function gitDisplayPath(value: unknown): string {
+  const path = string(value, 'Git change path')
+  const bytes = new TextEncoder().encode(path)
+  if (
+    !bytes.length ||
+    bytes.length > 4096 ||
+    path.startsWith('/') ||
+    path.includes('\0') ||
+    [...path].some((character) => {
+      const code = character.codePointAt(0) ?? 0
+      return code >= 0xd800 && code <= 0xdfff
+    }) ||
+    path.split('/').some((part) => part === '' || part === '.' || part === '..')
+  ) {
+    throw new Error('Invalid Git change path')
+  }
+  return path
+}
+
+export function parseGitChangePageResponse(
+  value: unknown,
+): GitChangePageResponse {
+  const envelope = object(value, 'Git changes')
+  exactKeys(envelope, ['api_version', 'request_id', 'data'], 'Git changes')
+  const data = object(envelope.data, 'Git changes data')
+  exactKeys(
+    data,
+    ['is_repository', 'files', 'total_count', 'next_cursor'],
+    'Git changes data',
+  )
+  const files = array(data.files, 'Git changes').map((value) => {
+    const entry = object(value, 'Git change')
+    exactKeys(
+      entry,
+      ['path', 'previous_path', 'kind', 'staged', 'unstaged'],
+      'Git change',
+    )
+    const kind = literal(
+      entry.kind,
+      [
+        'added',
+        'modified',
+        'deleted',
+        'renamed',
+        'copied',
+        'untracked',
+        'conflicted',
+        'typechanged',
+      ] as const,
+      'Git change kind',
+    )
+    const previousPath =
+      entry.previous_path === null ? null : gitDisplayPath(entry.previous_path)
+    if ((kind === 'renamed' || kind === 'copied') !== (previousPath !== null)) {
+      throw new Error('Invalid Git rename metadata')
+    }
+    return {
+      path: gitDisplayPath(entry.path),
+      previous_path: previousPath,
+      kind,
+      staged: boolean(entry.staged, 'staged change'),
+      unstaged: boolean(entry.unstaged, 'unstaged change'),
+    }
+  })
+  const totalCount = number(data.total_count, 'Git change count')
+  const nextCursor = nullableString(data.next_cursor, 'Git changes cursor')
+  const isRepository = boolean(data.is_repository, 'Git repository state')
+  if (
+    files.length > 32 ||
+    new Set(files.map((file) => file.path)).size !== files.length ||
+    !Number.isSafeInteger(totalCount) ||
+    totalCount < files.length ||
+    totalCount > 10_000 ||
+    (nextCursor !== null &&
+      !/^[0-9a-f]{64}:[1-9][0-9]{0,6}$/.test(nextCursor)) ||
+    (nextCursor !== null && files.length === 0) ||
+    (!isRepository &&
+      (files.length > 0 || totalCount > 0 || nextCursor !== null)) ||
+    (isRepository && totalCount > 0 && files.length === 0)
+  ) {
+    throw new Error('Invalid Git changes response')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      is_repository: isRepository,
+      files,
+      total_count: totalCount,
+      next_cursor: nextCursor,
     },
   }
 }

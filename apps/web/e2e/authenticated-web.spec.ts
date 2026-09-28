@@ -323,6 +323,59 @@ test('shows structured Git state without dangerous actions', async ({
   ).toHaveCount(0)
 })
 
+test('shows Project Git changed paths without file bodies or patch controls', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  await page.getByRole('link', { name: 'View changed paths' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Changed paths' }),
+  ).toBeVisible()
+  await expect(page.getByText('Showing 2 of 3 paths')).toBeVisible()
+  const folder = page.getByRole('button', { name: 'Folder: src' })
+  await expect(folder).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByText('b.ts', { exact: true })).toBeVisible()
+  await expect(page.getByText('zeta.ts')).toBeVisible()
+  await expect(page.getByText(/Paths and status only/)).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /open file|stage|commit/i }),
+  ).toHaveCount(0)
+  await folder.click()
+  await expect(page.getByText('b.ts', { exact: true })).toHaveCount(0)
+  await folder.click()
+  await page.getByRole('button', { name: 'Load more paths' }).click()
+  await expect(page.getByText('a.ts')).toBeVisible()
+  await expect(page.getByText('Showing 3 of 3 paths')).toBeVisible()
+  const viewport = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
+  const note = await page.locator('.changes-metadata-note').boundingBox()
+  const card = await page.locator('.changes-card').boundingBox()
+  if (!note || !card) throw new Error('Changed Paths layout is unavailable')
+  expect(card.y).toBeGreaterThan(note.y + note.height)
+  if (await page.locator('.desktop-sidebar').isVisible()) {
+    const pulse = await page
+      .locator('.desktop-sidebar .control-pulse')
+      .boundingBox()
+    const version = await page
+      .locator('.desktop-sidebar .app-version')
+      .boundingBox()
+    if (!pulse || !version)
+      throw new Error('Desktop sidebar layout is unavailable')
+    expect(version.y).toBeGreaterThanOrEqual(pulse.y + pulse.height)
+  }
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: testInfo.outputPath('changed-paths.png'),
+      fullPage: true,
+    })
+  }
+})
+
 test('handles dirty Git, branches, safe failures, Draft PR, and Claude binding', async ({
   page,
 }) => {
@@ -525,7 +578,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc15', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc16', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

@@ -360,6 +360,14 @@ export function ProjectDetailPage({
               {copy(locale, 'project.submodulesDetected')}
             </p>
           )}
+          {project.state === 'ready' && git?.is_repository && (
+            <Link
+              className="secondary-button action-button"
+              to={`/projects/${encodeURIComponent(project.id)}/changes`}
+            >
+              {copy(locale, 'project.openChanges')}
+            </Link>
+          )}
         </article>
       </section>
       <section className="runtime-card">

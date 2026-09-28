@@ -3,8 +3,11 @@
 // Copyright (c) 2025-present Mohamed Boudra. Changed: use AgentBox's
 // minimal typed diff summary and preserve richer caller-owned file types.
 
-export interface DiffFileSummary {
+export interface PathSummary {
   path: string
+}
+
+export interface DiffFileSummary extends PathSummary {
   additions: number
   deletions: number
 }
@@ -24,7 +27,7 @@ export interface DiffFileSummary {
 // row later splits because a sibling appears, the logical directories keep the
 // same keys.
 
-export interface DiffTreeFileNode<T extends DiffFileSummary = DiffFileSummary> {
+export interface DiffTreeFileNode<T extends PathSummary = DiffFileSummary> {
   kind: 'file'
   file: T
   fileIndex: number
@@ -32,7 +35,7 @@ export interface DiffTreeFileNode<T extends DiffFileSummary = DiffFileSummary> {
   name: string
 }
 
-export interface DiffTreeDirNode<T extends DiffFileSummary = DiffFileSummary> {
+export interface DiffTreeDirNode<T extends PathSummary = DiffFileSummary> {
   kind: 'dir'
   /** full uncompressed directory path, e.g. "packages/app/src"; "" for the virtual root */
   dirPath: string
@@ -41,7 +44,7 @@ export interface DiffTreeDirNode<T extends DiffFileSummary = DiffFileSummary> {
   children: DiffTreeNode<T>[]
 }
 
-export type DiffTreeNode<T extends DiffFileSummary = DiffFileSummary> =
+export type DiffTreeNode<T extends PathSummary = DiffFileSummary> =
   DiffTreeFileNode<T> | DiffTreeDirNode<T>
 
 export interface DiffTreeFolderRow {
@@ -55,7 +58,7 @@ export interface DiffTreeFolderRow {
   deletions: number
 }
 
-export interface DiffTreeFileRow<T extends DiffFileSummary = DiffFileSummary> {
+export interface DiffTreeFileRow<T extends PathSummary = DiffFileSummary> {
   kind: 'file'
   file: T
   fileIndex: number
@@ -65,7 +68,11 @@ export interface DiffTreeFileRow<T extends DiffFileSummary = DiffFileSummary> {
 export type DiffTreeRow<T extends DiffFileSummary = DiffFileSummary> =
   DiffTreeFolderRow | DiffTreeFileRow<T>
 
-function sortTree<T extends DiffFileSummary>(node: DiffTreeDirNode<T>): void {
+export type PathTreeRow<T extends PathSummary = PathSummary> =
+  | Pick<DiffTreeFolderRow, 'kind' | 'dirPath' | 'displayName' | 'depth'>
+  | DiffTreeFileRow<T>
+
+function sortTree<T extends PathSummary>(node: DiffTreeDirNode<T>): void {
   node.children.sort((a, b) => {
     if (a.kind !== b.kind) {
       // directories before files within a level
@@ -84,7 +91,7 @@ function sortTree<T extends DiffFileSummary>(node: DiffTreeDirNode<T>): void {
 }
 
 /** Build the (uncompressed) directory tree. Returns the virtual root (dirPath ""). */
-export function buildDiffTree<T extends DiffFileSummary>(
+export function buildDiffTree<T extends PathSummary>(
   files: readonly T[],
 ): DiffTreeDirNode<T> {
   const root: DiffTreeDirNode<T> = {
@@ -130,7 +137,7 @@ export function buildDiffTree<T extends DiffFileSummary>(
 // a directory whose only child is another directory absorbs it. The merged row
 // displays the joined segments ("packages/app/src") but keeps the DEEPEST
 // directory's full path as its identity.
-function compressNode<T extends DiffFileSummary>(
+function compressNode<T extends PathSummary>(
   node: DiffTreeDirNode<T>,
 ): DiffTreeDirNode<T> {
   let name = node.name
@@ -151,7 +158,7 @@ function compressNode<T extends DiffFileSummary>(
  * Compress single-child directory chains. The virtual root is never merged
  * (it isn't rendered); only its subtrees are compressed.
  */
-export function compressSingleChildChains<T extends DiffFileSummary>(
+export function compressSingleChildChains<T extends PathSummary>(
   root: DiffTreeDirNode<T>,
 ): DiffTreeDirNode<T> {
   return {
@@ -236,8 +243,38 @@ export function flattenDiffTree<T extends DiffFileSummary>(
   return rows
 }
 
+/** Flatten the same sorted tree for metadata-only paths, without line totals. */
+export function flattenPathTree<T extends PathSummary>(
+  root: DiffTreeDirNode<T>,
+  collapsed: ReadonlySet<string>,
+): PathTreeRow<T>[] {
+  const rows: PathTreeRow<T>[] = []
+  function walk(node: DiffTreeDirNode<T>, depth: number): void {
+    for (const child of node.children) {
+      if (child.kind === 'file') {
+        rows.push({
+          kind: 'file',
+          file: child.file,
+          fileIndex: child.fileIndex,
+          depth,
+        })
+      } else {
+        rows.push({
+          kind: 'folder',
+          dirPath: child.dirPath,
+          displayName: child.name,
+          depth,
+        })
+        if (!collapsed.has(child.dirPath)) walk(child, depth + 1)
+      }
+    }
+  }
+  walk(root, 0)
+  return rows
+}
+
 /** Every directory path in the (compressed) tree — used for "collapse all folders". */
-export function collectDirPaths<T extends DiffFileSummary>(
+export function collectDirPaths<T extends PathSummary>(
   root: DiffTreeDirNode<T>,
 ): string[] {
   const paths: string[] = []

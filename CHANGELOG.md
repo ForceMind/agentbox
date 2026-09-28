@@ -3,6 +3,14 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc16] - Unreleased
+
+- Add an authenticated, read-only Changed Paths page for READY Projects,
+  using the rc15 Git metadata API and migrated tree ordering.
+- Show bounded pagination, stale/failed/empty states and staged/unstaged
+  status without claiming patch bodies, file preview or line statistics.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc16.md`.
+
 ## [0.3.0rc15] - Unreleased
 
 - Add an authenticated, READY Project-scoped read-only Git Changes metadata
