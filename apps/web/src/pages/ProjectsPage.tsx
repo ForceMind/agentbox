@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Boxes, RefreshCw } from 'lucide-react'
 
@@ -11,6 +11,7 @@ import {
   type ProjectJobPhase,
   type ProjectJobView,
 } from '../features/projects/useProjects'
+import { searchProjects } from '../features/projects/searchProjects'
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
   currentLocale,
@@ -126,6 +127,11 @@ export function ProjectsPage({
   const [nameInvalid, setNameInvalid] = useState(false)
   const [urlInvalid, setUrlInvalid] = useState(false)
   const [submission, setSubmission] = useState<'create' | 'clone' | null>(null)
+  const [query, setQuery] = useState('')
+  const visibleProjects = useMemo(
+    () => searchProjects(model.projects, query),
+    [model.projects, query],
+  )
   usePageTitle(copy(locale, 'projects.title'))
 
   async function create(event: FormEvent) {
@@ -258,6 +264,41 @@ export function ProjectsPage({
           </button>
         </form>
       </section>
+      {model.projects.length > 0 && (
+        <div className="project-search">
+          <label htmlFor="project-search-query">
+            {copy(locale, 'projects.searchLabel')}
+          </label>
+          <div>
+            <input
+              autoComplete="off"
+              id="project-search-query"
+              maxLength={96}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={copy(locale, 'projects.searchPlaceholder')}
+              type="search"
+              value={query}
+            />
+            {query && (
+              <button
+                className="secondary-button"
+                onClick={() => setQuery('')}
+                type="button"
+              >
+                {copy(locale, 'projects.clearSearch')}
+              </button>
+            )}
+          </div>
+          {query.trim() && (
+            <p role="status">
+              {formatMessage(locale, 'projects.matchCount', {
+                shown: String(visibleProjects.length),
+                total: String(model.projects.length),
+              })}
+            </p>
+          )}
+        </div>
+      )}
       {model.loading ? (
         <p className="loading-panel" role="status">
           {copy(locale, 'projects.loading')}
@@ -268,12 +309,17 @@ export function ProjectsPage({
           <h2>{copy(locale, 'projects.emptyTitle')}</h2>
           <p>{copy(locale, 'projects.emptyDescription')}</p>
         </section>
+      ) : visibleProjects.length === 0 ? (
+        <section className="empty-state" role="status">
+          <h2>{copy(locale, 'projects.noMatchesTitle')}</h2>
+          <p>{copy(locale, 'projects.noMatchesDescription')}</p>
+        </section>
       ) : (
         <section
           className="project-grid"
           aria-label={copy(locale, 'projects.gridAria')}
         >
-          {model.projects.map((project) => {
+          {visibleProjects.map((project) => {
             const changes = project.git
               ? project.git.staged_count +
                 project.git.unstaged_count +
@@ -303,6 +349,10 @@ export function ProjectsPage({
                       ? 'projects.sourceCloned'
                       : 'projects.sourceWorkspace',
                   )}
+                </p>
+                <p>
+                  {copy(locale, 'projects.slug')}{' '}
+                  <OpaqueUserValue value={project.slug} />
                 </p>
                 <dl className="runtime-details compact-details">
                   <div>

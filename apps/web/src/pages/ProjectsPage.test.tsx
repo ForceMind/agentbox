@@ -154,4 +154,42 @@ describe('ProjectsPage localized safety boundary', () => {
       screen.getByRole('heading', { name: '还没有 Project' }),
     ).toBeVisible()
   })
+
+  it('filters only loaded Project metadata and distinguishes no matches from no Projects', () => {
+    useProjectsMock.mockReturnValue(
+      model({
+        projects: [
+          project({
+            id: 'prj_alpha',
+            display_name: 'Alpha service',
+            slug: 'alpha',
+          }),
+          project({ id: 'prj_beta', display_name: 'Beta docs', slug: 'beta' }),
+        ],
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <ProjectsPage locale="en" />
+      </MemoryRouter>,
+    )
+    const query = screen.getByRole('searchbox', { name: 'Search Projects' })
+    fireEvent.change(query, { target: { value: 'beta' } })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Showing 1 of 2 Projects',
+    )
+    expect(screen.getByRole('heading', { name: 'Beta docs' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'Alpha service' })).toBeNull()
+
+    fireEvent.change(query, { target: { value: 'missing' } })
+    expect(
+      screen.getByRole('heading', { name: 'No matching Projects' }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', { name: 'No Projects yet' }),
+    ).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(screen.getByRole('heading', { name: 'Alpha service' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Beta docs' })).toBeVisible()
+  })
 })

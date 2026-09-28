@@ -3,6 +3,12 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc20] - Unreleased
+
+- Add bounded, local Project search by visible name, slug and printable Git
+  branch with ranked multi-term matches, separate no-match state and clear.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc20.md`.
+
 ## [0.3.0rc19] - Unreleased
 
 - Add a Linux-only internal process runner seam that binds a fixed child cwd

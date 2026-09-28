@@ -203,6 +203,45 @@ test('shows formal Projects and queues safe create operations', async ({
   await expect(page.getByText(workspaceName)).toBeVisible()
 })
 
+test('searches loaded Projects without treating no matches as an empty account', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  const search = page.getByRole('searchbox', { name: 'Search Projects' })
+  await search.fill('project-a')
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  await expect(page.getByText(/Showing 1 of \d+ Projects/)).toBeVisible()
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          window.scrollTo(0, 0)
+          window.requestAnimationFrame(() => resolve())
+        }),
+    )
+    await page.screenshot({
+      path: testInfo.outputPath('project-search.png'),
+      fullPage: true,
+    })
+  }
+  await search.fill('no-such-project-9f2e')
+  await expect(
+    page.getByRole('heading', { name: 'No matching Projects' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'No Projects yet' }),
+  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Clear search' }).click()
+  await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
+  const viewport = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
+})
+
 test('renders the Project empty state from real API data', async ({ page }) => {
   await login(page)
   await page.route('**/api/v1/projects', async (route) => {
@@ -625,7 +664,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc19', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc20', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
