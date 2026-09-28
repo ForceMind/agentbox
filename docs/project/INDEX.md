@@ -22,6 +22,8 @@
   唯一authority的资源签发、native owner、Project绑定与后续 `_main` 接线缺口。
 - [R12-D installer socket substrate](../WAW_R12_D_INSTALLER_SOCKETS.md)：
   固定具名 socket unit、Runtime 资源目录、安装/回滚与尚未激活的现场边界。
+- [R12-D API disabled resources](../WAW_R12_D_API_RESOURCES.md)：
+  固定关闭态 API profile、单例锁目录与文件，及后继 CAS 更新门禁。
 
 本目录是治理执行入口。每个任务执行前按顺序读取：
 

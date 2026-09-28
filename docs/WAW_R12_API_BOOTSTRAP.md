@@ -72,7 +72,9 @@ module级ASGI `app`与console `run()`复用同一installed app及settings，避�
 
 ## Installer后继契约
 
-本批不更改host、unit或配置文件。R12-D实现独立固定更新器：同目录exclusive/no-follow
+本批不更改host、unit或配置文件。[R12-D关闭态资源批次](WAW_R12_D_API_RESOURCES.md)
+只创建canonical `disabled` profile及固定单例锁；合法已有`filesystem-v2`
+profile保持原样，不构成启用。R12-D仍需独立固定更新器：同目录exclusive/no-follow
 临时文件，write/fsync、精确owner/mode、基于旧digest的CAS、rename、目录fsync和回读。
 首次安装/迁移保持disabled。开启前完成所需资源与获准资格化前置；关闭前先fence并验证
 cleanup。失败保留旧配置/管理面，cleanup不确定不能声称切换完成。

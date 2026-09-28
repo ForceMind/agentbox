@@ -1,13 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T13:44:15Z"
-verified_by: "codex-r12-installer-waw-sockets"
+verified_at_utc: "2026-09-28T14:06:47Z"
+verified_by: "codex-r12-api-profile-provision"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-28 R12-D dormant installer socket candidate
+## 2026-09-28 R12-D API disabled resource candidate
+
+PR #102 final head `6217dd5c56343db731d718c27e5f6b719fea275e`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+The Backend native job initially timed out waiting five seconds for an
+unchanged tmux signal; its single-job rerun on that head passed. Normal merge
+`f70a3fdfda2439ad91a58aa9c38deb0e9c0f7417` has parents
+`3d0ba375b5a616f1432789eb430ef1a7de4f3347` and that final head.
+Backend, Frontend, E2E, Deployment, Security and Release Candidate post-main
+workflows all completed successfully on the merge SHA. Two named WAW socket
+units and fixed directories are installed by software, but not enabled on a
+real host; G3 remains `NOT RUN`.
+
+Current `codex/r12-api-profile-provision` starts at that exact merge and
+adds only the installer-owned disabled API profile and singleton lock
+resources. A fixed valid existing `filesystem-v2` profile is preserved,
+not created or enabled by this batch. The local x86_64 fixture matrix on
+macOS completed 143 passed and one `systemd-analyze` skip across installer
+and API profile loader cases; Ruff, Black and
+full Linux-target mypy (313 source files) passed. This is a local software
+candidate without exact-head CI, PR or merge. No real host, Secret, key,
+client or production operation occurred.
+
+The Owner's broad permissions choice for ordinary shell, arbitrary file
+preview, plugins and multi-principal Hub remains pending. R12 software
+progress does not answer that question or authorize those capabilities.
+
+Sections below preserve earlier point-in-time candidates and are superseded
+by this live revalidation for current branch/PR/CI status.
+
+## Historical 2026-09-28 R12-D dormant installer socket candidate
 
 PR #101 final head `476dccb5b4ddc44006c4e159f632f9a9e474116e`
 completed 26 terminal checks (24 success, two prescribed historical skips).

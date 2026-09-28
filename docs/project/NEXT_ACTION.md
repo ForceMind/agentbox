@@ -1,6 +1,24 @@
 # Current Authorized Action
 
-## 2026-09-28 R12-D dormant installer socket substrate
+## 2026-09-28 R12-D API disabled profile and singleton lock
+
+PR #102 merged as `f70a3fdfda2439ad91a58aa9c38deb0e9c0f7417`
+with exact parent read-back and six successful post-main workflows. Continue
+R12-D on `codex/r12-api-profile-provision`: install the exact disabled
+`/etc/agentbox/waw-api-profile.v1.json` and fixed
+`/run/agentbox-waw-api/waw-api.v1.lock` with their loader-required owners
+and modes. Existing valid `filesystem-v2` profile bytes must be preserved;
+unknown or unsafe existing objects fail closed. No activation or mode update
+is authorized by this software batch. Local fixture tests pass; Linux
+installer/Backend CI and merge remain pending. See
+[R12-D API resources](../WAW_R12_D_API_RESOURCES.md).
+
+After exact-head CI and merge, continue the fixed public anchor/manifest and
+Runtime `_main` composition. The separate mode CAS updater, static key
+creation, external vendor enrollment and real host/client/CLI gates remain
+later work. Keep the original checkout's WIP intact.
+
+## Historical 2026-09-28 R12-D dormant installer socket substrate
 
 PR #101 merged as `3d0ba375b5a616f1432789eb430ef1a7de4f3347`
 after 24 exact-head successes, two prescribed skips, and six successful

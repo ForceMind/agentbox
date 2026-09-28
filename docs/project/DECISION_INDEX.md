@@ -1,5 +1,15 @@
 # Decision and Architecture Index
 
+- `R12-D-DISABLED-API-RESOURCES-V1`: the installer creates only the canonical
+  `disabled` API profile under `/etc/agentbox` and a fixed read-only singleton
+  lock under a root-owned `/run/agentbox-waw-api` parent. It validates exact
+  bytes, owner, group, mode, link count and stable no-follow file identity;
+  existing canonical `filesystem-v2` bytes are preserved, not promoted by an
+  installer default. Invalid or drifting content fails closed. The profile
+  is operator state and survives upgrades/rollback/uninstall; the separate
+  atomic CAS mode updater remains R12-D work. See
+  [R12-D API resources](../WAW_R12_D_API_RESOURCES.md).
+
 - `R12-D-DORMANT-WAW-SOCKETS-V1`: the installer owns exactly two WAW socket
   units with distinct fixed `FileDescriptorName`, `SocketUser=agentbox-runtime`,
   `SocketGroup=agentbox-runtime-ipc` and mode 0660. Installation and upgrades

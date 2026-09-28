@@ -92,6 +92,12 @@ def test_waw_socket_units_have_distinct_named_descriptors_and_fixed_runtime_peer
         assert "RemoveOnStop=true\n" in unit
 
 
+def test_waw_api_tmpfiles_create_a_root_parent_and_read_only_agentbox_lock() -> None:
+    policy = (resources.files("agentbox_installer") / "assets/tmpfiles.d/agentbox.conf").read_text()
+    assert "d /run/agentbox-waw-api 0755 root root -\n" in policy
+    assert "f /run/agentbox-waw-api/waw-api.v1.lock 0444 agentbox agentbox -\n" in policy
+
+
 def test_installer_leaves_waw_sockets_dormant_but_stops_them_before_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
