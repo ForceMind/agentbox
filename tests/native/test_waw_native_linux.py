@@ -590,9 +590,36 @@ def _wait_for_exact_pane_death(session: str, exit_code: int) -> None:
         observed = result.stdout.strip()
         if observed == expected:
             return
-        if observed.startswith("1:"):
+        # tmux can expose pane_dead before populating dead_status. Keep the
+        # same deadline; only a concrete wrong status is terminal evidence.
+        if observed.startswith("1:") and observed != "1::":
             pytest.fail(f"exact pane exited with the wrong status: observed={observed!r}")
         time.sleep(min(0.02, max(0.0, deadline - time.monotonic())))
+
+
+def test_pane_wait_requires_complete_exit_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    observations = iter(("1::\n", "1:74:\n"))
+
+    def observe(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess([], 0, next(observations), "")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(subprocess, "run", observe)
+        _wait_for_exact_pane_death("fixture-pane", 74)
+
+
+def test_pane_wait_rejects_concrete_wrong_exit_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def observe(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess([], 0, "1:75:\n", "")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(subprocess, "run", observe)
+        with pytest.raises(pytest.fail.Exception, match="wrong status"):
+            _wait_for_exact_pane_death("fixture-pane", 74)
 
 
 def test_bootstrap_bridge_execveat_pty_resize_relay_and_reap(

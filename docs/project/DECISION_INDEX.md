@@ -1,5 +1,11 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-FAVORITE-UI-CANDIDATE`: rc22 Project cards read the rc21
+  per-admin preference API, wait for exact revision ACK, and reconcile
+  conflicts/uncertain responses by GET without retrying a PUT. A tab/session
+  change fences old responses. This is no Runtime authority. See
+  [Project favorites](../WORKBENCH_PROJECT_FAVORITES.md).
+
 - `WORKBENCH-WS14-FAVORITES-CANDIDATE`: a per-AdminUser/formal-Project
   favorite is Control Plane metadata with a revision/CAS contract, not a
   Runtime or file capability. rc21 implements the backend/API candidate;

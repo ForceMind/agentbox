@@ -251,6 +251,8 @@ def test_favorite_protocol_rejects_inconsistent_or_extra_metadata() -> None:
             ProjectFavoriteData.model_validate(value)
     with pytest.raises(ValidationError):
         ProjectFavoriteSetRequest.model_validate({"favorite": "true", "expected_revision": 0})
+    with pytest.raises(ValidationError):
+        ProjectFavoriteSetRequest.model_validate({"favorite": True, "expected_revision": 2**53})
 
 
 def test_favorite_capacity_fails_without_partial_success(

@@ -242,6 +242,63 @@ test('searches loaded Projects without treating no matches as an empty account',
   expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
 })
 
+test('saves Project favorites with server revision and recovers from conflict', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  const add = page.getByRole('button', {
+    name: 'Add to favorites: project-a',
+  })
+  await expect(add).toBeEnabled()
+  await add.click()
+  const remove = page.getByRole('button', {
+    name: 'Remove from favorites: project-a',
+  })
+  await expect(remove).toHaveAttribute('aria-pressed', 'true')
+  await page.reload()
+  await expect(remove).toHaveAttribute('aria-pressed', 'true')
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          window.scrollTo(0, 0)
+          window.requestAnimationFrame(() => resolve())
+        }),
+    )
+    await page.screenshot({
+      path: testInfo.outputPath('project-favorite.png'),
+      fullPage: true,
+    })
+  }
+
+  let writes = 0
+  await page.route('**/api/v1/project-favorites/*', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    await route.fulfill({
+      status: 409,
+      json: {
+        api_version: 'v1',
+        request_id: 'req_conflict',
+        error: {
+          code: 'PROJECT_FAVORITE_CONFLICT',
+          category: 'conflict',
+          message: 'untrusted server detail',
+        },
+      },
+    })
+  })
+  await remove.click()
+  await expect(page.getByText(/favorite changed elsewhere/i)).toBeVisible()
+  await expect(remove).toHaveAttribute('aria-pressed', 'true')
+  expect(writes).toBe(1)
+  await expect(page.getByText('untrusted server detail')).toHaveCount(0)
+  await page.unroute('**/api/v1/project-favorites/*')
+  await remove.click()
+  await expect(add).toHaveAttribute('aria-pressed', 'false')
+})
+
 test('renders the Project empty state from real API data', async ({ page }) => {
   await login(page)
   await page.route('**/api/v1/projects', async (route) => {
@@ -330,7 +387,7 @@ test('tracks successful and failed clone Jobs without fake percentages', async (
     .getByLabel('Repository URL')
     .fill('https://github.com/owner/repo.git')
   await page.getByLabel('Project name (optional)').fill('Cloned E2E')
-  await page.getByRole('button', { name: 'Clone' }).click()
+  await page.getByRole('button', { name: 'Clone', exact: true }).click()
   await expect(page.getByText(/job_clone_success · succeeded/i)).toBeVisible()
   await expect(page.getByText('Cloned E2E')).toBeVisible()
 
@@ -338,7 +395,7 @@ test('tracks successful and failed clone Jobs without fake percentages', async (
     .getByLabel('Repository URL')
     .fill('https://github.com/owner/private.git')
   await page.getByLabel('Project name (optional)').fill('Failed Clone E2E')
-  await page.getByRole('button', { name: 'Clone' }).click()
+  await page.getByRole('button', { name: 'Clone', exact: true }).click()
   await expect(page.getByText(/job_clone_failure · failed/i)).toBeVisible()
   await expect(page.getByText('GIT_AUTH_REQUIRED')).toBeVisible()
   await expect(page.getByText(/Git authentication is required/i)).toHaveCount(0)
@@ -664,7 +721,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc21', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc22', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

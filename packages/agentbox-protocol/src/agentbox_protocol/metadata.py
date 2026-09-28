@@ -439,7 +439,7 @@ class ProjectListResponse(StrictMetadataModel):
 class ProjectFavoriteData(StrictMetadataModel):
     project_id: str = Field(pattern=r"^prj_[0-9a-f]{32}$")
     favorite: bool
-    revision: int = Field(ge=0, le=2**63 - 1)
+    revision: int = Field(ge=0, le=2**53 - 1)
     updated_at: AwareDatetime | None
 
     @model_validator(mode="after")
@@ -463,7 +463,7 @@ class ProjectFavoriteListResponse(StrictMetadataModel):
 
 class ProjectFavoriteSetRequest(StrictMetadataModel):
     favorite: bool
-    expected_revision: int = Field(ge=0, le=2**63 - 1)
+    expected_revision: int = Field(ge=0, le=2**53 - 1)
 
 
 class ProjectFavoriteResponse(StrictMetadataModel):

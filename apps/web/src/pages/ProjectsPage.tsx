@@ -1,6 +1,6 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Boxes, RefreshCw } from 'lucide-react'
+import { Boxes, RefreshCw, Star } from 'lucide-react'
 
 import { LocalizedApiError, OpaqueUserValue } from '../components/i18n'
 import { SafeTechnicalValue } from '../components/i18n/SafeTechnicalValue'
@@ -12,6 +12,7 @@ import {
   type ProjectJobView,
 } from '../features/projects/useProjects'
 import { searchProjects } from '../features/projects/searchProjects'
+import { useProjectFavorites } from '../features/projects/useProjectFavorites'
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
   currentLocale,
@@ -121,6 +122,7 @@ export function ProjectsPage({
   locale?: Locale
 }) {
   const model = useProjects()
+  const favorites = useProjectFavorites()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [cloneName, setCloneName] = useState('')
@@ -132,6 +134,14 @@ export function ProjectsPage({
     () => searchProjects(model.projects, query),
     [model.projects, query],
   )
+  const orderedProjects = useMemo(() => {
+    if (query.trim() || !favorites.loaded) return visibleProjects
+    return [...visibleProjects].sort(
+      (left, right) =>
+        Number(Boolean(favorites.byProject[right.id]?.favorite)) -
+        Number(Boolean(favorites.byProject[left.id]?.favorite)),
+    )
+  }, [favorites.byProject, favorites.loaded, query, visibleProjects])
   usePageTitle(copy(locale, 'projects.title'))
 
   async function create(event: FormEvent) {
@@ -177,7 +187,10 @@ export function ProjectsPage({
         action={
           <button
             className="secondary-button"
-            onClick={() => void model.refresh()}
+            onClick={() => {
+              void model.refresh()
+              void favorites.refresh()
+            }}
             type="button"
           >
             <RefreshCw aria-hidden="true" size={16} />{' '}
@@ -191,6 +204,26 @@ export function ProjectsPage({
         </p>
       )}
       {model.job && <JobStatus job={model.job} locale={locale} />}
+      {favorites.error && (
+        <p className="error-panel" role="alert">
+          {copy(locale, 'projects.favoriteFailed')}{' '}
+          <LocalizedApiError
+            error={favorites.error}
+            locale={locale}
+            role="presentation"
+          />
+        </p>
+      )}
+      {favorites.notice && (
+        <p className="interaction-notice" role="status">
+          {copy(
+            locale,
+            favorites.notice.code === 'PROJECT_FAVORITE_CONFLICT'
+              ? 'projects.favoriteConflict'
+              : 'projects.favoriteUncertain',
+          )}
+        </p>
+      )}
       <section className="project-forms">
         <form className="runtime-card" noValidate onSubmit={create}>
           <p className="eyebrow">{copy(locale, 'projects.emptyWorkspace')}</p>
@@ -264,6 +297,16 @@ export function ProjectsPage({
           </button>
         </form>
       </section>
+      {(favorites.loading || favorites.stale) && model.projects.length > 0 && (
+        <p role="status">
+          {copy(
+            locale,
+            favorites.stale
+              ? 'projects.favoriteStale'
+              : 'projects.favoriteLoading',
+          )}
+        </p>
+      )}
       {model.projects.length > 0 && (
         <div className="project-search">
           <label htmlFor="project-search-query">
@@ -319,87 +362,119 @@ export function ProjectsPage({
           className="project-grid"
           aria-label={copy(locale, 'projects.gridAria')}
         >
-          {visibleProjects.map((project) => {
+          {orderedProjects.map((project) => {
             const changes = project.git
               ? project.git.staged_count +
                 project.git.unstaged_count +
                 project.git.untracked_count +
                 project.git.conflicted_count
               : 0
+            const isFavorite = Boolean(
+              favorites.byProject[project.id]?.favorite,
+            )
+            const saving = favorites.pending.has(project.id)
             return (
-              <Link
-                className="runtime-card project-link"
-                key={project.id}
-                to={`/projects/${encodeURIComponent(project.id)}`}
-              >
-                <div className="runtime-card-heading">
-                  <h2>
-                    <OpaqueUserValue value={project.display_name} />
-                  </h2>
-                  <StatusBadge
-                    tone={project.state === 'ready' ? 'good' : 'warning'}
-                  >
-                    {copy(locale, PROJECT_STATE_COPY[project.state])}
-                  </StatusBadge>
-                </div>
-                <p>
+              <div className="project-card" key={project.id}>
+                <Link
+                  className="runtime-card project-link"
+                  to={`/projects/${encodeURIComponent(project.id)}`}
+                >
+                  <div className="runtime-card-heading">
+                    <h2>
+                      <OpaqueUserValue value={project.display_name} />
+                    </h2>
+                    <StatusBadge
+                      tone={project.state === 'ready' ? 'good' : 'warning'}
+                    >
+                      {copy(locale, PROJECT_STATE_COPY[project.state])}
+                    </StatusBadge>
+                  </div>
+                  <p>
+                    {copy(
+                      locale,
+                      project.source_type === 'git_clone'
+                        ? 'projects.sourceCloned'
+                        : 'projects.sourceWorkspace',
+                    )}
+                  </p>
+                  <p>
+                    {copy(locale, 'projects.slug')}{' '}
+                    <OpaqueUserValue value={project.slug} />
+                  </p>
+                  <dl className="runtime-details compact-details">
+                    <div>
+                      <dt>{copy(locale, 'projects.branch')}</dt>
+                      <dd>
+                        {project.git?.branch !== null &&
+                        project.git?.branch !== undefined ? (
+                          <SafeTechnicalValue
+                            fallback={unknown(locale)}
+                            value={project.git.branch}
+                          />
+                        ) : (
+                          copy(locale, 'projects.notInitialized')
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{copy(locale, 'projects.changes')}</dt>
+                      <dd>{changes}</dd>
+                    </div>
+                    <div>
+                      <dt>{copy(locale, 'projects.remote')}</dt>
+                      <dd>
+                        {project.git?.remote_url !== null &&
+                        project.git?.remote_url !== undefined ? (
+                          <SafeTechnicalValue
+                            fallback={unknown(locale)}
+                            value={project.git.remote_url}
+                          />
+                        ) : (
+                          copy(locale, 'projects.none')
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{copy(locale, 'projects.claude')}</dt>
+                      <dd>
+                        {copy(
+                          locale,
+                          project.claude_state
+                            ? CLAUDE_STATE_COPY[project.claude_state]
+                            : 'projects.claudeUnknown',
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </Link>
+                <button
+                  aria-label={`${copy(locale, isFavorite ? 'projects.removeFavorite' : 'projects.addFavorite')}: ${project.display_name}`}
+                  aria-pressed={isFavorite}
+                  className="secondary-button project-favorite"
+                  disabled={
+                    !favorites.loaded ||
+                    favorites.loading ||
+                    favorites.stale ||
+                    saving
+                  }
+                  onClick={() => void favorites.setFavorite(project.id)}
+                  type="button"
+                >
+                  <Star
+                    aria-hidden="true"
+                    fill={isFavorite ? 'currentColor' : 'none'}
+                    size={16}
+                  />{' '}
                   {copy(
                     locale,
-                    project.source_type === 'git_clone'
-                      ? 'projects.sourceCloned'
-                      : 'projects.sourceWorkspace',
+                    saving
+                      ? 'projects.favoriteSaving'
+                      : isFavorite
+                        ? 'projects.removeFavorite'
+                        : 'projects.addFavorite',
                   )}
-                </p>
-                <p>
-                  {copy(locale, 'projects.slug')}{' '}
-                  <OpaqueUserValue value={project.slug} />
-                </p>
-                <dl className="runtime-details compact-details">
-                  <div>
-                    <dt>{copy(locale, 'projects.branch')}</dt>
-                    <dd>
-                      {project.git?.branch !== null &&
-                      project.git?.branch !== undefined ? (
-                        <SafeTechnicalValue
-                          fallback={unknown(locale)}
-                          value={project.git.branch}
-                        />
-                      ) : (
-                        copy(locale, 'projects.notInitialized')
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{copy(locale, 'projects.changes')}</dt>
-                    <dd>{changes}</dd>
-                  </div>
-                  <div>
-                    <dt>{copy(locale, 'projects.remote')}</dt>
-                    <dd>
-                      {project.git?.remote_url !== null &&
-                      project.git?.remote_url !== undefined ? (
-                        <SafeTechnicalValue
-                          fallback={unknown(locale)}
-                          value={project.git.remote_url}
-                        />
-                      ) : (
-                        copy(locale, 'projects.none')
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{copy(locale, 'projects.claude')}</dt>
-                    <dd>
-                      {copy(
-                        locale,
-                        project.claude_state
-                          ? CLAUDE_STATE_COPY[project.claude_state]
-                          : 'projects.claudeUnknown',
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-              </Link>
+                </button>
+              </div>
             )
           })}
         </section>

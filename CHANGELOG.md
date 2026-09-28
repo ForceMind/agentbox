@@ -3,6 +3,14 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc22] - Unreleased
+
+- Add an accessible Project favorite toggle that waits for server revision
+  acknowledgment, refreshes after conflict or uncertain outcome, and sorts
+  saved favorites first when the Projects search is empty.
+- Keep named labels and the global command center as later WS14 work.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc22.md`.
+
 ## [0.3.0rc21] - Unreleased
 
 - Add per-admin Project favorite metadata with additive migration, revision
