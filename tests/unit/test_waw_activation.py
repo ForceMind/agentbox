@@ -215,8 +215,9 @@ def test_listener_descriptor_rejects_non_listening_socket(tmp_path: Path) -> Non
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux AF_UNIX SO_ACCEPTCONN contract")
-def test_listener_descriptor_checks_descriptor_owner(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("descriptor_owner", [(0, 0), (65534, 65534)])
+def test_listener_descriptor_allows_pid1_owner_but_rejects_unexpected_owner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, descriptor_owner: tuple[int, int]
 ) -> None:
     path = tmp_path / "control.sock"
     listener = _listener(path)
@@ -228,14 +229,17 @@ def test_listener_descriptor_checks_descriptor_owner(
             st_mode=details.st_mode,
             st_dev=details.st_dev,
             st_ino=details.st_ino,
-            st_uid=details.st_uid + 1,
-            st_gid=details.st_gid,
+            st_uid=descriptor_owner[0],
+            st_gid=descriptor_owner[1],
         )
 
     monkeypatch.setattr(os, "fstat", forged_fstat)
     try:
-        with pytest.raises(WAWActivationError):
+        if descriptor_owner == (0, 0):
             _validate_socket(listener, str(path), os.geteuid(), os.getegid())
+        else:
+            with pytest.raises(WAWActivationError):
+                _validate_socket(listener, str(path), os.geteuid(), os.getegid())
     finally:
         listener.close()
 

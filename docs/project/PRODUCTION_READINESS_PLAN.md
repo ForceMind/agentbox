@@ -249,6 +249,9 @@ D 的模板/fixture 可提前，F 必须等全部所选接口；公开发布 K �
   不同 socket unit 的 FD3/4 顺序，因为 [systemd.socket 官方说明](https://github.com/systemd/systemd/blob/main/man/systemd.socket.xml)
   对指向同一服务的多个 socket unit 不保证跨 unit 顺序。真实 PID 1 下仍需
   证明两个 FD/名称均交付并分别通过第二次 provenance 检查。
+  `SocketUser=`/`SocketGroup=` 修改的是路径属主；systemd 以 PID 1 建立的
+  socket FD 可以继续是 root:root。loader 对路径要求 Runtime UID/GID，
+  对 FD 仅接受 root:root 或 Runtime UID/GID 的完整配对，禁止错误交叉组合。
 - 冻结 unit hardening 与实际 kernel/CLI 需求；CI 曾改变的 userns/AppArmor 设置不得照搬
   到主机。若确需系统策略变更，先提供最窄变更及恢复证据。
 - Server release 与 client trust release 分开。前者不夹带客户端密钥/策略私有状态；
