@@ -14,6 +14,8 @@
   下一批 Runtime-only patch 读取、选择器及独立加密内容通道的候选合同；尚未实施。
 - [A3 Git child cwd](../WORKBENCH_A3_GIT_CWD.md)：
   Linux-only 子进程目录 descriptor 前后身份验证基础；尚无内容读取动作。
+- [A3 staged reader candidate](../WORKBENCH_A3_STAGED_READER.md)：
+  Runtime 内部有界暂存 patch 观察、对象库快照与仍未开放的内容门禁。
 - [Project work tabs](../WORKBENCH_PROJECT_TABS.md)：
   固定上游来源、AgentBox 路由身份和纯导航生命周期；多会话仍待后续阶段。
 - [Project search](../WORKBENCH_PROJECT_SEARCH.md)：

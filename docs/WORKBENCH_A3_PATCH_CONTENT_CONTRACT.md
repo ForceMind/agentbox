@@ -14,6 +14,13 @@ The rc19 source candidate adds an internal Linux-only held-descriptor child
 cwd seam, still without a patch action or object-file provenance proof. See
 [A3 cwd proof](WORKBENCH_A3_GIT_CWD.md).
 
+The current [staged reader candidate](WORKBENCH_A3_STAGED_READER.md) combines
+the held root, bounded local object inventory, fixed descriptor-cwd Git
+commands and two matching staged patch observations. It returns patch text
+only to Runtime-internal code and adds no RPC, API, encrypted channel or UI.
+Its Linux native test and independent security-critical reviews remain open;
+this document does not treat it as a qualified content action.
+
 The rc23 internal staged-selection slice adds a Runtime-only path policy and
 porcelain-v2 index eligibility check. It accepts only tracked regular staged
 add/modify/delete rows and records the exact HEAD/index modes and OIDs. It
