@@ -214,6 +214,9 @@ async function installAuthenticatedShellRoutes(
   await page.route('**/api/v1/auth/me', (route) =>
     fulfillJson(route, 200, envelope(authData, 'req_rc9_manifest_auth')),
   )
+  await page.route('**/api/v1/project-favorites', (route) =>
+    fulfillJson(route, 200, envelope({ favorites: [] })),
+  )
   await page.route('**/healthz', (route) =>
     health === 'ok'
       ? fulfillJson(route, 200, { status: 'ok' })

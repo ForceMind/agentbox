@@ -24,7 +24,7 @@ from agentbox_core.utc import aware_utc
 
 _ADMIN_ID = re.compile(r"adm_[0-9a-f]{32}\Z")
 _PROJECT_ID = re.compile(r"prj_[0-9a-f]{32}\Z")
-_MAX_REVISION = 2**63 - 1
+_MAX_REVISION = 2**53 - 1  # Exactly representable by the AgentBox Web client.
 _MAX_RECORDS = 10_000
 
 

@@ -51,6 +51,14 @@ export interface ProjectsMessageParameters {
   readonly 'projects.matchCount': Readonly<{ shown: string; total: string }>
   readonly 'projects.noMatchesTitle': NoMessageParameters
   readonly 'projects.noMatchesDescription': NoMessageParameters
+  readonly 'projects.favoriteLoading': NoMessageParameters
+  readonly 'projects.favoriteStale': NoMessageParameters
+  readonly 'projects.favoriteFailed': NoMessageParameters
+  readonly 'projects.favoriteConflict': NoMessageParameters
+  readonly 'projects.favoriteUncertain': NoMessageParameters
+  readonly 'projects.favoriteSaving': NoMessageParameters
+  readonly 'projects.addFavorite': NoMessageParameters
+  readonly 'projects.removeFavorite': NoMessageParameters
   readonly 'projects.stateCreating': NoMessageParameters
   readonly 'projects.stateReady': NoMessageParameters
   readonly 'projects.stateError': NoMessageParameters
@@ -128,6 +136,17 @@ export const projectsCatalog = defineCatalogShard<ProjectsMessageParameters>(
       'projects.noMatchesTitle': () => 'No matching Projects',
       'projects.noMatchesDescription': () =>
         'Try another Project name, slug or branch.',
+      'projects.favoriteLoading': () => 'Loading saved favorites…',
+      'projects.favoriteStale': () =>
+        'Favorites are out of date. Refresh to continue.',
+      'projects.favoriteFailed': () => 'Favorites could not be loaded.',
+      'projects.favoriteConflict': () =>
+        'This favorite changed elsewhere. Check the refreshed state before trying again.',
+      'projects.favoriteUncertain': () =>
+        'The favorite change could not be confirmed. Check the refreshed state; no action was retried.',
+      'projects.favoriteSaving': () => 'Saving favorite…',
+      'projects.addFavorite': () => 'Add to favorites',
+      'projects.removeFavorite': () => 'Remove from favorites',
       'projects.stateCreating': () => 'Creating',
       'projects.stateReady': () => 'Ready',
       'projects.stateError': () => 'Error',
@@ -201,6 +220,16 @@ export const projectsCatalog = defineCatalogShard<ProjectsMessageParameters>(
       'projects.noMatchesTitle': () => '没有匹配的 Project',
       'projects.noMatchesDescription': () =>
         '请尝试其他 Project 名称、标识或分支。',
+      'projects.favoriteLoading': () => '正在读取已保存的收藏…',
+      'projects.favoriteStale': () => '收藏状态已过期，请刷新后继续。',
+      'projects.favoriteFailed': () => '无法读取收藏状态。',
+      'projects.favoriteConflict': () =>
+        '此收藏已在其他页面改变。请核对刷新后的状态，再决定是否重试。',
+      'projects.favoriteUncertain': () =>
+        '无法确认收藏更改。请核对刷新后的状态；操作没有自动重发。',
+      'projects.favoriteSaving': () => '正在保存收藏…',
+      'projects.addFavorite': () => '加入收藏',
+      'projects.removeFavorite': () => '取消收藏',
       'projects.stateCreating': () => '正在创建',
       'projects.stateReady': () => '已就绪',
       'projects.stateError': () => '异常',

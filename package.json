@@ -1,6 +1,6 @@
 {
   "name": "agentbox-monorepo",
-  "version": "0.3.0-rc.21",
+  "version": "0.3.0-rc.22",
   "private": true,
   "description": "AgentBox engineering skeleton",
   "license": "Apache-2.0",

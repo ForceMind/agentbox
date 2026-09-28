@@ -123,6 +123,23 @@ textarea {
   color: inherit;
   text-decoration: none;
 }
+.project-card {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.55rem;
+}
+.project-favorite {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-self: start;
+  gap: 0.4rem;
+}
+.project-favorite[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .project-link:hover {
   border-color: var(--accent);
 }

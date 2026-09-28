@@ -1,6 +1,19 @@
 # Current Authorized Action
 
-## 2026-09-29 WS14 Project favorites
+## 2026-09-29 WS14 Project favorites UI and native read-back
+
+PR #113 merged as `8fb017f3e294c4a303547da729b007e9605ed9a0`
+with exact parents; its post-main Backend native job first failed on an
+incomplete tmux pane-death status, then a same-SHA failed-job rerun succeeded.
+Validate the scoped transitional-state test repair on rc22's exact head.
+On `codex/workbench-project-favorites-ui`, complete the rc22 favorite control
+under [WS14 favorites](../WORKBENCH_PROJECT_FAVORITES.md): server revision
+ACK, conflict/uncertain GET read-back without PUT replay, session/visibility
+fencing, desktop/mobile screenshots, local tests and exact-head CI. Then
+normal merge and read-back. Named labels and command center remain later
+WS14 slices; A3 content and R12 real-host gates remain separate.
+
+## Historical 2026-09-29 WS14 Project favorites
 
 PR #112 merged as `01a0ecd5eb21f74fe8605913bffd0c98bf322165`
 with exact parent read-back and six successful post-main workflows. On

@@ -3,9 +3,13 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const useProjectsMock = vi.hoisted(() => vi.fn())
+const useFavoritesMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../features/projects/useProjects', () => ({
   useProjects: useProjectsMock,
+}))
+vi.mock('../features/projects/useProjectFavorites', () => ({
+  useProjectFavorites: useFavoritesMock,
 }))
 
 import { ProjectsPage } from './ProjectsPage'
@@ -57,8 +61,27 @@ function model(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function favorites(overrides: Record<string, unknown> = {}) {
+  return {
+    byProject: {},
+    loaded: true,
+    loading: false,
+    stale: false,
+    error: null,
+    pending: new Set<string>(),
+    notice: null,
+    refresh: vi.fn(async () => undefined),
+    setFavorite: vi.fn(async () => undefined),
+    ...overrides,
+  }
+}
+
 describe('ProjectsPage localized safety boundary', () => {
-  beforeEach(() => useProjectsMock.mockReset())
+  beforeEach(() => {
+    useProjectsMock.mockReset()
+    useFavoritesMock.mockReset()
+    useFavoritesMock.mockReturnValue(favorites())
+  })
 
   it('localizes cards and Job failures without rendering server prose', () => {
     const canary = 'RC9-PROJECTS-SERVER-PROSE-CANARY-4M8W'
@@ -191,5 +214,49 @@ describe('ProjectsPage localized safety boundary', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
     expect(screen.getByRole('heading', { name: 'Alpha service' })).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Beta docs' })).toBeVisible()
+  })
+
+  it('keeps favorites separate from links and shows a saved favorite first', () => {
+    useProjectsMock.mockReturnValue(
+      model({
+        projects: [
+          project({
+            id: 'prj_alpha',
+            display_name: 'Alpha service',
+            slug: 'alpha',
+          }),
+          project({ id: 'prj_beta', display_name: 'Beta docs', slug: 'beta' }),
+        ],
+      }),
+    )
+    const setFavorite = vi.fn(async () => undefined)
+    useFavoritesMock.mockReturnValue(
+      favorites({
+        byProject: {
+          prj_beta: {
+            project_id: 'prj_beta',
+            favorite: true,
+            revision: 1,
+            updated_at: '2026-09-29T00:00:00Z',
+          },
+        },
+        setFavorite,
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <ProjectsPage locale="en" />
+      </MemoryRouter>,
+    )
+    const grid = screen.getByRole('region', { name: 'Projects' })
+    const cards = grid.querySelectorAll('.project-card')
+    expect(cards[0]).toHaveTextContent('Beta docs')
+    expect(
+      screen.getByRole('button', { name: 'Remove from favorites: Beta docs' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add to favorites: Alpha service' }),
+    )
+    expect(setFavorite).toHaveBeenCalledWith('prj_alpha')
   })
 })

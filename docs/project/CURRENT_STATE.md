@@ -1,13 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T20:14:57Z"
-verified_by: "codex-workbench-project-favorites"
+verified_at_utc: "2026-09-28T20:51:41Z"
+verified_by: "codex-workbench-project-favorites-ui"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 WS14 Project favorites contract candidate
+## 2026-09-29 WS14 Project favorites UI candidate
+
+PR #113 repaired head `5ab766236efa2395844f352b8791cab99b069b1a`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `8fb017f3e294c4a303547da729b007e9605ed9a0` has parents
+`01a0ecd5eb21f74fe8605913bffd0c98bf322165` and that head. Five
+post-main workflows completed successfully initially; Backend native failed once in
+`test_incomplete_vendor_dcs_fails_closed_before_pane_success` when tmux
+briefly reported `pane_dead=1` without its exit status. The same-SHA failed
+native job rerun completed successfully, so all six workflows now have
+successful current results; the first failure remains recorded. The rc22 branch retains the same
+five-second budget and wrong-status assertion while waiting for only that
+incomplete transitional value; Linux positive/negative tests were added.
+
+Current `codex/workbench-project-favorites-ui` starts at that exact merge.
+Its rc22 candidate consumes the rc21 favorite API on the Projects page,
+waits for exact server acknowledgment, refreshes after conflict/uncertain
+outcome without PUT replay, and keeps prior-session state fenced. The
+browser favorite scenario passed on desktop/mobile in an initial E2E run.
+Four other E2E cases initially failed due a legacy fuzzy `Clone` locator
+and two isolated rc9 auth fixtures missing the new read-only favorite GET.
+After correcting these test inputs, the full isolated desktop/mobile suite
+completed 106 passes and 28 prescribed skips. Favorite-state screenshots
+were inspected without document overflow. Full Node 22 Web suite passed
+1175/1175 serially, including twenty focused contract/hook/page tests.
+Ninety-five backend precision/release Python cases, Linux-target mypy over
+327 files, Web/MV3 format/lint/typecheck/build, documentation links and
+source-boundary checks passed. Exact-head CI/PR/merge are pending.
+The Web main JS bundle is 611.77 kB/174.80 kB gzip versus rc21
+604.70/173.15 kB. Named labels and command center remain unfinished; the Owner's
+broad-permission and R12 host/Secret/production gates remain separate.
+Original checkout WIP is untouched. Sections below are historical snapshots.
+
+## Historical 2026-09-29 WS14 Project favorites contract candidate
 
 PR #112 final head `f3f31c0b58d0f3087ee85088eb7508577d98c0ee`
 completed 26 terminal checks (24 success, two prescribed historical skips).

@@ -386,6 +386,25 @@ export type ProjectResponse = {
   data: ProjectData
 }
 
+export type ProjectFavoriteData = {
+  project_id: string
+  favorite: boolean
+  revision: number
+  updated_at: string | null
+}
+
+export type ProjectFavoriteListResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { favorites: ProjectFavoriteData[] }
+}
+
+export type ProjectFavoriteResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: ProjectFavoriteData
+}
+
 export type ProjectJobResponse = {
   api_version: 'v1'
   request_id: string
@@ -1348,6 +1367,75 @@ export function parseProjectResponse(value: unknown): ProjectResponse {
     api_version: literal(envelope.api_version, ['v1'], 'API version'),
     request_id: string(envelope.request_id, 'request ID'),
     data: parseProject(envelope.data),
+  }
+}
+
+function parseProjectFavorite(value: unknown): ProjectFavoriteData {
+  const data = object(value, 'Project favorite')
+  exactKeys(
+    data,
+    ['project_id', 'favorite', 'revision', 'updated_at'],
+    'Project favorite',
+  )
+  const projectId = string(data.project_id, 'Project ID')
+  const favorite = boolean(data.favorite, 'favorite')
+  const revision = number(data.revision, 'favorite revision')
+  const updatedAt = nullableString(data.updated_at, 'favorite update time')
+  if (
+    !/^prj_[0-9a-f]{32}$/.test(projectId) ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0 ||
+    (revision === 0 && (favorite || updatedAt !== null)) ||
+    (revision > 0 &&
+      (updatedAt === null ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(
+          updatedAt,
+        ) ||
+        !Number.isFinite(Date.parse(updatedAt)) ||
+        new Date(updatedAt).toISOString().slice(0, 19) !==
+          updatedAt.slice(0, 19)))
+  ) {
+    throw new Error('Invalid Project favorite response')
+  }
+  return { project_id: projectId, favorite, revision, updated_at: updatedAt }
+}
+
+export function parseProjectFavoriteListResponse(
+  value: unknown,
+): ProjectFavoriteListResponse {
+  const envelope = object(value, 'Project favorites')
+  exactKeys(
+    envelope,
+    ['api_version', 'request_id', 'data'],
+    'Project favorites',
+  )
+  const data = object(envelope.data, 'Project favorite list')
+  exactKeys(data, ['favorites'], 'Project favorite list')
+  const favorites = array(data.favorites, 'Project favorites').map(
+    parseProjectFavorite,
+  )
+  if (
+    favorites.length > 10_000 ||
+    new Set(favorites.map((item) => item.project_id)).size !== favorites.length
+  ) {
+    throw new Error('Invalid Project favorite list')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: { favorites },
+  }
+}
+
+export function parseProjectFavoriteResponse(
+  value: unknown,
+): ProjectFavoriteResponse {
+  const envelope = object(value, 'Project favorite')
+  exactKeys(envelope, ['api_version', 'request_id', 'data'], 'Project favorite')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: parseProjectFavorite(envelope.data),
   }
 }
 

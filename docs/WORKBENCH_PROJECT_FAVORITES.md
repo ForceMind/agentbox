@@ -1,11 +1,19 @@
 # WS14 Project favorites contract
 
-Status: rc21 backend/API candidate, 2026-09-29. This extends the approved
+Status: rc21 backend/API merged; rc22 Web UI candidate, 2026-09-29. This extends the approved
 [full capability plan](project/FULL_CAPABILITY_DELIVERY_PLAN.md) after the
 [rc20 Project search](WORKBENCH_PROJECT_SEARCH.md). It specifies metadata-only
 favorites for formal Projects; it does not grant Project, Runtime, file or
-terminal authority. rc21 implements persistence/CAS and typed API; the Web
-control and multi-client browser proof remain unfinished.
+terminal authority. rc21 implements persistence/CAS and typed API; rc22
+connects the Web control. Full multi-client/browser proof and later label
+features remain unfinished.
+
+rc22 local browser evidence covers server-confirmed save, reload read-back,
+synthetic conflict, no PUT replay, and desktop/mobile visible state in 106
+passing and 28 prescribed skipped isolated Chromium cases. The first full
+run exposed old test harness gaps (a fuzzy `Clone` locator and rc9 mocked
+authentication without a favorite GET); the corrected full rerun passed.
+This is local browser evidence, not real-host or production acceptance.
 
 ## Identity and persistence
 
@@ -13,7 +21,7 @@ A favorite belongs to the authenticated AgentBox `AdminUser` and a formal
 Project ID. The administrator identity is derived from the current server
 session, never supplied by the browser. The data is Control Plane metadata:
 one row keyed by `(admin_user_id, project_id)`, a boolean `favorite`, a
-monotonic `revision >= 1` and a canonical UTC update time. Foreign keys
+monotonic Web-safe `revision` in `1..2^53-1` and a canonical UTC update time. Foreign keys
 reference the existing user and Project rows. There is no Project path,
 credential, search query, prompt, terminal output or content body in this
 table, Audit event, API URL or response. An absent row means
