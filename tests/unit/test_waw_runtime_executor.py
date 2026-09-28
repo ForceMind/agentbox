@@ -1608,11 +1608,14 @@ async def test_managed_conflict_snapshot_follows_late_binding_and_live_superviso
 
     coordinator = WAWConflictCoordinator(RuntimeProbe())
     assert executor.relative_key_for_formal_project(PROJECT) is None
-    assert executor.managed_conflict_states(PROJECT) == ()
-    coordinator.acquire_legacy_claude_start(project_id=PROJECT).release()
+    assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.UNKNOWN,)
+    with pytest.raises(WAWConflictError, match="PROJECT_RUNTIME_ACTIVE"):
+        coordinator.acquire_legacy_claude_start(project_id=PROJECT)
 
     await executor.register_project_binding(binding())
     assert executor.relative_key_for_formal_project(PROJECT) == "project-a"
+    assert executor.managed_conflict_states(PROJECT) == ()
+    coordinator.acquire_legacy_claude_start(project_id=PROJECT).release()
     assert (await executor.start(identity)).state == "RUNNING"
     assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.RUNNING,)
     assert executor.managed_conflict_states() == (WAWManagedConflictState.RUNNING,)

@@ -323,6 +323,8 @@ class WAWSupervisorExecutor:
             return project_id is None or value == project_id
 
         with self._map_lock:
+            if project_id is not None and project_id not in self._bindings:
+                return (WAWManagedConflictState.UNKNOWN,)
             if (
                 any(relevant(value) for value in self._binding_reserved)
                 or any(relevant(value) for value in self._binding_inflight)

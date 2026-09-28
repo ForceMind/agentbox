@@ -80,7 +80,11 @@ outside the map lock to avoid lock inversion, and recheck map identity before
 returning. Binding changes, inflight work or restart quarantine block legacy
 starts. This closes only the WAW side of the bidirectional conflict probe;
 the bounded, fresh legacy Claude/Codex state source and one-shot production
-probe binding still need implementation and actual application tests.
+probe binding still need implementation and actual application tests. For a
+formal Project lacking a current binding, the snapshot returns `UNKNOWN`;
+host-wide empty state is not authoritative until the future application
+composition has completed binding/restart inventory replay and opened its
+startup gate.
 
 ## Production entrypoint sequence
 
