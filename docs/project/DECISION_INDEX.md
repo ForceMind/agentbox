@@ -1,5 +1,10 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-GIT-FD-CWD-CANDIDATE`: rc19 adds an internal Linux-only
+  child-cwd descriptor seam with pre/post named identity checks and no
+  content authority. It cannot be called by Web/API and is not composed into
+  a Git patch action. See [A3 cwd proof](../WORKBENCH_A3_GIT_CWD.md).
+
 - `WORKBENCH-S02-PROJECT-TABS-CANDIDATE`: rc18 keeps up to twelve current-session
   navigation targets for formal Project, Changed Paths and Project/AgentType
   Workspace routes. Tabs are not Runtime, file or conversation authority;

@@ -20,6 +20,10 @@ from agentbox_runtime.process import (
 
 def _trusted_test_python(tmp_path: Path) -> ExecutableIdentity:
     """Give runner tests an executable with production-safe ownership modes."""
+    if sys.platform == "darwin":
+        # The uv-managed framework interpreter loses its standard-library
+        # location when copied out of its installed Python tree on macOS.
+        return inspect_executable(Path(sys.executable).absolute())
     tmp_path.chmod(0o700)
     executable = tmp_path / "python"
     shutil.copy2(Path(sys.executable).resolve(strict=True), executable)
@@ -106,7 +110,7 @@ async def test_runner_times_out_and_cleans_up_spawned_process(tmp_path: Path) ->
             ),
             environment={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
             cwd=tmp_path,
-            timeout_seconds=0.05,
+            timeout_seconds=0.5,
             stdout_limit=128,
             stderr_limit=128,
         )
@@ -290,3 +294,169 @@ async def test_event_loop_remains_schedulable_during_runtime_process(tmp_path: P
     scheduled = await asyncio.wait_for(asyncio.sleep(0, result="scheduled"), timeout=0.1)
     assert scheduled == "scheduled"
     await task
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(sys.platform == "linux", reason="Linux has the descriptor-bound cwd path")
+async def test_descriptor_cwd_fails_closed_without_linux_procfs(tmp_path: Path) -> None:
+    identity = _trusted_test_python(tmp_path)
+    directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises(RuntimeOperationError) as raised:
+            await ControlledProcessRunner().run_with_cwd_fd(
+                identity,
+                ("-c", "print('must-not-start')"),
+                environment={"HOME": str(tmp_path)},
+                cwd=tmp_path,
+                cwd_directory_fd=directory_fd,
+                timeout_seconds=5,
+                stdout_limit=128,
+                stderr_limit=128,
+            )
+        assert raised.value.code == "GIT_WORKING_DIRECTORY_UNAVAILABLE"
+    finally:
+        os.close(directory_fd)
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux /proc/self/fd required")
+async def test_descriptor_cwd_runs_from_the_held_project_directory(tmp_path: Path) -> None:
+    identity = _trusted_test_python(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir(mode=0o700)
+    directory_fd = os.open(project, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        result = await ControlledProcessRunner().run_with_cwd_fd(
+            identity,
+            ("-c", "import os; print(os.getcwd())"),
+            environment={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+            cwd=project,
+            cwd_directory_fd=directory_fd,
+            timeout_seconds=5,
+            stdout_limit=1024,
+            stderr_limit=1024,
+        )
+        assert result.exit_code == 0
+        assert result.stdout.strip() == str(project).encode()
+        assert result.argv == (str(identity.path), "-c", "import os; print(os.getcwd())")
+        os.fstat(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux /proc/self/fd required")
+async def test_descriptor_cwd_rejects_a_different_named_directory(tmp_path: Path) -> None:
+    identity = _trusted_test_python(tmp_path)
+    project = tmp_path / "project"
+    other = tmp_path / "other"
+    project.mkdir(mode=0o700)
+    other.mkdir(mode=0o700)
+    directory_fd = os.open(other, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        with pytest.raises(RuntimeOperationError) as raised:
+            await ControlledProcessRunner().run_with_cwd_fd(
+                identity,
+                ("-c", "print('must-not-start')"),
+                environment={"HOME": str(tmp_path)},
+                cwd=project,
+                cwd_directory_fd=directory_fd,
+                timeout_seconds=5,
+                stdout_limit=1024,
+                stderr_limit=1024,
+            )
+        assert raised.value.code == "GIT_WORKING_DIRECTORY_CHANGED"
+    finally:
+        os.close(directory_fd)
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux /proc/self/fd required")
+async def test_descriptor_cwd_drops_output_if_project_name_changes(
+    tmp_path: Path,
+) -> None:
+    identity = _trusted_test_python(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir(mode=0o700)
+    marker = tmp_path / "child-ready"
+    directory_fd = os.open(project, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    task = asyncio.create_task(
+        ControlledProcessRunner().run_with_cwd_fd(
+            identity,
+            (
+                "-c",
+                "import pathlib,time;"
+                f"pathlib.Path({str(marker)!r}).write_text('ready');"
+                "time.sleep(.2);print('PRIVATE-PATCH-CANARY')",
+            ),
+            environment={"HOME": str(tmp_path)},
+            cwd=project,
+            cwd_directory_fd=directory_fd,
+            timeout_seconds=5,
+            stdout_limit=1024,
+            stderr_limit=1024,
+        )
+    )
+    try:
+        for _ in range(200):
+            if marker.exists():
+                break
+            await asyncio.sleep(0.01)
+        assert marker.exists()
+        project.rename(tmp_path / "old-project")
+        project.mkdir(mode=0o700)
+        with pytest.raises(RuntimeOperationError) as raised:
+            await task
+        assert raised.value.code == "GIT_WORKING_DIRECTORY_CHANGED"
+    finally:
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        os.close(directory_fd)
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux /proc/self/fd required")
+async def test_descriptor_cwd_cancellation_reaps_only_its_child(tmp_path: Path) -> None:
+    identity = _trusted_test_python(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir(mode=0o700)
+    pid_file = tmp_path / "descriptor-child.pid"
+    directory_fd = os.open(project, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    task = asyncio.create_task(
+        ControlledProcessRunner(terminate_grace_seconds=0.1).run_with_cwd_fd(
+            identity,
+            (
+                "-c",
+                "import os,pathlib,time;"
+                f"pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()));"
+                "time.sleep(30)",
+            ),
+            environment={"HOME": str(tmp_path)},
+            cwd=project,
+            cwd_directory_fd=directory_fd,
+            timeout_seconds=25,
+            stdout_limit=1024,
+            stderr_limit=1024,
+        )
+    )
+    try:
+        for _ in range(200):
+            if pid_file.exists():
+                break
+            await asyncio.sleep(0.01)
+        assert pid_file.exists()
+        spawned_pid = int(pid_file.read_text(encoding="utf-8"))
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with pytest.raises(ProcessLookupError):
+            os.kill(spawned_pid, 0)
+        os.fstat(directory_fd)
+    finally:
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        os.close(directory_fd)

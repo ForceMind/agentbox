@@ -7,6 +7,7 @@ import contextlib
 import os
 import signal
 import stat
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -143,6 +144,144 @@ class ControlledProcessRunner:
         stdin_data: bytes | None = None,
         error_prefix: str = "CODEX",
     ) -> ProcessResult:
+        return await self._run_internal(
+            executable,
+            arguments,
+            environment=environment,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
+            stdout_limit=stdout_limit,
+            stderr_limit=stderr_limit,
+            sensitive_output=sensitive_output,
+            stdin_data=stdin_data,
+            error_prefix=error_prefix,
+            pass_fds=(),
+        )
+
+    async def run_with_cwd_fd(
+        self,
+        executable: ExecutableIdentity,
+        arguments: Sequence[str],
+        *,
+        environment: Mapping[str, str],
+        cwd: Path,
+        cwd_directory_fd: int,
+        timeout_seconds: float,
+        stdout_limit: int,
+        stderr_limit: int,
+        sensitive_output: bool = False,
+        stdin_data: bytes | None = None,
+        error_prefix: str = "GIT",
+    ) -> ProcessResult:
+        """Bind a fixed child cwd to a caller-held directory on Linux only.
+
+        The caller must separately prove Project/repository authority. This
+        method does not select an executable, argv, file or content action.
+        """
+
+        if sys.platform != "linux" or not Path("/proc/self/fd").is_dir():
+            raise RuntimeOperationError(
+                f"{error_prefix}_WORKING_DIRECTORY_UNAVAILABLE",
+                "Descriptor-bound working directory is unavailable",
+                category="unavailable",
+            )
+        if type(cwd_directory_fd) is not int or cwd_directory_fd < 0 or not cwd.is_absolute():
+            raise RuntimeOperationError(
+                f"{error_prefix}_WORKING_DIRECTORY_INVALID",
+                "Descriptor-bound working directory is invalid",
+                category="validation",
+            )
+        try:
+            held_fd = os.dup(cwd_directory_fd)
+        except OSError as exc:
+            raise RuntimeOperationError(
+                f"{error_prefix}_WORKING_DIRECTORY_INVALID",
+                "Descriptor-bound working directory is invalid",
+                category="validation",
+            ) from exc
+        try:
+            identity = self._checked_cwd_identity(held_fd, cwd, error_prefix=error_prefix)
+            proc_cwd = Path(f"/proc/self/fd/{held_fd}")
+            if self._stat_identity(os.stat(proc_cwd)) != identity:
+                raise RuntimeOperationError(
+                    f"{error_prefix}_WORKING_DIRECTORY_CHANGED",
+                    "Descriptor-bound working directory changed",
+                    category="conflict",
+                )
+            result = await self._run_internal(
+                executable,
+                arguments,
+                environment=environment,
+                cwd=proc_cwd,
+                timeout_seconds=timeout_seconds,
+                stdout_limit=stdout_limit,
+                stderr_limit=stderr_limit,
+                sensitive_output=sensitive_output,
+                stdin_data=stdin_data,
+                error_prefix=error_prefix,
+                pass_fds=(held_fd,),
+            )
+            if self._checked_cwd_identity(held_fd, cwd, error_prefix=error_prefix) != identity:
+                raise RuntimeOperationError(
+                    f"{error_prefix}_WORKING_DIRECTORY_CHANGED",
+                    "Descriptor-bound working directory changed",
+                    category="conflict",
+                )
+            return result
+        except OSError as exc:
+            raise RuntimeOperationError(
+                f"{error_prefix}_WORKING_DIRECTORY_CHANGED",
+                "Descriptor-bound working directory changed",
+                category="conflict",
+            ) from exc
+        finally:
+            os.close(held_fd)
+
+    @staticmethod
+    def _stat_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
+        return (
+            details.st_dev,
+            details.st_ino,
+            details.st_uid,
+            details.st_gid,
+            details.st_mode,
+        )
+
+    @classmethod
+    def _checked_cwd_identity(
+        cls, descriptor: int, cwd: Path, *, error_prefix: str
+    ) -> tuple[int, int, int, int, int]:
+        held = os.fstat(descriptor)
+        named = os.stat(cwd, follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(held.st_mode)
+            or not stat.S_ISDIR(named.st_mode)
+            or held.st_uid != os.geteuid()
+            or held.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+            or cls._stat_identity(held) != cls._stat_identity(named)
+        ):
+            raise RuntimeOperationError(
+                f"{error_prefix}_WORKING_DIRECTORY_CHANGED",
+                "Descriptor-bound working directory changed",
+                category="conflict",
+            )
+        return cls._stat_identity(held)
+
+    async def _run_internal(
+        self,
+        executable: ExecutableIdentity,
+        arguments: Sequence[str],
+        *,
+        environment: Mapping[str, str],
+        cwd: Path,
+        timeout_seconds: float,
+        stdout_limit: int,
+        stderr_limit: int,
+        sensitive_output: bool,
+        stdin_data: bytes | None,
+        error_prefix: str,
+        pass_fds: tuple[int, ...],
+    ) -> ProcessResult:
         del sensitive_output  # Classification is consumed by callers/log policy, never logged here.
         if timeout_seconds <= 0 or stdout_limit < 1 or stderr_limit < 1:
             raise ValueError("process limits must be positive")
@@ -175,6 +314,7 @@ class ControlledProcessRunner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
+                pass_fds=pass_fds,
             )
         except OSError as exc:
             raise RuntimeOperationError(

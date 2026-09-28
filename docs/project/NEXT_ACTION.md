@@ -1,6 +1,18 @@
 # Current Authorized Action
 
-## 2026-09-29 S02 Project work tabs
+## 2026-09-29 S02/A3 descriptor-bound Git cwd
+
+PR #110 merged as `6cd045dd8831283e2c0d0333a39461671b04bf76` with
+exact parent read-back and six successful post-main workflows. Continue on
+`codex/workbench-git-fd-cwd-v2`: verify the Linux-only fixed process runner
+cwd descriptor inheritance and name-swap fail-closed behavior, then run
+exact-head CI, normal merge and read-back. No Runtime action, API route or
+patch bytes are added. The [cwd proof](../WORKBENCH_A3_GIT_CWD.md) and
+[A3 patch contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md) retain object
+store and index provenance, sensitivity and encrypted content as future
+gates. The Owner's broad shell/file/plugin/Hub choice remains unanswered.
+
+## Historical 2026-09-29 S02 Project work tabs
 
 PR #109 merged as `1e3f463c5aafcc9ffdd266a94cfe35bfdca46c0a`
 with exact parent read-back and six successful post-main workflows. Continue

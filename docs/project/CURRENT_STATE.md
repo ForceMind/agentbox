@@ -1,13 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T18:24:35Z"
-verified_by: "codex-workbench-project-tabs"
+verified_at_utc: "2026-09-28T18:52:13Z"
+verified_by: "codex-workbench-git-fd-cwd"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 S02 Project work tabs candidate
+## 2026-09-29 S02/A3 Git child cwd candidate
+
+PR #110 final head `3f77e592496575b9bd0104e0fc1a06fd2c6df46c`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+Normal merge `6cd045dd8831283e2c0d0333a39461671b04bf76` has parents
+`1e3f463c5aafcc9ffdd266a94cfe35bfdca46c0a` and that head. Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main workflows
+all completed successfully. rc18 delivered in-memory Project work tabs;
+multiple conversations, split panes and cross-device tabs remain unfinished.
+
+Current `codex/workbench-git-fd-cwd-v2` starts at that exact merge. Its rc19
+candidate adds a Linux-only descriptor-bound cwd seam to the internal
+`ControlledProcessRunner`; no Git action or content route calls it yet.
+Local ordinary runner and non-Linux refusal tests passed. One combined local
+test run hit the existing 50ms child startup race. After extending only the
+observation timeout to 0.5s while
+retaining exact PID cleanup, the combined process/Git/content-root/release
+matrix passed 166 cases with four Linux-only skips after the rc19 version
+update and cancellation case. Scoped Ruff/Black, Linux-target mypy over
+323 files and Web/MV3 format/lint/typecheck/build plus six targeted version/tab
+tests passed. The Web bundle remains 601.72 kB/172.29 kB gzip. Isolated
+desktop/mobile Chromium E2E completed 102 passes and 28 prescribed skips,
+including the visible rc19 version. Linux positive tests, exact-head CI,
+PR and merge are pending. The A3 content
+action still needs complete object-store provenance, fixed Git argv, selection
+and encryption.
+R12 real-host/Secret/production evidence and the Owner's broad permission
+choice remain separate. Original checkout WIP is untouched. Sections below
+are historical snapshots.
+
+## Historical 2026-09-29 S02 Project work tabs candidate
 
 PR #109 final head `2e8ee2794b32815f84282d2e4fcfef74ee0e143a`
 completed 26 terminal checks (24 success, two prescribed historical skips).
