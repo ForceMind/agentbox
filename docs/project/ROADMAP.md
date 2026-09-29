@@ -1,5 +1,12 @@
 # AgentBox Roadmap
 
+## Current release focus — 2026-09-29
+
+当前唯一产品目标是 [首个可用单机 RC](RELEASE_ITERATION_PLAN.md)：
+先完成 R12 软件/制品，随后在指定目标完成真实 host/client/CLI/
+recovery 验收。70 项完整吸收清单仍在 [全量计划](FULL_CAPABILITY_DELIVERY_PLAN.md)，
+但 S02–S14 暂不扩大；下列历史阶段陈述不覆盖本次版本顺序。
+
 ## Current execution: approved R12 plan
 
 Owner approved [PRP-2026-09-08-v1](PRODUCTION_READINESS_PLAN.md) on 2026-09-08.

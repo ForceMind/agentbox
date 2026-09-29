@@ -1,5 +1,7 @@
 # AgentBox Project Context Index
 
+- [Release iteration plan](RELEASE_ITERATION_PLAN.md)：当前唯一目标是首个可用单机 RC；
+  明确软件候选、真实目标验收和后续逐版本吸收的退出条件与范围冻结。
 - [Full capability delivery plan](FULL_CAPABILITY_DELIVERY_PLAN.md)：Owner 将范围扩展为
   吸收全部现有上游功能；按三仓固定提交与 70 项 ID 组织一条分阶段实施路线。
 - [Full capability inventory](FULL_CAPABILITY_INVENTORY.md)：主仓、生产 relay、Hub
