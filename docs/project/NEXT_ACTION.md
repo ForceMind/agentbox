@@ -1,5 +1,19 @@
 # Current Authorized Action
 
+## 2026-09-29 首个可用 RC 收口
+
+Owner 要求按版本迭代，不再以 70 项全量清单驱动并行旁支。当前唯一产品
+目标与退出条件见 [逐版本计划](RELEASE_ITERATION_PLAN.md)。
+`origin/main = 3a23f350582287de6b00499b8d4daa5d69c52011` 是 rc29
+软件候选；六类 post-main workflow completed/success，但 R12 真实
+host/client/CLI/recovery 未验收，不能称完整可用版本。
+
+下一项是取得 Draft #122 的独立 Architecture/Security/Test 结论，处理
+R12-C3-b 原工作区 WIP，再完成 `_main`、D/E/F 软件与制品。#117 保持
+Draft，WS14 新功能暂停；现场输入缺失时报告本版阻断，不转去扩大功能
+范围。Host、Secret、付费调用、重启、生产及发行仍按具体授权执行。
+以下旧行动项保留为历史记录，不再驱动新的 WS14 批次。
+
 ## 2026-09-29 WS14 Workspace label command choices
 
 `origin/main` remains rc27 merge

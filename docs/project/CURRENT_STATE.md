@@ -1,11 +1,28 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T04:01:17Z"
-verified_by: "codex-workbench-command-labels"
+verified_at_utc: "2026-09-29T14:06:55Z"
+verified_by: "codex-release-iteration-plan"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-29 逐版本计划基线
+
+本次 `git fetch origin --prune` 退出 0；`origin/main` 是
+`3a23f350582287de6b00499b8d4daa5d69c52011`，当前计划分支从该 SHA
+起步。该 SHA 是 PR #123 的 merge，Web 源码版本为 `0.3.0-rc.29`。
+对该 exact SHA 的 Backend、
+Frontend、E2E、Deployment、Security、Release Candidate 六类
+post-main workflow 查询均 completed/success。Open PR #122 与 #117
+仍为安全关键 Draft，历史 #42 亦未合并。原
+`codex/r12-runtime-production` checkout 的未提交 R12 WIP 保持原样；
+本次只在干净的独立计划分支修改项目文档，未运行产品测试。
+
+Owner 要求按版本收口；[逐版本计划](RELEASE_ITERATION_PLAN.md)将当前
+唯一产品目标定为首个可用单机 RC。上述代码/CI 证据不代表 R12 真实
+host/client/CLI/recovery 已验收，也不代表软件候选、目标资格化或生产
+发行已完成。以下原 rc29 候选段落保留为历史快照。
 
 ## 2026-09-29 WS14 Workspace label command candidate
 

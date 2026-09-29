@@ -1,5 +1,9 @@
 # AgentBox 全量功能整合与原路线续建计划
 
+当前执行顺序由 [逐版本交付计划](RELEASE_ITERATION_PLAN.md) 收口：先完成
+R12 首个可用单机 RC；70 项清单保留为长期交付目标，不同时启动 S02–S14
+旁支。本文历史“依赖满足即可交错推进”的安排不再覆盖当前版本冻结。
+
 计划版本：AB-FULL-PARITY-2026-09-28-v2。状态：**Owner 已要求吸收所有现有功能；能力与权限边界正在冻结**。
 
 本计划按 Owner 最新要求扩展 [v1 工作台整合计划](WORKBENCH_INTEGRATION_PLAN.md)。v1 的固定来源、WIP 保护、单一 AgentBox 产品、Apache-2.0 归属、Control Plane/Runtime 分权、R12 主流程及已合并 A0/A1 仍有效；其中“只选部分功能”“移动端/语音/插件/Hub 仅评估”等范围限制由本计划替代。70 个冻结能力 ID 及三份上游源码提交见 [全量清单](FULL_CAPABILITY_INVENTORY.md)。两份文档组成同一个主 Goal 和一条交付路线，不建立第二套互相冲突的 Roadmap。
