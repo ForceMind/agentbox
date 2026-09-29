@@ -510,6 +510,48 @@ test('creates, assigns, edits and confirms deletion of a Project label', async (
   ).toBe(false)
 })
 
+test('shows a fixed Project-label validation error without server prose', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  await page.route('**/api/v1/project-labels', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    await route.fulfill({
+      status: 422,
+      json: {
+        request_id: 'req_label_invalid',
+        error: {
+          code: 'NAVIGATION_LABEL_INVALID',
+          category: 'validation',
+          message: 'PRIVATE-LABEL-VALIDATION-CANARY',
+          retryable: false,
+          details: {},
+        },
+      },
+    })
+  })
+  await page.getByRole('button', { name: 'Manage labels' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Manage labels' })
+  await dialog
+    .getByRole('textbox', { name: 'Label name' })
+    .fill('Valid-looking')
+  await dialog.getByRole('button', { name: 'Create label' }).click()
+  await expect(
+    dialog.getByText(/label name or color is invalid/i),
+  ).toBeVisible()
+  await expect(page.getByText('PRIVATE-LABEL-VALIDATION-CANARY')).toHaveCount(0)
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: testInfo.outputPath('project-label-error.png'),
+    })
+  }
+})
+
 test('shows Project Git changed paths without file bodies or patch controls', async ({
   page,
 }, testInfo) => {

@@ -202,6 +202,46 @@ describe('Project labels UI', () => {
     expect(request).toHaveBeenCalledTimes(1)
   })
 
+  it('distinguishes a definitive invalid-label response from uncertain delivery', async () => {
+    const get = vi.fn(async (path: string) =>
+      path === '/api/v1/project-labels'
+        ? envelope({ labels: [] })
+        : envelope({
+            project_id: projectId,
+            labels: [],
+            revision: 0,
+            updated_at: null,
+          }),
+    )
+    const request = vi.fn(async () => {
+      throw new ApiError({
+        code: 'NAVIGATION_LABEL_INVALID',
+        message: 'private validation detail',
+        status: 422,
+      })
+    })
+    render(
+      withAuth(
+        context(get, request),
+        <ProjectLabelsPanel projectId={projectId} locale="en" />,
+      ),
+    )
+    await screen.findByText('No labels assigned to this Project.')
+    fireEvent.click(screen.getByRole('button', { name: 'Manage labels' }))
+    const name = await screen.findByRole('textbox', { name: 'Label name' })
+    fireEvent.change(name, { target: { value: 'Valid-looking' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create label' }))
+    expect(
+      await within(
+        screen.getByRole('dialog', { name: 'Manage labels' }),
+      ).findByText(/label name or color is invalid/i),
+    ).toBeVisible()
+    expect(
+      screen.queryByText('private validation detail'),
+    ).not.toBeInTheDocument()
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
   it('shows delete impact before sending a destructive request and includes the confirmed count', async () => {
     let catalog: NavigationLabelData[] = [initialLabel]
     let assigned: ProjectLabelSetData = {

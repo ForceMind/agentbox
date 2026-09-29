@@ -52,10 +52,12 @@ function LabelChip({ value }: { value: NavigationLabelData }) {
 function LabelManager({
   labels,
   locale,
+  noticeText,
   onClose,
 }: {
   labels: ReturnType<typeof useProjectLabels>
   locale: Locale
+  noticeText: string | null
   onClose: () => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -134,6 +136,11 @@ function LabelManager({
           ×
         </button>
       </div>
+      {noticeText && (
+        <p className="interaction-notice" role="status">
+          {noticeText}
+        </p>
+      )}
       {labels.loading ? (
         <p className="loading-panel" role="status">
           {copy(locale, 'project.labelsLoading')}
@@ -331,6 +338,15 @@ export function ProjectLabelsPanel({
     labels.notice?.code === 'NAVIGATION_LABEL_CONFLICT' ||
     labels.notice?.code === 'NAVIGATION_LABEL_NAME_TAKEN' ||
     labels.notice?.code === 'PROJECT_LABEL_CONFLICT'
+  const noticeKey: FreeLabelKey = conflict
+    ? 'project.labelsConflict'
+    : labels.notice?.code === 'NAVIGATION_LABEL_INVALID'
+      ? 'project.labelsInvalid'
+      : labels.notice?.code === 'NAVIGATION_LABEL_LIMIT_EXCEEDED'
+        ? 'project.labelsLimit'
+        : labels.notice?.code === 'NAVIGATION_LABEL_NOT_FOUND'
+          ? 'project.labelsNotFound'
+          : 'project.labelsUncertain'
 
   return (
     <section className="runtime-card project-label-panel">
@@ -372,12 +388,9 @@ export function ProjectLabelsPanel({
           </button>
         </p>
       )}
-      {labels.notice && (
+      {labels.notice && !open && (
         <p className="interaction-notice" role="status">
-          {copy(
-            locale,
-            conflict ? 'project.labelsConflict' : 'project.labelsUncertain',
-          )}
+          {copy(locale, noticeKey)}
         </p>
       )}
       {labels.loaded && (
@@ -391,7 +404,14 @@ export function ProjectLabelsPanel({
           )}
         </div>
       )}
-      {open && <LabelManager labels={labels} locale={locale} onClose={close} />}
+      {open && (
+        <LabelManager
+          labels={labels}
+          locale={locale}
+          noticeText={labels.notice ? copy(locale, noticeKey) : null}
+          onClose={close}
+        />
+      )}
     </section>
   )
 }

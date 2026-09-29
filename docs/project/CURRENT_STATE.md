@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T00:21:24Z"
+verified_at_utc: "2026-09-29T00:36:25Z"
 verified_by: "codex-workbench-project-labels-ui"
 repository: "ForceMind/agentbox"
 ---
@@ -33,14 +33,19 @@ actual main `36aa729…`. Its rc25 candidate consumes the rc24 label API on
 the authenticated Project page: server-confirmed create/assign/edit,
 delete-impact preview with transactional count recheck, conflict/uncertain
 GET readback without mutation replay, and session/visibility fencing. The
-related Python matrix passed 168 cases, full Node 22 Web suite passed 1190,
+related Python matrix passed 168 cases, full Node 22 Web suite passed 1191,
 Linux-target mypy checked 315 source files, Web/MV3 format/lint/build and
 version checks passed. The first desktop/mobile browser matrix completed
 110 passes and 28 prescribed skips with inspected label-manager screenshots;
 the final run after mobile long-name layout and stale-edit guard also
 completed 110 passes and 28 prescribed skips. Its desktop/mobile screenshots
 were inspected without visible overlap or horizontal overflow. The final
-Web bundle is 635.12 kB/180.59 kB gzip. Exact-head CI,
+Web bundle is 636.01 kB/180.84 kB gzip after distinguishing definite
+validation failures from uncertain ACKs in the active modal. The final
+desktop/mobile browser run completed 112 passes and 28 prescribed skips,
+including the new 422 error-state case. Desktop/mobile error screenshots
+were inspected: the fixed message remains visible inside the modal without
+server prose or horizontal overflow. Exact-head CI,
 PR and merge remain pending. Workspace assignments and cross-host sync are
 not delivered; R12 host/Secret/production gates remain separate. Original
 checkout WIP remains untouched.

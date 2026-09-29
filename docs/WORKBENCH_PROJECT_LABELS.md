@@ -89,8 +89,9 @@ and impact-count drift, archived/unknown Project, per-admin isolation,
 restart persistence, Audit rollback and strict API auth/CSRF/Origin/no-store.
 The rc25 Project Web candidate adds pending, saved, conflict, uncertain,
 empty and session-change states on actual data; its final local desktop/mobile
-E2E run completed 110 passes and 28 prescribed skips, including a full
-create/assign/reload/edit/delete flow after the mobile layout guard. Exact-head
+E2E run completed 112 passes and 28 prescribed skips, including a full
+create/assign/reload/edit/delete flow and a fixed 422 error view after the
+mobile layout guard. Exact-head
 CI remains pending. Workspace assignment,
 cross-device/host synchronization, command-center label actions and a
 broader archived-Project browser matrix remain later behavior; even rc25

@@ -133,6 +133,9 @@ export interface ProjectMessageParameters {
   readonly 'project.labelsCatalogEmpty': NoMessageParameters
   readonly 'project.labelsConflict': NoMessageParameters
   readonly 'project.labelsUncertain': NoMessageParameters
+  readonly 'project.labelsInvalid': NoMessageParameters
+  readonly 'project.labelsLimit': NoMessageParameters
+  readonly 'project.labelsNotFound': NoMessageParameters
   readonly 'project.labelsColorViolet': NoMessageParameters
   readonly 'project.labelsColorSky': NoMessageParameters
   readonly 'project.labelsColorEmerald': NoMessageParameters
@@ -291,6 +294,12 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
         'Labels changed elsewhere. Current state was reloaded; review before trying again.',
       'project.labelsUncertain': () =>
         'The result could not be confirmed. Current state was reloaded; do not retry blindly.',
+      'project.labelsInvalid': () =>
+        'The label name or color is invalid. Review the values and try again.',
+      'project.labelsLimit': () =>
+        'The label capacity is full. Remove unused labels before adding another.',
+      'project.labelsNotFound': () =>
+        'This label is no longer available. Current state was reloaded.',
       'project.labelsColorViolet': () => 'Violet',
       'project.labelsColorSky': () => 'Sky',
       'project.labelsColorEmerald': () => 'Emerald',
@@ -441,6 +450,9 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
         '标签已在其他位置变更。已重新读取当前状态，请核对后再操作。',
       'project.labelsUncertain': () =>
         '无法确认操作结果。已重新读取当前状态，请勿盲目重试。',
+      'project.labelsInvalid': () => '标签名称或颜色无效，请检查后重试。',
+      'project.labelsLimit': () => '标签数量已达上限，请先移除不再使用的标签。',
+      'project.labelsNotFound': () => '该标签已不可用，已重新读取当前状态。',
       'project.labelsColorViolet': () => '紫色',
       'project.labelsColorSky': () => '天蓝',
       'project.labelsColorEmerald': () => '翠绿',
