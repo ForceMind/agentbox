@@ -1,11 +1,39 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T01:49:26Z"
-verified_by: "codex-workbench-workspace-labels"
+verified_at_utc: "2026-09-29T02:23:59Z"
+verified_by: "codex-workbench-label-live-refresh"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-29 WS14 visible-client label refresh candidate
+
+PR #120 final head `816920a3c301569b8cd64ef99e7532537804d111`
+completed 26 exact-head checks: 24 success and two prescribed historical
+skips. Its normal merge `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`
+has parents `cab33679ec91bc2e46384f24e9a8cd3e4e985fa9` and that
+head. GitHub PR API reports MERGED, `origin/main` and the remote main ref
+match the merge SHA, and Backend, Frontend, E2E, Deployment, Security and
+Release Candidate post-main workflows all completed successfully on it.
+rc26 Workspace label assignment is software-delivered. The original dirty
+R12 checkout remains untouched. Draft #117 is still unmerged pending its
+independent security-critical review.
+
+This clean managed worktree began `codex/workbench-label-live-refresh` from
+that exact main commit. rc27 adds bounded visible/idle periodic GET for
+Project and Workspace labels; no API, Runtime or Secret authority changes.
+Local focused convergence tests passed 12 cases. The Node 22 full Web suite
+passed 1196/1196, Web format/lint/typecheck and production build passed,
+release-version Python tests passed 93, and inert MV3 tests/build passed.
+The isolated desktop/mobile Chromium matrix passed 112 tests with 28
+prescribed skips; current Workspace label screenshots were inspected at both
+viewports without overlap or horizontal overflow. The Web JS bundle was
+643.55 kB/182.53 kB gzip and retains its >500 kB warning. Exact-head CI,
+PR and merge are pending. Cross-host synchronization and full WS14 parity
+remain open.
+
+Sections below are historical snapshots.
 
 ## 2026-09-29 WS14 Workspace label candidate
 

@@ -21,7 +21,7 @@
 - [Project favorites](../WORKBENCH_PROJECT_FAVORITES.md)：
   WS14 每位管理员的收藏状态、CAS 并发与 Control Plane 元数据候选合同。
 - [Project and Workspace labels](../WORKBENCH_PROJECT_LABELS.md)：
-  WS14 共享标签目录、正式 Project 分配与后续 Workspace 分配边界。
+  WS14 共享标签目录、正式 Project/Workspace 分配及可见客户端刷新边界。
 - [Command center](../WORKBENCH_COMMAND_CENTER.md)：
   WS14 固定页面和正式 Project 导航、键盘搜索与当前 Session 隔离。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；

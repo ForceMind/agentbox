@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AuthContext, type AuthContextValue } from '../auth/AuthContext'
@@ -40,6 +40,72 @@ function context(get: unknown, request: unknown): AuthContextValue {
 }
 
 describe('Workspace labels', () => {
+  it('converges on another client’s assignment while visible without polling a hidden page', async () => {
+    let current: WorkspaceLabelSetData = {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      agent_type: 'codex',
+      labels: [],
+      revision: 0,
+      updated_at: null,
+    }
+    const get = vi.fn(async (path: string) =>
+      path === '/api/v1/project-labels'
+        ? envelope({ labels: [label] })
+        : envelope(current),
+    )
+    let tick!: () => void
+    const nativeInterval = window.setInterval.bind(window)
+    const interval = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation((callback, delay) => {
+        if (delay === 30_000 && typeof callback === 'function') {
+          tick = callback as () => void
+        }
+        return nativeInterval(callback, delay) as unknown as ReturnType<
+          typeof setInterval
+        >
+      })
+    render(
+      <AuthContext.Provider value={context(get, vi.fn())}>
+        <WorkspaceLabelsPanel
+          projectId={projectId}
+          agentType="codex"
+          locale="en"
+        />
+      </AuthContext.Provider>,
+    )
+    const checkbox = await screen.findByRole('checkbox', { name: 'Review' })
+    expect(checkbox).not.toBeChecked()
+    const originalHidden = Object.getOwnPropertyDescriptor(document, 'hidden')
+    try {
+      current = {
+        ...current,
+        labels: [label],
+        revision: 1,
+        updated_at: '2026-09-29T00:01:00Z',
+      }
+      await act(async () => {
+        tick()
+      })
+      await waitFor(() => expect(checkbox).toBeChecked())
+      const readCount = get.mock.calls.length
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        value: true,
+      })
+      await act(async () => {
+        tick()
+      })
+      expect(get).toHaveBeenCalledTimes(readCount)
+    } finally {
+      interval.mockRestore()
+      if (originalHidden)
+        Object.defineProperty(document, 'hidden', originalHidden)
+      else Reflect.deleteProperty(document, 'hidden')
+    }
+  })
+
   it('shows a definite conflict after GET readback without retrying the write', async () => {
     const current: WorkspaceLabelSetData = {
       workspace_id: workspaceId,

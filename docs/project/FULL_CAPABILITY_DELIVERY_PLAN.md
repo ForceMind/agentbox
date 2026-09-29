@@ -70,6 +70,15 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
+2026-09-29 最新 live read-back：PR #120 的 rc26 Workspace 标签分配已正常合并为
+`88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`，六类 post-main workflow
+全部成功。下一批 rc27 在同一 Control Plane 上补可见 Project/Workspace 页面
+的有界定期读回，覆盖两个浏览器同时保持可见时的标签新鲜度；不引入新写入、
+Runtime 能力或跨主机 relay。完成实际客户端收敛、隐藏/写入/重读围栏、
+桌面/手机与版本回归后，再做 exact-head CI、普通合并及回读。#117 的
+独立安全关键审查与 R12 host/Secret/生产门禁仍分别保留。以下已有段落为
+此前批次的历史执行记录，不能覆盖最新 live Git。
+
 2026-09-29 live read-back：PR #97–#119 已合并。#118 经 #119 合并后被
 GitHub 认定为间接 MERGED；#119 合并 SHA
 `cab33679ec91bc2e46384f24e9a8cd3e4e985fa9` 的六类 post-main

@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-VISIBLE-LABEL-REFRESH-CANDIDATE`: rc27 keeps both label
+  views current with a bounded visible-and-idle 30-second GET of the shared
+  catalog and target assignment. During a background read, prior values
+  remain visible but writes are fenced; failures become stale, not a replay.
+  This is same-Control-Plane client convergence, not cross-host relay or
+  Runtime authority. See [Project and Workspace labels](../WORKBENCH_PROJECT_LABELS.md).
+
 - `WORKBENCH-WS14-WORKSPACE-LABELS-CANDIDATE`: rc26 assigns the rc24 shared
   catalog to the deterministic formal Project/AgentType Workspace identity,
   including before Runtime start. Per-admin ordered sets have their own CAS
