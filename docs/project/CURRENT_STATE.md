@@ -1,11 +1,42 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T02:23:59Z"
-verified_by: "codex-workbench-label-live-refresh"
+verified_at_utc: "2026-09-29T03:12:35Z"
+verified_by: "codex-r12-vendor-enrollment"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-29 R12 fixed vendor enrollment candidate
+
+PR #121 final head `35fd50688f7ed66b3a667b7b440ba5cd90f2469a`
+completed 26 exact-head checks (24 success, two prescribed historical
+skips). Normal merge `458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`
+has parents `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35` and that
+head. PR API is MERGED; remote `main` matches the merge SHA, and all six
+Backend, Frontend, E2E, Deployment, Security and Release Candidate
+post-main workflows completed successfully on it. rc27 visible-client
+label refresh is software-delivered, while S08 cross-host sync remains open.
+
+The original checkout `codex/r12-runtime-production` is still at old HEAD
+`a696193fec127595b1beafb1ed1cabf2ae58efa9` with its earlier C3-b
+provider/test/docs WIP; it was read only and left untouched. Live main
+already includes the later authority-deferred resource/provider foundation,
+so copying that older WIP would regress current code. This clean managed
+branch starts from `458e7a5…` and adds a fixed non-secret vendor enrollment
+reader plus an authority-pinned, revalidated deferred provider input.
+Focused loader/provider/auth owner/application/release tests passed 184
+cases; Linux-target mypy checked 317 source files and Ruff passed. The
+Node 22 AppShell version tests passed four cases, Web format/lint/build
+and inert MV3 tests/build passed. Isolated desktop/mobile Chromium E2E
+passed 112 tests with 28 prescribed skips; it validates existing UI and
+the visible rc28 version, not this uninstalled Runtime file reader.
+Independent security-critical review, exact-head CI, PR and merge remain
+pending. Production `_main`, installed
+enrollment writer, positive legacy Codex Remote state, real host, CLI login,
+Secret and production qualification remain absent or `NOT RUN`.
+
+Sections below are historical snapshots.
 
 ## 2026-09-29 WS14 visible-client label refresh candidate
 

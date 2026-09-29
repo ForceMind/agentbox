@@ -86,6 +86,19 @@ host-wide empty state is not authoritative until the future application
 composition has completed binding/restart inventory replay and opened its
 startup gate.
 
+## Fixed external vendor enrollment source candidate
+
+The [rc28 contract](WAW_R12_VENDOR_ENROLLMENT.md) defines one
+installer-owned, non-secret Runtime file for the target Claude/Codex
+versions and Codex unauthenticated-output digest. The deferred provider
+requires its bounded, provenance-checked observation, compares host,
+manifest and enrollment pins against the builder's single authority, and
+re-reads the fixed file before opening launch resources. This replaces
+unbound synthetic enrollment input for that production port; the lower
+provider receives only the three validated values after pinning.
+The installer has not written a real target record and `_main` still rejects
+explicit filesystem-v2. This is a software dependency, not C3-b closure.
+
 ## Legacy Codex Remote positive-state gap
 
 The [current official Codex CLI command reference](https://learn.chatgpt.com/docs/developer-commands)

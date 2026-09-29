@@ -1,5 +1,20 @@
 # Current Authorized Action
 
+## 2026-09-29 R12 fixed vendor enrollment input
+
+PR #121 delivered rc27 visible-client label refresh as merge
+`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`; six exact post-main
+workflows succeeded. Continue R12 C3-b on
+`codex/r12-vendor-enrollment-profile`: freeze a fixed non-secret Runtime
+source for externally observed vendor versions and Codex unauthenticated
+output digest, bind it to the one v2 authority and fail closed on missing,
+drifted or replayed input before lower resources open. Validate the file
+custody, JSON, authority pins, cleanup and provider regression, then seek
+independent security-critical Architecture/Security/Test review before
+merging. The original C3-b checkout WIP stays untouched. Installed writer,
+production `_main`, positive legacy Codex Remote state and real host/Secret/
+CLI/production gates remain separate. The rc27 action below is historical.
+
 ## 2026-09-29 WS14 visible-client label refresh
 
 PR #120 delivered rc26 as merge

@@ -1,5 +1,13 @@
 # Decision and Architecture Index
 
+- `R12-VENDOR-ENROLLMENT-SOURCE-V1`: the sole production source for vendor
+  versions and the Codex unauthenticated-output digest is a fixed,
+  installer-owned, non-secret Runtime file. The authority-deferred provider
+  requires a canonical, provenance-checked observation and re-reads it before
+  opening lower resources. It pins host ID/revision, v2 manifest digest and
+  enrollment epoch/state to the builder's one authority; missing/drifted
+  input fails closed. See [fixed vendor enrollment](../WAW_R12_VENDOR_ENROLLMENT.md).
+
 - `WORKBENCH-WS14-VISIBLE-LABEL-REFRESH-CANDIDATE`: rc27 keeps both label
   views current with a bounded visible-and-idle 30-second GET of the shared
   catalog and target assignment. During a background read, prior values

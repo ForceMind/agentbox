@@ -70,6 +70,15 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
+2026-09-29 live read-back：PR #121 的 rc27 可见客户端标签刷新已正常合并为
+`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`，六类 post-main workflow
+全部成功。S01 R12-C3-b 下一关键依赖转向固定非Secret vendor enrollment
+输入：原 checkout 的旧 provider WIP 被后来合并的 authority-deferred 实现
+覆盖，不直接复制。当前软件候选从 installer-owned 固定文件读取外部观测的
+版本/摘要，并在 provider 打开资源前与唯一 v2 authority 配对及重读。
+它仍需独立安全关键审查、CI 与合并；生产 `_main`、正向 Codex Remote
+冲突来源、installer 实际制品和 host/Secret/CLI 门禁并未因该候选完成。
+
 2026-09-29 最新 live read-back：PR #120 的 rc26 Workspace 标签分配已正常合并为
 `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`，六类 post-main workflow
 全部成功。下一批 rc27 在同一 Control Plane 上补可见 Project/Workspace 页面

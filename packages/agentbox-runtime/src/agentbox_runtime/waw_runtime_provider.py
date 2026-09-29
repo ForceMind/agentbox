@@ -66,6 +66,10 @@ from agentbox_runtime.waw_runtime_resources import (
     WAWProductionResources,
     build_waw_production_resources,
 )
+from agentbox_runtime.waw_vendor_enrollment import (
+    WAWVendorEnrollmentRecord,
+    revalidate_waw_vendor_enrollment,
+)
 from agentbox_runtime.waw_vendor_probe import (
     WAWVendorProbeId,
     WAWVendorProbeParserId,
@@ -729,7 +733,7 @@ class WAWDeferredProductionExecutorProvider(WAWRuntimeExecutorProvider):
         token: object,
         *,
         project_registry: ProjectRegistry,
-        enrollment: WAWVendorEnrollmentInput,
+        enrollment: WAWVendorEnrollmentRecord,
         conflict_probe: WAWConflictProbe,
         geometry: PtyGeometry,
         clock: Callable[[], float],
@@ -741,7 +745,7 @@ class WAWDeferredProductionExecutorProvider(WAWRuntimeExecutorProvider):
             )
         if (
             type(project_registry) is not ProjectRegistry
-            or type(enrollment) is not WAWVendorEnrollmentInput
+            or type(enrollment) is not WAWVendorEnrollmentRecord
             or not isinstance(conflict_probe, WAWConflictProbe)
             or type(geometry) is not PtyGeometry
             or not callable(clock)
@@ -802,6 +806,8 @@ class WAWDeferredProductionExecutorProvider(WAWRuntimeExecutorProvider):
             resources: WAWProductionResources | None = None
             inner: WAWProductionExecutorProvider | None = None
             try:
+                self._enrollment.require_authority(authority)
+                revalidate_waw_vendor_enrollment(self._enrollment)
                 resources = build_waw_production_resources(authority)
                 if resources.authority is not authority:
                     raise WAWProductionExecutorProviderError(
@@ -812,7 +818,7 @@ class WAWDeferredProductionExecutorProvider(WAWRuntimeExecutorProvider):
                     launch_handle_factory=resources.launch_factory,
                     cgroup_delegate_root=resources.cgroup_delegate_root,
                     project_registry=self._projects,
-                    enrollment=self._enrollment,
+                    enrollment=WAWVendorEnrollmentInput(self._enrollment.values),
                     conflict_probe=self._conflict_probe,
                     geometry=self._geometry,
                     clock=self._clock,
@@ -860,7 +866,7 @@ class WAWDeferredProductionExecutorProvider(WAWRuntimeExecutorProvider):
 def build_waw_deferred_production_executor_provider(
     *,
     project_registry: ProjectRegistry,
-    enrollment: WAWVendorEnrollmentInput,
+    enrollment: WAWVendorEnrollmentRecord,
     conflict_probe: WAWConflictProbe,
     geometry: PtyGeometry,
     clock: Callable[[], float],

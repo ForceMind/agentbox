@@ -3,6 +3,16 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc28] - Unreleased
+
+- Add a fixed Runtime-only, non-secret source for enrolled Claude/Codex
+  versions and the Codex unauthenticated-output digest, with descriptor-held
+  file provenance and exact v2 manifest/epoch pairing.
+- Require the authority-deferred production provider to re-read that fixed
+  record before opening lower launch resources; missing or drifted input
+  remains closed.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc28.md`.
+
 ## [0.3.0rc27] - Unreleased
 
 - Refresh Project and Workspace label catalog/assignment views at a bounded
