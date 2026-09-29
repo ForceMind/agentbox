@@ -406,11 +406,17 @@ class NavigationLabelService:
         label_id: str,
         *,
         expected_revision: int,
+        expected_affected_project_count: int,
         request_id: str | None,
     ) -> int:
         admin_id = self._admin_id(admin_user_id)
         target_id = self._label_id(label_id)
         expected = self._revision(expected_revision)
+        if (
+            type(expected_affected_project_count) is not int
+            or not 0 <= expected_affected_project_count <= _MAX_PROJECT_SETS
+        ):
+            raise NavigationLabelValidationError()
         with self._database.transaction() as session:
             session.execute(text("BEGIN IMMEDIATE"))
             self._require_admin(session, admin_id)
@@ -431,6 +437,8 @@ class NavigationLabelService:
             )
             if len(project_ids) > _MAX_PROJECT_SETS:
                 raise NavigationLabelLimitExceeded()
+            if len(project_ids) != expected_affected_project_count:
+                raise NavigationLabelConflict()
             for project_id in project_ids:
                 label_set = session.get(ProjectLabelSet, (admin_id, project_id))
                 if label_set is None or label_set.revision >= _MAX_REVISION:

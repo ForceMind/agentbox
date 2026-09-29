@@ -13,6 +13,7 @@ import {
   type ProjectJobPhase,
   type ProjectJobView,
 } from '../features/projects/useProjects'
+import { ProjectLabelsPanel } from '../features/projects/ProjectLabelsPanel'
 import { usePageTitle } from '../hooks/usePageTitle'
 import {
   currentLocale,
@@ -370,6 +371,7 @@ export function ProjectDetailPage({
           )}
         </article>
       </section>
+      <ProjectLabelsPanel locale={locale} projectId={project.id} />
       <section className="runtime-card">
         <h2>{copy(locale, 'project.gitActionsTitle')}</h2>
         <p>{copy(locale, 'project.gitActionsDescription')}</p>

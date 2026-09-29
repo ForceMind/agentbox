@@ -1,11 +1,15 @@
 # Project and Workspace labels: shared AgentBox catalog
 
-Status: WS14 design and implementation candidate, 2026-09-29. This extends
+Status: rc24 backend source reached main, rc25 Project Web candidate,
+2026-09-29. PR #118 metadata still reports OPEN and its merge SHA has no
+post-main workflows; [CURRENT_STATE](project/CURRENT_STATE.md) records the
+Git/PR discrepancy. This extends
 the [full capability plan](project/FULL_CAPABILITY_DELIVERY_PLAN.md) after
 rc22 favorites and rc23 fixed command-center navigation. The first delivery
 persists the shared label catalog and formal Project assignments in the
-Control Plane; Workspace assignments and cross-host synchronization use the
-same label identity in later slices. No label grants Project, Runtime, file,
+Control Plane; rc25 adds a Project-page manager for that API. Workspace
+assignments and cross-host synchronization use the same label identity in
+later slices. No label grants Project, Runtime, file,
 Agent, Job, Provider or Secret authority.
 
 The studied Apache-2.0 source is
@@ -56,9 +60,9 @@ archiving retains navigation metadata. No Project path or content is stored.
   rename/recolor. Same-value/current-revision is a no-op; stale revision and
   collision reject both fields atomically. Case-only rename is allowed.
 - `POST /api/v1/project-labels/{label_id}/delete`: exact
-  `{expected_revision}` body, Origin/CSRF. The response includes the count of
-  affected Project assignments. A stale or unknown ID never deletes a new
-  same-name label.
+  `{expected_revision,expected_affected_project_count}` body, Origin/CSRF.
+  The response includes the actual count. A changed count, stale revision or
+  unknown ID cannot delete a newly assigned Project or a new same-name label.
 - `GET /api/v1/project-labels/{label_id}/delete-impact`: authenticated,
   no-store count for a confirmation view; it does not mutate assignments.
 - `GET /api/v1/project-labels/projects/{project_id}`: current-user ordered
@@ -79,12 +83,17 @@ name collision, capacity and database unavailable have distinct fixed errors.
 
 ## Delivery evidence and remaining work
 
-The first slice must cover old database upgrade, foreign keys, normalization,
-duplicate/case-only rename, simultaneous create/edit/assignment, deletion
-cleanup, archived/unknown Project, per-admin isolation, restart persistence,
-Audit rollback and strict API auth/CSRF/Origin/no-store. The Web picker and
-manager must later show pending, saved, conflict, failed, empty, archived and
-session-change states on actual data, including desktop/mobile rendering.
-Workspace label assignment, cross-device/host synchronization and command-
-center label actions remain later behavior; completing only this backend is
-not full WS14 parity. Real-host and production qualification remain separate.
+The backend tests cover old database upgrade, foreign keys, normalization,
+duplicate/case-only rename, simultaneous create/assignment, deletion cleanup
+and impact-count drift, archived/unknown Project, per-admin isolation,
+restart persistence, Audit rollback and strict API auth/CSRF/Origin/no-store.
+The rc25 Project Web candidate adds pending, saved, conflict, uncertain,
+empty and session-change states on actual data; its final local desktop/mobile
+E2E run completed 112 passes and 28 prescribed skips, including a full
+create/assign/reload/edit/delete flow and a fixed 422 error view after the
+mobile layout guard. Exact-head
+CI remains pending. Workspace assignment,
+cross-device/host synchronization, command-center label actions and a
+broader archived-Project browser matrix remain later behavior; even rc25
+does not close full WS14 parity. Real-host and production qualification
+remain separate.

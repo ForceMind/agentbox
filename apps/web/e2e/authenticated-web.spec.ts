@@ -452,6 +452,106 @@ test('opens AgentBox command center and navigates to a real Project', async ({
   await expect(dialog).toHaveCount(0)
 })
 
+test('creates, assigns, edits and confirms deletion of a Project label', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  const labels = page.getByRole('heading', { name: 'Labels' }).locator('..')
+  await labels.getByRole('button', { name: 'Manage labels' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Manage labels' })
+  await dialog.getByRole('textbox', { name: 'Label name' }).fill('E2E Review')
+  await dialog
+    .getByRole('combobox', { name: 'Label color' })
+    .selectOption('red')
+  await dialog.getByRole('button', { name: 'Create label' }).click()
+  await expect(
+    dialog.getByRole('button', { name: 'Edit label: E2E Review' }),
+  ).toBeVisible()
+  const assignment = dialog.getByRole('checkbox', { name: 'E2E Review' })
+  await expect(assignment).not.toBeChecked()
+  await assignment.click()
+  await expect(assignment).toBeChecked()
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({ path: testInfo.outputPath('project-labels.png') })
+  }
+  await dialog.getByRole('button', { name: 'Close labels' }).click()
+  await expect(page.getByText('E2E Review')).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('E2E Review')).toBeVisible()
+  await page.getByRole('button', { name: 'Manage labels' }).click()
+  const editor = page.getByRole('dialog', { name: 'Manage labels' })
+  await editor.getByRole('button', { name: 'Edit label: E2E Review' }).click()
+  await editor
+    .getByRole('textbox', { name: 'Label name' })
+    .nth(1)
+    .fill('E2E Urgent')
+  await editor
+    .getByRole('combobox', { name: 'Label color' })
+    .nth(1)
+    .selectOption('orange')
+  await editor.getByRole('button', { name: 'Save label' }).click()
+  await expect(
+    editor.getByRole('button', { name: 'Edit label: E2E Urgent' }),
+  ).toBeVisible()
+  await editor.getByRole('button', { name: 'Edit label: E2E Urgent' }).click()
+  await editor.getByRole('button', { name: 'Delete label' }).click()
+  const confirmation = editor.getByRole('group')
+  await expect(confirmation).toContainText('Delete this label from 1 Project?')
+  await confirmation.getByRole('button', { name: 'Delete label' }).click()
+  await expect(
+    page.getByText('No labels assigned to this Project.'),
+  ).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false)
+})
+
+test('shows a fixed Project-label validation error without server prose', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  await page.route('**/api/v1/project-labels', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    await route.fulfill({
+      status: 422,
+      json: {
+        request_id: 'req_label_invalid',
+        error: {
+          code: 'NAVIGATION_LABEL_INVALID',
+          category: 'validation',
+          message: 'PRIVATE-LABEL-VALIDATION-CANARY',
+          retryable: false,
+          details: {},
+        },
+      },
+    })
+  })
+  await page.getByRole('button', { name: 'Manage labels' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Manage labels' })
+  await dialog
+    .getByRole('textbox', { name: 'Label name' })
+    .fill('Valid-looking')
+  await dialog.getByRole('button', { name: 'Create label' }).click()
+  await expect(
+    dialog.getByText(/label name or color is invalid/i),
+  ).toBeVisible()
+  await expect(page.getByText('PRIVATE-LABEL-VALIDATION-CANARY')).toHaveCount(0)
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: testInfo.outputPath('project-label-error.png'),
+    })
+  }
+})
+
 test('shows Project Git changed paths without file bodies or patch controls', async ({
   page,
 }, testInfo) => {
@@ -754,7 +854,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc24', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc25', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

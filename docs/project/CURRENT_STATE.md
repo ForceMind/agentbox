@@ -1,13 +1,58 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-28T23:27:36Z"
-verified_by: "codex-workbench-project-labels"
+verified_at_utc: "2026-09-29T00:36:25Z"
+verified_by: "codex-workbench-project-labels-ui"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 WS14 navigation label backend/API candidate
+## 2026-09-29 WS14 Project label Web candidate
+
+PR #118 final head `b7a529dfe92fabd0b83486ee6082296c64713fc9`
+completed 26 terminal checks (24 success, two prescribed historical skips).
+GitHub generated double-parent merge commit
+`36aa7294c4d9c8eaa3283281022e61cf8bbc4f69` with parents
+`3e0069381a4d8f867e333191f298b4847256d751` and that head; Git and
+GitHub REST refs both report `main` at that commit. However the PR API still
+reports #118 OPEN/`merged=false`, its base SHA remains the older parent,
+and no post-main workflows are listed for `36aa729…`. The first `gh pr
+merge` returned a GraphQL error after the ref changed; a subsequent read
+initially saw OPEN, and a retry returned not mergeable. This is an external
+metadata/event inconsistency, not proof of full PR delivery. The head's
+CI and main Git ancestry are verified separately; do not close or force
+the PR to hide the discrepancy.
+
+Draft PR #117 remains unmerged despite 26 terminal exact-head checks
+(24 success, two prescribed skips); required independent A3 security-critical
+Architecture/Security/Test review and the separate content path remain open.
+The explicit authorization question for one read-only reviewer is pending.
+
+This managed worktree began `codex/workbench-project-labels-ui` cleanly from
+actual main `36aa729…`. Its rc25 candidate consumes the rc24 label API on
+the authenticated Project page: server-confirmed create/assign/edit,
+delete-impact preview with transactional count recheck, conflict/uncertain
+GET readback without mutation replay, and session/visibility fencing. The
+related Python matrix passed 168 cases, full Node 22 Web suite passed 1191,
+Linux-target mypy checked 315 source files, Web/MV3 format/lint/build and
+version checks passed. The first desktop/mobile browser matrix completed
+110 passes and 28 prescribed skips with inspected label-manager screenshots;
+the final run after mobile long-name layout and stale-edit guard also
+completed 110 passes and 28 prescribed skips. Its desktop/mobile screenshots
+were inspected without visible overlap or horizontal overflow. The final
+Web bundle is 636.01 kB/180.84 kB gzip after distinguishing definite
+validation failures from uncertain ACKs in the active modal. The final
+desktop/mobile browser run completed 112 passes and 28 prescribed skips,
+including the new 422 error-state case. Desktop/mobile error screenshots
+were inspected: the fixed message remains visible inside the modal without
+server prose or horizontal overflow. Exact-head CI,
+PR and merge remain pending. Workspace assignments and cross-host sync are
+not delivered; R12 host/Secret/production gates remain separate. Original
+checkout WIP remains untouched.
+
+Sections below are historical snapshots.
+
+## Historical 2026-09-29 WS14 navigation label backend/API candidate
 
 PR #116 final head `57e819cf8d2be8ea5a3296f0211bc49b734f7914`
 completed 26 terminal checks (24 success, two prescribed historical skips).
@@ -46,8 +91,6 @@ pending. It does not
 grant Runtime/file/Agent authority. The Web picker/manager, Workspace label
 assignments and cross-host sync are not delivered. Original checkout R12 WIP
 remains untouched; R12 host/Secret/production gates remain separate.
-
-Sections below are historical snapshots.
 
 ## Historical 2026-09-29 WS14 command center candidate
 

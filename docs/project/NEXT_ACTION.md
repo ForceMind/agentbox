@@ -1,6 +1,23 @@
 # Current Authorized Action
 
-## 2026-09-29 WS14 label catalog and formal Project assignments
+## 2026-09-29 WS14 Project label manager Web UI
+
+PR #118's exact head `b7a529dfe92fabd0b83486ee6082296c64713fc9`
+passed 26 terminal checks. GitHub generated main merge
+`36aa7294c4d9c8eaa3283281022e61cf8bbc4f69` with that head as second
+parent, but PR #118 remains OPEN in the API and no post-main workflows are
+listed. Preserve both facts; do not force push, fabricate a merged PR state
+or close the PR merely to remove the inconsistency. On
+`codex/workbench-project-labels-ui`, finish rc25 Project-page label
+create/assign/edit/delete with current-session GET readback, exact server
+ACK, confirmed delete count, localization, desktop/mobile browser evidence,
+version and regression checks under
+[Project labels](../WORKBENCH_PROJECT_LABELS.md). Run exact-head CI, normal
+merge and read-back. Subsequent Workspace assignment and cross-host label
+sync remain separate. Draft A3 PR #117 awaits independent security-critical
+review; R12 `_main` and real-host/Secret/production gates remain open.
+
+## Historical 2026-09-29 WS14 label catalog and formal Project assignments
 
 PR #116 delivered rc23 command-center navigation as merge
 `3e0069381a4d8f867e333191f298b4847256d751`; six post-main workflows

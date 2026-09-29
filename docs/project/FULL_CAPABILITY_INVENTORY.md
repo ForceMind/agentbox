@@ -53,7 +53,7 @@
 | WS11 | Workspace setup/teardown、命名脚本/服务 | 主仓 `public-docs/worktrees.md`、`session/workspace-scripts/` | 未有 | 执行权限与仓库配置来源待决策 |
 | WS12 | 服务代理、动态端口、服务间访问 | 主仓 `docs/service-proxy.md`、`worktrees.md` | 未有 | 端口/Origin/请求权限、生命周期和超时 |
 | WS13 | 内置浏览器、网页查看和桌面 Agent 浏览器工具 | 主仓 `public-docs/browser.md`、`browser-tools/` | 未有 | 独立浏览器信任与输入授权，真实桌面验证 |
-| WS14 | 项目/工作区标记、收藏、搜索、命令中心 | 主仓 `workspace-labels/`、`command-center/` | Project 搜索/收藏及固定页面/Project 命令中心已合并；rc24 标签目录和 Project 分配 API 候选，Web picker、Workspace 分配、跨端同步未有 | 多客户端同步、过期与作用域 |
+| WS14 | 项目/工作区标记、收藏、搜索、命令中心 | 主仓 `workspace-labels/`、`command-center/` | Project 搜索/收藏及固定页面/Project 命令中心已交付；rc24 标签后端在 main，PR 元数据未收敛；rc25 Project Web 管理候选，Workspace 分配、跨端同步未有 | 多客户端同步、过期与作用域 |
 | WS15 | 变化/会话/文件/终端/浏览器可调整面板 | 主仓 `screens/workspace/`、`panels/` | 未有 | 典型分辨率、键盘、焦点与恢复 |
 
 ## C. 客户端、连接、语音与开放接口

@@ -1,0 +1,174 @@
+.project-label-panel {
+  margin: 1.25rem 0;
+}
+
+.project-label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.project-label-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 99px;
+  padding: 0.25rem 0.65rem;
+  background: var(--surface-raised);
+}
+
+.project-label-chip bdi {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-label-dot {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.project-label-dot[data-color='violet'] {
+  background: #bd9eff;
+}
+.project-label-dot[data-color='sky'] {
+  background: #8fd7ff;
+}
+.project-label-dot[data-color='emerald'] {
+  background: #6cdda8;
+}
+.project-label-dot[data-color='orange'] {
+  background: #ffb276;
+}
+.project-label-dot[data-color='pink'] {
+  background: #ff9bd3;
+}
+.project-label-dot[data-color='indigo'] {
+  background: #9faeff;
+}
+.project-label-dot[data-color='teal'] {
+  background: #72d6d1;
+}
+.project-label-dot[data-color='red'] {
+  background: #ff8c97;
+}
+.project-label-dot[data-color='amber'] {
+  background: #eec572;
+}
+.project-label-dot[data-color='blue'] {
+  background: #7fb3ff;
+}
+
+.project-label-dialog {
+  width: min(680px, calc(100vw - 24px));
+  max-height: min(700px, calc(100dvh - 32px));
+  margin: min(9dvh, 72px) auto auto;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  padding: 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.35);
+}
+
+.project-label-dialog::backdrop {
+  background: rgb(3 10 20 / 0.68);
+  backdrop-filter: blur(5px);
+}
+
+.project-label-options {
+  display: grid;
+  max-height: 240px;
+  overflow-y: auto;
+  gap: 0.4rem;
+}
+
+.project-label-option {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.project-label-option label {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.project-label-option > button {
+  flex: none;
+}
+
+.project-label-option input[type='checkbox'] {
+  width: 1.3rem;
+  height: 1.3rem;
+  flex: none;
+}
+
+.project-label-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.project-label-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.project-label-form input,
+.project-label-form select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 0 0.65rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.project-label-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--danger);
+  border-radius: 9px;
+  padding: 0.75rem;
+}
+
+.project-label-delete-confirm p {
+  width: 100%;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .project-label-dialog {
+    margin-top: 12px;
+    padding: 14px;
+  }
+  .project-label-option {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .project-label-option label {
+    flex-basis: 100%;
+  }
+  .project-label-option > button {
+    margin-left: auto;
+  }
+}
