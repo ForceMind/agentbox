@@ -102,7 +102,16 @@ def test_catalog_assignment_cas_rename_delete_and_audit(
         next(item for item in labels.list_catalog(admin_id) if item.id == first.id).color == "red"
     )
     assert labels.inspect_delete(admin_id, first.id) == 1
-    assert labels.delete(admin_id, first.id, expected_revision=2, request_id="req_delete") == 1
+    assert (
+        labels.delete(
+            admin_id,
+            first.id,
+            expected_revision=2,
+            expected_affected_project_count=1,
+            request_id="req_delete",
+        )
+        == 1
+    )
     cleared = labels.get_project(admin_id, project_id)
     assert cleared.revision == 2 and cleared.labels == ()
     with pytest.raises(NavigationLabelNotFound):
@@ -409,7 +418,64 @@ def test_delete_audit_failure_rolls_back_catalog_and_project_revision(
 
     broken = NavigationLabelService(services.database, clock, BrokenAudit())
     with pytest.raises(RuntimeError, match="audit unavailable"):
-        broken.delete(admin_id, label.id, expected_revision=1, request_id="req_delete")
+        broken.delete(
+            admin_id,
+            label.id,
+            expected_revision=1,
+            expected_affected_project_count=1,
+            request_id="req_delete",
+        )
     assert services.navigation_labels.list_catalog(admin_id) == (label,)
     observed = services.navigation_labels.get_project(admin_id, project_id)
     assert observed.revision == 1 and observed.labels[0].id == label.id
+
+
+def test_delete_impact_count_is_rechecked_atomically(
+    initialized_services: ControlPlaneServices,
+) -> None:
+    services = initialized_services
+    admin_id, first_project = seed(services)
+    second_project = services.projects.reserve(
+        name="Second label target", slug=None, source_type="empty"
+    )
+    label = services.navigation_labels.create(
+        admin_id, name="Shared", color="pink", request_id="req_create"
+    )
+    services.navigation_labels.set_project(
+        admin_id,
+        first_project,
+        label.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="req_first",
+    )
+    assert services.navigation_labels.inspect_delete(admin_id, label.id) == 1
+    services.navigation_labels.set_project(
+        admin_id,
+        second_project.id,
+        label.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="req_second",
+    )
+    with pytest.raises(NavigationLabelConflict):
+        services.navigation_labels.delete(
+            admin_id,
+            label.id,
+            expected_revision=1,
+            expected_affected_project_count=1,
+            request_id="req_stale_count",
+        )
+    assert services.navigation_labels.inspect_delete(admin_id, label.id) == 2
+    assert services.navigation_labels.get_project(admin_id, first_project).revision == 1
+    assert services.navigation_labels.get_project(admin_id, second_project.id).revision == 1
+    assert (
+        services.navigation_labels.delete(
+            admin_id,
+            label.id,
+            expected_revision=1,
+            expected_affected_project_count=2,
+            request_id="req_confirmed_delete",
+        )
+        == 2
+    )

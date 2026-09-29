@@ -512,6 +512,7 @@ class NavigationLabelUpdateRequest(NavigationLabelCreateRequest):
 
 class NavigationLabelDeleteRequest(StrictMetadataModel):
     expected_revision: int = Field(ge=1, le=2**53 - 1)
+    expected_affected_project_count: int = Field(ge=0, le=10_000)
 
 
 class NavigationLabelDeleteImpactData(StrictMetadataModel):

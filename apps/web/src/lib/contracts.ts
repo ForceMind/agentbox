@@ -405,6 +405,60 @@ export type ProjectFavoriteResponse = {
   data: ProjectFavoriteData
 }
 
+export const NAVIGATION_LABEL_COLORS = [
+  'violet',
+  'sky',
+  'emerald',
+  'orange',
+  'pink',
+  'indigo',
+  'teal',
+  'red',
+  'amber',
+  'blue',
+] as const
+
+export type NavigationLabelColor = (typeof NAVIGATION_LABEL_COLORS)[number]
+
+export type NavigationLabelData = {
+  id: string
+  name: string
+  color: NavigationLabelColor
+  revision: number
+  updated_at: string
+}
+
+export type NavigationLabelListResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { labels: NavigationLabelData[] }
+}
+
+export type NavigationLabelResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: NavigationLabelData
+}
+
+export type ProjectLabelSetData = {
+  project_id: string
+  labels: NavigationLabelData[]
+  revision: number
+  updated_at: string | null
+}
+
+export type ProjectLabelSetResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: ProjectLabelSetData
+}
+
+export type NavigationLabelDeleteImpactResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: { label_id: string; affected_project_count: number }
+}
+
 export type ProjectJobResponse = {
   api_version: 'v1'
   request_id: string
@@ -1436,6 +1490,160 @@ export function parseProjectFavoriteResponse(
     api_version: literal(envelope.api_version, ['v1'], 'API version'),
     request_id: string(envelope.request_id, 'request ID'),
     data: parseProjectFavorite(envelope.data),
+  }
+}
+
+function navigationLabelTimestamp(value: unknown): string {
+  const observed = string(value, 'label update time')
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)$/.test(
+      observed,
+    ) ||
+    !Number.isFinite(Date.parse(observed)) ||
+    new Date(observed).toISOString().slice(0, 19) !== observed.slice(0, 19)
+  ) {
+    throw new Error('Invalid navigation label timestamp')
+  }
+  return observed
+}
+
+function parseNavigationLabel(value: unknown): NavigationLabelData {
+  const data = object(value, 'Navigation label')
+  exactKeys(
+    data,
+    ['id', 'name', 'color', 'revision', 'updated_at'],
+    'Navigation label',
+  )
+  const id = string(data.id, 'label ID')
+  const name = string(data.name, 'label name')
+  const revision = number(data.revision, 'label revision')
+  if (
+    !/^lbl_[0-9a-f]{32}$/.test(id) ||
+    !name ||
+    name.length > 64 ||
+    new TextEncoder().encode(name).length > 128 ||
+    name !== name.normalize('NFC') ||
+    name !== name.trim() ||
+    name.replace(/\s+/gu, ' ') !== name ||
+    /[\p{Cc}\p{Cf}]/u.test(name) ||
+    !Number.isSafeInteger(revision) ||
+    revision < 1
+  ) {
+    throw new Error('Invalid navigation label response')
+  }
+  return {
+    id,
+    name,
+    color: literal(data.color, NAVIGATION_LABEL_COLORS, 'label color'),
+    revision,
+    updated_at: navigationLabelTimestamp(data.updated_at),
+  }
+}
+
+export function parseNavigationLabelListResponse(
+  value: unknown,
+): NavigationLabelListResponse {
+  const envelope = object(value, 'Navigation labels')
+  exactKeys(
+    envelope,
+    ['api_version', 'request_id', 'data'],
+    'Navigation labels',
+  )
+  const data = object(envelope.data, 'Navigation label list')
+  exactKeys(data, ['labels'], 'Navigation label list')
+  const labels = array(data.labels, 'Navigation labels').map(
+    parseNavigationLabel,
+  )
+  if (
+    labels.length > 128 ||
+    new Set(labels.map((label) => label.id)).size !== labels.length ||
+    new Set(labels.map((label) => label.name.toLowerCase())).size !==
+      labels.length
+  ) {
+    throw new Error('Invalid navigation label list')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: { labels },
+  }
+}
+
+export function parseNavigationLabelResponse(
+  value: unknown,
+): NavigationLabelResponse {
+  const envelope = object(value, 'Navigation label')
+  exactKeys(envelope, ['api_version', 'request_id', 'data'], 'Navigation label')
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: parseNavigationLabel(envelope.data),
+  }
+}
+
+export function parseProjectLabelSetResponse(
+  value: unknown,
+): ProjectLabelSetResponse {
+  const envelope = object(value, 'Project labels')
+  exactKeys(envelope, ['api_version', 'request_id', 'data'], 'Project labels')
+  const data = object(envelope.data, 'Project label set')
+  exactKeys(
+    data,
+    ['project_id', 'labels', 'revision', 'updated_at'],
+    'Project label set',
+  )
+  const projectId = string(data.project_id, 'Project ID')
+  const labels = array(data.labels, 'Project labels').map(parseNavigationLabel)
+  const revision = number(data.revision, 'Project label revision')
+  const updatedAt =
+    data.updated_at === null ? null : navigationLabelTimestamp(data.updated_at)
+  if (
+    !/^prj_[0-9a-f]{32}$/.test(projectId) ||
+    labels.length > 32 ||
+    new Set(labels.map((label) => label.id)).size !== labels.length ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0 ||
+    (revision === 0 && (labels.length !== 0 || updatedAt !== null)) ||
+    (revision > 0 && updatedAt === null)
+  ) {
+    throw new Error('Invalid Project label set')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: { project_id: projectId, labels, revision, updated_at: updatedAt },
+  }
+}
+
+export function parseNavigationLabelDeleteImpactResponse(
+  value: unknown,
+): NavigationLabelDeleteImpactResponse {
+  const envelope = object(value, 'Navigation label delete impact')
+  exactKeys(
+    envelope,
+    ['api_version', 'request_id', 'data'],
+    'Navigation label delete impact',
+  )
+  const data = object(envelope.data, 'Navigation label delete impact')
+  exactKeys(
+    data,
+    ['label_id', 'affected_project_count'],
+    'Navigation label delete impact',
+  )
+  const labelId = string(data.label_id, 'label ID')
+  const count = number(data.affected_project_count, 'affected Project count')
+  if (
+    !/^lbl_[0-9a-f]{32}$/.test(labelId) ||
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    count > 10_000
+  ) {
+    throw new Error('Invalid navigation label delete impact')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: { label_id: labelId, affected_project_count: count },
   }
 }
 

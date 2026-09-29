@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-LABEL-MANAGER-CANDIDATE`: rc25 Project page reads the
+  per-admin catalog/assignment, waits for exact ACK and fresh readback,
+  supports create, assign, rename/recolor and impact-confirmed delete.
+  Stale sessions and uncertain writes are fenced; no Runtime authority is
+  added. Workspace labels and cross-host sync remain open. See
+  [Project labels](../WORKBENCH_PROJECT_LABELS.md).
+
 - `WORKBENCH-WS14-NAVIGATION-LABELS-CANDIDATE`: rc24 adds one per-admin
   immutable-ID label catalog with ten fixed colors, normalized names,
   revisioned atomic edit/delete and ordered formal Project assignments.

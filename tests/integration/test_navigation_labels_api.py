@@ -82,11 +82,15 @@ async def test_label_api_catalog_assignment_edit_and_delete_are_session_scoped(
     impact = await client.get(f"{base}/{label['id']}/delete-impact")
     assert impact.status_code == 200 and impact.json()["data"]["affected_project_count"] == 1
     removed = await client.post(
-        f"{base}/{label['id']}/delete", json={"expected_revision": 2}, headers=headers
+        f"{base}/{label['id']}/delete",
+        json={"expected_revision": 2, "expected_affected_project_count": 1},
+        headers=headers,
     )
     assert removed.status_code == 200 and removed.json()["data"]["affected_project_count"] == 1
     old_delete = await client.post(
-        f"{base}/{label['id']}/delete", json={"expected_revision": 2}, headers=headers
+        f"{base}/{label['id']}/delete",
+        json={"expected_revision": 2, "expected_affected_project_count": 1},
+        headers=headers,
     )
     assert old_delete.status_code == 404
     cleared = await client.get(f"{base}/projects/{project.id}")
@@ -128,7 +132,7 @@ async def test_label_api_rejects_origin_csrf_extra_fields_and_unknown_project(
     assert no_assignment_csrf.status_code == 403
     foreign_delete = await client.post(
         f"{base}/{label_id}/delete",
-        json={"expected_revision": 1},
+        json={"expected_revision": 1, "expected_affected_project_count": 0},
         headers={"Origin": "https://evil.invalid", "X-CSRF-Token": csrf},
     )
     assert foreign_delete.status_code == 403

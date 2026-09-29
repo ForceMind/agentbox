@@ -114,6 +114,35 @@ export interface ProjectMessageParameters {
   readonly 'project.phaseFailed': NoMessageParameters
   readonly 'project.phaseCancelled': NoMessageParameters
   readonly 'project.phaseNeedsAttention': NoMessageParameters
+  readonly 'project.labelsTitle': NoMessageParameters
+  readonly 'project.labelsDescription': NoMessageParameters
+  readonly 'project.labelsManage': NoMessageParameters
+  readonly 'project.labelsClose': NoMessageParameters
+  readonly 'project.labelsEmpty': NoMessageParameters
+  readonly 'project.labelsLoading': NoMessageParameters
+  readonly 'project.labelsUnavailable': NoMessageParameters
+  readonly 'project.labelsRefresh': NoMessageParameters
+  readonly 'project.labelsCreate': NoMessageParameters
+  readonly 'project.labelsName': NoMessageParameters
+  readonly 'project.labelsColor': NoMessageParameters
+  readonly 'project.labelsEdit': NoMessageParameters
+  readonly 'project.labelsSave': NoMessageParameters
+  readonly 'project.labelsDelete': NoMessageParameters
+  readonly 'project.labelsDeleteConfirm': Readonly<{ count: string }>
+  readonly 'project.labelsDeleteCancel': NoMessageParameters
+  readonly 'project.labelsCatalogEmpty': NoMessageParameters
+  readonly 'project.labelsConflict': NoMessageParameters
+  readonly 'project.labelsUncertain': NoMessageParameters
+  readonly 'project.labelsColorViolet': NoMessageParameters
+  readonly 'project.labelsColorSky': NoMessageParameters
+  readonly 'project.labelsColorEmerald': NoMessageParameters
+  readonly 'project.labelsColorOrange': NoMessageParameters
+  readonly 'project.labelsColorPink': NoMessageParameters
+  readonly 'project.labelsColorIndigo': NoMessageParameters
+  readonly 'project.labelsColorTeal': NoMessageParameters
+  readonly 'project.labelsColorRed': NoMessageParameters
+  readonly 'project.labelsColorAmber': NoMessageParameters
+  readonly 'project.labelsColorBlue': NoMessageParameters
 }
 
 export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
@@ -238,6 +267,40 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.phaseFailed': () => 'Failed',
       'project.phaseCancelled': () => 'Cancelled',
       'project.phaseNeedsAttention': () => 'Needs attention',
+      'project.labelsTitle': () => 'Labels',
+      'project.labelsDescription': () =>
+        'Organize this Project with shared navigation labels.',
+      'project.labelsManage': () => 'Manage labels',
+      'project.labelsClose': () => 'Close labels',
+      'project.labelsEmpty': () => 'No labels assigned to this Project.',
+      'project.labelsLoading': () => 'Loading labels…',
+      'project.labelsUnavailable': () => 'Labels could not be loaded.',
+      'project.labelsRefresh': () => 'Refresh labels',
+      'project.labelsCreate': () => 'Create label',
+      'project.labelsName': () => 'Label name',
+      'project.labelsColor': () => 'Label color',
+      'project.labelsEdit': () => 'Edit label',
+      'project.labelsSave': () => 'Save label',
+      'project.labelsDelete': () => 'Delete label',
+      'project.labelsDeleteConfirm': ({ count }) =>
+        `Delete this label from ${count} Project${count === '1' ? '' : 's'}?`,
+      'project.labelsDeleteCancel': () => 'Keep label',
+      'project.labelsCatalogEmpty': () =>
+        'Create a label to assign it to this Project.',
+      'project.labelsConflict': () =>
+        'Labels changed elsewhere. Current state was reloaded; review before trying again.',
+      'project.labelsUncertain': () =>
+        'The result could not be confirmed. Current state was reloaded; do not retry blindly.',
+      'project.labelsColorViolet': () => 'Violet',
+      'project.labelsColorSky': () => 'Sky',
+      'project.labelsColorEmerald': () => 'Emerald',
+      'project.labelsColorOrange': () => 'Orange',
+      'project.labelsColorPink': () => 'Pink',
+      'project.labelsColorIndigo': () => 'Indigo',
+      'project.labelsColorTeal': () => 'Teal',
+      'project.labelsColorRed': () => 'Red',
+      'project.labelsColorAmber': () => 'Amber',
+      'project.labelsColorBlue': () => 'Blue',
     },
     'zh-CN': {
       'project.title': () => 'Project',
@@ -356,6 +419,38 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.phaseFailed': () => '失败',
       'project.phaseCancelled': () => '已取消',
       'project.phaseNeedsAttention': () => '需要处理',
+      'project.labelsTitle': () => '标签',
+      'project.labelsDescription': () => '使用共享导航标签整理此项目。',
+      'project.labelsManage': () => '管理标签',
+      'project.labelsClose': () => '关闭标签',
+      'project.labelsEmpty': () => '此项目尚未分配标签。',
+      'project.labelsLoading': () => '正在加载标签…',
+      'project.labelsUnavailable': () => '无法加载标签。',
+      'project.labelsRefresh': () => '刷新标签',
+      'project.labelsCreate': () => '创建标签',
+      'project.labelsName': () => '标签名称',
+      'project.labelsColor': () => '标签颜色',
+      'project.labelsEdit': () => '编辑标签',
+      'project.labelsSave': () => '保存标签',
+      'project.labelsDelete': () => '删除标签',
+      'project.labelsDeleteConfirm': ({ count }) =>
+        `从 ${count} 个项目中删除此标签？`,
+      'project.labelsDeleteCancel': () => '保留标签',
+      'project.labelsCatalogEmpty': () => '先创建标签，再将它分配给此项目。',
+      'project.labelsConflict': () =>
+        '标签已在其他位置变更。已重新读取当前状态，请核对后再操作。',
+      'project.labelsUncertain': () =>
+        '无法确认操作结果。已重新读取当前状态，请勿盲目重试。',
+      'project.labelsColorViolet': () => '紫色',
+      'project.labelsColorSky': () => '天蓝',
+      'project.labelsColorEmerald': () => '翠绿',
+      'project.labelsColorOrange': () => '橙色',
+      'project.labelsColorPink': () => '粉色',
+      'project.labelsColorIndigo': () => '靛蓝',
+      'project.labelsColorTeal': () => '蓝绿',
+      'project.labelsColorRed': () => '红色',
+      'project.labelsColorAmber': () => '琥珀',
+      'project.labelsColorBlue': () => '蓝色',
     },
   },
 )

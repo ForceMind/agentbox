@@ -3,6 +3,15 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc25] - Unreleased
+
+- Add a Project label manager to the authenticated Web page for catalog
+  creation, ordered assignment, atomic rename/recolor and deletion after
+  an affected-Project count confirmation.
+- Recheck the confirmed impact count inside the deletion transaction and
+  refresh after conflict or uncertain acknowledgement without write replay.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc25.md`.
+
 ## [0.3.0rc24] - Unreleased
 
 - Add a per-administrator navigation label catalog and ordered formal Project

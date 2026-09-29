@@ -13,6 +13,10 @@ vi.mock('../features/claude/useClaude', () => ({
   useClaudeProject: useClaudeProjectMock,
 }))
 
+vi.mock('../features/projects/ProjectLabelsPanel', () => ({
+  ProjectLabelsPanel: () => null,
+}))
+
 import { ProjectDetailPage } from './ProjectDetailPage'
 
 const canary = 'RC9-PROJECT-DETAIL-SERVER-PROSE-CANARY-2R7D'

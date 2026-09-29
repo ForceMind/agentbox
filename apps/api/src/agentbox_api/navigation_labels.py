@@ -164,6 +164,7 @@ async def delete_label(
             authenticated.user_id,
             label_id,
             expected_revision=payload.expected_revision,
+            expected_affected_project_count=payload.expected_affected_project_count,
             request_id=str(request.state.request_id),
         )
     except OperationalError as exc:
