@@ -1,15 +1,16 @@
 # Project and Workspace labels: shared AgentBox catalog
 
-Status: rc24 backend source reached main, rc25 Project Web candidate,
-2026-09-29. PR #118 metadata still reports OPEN and its merge SHA has no
-post-main workflows; [CURRENT_STATE](project/CURRENT_STATE.md) records the
-Git/PR discrepancy. This extends
+Status: rc24 backend and rc25 Project Web reached main; rc26 Workspace
+assignment/Web candidate, 2026-09-29. PR #118 was later recognized as
+indirectly merged when #119 merged; six post-main workflows succeeded on
+the combined main SHA. [CURRENT_STATE](project/CURRENT_STATE.md) records
+the live read-back. This extends
 the [full capability plan](project/FULL_CAPABILITY_DELIVERY_PLAN.md) after
 rc22 favorites and rc23 fixed command-center navigation. The first delivery
 persists the shared label catalog and formal Project assignments in the
 Control Plane; rc25 adds a Project-page manager for that API. Workspace
-assignments and cross-host synchronization use the same label identity in
-later slices. No label grants Project, Runtime, file,
+assignments use the same label identity in rc26; cross-host synchronization
+remains later work. No label grants Project, Runtime, file,
 Agent, Job, Provider or Secret authority.
 
 The studied Apache-2.0 source is
@@ -49,7 +50,7 @@ definition atomically removes its assignments and increments each affected
 Project set revision. Physical Project deletion cascades assignments;
 archiving retains navigation metadata. No Project path or content is stored.
 
-## First API and transaction contract
+## Project API and transaction contract
 
 - `GET /api/v1/project-labels`: authenticated, no-store, bounded current-user
   catalog. It never invokes Runtime. Exceeding the bound fails explicitly.
@@ -59,10 +60,12 @@ archiving retains navigation metadata. No Project path or content is stored.
   `{name,color,expected_revision}` body, Origin/CSRF, one-transaction
   rename/recolor. Same-value/current-revision is a no-op; stale revision and
   collision reject both fields atomically. Case-only rename is allowed.
-- `POST /api/v1/project-labels/{label_id}/delete`: exact
-  `{expected_revision,expected_affected_project_count}` body, Origin/CSRF.
-  The response includes the actual count. A changed count, stale revision or
-  unknown ID cannot delete a newly assigned Project or a new same-name label.
+- `POST /api/v1/project-labels/{label_id}/delete`: rc26 exact
+  `{expected_revision,expected_affected_project_count,expected_affected_workspace_count}`
+  body, Origin/CSRF. The response includes both actual counts. A changed
+  count, stale revision or unknown ID cannot delete a newly assigned Project
+  or Workspace or a new same-name label. Older clients without the Workspace
+  count fail request validation; Web/API rollout must be coordinated.
 - `GET /api/v1/project-labels/{label_id}/delete-impact`: authenticated,
   no-store count for a confirmation view; it does not mutate assignments.
 - `GET /api/v1/project-labels/projects/{project_id}`: current-user ordered
@@ -73,6 +76,31 @@ archiving retains navigation metadata. No Project path or content is stored.
   set revision and changes exactly one assignment in a SQLite immediate
   transaction. Same-state/current-revision is a no-op; uncertain client
   acknowledgment is resolved by GET, never automatic PUT replay.
+
+## Formal Workspace assignment
+
+The Workspace key is the current administrator plus a formal Project ID and
+`claude` or `codex` AgentType. The existing deterministic `aws_` identity is
+derived from the Project/AgentType pair. Labels can be assigned before any
+Runtime session is started; no terminal lifecycle, Host, binding or Secret
+authority is required or conferred. Physical Project deletion cascades these
+metadata rows. The Workspace set preserves its revision after removing the
+last assignment; up to 32 ordered labels may be assigned.
+
+- `GET /api/v1/project-labels/workspaces/{project_id}/{agent_type}` reads
+  current-user ordered assignments and the independent Workspace revision.
+- `PUT /api/v1/project-labels/workspaces/{project_id}/{agent_type}/{label_id}`
+  uses exact `{assigned,expected_revision}`, Origin/CSRF and a serialized
+  transaction. Same-state/current-revision is a no-op; stale revision is a
+  fixed conflict. It never invokes Runtime.
+- Catalog deletion previews affected Project and Workspace counts and
+  atomically bumps both affected set revisions if the confirmed counts
+  still match. The Web confirmation displays both numbers.
+
+The Workspace picker uses the same catalog IDs and color definitions as the
+Project manager. It waits for exact ACK and fresh readback, invalidating
+observations on session, selection and visibility changes. Catalog creation,
+rename, recolor and deletion remain available on the Project page.
 
 The service validates the administrator and formal Project inside each
 transaction, uses additive foreign-keyed migrations, and writes bounded
@@ -91,9 +119,9 @@ The rc25 Project Web candidate adds pending, saved, conflict, uncertain,
 empty and session-change states on actual data; its final local desktop/mobile
 E2E run completed 112 passes and 28 prescribed skips, including a full
 create/assign/reload/edit/delete flow and a fixed 422 error view after the
-mobile layout guard. Exact-head
-CI remains pending. Workspace assignment,
-cross-device/host synchronization, command-center label actions and a
-broader archived-Project browser matrix remain later behavior; even rc25
+mobile layout guard. PR #119 merged as `cab33679ec91bc2e46384f24e9a8cd3e4e985fa9`;
+six post-main workflows succeeded. rc26 Workspace assignment is a new
+candidate. Cross-device/host synchronization, command-center label actions
+and a broader archived-Project browser matrix remain later behavior; rc26
 does not close full WS14 parity. Real-host and production qualification
 remain separate.

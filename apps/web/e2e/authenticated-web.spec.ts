@@ -480,6 +480,19 @@ test('creates, assigns, edits and confirms deletion of a Project label', async (
   await expect(page.getByText('E2E Review')).toBeVisible()
   await page.reload()
   await expect(page.getByText('E2E Review')).toBeVisible()
+  await page.getByRole('link', { name: 'Open Interactive Workspace' }).click()
+  const workspaceLabels = page.getByRole('region', { name: 'Workspace labels' })
+  const workspaceAssignment = workspaceLabels.getByRole('checkbox', {
+    name: 'E2E Review',
+  })
+  await expect(workspaceAssignment).not.toBeChecked()
+  await workspaceAssignment.click()
+  await expect(workspaceAssignment).toBeChecked()
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({ path: testInfo.outputPath('workspace-labels.png') })
+  }
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
   await page.getByRole('button', { name: 'Manage labels' }).click()
   const editor = page.getByRole('dialog', { name: 'Manage labels' })
   await editor.getByRole('button', { name: 'Edit label: E2E Review' }).click()
@@ -498,7 +511,9 @@ test('creates, assigns, edits and confirms deletion of a Project label', async (
   await editor.getByRole('button', { name: 'Edit label: E2E Urgent' }).click()
   await editor.getByRole('button', { name: 'Delete label' }).click()
   const confirmation = editor.getByRole('group')
-  await expect(confirmation).toContainText('Delete this label from 1 Project?')
+  await expect(confirmation).toContainText(
+    'Delete this label from 1 Project and 1 Workspace?',
+  )
   await confirmation.getByRole('button', { name: 'Delete label' }).click()
   await expect(
     page.getByText('No labels assigned to this Project.'),
@@ -854,7 +869,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc25', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc26', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

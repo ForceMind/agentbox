@@ -3,6 +3,14 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc26] - Unreleased
+
+- Assign the shared navigation labels to formal Project/AgentType Workspaces
+  before or after Runtime start, with an independent revision and Web control.
+- Confirm both affected Project and Workspace counts before deleting a label;
+  recheck them in the same database transaction and bump both set revisions.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc26.md`.
+
 ## [0.3.0rc25] - Unreleased
 
 - Add a Project label manager to the authenticated Web page for catalog

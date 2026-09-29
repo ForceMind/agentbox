@@ -238,6 +238,13 @@ class ProjectLabelConflict(AgentBoxError):
     status_code = 409
 
 
+class WorkspaceLabelConflict(AgentBoxError):
+    code = "WORKSPACE_LABEL_CONFLICT"
+    category = "conflict"
+    message = "Workspace label set revision changed"
+    status_code = 409
+
+
 class JobNotFound(AgentBoxError):
     code = "JOB_NOT_FOUND"
     category = "unavailable"

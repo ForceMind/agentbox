@@ -15,6 +15,7 @@ import {
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { MAX_INPUT_BYTES } from '../features/workspace/wawCryptoProfile'
+import { WorkspaceLabelsPanel } from '../features/workspace/WorkspaceLabelsPanel'
 import type {
   WorkspaceNotice,
   WorkspacePageModel,
@@ -322,6 +323,13 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
           </p>
         )}
       </section>
+      {selectedProject && !model.projectError && (
+        <WorkspaceLabelsPanel
+          projectId={selectedProject.id}
+          agentType={model.agentType}
+          locale={locale}
+        />
+      )}
       <section className="runtime-card" aria-labelledby="workspace-status">
         <div className="runtime-card-heading">
           <div>

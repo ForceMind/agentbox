@@ -453,10 +453,29 @@ export type ProjectLabelSetResponse = {
   data: ProjectLabelSetData
 }
 
+export type WorkspaceLabelSetData = {
+  workspace_id: string
+  project_id: string
+  agent_type: 'claude' | 'codex'
+  labels: NavigationLabelData[]
+  revision: number
+  updated_at: string | null
+}
+
+export type WorkspaceLabelSetResponse = {
+  api_version: 'v1'
+  request_id: string
+  data: WorkspaceLabelSetData
+}
+
 export type NavigationLabelDeleteImpactResponse = {
   api_version: 'v1'
   request_id: string
-  data: { label_id: string; affected_project_count: number }
+  data: {
+    label_id: string
+    affected_project_count: number
+    affected_workspace_count: number
+  }
 }
 
 export type ProjectJobResponse = {
@@ -1627,23 +1646,87 @@ export function parseNavigationLabelDeleteImpactResponse(
   const data = object(envelope.data, 'Navigation label delete impact')
   exactKeys(
     data,
-    ['label_id', 'affected_project_count'],
+    ['label_id', 'affected_project_count', 'affected_workspace_count'],
     'Navigation label delete impact',
   )
   const labelId = string(data.label_id, 'label ID')
   const count = number(data.affected_project_count, 'affected Project count')
+  const workspaceCount = number(
+    data.affected_workspace_count,
+    'affected Workspace count',
+  )
   if (
     !/^lbl_[0-9a-f]{32}$/.test(labelId) ||
     !Number.isSafeInteger(count) ||
     count < 0 ||
-    count > 10_000
+    count > 10_000 ||
+    !Number.isSafeInteger(workspaceCount) ||
+    workspaceCount < 0 ||
+    workspaceCount > 20_000
   ) {
     throw new Error('Invalid navigation label delete impact')
   }
   return {
     api_version: literal(envelope.api_version, ['v1'], 'API version'),
     request_id: string(envelope.request_id, 'request ID'),
-    data: { label_id: labelId, affected_project_count: count },
+    data: {
+      label_id: labelId,
+      affected_project_count: count,
+      affected_workspace_count: workspaceCount,
+    },
+  }
+}
+
+export function parseWorkspaceLabelSetResponse(
+  value: unknown,
+): WorkspaceLabelSetResponse {
+  const envelope = object(value, 'Workspace labels')
+  exactKeys(envelope, ['api_version', 'request_id', 'data'], 'Workspace labels')
+  const data = object(envelope.data, 'Workspace label set')
+  exactKeys(
+    data,
+    [
+      'workspace_id',
+      'project_id',
+      'agent_type',
+      'labels',
+      'revision',
+      'updated_at',
+    ],
+    'Workspace label set',
+  )
+  const workspaceId = string(data.workspace_id, 'Workspace ID')
+  const projectId = string(data.project_id, 'Project ID')
+  const agentType = literal(data.agent_type, ['claude', 'codex'], 'Agent type')
+  const labels = array(data.labels, 'Workspace labels').map(
+    parseNavigationLabel,
+  )
+  const revision = number(data.revision, 'Workspace label revision')
+  const updatedAt =
+    data.updated_at === null ? null : navigationLabelTimestamp(data.updated_at)
+  if (
+    !/^aws_[0-9a-f]{32}$/.test(workspaceId) ||
+    !/^prj_[0-9a-f]{32}$/.test(projectId) ||
+    labels.length > 32 ||
+    new Set(labels.map((item) => item.id)).size !== labels.length ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0 ||
+    (revision === 0 && (labels.length !== 0 || updatedAt !== null)) ||
+    (revision > 0 && updatedAt === null)
+  ) {
+    throw new Error('Invalid Workspace label set')
+  }
+  return {
+    api_version: literal(envelope.api_version, ['v1'], 'API version'),
+    request_id: string(envelope.request_id, 'request ID'),
+    data: {
+      workspace_id: workspaceId,
+      project_id: projectId,
+      agent_type: agentType,
+      labels,
+      revision,
+      updated_at: updatedAt,
+    },
   }
 }
 

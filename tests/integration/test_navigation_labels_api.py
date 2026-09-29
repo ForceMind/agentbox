@@ -79,22 +79,63 @@ async def test_label_api_catalog_assignment_edit_and_delete_are_session_scoped(
     assert stale_edit.json()["error"]["code"] == "NAVIGATION_LABEL_CONFLICT"
     projected = await client.get(f"{base}/projects/{project.id}")
     assert projected.json()["data"]["labels"][0]["name"] == "DESIGN REVIEW"
+    workspace_base = f"{base}/workspaces/{project.id}/codex"
+    workspace_empty = await client.get(workspace_base)
+    assert workspace_empty.status_code == 200
+    assert workspace_empty.json()["data"]["revision"] == 0
+    workspace_assigned = await client.put(
+        f"{workspace_base}/{label['id']}",
+        json={"assigned": True, "expected_revision": 0},
+        headers=headers,
+    )
+    assert workspace_assigned.status_code == 200
+    assert workspace_assigned.json()["data"]["workspace_id"].startswith("aws_")
+    assert workspace_assigned.json()["data"]["labels"][0]["name"] == "DESIGN REVIEW"
+    workspace_stale = await client.put(
+        f"{workspace_base}/{label['id']}",
+        json={"assigned": False, "expected_revision": 0},
+        headers=headers,
+    )
+    assert workspace_stale.status_code == 409
+    assert workspace_stale.json()["error"]["code"] == "WORKSPACE_LABEL_CONFLICT"
     impact = await client.get(f"{base}/{label['id']}/delete-impact")
     assert impact.status_code == 200 and impact.json()["data"]["affected_project_count"] == 1
+    assert impact.json()["data"]["affected_workspace_count"] == 1
+    unconfirmed = await client.post(
+        f"{base}/{label['id']}/delete",
+        json={
+            "expected_revision": 2,
+            "expected_affected_project_count": 1,
+            "expected_affected_workspace_count": 0,
+        },
+        headers=headers,
+    )
+    assert unconfirmed.status_code == 409
     removed = await client.post(
         f"{base}/{label['id']}/delete",
-        json={"expected_revision": 2, "expected_affected_project_count": 1},
+        json={
+            "expected_revision": 2,
+            "expected_affected_project_count": 1,
+            "expected_affected_workspace_count": 1,
+        },
         headers=headers,
     )
     assert removed.status_code == 200 and removed.json()["data"]["affected_project_count"] == 1
     old_delete = await client.post(
         f"{base}/{label['id']}/delete",
-        json={"expected_revision": 2, "expected_affected_project_count": 1},
+        json={
+            "expected_revision": 2,
+            "expected_affected_project_count": 1,
+            "expected_affected_workspace_count": 0,
+        },
         headers=headers,
     )
     assert old_delete.status_code == 404
     cleared = await client.get(f"{base}/projects/{project.id}")
     assert cleared.json()["data"]["revision"] == 2 and cleared.json()["data"]["labels"] == []
+    workspace_cleared = await client.get(workspace_base)
+    assert workspace_cleared.json()["data"]["revision"] == 2
+    assert workspace_cleared.json()["data"]["labels"] == []
     assert project_runtime.calls == []
 
 
@@ -130,9 +171,34 @@ async def test_label_api_rejects_origin_csrf_extra_fields_and_unknown_project(
         headers=origin_headers,
     )
     assert no_assignment_csrf.status_code == 403
-    foreign_delete = await client.post(
+    workspace_path = f"{base}/workspaces/{project.id}/codex/{label_id}"
+    no_workspace_csrf = await client.put(
+        workspace_path,
+        json={"assigned": True, "expected_revision": 0},
+        headers=origin_headers,
+    )
+    assert no_workspace_csrf.status_code == 403
+    foreign_workspace = await client.put(
+        workspace_path,
+        json={"assigned": True, "expected_revision": 0},
+        headers={"Origin": "https://evil.invalid", "X-CSRF-Token": csrf},
+    )
+    assert foreign_workspace.status_code == 403
+    bad_agent = await client.get(f"{base}/workspaces/{project.id}/shell")
+    assert bad_agent.status_code == 422
+    old_delete = await client.post(
         f"{base}/{label_id}/delete",
         json={"expected_revision": 1, "expected_affected_project_count": 0},
+        headers={**origin_headers, "X-CSRF-Token": csrf},
+    )
+    assert old_delete.status_code == 422
+    foreign_delete = await client.post(
+        f"{base}/{label_id}/delete",
+        json={
+            "expected_revision": 1,
+            "expected_affected_project_count": 0,
+            "expected_affected_workspace_count": 0,
+        },
         headers={"Origin": "https://evil.invalid", "X-CSRF-Token": csrf},
     )
     assert foreign_delete.status_code == 403
@@ -142,6 +208,7 @@ async def test_label_api_rejects_origin_csrf_extra_fields_and_unknown_project(
         headers={**origin_headers, "X-CSRF-Token": csrf},
     )
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "PROJECT_NOT_FOUND"
+    assert (await client.get(f"{base}/workspaces/prj_{'f' * 32}/codex")).status_code == 404
     assert (await client.get(f"{base}/projects/{project.id}")).status_code == 200
     assert project_runtime.calls == []
 

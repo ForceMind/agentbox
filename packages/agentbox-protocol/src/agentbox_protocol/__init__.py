@@ -96,6 +96,8 @@ from agentbox_protocol.metadata import (
     ProjectListData,
     ProjectListResponse,
     ProjectResponse,
+    WorkspaceLabelSetData,
+    WorkspaceLabelSetResponse,
 )
 from agentbox_protocol.runtime_capabilities import (
     CLAUDE_CAPABILITY_NAMES,
@@ -229,6 +231,8 @@ __all__ = [
     "ProjectLabelSetData",
     "ProjectLabelSetRequest",
     "ProjectLabelSetResponse",
+    "WorkspaceLabelSetData",
+    "WorkspaceLabelSetResponse",
     "ProjectJobData",
     "ProjectJobResponse",
     "ProjectListData",

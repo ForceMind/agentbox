@@ -513,11 +513,13 @@ class NavigationLabelUpdateRequest(NavigationLabelCreateRequest):
 class NavigationLabelDeleteRequest(StrictMetadataModel):
     expected_revision: int = Field(ge=1, le=2**53 - 1)
     expected_affected_project_count: int = Field(ge=0, le=10_000)
+    expected_affected_workspace_count: int = Field(ge=0, le=20_000)
 
 
 class NavigationLabelDeleteImpactData(StrictMetadataModel):
     label_id: str = Field(pattern=r"^lbl_[0-9a-f]{32}$")
     affected_project_count: int = Field(ge=0, le=10_000)
+    affected_workspace_count: int = Field(ge=0, le=20_000)
 
 
 class NavigationLabelDeleteImpactResponse(StrictMetadataModel):
@@ -550,6 +552,29 @@ class ProjectLabelSetResponse(StrictMetadataModel):
 class ProjectLabelSetRequest(StrictMetadataModel):
     assigned: bool
     expected_revision: int = Field(ge=0, le=2**53 - 1)
+
+
+class WorkspaceLabelSetData(StrictMetadataModel):
+    workspace_id: str = Field(pattern=r"^aws_[0-9a-f]{32}$")
+    project_id: str = Field(pattern=r"^prj_[0-9a-f]{32}$")
+    agent_type: Literal["claude", "codex"]
+    labels: list[NavigationLabelData] = Field(max_length=32)
+    revision: int = Field(ge=0, le=2**53 - 1)
+    updated_at: AwareDatetime | None
+
+    @model_validator(mode="after")
+    def consistent_revision(self) -> Self:
+        if (self.revision == 0 and (self.labels or self.updated_at is not None)) or (
+            self.revision > 0 and self.updated_at is None
+        ):
+            raise ValueError("Workspace label revision and timestamp are inconsistent")
+        return self
+
+
+class WorkspaceLabelSetResponse(StrictMetadataModel):
+    api_version: Literal["v1"] = "v1"
+    request_id: str
+    data: WorkspaceLabelSetData
 
 
 class ProjectJobData(StrictMetadataModel):

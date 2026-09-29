@@ -128,7 +128,10 @@ export interface ProjectMessageParameters {
   readonly 'project.labelsEdit': NoMessageParameters
   readonly 'project.labelsSave': NoMessageParameters
   readonly 'project.labelsDelete': NoMessageParameters
-  readonly 'project.labelsDeleteConfirm': Readonly<{ count: string }>
+  readonly 'project.labelsDeleteConfirm': Readonly<{
+    projectCount: string
+    workspaceCount: string
+  }>
   readonly 'project.labelsDeleteCancel': NoMessageParameters
   readonly 'project.labelsCatalogEmpty': NoMessageParameters
   readonly 'project.labelsConflict': NoMessageParameters
@@ -285,8 +288,8 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.labelsEdit': () => 'Edit label',
       'project.labelsSave': () => 'Save label',
       'project.labelsDelete': () => 'Delete label',
-      'project.labelsDeleteConfirm': ({ count }) =>
-        `Delete this label from ${count} Project${count === '1' ? '' : 's'}?`,
+      'project.labelsDeleteConfirm': ({ projectCount, workspaceCount }) =>
+        `Delete this label from ${projectCount} Project${projectCount === '1' ? '' : 's'} and ${workspaceCount} Workspace${workspaceCount === '1' ? '' : 's'}?`,
       'project.labelsDeleteCancel': () => 'Keep label',
       'project.labelsCatalogEmpty': () =>
         'Create a label to assign it to this Project.',
@@ -442,8 +445,8 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.labelsEdit': () => '编辑标签',
       'project.labelsSave': () => '保存标签',
       'project.labelsDelete': () => '删除标签',
-      'project.labelsDeleteConfirm': ({ count }) =>
-        `从 ${count} 个项目中删除此标签？`,
+      'project.labelsDeleteConfirm': ({ projectCount, workspaceCount }) =>
+        `从 ${projectCount} 个项目和 ${workspaceCount} 个工作区中删除此标签？`,
       'project.labelsDeleteCancel': () => '保留标签',
       'project.labelsCatalogEmpty': () => '先创建标签，再将它分配给此项目。',
       'project.labelsConflict': () =>

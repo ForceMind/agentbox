@@ -313,7 +313,9 @@ export function useProjectLabels(projectId: string) {
   )
 
   const inspectDelete = useCallback(
-    async (labelId: string): Promise<number | null> => {
+    async (
+      labelId: string,
+    ): Promise<NavigationLabelDeleteImpactResponse['data'] | null> => {
       if (
         !ready ||
         operation.current ||
@@ -338,7 +340,7 @@ export function useProjectLabels(projectId: string) {
           return null
         if (response.data.label_id !== labelId)
           throw new Error('Delete impact changed')
-        return response.data.affected_project_count
+        return response.data
       } catch (value) {
         if (token === generation.current && !controller.signal.aborted) {
           setNotice(boundedError(value))
@@ -357,7 +359,7 @@ export function useProjectLabels(projectId: string) {
   const remove = useCallback(
     async (
       label: NavigationLabelData,
-      expectedImpact: number,
+      expectedImpact: NavigationLabelDeleteImpactResponse['data'],
     ): Promise<boolean> => {
       if (!auth) return false
       const current = state.catalog.find((item) => item.id === label.id)
@@ -373,7 +375,10 @@ export function useProjectLabels(projectId: string) {
               method: 'POST',
               body: {
                 expected_revision: label.revision,
-                expected_affected_project_count: expectedImpact,
+                expected_affected_project_count:
+                  expectedImpact.affected_project_count,
+                expected_affected_workspace_count:
+                  expectedImpact.affected_workspace_count,
               },
               csrfToken: auth.csrf_token,
               signal,
@@ -383,7 +388,10 @@ export function useProjectLabels(projectId: string) {
           ),
         (response) =>
           response.data.label_id === label.id &&
-          response.data.affected_project_count === expectedImpact,
+          response.data.affected_project_count ===
+            expectedImpact.affected_project_count &&
+          response.data.affected_workspace_count ===
+            expectedImpact.affected_workspace_count,
       )
     },
     [api, auth, perform, state.catalog],

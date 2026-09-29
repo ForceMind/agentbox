@@ -67,7 +67,11 @@ function LabelManager({
   const [editing, setEditing] = useState<NavigationLabelData | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState<NavigationLabelColor>('sky')
-  const [deleteImpact, setDeleteImpact] = useState<number | null>(null)
+  const [deleteImpact, setDeleteImpact] = useState<{
+    label_id: string
+    affected_project_count: number
+    affected_workspace_count: number
+  } | null>(null)
   const assigned = new Set(labels.assignment?.labels.map((label) => label.id))
   const editorStale =
     editing !== null &&
@@ -283,7 +287,10 @@ function LabelManager({
                 <div className="project-label-delete-confirm" role="group">
                   <p>
                     {formatMessage(locale, 'project.labelsDeleteConfirm', {
-                      count: String(deleteImpact),
+                      projectCount: String(deleteImpact.affected_project_count),
+                      workspaceCount: String(
+                        deleteImpact.affected_workspace_count,
+                      ),
                     })}
                   </p>
                   <button
