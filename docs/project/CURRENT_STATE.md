@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T01:40:44Z"
+verified_at_utc: "2026-09-29T01:49:26Z"
 verified_by: "codex-workbench-workspace-labels"
 repository: "ForceMind/agentbox"
 ---
@@ -40,6 +40,15 @@ was still 50 after adding two routes. The boundary script now explicitly
 reviews the Workspace GET/PUT route pair and passes locally (exit 0);
 the follow-up exact-head CI is pending. Merge and host qualification remain
 separate. Cross-host sync and full WS14 parity are still open.
+
+At second head `8359a1222a64d0124a15c55b6d8c3a2b8260bb7d`, the
+route gate, Frontend, E2E, native, packaging, installer and release checks
+passed. Python 3.11 quality failed four pre-existing migration tests whose
+`head` expectations still named `0011_navigation_labels`; its other 4311
+tests passed with 80 skips. The four assertions now target `0012`, and a
+Workspace schema parity/data-preserving downgrade test was added. The
+complete local migration file passes 44/44; the next exact-head CI is
+pending. The 3.12/3.13 jobs were still running at this read-back.
 
 Sections below are historical snapshots.
 
