@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T01:36:43Z"
+verified_at_utc: "2026-09-29T01:40:44Z"
 verified_by: "codex-workbench-workspace-labels"
 repository: "ForceMind/agentbox"
 ---
@@ -33,9 +33,13 @@ synthetic Workspace API fixtures. Final Workspace label screenshots were
 inspected at both viewports without visible overflow or overlap. Bundle
 size was 643.14 kB/182.40 kB gzip; the >500 kB warning remains. The final
 Hook dependency fix passed Web lint, typecheck, format, focused 3-case
-Workspace label tests and a production rebuild. Exact-head CI, PR, merge and host
-qualification remain separate. Cross-host sync and full WS14 parity are
-still open.
+Workspace label tests and a production rebuild. PR #120 was created at
+first head `086a4b7cf3fa9a3708704e225a7d09ff0d33f966`. Its
+`repository-boundaries` check failed because the reviewed API route count
+was still 50 after adding two routes. The boundary script now explicitly
+reviews the Workspace GET/PUT route pair and passes locally (exit 0);
+the follow-up exact-head CI is pending. Merge and host qualification remain
+separate. Cross-host sync and full WS14 parity are still open.
 
 Sections below are historical snapshots.
 
