@@ -16,6 +16,10 @@ vi.mock('../i18n', async (importOriginal) => {
   return { ...actual, currentLocale: currentLocaleMock }
 })
 
+vi.mock('../features/workspace/WorkspaceLabelsPanel', () => ({
+  WorkspaceLabelsPanel: () => null,
+}))
+
 import { WorkspacePage } from './WorkspacePage'
 import { MAX_INPUT_BYTES } from '../features/workspace/wawCryptoProfile'
 import type { WorkspacePageModel } from '../features/workspace/workspaceView'

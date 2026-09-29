@@ -252,7 +252,11 @@ describe('Project labels UI', () => {
     }
     const get = vi.fn(async (path: string) => {
       if (path.endsWith('/delete-impact')) {
-        return envelope({ label_id: labelId, affected_project_count: 1 })
+        return envelope({
+          label_id: labelId,
+          affected_project_count: 1,
+          affected_workspace_count: 0,
+        })
       }
       return path === '/api/v1/project-labels'
         ? envelope({ labels: catalog })
@@ -267,7 +271,11 @@ describe('Project labels UI', () => {
           revision: 2,
           updated_at: updatedAt,
         }
-        return envelope({ label_id: labelId, affected_project_count: 1 })
+        return envelope({
+          label_id: labelId,
+          affected_project_count: 1,
+          affected_workspace_count: 0,
+        })
       }
       throw new Error('unexpected mutation')
     })
@@ -284,7 +292,9 @@ describe('Project labels UI', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Delete label' }))
     expect(
-      await screen.findByText('Delete this label from 1 Project?'),
+      await screen.findByText(
+        'Delete this label from 1 Project and 0 Workspaces?',
+      ),
     ).toBeVisible()
     expect(request).not.toHaveBeenCalled()
     const group = screen.getByRole('group')
@@ -298,7 +308,11 @@ describe('Project labels UI', () => {
       `/api/v1/project-labels/${labelId}/delete`,
       expect.objectContaining({
         method: 'POST',
-        body: { expected_revision: 1, expected_affected_project_count: 1 },
+        body: {
+          expected_revision: 1,
+          expected_affected_project_count: 1,
+          expected_affected_workspace_count: 0,
+        },
       }),
     )
   })

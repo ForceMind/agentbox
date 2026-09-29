@@ -503,7 +503,7 @@ def test_0005_unsafe_downgrade_rolls_back_schema_and_version(tmp_path: Path) -> 
         with engine.connect() as connection:
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-                == "0011_navigation_labels"
+                == "0012_workspace_labels"
             )
             assert "confirmation_challenges" in inspect(engine).get_table_names()
             assert "auth_epoch" in {
@@ -584,7 +584,7 @@ def test_project_favorite_migration_matches_orm_and_refuses_downgrade_with_data(
         with engine.connect() as connection:
             current = connection.execute(text("SELECT version_num FROM alembic_version"))
             count = connection.execute(text("SELECT count(*) FROM project_favorites"))
-            assert current.scalar_one() == "0011_navigation_labels"
+            assert current.scalar_one() == "0012_workspace_labels"
             assert count.scalar_one() == 1
     finally:
         engine.dispose()
@@ -623,7 +623,7 @@ def test_navigation_label_migration_matches_orm_and_preserves_assignment_on_down
         with engine.connect() as connection:
             assert connection.execute(
                 text("SELECT version_num FROM alembic_version")
-            ).scalar_one() == ("0011_navigation_labels")
+            ).scalar_one() == ("0012_workspace_labels")
             assert (
                 connection.execute(text("SELECT count(*) FROM navigation_labels")).scalar_one() == 1
             )
@@ -633,6 +633,56 @@ def test_navigation_label_migration_matches_orm_and_preserves_assignment_on_down
                 ).scalar_one()
                 == 1
             )
+    finally:
+        engine.dispose()
+
+
+def test_workspace_label_migration_matches_orm_and_refuses_data_loss(
+    initialized_services: ControlPlaneServices,
+    settings: Settings,
+) -> None:
+    services = initialized_services
+    for table in ("workspace_label_sets", "workspace_label_assignments"):
+        assert _migration_table_signature(services.database.engine, table) == _orm_table_signature(
+            services.database.engine, table
+        )
+    project = services.projects.reserve(
+        name="Workspace label migration", slug=None, source_type="empty"
+    )
+    with services.database.transaction() as session:
+        admin = session.scalar(select(AdminUser.id).where(AdminUser.is_active.is_(True)))
+        assert admin is not None
+    label = services.navigation_labels.create(
+        admin, name="Preserve Workspace", color="sky", request_id="req_workspace_label"
+    )
+    assigned = services.navigation_labels.set_workspace(
+        admin,
+        project.id,
+        "codex",
+        label.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="req_workspace_assignment",
+    )
+    assert assigned.revision == 1
+    services.database.close()
+
+    with pytest.raises(RuntimeError, match="Workspace label rows must be preserved"):
+        downgrade_database(settings.database_url, "0011_navigation_labels")
+    engine = create_engine(settings.database_url)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                == "0012_workspace_labels"
+            )
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM workspace_label_assignments")
+                ).scalar_one()
+                == 1
+            )
+            assert connection.execute(text("PRAGMA foreign_key_check")).all() == []
     finally:
         engine.dispose()
 
@@ -926,7 +976,7 @@ def test_0005_real_command_supported_targets(tmp_path: Path, target: str) -> Non
     assert result.returncode == 0, result.stderr
     with sqlite3.connect(path) as connection:
         expected_revision = (
-            "0011_navigation_labels"
+            "0012_workspace_labels"
             if target == "heads"
             else "0005_phase11_control_plane_ownership_approval"
         )

@@ -28,6 +28,7 @@ from agentbox_core.errors import (
     NavigationLabelValidationError,
     ProjectLabelConflict,
     ProjectNotFound,
+    WorkspaceLabelConflict,
 )
 from agentbox_core.models import (
     AdminUser,
@@ -35,8 +36,11 @@ from agentbox_core.models import (
     Project,
     ProjectLabelAssignment,
     ProjectLabelSet,
+    WorkspaceLabelAssignment,
+    WorkspaceLabelSet,
 )
 from agentbox_core.utc import aware_utc
+from agentbox_core.waw import AgentType, workspace_id
 
 _ADMIN_ID = re.compile(r"adm_[0-9a-f]{32}\Z")
 _PROJECT_ID = re.compile(r"prj_[0-9a-f]{32}\Z")
@@ -48,6 +52,7 @@ _MAX_REVISION = 2**53 - 1
 _MAX_CATALOG = 128
 _MAX_ASSIGNED = 32
 _MAX_PROJECT_SETS = 10_000
+_MAX_WORKSPACE_SETS = 20_000
 
 
 class LabelAudit(Protocol):
@@ -83,6 +88,22 @@ class ProjectLabelSetState:
     updated_at: datetime | None
 
 
+@dataclass(frozen=True)
+class WorkspaceLabelSetState:
+    workspace_id: str
+    project_id: str
+    agent_type: str
+    labels: tuple[NavigationLabelState, ...]
+    revision: int
+    updated_at: datetime | None
+
+
+@dataclass(frozen=True)
+class LabelDeleteImpact:
+    affected_project_count: int
+    affected_workspace_count: int
+
+
 class NavigationLabelService:
     def __init__(self, database: Database, clock: Clock, audit: LabelAudit) -> None:
         self._database = database
@@ -106,6 +127,12 @@ class NavigationLabelService:
         if type(value) is not str or _LABEL_ID.fullmatch(value) is None:
             raise NavigationLabelValidationError()
         return value
+
+    @staticmethod
+    def _agent_type(value: str) -> AgentType:
+        if type(value) is not str or value not in ("claude", "codex"):
+            raise NavigationLabelValidationError()
+        return AgentType(value)
 
     @staticmethod
     def _revision(value: int) -> int:
@@ -400,6 +427,154 @@ class NavigationLabelService:
             project_id, tuple(labels), label_set.revision, aware_utc(label_set.updated_at)
         )
 
+    def get_workspace(
+        self, admin_user_id: str, project_id: str, agent_type: str
+    ) -> WorkspaceLabelSetState:
+        admin_id = self._admin_id(admin_user_id)
+        target_id = self._project_id(project_id)
+        agent = self._agent_type(agent_type)
+        with self._database.transaction() as session:
+            self._require_admin(session, admin_id)
+            self._require_project(session, target_id)
+            return self._workspace_state(session, admin_id, target_id, agent)
+
+    def set_workspace(
+        self,
+        admin_user_id: str,
+        project_id: str,
+        agent_type: str,
+        label_id: str,
+        *,
+        assigned: bool,
+        expected_revision: int,
+        request_id: str | None,
+    ) -> WorkspaceLabelSetState:
+        admin_id = self._admin_id(admin_user_id)
+        target_id = self._project_id(project_id)
+        agent = self._agent_type(agent_type)
+        label_key = self._label_id(label_id)
+        expected = self._revision(expected_revision)
+        if type(assigned) is not bool:
+            raise NavigationLabelValidationError()
+        with self._database.transaction() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            self._require_admin(session, admin_id)
+            self._require_project(session, target_id)
+            definition = session.get(NavigationLabel, label_key)
+            if definition is None or definition.admin_user_id != admin_id:
+                raise NavigationLabelNotFound()
+            key = (admin_id, target_id, agent.value)
+            label_set = session.get(WorkspaceLabelSet, key)
+            revision = label_set.revision if label_set is not None else 0
+            if revision != expected:
+                raise WorkspaceLabelConflict()
+            assignment = session.get(WorkspaceLabelAssignment, (*key, label_key))
+            if assigned != (assignment is not None):
+                if label_set is not None and label_set.revision >= _MAX_REVISION:
+                    raise WorkspaceLabelConflict()
+                now = self._clock.now()
+                if label_set is None:
+                    label_set = WorkspaceLabelSet(
+                        admin_user_id=admin_id,
+                        project_id=target_id,
+                        agent_type=agent.value,
+                        revision=1,
+                        updated_at=now,
+                    )
+                    session.add(label_set)
+                    session.flush()
+                else:
+                    label_set.revision += 1
+                    label_set.updated_at = now
+                if assigned:
+                    count = session.scalar(
+                        select(func.count())
+                        .select_from(WorkspaceLabelAssignment)
+                        .where(
+                            WorkspaceLabelAssignment.admin_user_id == admin_id,
+                            WorkspaceLabelAssignment.project_id == target_id,
+                            WorkspaceLabelAssignment.agent_type == agent.value,
+                        )
+                    )
+                    if count is None or count >= _MAX_ASSIGNED:
+                        raise NavigationLabelLimitExceeded()
+                    last_position = session.scalar(
+                        select(func.max(WorkspaceLabelAssignment.position)).where(
+                            WorkspaceLabelAssignment.admin_user_id == admin_id,
+                            WorkspaceLabelAssignment.project_id == target_id,
+                            WorkspaceLabelAssignment.agent_type == agent.value,
+                        )
+                    )
+                    session.add(
+                        WorkspaceLabelAssignment(
+                            admin_user_id=admin_id,
+                            project_id=target_id,
+                            agent_type=agent.value,
+                            label_id=label_key,
+                            position=0 if last_position is None else last_position + 1,
+                        )
+                    )
+                else:
+                    assert assignment is not None
+                    session.delete(assignment)
+                session.flush()
+            result = self._workspace_state(session, admin_id, target_id, agent)
+            self._audit.record(
+                session,
+                actor_type="admin",
+                actor_id=admin_id,
+                action="workspace.label.set",
+                result="succeeded",
+                request_id=request_id,
+                target_type="workspace",
+                target_id=result.workspace_id,
+                metadata={
+                    "workspace_id": result.workspace_id,
+                    "project_id": target_id,
+                    "agent_type": agent.value,
+                    "label_id": label_key,
+                    "assigned": assigned,
+                    "revision": result.revision,
+                },
+            )
+            return result
+
+    def _workspace_state(
+        self, session: Session, admin_id: str, project_id: str, agent: AgentType
+    ) -> WorkspaceLabelSetState:
+        label_set = session.get(WorkspaceLabelSet, (admin_id, project_id, agent.value))
+        identity = workspace_id(project_id, agent)
+        if label_set is None:
+            return WorkspaceLabelSetState(identity, project_id, agent.value, (), 0, None)
+        assignments = tuple(
+            session.scalars(
+                select(WorkspaceLabelAssignment)
+                .where(
+                    WorkspaceLabelAssignment.admin_user_id == admin_id,
+                    WorkspaceLabelAssignment.project_id == project_id,
+                    WorkspaceLabelAssignment.agent_type == agent.value,
+                )
+                .order_by(WorkspaceLabelAssignment.position, WorkspaceLabelAssignment.label_id)
+                .limit(_MAX_ASSIGNED + 1)
+            )
+        )
+        if len(assignments) > _MAX_ASSIGNED:
+            raise NavigationLabelLimitExceeded()
+        labels: list[NavigationLabelState] = []
+        for assigned in assignments:
+            definition = session.get(NavigationLabel, assigned.label_id)
+            if definition is None or definition.admin_user_id != admin_id:
+                raise WorkspaceLabelConflict()
+            labels.append(self._state(definition))
+        return WorkspaceLabelSetState(
+            identity,
+            project_id,
+            agent.value,
+            tuple(labels),
+            label_set.revision,
+            aware_utc(label_set.updated_at),
+        )
+
     def delete(
         self,
         admin_user_id: str,
@@ -407,14 +582,17 @@ class NavigationLabelService:
         *,
         expected_revision: int,
         expected_affected_project_count: int,
+        expected_affected_workspace_count: int = 0,
         request_id: str | None,
-    ) -> int:
+    ) -> LabelDeleteImpact:
         admin_id = self._admin_id(admin_user_id)
         target_id = self._label_id(label_id)
         expected = self._revision(expected_revision)
         if (
             type(expected_affected_project_count) is not int
             or not 0 <= expected_affected_project_count <= _MAX_PROJECT_SETS
+            or type(expected_affected_workspace_count) is not int
+            or not 0 <= expected_affected_workspace_count <= _MAX_WORKSPACE_SETS
         ):
             raise NavigationLabelValidationError()
         with self._database.transaction() as session:
@@ -439,12 +617,32 @@ class NavigationLabelService:
                 raise NavigationLabelLimitExceeded()
             if len(project_ids) != expected_affected_project_count:
                 raise NavigationLabelConflict()
+            workspace_keys = tuple(
+                session.execute(
+                    select(WorkspaceLabelAssignment.project_id, WorkspaceLabelAssignment.agent_type)
+                    .where(
+                        WorkspaceLabelAssignment.admin_user_id == admin_id,
+                        WorkspaceLabelAssignment.label_id == target_id,
+                    )
+                    .limit(_MAX_WORKSPACE_SETS + 1)
+                )
+            )
+            if len(workspace_keys) > _MAX_WORKSPACE_SETS:
+                raise NavigationLabelLimitExceeded()
+            if len(workspace_keys) != expected_affected_workspace_count:
+                raise NavigationLabelConflict()
             for project_id in project_ids:
                 label_set = session.get(ProjectLabelSet, (admin_id, project_id))
                 if label_set is None or label_set.revision >= _MAX_REVISION:
                     raise ProjectLabelConflict()
                 label_set.revision += 1
                 label_set.updated_at = self._clock.now()
+            for project_id, agent_type in workspace_keys:
+                workspace_set = session.get(WorkspaceLabelSet, (admin_id, project_id, agent_type))
+                if workspace_set is None or workspace_set.revision >= _MAX_REVISION:
+                    raise WorkspaceLabelConflict()
+                workspace_set.revision += 1
+                workspace_set.updated_at = self._clock.now()
             session.delete(row)
             session.flush()
             self._audit.record(
@@ -456,11 +654,15 @@ class NavigationLabelService:
                 request_id=request_id,
                 target_type="navigation_label",
                 target_id=target_id,
-                metadata={"label_id": target_id, "affected_project_count": len(project_ids)},
+                metadata={
+                    "label_id": target_id,
+                    "affected_project_count": len(project_ids),
+                    "affected_workspace_count": len(workspace_keys),
+                },
             )
-            return len(project_ids)
+            return LabelDeleteImpact(len(project_ids), len(workspace_keys))
 
-    def inspect_delete(self, admin_user_id: str, label_id: str) -> int:
+    def inspect_delete(self, admin_user_id: str, label_id: str) -> LabelDeleteImpact:
         admin_id = self._admin_id(admin_user_id)
         target_id = self._label_id(label_id)
         with self._database.transaction() as session:
@@ -478,7 +680,23 @@ class NavigationLabelService:
             )
             if count is None or count > _MAX_PROJECT_SETS:
                 raise NavigationLabelLimitExceeded()
-            return count
+            workspace_count = session.scalar(
+                select(func.count())
+                .select_from(WorkspaceLabelAssignment)
+                .where(
+                    WorkspaceLabelAssignment.admin_user_id == admin_id,
+                    WorkspaceLabelAssignment.label_id == target_id,
+                )
+            )
+            if workspace_count is None or workspace_count > _MAX_WORKSPACE_SETS:
+                raise NavigationLabelLimitExceeded()
+            return LabelDeleteImpact(count, workspace_count)
 
 
-__all__ = ["NavigationLabelService", "NavigationLabelState", "ProjectLabelSetState"]
+__all__ = [
+    "NavigationLabelService",
+    "NavigationLabelState",
+    "ProjectLabelSetState",
+    "WorkspaceLabelSetState",
+    "LabelDeleteImpact",
+]

@@ -14,6 +14,7 @@ from agentbox_core.errors import (
     NavigationLabelValidationError,
     ProjectLabelConflict,
     ProjectNotFound,
+    WorkspaceLabelConflict,
 )
 from agentbox_core.models import (
     AdminUser,
@@ -21,8 +22,10 @@ from agentbox_core.models import (
     Project,
     ProjectLabelAssignment,
     ProjectLabelSet,
+    WorkspaceLabelAssignment,
+    WorkspaceLabelSet,
 )
-from agentbox_core.navigation_labels import NavigationLabelService
+from agentbox_core.navigation_labels import LabelDeleteImpact, NavigationLabelService
 from agentbox_core.services import ControlPlaneServices, build_services
 from conftest import migrate_database
 from sqlalchemy import select
@@ -35,6 +38,63 @@ def seed(services: ControlPlaneServices) -> tuple[str, str]:
         admin = session.scalar(select(AdminUser).where(AdminUser.is_active.is_(True)))
         assert admin is not None
         return admin.id, project.id
+
+
+def test_workspace_assignments_share_catalog_and_delete_count(
+    initialized_services: ControlPlaneServices,
+) -> None:
+    services = initialized_services
+    admin_id, project_id = seed(services)
+    labels = services.navigation_labels
+    first = labels.create(admin_id, name="Review", color="sky", request_id="create")
+    empty = labels.get_workspace(admin_id, project_id, "codex")
+    assert empty.revision == 0 and empty.labels == ()
+    assert empty.workspace_id.startswith("aws_")
+    codex = labels.set_workspace(
+        admin_id,
+        project_id,
+        "codex",
+        first.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="assign",
+    )
+    assert codex.workspace_id == empty.workspace_id
+    assert codex.revision == 1 and codex.labels[0].id == first.id
+    assert labels.get_workspace(admin_id, project_id, "claude").labels == ()
+    with pytest.raises(WorkspaceLabelConflict):
+        labels.set_workspace(
+            admin_id,
+            project_id,
+            "codex",
+            first.id,
+            assigned=False,
+            expected_revision=0,
+            request_id="stale",
+        )
+    assert labels.inspect_delete(admin_id, first.id) == LabelDeleteImpact(0, 1)
+    with pytest.raises(NavigationLabelConflict):
+        labels.delete(
+            admin_id,
+            first.id,
+            expected_revision=1,
+            expected_affected_project_count=0,
+            expected_affected_workspace_count=0,
+            request_id="stale_delete",
+        )
+    assert labels.delete(
+        admin_id,
+        first.id,
+        expected_revision=1,
+        expected_affected_project_count=0,
+        expected_affected_workspace_count=1,
+        request_id="delete",
+    ) == LabelDeleteImpact(0, 1)
+    cleared = labels.get_workspace(admin_id, project_id, "codex")
+    assert cleared.revision == 2 and cleared.labels == ()
+    with services.database.transaction() as session:
+        assert session.get(WorkspaceLabelSet, (admin_id, project_id, "codex")) is not None
+        assert session.scalars(select(WorkspaceLabelAssignment)).all() == []
 
 
 def test_catalog_assignment_cas_rename_delete_and_audit(
@@ -101,17 +161,14 @@ def test_catalog_assignment_cas_rename_delete_and_audit(
     assert (
         next(item for item in labels.list_catalog(admin_id) if item.id == first.id).color == "red"
     )
-    assert labels.inspect_delete(admin_id, first.id) == 1
-    assert (
-        labels.delete(
-            admin_id,
-            first.id,
-            expected_revision=2,
-            expected_affected_project_count=1,
-            request_id="req_delete",
-        )
-        == 1
-    )
+    assert labels.inspect_delete(admin_id, first.id) == LabelDeleteImpact(1, 0)
+    assert labels.delete(
+        admin_id,
+        first.id,
+        expected_revision=2,
+        expected_affected_project_count=1,
+        request_id="req_delete",
+    ) == LabelDeleteImpact(1, 0)
     cleared = labels.get_project(admin_id, project_id)
     assert cleared.revision == 2 and cleared.labels == ()
     with pytest.raises(NavigationLabelNotFound):
@@ -194,14 +251,65 @@ def test_labels_survive_service_restart(settings: Any, clock: Any) -> None:
             expected_revision=0,
             request_id="req_assign",
         )
+        first.navigation_labels.set_workspace(
+            admin_id,
+            project_id,
+            "claude",
+            label.id,
+            assigned=True,
+            expected_revision=0,
+            request_id="req_workspace",
+        )
     finally:
         first.database.close()
     second = build_services(settings, clock=clock)
     try:
         observed = second.navigation_labels.get_project(admin_id, project_id)
         assert observed.revision == 1 and observed.labels[0].id == label.id
+        workspace = second.navigation_labels.get_workspace(admin_id, project_id, "claude")
+        assert workspace.revision == 1 and workspace.labels[0].id == label.id
     finally:
         second.database.close()
+
+
+def test_rc25_database_upgrade_preserves_project_labels_and_adds_workspaces(
+    settings: Any, clock: Any
+) -> None:
+    migrate_database(settings.database_url, "0011_navigation_labels")
+    before = build_services(settings, clock=clock)
+    try:
+        before.admin.initialize("maintainer", "a sufficiently long passphrase")
+        admin_id, project_id = seed(before)
+        label = before.navigation_labels.create(
+            admin_id, name="Keep", color="teal", request_id="before"
+        )
+        before.navigation_labels.set_project(
+            admin_id,
+            project_id,
+            label.id,
+            assigned=True,
+            expected_revision=0,
+            request_id="project",
+        )
+    finally:
+        before.database.close()
+    migrate_database(settings.database_url)
+    after = build_services(settings, clock=clock)
+    try:
+        assert after.navigation_labels.get_project(admin_id, project_id).labels[0].id == label.id
+        workspace = after.navigation_labels.set_workspace(
+            admin_id,
+            project_id,
+            "codex",
+            label.id,
+            assigned=True,
+            expected_revision=0,
+            request_id="workspace",
+        )
+        assert workspace.labels[0].id == label.id
+        assert after.navigation_labels.inspect_delete(admin_id, label.id) == LabelDeleteImpact(1, 1)
+    finally:
+        after.database.close()
 
 
 def test_two_clients_cannot_assign_from_one_project_revision(
@@ -345,6 +453,16 @@ def test_label_scope_archived_project_and_foreign_key_fence(
             expected_revision=0,
             request_id="req_cross_admin",
         )
+    with pytest.raises(NavigationLabelNotFound):
+        services.navigation_labels.set_workspace(
+            new_admin,
+            project_id,
+            "codex",
+            old_label.id,
+            assigned=True,
+            expected_revision=0,
+            request_id="req_workspace_cross_admin",
+        )
     new_label = services.navigation_labels.create(
         new_admin, name="Archived", color="teal", request_id="req_new"
     )
@@ -357,6 +475,16 @@ def test_label_scope_archived_project_and_foreign_key_fence(
         request_id="req_archived",
     )
     assert result.revision == 1 and result.labels[0].id == new_label.id
+    workspace_result = services.navigation_labels.set_workspace(
+        new_admin,
+        project_id,
+        "codex",
+        new_label.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="req_workspace_archived",
+    )
+    assert workspace_result.revision == 1
     with pytest.raises(IntegrityError), services.database.transaction() as session:
         session.add(
             ProjectLabelAssignment(
@@ -385,6 +513,15 @@ def test_physical_project_delete_cascades_assignments_but_keeps_catalog(
         expected_revision=0,
         request_id="req_assign",
     )
+    services.navigation_labels.set_workspace(
+        admin_id,
+        project_id,
+        "codex",
+        label.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="req_workspace",
+    )
     with services.database.transaction() as session:
         project = session.get(Project, project_id)
         assert project is not None
@@ -392,6 +529,8 @@ def test_physical_project_delete_cascades_assignments_but_keeps_catalog(
     with services.database.transaction() as session:
         assert session.get(ProjectLabelSet, (admin_id, project_id)) is None
         assert session.scalars(select(ProjectLabelAssignment)).all() == []
+        assert session.get(WorkspaceLabelSet, (admin_id, project_id, "codex")) is None
+        assert session.scalars(select(WorkspaceLabelAssignment)).all() == []
     assert services.navigation_labels.list_catalog(admin_id) == (label,)
 
 
@@ -411,6 +550,15 @@ def test_delete_audit_failure_rolls_back_catalog_and_project_revision(
         expected_revision=0,
         request_id="req_assign",
     )
+    services.navigation_labels.set_workspace(
+        admin_id,
+        project_id,
+        "codex",
+        label.id,
+        assigned=True,
+        expected_revision=0,
+        request_id="req_workspace",
+    )
 
     class BrokenAudit:
         def record(self, *args: Any, **kwargs: Any) -> object:
@@ -423,11 +571,14 @@ def test_delete_audit_failure_rolls_back_catalog_and_project_revision(
             label.id,
             expected_revision=1,
             expected_affected_project_count=1,
+            expected_affected_workspace_count=1,
             request_id="req_delete",
         )
     assert services.navigation_labels.list_catalog(admin_id) == (label,)
     observed = services.navigation_labels.get_project(admin_id, project_id)
     assert observed.revision == 1 and observed.labels[0].id == label.id
+    workspace = services.navigation_labels.get_workspace(admin_id, project_id, "codex")
+    assert workspace.revision == 1 and workspace.labels[0].id == label.id
 
 
 def test_delete_impact_count_is_rechecked_atomically(
@@ -449,7 +600,7 @@ def test_delete_impact_count_is_rechecked_atomically(
         expected_revision=0,
         request_id="req_first",
     )
-    assert services.navigation_labels.inspect_delete(admin_id, label.id) == 1
+    assert services.navigation_labels.inspect_delete(admin_id, label.id) == LabelDeleteImpact(1, 0)
     services.navigation_labels.set_project(
         admin_id,
         second_project.id,
@@ -466,16 +617,13 @@ def test_delete_impact_count_is_rechecked_atomically(
             expected_affected_project_count=1,
             request_id="req_stale_count",
         )
-    assert services.navigation_labels.inspect_delete(admin_id, label.id) == 2
+    assert services.navigation_labels.inspect_delete(admin_id, label.id) == LabelDeleteImpact(2, 0)
     assert services.navigation_labels.get_project(admin_id, first_project).revision == 1
     assert services.navigation_labels.get_project(admin_id, second_project.id).revision == 1
-    assert (
-        services.navigation_labels.delete(
-            admin_id,
-            label.id,
-            expected_revision=1,
-            expected_affected_project_count=2,
-            request_id="req_confirmed_delete",
-        )
-        == 2
-    )
+    assert services.navigation_labels.delete(
+        admin_id,
+        label.id,
+        expected_revision=1,
+        expected_affected_project_count=2,
+        request_id="req_confirmed_delete",
+    ) == LabelDeleteImpact(2, 0)

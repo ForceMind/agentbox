@@ -1,5 +1,14 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-WORKSPACE-LABELS-CANDIDATE`: rc26 assigns the rc24 shared
+  catalog to the deterministic formal Project/AgentType Workspace identity,
+  including before Runtime start. Per-admin ordered sets have their own CAS
+  revision. Catalog deletion previews and transactionally rechecks both
+  Project and Workspace counts; the Web picker waits for exact ACK/readback.
+  Labels grant no Runtime or filesystem authority. Cross-host sync and broad
+  command-center label actions remain open. See
+  [Project and Workspace labels](../WORKBENCH_PROJECT_LABELS.md).
+
 - `WORKBENCH-WS14-LABEL-MANAGER-CANDIDATE`: rc25 Project page reads the
   per-admin catalog/assignment, waits for exact ACK and fresh readback,
   supports create, assign, rename/recolor and impact-confirmed delete.

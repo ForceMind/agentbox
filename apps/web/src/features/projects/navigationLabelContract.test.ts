@@ -5,6 +5,7 @@ import {
   parseNavigationLabelListResponse,
   parseNavigationLabelResponse,
   parseProjectLabelSetResponse,
+  parseWorkspaceLabelSetResponse,
 } from '../../lib/contracts'
 
 const projectId = `prj_${'a'.repeat(32)}`
@@ -48,9 +49,25 @@ describe('Navigation label Web contract', () => {
     expect(assigned.data.labels[0]?.name).toBe('Team Review')
     expect(
       parseNavigationLabelDeleteImpactResponse(
-        envelope({ label_id: labelId, affected_project_count: 1 }),
+        envelope({
+          label_id: labelId,
+          affected_project_count: 1,
+          affected_workspace_count: 0,
+        }),
       ).data.affected_project_count,
     ).toBe(1)
+    expect(
+      parseWorkspaceLabelSetResponse(
+        envelope({
+          workspace_id: `aws_${'c'.repeat(32)}`,
+          project_id: projectId,
+          agent_type: 'codex',
+          labels: [label],
+          revision: 1,
+          updated_at: '2026-09-29T00:00:00Z',
+        }),
+      ).data.labels[0]?.id,
+    ).toBe(labelId)
   })
 
   it('rejects stale or malformed authority and display metadata', () => {
@@ -80,7 +97,11 @@ describe('Navigation label Web contract', () => {
     ).toThrow()
     expect(() =>
       parseNavigationLabelDeleteImpactResponse(
-        envelope({ label_id: labelId, affected_project_count: 10_001 }),
+        envelope({
+          label_id: labelId,
+          affected_project_count: 10_001,
+          affected_workspace_count: 0,
+        }),
       ),
     ).toThrow()
   })

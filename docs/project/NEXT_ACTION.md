@@ -1,5 +1,17 @@
 # Current Authorized Action
 
+## 2026-09-29 WS14 Workspace labels
+
+Finish rc26 on `codex/workbench-workspace-labels`: shared-catalog formal
+Workspace assignments, explicit Project+Workspace delete-impact count,
+current-session Web readback and localized states. Run migration/foreign-key,
+CAS/concurrency, API auth/Origin/CSRF, full Web/build, desktop/mobile browser
+and release-version checks. Update exact local evidence, push feature branch,
+obtain terminal exact-head CI, then normal merge and exact main/PR/workflow
+read-back. Keep #117 Draft until its independent security-critical review;
+continue R12 host and Secret gates separately. The prior rc25 action below
+is historical and no longer directs this branch.
+
 ## 2026-09-29 WS14 Project label manager Web UI
 
 PR #118's exact head `b7a529dfe92fabd0b83486ee6082296c64713fc9`

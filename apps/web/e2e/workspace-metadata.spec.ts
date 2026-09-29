@@ -107,6 +107,41 @@ async function mockWorkspaceApi(page: import('@playwright/test').Page) {
       })
       return
     }
+    if (
+      url.pathname === '/api/v1/project-labels' &&
+      request.method() === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(envelope({ labels: [] })),
+      })
+      return
+    }
+    const labelWorkspace = url.pathname.match(
+      new RegExp(
+        `^/api/v1/project-labels/workspaces/${projectId}/(claude|codex)$`,
+      ),
+    )
+    if (labelWorkspace && request.method() === 'GET') {
+      const agentType = labelWorkspace[1] as 'claude' | 'codex'
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          envelope({
+            workspace_id:
+              agentType === 'codex' ? workspaceId : `aws_${'a'.repeat(32)}`,
+            project_id: projectId,
+            agent_type: agentType,
+            labels: [],
+            revision: 0,
+            updated_at: null,
+          }),
+        ),
+      })
+      return
+    }
     if (url.pathname === '/api/v1/workspaces' && request.method() === 'GET') {
       const agentType = url.searchParams.get('agent_type')
       const project = url.searchParams.get('project_id')

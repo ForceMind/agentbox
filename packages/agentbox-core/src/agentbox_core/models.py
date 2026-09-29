@@ -86,7 +86,7 @@ class ControlPlaneSession(Base):
         UniqueConstraint("id", "user_id", name="uq_sessions_id_user"),
         CheckConstraint("auth_epoch >= 1", name="ck_sessions_auth_epoch"),
         CheckConstraint(
-            "recent_authenticated_at >= created_at AND " "recent_authenticated_at <= last_seen_at",
+            "recent_authenticated_at >= created_at AND recent_authenticated_at <= last_seen_at",
             name="ck_sessions_recent_auth_bounds",
         ),
         CheckConstraint(
@@ -282,6 +282,60 @@ class ProjectLabelAssignment(Base):
 
     admin_user_id: Mapped[str] = mapped_column(String(40), primary_key=True)
     project_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class WorkspaceLabelSet(Base):
+    """Per-admin label revision for a formal Project/AgentType workspace."""
+
+    __tablename__ = "workspace_label_sets"
+    __table_args__ = (
+        CheckConstraint("agent_type IN ('claude','codex')", name="ck_workspace_label_sets_agent"),
+        CheckConstraint(
+            "revision BETWEEN 1 AND 9007199254740991", name="ck_workspace_label_sets_revision"
+        ),
+        CheckConstraint(_utc6("updated_at"), name="ck_workspace_label_sets_updated_at"),
+    )
+
+    admin_user_id: Mapped[str] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    agent_type: Mapped[str] = mapped_column(String(12), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorkspaceLabelAssignment(Base):
+    """Ordered shared-catalog label on one formal Workspace identity."""
+
+    __tablename__ = "workspace_label_assignments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["admin_user_id", "project_id", "agent_type"],
+            [
+                "workspace_label_sets.admin_user_id",
+                "workspace_label_sets.project_id",
+                "workspace_label_sets.agent_type",
+            ],
+            ondelete="CASCADE",
+            name="fk_workspace_label_assignments_set",
+        ),
+        ForeignKeyConstraint(
+            ["admin_user_id", "label_id"],
+            ["navigation_labels.admin_user_id", "navigation_labels.id"],
+            ondelete="CASCADE",
+            name="fk_workspace_label_assignments_label",
+        ),
+        CheckConstraint("position >= 0", name="ck_workspace_label_assignments_position"),
+    )
+
+    admin_user_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    agent_type: Mapped[str] = mapped_column(String(12), primary_key=True)
     label_id: Mapped[str] = mapped_column(String(40), primary_key=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 

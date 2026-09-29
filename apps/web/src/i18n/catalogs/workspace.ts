@@ -9,6 +9,15 @@ export interface WorkspaceMessageParameters {
   readonly 'workspace.selectionTitle': NoMessageParameters
   readonly 'workspace.readyProject': NoMessageParameters
   readonly 'workspace.agentType': NoMessageParameters
+  readonly 'workspace.labelsTitle': NoMessageParameters
+  readonly 'workspace.labelsDescription': NoMessageParameters
+  readonly 'workspace.labelsEmpty': NoMessageParameters
+  readonly 'workspace.labelsLoading': NoMessageParameters
+  readonly 'workspace.labelsUnavailable': NoMessageParameters
+  readonly 'workspace.labelsRefresh': NoMessageParameters
+  readonly 'workspace.labelsUncertain': NoMessageParameters
+  readonly 'workspace.labelsConflict': NoMessageParameters
+  readonly 'workspace.labelsInvalid': NoMessageParameters
   readonly 'workspace.selectProject': NoMessageParameters
   readonly 'workspace.loadingProjects': NoMessageParameters
   readonly 'workspace.noReadyProjects': NoMessageParameters
@@ -97,6 +106,20 @@ export const workspaceCatalog = defineCatalogShard<WorkspaceMessageParameters>(
       'workspace.selectionTitle': () => 'Select a Project and AgentType',
       'workspace.readyProject': () => 'Formal READY Project',
       'workspace.agentType': () => 'AgentType',
+      'workspace.labelsTitle': () => 'Workspace labels',
+      'workspace.labelsDescription': () =>
+        'Assign labels from the shared Project catalog to this Project and AgentType.',
+      'workspace.labelsEmpty': () =>
+        'No labels are available. Create a label on the Project page first.',
+      'workspace.labelsLoading': () => 'Loading Workspace labels…',
+      'workspace.labelsUnavailable': () => 'Workspace labels are unavailable.',
+      'workspace.labelsRefresh': () => 'Refresh labels',
+      'workspace.labelsUncertain': () =>
+        'The label change could not be confirmed. Current labels were reloaded; review them before trying again.',
+      'workspace.labelsConflict': () =>
+        'Workspace labels changed elsewhere. Current labels were reloaded; review before trying again.',
+      'workspace.labelsInvalid': () =>
+        'The selected label cannot be assigned. Current labels were reloaded.',
       'workspace.selectProject': () => 'Select a Project',
       'workspace.loadingProjects': () => 'Loading Projects…',
       'workspace.noReadyProjects': () => 'No READY Projects',
@@ -198,6 +221,19 @@ export const workspaceCatalog = defineCatalogShard<WorkspaceMessageParameters>(
       'workspace.selectionTitle': () => '选择 Project 与 AgentType',
       'workspace.readyProject': () => '正式 READY Project',
       'workspace.agentType': () => 'AgentType',
+      'workspace.labelsTitle': () => '工作区标签',
+      'workspace.labelsDescription': () =>
+        '为当前 Project 和 AgentType 分配共享标签。',
+      'workspace.labelsEmpty': () =>
+        '还没有可用标签。请先在 Project 页面创建。',
+      'workspace.labelsLoading': () => '正在读取工作区标签…',
+      'workspace.labelsUnavailable': () => '工作区标签暂时不可用。',
+      'workspace.labelsRefresh': () => '刷新标签',
+      'workspace.labelsUncertain': () =>
+        '无法确认标签变更。已重新读取当前标签，请核对后再操作。',
+      'workspace.labelsConflict': () =>
+        '工作区标签已在其他位置变更。已重新读取当前标签，请核对后再操作。',
+      'workspace.labelsInvalid': () => '所选标签无法分配。已重新读取当前标签。',
       'workspace.selectProject': () => '请选择 Project',
       'workspace.loadingProjects': () => '正在加载 Project…',
       'workspace.noReadyProjects': () => '暂无 READY Project',

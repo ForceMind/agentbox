@@ -1,11 +1,56 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T00:36:25Z"
-verified_by: "codex-workbench-project-labels-ui"
+verified_at_utc: "2026-09-29T01:49:26Z"
+verified_by: "codex-workbench-workspace-labels"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-29 WS14 Workspace label candidate
+
+Live Git/GitHub preflight: `origin/main` is
+`cab33679ec91bc2e46384f24e9a8cd3e4e985fa9`, the normal merge of #119;
+its six Backend, Frontend, E2E, Deployment, Security and Release Candidate
+post-main workflows all completed successfully. PR #118 is now MERGED
+indirectly with recorded merge commit
+`36aa7294c4d9c8eaa3283281022e61cf8bbc4f69`; its earlier OPEN
+metadata mismatch is resolved. Draft PR #117 remains OPEN, unmerged, and
+awaits the required independent security-critical review. The original
+checkout's dirty R12 WIP remains untouched.
+
+The `codex/workbench-workspace-labels` branch starts at that exact main SHA.
+The rc26 candidate adds an additive Workspace assignment migration and
+Control Plane CAS service/API, reuse of the shared catalog, a Workspace-page
+picker, and confirmation of both affected Project and Workspace counts for
+catalog deletion. Labels remain metadata, not Runtime authority. Local
+Python label/API/version matrix passed 108 tests, Ruff passed, and
+Linux-target mypy checked 315 files. Node 22 full Web suite passed
+1194/1194; format, typecheck and build passed. The final isolated
+desktop/mobile Chromium run passed 112 tests with 28 prescribed skips,
+including actual Project→Workspace assign/edit/delete and repaired
+synthetic Workspace API fixtures. Final Workspace label screenshots were
+inspected at both viewports without visible overflow or overlap. Bundle
+size was 643.14 kB/182.40 kB gzip; the >500 kB warning remains. The final
+Hook dependency fix passed Web lint, typecheck, format, focused 3-case
+Workspace label tests and a production rebuild. PR #120 was created at
+first head `086a4b7cf3fa9a3708704e225a7d09ff0d33f966`. Its
+`repository-boundaries` check failed because the reviewed API route count
+was still 50 after adding two routes. The boundary script now explicitly
+reviews the Workspace GET/PUT route pair and passes locally (exit 0);
+the follow-up exact-head CI is pending. Merge and host qualification remain
+separate. Cross-host sync and full WS14 parity are still open.
+
+At second head `8359a1222a64d0124a15c55b6d8c3a2b8260bb7d`, the
+route gate, Frontend, E2E, native, packaging, installer and release checks
+passed. Python 3.11 quality failed four pre-existing migration tests whose
+`head` expectations still named `0011_navigation_labels`; its other 4311
+tests passed with 80 skips. The four assertions now target `0012`, and a
+Workspace schema parity/data-preserving downgrade test was added. The
+complete local migration file passes 44/44; the next exact-head CI is
+pending. The 3.12/3.13 jobs were still running at this read-back.
+
+Sections below are historical snapshots.
 
 ## 2026-09-29 WS14 Project label Web candidate
 
