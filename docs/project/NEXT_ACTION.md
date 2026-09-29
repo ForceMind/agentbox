@@ -1,5 +1,20 @@
 # Current Authorized Action
 
+## 2026-09-29 WS14 Workspace label command choices
+
+`origin/main` remains rc27 merge
+`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a` with six successful
+post-main workflows. Security-critical R12 rc28 Draft #122 has 26
+terminal head checks (24 success, two prescribed skips) but awaits an
+independent Architecture/Security/Test review; #117 remains Draft for the
+same separate review gate. Continue independent WS14 software on
+`codex/workbench-command-labels`: query-only label choices for an exact
+formal Workspace route, current-session metadata validation, existing
+CAS/Origin/CSRF API, exact ACK and GET readback, local panel invalidation,
+pending/hidden/conflict fences, localization, desktop/mobile validation,
+version and exact-head CI, then normal merge/read-back. The rc28 action
+below is historical; real host/Secret/production gates remain untouched.
+
 ## 2026-09-29 WS14 visible-client label refresh
 
 PR #120 delivered rc26 as merge

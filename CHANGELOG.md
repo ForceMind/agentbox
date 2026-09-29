@@ -3,6 +3,15 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc29] - Unreleased
+
+- Add query-only Workspace label choices to the authenticated command center
+  for the exact current formal `aws_` route. A selected choice toggles one
+  shared-catalog label through existing Workspace CAS API and exact readback.
+- Keep navigation available when label metadata fails, fence the modal during
+  a pending write, and refresh the visible label panel after confirmation.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc29.md`.
+
 ## [0.3.0rc27] - Unreleased
 
 - Refresh Project and Workspace label catalog/assignment views at a bounded

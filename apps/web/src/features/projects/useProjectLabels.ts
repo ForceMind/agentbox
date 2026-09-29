@@ -15,6 +15,7 @@ import {
   type ProjectLabelSetResponse,
 } from '../../lib/contracts'
 import { useAuth } from '../auth/AuthContext'
+import { NAVIGATION_LABELS_CHANGED_EVENT } from './labelEvents'
 
 export type LabelError = Readonly<{ code: string; requestId?: string }>
 type LabelState = Readonly<{
@@ -183,10 +184,12 @@ export function useProjectLabels(projectId: string) {
     }
     document.addEventListener('visibilitychange', visibilityChanged)
     window.addEventListener('focus', focused)
+    window.addEventListener(NAVIGATION_LABELS_CHANGED_EVENT, focused)
     return () => {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', visibilityChanged)
       window.removeEventListener('focus', focused)
+      window.removeEventListener(NAVIGATION_LABELS_CHANGED_EVENT, focused)
     }
   }, [abortAll, projectId, refresh, scope])
 

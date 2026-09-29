@@ -525,6 +525,112 @@ test('creates, assigns, edits and confirms deletion of a Project label', async (
   ).toBe(false)
 })
 
+test('toggles a formal Workspace label from the command center and updates its panel', async ({
+  page,
+}, testInfo) => {
+  await login(page)
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  const projectId = new URL(page.url()).pathname.split('/').pop()
+  expect(projectId).toMatch(/^prj_[0-9a-f]{32}$/)
+  const labels = page.getByRole('heading', { name: 'Labels' }).locator('..')
+  await labels.getByRole('button', { name: 'Manage labels' }).click()
+  const manager = page.getByRole('dialog', { name: 'Manage labels' })
+  await manager.getByRole('textbox', { name: 'Label name' }).fill('E2E Command')
+  await manager.getByRole('button', { name: 'Create label' }).click()
+  await expect(
+    manager.getByRole('button', { name: 'Edit label: E2E Command' }),
+  ).toBeVisible()
+  await manager.getByRole('button', { name: 'Close labels' }).click()
+
+  const workspaceId = await page.evaluate(async (id) => {
+    const response = await fetch(
+      `/api/v1/project-labels/workspaces/${id}/claude`,
+      {
+        credentials: 'include',
+      },
+    )
+    if (!response.ok) throw new Error('Workspace label identity is unavailable')
+    const body = (await response.json()) as { data?: { workspace_id?: string } }
+    return body.data?.workspace_id
+  }, projectId)
+  expect(workspaceId).toMatch(/^aws_[0-9a-f]{32}$/)
+  await page.route(`**/api/v1/workspaces/${workspaceId}`, async (route) => {
+    await route.fulfill({
+      json: {
+        request_id: 'req_command_workspace',
+        data: {
+          id: workspaceId,
+          project_id: projectId,
+          agent_type: 'claude',
+          state: 'STOPPED',
+          reconciliation_state: 'authoritative',
+          generation: 1,
+          revision: 1,
+          created_at: '2026-09-29T00:00:00Z',
+          updated_at: '2026-09-29T00:00:00Z',
+          last_seen_at: '2026-09-29T00:00:00Z',
+          exit_code: null,
+          failure_code: null,
+        },
+      },
+    })
+  })
+  await page.goto(`/workspace/${workspaceId}`)
+  const panel = page.getByRole('region', { name: 'Workspace labels' })
+  const checkbox = panel.getByRole('checkbox', { name: 'E2E Command' })
+  await expect(checkbox).not.toBeChecked()
+  await page.getByRole('button', { name: 'Command center' }).click()
+  let dialog = page.getByRole('dialog', { name: 'Command center' })
+  await dialog
+    .getByRole('combobox', {
+      name: 'Search pages, Projects and Workspace labels',
+    })
+    .fill('label')
+  let choice = dialog.getByRole('option', { name: /Label as E2E Command/ })
+  await expect(choice).toContainText('Available')
+  await choice.click()
+  await expect(choice).toContainText('Assigned')
+  if (process.env.AGENTBOX_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: testInfo.outputPath('workspace-label-command.png'),
+    })
+  }
+  await dialog.getByRole('button', { name: 'Close command center' }).click()
+  await expect(checkbox).toBeChecked()
+
+  await page.getByRole('button', { name: 'Command center' }).click()
+  dialog = page.getByRole('dialog', { name: 'Command center' })
+  await dialog
+    .getByRole('combobox', {
+      name: 'Search pages, Projects and Workspace labels',
+    })
+    .fill('label')
+  choice = dialog.getByRole('option', { name: /Label as E2E Command/ })
+  await expect(choice).toContainText('Assigned')
+  await choice.click()
+  await expect(choice).toContainText('Available')
+  await dialog.getByRole('button', { name: 'Close command center' }).click()
+  await expect(checkbox).not.toBeChecked()
+
+  await navigate(page, 'Projects', '/projects')
+  await page.getByRole('heading', { name: 'project-a' }).click()
+  await page.getByRole('button', { name: 'Manage labels' }).click()
+  const cleanup = page.getByRole('dialog', { name: 'Manage labels' })
+  await cleanup.getByRole('button', { name: 'Edit label: E2E Command' }).click()
+  await cleanup.getByRole('button', { name: 'Delete label' }).click()
+  await expect(cleanup.getByRole('group')).toContainText(
+    'Delete this label from 0 Projects and 0 Workspaces?',
+  )
+  await cleanup
+    .getByRole('group')
+    .getByRole('button', { name: 'Delete label' })
+    .click()
+  await expect(
+    cleanup.getByRole('button', { name: 'Edit label: E2E Command' }),
+  ).toHaveCount(0)
+})
+
 test('shows a fixed Project-label validation error without server prose', async ({
   page,
 }, testInfo) => {
@@ -869,7 +975,7 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
-  await expect(page.getByText('0.3.0rc27', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.3.0rc29', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()

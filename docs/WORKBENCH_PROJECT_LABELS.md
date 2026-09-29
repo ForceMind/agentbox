@@ -1,7 +1,8 @@
 # Project and Workspace labels: shared AgentBox catalog
 
-Status: rc24–rc26 catalog, Project and Workspace assignments reached main;
-rc27 visible-client refresh candidate, 2026-09-29. PR #118 was later recognized as
+Status: rc24–rc27 catalog, assignments and visible-client refresh reached
+main; rc29 exact Workspace command-center label choices are a candidate,
+2026-09-29. PR #118 was later recognized as
 indirectly merged when #119 merged; six post-main workflows succeeded on
 the combined main SHA. [CURRENT_STATE](project/CURRENT_STATE.md) records
 the live read-back. This extends
@@ -133,8 +134,11 @@ create/assign/reload/edit/delete flow and a fixed 422 error view after the
 mobile layout guard. PR #119 merged as `cab33679ec91bc2e46384f24e9a8cd3e4e985fa9`;
 six post-main workflows succeeded. rc26 Workspace assignments merged via
 PR #120 as `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`, with six
-successful post-main workflows. rc27 visible-client refresh is a candidate.
-Cross-host relay synchronization, command-center label actions and a
-broader archived-Project browser matrix remain later behavior; rc27 does
+successful post-main workflows. rc27 visible-client refresh merged via
+PR #121 as `458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`, with six
+successful post-main workflows. rc29's exact Workspace label command
+choices are documented in the [command center](WORKBENCH_COMMAND_CENTER.md).
+Cross-host relay synchronization, broader command actions and a
+broader archived-Project browser matrix remain later behavior; rc29 does
 not close full WS14 parity. Real-host and production qualification remain
 separate.
