@@ -1,11 +1,45 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T02:23:59Z"
-verified_by: "codex-workbench-label-live-refresh"
+verified_at_utc: "2026-09-29T04:01:17Z"
+verified_by: "codex-workbench-command-labels"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-29 WS14 Workspace label command candidate
+
+Live `origin/main` is
+`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`, rc27/PR #121's
+normal merge; six Backend, Frontend, E2E, Deployment, Security and Release
+Candidate post-main workflows are completed/success on it. Draft #122
+head `26c8785f89560e979d7439d8e5f19b3cba7569ca` has 26 terminal
+exact-head checks (24 success, two prescribed skips) but remains unmerged
+pending independent security-critical review. Draft #117 is separately
+unmerged for the same review gate. The original dirty R12 checkout is
+untouched.
+
+The clean managed `codex/workbench-command-labels` branch starts from
+that main commit. It adds query-only shared-catalog Workspace label choices
+to the existing command center only on an exact `aws_` route. The Web hook
+validates current-session Workspace metadata and label observations, uses
+the existing CAS API, waits for exact ACK/readback and locally refreshes
+the visible label panel; no Runtime or arbitrary-command path is added.
+Targeted command/label panel tests passed, including hidden pending-write
+GET recovery without PUT replay; the Node 22 full Web suite passed
+1201/1201. Release-version Python tests passed 93, inert MV3
+tests/build passed, and Web format/lint/typecheck/build passed. The isolated
+desktop/mobile Chromium matrix passed 114 tests with 28 prescribed skips;
+the new flow used the real Project/Workspace label API and a synthetic
+formal Workspace metadata row, then confirmed immediate panel readback
+and deletion cleanup. Command-center screenshots were inspected at both
+viewports without visible overlap or horizontal overflow. The Web JS bundle
+was 650.19 kB/184.18 kB gzip; its >500 kB warning remains. PR and
+exact-head CI remain pending.
+This does not close broader command contributions, cross-host sync, R12
+software or host/Secret/production qualification.
+
+Sections below are historical snapshots.
 
 ## 2026-09-29 WS14 visible-client label refresh candidate
 

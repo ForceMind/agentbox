@@ -70,6 +70,14 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
+2026-09-29 live scope：R12 rc28 固定非Secret vendor enrollment 候选
+Draft #122 的 26 项 head CI 已终态（24 success、两项既定 skip），独立安全关键
+复核未获结论，因此不合并；A3 Draft #117 同样保留。与它们无写入依赖的
+WS14 rc29 在已合并 rc27 main 上推进精确 Workspace 的命令中心标签选择，
+仅调用现有 Control Plane 元数据 API。它需要可见读回、会话/路由/处理中
+围栏、桌面/手机真实交互与 exact-head CI，合并后才算该有限能力交付。
+70 项总目标、R12 `_main`、跨主机/host/Secret/生产门禁均未缩减。
+
 2026-09-29 最新 live read-back：PR #120 的 rc26 Workspace 标签分配已正常合并为
 `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`，六类 post-main workflow
 全部成功。下一批 rc27 在同一 Control Plane 上补可见 Project/Workspace 页面

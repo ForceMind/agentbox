@@ -350,6 +350,10 @@ export function AppShell({
           locale={locale}
           onClose={closeCommandCenter}
           onNavigate={(href) => void navigate(href)}
+          workspaceId={
+            /^\/workspace\/(aws_[0-9a-f]{32})$/.exec(location.pathname)?.[1] ??
+            null
+          }
         />
       )}
     </div>

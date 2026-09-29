@@ -1,5 +1,13 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-WS14-WORKSPACE-LABEL-COMMAND-CANDIDATE`: rc29 adds one
+  query-only, metadata-only Workspace label choice per shared-catalog ID
+  when the current route carries an exact formal `aws_` identity. Current
+  session and route reads establish Project/AgentType; the choice uses the
+  existing Workspace CAS API, exact ACK and GET readback without replay.
+  No generic command, file or Runtime authority is added. See
+  [Command center](../WORKBENCH_COMMAND_CENTER.md).
+
 - `WORKBENCH-WS14-VISIBLE-LABEL-REFRESH-CANDIDATE`: rc27 keeps both label
   views current with a bounded visible-and-idle 30-second GET of the shared
   catalog and target assignment. During a background read, prior values

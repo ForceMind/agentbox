@@ -17,6 +17,7 @@ import {
   type WorkspaceLabelSetResponse,
 } from '../../lib/contracts'
 import { useAuth } from '../auth/AuthContext'
+import { NAVIGATION_LABELS_CHANGED_EVENT } from '../projects/labelEvents'
 
 import '../projects/ProjectLabelsPanel.css'
 
@@ -154,12 +155,14 @@ export function WorkspaceLabelsPanel({
       } else if (!writing.current) void refresh()
     }
     window.addEventListener('focus', onFocus)
+    window.addEventListener(NAVIGATION_LABELS_CHANGED_EVENT, onFocus)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.clearInterval(interval)
       generation.current += 1
       current.current?.abort()
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener(NAVIGATION_LABELS_CHANGED_EVENT, onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [refresh, scope, target])

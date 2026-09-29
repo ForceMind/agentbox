@@ -23,7 +23,7 @@
 - [Project and Workspace labels](../WORKBENCH_PROJECT_LABELS.md)：
   WS14 共享标签目录、正式 Project/Workspace 分配及可见客户端刷新边界。
 - [Command center](../WORKBENCH_COMMAND_CENTER.md)：
-  WS14 固定页面和正式 Project 导航、键盘搜索与当前 Session 隔离。
+  WS14 固定页面/正式 Project 导航及精确 Workspace 标签选择，当前 Session 隔离。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；
   R12 软件接线、客户端、真实主机/CLI、恢复与有限生产的依赖、验收和授权范围。
   R12-A已开始；软件执行、host资格化与生产准入分开记录。
