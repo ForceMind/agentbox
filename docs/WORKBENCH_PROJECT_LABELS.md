@@ -1,7 +1,7 @@
 # Project and Workspace labels: shared AgentBox catalog
 
-Status: rc24 backend and rc25 Project Web reached main; rc26 Workspace
-assignment/Web candidate, 2026-09-29. PR #118 was later recognized as
+Status: rc24–rc26 catalog, Project and Workspace assignments reached main;
+rc27 visible-client refresh candidate, 2026-09-29. PR #118 was later recognized as
 indirectly merged when #119 merged; six post-main workflows succeeded on
 the combined main SHA. [CURRENT_STATE](project/CURRENT_STATE.md) records
 the live read-back. This extends
@@ -102,6 +102,17 @@ Project manager. It waits for exact ACK and fresh readback, invalidating
 observations on session, selection and visibility changes. Catalog creation,
 rename, recolor and deletion remain available on the Project page.
 
+## Visible-client freshness
+
+rc27 adds a 30-second bounded catalog+assignment GET to both Project and
+Workspace pages while they are visible and no read or write is in flight.
+The prior labels stay visible during a background read, but assignment
+controls are disabled until both snapshots agree. A failed read becomes an
+explicit stale/unavailable state; it never replays a write. Hidden pages do
+not poll, and the existing return-to-page refresh revalidates immediately.
+This closes same-Control-Plane visible-client convergence, not cross-host
+replication, push subscriptions or offline synchronization.
+
 The service validates the administrator and formal Project inside each
 transaction, uses additive foreign-keyed migrations, and writes bounded
 Audit metadata with actor, label ID, Project ID, revision and operation only.
@@ -120,8 +131,10 @@ empty and session-change states on actual data; its final local desktop/mobile
 E2E run completed 112 passes and 28 prescribed skips, including a full
 create/assign/reload/edit/delete flow and a fixed 422 error view after the
 mobile layout guard. PR #119 merged as `cab33679ec91bc2e46384f24e9a8cd3e4e985fa9`;
-six post-main workflows succeeded. rc26 Workspace assignment is a new
-candidate. Cross-device/host synchronization, command-center label actions
-and a broader archived-Project browser matrix remain later behavior; rc26
-does not close full WS14 parity. Real-host and production qualification
-remain separate.
+six post-main workflows succeeded. rc26 Workspace assignments merged via
+PR #120 as `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`, with six
+successful post-main workflows. rc27 visible-client refresh is a candidate.
+Cross-host relay synchronization, command-center label actions and a
+broader archived-Project browser matrix remain later behavior; rc27 does
+not close full WS14 parity. Real-host and production qualification remain
+separate.

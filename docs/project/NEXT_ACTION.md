@@ -1,5 +1,19 @@
 # Current Authorized Action
 
+## 2026-09-29 WS14 visible-client label refresh
+
+PR #120 delivered rc26 as merge
+`88d2db79dd3cf58cfe0093ee90963f1ecfd45d35` with exact parents
+`cab33679ec91bc2e46384f24e9a8cd3e4e985fa9` and
+`816920a3c301569b8cd64ef99e7532537804d111`; six post-main workflows
+completed successfully. On `codex/workbench-label-live-refresh`, finish
+rc27's bounded visible-client Project/Workspace label refresh, prove
+external-change convergence and hidden/pending/read fences, update the
+version and acceptance record, then run exact-head CI, normal merge and
+read-back. Cross-host synchronization remains S08. #117 stays Draft until
+its independent security-critical review; R12 real-host/Secret/production
+gates remain separate. The rc26 action below is historical.
+
 ## 2026-09-29 WS14 Workspace labels
 
 Finish rc26 on `codex/workbench-workspace-labels`: shared-catalog formal

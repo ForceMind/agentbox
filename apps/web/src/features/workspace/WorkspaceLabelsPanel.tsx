@@ -65,8 +65,9 @@ export function WorkspaceLabelsPanel({
   const writing = useRef(false)
   const path = `/api/v1/project-labels/workspaces/${encodeURIComponent(projectId)}/${agentType}`
 
-  const refresh =
-    useCallback(async (): Promise<WorkspaceLabelSetData | null> => {
+  const refresh = useCallback(
+    async (background = false): Promise<WorkspaceLabelSetData | null> => {
+      if (background && (writing.current || current.current)) return null
       const token = ++generation.current
       current.current?.abort()
       if (!scope || !/^prj_[0-9a-f]{32}$/.test(projectId) || document.hidden) {
@@ -75,7 +76,11 @@ export function WorkspaceLabelsPanel({
       }
       const controller = new AbortController()
       current.current = controller
-      setView({ ...empty(target), loading: true })
+      setView((previous) =>
+        background && previous.target === target && !previous.stale
+          ? { ...previous, loading: true }
+          : { ...empty(target), loading: true },
+      )
       try {
         const [catalog, assignment] = await Promise.all([
           api.get<NavigationLabelListResponse>('/api/v1/project-labels', {
@@ -127,10 +132,17 @@ export function WorkspaceLabelsPanel({
       } finally {
         if (current.current === controller) current.current = null
       }
-    }, [agentType, api, path, projectId, scope, target])
+    },
+    [agentType, api, path, projectId, scope, target],
+  )
 
   useEffect(() => {
     void refresh()
+    const interval = window.setInterval(() => {
+      if (scope && !document.hidden && !writing.current && !current.current) {
+        void refresh(true)
+      }
+    }, 30_000)
     const onFocus = () => {
       if (!document.hidden && !writing.current) void refresh()
     }
@@ -144,12 +156,13 @@ export function WorkspaceLabelsPanel({
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
+      window.clearInterval(interval)
       generation.current += 1
       current.current?.abort()
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [refresh, target])
+  }, [refresh, scope, target])
 
   async function toggle(labelId: string) {
     if (
@@ -272,7 +285,7 @@ export function WorkspaceLabelsPanel({
                 checked={visible.assignment!.labels.some(
                   (item) => item.id === label.id,
                 )}
-                disabled={visible.pending}
+                disabled={visible.pending || visible.loading}
                 onChange={() => void toggle(label.id)}
               />
               <span

@@ -3,6 +3,15 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc27] - Unreleased
+
+- Refresh Project and Workspace label catalog/assignment views at a bounded
+  interval while their authenticated page is visible and idle, so changes
+  from another browser session converge without a manual focus change.
+- Preserve the current view during background reads while disabling writes;
+  hidden pages, active writes and in-flight reads do not start another poll.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc27.md`.
+
 ## [0.3.0rc26] - Unreleased
 
 - Assign the shared navigation labels to formal Project/AgentType Workspaces

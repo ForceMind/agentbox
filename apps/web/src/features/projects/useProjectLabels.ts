@@ -89,61 +89,73 @@ export function useProjectLabels(projectId: string) {
     operation.current = null
   }, [])
 
-  const refresh = useCallback(async (): Promise<boolean> => {
-    if (operation.current) return false
-    const token = ++generation.current
-    read.current?.abort()
-    if (!scope || !/^prj_[0-9a-f]{32}$/.test(projectId) || document.hidden) {
-      setState({ ...initial(scope, projectId), stale: true })
-      return false
-    }
-    const controller = new AbortController()
-    read.current = controller
-    setState({ ...initial(scope, projectId), loading: true })
-    try {
-      const [catalog, assigned] = await Promise.all([
-        api.get<NavigationLabelListResponse>('/api/v1/project-labels', {
-          signal: controller.signal,
-          timeoutMs: 15_000,
-          validate: parseNavigationLabelListResponse,
-        }),
-        api.get<ProjectLabelSetResponse>(
-          `/api/v1/project-labels/projects/${encodeURIComponent(projectId)}`,
-          {
+  const refresh = useCallback(
+    async (background = false): Promise<boolean> => {
+      if (operation.current) return false
+      if (background && read.current) return false
+      const token = ++generation.current
+      read.current?.abort()
+      if (!scope || !/^prj_[0-9a-f]{32}$/.test(projectId) || document.hidden) {
+        setState({ ...initial(scope, projectId), stale: true })
+        return false
+      }
+      const controller = new AbortController()
+      read.current = controller
+      setState((previous) =>
+        background &&
+        previous.scope === scope &&
+        previous.projectId === projectId &&
+        previous.loaded &&
+        !previous.stale
+          ? { ...previous, loading: true }
+          : { ...initial(scope, projectId), loading: true },
+      )
+      try {
+        const [catalog, assigned] = await Promise.all([
+          api.get<NavigationLabelListResponse>('/api/v1/project-labels', {
             signal: controller.signal,
             timeoutMs: 15_000,
-            validate: parseProjectLabelSetResponse,
-          },
-        ),
-      ])
-      if (token !== generation.current || controller.signal.aborted)
+            validate: parseNavigationLabelListResponse,
+          }),
+          api.get<ProjectLabelSetResponse>(
+            `/api/v1/project-labels/projects/${encodeURIComponent(projectId)}`,
+            {
+              signal: controller.signal,
+              timeoutMs: 15_000,
+              validate: parseProjectLabelSetResponse,
+            },
+          ),
+        ])
+        if (token !== generation.current || controller.signal.aborted)
+          return false
+        if (
+          assigned.data.project_id !== projectId ||
+          !consistent(catalog.data.labels, assigned.data)
+        ) {
+          throw new Error('Project label observations disagree')
+        }
+        setState({
+          ...initial(scope, projectId),
+          catalog: catalog.data.labels,
+          assignment: assigned.data,
+          loaded: true,
+        })
+        return true
+      } catch (value) {
+        if (token !== generation.current || controller.signal.aborted)
+          return false
+        setState({
+          ...initial(scope, projectId),
+          stale: true,
+          error: boundedError(value),
+        })
         return false
-      if (
-        assigned.data.project_id !== projectId ||
-        !consistent(catalog.data.labels, assigned.data)
-      ) {
-        throw new Error('Project label observations disagree')
+      } finally {
+        if (read.current === controller) read.current = null
       }
-      setState({
-        ...initial(scope, projectId),
-        catalog: catalog.data.labels,
-        assignment: assigned.data,
-        loaded: true,
-      })
-      return true
-    } catch (value) {
-      if (token !== generation.current || controller.signal.aborted)
-        return false
-      setState({
-        ...initial(scope, projectId),
-        stale: true,
-        error: boundedError(value),
-      })
-      return false
-    } finally {
-      if (read.current === controller) read.current = null
-    }
-  }, [api, projectId, scope])
+    },
+    [api, projectId, scope],
+  )
 
   useEffect(() => {
     setNotice(null)
@@ -152,6 +164,11 @@ export function useProjectLabels(projectId: string) {
   }, [refresh, abortAll])
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (scope && !document.hidden && !operation.current && !read.current) {
+        void refresh(true)
+      }
+    }, 30_000)
     const visibilityChanged = () => {
       if (document.hidden) {
         abortAll()
@@ -167,6 +184,7 @@ export function useProjectLabels(projectId: string) {
     document.addEventListener('visibilitychange', visibilityChanged)
     window.addEventListener('focus', focused)
     return () => {
+      window.clearInterval(interval)
       document.removeEventListener('visibilitychange', visibilityChanged)
       window.removeEventListener('focus', focused)
     }

@@ -58,9 +58,73 @@ function withAuth(value: AuthContextValue, children: ReactNode) {
 
 afterEach(() => {
   if (originalHidden) Object.defineProperty(document, 'hidden', originalHidden)
+  else Reflect.deleteProperty(document, 'hidden')
 })
 
 describe('Project labels UI', () => {
+  it('reads another client’s label change while visible and pauses reads while hidden', async () => {
+    let catalog: NavigationLabelData[] = []
+    let assigned: ProjectLabelSetData = {
+      project_id: projectId,
+      labels: [],
+      revision: 0,
+      updated_at: null,
+    }
+    const get = vi.fn(async (path: string) =>
+      path === '/api/v1/project-labels'
+        ? envelope({ labels: catalog })
+        : envelope(assigned),
+    )
+    let tick!: () => void
+    const nativeInterval = window.setInterval.bind(window)
+    const interval = vi
+      .spyOn(window, 'setInterval')
+      .mockImplementation((callback, delay) => {
+        if (delay === 30_000 && typeof callback === 'function') {
+          tick = callback as () => void
+        }
+        return nativeInterval(callback, delay) as unknown as ReturnType<
+          typeof setInterval
+        >
+      })
+    render(
+      withAuth(
+        context(get, vi.fn()),
+        <ProjectLabelsPanel projectId={projectId} locale="en" />,
+      ),
+    )
+    expect(
+      await screen.findByText('No labels assigned to this Project.'),
+    ).toBeVisible()
+    try {
+      catalog = [initialLabel]
+      assigned = {
+        project_id: projectId,
+        labels: [initialLabel],
+        revision: 1,
+        updated_at: updatedAt,
+      }
+      await act(async () => {
+        tick()
+      })
+      expect(await screen.findByText('Design')).toBeVisible()
+      const readCount = get.mock.calls.length
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        value: true,
+      })
+      await act(async () => {
+        tick()
+      })
+      expect(get).toHaveBeenCalledTimes(readCount)
+    } finally {
+      interval.mockRestore()
+      if (originalHidden)
+        Object.defineProperty(document, 'hidden', originalHidden)
+      else Reflect.deleteProperty(document, 'hidden')
+    }
+  })
+
   it('waits for exact assignment ACK and fresh readback without optimistic checks', async () => {
     let current: ProjectLabelSetData = {
       project_id: projectId,
