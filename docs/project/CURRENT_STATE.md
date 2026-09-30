@@ -1,11 +1,40 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T16:20:30Z"
+verified_at_utc: "2026-09-30T17:39:23Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 Runtime-only initial key software
+
+591d86f4f4aca6d0c079962c1d930f4a77b19a85's dependency repair reached terminal
+exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending/failure.
+
+Current code adds the fixed local `python -I -m agentbox_runtime.waw_key_initialize`
+command under the exact non-root Runtime account. Disabled-profile first setup
+may create one private 32-byte key; enabled mode is read-only. The existing
+startup reader still never generates a missing key. Held no-follow parents,
+directory lock, exclusive private pending publication, fsync, mode/owner/link
+checks and parent revalidation fence creation. Explicit disabled-mode recovery
+handles only an unpublished prefix/full pending key or exact two-link pair.
+Missing enrolled keys, mismatched pending files, symlinks and unsafe provenance
+are rejected; no automatic rotation is introduced.
+
+Stdout is a closed schema plus public fingerprint, never private material.
+Installer HostOperations invokes only fixed runuser/Runtime/module/recover
+arguments from a fixed installed release, kills the child process group on
+failure/timeout, and rejects oversized/duplicate/extra/untrusted public output
+without printing its bytes. Fixture HostOperations cannot invent a production
+fingerprint. The complete manifest issuer still needs to call this operation;
+no apply/profile activation path is advertised as complete yet.
+
+92 focused Runtime key/application/installer Host regressions passed on private
+test data; Ruff passed and mypy passed 346 files. Main-agent self-review only.
+Actual Linux non-root command/installed-key evidence and exact-head CI remain
+pending this batch. No actual user-host key, Secret, profile or service was
+created/activated. The deployable first-version goal remains open.
 
 ## 2026-10-01 restart-safe enrollment inputs candidate
 

@@ -1,5 +1,18 @@
 # Current Authorized Action
 
+## 2026-10-01 connect Runtime public pin to complete manifest issuance
+
+591d86f passed terminal exact-head CI (24 SUCCESS/two prescribed SKIPPED).
+Runtime-only fixed initial-key command and installer public-output consumer
+are implemented in the current batch, with 92 regressions/346-file mypy.
+Synchronize this software, inspect its Linux checks, then connect the command
+to the root-owned full v2 manifest issuer using restart-safe physical root
+identity and one immutable helper release. Do not output/read private key bytes
+in Installer/API/Worker, silently rotate lost enrolled keys, or activate profiles
+without complete verified resources. Delegated root/workload creation, positive
+Codex Remote evidence, HTTPS Web and actual PC/mobile CLI/recovery flow remain
+first-version work. No new product version or later functionality is authorized.
+
 ## 2026-10-01 issue installable resources using the restart-safe profile
 
 d41974d passed the actual Linux FD check and complete Backend/native/install/

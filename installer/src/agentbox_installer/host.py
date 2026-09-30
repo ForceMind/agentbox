@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import grp
 import importlib.resources
+import json
 import os
 import pwd
 import re
@@ -547,6 +548,82 @@ class HostOperations:
                     raise HostMutationError("fixed WAW native action failed")
         except (OSError, subprocess.SubprocessError) as exc:
             raise HostMutationError("fixed WAW native action failed to execute") from exc
+
+    def initialize_waw_runtime_key(self, release: Path, *, recover: bool = False) -> str:
+        """Run the fixed non-root key owner; consume public metadata only."""
+
+        if (
+            not self.real_host
+            or type(recover) is not bool
+            or not release.is_absolute()
+            or release.parent != Path("/opt/agentbox/releases")
+            or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:(?:a|b|rc)[0-9]+)?", release.name) is None
+        ):
+            raise HostMutationError(
+                "fixed Runtime key initialization requires an installed release"
+            )
+        argv = (
+            "/usr/sbin/runuser",
+            "-u",
+            "agentbox-runtime",
+            "--",
+            str(release / "venv/bin/python"),
+            "-I",
+            "-m",
+            "agentbox_runtime.waw_key_initialize",
+            *(("--recover",) if recover else ()),
+        )
+        try:
+            with subprocess.Popen(
+                argv,
+                cwd=release,
+                env={
+                    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG": "C.UTF-8",
+                    "HOME": "/home/agentbox-runtime",
+                },
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            ) as process:
+                try:
+                    stdout, _stderr = process.communicate(timeout=30)
+                except BaseException:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=10)
+                    raise
+                if process.returncode != 0 or not isinstance(stdout, bytes) or len(stdout) > 512:
+                    raise HostMutationError("Runtime key initialization failed")
+
+            def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+                result: dict[str, object] = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate field")
+                    result[key] = value
+                return result
+
+            result = json.loads(stdout.decode("ascii"), object_pairs_hook=closed_object)
+            if (
+                not isinstance(result, dict)
+                or set(result) != {"schema_version", "runtime_attestation_x25519_fingerprint"}
+                or result["schema_version"] != "agentbox-runtime-key-public.v1"
+            ):
+                raise ValueError("invalid public key record")
+            fingerprint = result["runtime_attestation_x25519_fingerprint"]
+            if (
+                type(fingerprint) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+                or fingerprint == "0" * 64
+            ):
+                raise ValueError("invalid public key fingerprint")
+            return fingerprint
+        except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
+            raise HostMutationError(
+                "Runtime key initialization public record is unavailable"
+            ) from None
 
     def install_packages(self, family: PackageFamily, packages: tuple[str, ...]) -> None:
         if not self.real_host or not packages:
