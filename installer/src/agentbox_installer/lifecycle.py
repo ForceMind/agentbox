@@ -48,6 +48,7 @@ from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublication,
     WAWEnrollmentPublisher,
 )
+from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
 
 CORE_UNIT_NAMES = (
     "agentbox-api.service",
@@ -147,6 +148,60 @@ class AgentBoxInstaller:
     def __init__(self, layout: InstallLayout, host: HostOperations) -> None:
         self.layout = layout
         self.host = host
+
+    def prepare_waw_manifests(
+        self, *, recover: bool = False, plan: bool = False
+    ) -> WAWManifestPublication:
+        """Prepare the complete non-secret bundle; profiles remain disabled."""
+
+        self.host.require_root()
+        if type(recover) is not bool or type(plan) is not bool:
+            raise TypeError("manifest preparation flags must be bool")
+        if plan:
+            return self._prepare_waw_manifests_locked(recover=recover, plan=True)
+        with self._lifecycle_lock():
+            return self._prepare_waw_manifests_locked(recover=recover, plan=False)
+
+    def _prepare_waw_manifests_locked(self, *, recover: bool, plan: bool) -> WAWManifestPublication:
+        if self.installation_state() != "installed":
+            raise InstallError("manifest preparation requires a completed installation")
+        version = self.current_version()
+        if version is None:
+            raise InstallError("installed release is unavailable")
+        for path, group, expected in (
+            ("/etc/agentbox/waw-api-profile.v1.json", "agentbox", _WAW_API_DISABLED_PROFILE),
+            (
+                "/var/lib/agentbox-waw/runtime-profile.v1.json",
+                "agentbox-runtime",
+                _WAW_RUNTIME_DISABLED_PROFILE,
+            ),
+        ):
+            self._validate_fixed_waw_file(
+                self.layout.map(path), owner="root", group=group, mode=0o440, allowed=(expected,)
+            )
+        runtime_uid, runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+        if runtime_uid == 0 or runtime_gid == 0:
+            raise InstallError("manifest Runtime identity is invalid")
+        owner_uid = 0 if self.host.real_host else os.geteuid()
+        root_gid = 0 if self.host.real_host else os.getegid()
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=owner_uid,
+            root_gid=root_gid,
+            runtime_uid=runtime_uid if self.host.real_host else os.geteuid(),
+            runtime_gid=runtime_gid if self.host.real_host else os.getegid(),
+        )
+        observed = issuer.observe()
+        if plan:
+            return WAWManifestPublication(
+                "resources_validated_key_not_initialized", "not_issued", "not_issued"
+            )
+        fingerprint = self.host.initialize_waw_runtime_key(
+            self.layout.release(version), recover=recover
+        )
+        issuer.revalidate()
+        return issuer.publish(observed, fingerprint, recover=recover)
 
     def enroll_waw_vendors(
         self,

@@ -67,6 +67,13 @@ RELEASE_NATIVE_BUILD_SCRIPTS = (
 RELEASE_WAW_REHEARSAL_FILES = (
     ("tests/support/waw_rc8_synthetic.py", "rehearsal/waw_rc8_synthetic.py"),
 )
+RELEASE_WAW_POLICY_FILES = (
+    "tmux.conf",
+    "sandbox-policies.v1.json",
+    "claude/managed-settings.json",
+    "codex/requirements.toml",
+    "codex/managed_config.toml",
+)
 PLATFORM_SUPPORT = (
     {
         "distribution": "OpenCloudOS",
@@ -495,6 +502,16 @@ def build_release_artifact(
             target = release / target_name
             target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             shutil.copyfile(source_path, target)
+            os.chmod(target, 0o644)
+        for name in RELEASE_WAW_POLICY_FILES:
+            policy = (
+                source / "packages/agentbox-runtime/src/agentbox_runtime/assets/waw-inert" / name
+            )
+            if policy.is_symlink() or not policy.is_file():
+                raise BuildError("fixed WAW policy template is unavailable")
+            target = release / "waw/templates" / name
+            target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+            shutil.copyfile(policy, target)
             os.chmod(target, 0o644)
         shutil.copyfile(source / "alembic.ini", release / "alembic.ini")
         os.chmod(release / "alembic.ini", 0o644)

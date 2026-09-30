@@ -1,13 +1,48 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T17:39:23Z"
+verified_at_utc: "2026-09-30T18:25:41Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 complete installation-manifest preparation candidate
+
+a417addf315ed9f1caf037d4ab18af351ef6961c reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED, no failure/pending. Current source adds
+prepare-waw-manifests --plan/--recover/--json and connects the Runtime-only
+key public pin to all 13 cross-verified manifest records. Release building
+copies the exact five inert policy templates into the verified release;
+preparation pins their bytes without claiming vendor/host policy qualification.
+
+The issuer observes the physical ProjectRoot filesystem/inode, exact-six native
+ELF identities and one immutable helper release. Held no-follow provenance,
+source/parent revalidation, create-only publication, exact full-bundle checking,
+explicit matching-prefix/link-pair recovery and rotation refusal preserve the
+disabled-profile boundary. Fresh installation identity is derived in a distinct
+domain from the unique Runtime public fingerprint, making unpublished recovery
+deterministic; existing enrolled identity is preserved and drift is refused.
+Plan does not initialize a key or write manifests. Private key bytes do not
+enter this issuer or the Installer's public-output consumer.
+
+33 manifest/preparation/enrollment/build tests passed with explicit binary/key
+fixtures; Ruff and 348-file mypy passed. Main-agent self-review only. This is
+actual software wiring, not a real user-host preparation or activated session.
+Linux packaging/whole-source CI is pending this candidate. Delegated root and
+workload creation, activation, positive Codex Remote evidence, HTTPS Web and
+actual PC/mobile CLI/recovery acceptance remain open. No product version/tag,
+public install command or user-host activation occurred.
+
 ## 2026-10-01 Runtime-only initial key software
+
+Latest synchronized head is a417addf315ed9f1caf037d4ab18af351ef6961c on
+Draft #125, exact remote read-back confirmed. Initial matrix snapshot has
+15 SUCCESS/no failure and five pending checks. 1db8428's Backend failure was
+Black after a final test-import change; a417add corrects that one test layout
+and verifies idempotent Black formatting for all five changed Python files.
+Do not label the new head fully green before terminal CI. This post-push
+snapshot remains local for the next code batch, avoiding a docs-only CI restart.
 
 591d86f4f4aca6d0c079962c1d930f4a77b19a85's dependency repair reached terminal
 exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending/failure.

@@ -43,6 +43,10 @@ def create_parser() -> argparse.ArgumentParser:
         help="reserved; destructive purge is intentionally unavailable",
     )
     commands.add_parser("doctor").add_argument("--json", action="store_true")
+    preparation = commands.add_parser("prepare-waw-manifests")
+    preparation.add_argument("--plan", action="store_true")
+    preparation.add_argument("--recover", action="store_true")
+    preparation.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -136,6 +140,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         layout, host = _layout(args.fixture_root)
         installer = AgentBoxInstaller(layout, host)
         json_output = bool(getattr(args, "json", False))
+        if args.command == "prepare-waw-manifests":
+            _print(
+                asdict(installer.prepare_waw_manifests(recover=args.recover, plan=args.plan)),
+                json_output=json_output,
+            )
+            return 0
         if args.command == "enroll-waw-vendors":
             enrollment_result = installer.enroll_waw_vendors(
                 claude_version=args.claude_version,

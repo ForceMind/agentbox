@@ -1,6 +1,23 @@
 # Current Authorized Action
 
+## 2026-10-01 validate complete issuer then activate bounded resources
+
+The key batch a417add has terminal 24 SUCCESS/two prescribed SKIPPED. Complete
+manifest preparation is now wired to its fixed Runtime public pin via the
+installer command, with strict installed-resource observations, all 13 records,
+explicit prefix/link recovery, plan-without-writes and disabled profiles.
+33 focused tests/348-file mypy/Ruff pass. Synchronize the same Draft/version,
+inspect Linux packaging/Backend evidence, then implement delegated root/workload
+allocation and verified policy/socket/profile activation. Keep vendor login,
+positive Codex Remote state, HTTPS trust/client flow and real recovery acceptance
+as required first-version work; never treat prepared manifests as usable release.
+
 ## 2026-10-01 connect Runtime public pin to complete manifest issuance
+
+Key initialization software and formatting correction are synchronized as
+a417addf315ed9f1caf037d4ab18af351ef6961c. Its five pending CI jobs are live;
+finish exact-head revalidation without restarting unchanged runs. Then wire
+the existing HostOperations public-pin result into the complete issuer.
 
 591d86f passed terminal exact-head CI (24 SUCCESS/two prescribed SKIPPED).
 Runtime-only fixed initial-key command and installer public-output consumer

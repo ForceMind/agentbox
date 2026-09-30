@@ -2,6 +2,32 @@
 
 Status: Phase 10 MVP Release Candidate runbook
 
+## WAW installation-resource preparation candidate
+
+The current development candidate adds a fixed preparation command. It requires
+a completed installation, disabled API/Runtime WAW profiles, root-owned native
+Linux x86_64 Claude/Codex at the supported system paths, compiled helpers in
+the active immutable release, and its bundled policy templates.
+
+```bash
+agentbox-install prepare-waw-manifests --plan --json
+agentbox-install prepare-waw-manifests --json
+```
+
+`--plan` validates non-secret installed resources without initializing a key.
+The preparation action runs the fixed Runtime account's local key initializer,
+receives only its public fingerprint, and creates the complete cross-pinned
+public bundle plus Runtime-private manifest. It preserves disabled profiles and
+does not activate a service, log in a vendor, qualify its policy templates, or
+establish a usable Workspace. Continue with the separate vendor-enrollment
+command only after preparation succeeds. Source changes or a missing enrolled
+key require explicit operator recovery/rotation; they are never overwritten.
+
+After interrupted preparation, `--recover` resumes only matching manifest
+bytes/prefixes under verified ownership/modes. Unrelated files are preserved.
+This candidate is not the final one-command deployable release; activation,
+HTTPS Web and actual CLI/client/recovery qualification remain pending.
+
 ## Safety boundary
 
 The installer owns only AgentBox users, groups, FHS paths, release files, unit
