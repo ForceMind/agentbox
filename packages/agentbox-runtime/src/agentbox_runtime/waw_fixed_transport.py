@@ -2365,7 +2365,9 @@ def _fd_mount_id(descriptor: int) -> str:
             "Descriptor mount identity is unavailable",
             category="unavailable",
         ) from exc
-    matches = [line[7:] for line in raw.splitlines() if line.startswith("mnt_id:\t")]
+    matches = [
+        line.removeprefix("mnt_id:\t") for line in raw.splitlines() if line.startswith("mnt_id:\t")
+    ]
     if len(matches) != 1 or not matches[0].isdecimal():
         raise RuntimeOperationError(
             "RUNTIME_UNAVAILABLE", "Descriptor mount identity is invalid", category="unavailable"

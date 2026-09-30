@@ -2,6 +2,14 @@
 
 ## 2026-10-01 issue installable resources using the restart-safe profile
 
+3b00cb4's real scoped PID-1 probe passed twice, with equal physical identity
+and equal/reused namespace/mount numbers. Backend failed the real FD test on
+an existing mnt_id parser tab-offset bug, corrected in the current follow-up.
+One existing wire fixture also failed; bounded numeric diagnostics are added
+without relaxing its 5ms budget/assertions. Synchronize this correction and
+inspect exact-head Linux results. Continue the issuer/key/delegation/client
+work below once these direct startup checks are established.
+
 The synchronized 530fdf5 startup correction passed all 24 checks/two prescribed
 skips. Current uncommitted code fixes install-time namespace IDs and helper
 current-symlink paths, as recorded in ADR 0011. Commit this correction on the

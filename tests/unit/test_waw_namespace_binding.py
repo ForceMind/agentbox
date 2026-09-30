@@ -194,3 +194,24 @@ def test_namespace_project_verifies_real_linux_fd_and_filesystem(tmp_path: Path)
         transport._verify_project_root_descriptor(descriptor, manifest)
     finally:
         os.close(descriptor)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("pos:\t0\nflags:\t02100000\nmnt_id:\t402\nino:\t1\n", "402"),
+        ("mnt_id:\t42\nmnt_id:\t43\n", None),
+        ("mnt_id:\t\n", None),
+        ("mnt_id:\t 42\n", None),
+        ("mnt_id:\tabc\n", None),
+    ],
+)
+def test_fd_mount_id_parses_kernel_separator_without_including_tab(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: str | None
+) -> None:
+    monkeypatch.setattr(Path, "read_text", lambda *_args, **_kwargs: raw)
+    if expected is None:
+        with pytest.raises(RuntimeOperationError):
+            transport._fd_mount_id(9)
+    else:
+        assert transport._fd_mount_id(9) == expected

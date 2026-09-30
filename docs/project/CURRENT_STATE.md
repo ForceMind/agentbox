@@ -9,6 +9,23 @@ repository: "ForceMind/agentbox"
 
 ## 2026-10-01 restart-safe enrollment inputs candidate
 
+3b00cb4ba5bb93e8e2421a4e9da288326cf21143 reached terminal CI: 21 SUCCESS,
+two prescribed SKIPPED and three Backend matrix failures. Deployment's actual
+two-instance PID-1 probe passed (36743842988/job 109984874332): physical fsid/
+inode stayed equal, scoped RW/global RO/outside denial passed. Both namespace
+and mount numbers were equal/reused in this sample; no changed-number or reboot
+proof is claimed. The real Linux FD test exposed a pre-existing off-by-one
+fdinfo parser: line[7:] retained the tab in mnt_id, rejecting valid decimal IDs.
+The correction removes the exact separator and keeps duplicate/invalid rejection.
+
+The 3.11 matrix also failed one existing wire fixture with PROTOCOL_INVALID;
+cause is not established. Failure-only fixture diagnostics now include bounded
+numeric type/sequence/CPU duration; protocol assertions and the 5ms deadline
+remain unchanged. Local wire/namespace/transport regression passed 356 cases,
+ten Linux skips; Ruff and 343-file mypy passed. This does not turn 3b00cb4 into
+a green head or prove the unrelated wire issue resolved. Inspect the next
+exact-head real FD and full protocol/Backend results before readiness claims.
+
 530fdf51d517da7245eb1cd253c5bb4368ec18f3 is synchronized on Draft #125 and
 reached terminal exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending
 or failing checks. It is still not a deployable release.
