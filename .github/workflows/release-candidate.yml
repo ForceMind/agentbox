@@ -81,7 +81,13 @@ jobs:
         run: pnpm build
       - name: Verify actual installer native-helper build and interrupted retry
         run: |
-          sudo "$(command -v python)" -m pytest -q -p no:cacheprovider \
+          native_fixture_dir="$(mktemp -d "$RUNNER_TEMP/agentbox-native-root.XXXXXX")"
+          sudo env AGENTBOX_ENV=test PYTHONDONTWRITEBYTECODE=1 \
+            AGENTBOX_DATA_DIR="$native_fixture_dir/data" \
+            AGENTBOX_TOML_FILE="$native_fixture_dir/config.toml" \
+            AGENTBOX_DATABASE_URL=sqlite+pysqlite:///:memory: \
+            "$(command -v python)" -m pytest -q -p no:cacheprovider \
+            --basetemp "$native_fixture_dir/pytest" \
             tests/unit/test_installer_waw_native.py -k linux
       - name: Verify version and documentation
         run: |

@@ -6,17 +6,16 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import pytest
 from agentbox_installer.artifact import ArtifactError, verify_release
 from agentbox_installer.build import RELEASE_NATIVE_BUILD_SCRIPTS, RELEASE_NATIVE_SOURCE_FILES
+from agentbox_installer.host import HostMutationError, HostOperations
 from agentbox_installer.waw_native_install import (
     NATIVE_HELPERS,
     WAWNativeInstallError,
-    _run_command,
     prepare_waw_helpers,
     verify_installed_waw_helpers,
 )
@@ -158,6 +157,9 @@ def test_native_build_timeout_kills_the_child_process_group(
         "import subprocess,sys,time; "
         f"subprocess.Popen([sys.executable,'-I','-c',{child!r}]); time.sleep(30)"
     )
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "build-waw-native.py").write_text(parent, encoding="utf-8")
     original = subprocess.Popen
 
     def spawn(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
@@ -182,9 +184,9 @@ def test_native_build_timeout_kills_the_child_process_group(
         monkeypatch.setattr(process, "wait", bounded_wait)
         return process
 
-    monkeypatch.setattr("agentbox_installer.waw_native_install.subprocess.Popen", spawn)
-    with pytest.raises(subprocess.TimeoutExpired):
-        _run_command((sys.executable, "-I", "-c", parent), tmp_path, {"LANG": "C.UTF-8"})
+    monkeypatch.setattr("agentbox_installer.host.subprocess.Popen", spawn)
+    with pytest.raises(HostMutationError, match="failed to execute"):
+        HostOperations._run_waw_build_command(tmp_path, tmp_path / "output", check=False)
     time.sleep(0.6)
     assert not completed.exists(), "compiler child survived cancellation"
 
@@ -218,9 +220,9 @@ def test_linux_failed_native_build_can_retry_without_partial_publication(
     with monkeypatch.context() as scoped:
 
         def fail(*_args: object, **_kwargs: object) -> None:
-            raise subprocess.CalledProcessError(1, "fixed compiler")
+            raise HostMutationError("fixed compiler failed")
 
-        scoped.setattr("agentbox_installer.waw_native_install._run_command", fail)
+        scoped.setattr(HostOperations, "_run_waw_build_command", fail)
         with pytest.raises(WAWNativeInstallError, match="before activation"):
             prepare_waw_helpers(release)
     assert not (release / "libexec").exists()

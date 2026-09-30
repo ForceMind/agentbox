@@ -7,6 +7,26 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## 2026-09-30 deployment Draft CI feedback
+
+PR #125 is Draft/Open at first checkpoint
+c05cc3d56410003dde06de42bd1793d2c3f62762. Version remains rc30; no release
+or deployment is claimed. Release run 36691377561 / job 109809151521 passed
+the actual Linux/root native-helper compilation and interrupted-retry step,
+and the artifact-only offline install smoke. The complete run failed:
+repository-boundaries rejected process execution in the new native module,
+and root pytest's default development configuration polluted the checkout,
+causing a later non-root configuration read to fail.
+
+The follow-up moves both fixed build/check actions and process-group cleanup
+into the already allowed Installer HostOperations, without expanding the
+subprocess whitelist. Root CI configuration/data/pytest state now lives in a
+dedicated runner temporary fixture, with bytecode writes disabled. The local
+source-boundary check passes. Follow-up native/host/publication tests passed
+37 cases with two Linux/root skips; full mypy passed 336 files and Ruff passed.
+These repairs require a fresh exact-head CI result. PR stays Draft while the
+complete deployment flow, staged recovery and Web trust implementation remain.
+
 ## 2026-09-30 deployable-version work in progress
 
 Owner now requests a server-side one-command installer that they execute

@@ -1,5 +1,15 @@
 # Current Authorized Action
 
+## 2026-09-30 deployment Draft CI repair
+
+Continue PR #125, keeping the same version and Draft state. First checkpoint
+c05cc3d passed actual Linux/root helper build/retry but failed the source
+boundary and later root-polluted configuration read. Current repairs relocate
+fixed execution into HostOperations and isolate root CI data/config/bytecode.
+Local boundary, 37 focused cases (two Linux skips), 336-file mypy and Ruff pass.
+Push the repaired head and inspect its Linux CI. Do not rerun an unchanged
+failed head or call a partial installer a deployable version.
+
 ## 2026-09-30 Deliver the Owner's self-deployed PC/mobile version
 
 Use DEPLOYABLE_RELEASE_PLAN. Owner will run the final server installer

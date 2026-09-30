@@ -11,13 +11,9 @@ import hashlib
 import json
 import os
 import platform
-import signal
 import stat
-import subprocess
-import sys
 import tempfile
 from collections.abc import Mapping
-from contextlib import suppress
 from pathlib import Path
 
 NATIVE_HELPERS = (
@@ -32,29 +28,6 @@ _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 
 class WAWNativeInstallError(RuntimeError):
     pass
-
-
-def _run_command(argv: tuple[str, ...], release: Path, environment: dict[str, str]) -> None:
-    # Killing only the Python build-script parent would leave a root compiler
-    # writing into a staging directory being removed after timeout/cancel.
-    with subprocess.Popen(
-        argv,
-        cwd=release,
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    ) as process:
-        try:
-            code = process.wait(timeout=180)
-        except BaseException:
-            with suppress(ProcessLookupError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=10)
-            raise
-        if code != 0:
-            raise subprocess.CalledProcessError(code, argv[0])
 
 
 def _canonical(value: object) -> bytes:
@@ -163,6 +136,7 @@ def verify_installed_waw_helpers(release: Path, files: Mapping[str, str]) -> set
 def prepare_waw_helpers(release: Path) -> None:
     """Compile fixed sources and commit one complete directory before activation."""
     from agentbox_installer.artifact import verify_release
+    from agentbox_installer.host import HostMutationError, HostOperations
 
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise WAWNativeInstallError("WAW helper installation requires Linux x86_64")
@@ -196,32 +170,11 @@ def prepare_waw_helpers(release: Path) -> None:
             raise WAWNativeInstallError(
                 "install the fixed gcc/binutils dependencies first"
             ) from exc
-    environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"}
     try:
         with tempfile.TemporaryDirectory(prefix=".agentbox-waw-build-", dir=release.parent) as temp:
             output = Path(temp) / "libexec"
-            for argv in (
-                (
-                    sys.executable,
-                    "-I",
-                    str(release / "scripts/build-waw-native.py"),
-                    "--cc",
-                    "/usr/bin/cc",
-                    "--output",
-                    str(output),
-                ),
-                (
-                    sys.executable,
-                    "-I",
-                    str(release / "scripts/check-waw-native.py"),
-                    "--cc",
-                    "/usr/bin/cc",
-                    "--no-build",
-                    "--binary-dir",
-                    str(output),
-                ),
-            ):
-                _run_command(argv, release, environment)
+            HostOperations._run_waw_build_command(release, output, check=False)
+            HostOperations._run_waw_build_command(release, output, check=True)
             if {path.name for path in output.iterdir()} != set(NATIVE_HELPERS):
                 raise WAWNativeInstallError("native compiler output is not exact")
             binaries = {}
@@ -264,7 +217,7 @@ def prepare_waw_helpers(release: Path) -> None:
             finally:
                 os.close(parent_fd)
             verify_release(release, allow_generated_venv=True, allow_generated_native=True)
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, HostMutationError) as exc:
         raise WAWNativeInstallError(
             "WAW helper build/publication failed before activation"
         ) from exc

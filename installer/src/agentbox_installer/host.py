@@ -8,6 +8,7 @@ import os
 import pwd
 import re
 import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -489,6 +490,44 @@ class HostOperations:
             prepare_waw_helpers(release)
         except WAWNativeInstallError as exc:
             raise HostMutationError("WAW native helpers could not be prepared") from exc
+
+    @staticmethod
+    def _run_waw_build_command(release: Path, output: Path, *, check: bool) -> None:
+        if type(check) is not bool:
+            raise HostMutationError("fixed WAW native action is invalid")
+        script = "check-waw-native.py" if check else "build-waw-native.py"
+        arguments = ("--no-build", "--binary-dir") if check else ("--output",)
+        argv = (
+            sys.executable,
+            "-I",
+            str(release / "scripts" / script),
+            "--cc",
+            "/usr/bin/cc",
+            *arguments,
+            str(output),
+        )
+        try:
+            # The process group owns compiler children as well as the script.
+            with subprocess.Popen(
+                argv,
+                cwd=release,
+                env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            ) as process:
+                try:
+                    code = process.wait(timeout=180)
+                except BaseException:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=10)
+                    raise
+                if code != 0:
+                    raise HostMutationError("fixed WAW native action failed")
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise HostMutationError("fixed WAW native action failed to execute") from exc
 
     def install_packages(self, family: PackageFamily, packages: tuple[str, ...]) -> None:
         if not self.real_host or not packages:
