@@ -2,6 +2,11 @@
 
 ## 2026-09-30 finish installation resources for the fixed production entry
 
+The b966480 Release Candidate audit found three new urllib3 2.7.0 advisories.
+The follow-up pins official 2.8.0 plus independently verified PyPI wheel hash,
+without bypassing audit. Finish the resulting exact-head checks, then continue
+the installer resources below; dependency repair is part of this same version.
+
 The filesystem-v2 _main candidate now composes the existing application using
 fixed identities/resources, fresh fail-closed conflict probes and signal cleanup.
 Focused application and Runtime regressions pass; the previous exact head's

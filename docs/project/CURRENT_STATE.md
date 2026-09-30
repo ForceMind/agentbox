@@ -9,6 +9,20 @@ repository: "ForceMind/agentbox"
 
 ## 2026-09-30 fixed production entry candidate
 
+Follow-up: b966480's native, four installer, frontend and E2E checks passed.
+Release Candidate failed its unchanged pip-audit gate: build-only urllib3
+2.7.0 now reports CVE-2026-97687/97688/97689. The official 2.8.0 release fixes
+the three advisories; only its build-lock entry is updated, with downloaded
+wheel SHA256 matched to PyPI JSON. Python >=3.10 covers this project's
+3.11–3.13 range. No advisory is ignored and no runtime dependency is added.
+Complete exact-head CI remains required before any merge/readiness claim.
+Its Backend matrix also identified the old runtime_rpc test that required the
+unimplemented-entry exception (3.11: 4485 passed, 83 skipped, one failed).
+The replacement checks actual enabled-profile routing and failure propagation,
+while preserving the assertion that no standalone legacy server is constructed.
+The updated entry/RPC tests pass locally; this does not convert the old failed
+head into a full CI pass.
+
 Current Draft #125 continues from 94b92d4; fetched origin/main remains
 19f8c5125d5a831e3db2d9724a1cc7985b091294. 94b92d4's native and installer
 checks passed, but all three Backend quality jobs failed Black on one
