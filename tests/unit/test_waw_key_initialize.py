@@ -199,9 +199,7 @@ def test_fixed_command_selects_creation_only_for_disabled_runtime(
     from agentbox_runtime.waw_runtime_profile import WAWRuntimeMode
 
     monkeypatch.setattr(platform, "system", lambda: "Linux")
-    monkeypatch.setattr(
-        pwd, "getpwnam", lambda _name: SimpleNamespace(pw_uid=19002, pw_gid=19002)
-    )
+    monkeypatch.setattr(pwd, "getpwnam", lambda _name: SimpleNamespace(pw_uid=19002, pw_gid=19002))
     monkeypatch.setattr(grp, "getgrnam", lambda _name: SimpleNamespace(gr_gid=19002))
     monkeypatch.setattr(
         command,
