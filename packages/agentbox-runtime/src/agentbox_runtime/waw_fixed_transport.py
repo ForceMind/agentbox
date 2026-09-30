@@ -18,6 +18,7 @@ import math
 import os
 import platform
 import pty
+import re
 import select
 import signal
 import socket
@@ -289,11 +290,14 @@ class LinuxCgroupControlHandle:
         authority: WAWVerifiedExecutionAuthority,
         identity: FixedProcessIdentity,
         delegate_root: int,
+        *,
+        create_workload: bool = False,
     ) -> LinuxCgroupControlHandle:
         if (
             platform.system() != "Linux"
             or type(authority) is not WAWVerifiedExecutionAuthority
             or type(identity) is not FixedProcessIdentity
+            or type(create_workload) is not bool
             or not authority.authorizes(identity)
         ):
             raise RuntimeOperationError(
@@ -304,6 +308,8 @@ class LinuxCgroupControlHandle:
         _role_fd(delegate_root, "directory")
         mount_identity = _verify_delegate_root(delegate_root, authority)
         workspace_name = f"ws-{identity.workspace_hash}-g{identity.generation}"
+        if create_workload:
+            _create_bound_workload_cgroup(delegate_root, workspace_name, authority)
         workspace = _open_relative_directory(
             delegate_root,
             workspace_name,
@@ -2193,6 +2199,148 @@ def _validate_delegated_workload(
         )
 
 
+def _write_cgroup_setup(directory_fd: int, name: str, payload: bytes) -> None:
+    """Closed setup writes, separate from freeze/kill lifecycle actions."""
+    if name not in {
+        "cgroup.subtree_control",
+        "pids.max",
+        "memory.max",
+        "memory.swap.max",
+        "cpu.max",
+    }:
+        raise ValueError("unsupported cgroup setup field")
+    descriptor = os.open(name, os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        if os.write(descriptor, payload) != len(payload):
+            raise OSError(errno.EIO, "short cgroup setup write")
+    finally:
+        _close_fd(descriptor)
+
+
+def _enable_cgroup_controllers(directory_fd: int) -> None:
+    if (
+        _read_cgroup_file(directory_fd, "cgroup.type").strip() != "domain"
+        or _read_cgroup_file(directory_fd, "cgroup.procs").strip()
+    ):
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "Cgroup setup parent is not an empty domain",
+            category="unavailable",
+        )
+    if not {"cpu", "memory", "pids"}.issubset(
+        _read_cgroup_file(directory_fd, "cgroup.controllers").split()
+    ):
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE", "Delegated controllers are unavailable", category="unavailable"
+        )
+    _write_cgroup_setup(directory_fd, "cgroup.subtree_control", b"+cpu +memory +pids\n")
+    if not {"cpu", "memory", "pids"}.issubset(
+        _read_cgroup_file(directory_fd, "cgroup.subtree_control").split()
+    ):
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "Delegated controller activation is unconfirmed",
+            category="unavailable",
+        )
+
+
+def _create_bound_workload_cgroup(
+    delegate_root: int, workspace_name: str, authority: WAWVerifiedExecutionAuthority
+) -> None:
+    if re.fullmatch(r"ws-[0-9a-f]{64}-g[1-9][0-9]{0,19}", workspace_name) is None:
+        raise RuntimeOperationError(
+            "WAW_BINDING_INVALID",
+            "Fixed workspace cgroup identity is invalid",
+            category="validation",
+        )
+    _enable_cgroup_controllers(delegate_root)
+    try:
+        os.mkdir(workspace_name, 0o755, dir_fd=delegate_root)
+    except FileExistsError:
+        raise RuntimeOperationError(
+            "RECONCILIATION_REQUIRED", "Workspace cgroup already exists", category="conflict"
+        ) from None
+    workspace = -1
+    workload = -1
+    workload_created = False
+    try:
+        workspace = _open_relative_directory(
+            delegate_root, workspace_name, path_only=False, expected_uid=os.geteuid()
+        )
+        _enable_cgroup_controllers(workspace)
+        os.mkdir("workload", 0o755, dir_fd=workspace)
+        workload_created = True
+        workload = _open_relative_directory(
+            workspace, "workload", path_only=False, expected_uid=os.geteuid()
+        )
+        manifest = authority._manifest.cgroup
+        quota = manifest.cpu_quota_percent * manifest.cpu_quota_period_usec // 100
+        values = {
+            "pids.max": str(manifest.tasks_max),
+            "memory.max": str(manifest.memory_max),
+            "memory.swap.max": str(manifest.memory_swap_max),
+            "cpu.max": f"{quota} {manifest.cpu_quota_period_usec}",
+        }
+        for name, value in values.items():
+            _write_cgroup_setup(workload, name, (value + "\n").encode("ascii"))
+        _validate_delegated_workload(
+            workload, authority, _verify_delegate_root(delegate_root, authority)
+        )
+    except BaseException:
+        if workload >= 0:
+            _close_fd(workload)
+            workload = -1
+        if workload_created and workspace >= 0:
+            os.rmdir("workload", dir_fd=workspace)
+        os.rmdir(workspace_name, dir_fd=delegate_root)
+        raise
+    finally:
+        _close_fd(workload)
+        _close_fd(workspace)
+
+
+def _open_scoped_workspace_root(authority: WAWVerifiedExecutionAuthority) -> int:
+    manifest = authority._manifest.cgroup
+    if manifest.protect_control_groups != SCOPED_CGROUP_PROTECTION_V1 or os.geteuid() == 0:
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "Scoped Runtime cgroup policy is required",
+            category="unavailable",
+        )
+    service = os.open(
+        SCOPED_CGROUP_SERVICE_ROOT_V1, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    try:
+        facts = os.fstat(service)
+        device = f"{os.major(facts.st_dev)}:{os.minor(facts.st_dev)}"
+        if (
+            facts.st_uid != os.geteuid()
+            or facts.st_gid != os.getegid()
+            or facts.st_mode & 0o022
+            or not _mountinfo_matches_cgroup(_fd_mount_id(service), manifest, device)
+        ):
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Scoped service delegation is unverified",
+                category="unavailable",
+            )
+        _enable_cgroup_controllers(service)
+        with contextlib.suppress(FileExistsError):
+            os.mkdir(manifest.delegate_subgroup, 0o755, dir_fd=service)
+        root = _open_relative_directory(
+            service, manifest.delegate_subgroup, path_only=False, expected_uid=os.geteuid()
+        )
+        try:
+            _verify_delegate_root(root, authority)
+            _enable_cgroup_controllers(root)
+        except BaseException:
+            _close_fd(root)
+            raise
+        return root
+    finally:
+        _close_fd(service)
+
+
 def _verify_project_root_descriptor(descriptor: int, manifest: ProjectRootManifest) -> None:
     _verify_installed_directory(
         descriptor,
@@ -2557,6 +2705,7 @@ def _role_fd(value: object, role: str) -> int:
 def _read_cgroup_file(directory_fd: int, name: str) -> str:
     if name not in {
         "cgroup.controllers",
+        "cgroup.subtree_control",
         "cgroup.events",
         "cgroup.procs",
         "cgroup.type",

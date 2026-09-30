@@ -1,13 +1,45 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T18:25:41Z"
+verified_at_utc: "2026-09-30T19:21:04Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 fixed delegated cgroup creation candidate
+
+fa2ae6e3c25f1e22923bb7aa0401e392c67654cf reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED, no pending/failure. Complete manifest
+preparation remains disabled-mode software, not an activated deployment.
+
+Current Runtime resources create/open only the scoped service workspace root
+after exact non-root owner/group/mode and current RW-service/RO-global mount
+verification. Empty domain/controllers are required and enabled controllers
+are positively read back. The production provider requests create-only
+Workspace/generation workload setup; identities are fixed from the authorized
+tuple, limits are from the closed verified policy and are read back before
+the existing cgroup handle is returned. Existing generations require
+reconciliation; they are never adopted, killed or recursively removed.
+Failure cleanup targets only newly created directories. Legacy private
+resource-root opening and lifecycle freeze/kill write allowlists remain separate.
+
+101 focused setup/resources/provider/transport tests passed; nine Linux cases
+were skipped on macOS. Ruff passed; mypy passed 349 files. Setup fixtures
+validate failure/control boundaries, not actual kernel controller creation.
+The existing PID-1 probe proves the kernel hierarchy but does not directly
+exercise this new production helper; real Linux integration remains required.
+Main-agent self-review only. Activation, durable cgroup/workspace attestation
+composition and cleanup/restart recovery, positive Codex Remote evidence,
+HTTPS Web and actual PC/mobile CLI flows remain unfinished first-version work.
+No product-version bump or actual user-host operation occurred.
+
 ## 2026-10-01 complete installation-manifest preparation candidate
+
+Latest synchronized head: fa2ae6e3c25f1e22923bb7aa0401e392c67654cf on Draft
+#125, exact remote read-back confirmed. Initial CI has 15 SUCCESS/no failure
+and five pending checks. This post-push snapshot stays local for the next
+code batch; it does not restart identical CI for documentation alone.
 
 a417addf315ed9f1caf037d4ab18af351ef6961c reached terminal exact-head CI:
 24 SUCCESS/two prescribed SKIPPED, no failure/pending. Current source adds

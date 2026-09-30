@@ -1,6 +1,23 @@
 # Current Authorized Action
 
+## 2026-10-01 complete delegated lifecycle and activation
+
+Manifest preparation fa2ae6e passed terminal CI (24 SUCCESS/two prescribed
+skips). Current code wires scoped root/workload creation to the actual Runtime
+resource/provider path, with owner/mount/domain/controller/limit guards and
+101 focused passes/349-file mypy. Synchronize this batch and obtain actual
+Linux helper evidence; ordinary directory fixtures do not prove cgroupfs.
+Then compose durable cgroup/workspace attestation and cleanup/restart behavior,
+and fixed installed policy/socket/profile activation. Missing attestation ports
+in the production builder must not be treated as recovery-ready defaults.
+Continue positive Codex Remote and HTTPS Web/client acceptance within the same
+first version; do not publish a deployable claim from internal green checks.
+
 ## 2026-10-01 validate complete issuer then activate bounded resources
+
+Complete issuer is synchronized as fa2ae6e3c25f1e22923bb7aa0401e392c67654cf.
+Its five pending CI jobs are confirmed live. Revalidate this exact head and
+inspect failures rather than restarting unchanged runs, then proceed below.
 
 The key batch a417add has terminal 24 SUCCESS/two prescribed SKIPPED. Complete
 manifest preparation is now wired to its fixed Runtime public pin via the

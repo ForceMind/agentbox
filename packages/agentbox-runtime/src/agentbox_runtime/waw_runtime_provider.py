@@ -602,6 +602,7 @@ class WAWProductionExecutorProvider(WAWRuntimeExecutorProvider):
             self._factory.authority,
             process_identity,
             self._delegate_root,
+            create_workload=True,
         )
         endpoint = NativeHelperProcessPort.create_wbr_endpoint()
         handles = self._factory.create(

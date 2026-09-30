@@ -487,7 +487,10 @@ class TestConstruction:
             _authority: WAWVerifiedExecutionAuthority,
             _identity: FixedProcessIdentity,
             _delegate_root: int,
+            *,
+            create_workload: bool = False,
         ) -> LinuxCgroupControlHandle:
+            assert create_workload is True
             raise RuntimeError("registered Project reached fixed cgroup boundary")
 
         monkeypatch.setattr(
