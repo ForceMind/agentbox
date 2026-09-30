@@ -1,5 +1,14 @@
 # AgentBox 全量功能整合与原路线续建计划
 
+2026-09-30 当前候选：单版本计划已由 PR #124 合并；S01 仅继续 R12。
+固定非 Secret vendor enrollment 的 Draft #122 正对齐 rc29 main 并改为
+rc30 软件候选，新的 exact-head CI 与独立安全关键审查尚未完成。
+它不关闭 production `_main`、installer writer 或真实 host/CLI 门禁。
+
+当前执行顺序由 [逐版本交付计划](RELEASE_ITERATION_PLAN.md) 收口：先完成
+R12 首个可用单机 RC；70 项清单保留为长期交付目标，不同时启动 S02–S14
+旁支。本文历史“依赖满足即可交错推进”的安排不再覆盖当前版本冻结。
+
 计划版本：AB-FULL-PARITY-2026-09-28-v2。状态：**Owner 已要求吸收所有现有功能；能力与权限边界正在冻结**。
 
 本计划按 Owner 最新要求扩展 [v1 工作台整合计划](WORKBENCH_INTEGRATION_PLAN.md)。v1 的固定来源、WIP 保护、单一 AgentBox 产品、Apache-2.0 归属、Control Plane/Runtime 分权、R12 主流程及已合并 A0/A1 仍有效；其中“只选部分功能”“移动端/语音/插件/Hub 仅评估”等范围限制由本计划替代。70 个冻结能力 ID 及三份上游源码提交见 [全量清单](FULL_CAPABILITY_INVENTORY.md)。两份文档组成同一个主 Goal 和一条交付路线，不建立第二套互相冲突的 Roadmap。
@@ -70,14 +79,13 @@ Host、浏览器和手机分发、真实 Provider Secret/登录、付费调用�
 
 ## 7. 当前决策与下一项
 
-2026-09-29 live read-back：PR #121 的 rc27 可见客户端标签刷新已正常合并为
-`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`，六类 post-main workflow
-全部成功。S01 R12-C3-b 下一关键依赖转向固定非Secret vendor enrollment
-输入：原 checkout 的旧 provider WIP 被后来合并的 authority-deferred 实现
-覆盖，不直接复制。当前软件候选从 installer-owned 固定文件读取外部观测的
-版本/摘要，并在 provider 打开资源前与唯一 v2 authority 配对及重读。
-它仍需独立安全关键审查、CI 与合并；生产 `_main`、正向 Codex Remote
-冲突来源、installer 实际制品和 host/Secret/CLI 门禁并未因该候选完成。
+2026-09-29 live scope：R12 rc28 固定非Secret vendor enrollment 候选
+Draft #122 的 26 项 head CI 已终态（24 success、两项既定 skip），独立安全关键
+复核未获结论，因此不合并；A3 Draft #117 同样保留。与它们无写入依赖的
+WS14 rc29 在已合并 rc27 main 上推进精确 Workspace 的命令中心标签选择，
+仅调用现有 Control Plane 元数据 API。它需要可见读回、会话/路由/处理中
+围栏、桌面/手机真实交互与 exact-head CI，合并后才算该有限能力交付。
+70 项总目标、R12 `_main`、跨主机/host/Secret/生产门禁均未缩减。
 
 2026-09-29 最新 live read-back：PR #120 的 rc26 Workspace 标签分配已正常合并为
 `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35`，六类 post-main workflow

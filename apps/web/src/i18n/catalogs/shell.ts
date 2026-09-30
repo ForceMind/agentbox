@@ -37,6 +37,16 @@ export interface ShellMessageParameters {
   readonly 'shell.commandLoading': NoMessageParameters
   readonly 'shell.commandLoadFailed': NoMessageParameters
   readonly 'shell.commandEmpty': NoMessageParameters
+  readonly 'shell.commandSearchWorkspace': NoMessageParameters
+  readonly 'shell.commandEmptyWorkspace': NoMessageParameters
+  readonly 'shell.commandLabelAs': NoMessageParameters
+  readonly 'shell.commandLabelAssigned': NoMessageParameters
+  readonly 'shell.commandLabelAvailable': NoMessageParameters
+  readonly 'shell.commandLabelsLoading': NoMessageParameters
+  readonly 'shell.commandLabelsUnavailable': NoMessageParameters
+  readonly 'shell.commandLabelsConflict': NoMessageParameters
+  readonly 'shell.commandLabelsInvalid': NoMessageParameters
+  readonly 'shell.commandLabelsUncertain': NoMessageParameters
 }
 
 export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
@@ -79,6 +89,22 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
       'shell.commandLoadFailed': () =>
         'Projects could not be loaded. Page navigation is still available.',
       'shell.commandEmpty': () => 'No matching page or Project.',
+      'shell.commandSearchWorkspace': () =>
+        'Search pages, Projects and Workspace labels',
+      'shell.commandEmptyWorkspace': () =>
+        'No matching page, Project or Workspace label.',
+      'shell.commandLabelAs': () => 'Label as',
+      'shell.commandLabelAssigned': () => 'Assigned',
+      'shell.commandLabelAvailable': () => 'Available',
+      'shell.commandLabelsLoading': () => 'Loading Workspace labels…',
+      'shell.commandLabelsUnavailable': () =>
+        'Workspace labels could not be loaded. Navigation is still available.',
+      'shell.commandLabelsConflict': () =>
+        'Workspace labels changed elsewhere. Current labels were reloaded.',
+      'shell.commandLabelsInvalid': () =>
+        'This label cannot be assigned. Current labels were reloaded.',
+      'shell.commandLabelsUncertain': () =>
+        'The label change could not be confirmed. Review the reloaded labels before trying again.',
     },
     'zh-CN': {
       'shell.dashboard': () => '概览',
@@ -116,6 +142,20 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
       'shell.commandLoading': () => '正在加载项目…',
       'shell.commandLoadFailed': () => '项目加载失败，仍可打开页面。',
       'shell.commandEmpty': () => '没有匹配的页面或项目。',
+      'shell.commandSearchWorkspace': () => '搜索页面、项目和工作区标签',
+      'shell.commandEmptyWorkspace': () => '没有匹配的页面、项目或工作区标签。',
+      'shell.commandLabelAs': () => '标记为',
+      'shell.commandLabelAssigned': () => '已分配',
+      'shell.commandLabelAvailable': () => '可分配',
+      'shell.commandLabelsLoading': () => '正在读取工作区标签…',
+      'shell.commandLabelsUnavailable': () =>
+        '工作区标签加载失败，仍可导航到页面或项目。',
+      'shell.commandLabelsConflict': () =>
+        '工作区标签已在其他位置变更。已重新读取当前标签。',
+      'shell.commandLabelsInvalid': () =>
+        '此标签无法分配。已重新读取当前标签。',
+      'shell.commandLabelsUncertain': () =>
+        '无法确认标签变更。请核对重新读取的标签后再操作。',
     },
   },
 )

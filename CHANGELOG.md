@@ -3,7 +3,7 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
-## [0.3.0rc28] - Unreleased
+## [0.3.0rc30] - Unreleased
 
 - Add a fixed Runtime-only, non-secret source for enrolled Claude/Codex
   versions and the Codex unauthenticated-output digest, with descriptor-held
@@ -11,7 +11,16 @@ versioning for release display and PEP 440 for the Python package.
 - Require the authority-deferred production provider to re-read that fixed
   record before opening lower launch resources; missing or drifted input
   remains closed.
-- Source validation and delivery evidence: `docs/releases/0.3.0rc28.md`.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc30.md`.
+
+## [0.3.0rc29] - Unreleased
+
+- Add query-only Workspace label choices to the authenticated command center
+  for the exact current formal `aws_` route. A selected choice toggles one
+  shared-catalog label through existing Workspace CAS API and exact readback.
+- Keep navigation available when label metadata fails, fence the modal during
+  a pending write, and refresh the visible label panel after confirmation.
+- Source validation and delivery evidence: `docs/releases/0.3.0rc29.md`.
 
 ## [0.3.0rc27] - Unreleased
 

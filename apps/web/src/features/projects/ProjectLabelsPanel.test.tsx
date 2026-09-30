@@ -16,6 +16,7 @@ import type {
   ProjectLabelSetData,
 } from '../../lib/contracts'
 import { ProjectLabelsPanel } from './ProjectLabelsPanel'
+import { NAVIGATION_LABELS_CHANGED_EVENT } from './labelEvents'
 
 const projectId = `prj_${'a'.repeat(32)}`
 const labelId = `lbl_${'b'.repeat(32)}`
@@ -108,6 +109,16 @@ describe('Project labels UI', () => {
         tick()
       })
       expect(await screen.findByText('Design')).toBeVisible()
+      assigned = {
+        project_id: projectId,
+        labels: [],
+        revision: 2,
+        updated_at: updatedAt,
+      }
+      fireEvent(window, new Event(NAVIGATION_LABELS_CHANGED_EVENT))
+      expect(
+        await screen.findByText('No labels assigned to this Project.'),
+      ).toBeVisible()
       const readCount = get.mock.calls.length
       Object.defineProperty(document, 'hidden', {
         configurable: true,

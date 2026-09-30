@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AuthContext, type AuthContextValue } from '../auth/AuthContext'
+import { NAVIGATION_LABELS_CHANGED_EVENT } from '../projects/labelEvents'
 import { ApiClient, ApiError } from '../../lib/api'
 import type {
   NavigationLabelData,
@@ -89,6 +90,18 @@ describe('Workspace labels', () => {
         tick()
       })
       await waitFor(() => expect(checkbox).toBeChecked())
+      current = {
+        ...current,
+        labels: [],
+        revision: 2,
+        updated_at: '2026-09-29T00:02:00Z',
+      }
+      fireEvent(window, new Event(NAVIGATION_LABELS_CHANGED_EVENT))
+      await waitFor(() =>
+        expect(
+          screen.getByRole('checkbox', { name: 'Review' }),
+        ).not.toBeChecked(),
+      )
       const readCount = get.mock.calls.length
       Object.defineProperty(document, 'hidden', {
         configurable: true,

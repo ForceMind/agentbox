@@ -1,19 +1,44 @@
 # Current Authorized Action
 
-## 2026-09-29 R12 fixed vendor enrollment input
+## 2026-09-30 R12 rc30 vendor enrollment candidate
 
-PR #121 delivered rc27 visible-client label refresh as merge
-`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`; six exact post-main
-workflows succeeded. Continue R12 C3-b on
-`codex/r12-vendor-enrollment-profile`: freeze a fixed non-secret Runtime
-source for externally observed vendor versions and Codex unauthenticated
-output digest, bind it to the one v2 authority and fail closed on missing,
-drifted or replayed input before lower resources open. Validate the file
-custody, JSON, authority pins, cleanup and provider regression, then seek
-independent security-critical Architecture/Security/Test review before
-merging. The original C3-b checkout WIP stays untouched. Installed writer,
-production `_main`, positive legacy Codex Remote state and real host/Secret/
-CLI/production gates remain separate. The rc27 action below is historical.
+当前只推进 [首个可用单机 RC](RELEASE_ITERATION_PLAN.md) 的 R12 依赖。
+Draft #122 正在把固定非 Secret vendor enrollment reader 与
+authority-deferred provider 对齐 `origin/main` 的 rc29 基线，作为 rc30
+软件候选。处理版本/文档冲突后运行相关本地检查和新的 exact-head CI；
+独立 Architecture/Security/Test 审查通过前保持 Draft，不合并。
+原 C3-b WIP 保全；#117 与 WS14 后续功能不进入本版。随后才处理
+production `_main`、installer writer 与 D/E/F，真实 host/Secret/CLI/
+recovery 验收仍需具体输入和授权。以下记录为历史行动项。
+
+## 2026-09-29 首个可用 RC 收口
+
+Owner 要求按版本迭代，不再以 70 项全量清单驱动并行旁支。当前唯一产品
+目标与退出条件见 [逐版本计划](RELEASE_ITERATION_PLAN.md)。
+`origin/main = 3a23f350582287de6b00499b8d4daa5d69c52011` 是 rc29
+软件候选；六类 post-main workflow completed/success，但 R12 真实
+host/client/CLI/recovery 未验收，不能称完整可用版本。
+
+下一项是取得 Draft #122 的独立 Architecture/Security/Test 结论，处理
+R12-C3-b 原工作区 WIP，再完成 `_main`、D/E/F 软件与制品。#117 保持
+Draft，WS14 新功能暂停；现场输入缺失时报告本版阻断，不转去扩大功能
+范围。Host、Secret、付费调用、重启、生产及发行仍按具体授权执行。
+以下旧行动项保留为历史记录，不再驱动新的 WS14 批次。
+
+## 2026-09-29 WS14 Workspace label command choices
+
+`origin/main` remains rc27 merge
+`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a` with six successful
+post-main workflows. Security-critical R12 rc28 Draft #122 has 26
+terminal head checks (24 success, two prescribed skips) but awaits an
+independent Architecture/Security/Test review; #117 remains Draft for the
+same separate review gate. Continue independent WS14 software on
+`codex/workbench-command-labels`: query-only label choices for an exact
+formal Workspace route, current-session metadata validation, existing
+CAS/Origin/CSRF API, exact ACK and GET readback, local panel invalidation,
+pending/hidden/conflict fences, localization, desktop/mobile validation,
+version and exact-head CI, then normal merge/read-back. The rc28 action
+below is historical; real host/Secret/production gates remain untouched.
 
 ## 2026-09-29 WS14 visible-client label refresh
 

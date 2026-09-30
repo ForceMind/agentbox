@@ -10,9 +10,11 @@ import {
 } from '../lib/contracts'
 import {
   commandResults,
+  workspaceLabelResults,
   type CommandCenterAction,
   type CommandResult,
 } from './commandCenterResults'
+import { useCommandWorkspaceLabels } from './useCommandWorkspaceLabels'
 
 import './CommandCenter.css'
 
@@ -21,11 +23,13 @@ export function CommandCenter({
   locale,
   onClose,
   onNavigate,
+  workspaceId = null,
 }: {
   actions: readonly CommandCenterAction[]
   locale: Locale
   onClose: () => void
   onNavigate: (href: string) => void
+  workspaceId?: string | null
 }) {
   const { api, auth } = useAuth()
   const [projectRead, setProjectRead] = useState<{
@@ -35,11 +39,19 @@ export function CommandCenter({
   }>({ projects: [], loading: true, error: false })
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const labels = useCommandWorkspaceLabels(workspaceId)
   const dialog = useRef<HTMLDialogElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const results = useMemo(
-    () => commandResults(actions, projectRead.projects, query),
-    [actions, projectRead.projects, query],
+    () => [
+      ...commandResults(actions, projectRead.projects, query),
+      ...workspaceLabelResults(
+        labels.catalog,
+        new Set(labels.assignment?.labels.map((label) => label.id) ?? []),
+        query,
+      ),
+    ],
+    [actions, labels.assignment, labels.catalog, projectRead.projects, query],
   )
   const activeIndex = Math.min(selectedIndex, Math.max(0, results.length - 1))
 
@@ -85,6 +97,11 @@ export function CommandCenter({
   }, [])
 
   function run(result: CommandResult) {
+    if (labels.pending) return
+    if (result.kind === 'workspace-label') {
+      void labels.toggle(result.label.id)
+      return
+    }
     onClose()
     onNavigate(result.href)
   }
@@ -96,7 +113,7 @@ export function CommandCenter({
       className="command-center-dialog"
       onCancel={(event) => {
         event.preventDefault()
-        onClose()
+        if (!labels.pending) onClose()
       }}
       ref={dialog}
     >
@@ -105,6 +122,7 @@ export function CommandCenter({
         <button
           aria-label={formatMessage(locale, 'shell.closeCommandCenter', {})}
           className="icon-button"
+          disabled={labels.pending}
           onClick={onClose}
           type="button"
         >
@@ -117,7 +135,11 @@ export function CommandCenter({
         }
         aria-controls="command-center-results"
         aria-expanded="true"
-        aria-label={formatMessage(locale, 'shell.commandSearch', {})}
+        aria-label={formatMessage(
+          locale,
+          workspaceId ? 'shell.commandSearchWorkspace' : 'shell.commandSearch',
+          {},
+        )}
         autoComplete="off"
         className="command-center-input"
         maxLength={128}
@@ -137,7 +159,7 @@ export function CommandCenter({
           } else if (event.key === 'Enter' && results[activeIndex]) {
             event.preventDefault()
             run(results[activeIndex])
-          } else if (event.key === 'Escape') {
+          } else if (event.key === 'Escape' && !labels.pending) {
             event.preventDefault()
             onClose()
           }
@@ -162,8 +184,11 @@ export function CommandCenter({
             aria-label={
               result.kind === 'action'
                 ? result.title
-                : result.project.display_name
+                : result.kind === 'project'
+                  ? result.project.display_name
+                  : undefined
             }
+            aria-disabled={labels.pending}
             aria-selected={index === activeIndex}
             className={`command-center-result${index === activeIndex ? ' selected' : ''}`}
             id={`command-result-${index}`}
@@ -175,8 +200,13 @@ export function CommandCenter({
             <span>
               {result.kind === 'action' ? (
                 result.title
-              ) : (
+              ) : result.kind === 'project' ? (
                 <OpaqueUserValue value={result.project.display_name} />
+              ) : (
+                <>
+                  {formatMessage(locale, 'shell.commandLabelAs', {})}{' '}
+                  <OpaqueUserValue value={result.label.name} />
+                </>
               )}
             </span>
             <small>
@@ -184,7 +214,11 @@ export function CommandCenter({
                 locale,
                 result.kind === 'action'
                   ? 'shell.commandPage'
-                  : 'shell.commandProject',
+                  : result.kind === 'project'
+                    ? 'shell.commandProject'
+                    : result.assigned
+                      ? 'shell.commandLabelAssigned'
+                      : 'shell.commandLabelAvailable',
                 {},
               )}
             </small>
@@ -201,9 +235,33 @@ export function CommandCenter({
           {formatMessage(locale, 'shell.commandLoadFailed', {})}
         </p>
       )}
+      {labels.loading && (
+        <p className="command-center-status" role="status">
+          {formatMessage(locale, 'shell.commandLabelsLoading', {})}
+        </p>
+      )}
+      {labels.notice && (
+        <p className="command-center-status" role="alert">
+          {formatMessage(
+            locale,
+            labels.notice === 'conflict'
+              ? 'shell.commandLabelsConflict'
+              : labels.notice === 'invalid'
+                ? 'shell.commandLabelsInvalid'
+                : labels.notice === 'unavailable'
+                  ? 'shell.commandLabelsUnavailable'
+                  : 'shell.commandLabelsUncertain',
+            {},
+          )}
+        </p>
+      )}
       {!projectRead.loading && !projectRead.error && results.length === 0 && (
         <p className="command-center-status" role="status">
-          {formatMessage(locale, 'shell.commandEmpty', {})}
+          {formatMessage(
+            locale,
+            workspaceId ? 'shell.commandEmptyWorkspace' : 'shell.commandEmpty',
+            {},
+          )}
         </p>
       )}
     </dialog>

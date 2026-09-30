@@ -88,7 +88,7 @@ startup gate.
 
 ## Fixed external vendor enrollment source candidate
 
-The [rc28 contract](WAW_R12_VENDOR_ENROLLMENT.md) defines one
+The [vendor enrollment contract](WAW_R12_VENDOR_ENROLLMENT.md) defines one
 installer-owned, non-secret Runtime file for the target Claude/Codex
 versions and Codex unauthenticated-output digest. The deferred provider
 requires its bounded, provenance-checked observation, compares host,

@@ -1,40 +1,83 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T03:12:35Z"
-verified_by: "codex-r12-vendor-enrollment"
+verified_at_utc: "2026-09-30T02:48:04Z"
+verified_by: "codex-r12-enrollment-refresh"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-09-29 R12 fixed vendor enrollment candidate
+## 2026-09-30 R12 vendor enrollment candidate refresh
 
-PR #121 final head `35fd50688f7ed66b3a667b7b440ba5cd90f2469a`
-completed 26 exact-head checks (24 success, two prescribed historical
-skips). Normal merge `458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`
-has parents `88d2db79dd3cf58cfe0093ee90963f1ecfd45d35` and that
-head. PR API is MERGED; remote `main` matches the merge SHA, and all six
-Backend, Frontend, E2E, Deployment, Security and Release Candidate
-post-main workflows completed successfully on it. rc27 visible-client
-label refresh is software-delivered, while S08 cross-host sync remains open.
+Live `origin/main` is `0347920d6725c32d6b8d559905a046653ce05728`,
+the merge of the single-release-focus plan PR #124. Its six Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main
+workflows completed successfully. Draft #122's prior head
+`26c8785f89560e979d7439d8e5f19b3cba7569ca` had 26 terminal
+exact-head checks (24 success, two prescribed skips), but no independent
+Architecture/Security/Test reviews and no merge. It became conflicting after
+rc29 and the plan landed. This branch is resolving that conflict against
+main, retaining the rc29 application work and targeting the next source
+version rc30. New exact-head tests, CI and independent review remain pending.
+Draft #117 stays separate for a later Files/Changes version.
 
-The original checkout `codex/r12-runtime-production` is still at old HEAD
-`a696193fec127595b1beafb1ed1cabf2ae58efa9` with its earlier C3-b
-provider/test/docs WIP; it was read only and left untouched. Live main
-already includes the later authority-deferred resource/provider foundation,
-so copying that older WIP would regress current code. This clean managed
-branch starts from `458e7a5…` and adds a fixed non-secret vendor enrollment
-reader plus an authority-pinned, revalidated deferred provider input.
-Focused loader/provider/auth owner/application/release tests passed 184
-cases; Linux-target mypy checked 317 source files and Ruff passed. The
-Node 22 AppShell version tests passed four cases, Web format/lint/build
-and inert MV3 tests/build passed. Isolated desktop/mobile Chromium E2E
-passed 112 tests with 28 prescribed skips; it validates existing UI and
-the visible rc28 version, not this uninstalled Runtime file reader.
-Independent security-critical review, exact-head CI, PR and merge remain
-pending. Production `_main`, installed
-enrollment writer, positive legacy Codex Remote state, real host, CLI login,
-Secret and production qualification remain absent or `NOT RUN`.
+The original `codex/r12-runtime-production` checkout remains at its old
+HEAD with uncommitted C3-b provider/test/docs and build files; it was read
+only and not used as an implementation source. The later main branch already
+contains an authority-deferred resource/provider foundation. Production
+`_main`, an installer enrollment writer, a positive legacy Codex Remote
+state source, real host/client/CLI/recovery and production remain unfinished.
+
+Sections below are historical snapshots.
+
+## 2026-09-29 逐版本计划基线
+
+本次 `git fetch origin --prune` 退出 0；`origin/main` 是
+`3a23f350582287de6b00499b8d4daa5d69c52011`，当前计划分支从该 SHA
+起步。该 SHA 是 PR #123 的 merge，Web 源码版本为 `0.3.0-rc.29`。
+对该 exact SHA 的 Backend、
+Frontend、E2E、Deployment、Security、Release Candidate 六类
+post-main workflow 查询均 completed/success。Open PR #122 与 #117
+仍为安全关键 Draft，历史 #42 亦未合并。原
+`codex/r12-runtime-production` checkout 的未提交 R12 WIP 保持原样；
+本次只在干净的独立计划分支修改项目文档，未运行产品测试。
+
+Owner 要求按版本收口；[逐版本计划](RELEASE_ITERATION_PLAN.md)将当前
+唯一产品目标定为首个可用单机 RC。上述代码/CI 证据不代表 R12 真实
+host/client/CLI/recovery 已验收，也不代表软件候选、目标资格化或生产
+发行已完成。以下原 rc29 候选段落保留为历史快照。
+
+## 2026-09-29 WS14 Workspace label command candidate
+
+Live `origin/main` is
+`458e7a5c9a87d50ebd9a4cd1040e7a51b148929a`, rc27/PR #121's
+normal merge; six Backend, Frontend, E2E, Deployment, Security and Release
+Candidate post-main workflows are completed/success on it. Draft #122
+head `26c8785f89560e979d7439d8e5f19b3cba7569ca` has 26 terminal
+exact-head checks (24 success, two prescribed skips) but remains unmerged
+pending independent security-critical review. Draft #117 is separately
+unmerged for the same review gate. The original dirty R12 checkout is
+untouched.
+
+The clean managed `codex/workbench-command-labels` branch starts from
+that main commit. It adds query-only shared-catalog Workspace label choices
+to the existing command center only on an exact `aws_` route. The Web hook
+validates current-session Workspace metadata and label observations, uses
+the existing CAS API, waits for exact ACK/readback and locally refreshes
+the visible label panel; no Runtime or arbitrary-command path is added.
+Targeted command/label panel tests passed, including hidden pending-write
+GET recovery without PUT replay; the Node 22 full Web suite passed
+1201/1201. Release-version Python tests passed 93, inert MV3
+tests/build passed, and Web format/lint/typecheck/build passed. The isolated
+desktop/mobile Chromium matrix passed 114 tests with 28 prescribed skips;
+the new flow used the real Project/Workspace label API and a synthetic
+formal Workspace metadata row, then confirmed immediate panel readback
+and deletion cleanup. Command-center screenshots were inspected at both
+viewports without visible overlap or horizontal overflow. The Web JS bundle
+was 650.19 kB/184.18 kB gzip; its >500 kB warning remains. PR and
+exact-head CI remain pending.
+This does not close broader command contributions, cross-host sync, R12
+software or host/Secret/production qualification.
 
 Sections below are historical snapshots.
 

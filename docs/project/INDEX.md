@@ -1,5 +1,7 @@
 # AgentBox Project Context Index
 
+- [Release iteration plan](RELEASE_ITERATION_PLAN.md)：当前唯一目标是首个可用单机 RC；
+  明确软件候选、真实目标验收和后续逐版本吸收的退出条件与范围冻结。
 - [Full capability delivery plan](FULL_CAPABILITY_DELIVERY_PLAN.md)：Owner 将范围扩展为
   吸收全部现有上游功能；按三仓固定提交与 70 项 ID 组织一条分阶段实施路线。
 - [Full capability inventory](FULL_CAPABILITY_INVENTORY.md)：主仓、生产 relay、Hub
@@ -23,7 +25,7 @@
 - [Project and Workspace labels](../WORKBENCH_PROJECT_LABELS.md)：
   WS14 共享标签目录、正式 Project/Workspace 分配及可见客户端刷新边界。
 - [Command center](../WORKBENCH_COMMAND_CENTER.md)：
-  WS14 固定页面和正式 Project 导航、键盘搜索与当前 Session 隔离。
+  WS14 固定页面/正式 Project 导航及精确 Workspace 标签选择，当前 Session 隔离。
 - [Production readiness plan](PRODUCTION_READINESS_PLAN.md)：2026-09-08 已批准执行计划；
   R12 软件接线、客户端、真实主机/CLI、恢复与有限生产的依赖、验收和授权范围。
   R12-A已开始；软件执行、host资格化与生产准入分开记录。
