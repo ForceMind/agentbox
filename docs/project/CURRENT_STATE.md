@@ -1,11 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T10:20:43Z"
+verified_at_utc: "2026-09-30T15:15:22Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 fixed production entry candidate
+
+Current Draft #125 continues from 94b92d4; fetched origin/main remains
+19f8c5125d5a831e3db2d9724a1cc7985b091294. 94b92d4's native and installer
+checks passed, but all three Backend quality jobs failed Black on one
+waw_runtime_resources.py expression. The exact job log (109885521498)
+identified the formatting mismatch; this batch corrects it without changing
+resource behavior. Do not describe 94b92d4 as fully green.
+
+The filesystem-v2 branch of Runtime _main now calls the production application
+builder. It pins Runtime/Control Plane account identities and exact allowlists,
+fixed manifest/public/epoch/key paths, two named systemd sockets, one provider
+and one executor. SIGTERM/SIGINT, cancellation and startup/serve failures join
+the application cleanup owner. Only RuntimeAttachmentLease is allowed in the
+encrypted production path; API ActiveAttachment is rejected. Fresh legacy
+observations run on the event loop from start worker threads with a bounded
+wait, binding recheck and UNKNOWN on missing evidence. There is no process-
+absence-to-STOPPED conversion. Main-agent self-review is not independent review.
+
+91 focused application/provider/profile/scoped tests and 139 Runtime executor/
+conflict/server tests passed (overlapping selections, not 230 unique tests).
+Ruff passed; mypy passed 341 files; changed Runtime files match Black.
+These are software fixtures, not a real activated service or vendor session.
+Complete generated manifests, delegated workspace directory, key/enrollment
+and profile activation remain installer prerequisites. Positive Codex Remote
+STOPPED evidence, HTTPS Web bootstrap, PC/mobile CLI flow and restart/rollback
+acceptance remain first-version blockers. No product version/tag/release or
+public install command has been issued. The current delivery checklist remains
+open; the source startup entry does not close it.
 
 ## 2026-09-30 scoped delegation Runtime wiring candidate
 

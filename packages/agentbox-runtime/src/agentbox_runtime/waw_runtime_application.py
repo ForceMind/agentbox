@@ -274,6 +274,17 @@ class WAWRuntimeApplication:
     def shutdown_evidence(self) -> WAWRuntimeShutdownEvidence | None:
         return self._shutdown_evidence
 
+    @property
+    def executor(self) -> WAWSupervisorExecutor:
+        """The one owned executor for Runtime-local conflict/binding probes."""
+
+        return self._composition.executor
+
+    async def serve_forever(self) -> None:
+        if self.state is not WAWRuntimeApplicationState.RUNNING:
+            raise RuntimeError("WAW Runtime application is not running")
+        await self._runtime.serve_forever()
+
     async def start(self, *, create_development_parent: bool = False) -> None:
         with self._state_lock:
             if self._state is WAWRuntimeApplicationState.RUNNING:

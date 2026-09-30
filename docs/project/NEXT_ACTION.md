@@ -1,5 +1,20 @@
 # Current Authorized Action
 
+## 2026-09-30 finish installation resources for the fixed production entry
+
+The filesystem-v2 _main candidate now composes the existing application using
+fixed identities/resources, fresh fail-closed conflict probes and signal cleanup.
+Focused application and Runtime regressions pass; the previous exact head's
+Backend failure is a confirmed Black mismatch corrected in this batch.
+Continue on Draft #125 and the same product version. Verify this batch's CI,
+then implement complete installer resource issuance/enrollment and delegated
+workspace creation before profile activation. Resolve positive Codex Remote
+STOPPED evidence rather than relabeling UNKNOWN as absence. Follow with the
+accepted HTTPS Web bootstrap and actual PC/mobile core workflow. Current code
+has not been activated on a real host and is not a deployable-version claim.
+Preserve the four-path checklist in RELEASE_ITERATION_PLAN; no later features,
+additional candidate versions or subagents are authorized by this continuation.
+
 ## 2026-09-30 direct scoped startup wiring
 
 The real systemd 255 probe passed (36708294115 / 109863711328). Current

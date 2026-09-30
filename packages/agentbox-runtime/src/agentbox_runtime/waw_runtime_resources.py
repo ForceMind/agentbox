@@ -202,9 +202,7 @@ def build_waw_production_resources(
             except OSError:
                 cleanup_uncertain = True
                 raise
-        delegate_root = _open_role(
-            cgroup_delegate_root_path(manifest.cgroup), directory=True
-        )
+        delegate_root = _open_role(cgroup_delegate_root_path(manifest.cgroup), directory=True)
         _verify_delegate_root(delegate_root, authority)
         return WAWProductionResources(
             _RESOURCE_TOKEN,

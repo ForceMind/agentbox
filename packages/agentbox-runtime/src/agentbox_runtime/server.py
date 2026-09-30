@@ -1231,7 +1231,6 @@ async def _main() -> None:
     runtime_profile = load_waw_runtime_profile() if environment == "production" else None
     if runtime_profile is not None and runtime_profile.mode is WAWRuntimeMode.FILESYSTEM_V2:
         revalidate_waw_runtime_profile(runtime_profile)
-        raise RuntimeError("WAW Runtime production composition is not yet available")
     allowed = (
         frozenset(int(value) for value in configured_uids.split(","))
         if configured_uids
@@ -1264,6 +1263,21 @@ async def _main() -> None:
     github = GitHubAdapter(git)
     claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
     codex_manager = CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown)
+    if runtime_profile is not None and runtime_profile.mode is WAWRuntimeMode.FILESYSTEM_V2:
+        # Local import keeps the application/server ownership graph acyclic.
+        from agentbox_runtime.waw_production import run_waw_production
+
+        await run_waw_production(
+            socket_path=socket_path,
+            codex_manager=codex_manager,
+            claude_manager=claude_manager,
+            projects=project_registry,
+            project_manager=ProjectWorkspaceManager(project_registry, git, github),
+            allowed_uids=allowed,
+            allowed_gids=allowed_gids,
+            profile=runtime_profile,
+        )
+        return
     server = RuntimeExecutorServer(
         socket_path,
         codex_manager,
