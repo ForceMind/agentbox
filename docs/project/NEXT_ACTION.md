@@ -1,5 +1,34 @@
 # Current Authorized Action
 
+## 2026-09-30 Deliver the Owner's self-deployed PC/mobile version
+
+Use DEPLOYABLE_RELEASE_PLAN. Owner will run the final server installer
+themselves; do not ask again for an SSH deployment target. Finish the
+current codex/r12-deployable-runtime branch from main 19f8c51.
+Fixed enrollment publication/plan/recovery and interpreter selection are
+uncommitted software WIP, with 59 focused tests, two selection tests,
+333-file mypy and Ruff passes. No deployment or full core-flow claim follows.
+
+The pinned downloader is now local WIP: fixed version/digest, HTTPS-only fixed
+repository source, bounded safe extraction, verify/plan before optional apply.
+Downloader/interpreter/publication tests passed 39 cases with local fixtures;
+no Linux install or published URL follows from this result.
+Native helper generation is now wired before activation and recorded with an
+exact source/binary ledger; installed-state and recovery/retention readers
+validate it explicitly. Linux/root actual-build and failed-build retry tests
+are added to CI; local 145 passes plus one existing Mac permission failure
+and two Linux skips are not target evidence. Full mypy passed 336 files.
+Next close explicit whole-installer staged recovery, then generate actual
+trusted manifests and wire the single production _main graph.
+Close the positive Codex Remote conflict-state source without
+turning UNKNOWN into ABSENT. Owner selected PC/mobile browsers first; ADR 0010
+is a concrete Proposed Web trust profile awaiting architecture authorization.
+Preserve the existing managed gate until that decision and implementation.
+No subagent was started.
+
+The eventual version is fixed only when its deployable software/installation
+scope is complete; do not bump rc numbers for these debugging checkpoints.
+
 ## 2026-09-30 Close rc30 protocol-check failure
 
 `64f3e69` passed dependency audits and all other jobs, but the complete

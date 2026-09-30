@@ -27,6 +27,7 @@ from agentbox_installer.lifecycle import (
     RollbackVerifiedError,
     _compare_versions,
 )
+from agentbox_installer.platform import PlatformFacts, detect_platform
 from agentbox_runtime.waw_runtime_profile import (
     DISABLED_PROFILE_BYTES,
     FILESYSTEM_V2_PROFILE_BYTES,
@@ -34,6 +35,17 @@ from agentbox_runtime.waw_runtime_profile import (
     _load_profile_at,
 )
 from support.failure_injection import FailureInjector, InjectedCrash
+
+
+@pytest.fixture(autouse=True)
+def _fixed_server_fixture_architecture(monkeypatch: pytest.MonkeyPatch) -> None:
+    """This module models OpenCloudOS x86_64, independently of the test Mac."""
+    original = detect_platform
+
+    def detect(path: Path) -> PlatformFacts:
+        return original(path, architecture="x86_64")
+
+    monkeypatch.setattr(installer_lifecycle, "detect_platform", detect)
 
 
 def _artifact(

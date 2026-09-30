@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from agentbox_installer.artifact import verify_release_bundle
@@ -42,6 +43,13 @@ def create_parser() -> argparse.ArgumentParser:
         help="reserved; destructive purge is intentionally unavailable",
     )
     commands.add_parser("doctor").add_argument("--json", action="store_true")
+    enrollment = commands.add_parser("enroll-waw-vendors")
+    enrollment.add_argument("--claude-version", required=True)
+    enrollment.add_argument("--codex-version", required=True)
+    enrollment.add_argument("--codex-unauthenticated-output-sha256", required=True)
+    enrollment.add_argument("--plan", action="store_true")
+    enrollment.add_argument("--recover", action="store_true")
+    enrollment.add_argument("--json", action="store_true")
     build = commands.add_parser("build-artifact")
     build.add_argument("--source", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
@@ -128,6 +136,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         layout, host = _layout(args.fixture_root)
         installer = AgentBoxInstaller(layout, host)
         json_output = bool(getattr(args, "json", False))
+        if args.command == "enroll-waw-vendors":
+            enrollment_result = installer.enroll_waw_vendors(
+                claude_version=args.claude_version,
+                codex_version=args.codex_version,
+                codex_unauthenticated_output_sha256=args.codex_unauthenticated_output_sha256,
+                recover=args.recover,
+                plan=args.plan,
+            )
+            _print(asdict(enrollment_result), json_output=json_output)
+            return 0
         if args.command == "plan":
             _print(installer.plan(args.artifact, args.sha256).to_dict(), json_output=json_output)
             return 0

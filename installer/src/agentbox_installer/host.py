@@ -448,7 +448,9 @@ class HostOperations:
             if executable.is_file() and not executable.is_symlink():
                 return
             raise HostMutationError("release Python environment is incomplete")
-        self._run(("/usr/bin/python3", "-m", "venv", str(venv)), timeout=180)
+        if sys.version_info[:2] not in {(3, 11), (3, 12), (3, 13)}:
+            raise HostMutationError("release environment requires Python 3.11, 3.12 or 3.13")
+        self._run((sys.executable, "-m", "venv", str(venv)), timeout=180)
         pip = venv / "bin/pip"
         try:
             result = subprocess.run(  # noqa: S603 - verified release wheel and fixed argv
@@ -474,6 +476,19 @@ class HostOperations:
         if result.returncode != 0:
             raise HostMutationError("release Python environment installation failed")
         self._run((str(venv / "bin/agentbox"), "--version"), timeout=30)
+
+    def prepare_waw_helpers(self, release: Path) -> None:
+        if not self.real_host:
+            return
+        from agentbox_installer.waw_native_install import (
+            WAWNativeInstallError,
+            prepare_waw_helpers,
+        )
+
+        try:
+            prepare_waw_helpers(release)
+        except WAWNativeInstallError as exc:
+            raise HostMutationError("WAW native helpers could not be prepared") from exc
 
     def install_packages(self, family: PackageFamily, packages: tuple[str, ...]) -> None:
         if not self.real_host or not packages:

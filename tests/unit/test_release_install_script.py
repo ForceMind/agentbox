@@ -85,6 +85,50 @@ def _run(
     )
 
 
+def test_release_auto_selects_supported_fixed_interpreter(tmp_path: Path) -> None:
+    script = _release_script(tmp_path)
+    rejected = tmp_path / "unsupported-python"
+    rejected.write_text("#!/bin/sh\nexit 1\n", encoding="ascii")
+    rejected.chmod(0o755)
+    selected = tmp_path / "supported-python"
+    trace = tmp_path / "selected-trace"
+    selected.write_text(
+        f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{trace}'\nexit 0\n", encoding="ascii"
+    )
+    selected.chmod(0o755)
+    payload = script.read_text()
+    # Fixture-only path substitution: production candidates stay in /usr/bin.
+    for version in ("3.13", "3.12"):
+        payload = payload.replace(f"/usr/bin/python{version}", str(rejected))
+    payload = payload.replace("/usr/bin/python3.11", str(selected))
+    payload = payload.replace("/usr/bin/python3 ", f"{rejected} ")
+    script.write_text(payload)
+    result = _run(
+        script,
+        env={"AGENTBOX_INSTALLER_TEST_MODE": "1", "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1"},
+    )
+    assert result.returncode == 0, result.stderr
+    calls = trace.read_text().splitlines()
+    assert calls[0] == "-I -c "
+    assert "import sys" in calls
+    assert any(line.startswith("-c ") for line in calls)
+
+
+def test_release_auto_selection_refuses_unqualified_interpreters(tmp_path: Path) -> None:
+    script = _release_script(tmp_path)
+    rejected = tmp_path / "unsupported-python"
+    rejected.write_text("#!/bin/sh\nexit 1\n", encoding="ascii")
+    rejected.chmod(0o755)
+    payload = script.read_text()
+    for version in ("3.13", "3.12", "3.11"):
+        payload = payload.replace(f"/usr/bin/python{version}", str(rejected))
+    payload = payload.replace("/usr/bin/python3 ", f"{rejected} ")
+    script.write_text(payload)
+    result = _run(script)
+    assert result.returncode == 18
+    assert "requires Python 3.11, 3.12 or 3.13" in result.stderr
+
+
 def _fake_environment(tmp_path: Path, fake_python: Path) -> dict[str, str]:
     return {
         "AGENTBOX_INSTALLER_TEST_MODE": "1",

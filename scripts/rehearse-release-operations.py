@@ -1452,7 +1452,9 @@ def _validate_current_release(
     if target != expected_release.resolve(strict=True):
         _fail(surface, "current symlink resolves outside the exact release")
     try:
-        manifest = verify_release(expected_release, allow_generated_venv=True)
+        manifest = verify_release(
+            expected_release, allow_generated_venv=True, allow_generated_native=True
+        )
     except (ArtifactError, OSError) as exc:
         raise RehearsalError(f"{surface}: installed release verification failed") from exc
     if manifest.version != evidence.version or manifest.source_commit != evidence.source_sha:

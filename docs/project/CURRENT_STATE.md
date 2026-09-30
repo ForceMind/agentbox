@@ -1,11 +1,87 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T05:33:56Z"
-verified_by: "codex-rc30-wire-validation"
+verified_at_utc: "2026-09-30T08:33:10Z"
+verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 deployable-version work in progress
+
+Owner now requests a server-side one-command installer that they execute
+themselves, with PC and phone support. No SSH target is required from the
+Owner before independent software work. DEPLOYABLE_RELEASE_PLAN records
+this scope and keeps the full core-flow acceptance; it is not replaced by
+a software-only rc number or a desktop-only implementation.
+
+The clean managed worktree now uses codex/r12-deployable-runtime from main
+19f8c5125d5a831e3db2d9724a1cc7985b091294. The original R12 checkout and
+the rc30 worktree's post-merge doc/build WIP remain separate and untouched.
+Current uncommitted work adds a fixed installer publication/recovery module,
+the actual enroll-waw-vendors CLI, manifest/profile currentness checks,
+read-only --plan and explicit --recover. Publication is create-only,
+idempotent, descriptor-held and never enables Runtime or reads credentials.
+14 publication/CLI tests passed, including full cross-pinned fixture input;
+the wider enrollment/build matrix passed 59 tests. Linux-target mypy passed
+333 files and Ruff passed. These are local software/fixture observations,
+not actual server/CLI qualification.
+
+The offline release bootstrap now selects only supported fixed /usr/bin
+Python candidates (3.11/3.12/3.13); installed venv creation uses that running
+interpreter. Two selection tests and Bash syntax validation passed.
+A broader script run had 73 passes and two existing Mac platform-order
+failures before malformed-version/checksum checks; no assertion was relaxed.
+New Linux CI is still needed. No new version, public release or installation
+command URL has been issued for this incomplete iteration. The checkpoint
+is for Draft CI verification, not a deployable release or merge decision.
+
+Owner selected PC and phone browsers first; native Apps remain later scope.
+ADR 0010 is Proposed and explicitly describes the weaker client assumption
+relative to the managed native provider. Its architecture authorization is
+pending; no page fallback or production trust gate has changed.
+
+installer/bootstrap.sh now requires a fixed release version and independently
+pinned archive digest, uses only the repository's HTTPS release URL, bounds
+downloads/extraction, rejects archive links/traversal/collisions, then executes
+bundle verification and plan before optional --apply. It does not use latest
+or downloaded checksums as its trust anchor. No public release URL exists yet.
+The downloader, interpreter and publication focused run passed 39 cases;
+these include local transport/platform fixtures, not a real Linux install.
+Bash syntax, Ruff and Black checks passed for the new files.
+
+Server-side resource generation and production _main are still unfinished.
+Installer apply now prepares the three fixed native helpers from verified
+release sources on the target Linux host, with fixed gcc/binutils dependencies,
+version/closed-command/hardening checks, an exact source/output digest ledger
+and atomic directory publication before activation. Installed-state,
+rollback/uninstall/retention verification explicitly validates this closed
+generated subtree; the original artifact manifest is unchanged. No compiler
+or command input is exposed to Web/API/Worker.
+The local installer/native/platform/retention/host matrix passed 145 cases,
+with one unchanged Mac setgid-directory assertion failing and two Linux/root
+build cases skipped. The lifecycle fixture now explicitly models x86_64
+OpenCloudOS instead of borrowing the test Mac's ARM architecture. The separate
+platform rejection tests remain intact. Linux CI includes actual compilation,
+hardening and failed-build retry, and has not yet run for this source batch.
+Full Linux-target mypy passed 336 files; Ruff passed.
+The later focused native/publication run passed 24 cases with two Linux/root
+skips. It includes actual timeout/cancellation of a child process group and
+proves that no child completion output is written after cancellation.
+Helper-level build retry is covered separately from whole-installer recovery:
+a fresh-install journal already classified as staged still lacks an explicit
+resume operation. That existing recovery gap must be closed before delivery.
+The current managed Chromium trust chain cannot be assumed to work in
+ordinary mobile browsers.
+Paseo's fixed connectivity/pairing source was re-read at
+30178c4f58b67f8472901356e1484022bd835de0. The selected cross-platform
+trust/connection contract must preserve AgentBox boundaries and get the
+required architecture decision before any production activation.
+
+Next: implement full trusted-resource generation and production Runtime
+composition, including an authoritative positive Codex Remote conflict source.
+Keep PC/mobile acceptance explicit, preserve data and
+recoverability, and do not claim a deployable core flow before it is proved.
 
 ## 2026-09-30 rc30 protocol validation follow-up
 

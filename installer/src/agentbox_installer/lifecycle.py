@@ -24,6 +24,9 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from agentbox_runtime.waw_host_manifest import load_verified_canonical_waw_manifest_bundle_v2
+from agentbox_runtime.waw_manifest_codecs import CrossManifestPinV2
+
 from agentbox_installer.artifact import (
     ArtifactError,
     ReleaseManifest,
@@ -41,6 +44,10 @@ from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, Instal
 from agentbox_installer.platform import PlatformFacts, detect_platform, resolve_packages
 from agentbox_installer.retention import enforce_retention
 from agentbox_installer.versioning import valid_version, version_precedence
+from agentbox_installer.waw_enrollment import (
+    WAWEnrollmentPublication,
+    WAWEnrollmentPublisher,
+)
 
 CORE_UNIT_NAMES = (
     "agentbox-api.service",
@@ -133,6 +140,107 @@ class AgentBoxInstaller:
         self.layout = layout
         self.host = host
 
+    def enroll_waw_vendors(
+        self,
+        *,
+        claude_version: str,
+        codex_version: str,
+        codex_unauthenticated_output_sha256: str,
+        recover: bool = False,
+        plan: bool = False,
+    ) -> WAWEnrollmentPublication:
+        """Publish only fixed non-secret observations; never enable Runtime mode."""
+        self.host.require_root()
+        if type(recover) is not bool or type(plan) is not bool:
+            raise TypeError("enrollment plan/recovery flags must be bool")
+        if plan:
+            return self._enroll_waw_vendors_locked(
+                claude_version=claude_version,
+                codex_version=codex_version,
+                codex_unauthenticated_output_sha256=codex_unauthenticated_output_sha256,
+                recover=recover,
+                plan=True,
+            )
+        with self._lifecycle_lock():
+            return self._enroll_waw_vendors_locked(
+                claude_version=claude_version,
+                codex_version=codex_version,
+                codex_unauthenticated_output_sha256=codex_unauthenticated_output_sha256,
+                recover=recover,
+                plan=False,
+            )
+
+    def _enroll_waw_vendors_locked(
+        self,
+        *,
+        claude_version: str,
+        codex_version: str,
+        codex_unauthenticated_output_sha256: str,
+        recover: bool,
+        plan: bool,
+    ) -> WAWEnrollmentPublication:
+        if self.installation_state() != "installed":
+            raise InstallError("vendor enrollment requires a completed AgentBox installation")
+        runtime_uid, runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+        if runtime_uid == 0 or runtime_gid == 0:
+            raise InstallError("vendor enrollment Runtime identity is invalid")
+        owner_uid = 0 if self.host.real_host else os.geteuid()
+        root_gid = 0 if self.host.real_host else os.getegid()
+        file_runtime_gid = runtime_gid if self.host.real_host else os.getegid()
+
+        def load_pinned_manifest() -> CrossManifestPinV2:
+            try:
+                self._validate_fixed_waw_file(
+                    self.layout.map("/etc/agentbox/waw-api-profile.v1.json"),
+                    owner="root",
+                    group="agentbox",
+                    mode=0o440,
+                    allowed=(_WAW_API_DISABLED_PROFILE,),
+                )
+                self._validate_fixed_waw_file(
+                    self.layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json"),
+                    owner="root",
+                    group="agentbox-runtime",
+                    mode=0o440,
+                    allowed=(_WAW_RUNTIME_DISABLED_PROFILE,),
+                )
+            except InstallError as exc:
+                raise InstallError("vendor enrollment requires safe disabled WAW profiles") from exc
+            return load_verified_canonical_waw_manifest_bundle_v2(
+                self.layout.map("/var/lib/agentbox-waw/runtime-host-installation.v2.json"),
+                self.layout.map("/usr/share/agentbox/waw"),
+                expected_runtime_uid=owner_uid,
+                expected_runtime_gid=file_runtime_gid,
+                expected_public_uid=owner_uid,
+                expected_public_gid=root_gid,
+                runtime_trusted_root=self.layout.root,
+            )
+
+        manifest = load_pinned_manifest()
+        runtime = manifest.runtime
+        fields: dict[str, object] = {
+            "schema_version": "agentbox-waw-vendor-enrollment.v1",
+            "runtime_host_installation_id": runtime.runtime_host_installation_id,
+            "runtime_host_installation_revision": runtime.runtime_host_installation_revision,
+            "host_manifest_digest": manifest.runtime_manifest_digest,
+            "enrollment_epoch": runtime.enrollment_epoch,
+            "enrollment_state": runtime.enrollment_state,
+            "claude_vendor_version": claude_version,
+            "codex_vendor_version": codex_version,
+            "codex_unauthenticated_output_sha256": codex_unauthenticated_output_sha256,
+        }
+
+        def revalidate() -> None:
+            if load_pinned_manifest() != manifest:
+                raise InstallError("vendor enrollment manifest changed")
+
+        return WAWEnrollmentPublisher(
+            self.layout.root,
+            owner_uid=owner_uid,
+            root_gid=root_gid,
+            runtime_gid=file_runtime_gid,
+        ).publish(fields, revalidate=revalidate, recover=recover, plan=plan)
+
     def installation_state(self) -> str:
         receipt = self._read_receipt()
         current = self.current_version()
@@ -148,7 +256,9 @@ class AgentBoxInstaller:
         if receipt.get("active_version") != current:
             return "partial_or_broken"
         try:
-            verify_release(self.layout.release(current), allow_generated_venv=True)
+            verify_release(
+                self.layout.release(current), allow_generated_venv=True, allow_generated_native=True
+            )
         except (ArtifactError, OSError):
             return "partial_or_broken"
         return "installed"
@@ -232,7 +342,11 @@ class AgentBoxInstaller:
         state = plan.state
         current = self.current_version()
         if state == "installed_same_version" and current == plan.version:
-            existing = verify_release(self.layout.release(plan.version), allow_generated_venv=True)
+            existing = verify_release(
+                self.layout.release(plan.version),
+                allow_generated_venv=True,
+                allow_generated_native=True,
+            )
             candidate = self._peek_artifact_manifest(artifact)
             if existing != candidate:
                 raise InstallError("same-version artifact does not match installed release")
@@ -258,6 +372,7 @@ class AgentBoxInstaller:
             existing_candidate = verify_release(
                 candidate_target,
                 allow_generated_venv=True,
+                allow_generated_native=True,
             )
             if existing_candidate != candidate:
                 raise InstallError("existing release does not match the verified artifact")
@@ -324,6 +439,7 @@ class AgentBoxInstaller:
         )
         manifest = self._stage_release(artifact, expected_sha256)
         self.host.prepare_release_environment(self.layout.release(manifest.version))
+        self.host.prepare_waw_helpers(self.layout.release(manifest.version))
         self._write_journal(
             status="running",
             version=plan.version,
@@ -511,7 +627,9 @@ class AgentBoxInstaller:
                 "rollback target predates the hardened database layout; "
                 "automatic legacy rollback is unavailable"
             )
-        target_manifest = verify_release(self.layout.release(target), allow_generated_venv=True)
+        target_manifest = verify_release(
+            self.layout.release(target), allow_generated_venv=True, allow_generated_native=True
+        )
         if target_manifest.version != target:
             raise InstallError("rollback target identity does not match its release")
         backup_id = receipt.get("pre_change_backup_id")
@@ -637,7 +755,9 @@ class AgentBoxInstaller:
             or receipt.get("active_version") != current
         ):
             raise InstallError("rollback recovery identity is invalid")
-        manifest = verify_release(self.layout.release(current), allow_generated_venv=True)
+        manifest = verify_release(
+            self.layout.release(current), allow_generated_venv=True, allow_generated_native=True
+        )
         if manifest.version != current:
             raise InstallError("rollback recovery release identity does not match")
         if recovery_state == "rollback_pending":
@@ -704,7 +824,7 @@ class AgentBoxInstaller:
         for release in releases:
             if release.is_symlink() or not release.is_dir():
                 raise InstallError("uninstall found an unknown release object")
-            verify_release(release, allow_generated_venv=True)
+            verify_release(release, allow_generated_venv=True, allow_generated_native=True)
         package_root = importlib.resources.files("agentbox_installer") / "assets/systemd"
         units: list[Path] = []
         for name in UNIT_NAMES:
@@ -780,7 +900,7 @@ class AgentBoxInstaller:
         if len(relative.parts) != 1:
             return None
         try:
-            manifest = verify_release(path, allow_generated_venv=True)
+            manifest = verify_release(path, allow_generated_venv=True, allow_generated_native=True)
         except (ArtifactError, OSError):
             return None
         return manifest.version if manifest.version == relative.name else None
@@ -896,7 +1016,9 @@ class AgentBoxInstaller:
                 manifest = verify_release(extracted)
                 target = self.layout.release(manifest.version)
                 if target.exists() or target.is_symlink():
-                    existing = verify_release(target, allow_generated_venv=True)
+                    existing = verify_release(
+                        target, allow_generated_venv=True, allow_generated_native=True
+                    )
                     if existing != manifest:
                         raise InstallError("existing release does not match the verified artifact")
                     return manifest
@@ -1405,7 +1527,7 @@ class AgentBoxInstaller:
 
     def _activate(self, version: str) -> None:
         release = self.layout.release(version)
-        verify_release(release, allow_generated_venv=True)
+        verify_release(release, allow_generated_venv=True, allow_generated_native=True)
         link = self.layout.current_link
         self._assert_trusted_parent(link)
         if link.exists() and not link.is_symlink():
@@ -1815,7 +1937,11 @@ class AgentBoxInstaller:
             return "staged"
         if "release_staging_started" in completed:
             try:
-                staged = verify_release(self.layout.release(version), allow_generated_venv=True)
+                staged = verify_release(
+                    self.layout.release(version),
+                    allow_generated_venv=True,
+                    allow_generated_native=True,
+                )
             except (ArtifactError, OSError):
                 return "unknown"
             return "staged" if staged.version == version else "unknown"

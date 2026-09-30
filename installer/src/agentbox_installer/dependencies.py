@@ -36,6 +36,8 @@ DEPENDENCY_PATHS: dict[str, tuple[str, ...]] = {
     "pnpm": ("/usr/bin/pnpm", "/usr/local/bin/pnpm"),
     "sqlite": ("/usr/bin/sqlite3",),
     "systemd": ("/usr/bin/systemctl",),
+    "native_compiler": ("/usr/bin/cc",),
+    "native_binutils": ("/usr/bin/readelf",),
     "codex": (
         "/usr/bin/codex",
         "/usr/local/bin/codex",
@@ -56,6 +58,8 @@ REQUIRED_BASE = frozenset(
         "curl",
         "sqlite",
         "systemd",
+        "native_compiler",
+        "native_binutils",
     }
 )
 

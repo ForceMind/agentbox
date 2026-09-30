@@ -223,6 +223,8 @@ def detect_platform(
 
 LOGICAL_PACKAGES: dict[PackageFamily, dict[str, tuple[str, ...]]] = {
     PackageFamily.DNF: {
+        "native_compiler": ("gcc",),
+        "native_binutils": ("binutils",),
         "python": ("python3.11",),
         "python_venv": ("python3.11",),
         "git": ("git",),
@@ -233,6 +235,8 @@ LOGICAL_PACKAGES: dict[PackageFamily, dict[str, tuple[str, ...]]] = {
         "systemd": ("systemd",),
     },
     PackageFamily.APT: {
+        "native_compiler": ("gcc", "libc6-dev"),
+        "native_binutils": ("binutils",),
         "python": ("python3", "python3-venv"),
         "python_venv": ("python3-venv",),
         "git": ("git",),

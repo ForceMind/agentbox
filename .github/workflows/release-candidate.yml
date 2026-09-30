@@ -79,6 +79,10 @@ jobs:
           python -m pip_audit --local --skip-editable
       - name: Build deterministic frontend
         run: pnpm build
+      - name: Verify actual installer native-helper build and interrupted retry
+        run: |
+          sudo "$(command -v python)" -m pytest -q -p no:cacheprovider \
+            tests/unit/test_installer_waw_native.py -k linux
       - name: Verify version and documentation
         run: |
           agentbox-install verify-version --source .
