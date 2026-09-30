@@ -1,5 +1,16 @@
 # Current Authorized Action
 
+## 2026-09-30 Close rc30 protocol-check failure
+
+`64f3e69` passed dependency audits and all other jobs, but the complete
+Python 3.13 job failed the same KEY_ATTEST trace twice. Current work retains
+the 5 ms CPU limit, preallocates immutable scalar rules, adds real-clock
+KEY_ATTEST regression coverage and bounded test-only failure diagnostics.
+537 focused Python 3.13 cases passed locally. Run the new head's Linux CI;
+if it fails, use the numeric diagnostic to locate the cause rather than
+rerunning unchanged failures. Only terminal successful required checks allow
+normal Ready/merge/read-back. No target-qualified or usable RC is claimed.
+
 ## 2026-09-30 Finish current rc30 candidate
 
 The `4e9c394` frontend audit exposed high-severity brace-expansion findings.

@@ -11,7 +11,13 @@ import pytest
 from agentbox_protocol.abws import FrameType as F
 from agentbox_protocol.awce import decode_awce
 from agentbox_protocol.waw_crypto_profile import BrowserCryptoProfile
-from agentbox_protocol.waw_wire import Leg, decode_wire_frame, encode_wire_frame
+from agentbox_protocol.waw_wire import (
+    Leg,
+    WireError,
+    WireFrame,
+    decode_wire_frame,
+    encode_wire_frame,
+)
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_encrypted_stream import (
     BoundedRedraw,
@@ -1016,6 +1022,50 @@ def test_ring_cleanup_error_still_closes_pty_but_requires_complete_cleanup(
     assert h.registry.count == 0 and h.supervisor.snapshot().buffered_bytes == 0
 
 
+def _decode_attest_for_trace(raw: bytes) -> WireFrame:
+    """Keep real-clock/GC diagnostics on failure without changing the decoder."""
+    import gc
+    import sys
+    import time
+
+    events: list[tuple[str, int]] = []
+
+    def collected(phase: str, info: dict[str, int]) -> None:
+        events.append((phase, time.thread_time_ns()))
+
+    gc.callbacks.append(collected)
+    started = time.thread_time_ns()
+    try:
+        return decode_wire_frame(raw, RA)
+    except WireError as error:
+        elapsed = time.thread_time_ns() - started
+        locations: list[str] = []
+        cause: BaseException | None = error
+        for _ in range(8):
+            if cause is None:
+                break
+            trace = cause.__traceback__
+            while trace is not None and len(locations) < 16:
+                locations.append(
+                    f"{Path(trace.tb_frame.f_code.co_filename).name}:{trace.tb_lineno}"
+                )
+                trace = trace.tb_next
+            cause = cause.__context__
+        gc_cpu = sum(
+            stop[1] - start[1]
+            for start, stop in zip(events[::2], events[1::2], strict=False)
+            if start[0] == "start" and stop[0] == "stop"
+        )
+        print(
+            f"KEY_ATTEST decode failure: cpu_ns={elapsed}, gc_cpu_ns={gc_cpu}, "
+            f"gc_events={len(events)}, locations={locations}",
+            file=sys.stderr,
+        )
+        raise
+    finally:
+        gc.callbacks.remove(collected)
+
+
 @pytest.mark.parametrize("failure_hop", [1, 2, 3, 4, 5, 6])
 def test_actual_runtime_failure_is_accepted_by_full_four_leg_trace(
     tmp_path: Path,
@@ -1064,7 +1114,7 @@ def test_actual_runtime_failure_is_accepted_by_full_four_leg_trace(
         observe(RA, h.hello)
         attest = observe(RA, h.session.receive(runtime_init)[0])
         observe(
-            api_to_browser, forward_wire_frame(decode_wire_frame(attest, RA), api_to_browser, 1)
+            api_to_browser, forward_wire_frame(_decode_attest_for_trace(attest), api_to_browser, 1)
         )
         confirm = h.browser.receive_attest(body(attest))
         if failure_hop == 3:

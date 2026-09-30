@@ -1,11 +1,40 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T04:27:06Z"
-verified_by: "codex-r12-enrollment-codec"
+verified_at_utc: "2026-09-30T05:33:56Z"
+verified_by: "codex-rc30-wire-validation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 rc30 protocol validation follow-up
+
+On head `64f3e69c4c451cc818295fe0fbb1d6c6d80c8d96`, all jobs except
+Python 3.13 reached successful terminal results or the two prescribed skips.
+The full 3.13 job failed twice at the unchanged four-leg failure trace's
+`KEY_ATTEST` decode. No third blind rerun was requested. The parser's 5 ms
+CPU budget path is a suspect, but suppressed exceptions in those logs do not
+prove its root cause. Local isolated Python 3.13.15 checks passed all 77 stream
+cases after full-suite collection. A complete Mac diagnostic hit unrelated
+Helper socket/platform failures and was stopped; it is not Linux evidence.
+
+The current follow-up preallocates immutable enum/bounds tables in the wire
+validator, retaining exact values, per-leg close rules and the unchanged
+`VALIDATION_CPU_NS = 5_000_000`. Fresh-interpreter real-clock tests now include
+KEY_ATTEST, including the 5000-decode mixed-profile test with normal GC.
+The failing trace has bounded numeric CPU/GC/cause-location diagnostics only
+when the original decoder raises; it still raises the original error.
+Python 3.13 focused wire/stream/enrollment/provider/release tests passed
+537 cases; Ruff/Black and Linux-target mypy (317 files) passed.
+
+Paired synthetic KEY_ATTEST measurements on the same Mac interpreter/input,
+5000 calls per implementation with alternating order and real thread CPU:
+before median/p95/max 248063/366167/595959 ns, after 242958/358500/486541 ns.
+Both remained within 5 ms; this small local improvement is not proof that the
+Linux failure is fixed or caused by GC. New Linux CI remains required.
+The scope stays rc30; host/client/CLI/recovery qualification remains open.
+
+Sections below are historical snapshots.
 
 ## 2026-09-30 final rc30 brace-expansion correction
 
