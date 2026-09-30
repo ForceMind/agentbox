@@ -3,10 +3,13 @@
 ## 2026-09-30 R12 rc30 vendor enrollment candidate
 
 当前只推进 [首个可用单机 RC](RELEASE_ITERATION_PLAN.md) 的 R12 依赖。
-Draft #122 正在把固定非 Secret vendor enrollment reader 与
-authority-deferred provider 对齐 `origin/main` 的 rc29 基线，作为 rc30
-软件候选。处理版本/文档冲突后运行相关本地检查和新的 exact-head CI；
-独立 Architecture/Security/Test 审查通过前保持 Draft，不合并。
+Draft #122 已对齐 `origin/main`，此前 head `8d11561` 的 26 项 CI 已终态
+（24 success、2 prescribed skips）。当前 rc30 后继批次新增 installer
+可复用的严格数据编码与真实文件/父目录替换、cleanup 失败测试；163 项
+定向测试及 Ruff/Black 通过，待新 head 的 exact-head CI。
+根据当前 AGENTS.md Review Protocol 完成主智能体自查并准确标注；
+修复发现、相关回归与新 head 的必需 CI 通过后，可按已授权流程正常合并。
+旧文档的额外独立审查机械门槛与当前 AGENTS.md 不符，不再作为恢复前提。
 原 C3-b WIP 保全；#117 与 WS14 后续功能不进入本版。随后才处理
 production `_main`、installer writer 与 D/E/F，真实 host/Secret/CLI/
 recovery 验收仍需具体输入和授权。以下记录为历史行动项。

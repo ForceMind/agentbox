@@ -1,11 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T02:48:04Z"
-verified_by: "codex-r12-enrollment-refresh"
+verified_at_utc: "2026-09-30T04:27:06Z"
+verified_by: "codex-r12-enrollment-codec"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 rc30 encoding and enrollment failure paths
+
+Current work stays on the rc30 Draft #122 candidate, based on main
+`0347920d6725c32d6b8d559905a046653ce05728`. Its prior merge head
+`8d11561e6887c4f1a2df77714e2a03afb7b1aa48` resolved the rc28/rc29
+conflicts and completed 26 terminal checks (24 success, two prescribed skips).
+It is still Draft with no independent reviews. The original dirty R12
+checkout remains untouched; no subagent or target-host operation was started.
+
+This follow-up adds a bounded data-only enrollment encoder for later
+installer use and real fixture replacements of the leaf and parent during
+reading, plus uncertain-close cleanup coverage. Local Runtime/provider/
+release tests passed 163 cases; Ruff and an in-process Black formatting
+check passed; Linux-target mypy checked 317 source files successfully. The
+Black CLI could not start its multiprocessing listener in
+the sandbox; the single-process library check was used instead. New-head CI
+remains pending. Main-agent self-review checked canonical/bounded inputs,
+descriptor and entry replacement, authority validation before lower resource
+opening, cleanup failure propagation and the absence of new API/process paths.
+No unresolved finding was identified in this scope; this is not an independent
+review. The current AGENTS.md Review Protocol makes review quality evidence,
+not an additional mechanical merge gate. GOVERNANCE and the release plan are
+reconciled to that instruction; the earlier reviewer-authorization blocker was
+based on the superseded document wording. No subagent was started.
+This does not implement the installer publication transaction,
+production `_main`, positive legacy Codex Remote state, client qualification
+or the real host/CLI/recovery gates. No claim of a usable RC is made.
+
+Sections below are historical snapshots.
 
 ## 2026-09-30 R12 vendor enrollment candidate refresh
 

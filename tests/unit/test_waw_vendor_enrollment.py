@@ -209,3 +209,99 @@ def test_revalidation_rejects_changed_installed_record(
     )
     with pytest.raises(WAWVendorEnrollmentError):
         subject.revalidate_waw_vendor_enrollment(observed)
+
+
+def test_installer_encoding_round_trips_through_runtime_file_reader(tmp_path: Path) -> None:
+    values = {
+        **VALUES,
+        "runtime_host_installation_revision": str(2**64 - 1),
+        "enrollment_epoch": str(2**64 - 1),
+        "claude_vendor_version": "v" * 96,
+    }
+    raw = subject.encode_waw_vendor_enrollment(dict(reversed(list(values.items()))))
+    assert raw == _canonical(values)
+    root, leaf = _fixture(tmp_path, raw)
+    record = _load(root, leaf)
+    record.require_authority(_authority(values))
+    assert record.values["claude_vendor_version"] == values["claude_vendor_version"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"extra": "unrecognized"},
+        {"schema_version": "unsupported"},
+        {"enrollment_epoch": "01"},
+        {"enrollment_epoch": str(2**64)},
+        {"claude_vendor_version": "v" * 97},
+        {"claude_vendor_version": "带有中文"},
+        {"claude_vendor_version": "two words"},
+        {"codex_vendor_version": True},
+        {"codex_vendor_version": ["unbounded", "object"]},
+        {"codex_unauthenticated_output_sha256": "A" * 64},
+    ],
+)
+def test_installer_encoding_rejects_invalid_inputs(change: dict[str, object]) -> None:
+    with pytest.raises(WAWVendorEnrollmentError):
+        subject.encode_waw_vendor_enrollment({**VALUES, **change})
+
+
+@pytest.mark.parametrize("replace_parent", [False, True], ids=["file", "parent"])
+def test_path_replacement_during_read_fails_even_with_identical_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replace_parent: bool
+) -> None:
+    root, leaf = _fixture(tmp_path)
+    real_read = os.read
+    replaced = False
+
+    def replace_after_read(descriptor: int, count: int) -> bytes:
+        nonlocal replaced
+        chunk = real_read(descriptor, count)
+        if not replaced:
+            replaced = True
+            if replace_parent:
+                parent = leaf.parent
+                parent.rename(parent.with_name("old-parent"))
+                parent.mkdir()
+                parent.chmod(0o750)
+            else:
+                leaf.rename(leaf.with_name("old-file"))
+            leaf.write_bytes(_canonical(VALUES))
+            leaf.chmod(0o440)
+        return chunk
+
+    monkeypatch.setattr(os, "read", replace_after_read)
+    with pytest.raises(WAWVendorEnrollmentError, match="changed"):
+        _load(root, leaf)
+
+
+def test_descriptor_close_failure_rejects_record_and_attempts_remaining_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, leaf = _fixture(tmp_path)
+    real_open = os.open
+    real_close = os.close
+    opened: set[int] = set()
+    closed: set[int] = set()
+    failed = False
+
+    def track_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        descriptor = real_open(path, flags, *args, **kwargs)
+        opened.add(descriptor)
+        return descriptor
+
+    def uncertain_close(descriptor: int) -> None:
+        nonlocal failed
+        real_close(descriptor)
+        closed.add(descriptor)
+        if not failed:
+            failed = True
+            raise OSError("injected close uncertainty")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "open", track_open)
+        patch.setattr(os, "close", uncertain_close)
+        with pytest.raises(WAWVendorEnrollmentError, match="cleanup is uncertain"):
+            _load(root, leaf)
+    assert opened
+    assert closed == opened

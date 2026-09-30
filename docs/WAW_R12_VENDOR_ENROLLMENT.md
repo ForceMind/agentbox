@@ -50,3 +50,19 @@ Codex Remote state source and single application graph. Linux PID 1 sockets,
 real CLI login, host isolation and reboot recovery remain `NOT RUN` until a
 specific host/client tuple and authorization are supplied. Tests use only
 synthetic fixture records and never write the fixed production path.
+
+## Shared encoding and failure-path evidence
+
+`encode_waw_vendor_enrollment` is a data-only entry point for the later
+installer transaction. It rejects unknown/missing fields, non-string or
+oversized values and invalid authority/version fields before returning the
+same bounded canonical bytes accepted by the Runtime reader. It performs no
+filesystem I/O and does not attest to how the values were observed. The
+installer must still bind actual target observations to its verified manifest
+and publish/recover the fixed record; this helper does not complete that work.
+
+Fixture tests replace the leaf file or its parent during a held-descriptor
+read, using identical content. Both replacements are rejected. An injected
+descriptor-close error rejects the record and still attempts the remaining
+descriptor cleanup. These are portable software failure-path checks, not
+real Linux enrollment or independent security-review evidence.

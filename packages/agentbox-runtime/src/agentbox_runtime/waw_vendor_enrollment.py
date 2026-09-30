@@ -178,6 +178,33 @@ def _decode(
     )
 
 
+def encode_waw_vendor_enrollment(values: Mapping[str, object]) -> bytes:
+    """Encode validated non-secret fields without reading or writing host state.
+
+    Installer enrollment can use the same bounded schema as the Runtime reader.
+    Encoding does not establish target observations or confer Runtime authority.
+    """
+
+    if not isinstance(values, Mapping) or len(values) != len(_KEYS):
+        raise WAWVendorEnrollmentError("vendor enrollment fields are invalid")
+    data = dict(values)
+    if set(data) != _KEYS:
+        raise WAWVendorEnrollmentError("vendor enrollment fields are invalid")
+    # All admitted fields are short ASCII strings. Check the shape before JSON
+    # serialization so an installer input cannot allocate an unbounded payload.
+    if any(
+        type(value) is not str or len(value) > 96 or not value.isascii() for value in data.values()
+    ):
+        raise WAWVendorEnrollmentError("vendor enrollment value is invalid")
+    raw = (
+        json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n"
+    ).encode()
+    if len(raw) > _MAX_BYTES:
+        raise WAWVendorEnrollmentError("vendor enrollment content is too large")
+    _decode(raw, (), ())
+    return raw
+
+
 def _load_at(
     path: Path, *, root: Path, owner_uid: int, runtime_gid: int
 ) -> WAWVendorEnrollmentRecord:
@@ -337,6 +364,7 @@ def revalidate_waw_vendor_enrollment(observed: WAWVendorEnrollmentRecord) -> Non
 __all__ = [
     "WAWVendorEnrollmentError",
     "WAWVendorEnrollmentRecord",
+    "encode_waw_vendor_enrollment",
     "load_waw_vendor_enrollment",
     "revalidate_waw_vendor_enrollment",
 ]

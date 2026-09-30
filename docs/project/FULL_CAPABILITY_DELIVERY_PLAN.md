@@ -2,7 +2,9 @@
 
 2026-09-30 当前候选：单版本计划已由 PR #124 合并；S01 仅继续 R12。
 固定非 Secret vendor enrollment 的 Draft #122 正对齐 rc29 main 并改为
-rc30 软件候选，新的 exact-head CI 与独立安全关键审查尚未完成。
+rc30 软件候选；新的 exact-head CI 尚待完成。审查按当前 AGENTS.md
+Review Protocol 执行，主智能体自查如实标注；下方历史独立审查机械
+门槛不覆盖当前指令。当前一版仍只做 R12，未扩大功能范围。
 它不关闭 production `_main`、installer writer 或真实 host/CLI 门禁。
 
 当前执行顺序由 [逐版本交付计划](RELEASE_ITERATION_PLAN.md) 收口：先完成
