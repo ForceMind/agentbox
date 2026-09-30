@@ -1,0 +1,59 @@
+# ADR 0011: deployable Runtime cgroup compatibility
+
+Status: **Proposed; architecture authorization required before implementation/activation**.
+This preserves the full deployment goal; neither alternative is qualified yet.
+
+## Verified conflict
+
+The existing v1 cgroup manifest requires `protect_control_groups="private"`,
+`Delegate=true`, fixed limits and a one-component delegate subgroup. The
+Runtime verifier currently expects that subgroup directly below `/sys/fs/cgroup`.
+The installed legacy Runtime unit uses `ProtectControlGroups=true` and has no
+delegation. Existing Ubuntu 24.04/OpenCloudOS baseline evidence names systemd
+255, which does not support the private value. These records cannot be
+truthfully turned into an active WAW manifest by filling in hashes.
+
+Official versioned sources: [v255 exec manual](https://raw.githubusercontent.com/systemd/systemd/v255/man/systemd.exec.xml)
+and [v256](https://raw.githubusercontent.com/systemd/systemd/v256/man/systemd.exec.xml)
+accept booleans only; [v257](https://raw.githubusercontent.com/systemd/systemd/v257/man/systemd.exec.xml)
+adds private/strict cgroup namespace mounts. The Installer's compatibility
+check now distinguishes values and rejects private/strict below 257. This
+correction leaves the existing boolean legacy service compatible.
+
+## A: compatible delegated-subtree architecture
+
+- Keep legacy distro support and design a distinct, versioned WAW policy for
+  systemd 255. The only writable cgroup area is the exact delegated service
+  subtree; all other cgroup paths remain read-only and kernel permissions
+  deny cross-user writes. Do not globally disable cgroup protection.
+- Use an explicit service/supervisor/workload hierarchy. Freeze the exact
+  service-relative path and validate real mount/namespace/ownership/limits;
+  do not reinterpret the old single-component/private manifest as equivalent.
+- Service-level cgroup namespace isolation differs from the private profile.
+  Vendor sandbox/namespace, Root Helper exclusion, Runtime Secret authority,
+  allowlisted actions, PID/FD identity and exact Stop remain mandatory.
+- Prove the selected unit's read-only mount plus scoped writable delegation
+  on actual systemd 255, deny sibling/outside writes, and test supervisor
+  survival, admission, cleanup, restart and recovery. If that combination
+  cannot be proved, fail closed and revise the proposal; no fallback to an
+  unrestricted cgroup mount is authorized.
+
+## B: private-namespace profile on newer systemd
+
+- Keep the private policy and require systemd >=257 for WAW; older systems
+  retain legacy core support but do not gain a WAW-ready claim.
+- Observe the real private namespace root and delegate hierarchy. Correct
+  the existing path assumptions through a versioned, bounded manifest;
+  do not invent host mount IDs or issue an installer-namespace observation
+  as a Runtime-namespace fact.
+- Qualify an actual distro/image, native PID 1, delegation and limits before
+  promising a deployable target. Current 255 CI is insufficient. Do not
+  replace a server's systemd from an arbitrary download during installation.
+
+## Decision and follow-up
+
+Owner selects compatibility-first A or newer-systemd B. Both require exact
+implementation/host evidence and retain PC/mobile browser scope and all
+later capabilities. Until selected, no enabled profile or fabricated cgroup
+manifest is published. Non-secret resource work may continue when independent;
+Secret key lifecycle and Web trust authorization remain separate.

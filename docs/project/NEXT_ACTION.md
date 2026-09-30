@@ -1,5 +1,30 @@
 # Current Authorized Action
 
+## 2026-09-30 cgroup deployment prerequisite
+
+9dda54d exact-head CI is now terminal. Keep Draft #125 and the same version;
+the full deployable flow remains incomplete. Current compatibility correction
+rejects private/strict on systemd <257 instead of pretending the directive's
+boolean-era introduction covers those modes. 54 cases passed (one local
+systemd-analyze skip), mypy/Ruff pass. ADR 0011 is Proposed, with an explicit
+Owner choice requested for 255-compatible scoped delegation versus a newer
+private-namespace target. ADR 0010's Web trust question is still pending.
+
+Preserve all code and original checkout WIP. Do not issue/activate a cgroup
+manifest until the selected versioned namespace/path contract and actual
+Runtime observations exist; do not replace independent client trust before
+the Web decision. Non-secret independent work may continue where possible.
+
+## 2026-09-30 next after 9dda54d deployment matrix
+
+Draft #125 head 9dda54d has successful Deployment run 36697969316, including
+the actual root native-helper build/retry and Runtime-owned epoch check.
+Inspect the still-running Backend/Frontend/Release/E2E checks on this same
+head, repair concrete failures, then continue actual manifest generation and
+the production Runtime graph. This snapshot is post-commit local doc WIP;
+carry it into the next code batch instead of restarting CI for a status-only
+commit. Full browser trust decision and core-flow qualification remain open.
+
 ## 2026-09-30 explicit staged recovery and fixed epoch candidate
 
 Current PR #125 follow-up adds resume-install/bootstrap --resume for fresh

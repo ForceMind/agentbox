@@ -1,11 +1,47 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T09:35:26Z"
+verified_at_utc: "2026-09-30T10:09:04Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 actual cgroup compatibility conflict
+
+9dda54d's exact-head CI is terminal with only the prescribed historical skips;
+no remaining running or failing check was observed at readback. PR #125 stays
+Draft because complete manifest/key/profile/Runtime and client flow are absent.
+
+Manifest v1 requires ProtectControlGroups=private, but the current platform
+baseline is systemd 255. Official versioned exec manuals show 255/256 accept
+only booleans, while 257 adds private/strict. The legacy installed unit uses
+true with no delegation, so it cannot be hashed into a valid active WAW policy.
+The name-only compatibility checker incorrectly treated private as a 232
+feature. Current WIP fixes value-aware/last-assignment/unknown-value checking;
+existing boolean service support remains unchanged. 54 focused compatibility,
+asset and platform cases passed with one local systemd-analyze skip; mypy
+and Ruff passed. This is not a qualified WAW host or a new version.
+
+ADR 0011 records two concrete alternatives: a separately versioned, scoped
+delegated-subtree policy compatible with 255, or a private profile requiring
+257 plus actual image/namespace qualification. Owner authorization is pending;
+do not silently weaken the existing private contract, drop legacy support,
+fabricate namespace observations, or install arbitrary replacement systemd.
+The independent Web trust authorization (ADR 0010) is also still pending.
+
+## 2026-09-30 staging recovery exact-head deployment evidence
+
+Commit 9dda54d3d24adfe57dcf2f92544ba5a86ca5b0d5 is pushed to Draft PR #125.
+Deployment run 36697969316 completed all four installer matrix jobs and
+deployment-gate successfully. Job 109830394190's dedicated Linux/root step
+"Verify actual native-helper build, retry and Runtime-owned epoch bootstrap"
+ran successfully from 09:44:31Z to 09:44:37Z. This is real CI filesystem/build
+evidence for the fixed epoch and helper paths, with isolated temporary data;
+it is not a deployed host, real provider login or PC/mobile core-flow claim.
+Other exact-head checks were still running at the last readback. Preserve
+this post-commit evidence as local doc WIP until the next validated batch;
+do not restart the current CI solely to commit this snapshot.
 
 ## 2026-09-30 same-artifact staging recovery candidate
 

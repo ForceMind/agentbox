@@ -22,6 +22,8 @@ Owner 在 2026-09-30 要求交付自己能在服务器运行的安装版本，�
 
 ## 必须闭合的依赖
 
+实际部署还存在 cgroup 合同冲突：v1 要求 ProtectControlGroups=private，而当前平台基线 255 只支持布尔值；257 才支持 private/strict。现有关闭态 unit 不能通过填写摘要变成可运行 WAW。具体选择见 [ADR 0011](../adr/0011-deployable-cgroup-compatibility.md)，需要 Owner 选择兼容 255 的版本化受限子树方案，或采用更新 systemd 的 private 方案。Legacy core 平台支持不被本记录删除，首版可用目标也不缩减；实际 WAW 支持仍须完整实施和资格化。
+
 当前 production _main 仍拒绝 filesystem-v2；安装器也没有现场生成完整 v2 资源的步骤。新注册命令只发布非敏感观察记录，不启用服务、不运行 CLI Login、不读取 Provider Secret。
 
 安装器现已接入目标机 native helper 构建：从已验证的源码编译三个固定程序，验证版本、拒绝任意命令和 ELF 加固，整体发布 libexec 与源码/输出摘要记录。制品 manifest 保持原样；安装状态、回滚和保留流程通过显式闭合的生成目录校验。Linux CI 的真实编译尚待运行，不能从本地合成 ELF 记录测试外推。gcc/binutils 纳入固定依赖映射。完整 v2 manifest、Runtime key、公钥观测和启用事务仍未完成。
