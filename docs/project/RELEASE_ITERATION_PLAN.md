@@ -12,7 +12,7 @@
 
 | 版本阶段 | 本阶段只解决的问题 | 退出条件 |
 | --- | --- | --- |
-| 软件/制品候选 | 完成 R12-C3-b `_main` 生产组合、固定 enrollment、R12-D/E 安装与客户端信任、R12-F 制品配对；#122 获必要独立审查后才可合并 | 固定生产图正负例、相关安装/回退与客户端构建、独立安全审查、exact-head CI 和 merge read-back；标记 **Software/Artifact Ready**，不称可用 |
+| 软件/制品候选 | 完成 R12-C3-b `_main` 生产组合、固定 enrollment、R12-D/E 安装与客户端信任、R12-F 制品配对；按当前 AGENTS.md 安排风险检查 | 固定生产图正负例、相关安装/回退与客户端构建、准确标注的自查/适用审查、exact-head CI 和 merge read-back；标记 **Software/Artifact Ready**，不称可用 |
 | 首个可用 RC | 对上述固定 host/client/CLI tuple 完成 R12-G/H/I | G1–G5 实测、双 CLI 真输入输出/重连/exact Stop、故障/重启/升级回退、恢复记录全部通过；标记 **Target Qualified RC**。缺任何关键证据则列明失败或 NOT RUN |
 | 后续功能版本 | 每次从 70 项清单选一个可实际操作的能力组，优先完成 Files/Changes，再按依赖交付结构化会话、开发环境、Provider、客户端、relay、插件、自动化与 Hub | 每版有用户路径、权限/失败/恢复行为、实际客户端或目标服务证据、版本/制品与明确未支持范围；逐项关闭清单，不用源码导入量计进度 |
 
@@ -21,7 +21,7 @@
 ## 当前范围冻结与下一步
 
 1. 停止新增 WS14 标签、导航、命令中心及 S02–S14 的功能批次。它们的已合并成果保留；#117 维持 Draft，等待其自身审查，不把 patch reader 当成首个可用 RC 的隐藏前提。
-2. 先处理 #122 的独立 Architecture/Security/Test 审查结论；发现问题则在该候选内修复。随后核对原工作区 C3-b WIP 的归属、diff 和依赖，在独立干净分支接续 R12-C3-b、D/E/F，不 reset、stash、clean 或广泛提交原工作区。
+2. 先完成 #122 的风险检查、相关回归与 exact-head CI，按当前 AGENTS.md 的 `feature branch → CI → merge → exact read-back` 交付；主智能体自查不称独立审查。随后核对原工作区 C3-b WIP 的归属、diff 和依赖，在独立干净分支接续 R12-C3-b、D/E/F，不 reset、stash、clean 或广泛提交原工作区。
 3. 软件/制品证据齐备后，依据 [目标记录](R12_TARGET_RECORD.md)补齐 D01–D11 中实际依赖的 host、Origin、分发、CLI、费用与恢复输入，再执行已获具体授权的 G/H/I。现场输入缺失时报告阻断及最小所需输入，保持该版本未完成；不以新功能开发掩盖阻断。
 4. 首个可用 RC 的目标现场验收完成后，再为下一版选择 Files/Changes 的一个完整用户路径，处理 #117 审查和内容通道依赖。70 项清单是长期 backlog，不是当前并行施工清单。
 

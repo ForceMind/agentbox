@@ -8,7 +8,12 @@
 ## CI and Review
 
 All required and additional checks for the exact head must reach terminal state. Pending checks are not PASS.
-Security-critical changes require independent read-only Architecture, Security and Test reviewers; their PASS is evidence only.
+Architecture, Security and Test review is arranged according to risk and the
+current task's authorization. Under the current `AGENTS.md` Review Protocol,
+review is quality evidence and is not an additional mechanical merge gate.
+Record main-agent self-review as self-review; never call it an independent PASS.
+Starting a subagent still requires explicit task authorization. Host activation,
+Secret handling and production claims retain their separate gates.
 
 ## Automation
 

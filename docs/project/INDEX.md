@@ -34,6 +34,9 @@
   root-owned读取、启动currentness与API生产入口契约。
 - [R12 Runtime key port](../WAW_R12_RUNTIME_KEY_PORT.md)：C1固定Runtime-only key custody、
   同一manifest authority绑定、epoch时点与关闭契约；C2/C3尚未完成。
+- [R12 fixed vendor enrollment](../WAW_R12_VENDOR_ENROLLMENT.md)：
+  非Secret CLI版本/输出摘要的固定来源、文件身份及同一Runtime authority配对候选；
+  不含真实目标采集或主机激活。
 - [R12 fixed auth probe](../WAW_R12_RUNTIME_AUTH_PROBE.md)：C2的closed native ABI、
   同generation借用、offline status、shared cache与cleanup契约；实现与host资格分开。
 - [R12-C3-b production composition](../WAW_R12_C3B_PRODUCTION_COMPOSITION.md)：

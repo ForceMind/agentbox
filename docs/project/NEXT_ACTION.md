@@ -1,5 +1,43 @@
 # Current Authorized Action
 
+## 2026-09-30 Close rc30 protocol-check failure
+
+`64f3e69` passed dependency audits and all other jobs, but the complete
+Python 3.13 job failed the same KEY_ATTEST trace twice. Current work retains
+the 5 ms CPU limit, preallocates immutable scalar rules, adds real-clock
+KEY_ATTEST regression coverage and bounded test-only failure diagnostics.
+537 focused Python 3.13 cases passed locally. Run the new head's Linux CI;
+if it fails, use the numeric diagnostic to locate the cause rather than
+rerunning unchanged failures. Only terminal successful required checks allow
+normal Ready/merge/read-back. No target-qualified or usable RC is claimed.
+
+## 2026-09-30 Finish current rc30 candidate
+
+The `4e9c394` frontend audit exposed high-severity brace-expansion findings.
+After the additional moderate recursion-complexity advisory, the final
+same-version patch pins only 1.1.21/5.0.12, preserves the audit level,
+passes frozen installation, audit, 1201 Web/6 MV3 tests and lint/types/build.
+Run this new head's required CI; repair failures without relaxing assertions.
+Then normal Ready/merge/read-back follows the current AGENTS.md authority.
+Main-agent risk checks are self-review, not independent PASS. After this
+rc30 batch, the same first-usable-RC objective still needs production `_main`,
+installer enrollment publication, positive legacy Codex Remote state and
+client/target qualification. No S02–S14 work is started.
+
+## 2026-09-30 R12 rc30 vendor enrollment candidate
+
+当前只推进 [首个可用单机 RC](RELEASE_ITERATION_PLAN.md) 的 R12 依赖。
+Draft #122 已对齐 `origin/main`，此前 head `8d11561` 的 26 项 CI 已终态
+（24 success、2 prescribed skips）。当前 rc30 后继批次新增 installer
+可复用的严格数据编码与真实文件/父目录替换、cleanup 失败测试；163 项
+定向测试及 Ruff/Black 通过，待新 head 的 exact-head CI。
+根据当前 AGENTS.md Review Protocol 完成主智能体自查并准确标注；
+修复发现、相关回归与新 head 的必需 CI 通过后，可按已授权流程正常合并。
+旧文档的额外独立审查机械门槛与当前 AGENTS.md 不符，不再作为恢复前提。
+原 C3-b WIP 保全；#117 与 WS14 后续功能不进入本版。随后才处理
+production `_main`、installer writer 与 D/E/F，真实 host/Secret/CLI/
+recovery 验收仍需具体输入和授权。以下记录为历史行动项。
+
 ## 2026-09-29 首个可用 RC 收口
 
 Owner 要求按版本迭代，不再以 70 项全量清单驱动并行旁支。当前唯一产品

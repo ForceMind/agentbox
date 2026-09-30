@@ -196,6 +196,47 @@ _BASE = {"protocol_version": "one"}
 _LEASE = {"attachment_id": "att", "lease_number": "u64"}
 _EPOCH = {"runtime_epoch": "u64"}
 _B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+_INTEGER_BOUNDS = MappingProxyType(
+    {
+        "one": (1, 1),
+        "input_limit": (INPUT_LIMIT, INPUT_LIMIT),
+        "output_limit": (OUTPUT_LIMIT, OUTPUT_LIMIT),
+        "columns": (8, 240),
+        "rows": (1, 200),
+        "exit_code": (-128, 255),
+    }
+)
+_ENUM_RULES = MappingProxyType(
+    {
+        "noise": frozenset({"Noise_NX_25519_AESGCM_SHA256"}),
+        "verified": frozenset({"verified"}),
+        "RUNNING": frozenset({"RUNNING"}),
+        "agent": frozenset({"claude", "codex"}),
+        "commit_result": frozenset({"committed", "rejected"}),
+        "resize_result": frozenset({"applied", "rejected"}),
+        "detach_result": frozenset({"detached", "already_detached", "rejected"}),
+        "cleanup": frozenset({"ATTACH_PTY_CLOSED", "ATTACH_PTY_CLOSE_UNCERTAIN"}),
+        "exit_state": frozenset({"EXITED", "STOPPED", "MISSING", "COLLISION", "BROKEN", "UNKNOWN"}),
+        "gap_reason": frozenset(
+            {"baseline_redraw", "ring_overflow", "cursor_expired", "slow_client"}
+        ),
+        "input_result": frozenset({"accepted", "written_to_pty", "write_uncertain", "rejected"}),
+        "error": ERROR_CODES,
+        "state": WORKSPACE_STATES,
+        "reject": _REJECT,
+        "resize_reject": _RESIZE_REJECT,
+        "detach_reject": _DETACH_REJECT,
+        "input_reject": _REJECT | {"INPUT_RATE_LIMITED", "INPUT_WRITE_UNCERTAIN"},
+    }
+)
+_CLOSE_RULES = MappingProxyType(
+    {
+        _AR: _INTERNAL_CLOSE,
+        _RA: _RUNTIME_CLOSE,
+        _AB: _RUNTIME_CLOSE | _API_CLOSE,
+        _BA: _RUNTIME_CLOSE | _API_CLOSE,
+    }
+)
 
 
 def _schema(kind: FrameType, leg: Leg) -> dict[str, str]:
@@ -323,15 +364,7 @@ def _scalar(value: object, rule: str, leg: Leg) -> None:
             raise WireError()
         return
     if rule in ("one", "input_limit", "output_limit", "columns", "rows", "exit_code"):
-        bounds = {
-            "one": (1, 1),
-            "input_limit": (INPUT_LIMIT, INPUT_LIMIT),
-            "output_limit": (OUTPUT_LIMIT, OUTPUT_LIMIT),
-            "columns": (8, 240),
-            "rows": (1, 200),
-            "exit_code": (-128, 255),
-        }
-        low, high = bounds[rule]
+        low, high = _INTEGER_BOUNDS[rule]
         if type(value) is not int or not low <= value <= high:
             raise WireError()
         return
@@ -379,31 +412,8 @@ def _scalar(value: object, rule: str, leg: Leg) -> None:
         except ValueError:
             raise WireError() from None
     else:
-        enums = {
-            "noise": {"Noise_NX_25519_AESGCM_SHA256"},
-            "verified": {"verified"},
-            "RUNNING": {"RUNNING"},
-            "agent": {"claude", "codex"},
-            "commit_result": {"committed", "rejected"},
-            "resize_result": {"applied", "rejected"},
-            "detach_result": {"detached", "already_detached", "rejected"},
-            "cleanup": {"ATTACH_PTY_CLOSED", "ATTACH_PTY_CLOSE_UNCERTAIN"},
-            "exit_state": {"EXITED", "STOPPED", "MISSING", "COLLISION", "BROKEN", "UNKNOWN"},
-            "gap_reason": {"baseline_redraw", "ring_overflow", "cursor_expired", "slow_client"},
-            "input_result": {"accepted", "written_to_pty", "write_uncertain", "rejected"},
-            "error": ERROR_CODES,
-            "state": WORKSPACE_STATES,
-            "reject": _REJECT,
-            "resize_reject": _RESIZE_REJECT,
-            "detach_reject": _DETACH_REJECT,
-            "input_reject": _REJECT | {"INPUT_RATE_LIMITED", "INPUT_WRITE_UNCERTAIN"},
-            "close": (
-                _INTERNAL_CLOSE
-                if leg == _AR
-                else _RUNTIME_CLOSE if leg == _RA else _RUNTIME_CLOSE | _API_CLOSE
-            ),
-        }
-        if value not in enums[rule]:
+        accepted = _CLOSE_RULES[leg] if rule == "close" else _ENUM_RULES[rule]
+        if value not in accepted:
             raise WireError()
 
 

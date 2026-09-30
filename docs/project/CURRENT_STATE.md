@@ -1,11 +1,132 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-29T14:06:55Z"
-verified_by: "codex-release-iteration-plan"
+verified_at_utc: "2026-09-30T05:33:56Z"
+verified_by: "codex-rc30-wire-validation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 rc30 protocol validation follow-up
+
+On head `64f3e69c4c451cc818295fe0fbb1d6c6d80c8d96`, all jobs except
+Python 3.13 reached successful terminal results or the two prescribed skips.
+The full 3.13 job failed twice at the unchanged four-leg failure trace's
+`KEY_ATTEST` decode. No third blind rerun was requested. The parser's 5 ms
+CPU budget path is a suspect, but suppressed exceptions in those logs do not
+prove its root cause. Local isolated Python 3.13.15 checks passed all 77 stream
+cases after full-suite collection. A complete Mac diagnostic hit unrelated
+Helper socket/platform failures and was stopped; it is not Linux evidence.
+
+The current follow-up preallocates immutable enum/bounds tables in the wire
+validator, retaining exact values, per-leg close rules and the unchanged
+`VALIDATION_CPU_NS = 5_000_000`. Fresh-interpreter real-clock tests now include
+KEY_ATTEST, including the 5000-decode mixed-profile test with normal GC.
+The failing trace has bounded numeric CPU/GC/cause-location diagnostics only
+when the original decoder raises; it still raises the original error.
+Python 3.13 focused wire/stream/enrollment/provider/release tests passed
+537 cases; Ruff/Black and Linux-target mypy (317 files) passed.
+
+Paired synthetic KEY_ATTEST measurements on the same Mac interpreter/input,
+5000 calls per implementation with alternating order and real thread CPU:
+before median/p95/max 248063/366167/595959 ns, after 242958/358500/486541 ns.
+Both remained within 5 ms; this small local improvement is not proof that the
+Linux failure is fixed or caused by GC. New Linux CI remains required.
+The scope stays rc30; host/client/CLI/recovery qualification remains open.
+
+Sections below are historical snapshots.
+
+## 2026-09-30 final rc30 brace-expansion correction
+
+The `7365e4e` dependency review found the additional moderate advisory
+GHSA-q2hr-2g5m-vwhr in brace-expansion 1.1.20. Final scoped overrides now
+use 1.1.21 and 5.0.12, covering both high recursion issues and this quadratic
+rewrite issue. No other dependency version was changed. Frozen installation
+with scripts disabled passed; moderate-level audit identifies only the two
+pre-existing Vitest/@vitest-mocker findings (GHSA-82fw-gwwq-j7x9), with
+0 high/critical. The current high-level audit and dependency-review policies
+are retained. No finding was suppressed.
+
+Node 22.23.2 Web tests passed 1201/1201, MV3 tests 6/6, with lint/typecheck
+and production builds passing. The corrected head still requires its full
+CI before normal merge. Main-agent self-review follows the current AGENTS.md;
+the original R12 WIP remains untouched and real host/client/CLI/recovery
+qualification is unfinished. Earlier patch attempts below remain historical.
+
+## 2026-09-30 rc30 dependency audit recovery
+
+Head `4e9c394188e624aab5c75049441eb043f553a8af` reached terminal
+CI with a frontend-audit failure: newly updated advisories
+GHSA-qhr7-859c-m2p7 / GHSA-6j4f-fj2g-mc7p affect the previously locked
+brace-expansion 1.1.18 and 5.0.9. This same-rc30 correction adds scoped
+overrides for patched 1.1.20 and 5.0.11; pnpm regenerated only those two
+package entries and their dependency references. Frozen installation with
+scripts disabled passed. The original `pnpm audit --audit-level high`
+threshold is retained; audit now exits 0 with 0 high/critical and 4 moderate
+findings in metadata. No advisory suppression was added.
+
+Node 22.23.2 full Web tests passed 1201/1201 and inert MV3 tests 6/6;
+lint/typecheck and both production builds passed. An initial run under the
+developer default Node 26 failed 20 existing localStorage-related tests;
+switching to the installed CI-family Node 22 resolved them without changing
+assertions. The existing 650.19 kB Web bundle warning remains. New-commit
+exact-head CI is required before normal merge; Runtime/host qualification
+is still incomplete. This patch stays in the current version.
+
+Sections below are historical snapshots.
+
+## 2026-09-30 rc30 encoding and enrollment failure paths
+
+Current work stays on the rc30 Draft #122 candidate, based on main
+`0347920d6725c32d6b8d559905a046653ce05728`. Its prior merge head
+`8d11561e6887c4f1a2df77714e2a03afb7b1aa48` resolved the rc28/rc29
+conflicts and completed 26 terminal checks (24 success, two prescribed skips).
+It is still Draft with no independent reviews. The original dirty R12
+checkout remains untouched; no subagent or target-host operation was started.
+
+This follow-up adds a bounded data-only enrollment encoder for later
+installer use and real fixture replacements of the leaf and parent during
+reading, plus uncertain-close cleanup coverage. Local Runtime/provider/
+release tests passed 163 cases; Ruff and an in-process Black formatting
+check passed; Linux-target mypy checked 317 source files successfully. The
+Black CLI could not start its multiprocessing listener in
+the sandbox; the single-process library check was used instead. New-head CI
+remains pending. Main-agent self-review checked canonical/bounded inputs,
+descriptor and entry replacement, authority validation before lower resource
+opening, cleanup failure propagation and the absence of new API/process paths.
+No unresolved finding was identified in this scope; this is not an independent
+review. The current AGENTS.md Review Protocol makes review quality evidence,
+not an additional mechanical merge gate. GOVERNANCE and the release plan are
+reconciled to that instruction; the earlier reviewer-authorization blocker was
+based on the superseded document wording. No subagent was started.
+This does not implement the installer publication transaction,
+production `_main`, positive legacy Codex Remote state, client qualification
+or the real host/CLI/recovery gates. No claim of a usable RC is made.
+
+Sections below are historical snapshots.
+
+## 2026-09-30 R12 vendor enrollment candidate refresh
+
+Live `origin/main` is `0347920d6725c32d6b8d559905a046653ce05728`,
+the merge of the single-release-focus plan PR #124. Its six Backend,
+Frontend, E2E, Deployment, Security and Release Candidate post-main
+workflows completed successfully. Draft #122's prior head
+`26c8785f89560e979d7439d8e5f19b3cba7569ca` had 26 terminal
+exact-head checks (24 success, two prescribed skips), but no independent
+Architecture/Security/Test reviews and no merge. It became conflicting after
+rc29 and the plan landed. This branch is resolving that conflict against
+main, retaining the rc29 application work and targeting the next source
+version rc30. New exact-head tests, CI and independent review remain pending.
+Draft #117 stays separate for a later Files/Changes version.
+
+The original `codex/r12-runtime-production` checkout remains at its old
+HEAD with uncommitted C3-b provider/test/docs and build files; it was read
+only and not used as an implementation source. The later main branch already
+contains an authority-deferred resource/provider foundation. Production
+`_main`, an installer enrollment writer, a positive legacy Codex Remote
+state source, real host/client/CLI/recovery and production remain unfinished.
+
+Sections below are historical snapshots.
 
 ## 2026-09-29 逐版本计划基线
 

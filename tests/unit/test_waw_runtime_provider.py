@@ -12,8 +12,9 @@ from __future__ import annotations
 import hashlib
 import os
 import threading
+from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any, cast
 from unittest import mock
 
@@ -55,6 +56,10 @@ from agentbox_runtime.waw_runtime_provider import (
 from agentbox_runtime.waw_runtime_resources import (
     WAWProductionResourceCleanupError,
     WAWProductionResources,
+)
+from agentbox_runtime.waw_vendor_enrollment import (
+    WAWVendorEnrollmentError,
+    WAWVendorEnrollmentRecord,
 )
 
 PROJECT = "prj_" + "1" * 32
@@ -143,10 +148,26 @@ def _provider(
     )
 
 
-def _deferred_provider() -> WAWDeferredProductionExecutorProvider:
+def _deferred_record() -> WAWVendorEnrollmentRecord:
+    return WAWVendorEnrollmentRecord(
+        HOST,
+        REVISION,
+        "a" * 64,
+        "3",
+        "steady",
+        MappingProxyType(dict(ENROLLMENT_VALUES)),
+        "d" * 64,
+        (1, 2, 3, 4, 5),
+        (1, 2, 3, 4, 5, 1, 100, 1, 1),
+    )
+
+
+def _deferred_provider(
+    enrollment: WAWVendorEnrollmentRecord | None = None,
+) -> WAWDeferredProductionExecutorProvider:
     return build_waw_deferred_production_executor_provider(
         project_registry=ProjectRegistry(Path.cwd()),
-        enrollment=_enrollment(),
+        enrollment=enrollment or _deferred_record(),
         conflict_probe=_ConflictProbe(),
         geometry=PtyGeometry(80, 24),
         clock=lambda: 1.0,
@@ -163,12 +184,66 @@ def _deferred_authority(project_root: Path | None = None) -> WAWVerifiedExecutio
             configured_root=str(project_root if project_root is not None else Path.cwd())
         ),
     )
+    object.__setattr__(
+        manifest,
+        "runtime",
+        SimpleNamespace(
+            runtime_host_installation_id=HOST,
+            runtime_host_installation_revision=REVISION,
+            enrollment_epoch="3",
+            enrollment_state="steady",
+        ),
+    )
+    object.__setattr__(manifest, "runtime_manifest_digest", "a" * 64)
     authority = object.__new__(WAWVerifiedExecutionAuthority)
     object.__setattr__(authority, "_manifest", manifest)
     return authority
 
 
 class TestDeferredOwner:
+    @pytest.fixture(autouse=True)
+    def fixed_enrollment_fixture(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_runtime_provider.revalidate_waw_vendor_enrollment",
+            lambda _record: None,
+        )
+
+    def test_enrollment_pin_drift_precedes_resource_open(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        resources = mock.Mock()
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_runtime_provider.build_waw_production_resources",
+            resources,
+        )
+        owner = _deferred_provider(replace(_deferred_record(), enrollment_epoch="4")).take()
+        with pytest.raises(WAWVendorEnrollmentError):
+            owner.create_executor("7", _deferred_authority())
+        resources.assert_not_called()
+        assert owner.close() is True
+
+    def test_enrollment_file_drift_precedes_resource_open(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        resources = mock.Mock()
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_runtime_provider.build_waw_production_resources",
+            resources,
+        )
+
+        def drift(_record: WAWVendorEnrollmentRecord) -> None:
+            raise WAWVendorEnrollmentError("installed enrollment changed")
+
+        monkeypatch.setattr(
+            "agentbox_runtime.waw_runtime_provider.revalidate_waw_vendor_enrollment",
+            drift,
+        )
+        owner = _deferred_provider().take()
+        with pytest.raises(WAWVendorEnrollmentError):
+            owner.create_executor("7", _deferred_authority())
+        resources.assert_not_called()
+        assert owner.close() is True
+
     def test_take_moves_authority_to_distinct_application_owner(self) -> None:
         provider = _deferred_provider()
         assert isinstance(provider, WAWRuntimeExecutorProvider)

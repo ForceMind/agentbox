@@ -949,7 +949,7 @@ def _fresh_decode_measurement(profiles: list[tuple[F, Leg]], count: int) -> dict
     return result
 
 
-@pytest.mark.parametrize("kind,leg", [(F.ADMITTED, AB), (F.HELLO_ACK, RA)])
+@pytest.mark.parametrize("kind,leg", [(F.ADMITTED, AB), (F.HELLO_ACK, RA), (F.KEY_ATTEST, RA)])
 def test_first_decode_in_fresh_interpreter_meets_real_cpu_budget(kind: F, leg: Leg) -> None:
     measured = _fresh_decode_measurement([(kind, leg)], 1)
     assert measured["count"] == 1 and measured["failures"] == [], measured
@@ -959,7 +959,8 @@ def test_first_decode_in_fresh_interpreter_meets_real_cpu_budget(kind: F, leg: L
 
 def test_repeated_valid_decodes_use_real_clock_with_normal_gc() -> None:
     measured = _fresh_decode_measurement(
-        [(F.PONG, AB), (F.DETACH_ACK, RA), (F.ADMITTED, AB), (F.KEY_INIT, BA)], 5000
+        [(F.PONG, AB), (F.DETACH_ACK, RA), (F.ADMITTED, AB), (F.KEY_INIT, BA), (F.KEY_ATTEST, RA)],
+        5000,
     )
     assert measured["count"] == 5000 and measured["failures"] == [], measured
     assert measured["gc_enabled"] and not measured["strptime_loaded"], measured

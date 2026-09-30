@@ -6,7 +6,7 @@ AgentBox is open AI developer infrastructure for standardizing a user-controlled
 
 ## Project status
 
-AgentBox source is the **pre-release `0.3.0rc29` development candidate** for
+AgentBox source is the **pre-release `0.3.0rc30` development candidate** for
 one Linux x86_64 server and one administrator. The qualified artifact baseline
 remains `0.3.0rc1`; the newer candidate does not inherit that host evidence.
 WEV-1/rc10 is merged through [PR #87](https://github.com/ForceMind/agentbox/pull/87):
@@ -72,8 +72,10 @@ browser sessions through bounded reads; [rc27](docs/releases/0.3.0rc27.md)
 does not add cross-host relay or label mutation authority.
 The rc29 source adds fixed Workspace label choices to the command center;
 [rc29](docs/releases/0.3.0rc29.md) keeps broader Agent/file/plugin commands
-outside that surface. The separate R12 rc28 enrollment candidate remains
-Draft and must be rebased and versioned before any later merge.
+outside that surface.
+The rc30 candidate adds a fixed Runtime-only source for non-secret vendor
+enrollment observations; [rc30](docs/releases/0.3.0rc30.md) still does not
+connect production `_main` or qualify any real host/CLI flow.
 The [workstation research and execution record](docs/WORKSTATION_EVOLUTION.md)
 and [capability matrix](docs/CAPABILITY_MATRIX.md) distinguish existing software,
 proposed product changes and the remaining real-host qualification.
