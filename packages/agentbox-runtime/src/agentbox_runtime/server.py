@@ -50,6 +50,7 @@ from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
     create_waw_lifecycle_registry_from_filesystem_bundle,
 )
+from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_conflicts import (
     WAWConflictCoordinator,
     WAWLegacyClaudeState,
@@ -59,7 +60,7 @@ from agentbox_runtime.waw_conflicts import (
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
-from agentbox_runtime.waw_lifecycle import BindingDigestFactory
+from agentbox_runtime.waw_lifecycle import BindingDigestFactory, CgroupAttestationFactory
 from agentbox_runtime.waw_peer_authority import WAWPeerAuthority
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_runtime_profile import (
@@ -68,6 +69,7 @@ from agentbox_runtime.waw_runtime_profile import (
     revalidate_waw_runtime_profile,
 )
 from agentbox_runtime.waw_vendor_probe import WAWVendorProbeRunner
+from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
 _CODEX_ACTIONS = frozenset(
@@ -1166,6 +1168,9 @@ def _build_runtime_server_from_filesystem_v2(
     binding_digest_factory: BindingDigestFactory | None = None,
     project_manager: ProjectWorkspaceManager | None = None,
     capability_collector: RuntimeCapabilityCollector | None = None,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> RuntimeExecutorServer:
     """Build one R11 server from the sole filesystem-v2 epoch composition."""
 
@@ -1179,6 +1184,9 @@ def _build_runtime_server_from_filesystem_v2(
             epoch_store=epoch_store,
             executor_factory=executor_factory,
             binding_digest_factory=binding_digest_factory,
+            attestation_store=attestation_store,
+            cgroup_attestation_store=cgroup_attestation_store,
+            cgroup_attestation_factory=cgroup_attestation_factory,
         )
         control_server = build_waw_control_server(
             sockets=activated_sockets,

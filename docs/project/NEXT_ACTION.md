@@ -1,5 +1,27 @@
 # Current Authorized Action
 
+## 2026-10-01 bind fixed stores and real FD observations in production
+
+The application/server now forwards existing durable ports into registry;
+43 construction/cleanup regressions and 349-file mypy/Ruff pass. Synchronize
+this ownership gap fix on the same Draft/version, then build the fixed Runtime-
+owned storage instances and real cgroup observation factory in _main. Preserve
+explicit epoch/provenance transitions and positive empty cleanup; do not label
+optional-port forwarding alone as recovery-ready. Actual creator evidence is
+already recorded at d313624; no unchanged native probe rerun is needed.
+
+## 2026-10-01 compose durable recovery and fixed activation
+
+Actual creation helpers passed native PID-1 cgroupfs in Deployment
+36766671223/job 110062461054 (three proof booleans true, mount 418).
+d313624 has terminal 24 SUCCESS/two prescribed SKIPPED. Do not rerun unchanged
+checks. Next connect existing Runtime-only Workspace/cgroup stores and a real
+FD-backed attestation factory through application/server/bootstrap/_main;
+provide cleanup/restart evidence, then fixed policy/socket/profile activation.
+Use the existing contracts and current version, preserving exact Stop,
+controller limits, private-key boundaries and no generic shell/filesystem path.
+Continue positive Codex Remote plus HTTPS PC/mobile workflow afterward.
+
 ## 2026-10-01 complete delegated lifecycle and activation
 
 The new isolated Deployment PID-1 fixture directly executes actual creation

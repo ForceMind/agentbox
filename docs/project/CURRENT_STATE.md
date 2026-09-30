@@ -1,11 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T19:25:08Z"
+verified_at_utc: "2026-09-30T20:21:07Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 durable port forwarding candidate
+
+Current application/server filesystem-v2 builders forward the same Workspace
+attestation store, cgroup attestation store and factory into the existing
+registry composition. The previous production signature dropped these inputs;
+this closes that ownership/identity handoff gap. Regression verifies object
+identity alongside key/provider/socket one-owner construction and cleanup.
+43 application/bootstrap tests passed; Ruff and 349-file mypy passed.
+Main-agent self-review only. Fixed _main store construction, real FD-backed
+factory, epoch/generation transition and cleanup/restart recovery are still
+required before durable recovery is claimed. No service/user-host activation.
+
+## 2026-10-01 actual creation-helper Linux evidence
+
+d313624e93aac9b6a9307457a138f2b2a68b6a18 on Draft #125 reached terminal
+exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending/failure.
+Deployment run 36766671223/job 110062461054 at 19:35:41Z executed the actual
+Runtime setup helpers under native systemd PID 1. It emitted production_helpers_executed,
+limits_read_back and existing_generation_rejected all true, actual mount ID 418.
+The fixture uses DynamicUser and synthetic metadata authority; cgroupfs,
+namespace/ownership/controller/limit checks and helper code execution are real.
+This closes the software creation-path Linux evidence gap, not cryptographic
+admission, actual vendor session, host reboot or whole application qualification.
+
+Durable Workspace/cgroup attestation composition, recovery/cleanup and fixed
+service activation remain next. The production builder still has optional
+attestation inputs without complete _main ownership; its in-memory defaults
+must not be called recovery-ready. Positive Codex Remote and HTTPS Web/client
+core flow also remain required. No user-host operation or product release.
+This evidence snapshot is local for the next code batch, avoiding a docs-only
+restart of the already terminal checks.
 
 ## 2026-10-01 fixed delegated cgroup creation candidate
 
