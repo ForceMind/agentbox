@@ -1,6 +1,23 @@
 # Current Authorized Action
 
+## 2026-10-01 verify FD persistence then close epoch recovery
+
+The fixed Runtime stores and actual FD-backed observation factory are wired
+in _main, with exact systemd invocation identity, fixed private directories,
+finite Workspace/workload policy values and guarded persisted empty evidence.
+85 focused tests/351-file mypy/Ruff pass. Synchronize this same Draft/version
+and inspect the native PID-1 factory/store read-back. Then close explicit
+Runtime epoch/generation provenance transitions and abandoned cgroup cleanup;
+existing floors currently reject changed epochs, so reboot readiness remains
+unproven. Follow with fixed activation, positive Codex Remote and HTTPS client
+core/recovery flow. Do not equate stores being wired with full recovery.
+
 ## 2026-10-01 bind fixed stores and real FD observations in production
+
+Port forwarding is synchronized as e474466733d75bb78a08e4b3644b97d8f466b437.
+Three Backend checks are confirmed live; inspect their terminal results before
+relying on full exact-head evidence. Continue the actual fixed instances/factory
+below; optional forwarding is deliberately not the completion condition.
 
 The application/server now forwards existing durable ports into registry;
 43 construction/cleanup regressions and 349-file mypy/Ruff pass. Synchronize

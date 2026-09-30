@@ -28,6 +28,7 @@ _PROJECT_ID = re.compile(r"\Aprj_[0-9a-f]{32}\Z")
 _ATTACHMENT_ID = re.compile(r"\Aatt_[0-9a-f]{32}\Z")
 _DEVICE = re.compile(r"\A[0-9]{1,10}:[0-9]{1,10}\Z")
 _COMPONENT = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_WORKSPACE_COMPONENT = re.compile(r"\Aws-[0-9a-f]{64}-g[1-9][0-9]{0,19}\Z")
 _CLEANUP_STATES = frozenset({"LIVE", "FENCED", "EMPTY_DURABLE"})
 _AGENT_TYPES = frozenset({"claude", "codex"})
 _SCHEMA = "waw-cgroup-attestation-v1"
@@ -128,7 +129,12 @@ def _relative_path(value: object, field: str) -> str:
     value = _string(value, field)
     parts = value.split("/")
     if value.startswith("/") or any(
-        _COMPONENT.fullmatch(part) is None or part in {".", ".."} for part in parts
+        (
+            _COMPONENT.fullmatch(part) is None
+            and not (index == 0 and _WORKSPACE_COMPONENT.fullmatch(part))
+        )
+        or part in {".", ".."}
+        for index, part in enumerate(parts)
     ):
         raise WAWCgroupAttestationError(f"invalid {field}")
     return value

@@ -20,12 +20,15 @@ from agentbox_runtime.codex import CodexManager
 from agentbox_runtime.models import ClaudeSessionState, RemoteState
 from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.waw_activation import load_waw_activated_sockets
+from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
+from agentbox_runtime.waw_cgroup_observation import WAWCgroupObservationFactory
 from agentbox_runtime.waw_conflicts import (
     WAWLegacyClaudeState,
     WAWLegacyCodexState,
     WAWManagedConflictState,
 )
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
+from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_runtime_application import (
     WAWRuntimeApplication,
@@ -40,6 +43,7 @@ from agentbox_runtime.waw_runtime_profile import (
 from agentbox_runtime.waw_runtime_provider import build_waw_deferred_production_executor_provider
 from agentbox_runtime.waw_static_key import _open_waw_runtime_static_key
 from agentbox_runtime.waw_vendor_enrollment import load_waw_vendor_enrollment
+from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager
 
 _T = TypeVar("_T")
@@ -63,6 +67,17 @@ class _ProductionConflictProbe:
     def formal_project_id_for_legacy(self, key: str) -> str | None:
         executor = self._executor
         return None if executor is None else executor.formal_project_id_for_legacy(key)
+
+    def execution_authority(self) -> WAWVerifiedExecutionAuthority:
+        executor = self._executor
+        if executor is None or executor.execution_authority is None:
+            raise RuntimeError("production execution authority is unavailable")
+        return executor.execution_authority
+
+    def runtime_epoch(self) -> str:
+        if self._executor is None:
+            raise RuntimeError("production runtime epoch is unavailable")
+        return self._executor.runtime_epoch
 
     def _observe(self, operation: Coroutine[object, object, _T]) -> _T:
         # A synchronous wait on the event-loop thread would deadlock admission.
@@ -196,6 +211,22 @@ async def run_waw_production(
         raise RuntimeError("WAW production process or Control Plane identity is invalid")
     revalidate_waw_runtime_profile(profile)
     probe = _ProductionConflictProbe(codex_manager, claude_manager)
+    workspace_store = WAWWorkspaceAttestationStore(
+        Path("/var/lib/agentbox-waw/workspaces-v1"),
+        expected_uid=runtime.pw_uid,
+        expected_gid=runtime_gid,
+    )
+    cgroup_store = WAWCgroupAttestationStore(
+        Path("/var/lib/agentbox-waw/cgroups-v1"),
+        expected_uid=runtime.pw_uid,
+        expected_gid=runtime_gid,
+    )
+    cgroup_factory = WAWCgroupObservationFactory(
+        probe.execution_authority,
+        cgroup_store,
+        invocation_id=os.environ.get("INVOCATION_ID", ""),
+        runtime_epoch=probe.runtime_epoch,
+    )
     provider = build_waw_deferred_production_executor_provider(
         project_registry=projects,
         enrollment=load_waw_vendor_enrollment(),
@@ -241,6 +272,9 @@ async def run_waw_production(
             clock=time.monotonic,
             project_manager=project_manager,
             capability_collector=RuntimeCapabilityCollector(codex_manager, claude_manager),
+            attestation_store=workspace_store,
+            cgroup_attestation_store=cgroup_store,
+            cgroup_attestation_factory=cgroup_factory,
         )
     except BaseException:
         # Transferred handles are inert; the builder owns partial cleanup.

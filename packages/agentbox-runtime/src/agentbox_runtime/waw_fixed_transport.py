@@ -2267,6 +2267,16 @@ def _create_bound_workload_cgroup(
         workspace = _open_relative_directory(
             delegate_root, workspace_name, path_only=False, expected_uid=os.geteuid()
         )
+        manifest = authority._manifest.cgroup
+        quota = manifest.cpu_quota_percent * manifest.cpu_quota_period_usec // 100
+        values = {
+            "pids.max": str(manifest.tasks_max),
+            "memory.max": str(manifest.memory_max),
+            "memory.swap.max": str(manifest.memory_swap_max),
+            "cpu.max": f"{quota} {manifest.cpu_quota_period_usec}",
+        }
+        for name, value in values.items():
+            _write_cgroup_setup(workspace, name, (value + "\n").encode("ascii"))
         _enable_cgroup_controllers(workspace)
         os.mkdir("workload", 0o755, dir_fd=workspace)
         workload_created = True

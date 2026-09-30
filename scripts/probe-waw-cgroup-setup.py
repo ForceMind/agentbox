@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -22,6 +23,8 @@ def child() -> int:
     # authority here is explicitly a metadata fixture, not a cryptographic
     # Runtime admission claim. Actual filesystem and production helpers run.
     sys.path.insert(0, str(Path(__file__).parent / "packages"))
+    from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
+    from agentbox_runtime.waw_cgroup_observation import WAWCgroupObservationFactory
     from agentbox_runtime.waw_fixed_transport import (
         _create_bound_workload_cgroup,
         _open_scoped_workspace_root,
@@ -58,7 +61,8 @@ def child() -> int:
     )
     authority = SimpleNamespace(_manifest=SimpleNamespace(cgroup=manifest))
     root = _open_scoped_workspace_root(authority)
-    name = "ws-" + "a" * 64 + "-g1"
+    workspace_id = "aws_" + "2" * 32
+    name = "ws-" + hashlib.sha256(workspace_id.encode("ascii")).hexdigest() + "-g1"
     try:
         _create_bound_workload_cgroup(root, name, authority)
         workspace = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
@@ -71,6 +75,27 @@ def child() -> int:
                 assert _read_cgroup_file(workload, "memory.max").strip() == "536870912"
                 assert _read_cgroup_file(workload, "memory.swap.max").strip() == "0"
                 assert _read_cgroup_file(workload, "cpu.max").strip() == "400000 100000"
+                with tempfile.TemporaryDirectory(prefix="agentbox-attestation-") as record_path:
+                    record_dir = Path(record_path)
+                    record_dir.chmod(0o700)
+                    store = WAWCgroupAttestationStore(
+                        record_dir, expected_uid=os.geteuid(), expected_gid=os.getegid()
+                    )
+                    factory = WAWCgroupObservationFactory(
+                        lambda: authority,
+                        store,
+                        invocation_id=os.environ["INVOCATION_ID"],
+                        runtime_epoch=lambda: "1",
+                    )
+                    identity = SimpleNamespace(
+                        workspace_id=workspace_id,
+                        project_id="prj_" + "3" * 32,
+                        agent_type="claude",
+                        generation="1",
+                    )
+                    record = factory(identity, SimpleNamespace(state="STOPPED"))
+                    assert record.cleanup_state == "EMPTY_DURABLE" and record.last_populated == "0"
+                    assert store.read(workspace_id=workspace_id, generation=1) == record
                 mount = _verify_delegate_root(root, authority)
                 try:
                     _create_bound_workload_cgroup(root, name, authority)
@@ -85,6 +110,7 @@ def child() -> int:
                             "production_helpers_executed": True,
                             "limits_read_back": True,
                             "existing_generation_rejected": True,
+                            "fd_observation_persisted": True,
                             "mount_id": mount[0],
                         }
                     )

@@ -19,6 +19,21 @@ class DirectorySpec:
 
 
 DIRECTORIES = (
+    DirectorySpec("/var/lib/agentbox-waw", "root", "agentbox-runtime", 0o750),
+    DirectorySpec(
+        "/var/lib/agentbox-waw/workspaces-v1",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+        strict_existing=True,
+    ),
+    DirectorySpec(
+        "/var/lib/agentbox-waw/cgroups-v1",
+        "agentbox-runtime",
+        "agentbox-runtime",
+        0o700,
+        strict_existing=True,
+    ),
     DirectorySpec("/etc/agentbox", "root", "agentbox", 0o750),
     # The application needs directory write access for SQLite WAL/SHM files, but
     # must not be able to replace root-owned backup, receipt, or journal names.
@@ -27,7 +42,6 @@ DIRECTORIES = (
     # WAW Runtime trust-root state is Runtime-owned and never readable by the
     # API/Worker identities.  The epoch file itself is created atomically by
     # the installer only during a fresh enrollment.
-    DirectorySpec("/var/lib/agentbox-waw", "root", "agentbox-runtime", 0o750),
     DirectorySpec(
         "/var/lib/agentbox-waw/runtime-epoch-v1",
         "agentbox-runtime",

@@ -1,13 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T20:21:07Z"
+verified_at_utc: "2026-09-30T23:43:01Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 fixed durable storage and FD observations candidate
+
+e474466733d75bb78a08e4b3644b97d8f466b437 reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED. Current _main creates fixed Runtime-only
+Workspace/cgroup stores and forwards a bound FD observation factory through
+the production graph. Installer provisions private 700 store directories;
+the Runtime unit adds only their fixed writable paths. No API/Worker authority
+or generic path/command action is added.
+
+The factory records held service/delegate/workspace/workload identities, mount
+and owner facts, actual limits and hierarchy populated/frozen state. It refuses
+unknown child directories and reads state twice. STOPPED alone cannot claim
+empty: positive populated=0 with no unknown leaves is required and the record
+is written/read through the Runtime store. Workspace and workload limits now
+both have finite closed policy values. The attestation codec accepts only the
+exact generated 64-hex Workspace/generation component beyond the old 64-byte
+component ceiling; arbitrary long path components remain rejected.
+
+85 focused observation/production/setup/attestation/enrollment tests passed;
+Ruff and 351-file mypy passed. These use explicit FD/kernel fixtures locally.
+The native PID-1 probe now executes the actual factory with an empty workload
+and Runtime-owned temporary store read-back; real Linux result is pending this
+batch. Main-agent self-review only. Epoch/provenance migration, abandoned-group
+cleanup and full restart/rollback acceptance remain required; this does not
+claim reboot recovery complete. Fixed activation, positive Codex Remote state,
+HTTPS Web and actual PC/mobile CLI workflow remain unfinished. No user-host
+key/profile/service operation or product release occurred.
+
 ## 2026-10-01 durable port forwarding candidate
+
+Latest synchronized head: e474466733d75bb78a08e4b3644b97d8f466b437 on Draft
+#125, exact remote read-back confirmed. CI currently has 21 SUCCESS/two
+prescribed SKIPPED and three live Backend jobs, no failure. This post-push
+snapshot is local for the next code batch, not another docs-only CI restart.
 
 Current application/server filesystem-v2 builders forward the same Workspace
 attestation store, cgroup attestation store and factory into the existing

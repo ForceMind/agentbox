@@ -199,6 +199,8 @@ async def test_production_entry_pins_resources_and_cleans_failure(
 ) -> None:
     from pathlib import Path
 
+    monkeypatch.setenv("INVOCATION_ID", "1" * 32)
+
     runtime_uid, runtime_gid, control_uid, control_gid, ipc_gid = 19002, 19002, 19001, 19001, 19003
     accounts = {
         "agentbox-runtime": SimpleNamespace(pw_uid=runtime_uid, pw_gid=runtime_gid),
@@ -302,3 +304,8 @@ async def test_production_entry_pins_resources_and_cleans_failure(
         assert kwargs["executor_provider"] is provider
         assert kwargs["key_port"] is key
         assert kwargs["activated_sockets"] is sockets
+        assert kwargs["attestation_store"]._directory == Path("/var/lib/agentbox-waw/workspaces-v1")
+        assert kwargs["cgroup_attestation_store"]._directory == Path(
+            "/var/lib/agentbox-waw/cgroups-v1"
+        )
+        assert kwargs["cgroup_attestation_factory"]._store is kwargs["cgroup_attestation_store"]
