@@ -5,6 +5,8 @@ versioning for release display and PEP 440 for the Python package.
 
 ## [0.3.0rc30] - Unreleased
 
+- Pin brace-expansion 1.x/5.x tool dependencies to 1.1.20/5.0.11 to close
+  newly reported recursion-denial-of-service audit failures.
 - Add a fixed Runtime-only, non-secret source for enrolled Claude/Codex
   versions and the Codex unauthenticated-output digest, with descriptor-held
   file provenance and exact v2 manifest/epoch pairing.

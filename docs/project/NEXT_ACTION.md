@@ -1,5 +1,17 @@
 # Current Authorized Action
 
+## 2026-09-30 Finish current rc30 candidate
+
+The `4e9c394` frontend audit exposed high-severity brace-expansion findings.
+The same-version patch pins only 1.1.20/5.0.11, preserves the audit level,
+passes frozen installation, audit, 1201 Web/6 MV3 tests and lint/types/build.
+Run this new head's required CI; repair failures without relaxing assertions.
+Then normal Ready/merge/read-back follows the current AGENTS.md authority.
+Main-agent risk checks are self-review, not independent PASS. After this
+rc30 batch, the same first-usable-RC objective still needs production `_main`,
+installer enrollment publication, positive legacy Codex Remote state and
+client/target qualification. No S02–S14 work is started.
+
 ## 2026-09-30 R12 rc30 vendor enrollment candidate
 
 当前只推进 [首个可用单机 RC](RELEASE_ITERATION_PLAN.md) 的 R12 依赖。

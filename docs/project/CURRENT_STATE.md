@@ -7,6 +7,28 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## 2026-09-30 rc30 dependency audit recovery
+
+Head `4e9c394188e624aab5c75049441eb043f553a8af` reached terminal
+CI with a frontend-audit failure: newly updated advisories
+GHSA-qhr7-859c-m2p7 / GHSA-6j4f-fj2g-mc7p affect the previously locked
+brace-expansion 1.1.18 and 5.0.9. This same-rc30 correction adds scoped
+overrides for patched 1.1.20 and 5.0.11; pnpm regenerated only those two
+package entries and their dependency references. Frozen installation with
+scripts disabled passed. The original `pnpm audit --audit-level high`
+threshold is retained; audit now exits 0 with 0 high/critical and 4 moderate
+findings in metadata. No advisory suppression was added.
+
+Node 22.23.2 full Web tests passed 1201/1201 and inert MV3 tests 6/6;
+lint/typecheck and both production builds passed. An initial run under the
+developer default Node 26 failed 20 existing localStorage-related tests;
+switching to the installed CI-family Node 22 resolved them without changing
+assertions. The existing 650.19 kB Web bundle warning remains. New-commit
+exact-head CI is required before normal merge; Runtime/host qualification
+is still incomplete. This patch stays in the current version.
+
+Sections below are historical snapshots.
+
 ## 2026-09-30 rc30 encoding and enrollment failure paths
 
 Current work stays on the rc30 Draft #122 candidate, based on main
