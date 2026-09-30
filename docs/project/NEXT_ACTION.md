@@ -2,6 +2,16 @@
 
 ## 2026-10-01 complete delegated lifecycle and activation
 
+The new isolated Deployment PID-1 fixture directly executes actual creation
+helpers under a transient DynamicUser Runtime service (existing unit refusal,
+unique cleanup marker, explicit metadata fixture). Inspect its real cgroupfs
+result before claiming the creation path is host-verified. Continue durable
+ports/activation afterward; a passing probe does not satisfy whole CLI recovery.
+
+Creation wiring is synchronized as 714473bf786c7eaa33084eaa53608153fd3b5d40.
+Its five pending CI jobs are confirmed live. Revalidate exact-head results,
+then proceed with actual helper evidence and the remaining lifecycle ports.
+
 Manifest preparation fa2ae6e passed terminal CI (24 SUCCESS/two prescribed
 skips). Current code wires scoped root/workload creation to the actual Runtime
 resource/provider path, with owner/mount/domain/controller/limit guards and

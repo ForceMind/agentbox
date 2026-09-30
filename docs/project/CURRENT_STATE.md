@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T19:21:04Z"
+verified_at_utc: "2026-09-30T19:25:08Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
@@ -8,6 +8,21 @@ repository: "ForceMind/agentbox"
 # Current Verified State
 
 ## 2026-10-01 fixed delegated cgroup creation candidate
+
+Follow-up CI fixture adds a separate native PID-1 step that executes the
+actual _open_scoped_workspace_root/_create_bound_workload_cgroup helpers.
+It refuses an existing Runtime unit, uses only a uniquely marked transient
+DynamicUser service, root-owned copied checkout packages and the CI Python
+interpreter. Metadata authority is explicitly synthetic, while cgroupfs,
+mount/owner/domain/controller checks and limit read-back are real. It tests
+existing-generation refusal and cleans only its marked unit. No production
+account, key, HOME, vendor session or credentials are involved. Static lint/
+syntax pass; actual Linux result remains pending the new exact head.
+
+Latest synchronized head: 714473bf786c7eaa33084eaa53608153fd3b5d40 on Draft
+#125, exact remote read-back confirmed. Initial CI has 15 SUCCESS/no failures
+with five pending checks. This post-push snapshot remains local for the next
+code batch and does not restart unchanged CI.
 
 fa2ae6e3c25f1e22923bb7aa0401e392c67654cf reached terminal exact-head CI:
 24 SUCCESS/two prescribed SKIPPED, no pending/failure. Complete manifest
