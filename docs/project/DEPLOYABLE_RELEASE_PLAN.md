@@ -26,7 +26,7 @@ Owner 在 2026-09-30 要求交付自己能在服务器运行的安装版本，�
 
 安装器现已接入目标机 native helper 构建：从已验证的源码编译三个固定程序，验证版本、拒绝任意命令和 ELF 加固，整体发布 libexec 与源码/输出摘要记录。制品 manifest 保持原样；安装状态、回滚和保留流程通过显式闭合的生成目录校验。Linux CI 的真实编译尚待运行，不能从本地合成 ELF 记录测试外推。gcc/binutils 纳入固定依赖映射。完整 v2 manifest、Runtime key、公钥观测和启用事务仍未完成。
 
-新建安装在 staged journal 中断后的整事务恢复仍是已有缺口；helper 的独立重试不能代替它。本版必须提供显式、同一制品 pin 的恢复，证明未迁移/未激活及账户/资源身份后继续，未知状态继续拒绝，不允许靠删除 journal 重新安装。
+新建安装现有显式 `resume-install --artifact ... --sha256 ...`，下载入口对应同一 VERSION/SHA256 的 `--resume`。它只接受新 schema-3 的 staging 证据，核对账户/Runtime group、固定配置和目录身份、同一制品及资源清单，确认没有 DB/receipt/current/activation unit，再从 staging 继续同一 transaction。不会重建账户、重写配置或重放迁移；旧 journal、preflight/account-creation 中断、已经迁移/激活以及升级 staging 暂不进入此恢复路径，仍须安全的独立恢复方案。本版恢复验收未全部完成，禁止删除 journal 伪装新安装。
 
 Codex Remote 的 host-global 冲突来源也必须提供可信的 STOPPED/ABSENT 观察。目前 CLI 不支持 status 时，进程未被发现只得到 UNKNOWN；不能改成 ABSENT 或删除原有 Remote 功能来制造可用结果。此依赖随 Runtime 正式启动接线一并闭合。
 
@@ -38,6 +38,6 @@ Codex Remote 的 host-global 冲突来源也必须提供可信的 STOPPED/ABSENT
 
 基线 main 为 19f8c5125d5a831e3db2d9724a1cc7985b091294，rc30 源码/制品批次已交付。当前分支 codex/r12-deployable-runtime 保留原 checkout 与 rc30 post-merge 文档 WIP；新增服务器注册发布实现和 fixture 验证，尚未提交或构成部署版本。
 
-下载入口代码为 installer/bootstrap.sh，当前接口为 `bash bootstrap.sh VERSION SHA256 [--apply]`。版本和摘要必须来自独立可信的固定发布说明；下载到的 SHA256SUMS 不作为自身真实性证明。默认只输出 plan；最终一条命令将在完整发布后绑定版本、摘要和 --apply。39 项下载/解释器/注册测试通过，传输与平台采用本地 fixture，尚未证明服务器安装。此源码入口不能当成目前可用的一键部署命令。
+下载入口代码为 installer/bootstrap.sh，当前接口为 `bash bootstrap.sh VERSION SHA256 [--apply|--resume]`。版本和摘要必须来自独立可信的固定发布说明；下载到的 SHA256SUMS 不作为自身真实性证明。默认只输出 plan；最终一条命令将在完整发布后绑定版本、摘要和 --apply。下载、恢复及账户 focused run 47 项通过，传输与平台采用本地 fixture，尚未证明服务器安装。此源码入口不能当成目前可用的一键部署命令。
 
 参考上游固定源码 30178c4f58b67f8472901356e1484022bd835de0 的 public-docs/connectivity.md、SECURITY.md、server/pairing-qr.ts：保留跨设备连接和扫码体验目标，重接 AgentBox 认证、权限与 Runtime 边界；不接入 Paseo 服务，不自动开放其 relay/password 兼容宽权限。

@@ -21,6 +21,7 @@ def _run(
     wrong_digest: bool = False,
     verify_failure: bool = False,
     apply: bool = False,
+    resume: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     remote = tmp_path / "remote"
     remote.mkdir()
@@ -55,23 +56,31 @@ def _run(
     # Only this copied test body changes host and transport. Production exposes
     # neither an arbitrary URL nor a platform/interpreter bypass.
     body = body.replace('platform.system() != "Linux" or platform.machine() != "x86_64"', "False")
-    body = body.replace("apply and os.geteuid() != 0", "False")
+    body = body.replace("(apply or resume) and os.geteuid() != 0", "False")
     body = body.replace('"/usr/bin/curl"', repr(str(curl)))
     digest = "0" * 64 if wrong_digest else hashlib.sha256(archive.read_bytes()).hexdigest()
     arguments = [sys.executable, "-I", "-", "0.3.0rc30", digest]
     if apply:
         arguments.append("--apply")
+    elif resume:
+        arguments.append("--resume")
     result = subprocess.run(
         arguments, input=body, text=True, capture_output=True, check=False, timeout=20
     )
     return result, log.read_text().splitlines() if log.exists() else []
 
 
-@pytest.mark.parametrize("apply", [False, True])
-def test_download_verifies_and_plans_before_optional_apply(tmp_path: Path, apply: bool) -> None:
-    result, calls = _run(tmp_path, apply=apply)
+@pytest.mark.parametrize("apply,resume", [(False, False), (True, False), (False, True)])
+def test_download_verifies_and_plans_before_optional_apply(
+    tmp_path: Path,
+    apply: bool,
+    resume: bool,
+) -> None:
+    result, calls = _run(tmp_path, apply=apply, resume=resume)
     assert result.returncode == 0, result.stderr
-    assert calls == ["verify-artifact", "plan"] + (["apply"] if apply else [])
+    assert calls == ["verify-artifact", "plan"] + (
+        ["resume-install"] if resume else ["apply"] if apply else []
+    )
 
 
 def test_download_pinned_digest_failure_never_executes_payload(tmp_path: Path) -> None:

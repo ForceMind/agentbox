@@ -198,6 +198,25 @@ class HostOperations:
             raise HostMutationError("AgentBox identity no longer matches its installation receipt")
         return observed
 
+    def verify_identities(self, expected: IdentityFacts) -> None:
+        """Read the receipt-bound identity set without repairing memberships."""
+        if not self.real_host:
+            if expected != IdentityFacts(19001, 19001, 19002, 19003):
+                raise HostMutationError("staged identity evidence does not match")
+            return
+        self.require_root()
+        try:
+            users = {name: pwd.getpwnam(name) for name in ("agentbox", "agentbox-runtime")}
+            groups = {
+                name: grp.getgrnam(name)
+                for name in ("agentbox", "agentbox-runtime", "agentbox-runtime-ipc")
+            }
+        except KeyError as exc:
+            raise HostMutationError("staged identity set is incomplete") from exc
+        self._validate_existing_identities(users, groups, expected)
+        if set(groups["agentbox-runtime-ipc"].gr_mem) != {"agentbox", "agentbox-runtime"}:
+            raise HostMutationError("staged IPC group membership changed")
+
     @staticmethod
     def _validate_existing_identities(
         users: Mapping[str, object],

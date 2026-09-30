@@ -13,6 +13,8 @@ import pytest
 from agentbox_installer.artifact import ArtifactError, verify_release
 from agentbox_installer.build import RELEASE_NATIVE_BUILD_SCRIPTS, RELEASE_NATIVE_SOURCE_FILES
 from agentbox_installer.host import HostMutationError, HostOperations
+from agentbox_installer.layout import InstallLayout
+from agentbox_installer.lifecycle import AgentBoxInstaller, InstallError
 from agentbox_installer.waw_native_install import (
     NATIVE_HELPERS,
     WAWNativeInstallError,
@@ -23,6 +25,39 @@ from pytest import MonkeyPatch
 
 _ROOT = Path(__file__).resolve().parents[2]
 _LINUX_ROOT = platform.system() == "Linux" and os.geteuid() == 0
+
+
+@pytest.mark.skipif(not _LINUX_ROOT, reason="requires isolated Linux root CI fixture")
+def test_linux_fixed_epoch_bootstrap_uses_runtime_owned_directory(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    directory = root / "var/lib/agentbox-waw/runtime-epoch-v1"
+    directory.mkdir(parents=True, mode=0o700)
+    os.chown(directory, 19002, 19002)
+    host = HostOperations(real_host=True)
+    monkeypatch.setattr(host, "owner_ids", lambda *_args: (19002, 19002))
+
+    def ownership(path: Path, owner: str, group: str, mode: int) -> None:
+        assert (owner, group, mode) == ("agentbox-runtime", "agentbox-runtime", 0o600)
+        os.chown(path, 19002, 19002)
+        path.chmod(mode)
+
+    monkeypatch.setattr(host, "set_owner_mode", ownership)
+    installer = AgentBoxInstaller(InstallLayout(root), host)
+    installer._ensure_waw_epoch(allow_bootstrap=True)
+    counter = directory / "epoch.json"
+    facts = counter.stat()
+    assert (facts.st_uid, facts.st_gid, facts.st_mode & 0o777) == (19002, 19002, 0o600)
+    assert json.loads(counter.read_text()) == {
+        "epoch": "1",
+        "schema_version": "waw-runtime-epoch-v1",
+    }
+    installer._ensure_waw_epoch(allow_bootstrap=False)
+    assert counter.stat().st_ino == facts.st_ino
+    with pytest.raises(InstallError, match="not root-owned"):
+        installer._assert_trusted_parent(counter)
 
 
 def _release(tmp_path: Path) -> Path:

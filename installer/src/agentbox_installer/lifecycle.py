@@ -135,6 +135,14 @@ class LifecycleResult:
     health_verified: bool
 
 
+@dataclass(frozen=True)
+class _StagedInstallContext:
+    transaction_id: str
+    resources: list[dict[str, Any]]
+    identities: IdentityFacts
+    evidence: dict[str, Any]
+
+
 class AgentBoxInstaller:
     def __init__(self, layout: InstallLayout, host: HostOperations) -> None:
         self.layout = layout
@@ -333,7 +341,239 @@ class AgentBoxInstaller:
         with self._lifecycle_lock():
             return self._apply_locked(artifact, expected_sha256)
 
-    def _apply_locked(self, artifact: Path, expected_sha256: str) -> LifecycleResult:
+    def resume_install(self, artifact: Path, expected_sha256: str) -> LifecycleResult:
+        """Explicitly continue only an attested, pre-activation fresh install."""
+        self.host.require_root()
+        with self._lifecycle_lock():
+            verify_artifact_digest(artifact, expected_sha256)
+            candidate = self._peek_artifact_manifest(artifact)
+            journal = self._read_journal()
+            if journal is None or journal.get("schema_version") != 3:
+                raise InstallError("staged installation has no recovery evidence")
+            if journal.get("status") != "running" or journal.get("version") != candidate.version:
+                raise InstallError("staged installation transaction does not match")
+            allowed_steps = (
+                ["identities", "directories", "configuration", "release_staging_started"],
+                ["identities", "directories", "configuration", "release_staged"],
+            )
+            if journal.get("completed_steps") not in allowed_steps:
+                raise InstallError("staged recovery cannot replay migration or activation")
+            for path in (
+                self.layout.current_link,
+                self.layout.receipt,
+                self.layout.database,
+                Path(f"{self.layout.database}-wal"),
+                Path(f"{self.layout.database}-shm"),
+            ):
+                if path.exists() or path.is_symlink():
+                    raise InstallError("staged recovery requires an unactivated fresh installation")
+            for name in (
+                "/etc/tmpfiles.d/agentbox.conf",
+                *(f"/etc/systemd/system/{unit}" for unit in UNIT_NAMES),
+            ):
+                path = self.layout.map(name)
+                if path.exists() or path.is_symlink():
+                    raise InstallError("staged recovery found unowned activation resources")
+            transaction_id = journal.get("transaction_id")
+            resources = journal.get("resources")
+            evidence = journal.get("staging_recovery")
+            if (
+                not isinstance(transaction_id, str)
+                or re.fullmatch(r"[0-9a-f]{32}", transaction_id) is None
+                or not isinstance(resources, list)
+                or not all(
+                    isinstance(item, dict) and isinstance(item.get("expected_path"), str)
+                    for item in resources
+                )
+                or not isinstance(evidence, dict)
+                or set(evidence)
+                != {
+                    "artifact_sha256",
+                    "identities",
+                    "runtime_gid",
+                    "files",
+                    "directories",
+                    "resources_sha256",
+                }
+                or evidence["artifact_sha256"] != expected_sha256
+            ):
+                raise InstallError("staged recovery evidence is invalid")
+            identities = self._receipt_identities({"identities": evidence["identities"]})
+            if identities is None:
+                raise InstallError("staged recovery identity evidence is missing")
+            self.host.verify_identities(identities)
+            current_evidence = self._staging_evidence(expected_sha256, identities, resources)
+            if evidence != current_evidence:
+                raise InstallError("staged recovery resources changed")
+            expected_paths = {
+                item["expected_path"]
+                for item in self._snapshot_transaction_resources(candidate.version)
+            }
+            if {item.get("expected_path") for item in resources} != expected_paths or len(
+                resources
+            ) != len(expected_paths):
+                raise InstallError("staged recovery resource inventory is invalid")
+            target = self.layout.release(candidate.version)
+            if (
+                verify_release(target, allow_generated_venv=True, allow_generated_native=True)
+                != candidate
+            ):
+                raise InstallError("staged release does not match the pinned artifact")
+            self._validate_fixed_waw_file(
+                self.layout.map("/etc/agentbox/waw-api-profile.v1.json"),
+                owner="root",
+                group="agentbox",
+                mode=0o440,
+                allowed=(_WAW_API_DISABLED_PROFILE,),
+            )
+            self._validate_fixed_waw_file(
+                self.layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json"),
+                owner="root",
+                group="agentbox-runtime",
+                mode=0o440,
+                allowed=(_WAW_RUNTIME_DISABLED_PROFILE,),
+            )
+            context = _StagedInstallContext(transaction_id, resources, identities, evidence)
+            return self._apply_locked(artifact, expected_sha256, staged=context)
+
+    def _begin_install_transaction(
+        self,
+        version: str,
+    ) -> tuple[str, list[dict[str, Any]], IdentityFacts]:
+        transaction_id = secrets.token_hex(16)
+        resources = self._snapshot_transaction_resources(version)
+        self._write_journal(
+            status="running",
+            version=version,
+            completed=(),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
+        identities = self.host.ensure_identities(self._receipt_identities(self._read_receipt()))
+        self._write_journal(
+            status="running",
+            version=version,
+            completed=("identities",),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
+        self._ensure_directories()
+        self._write_journal(
+            status="running",
+            version=version,
+            completed=("identities", "directories"),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
+        self._ensure_waw_epoch(allow_bootstrap=not self.layout.database.exists())
+        self._write_initial_configuration(identities)
+        self._ensure_waw_api_resources()
+        self._ensure_waw_runtime_profile()
+        self._write_journal(
+            status="running",
+            version=version,
+            completed=("identities", "directories", "configuration"),
+            transaction_id=transaction_id,
+            resources=resources,
+        )
+        return transaction_id, resources, identities
+
+    def _staging_evidence(
+        self,
+        artifact_sha256: str,
+        identities: IdentityFacts,
+        resources: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Record only fixed-file digests/identity, never their contents."""
+        specs = (
+            ("/etc/agentbox/agentbox.toml", "root", "agentbox", 0o640),
+            ("/etc/agentbox/environment", "root", "root", 0o600),
+            ("/etc/agentbox/runtime-environment", "root", "agentbox-runtime", 0o640),
+            ("/etc/agentbox/helper-environment", "root", "root", 0o600),
+            ("/etc/agentbox/waw-api-profile.v1.json", "root", "agentbox", 0o440),
+            ("/var/lib/agentbox-waw/runtime-profile.v1.json", "root", "agentbox-runtime", 0o440),
+            (
+                "/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json",
+                "agentbox-runtime",
+                "agentbox-runtime",
+                0o600,
+            ),
+            ("/run/agentbox-waw-api/waw-api.v1.lock", "agentbox", "agentbox", 0o444),
+        )
+        files = {}
+        for name, owner, group, mode in specs:
+            path = self.layout.map(name)
+            if name == "/var/lib/agentbox-waw/runtime-epoch-v1/epoch.json":
+                self._assert_trusted_parent(path.parent)
+                parent = path.parent.lstat()
+                epoch_owner = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+                if (
+                    not stat.S_ISDIR(parent.st_mode)
+                    or stat.S_IMODE(parent.st_mode) != 0o700
+                    or (self.host.real_host and (parent.st_uid, parent.st_gid) != epoch_owner)
+                ):
+                    raise InstallError("staged epoch directory is invalid")
+            else:
+                self._assert_trusted_parent(path)
+            uid, gid = self.host.owner_ids(owner, group)
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+            except OSError as exc:
+                raise InstallError("staged configuration cannot be read safely") from exc
+            try:
+                before = os.fstat(fd)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_nlink != 1
+                    or stat.S_IMODE(before.st_mode) != mode
+                    or before.st_size > 65536
+                    or (self.host.real_host and (before.st_uid, before.st_gid) != (uid, gid))
+                ):
+                    raise InstallError("staged configuration provenance is invalid")
+                raw = bytearray()
+                while len(raw) <= 65536:
+                    chunk = os.read(fd, 65537 - len(raw))
+                    if not chunk:
+                        break
+                    raw.extend(chunk)
+                identity = self._waw_api_file_identity(before)
+                if (
+                    len(raw) != before.st_size
+                    or len(raw) > 65536
+                    or identity != self._waw_api_file_identity(os.fstat(fd))
+                    or identity != self._waw_api_file_identity(path.lstat())
+                ):
+                    raise InstallError("staged configuration changed during read")
+                files[name] = {
+                    "identity": list(identity),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                }
+            finally:
+                os.close(fd)
+        runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")[1]
+        if runtime_gid <= 0:
+            raise InstallError("staged Runtime group is invalid")
+        return {
+            "artifact_sha256": artifact_sha256,
+            "identities": asdict(identities),
+            "runtime_gid": runtime_gid,
+            "files": files,
+            "directories": {
+                item.path: self._filesystem_identity(self.layout.map(item.path))
+                for item in DIRECTORIES
+            },
+            "resources_sha256": hashlib.sha256(
+                json.dumps(resources, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
+
+    def _apply_locked(
+        self,
+        artifact: Path,
+        expected_sha256: str,
+        *,
+        staged: _StagedInstallContext | None = None,
+    ) -> LifecycleResult:
         plan = self.plan(artifact, expected_sha256)
         if not plan.platform.supported:
             raise InstallError(plan.platform.reason)
@@ -341,6 +581,8 @@ class AgentBoxInstaller:
             raise InstallError("native systemd is required")
         state = plan.state
         current = self.current_version()
+        if staged is not None and state != "staged":
+            raise InstallError("staged recovery transaction is no longer current")
         if state == "installed_same_version" and current == plan.version:
             existing = verify_release(
                 self.layout.release(plan.version),
@@ -362,7 +604,7 @@ class AgentBoxInstaller:
             "partially_migrated",
             "rollback_pending",
             "unknown",
-        }:
+        } and not (state == "staged" and staged is not None):
             raise InstallError(
                 f"AgentBox lifecycle recovery state is {state}; inspect before repair"
             )
@@ -389,42 +631,19 @@ class AgentBoxInstaller:
             if missing_after_install:
                 raise InstallError("required dependencies remain unavailable after package install")
 
-        transaction_id = secrets.token_hex(16)
-        resources = self._snapshot_transaction_resources(plan.version)
-        self._write_journal(
-            status="running",
-            version=plan.version,
-            completed=(),
-            transaction_id=transaction_id,
-            resources=resources,
-        )
-        identities = self.host.ensure_identities(self._receipt_identities(self._read_receipt()))
-        self._write_journal(
-            status="running",
-            version=plan.version,
-            completed=("identities",),
-            transaction_id=transaction_id,
-            resources=resources,
-        )
-        self._ensure_directories()
-        self._write_journal(
-            status="running",
-            version=plan.version,
-            completed=("identities", "directories"),
-            transaction_id=transaction_id,
-            resources=resources,
-        )
-        self._ensure_waw_epoch(allow_bootstrap=not self.layout.database.exists())
-        self._write_initial_configuration(identities)
-        self._ensure_waw_api_resources()
-        self._ensure_waw_runtime_profile()
-        self._write_journal(
-            status="running",
-            version=plan.version,
-            completed=("identities", "directories", "configuration"),
-            transaction_id=transaction_id,
-            resources=resources,
-        )
+        if staged is None:
+            transaction_id, resources, identities = self._begin_install_transaction(plan.version)
+            staging_evidence = self._staging_evidence(expected_sha256, identities, resources)
+        else:
+            transaction_id, resources, identities = (
+                staged.transaction_id,
+                staged.resources,
+                staged.identities,
+            )
+            staging_evidence = staged.evidence
+            self.host.verify_identities(identities)
+            if staging_evidence != self._staging_evidence(expected_sha256, identities, resources):
+                raise InstallError("staged recovery resources changed before continuation")
         self._write_journal(
             status="running",
             version=plan.version,
@@ -436,6 +655,7 @@ class AgentBoxInstaller:
             ),
             transaction_id=transaction_id,
             resources=resources,
+            staging_recovery=staging_evidence,
         )
         manifest = self._stage_release(artifact, expected_sha256)
         self.host.prepare_release_environment(self.layout.release(manifest.version))
@@ -446,6 +666,7 @@ class AgentBoxInstaller:
             completed=("identities", "directories", "configuration", "release_staged"),
             transaction_id=transaction_id,
             resources=resources,
+            staging_recovery=staging_evidence,
         )
         previous = current
         if previous is not None:
@@ -1096,12 +1317,62 @@ class AgentBoxInstaller:
             return
         if not allow_bootstrap:
             raise InstallError("WAW Runtime epoch file is missing after enrollment")
-        self._atomic_write(
-            path,
-            '{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}',
-            0o600,
+        # This sole fixed counter lives in a Runtime-owned directory. The
+        # generic root-only writer correctly rejects that parent; use held
+        # descriptors and exact identity here instead of relaxing its guard.
+        self._assert_trusted_parent(directory)
+        directory_fd = os.open(
+            directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
         )
-        self.host.set_owner_mode(path, "agentbox-runtime", "agentbox-runtime", 0o600)
+        try:
+            parent = os.fstat(directory_fd)
+            uid, gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+            if (
+                not stat.S_ISDIR(parent.st_mode)
+                or stat.S_IMODE(parent.st_mode) != 0o700
+                or (self.host.real_host and (parent.st_uid, parent.st_gid) != (uid, gid))
+                or self._waw_api_file_identity(directory.lstat())
+                != self._waw_api_file_identity(parent)
+            ):
+                raise InstallError("WAW Runtime epoch directory is unsafe")
+            fd = os.open(
+                "epoch.json",
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=directory_fd,
+            )
+            try:
+                payload = b'{"epoch":"1","schema_version":"waw-runtime-epoch-v1"}'
+                written = 0
+                while written < len(payload):
+                    count = os.write(fd, payload[written:])
+                    if count <= 0:
+                        raise InstallError("WAW Runtime epoch write failed")
+                    written += count
+                os.fchmod(fd, 0o600)
+                if self.host.real_host:
+                    os.fchown(fd, uid, gid)
+                os.fsync(fd)
+                held = os.fstat(fd)
+                entry = os.stat("epoch.json", dir_fd=directory_fd, follow_symlinks=False)
+                if self._waw_api_file_identity(held) != self._waw_api_file_identity(entry):
+                    raise InstallError("WAW Runtime epoch entry changed")
+            finally:
+                os.close(fd)
+            os.fsync(directory_fd)
+            if self._filesystem_identity(directory) != {
+                "type": "directory",
+                "owner_uid": parent.st_uid,
+                "group_gid": parent.st_gid,
+                "mode": f"{stat.S_IMODE(parent.st_mode):04o}",
+                "device": parent.st_dev,
+                "inode": parent.st_ino,
+            }:
+                raise InstallError("WAW Runtime epoch directory changed")
+        except OSError as exc:
+            raise InstallError("WAW Runtime epoch could not be initialized safely") from exc
+        finally:
+            os.close(directory_fd)
 
     def _ensure_waw_api_resources(self) -> None:
         """Install only the disabled profile and fixed API singleton lock."""
@@ -2002,6 +2273,7 @@ class AgentBoxInstaller:
         completed: tuple[str, ...],
         transaction_id: str,
         resources: list[dict[str, Any]],
+        staging_recovery: dict[str, Any] | None = None,
     ) -> None:
         allowed_statuses = {
             "running",
@@ -2011,8 +2283,8 @@ class AgentBoxInstaller:
         }
         if status not in allowed_statuses:
             raise ValueError("installer journal status is invalid")
-        value = {
-            "schema_version": 2,
+        value: dict[str, Any] = {
+            "schema_version": 3 if staging_recovery is not None else 2,
             "transaction_id": transaction_id,
             "version": version,
             "status": status,
@@ -2021,6 +2293,8 @@ class AgentBoxInstaller:
             "contains_secrets": False,
             "resources": resources,
         }
+        if staging_recovery is not None:
+            value["staging_recovery"] = staging_recovery
         self._atomic_write(
             self.layout.journal,
             json.dumps(value, sort_keys=True) + "\n",
@@ -2078,7 +2352,7 @@ class AgentBoxInstaller:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise InstallError("installer journal is corrupt") from exc
-        if not isinstance(value, dict) or value.get("schema_version") not in {1, 2}:
+        if not isinstance(value, dict) or value.get("schema_version") not in {1, 2, 3}:
             raise InstallError("installer journal schema is unsupported")
         return value
 

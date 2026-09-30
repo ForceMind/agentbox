@@ -1,5 +1,21 @@
 # Current Authorized Action
 
+## 2026-09-30 explicit staged recovery and fixed epoch candidate
+
+Current PR #125 follow-up adds resume-install/bootstrap --resume for fresh
+pre-activation staging only, with same artifact/transaction and preserved
+account/configuration evidence. It also fixes Runtime-owned epoch bootstrap
+without weakening the generic root-parent writer. Old/unknown/migrated/
+activated/preflight/account-creation/upgrade stages are not auto-resumed.
+Those remaining recovery states remain in the full delivery objective.
+
+03ca4ed completed CI but failed the Release sudo prohibition. Move the root
+fixture into Deployment; keep that assertion and release dependencies intact.
+Local 47 focused cases, 124 broader cases (3 Linux skips and one known Mac
+permission case deselected), 337-file mypy, Ruff and boundaries pass.
+Commit/push this repaired batch to the same Draft; inspect actual Linux
+epoch/root build evidence before continuing manifest generation and _main.
+
 ## 2026-09-30 deployment Draft CI repair
 
 Continue PR #125, keeping the same version and Draft state. First checkpoint

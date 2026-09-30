@@ -5,11 +5,11 @@ umask 077
 # Publication supplies an immutable version and independently pinned archive
 # digest. No latest/main URL or downloaded checksum is a trust anchor.
 if [[ $# -lt 2 || $# -gt 3 || ! "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(rc[1-9][0-9]*)?$ || ! "$2" =~ ^[0-9a-f]{64}$ ]]; then
-  printf 'Usage: bash bootstrap.sh VERSION SHA256 [--apply]\n' >&2
+  printf 'Usage: bash bootstrap.sh VERSION SHA256 [--apply|--resume]\n' >&2
   exit 18
 fi
-if [[ $# -eq 3 && "$3" != "--apply" ]]; then
-  printf 'The only installation option is --apply; default is a read-only plan.\n' >&2
+if [[ $# -eq 3 && "$3" != "--apply" && "$3" != "--resume" ]]; then
+  printf 'Installation options are --apply or explicit --resume; default is a read-only plan.\n' >&2
   exit 18
 fi
 bootstrap_python=""
@@ -41,10 +41,11 @@ def fail(message):
 
 version, expected = sys.argv[1:3]
 apply = sys.argv[3:] == ["--apply"]
+resume = sys.argv[3:] == ["--resume"]
 if platform.system() != "Linux" or platform.machine() != "x86_64":
     fail("this artifact requires Linux x86_64")
-if apply and os.geteuid() != 0:
-    fail("--apply requires root; run the published command in a root shell")
+if (apply or resume) and os.geteuid() != 0:
+    fail("installation/resume requires root; run the published command in a root shell")
 archive_name = f"agentbox-{version}-linux-x86_64.tar.gz"
 base = f"https://github.com/ForceMind/agentbox/releases/download/v{version}/"
 environment = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"}
@@ -114,8 +115,9 @@ try:
                 "--manifest", str(stage / "RELEASE_MANIFEST.json"),
                 "--sbom", str(stage / "SBOM.spdx.json"))
         install("plan", "--artifact", str(artifact), "--sha256", expected)
-        if apply:
-            install("apply", "--artifact", str(artifact), "--sha256", expected)
+        if apply or resume:
+            install("resume-install" if resume else "apply",
+                    "--artifact", str(artifact), "--sha256", expected)
         else:
             print("AgentBox: plan only; add --apply to install this exact version")
 except (OSError, subprocess.SubprocessError, tarfile.TarError) as exc:

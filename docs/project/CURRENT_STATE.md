@@ -1,11 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T08:33:10Z"
+verified_at_utc: "2026-09-30T09:35:26Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 same-artifact staging recovery candidate
+
+PR #125 remains the single deployment Draft; version stays rc30. The
+03ca4ed head completed native, deployment matrix, boundaries and several
+other checks, but Backend/Release Candidate failed the unchanged packaging
+contract forbidding sudo in the Release workflow. The failing Release unit
+test was test_release_packaging_compatibility_lock_and_gate_are_fail_closed.
+The new root fixture step is moved to Deployment; the sudo prohibition and
+release gate assertions are preserved. Both focused workflow-contract tests
+pass locally. No unchanged failed job is rerun as a substitute for repair.
+
+Current software adds resume-install and bootstrap --resume. Only fresh,
+unactivated schema-3 staging records may continue with the exact archive
+digest, account/group identity, fixed-file/dir observations and original
+transaction/resources. DB, receipt/current, unknown activation resources,
+old logs, drift, migration/activation steps and unsupported states refuse
+before continuation. Repeated staging failures retain the same proof;
+accounts/configuration are not replayed. This does not close account-creation,
+partial preflight, upgrade staging or all recovery requirements.
+
+Self-review found the generic root-parent writer could not initialize the
+fixed Runtime-owned epoch directory on a real host. Its general guard remains;
+the fixed epoch initializer now validates root ancestors plus the exact
+Runtime parent, holds no-follow FDs, creates exclusively, writes/fsyncs,
+sets Runtime ownership and checks readback identity. A dedicated Linux/root
+case asserts initialization, reuse and continued rejection by the generic
+writer. This new case is pending CI.
+
+Local evidence: 124 passes/3 Linux skips/1 known Mac setgid case deselected
+for lifecycle/native/recovery; later 47 downloader/recovery/host cases pass.
+Full Linux-target mypy passes 337 files; Ruff and source boundaries pass.
+No new artifact publication, real CLI login, target activation or complete
+PC/mobile core-flow evidence exists. Full manifests and production _main
+remain unfinished; ADR 0010 architecture authorization remains pending.
 
 ## 2026-09-30 deployment Draft CI feedback
 

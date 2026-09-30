@@ -26,7 +26,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agentbox-install")
     parser.add_argument("--fixture-root", type=Path)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("plan", "apply", "update"):
+    for name in ("plan", "apply", "update", "resume-install"):
         command = commands.add_parser(name)
         command.add_argument("--artifact", type=Path, required=True)
         command.add_argument("--sha256", required=True)
@@ -149,8 +149,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "plan":
             _print(installer.plan(args.artifact, args.sha256).to_dict(), json_output=json_output)
             return 0
-        if args.command in {"apply", "update"}:
-            result = installer.apply(args.artifact, args.sha256)
+        if args.command in {"apply", "update", "resume-install"}:
+            result = (
+                installer.resume_install(args.artifact, args.sha256)
+                if args.command == "resume-install"
+                else installer.apply(args.artifact, args.sha256)
+            )
             _print(result.__dict__, json_output=json_output)
             return 0
         if args.command == "rollback":
