@@ -1,5 +1,35 @@
 # Current Authorized Action
 
+## 2026-09-30 resume accepted Web / cgroup architecture A
+
+Owner approved the recommended HTTPS Web profile and 255-compatible scoped
+delegation (“按你说的做”). ADRs 0010/0011 are accepted for software work;
+do not ask the same architecture questions again. Continue the same Draft,
+version and complete deployment goal, with no subagents or later features.
+
+First run scripts/probe-waw-delegation.py through the Deployment Ubuntu 24.04
+root CI fixture. It must prove actual scoped RW/global RO, limits, own-PID
+movement and cleanup under native PID 1. If it fails, use the exact error to
+correct the selected design; never substitute a simulated pass or unrestricted
+cgroup mount. After proof, version and implement the exact Runtime path/policy
+contract, non-secret manifest generation and _main. Then implement the accepted
+Web trust bootstrap and actual PC/mobile core flow. No deployable claim yet.
+
+## 2026-09-30 await the concrete architecture choices
+
+Exact head a091701 on Draft #125 has 24 SUCCESS / two prescribed SKIPPED,
+no pending/failing check. Backend run 36701077638 is terminal successful;
+there is no live CI task left to poll or rerun.
+
+The same unresolved architecture dependency has persisted for three goal
+turns: Owner must answer the already submitted ADR 0010 Web-trust question
+and ADR 0011 server/cgroup choice. Do not treat elapsed time or automatic
+continuation as approval. Full deployment is unfinished; keep the goal's
+complete scope. Stop automatic goal work at this dependency, preserve all
+source/branch/artifact evidence, and resume the same version after answers.
+These two post-CI docs remain local WIP for the next code batch; no version,
+merge or public release is made for a status-only checkpoint.
+
 ## 2026-09-30 cgroup deployment prerequisite
 
 9dda54d exact-head CI is now terminal. Keep Draft #125 and the same version;

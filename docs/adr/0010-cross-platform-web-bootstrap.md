@@ -1,6 +1,7 @@
 # ADR 0010: first-deployment cross-platform Web trust bootstrap
 
-Status: **Proposed; Owner authorization required before production activation**.
+Status: **Accepted for software implementation — Owner selected the recommended
+HTTPS Web profile on 2026-09-30. Production claims still require the evidence below**.
 Scope: first self-deployed AgentBox version for PC and phone browsers.
 
 ## Problem and approved product target

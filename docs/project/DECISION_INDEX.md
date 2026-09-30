@@ -1,5 +1,14 @@
 # Decision and Architecture Index
 
+- `R12-WEB-HTTPS-BOOTSTRAP`: Owner accepted the recommended first-release
+  PC/mobile Web profile on 2026-09-30. Independent native protection against
+  compromised Web code is not claimed; Runtime/Secret/action/Stop boundaries
+  remain. See [ADR 0010](../adr/0010-cross-platform-web-bootstrap.md).
+- `R12-CGROUP-SCOPED-DELEGATION-A`: Owner accepted the recommended 255-compatible
+  delegated-subtree design on 2026-09-30. Its real namespace/mount/path/limits
+  must be observed before manifest issuance; global writable cgroups are not
+  an allowed fallback. See [ADR 0011](../adr/0011-deployable-cgroup-compatibility.md).
+
 - `R12-VENDOR-ENROLLMENT-SOURCE-V1`: the sole production source for vendor
   versions and the Codex unauthenticated-output digest is a fixed,
   installer-owned, non-secret Runtime file. The authority-deferred provider

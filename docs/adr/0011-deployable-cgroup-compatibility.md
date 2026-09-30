@@ -1,6 +1,7 @@
 # ADR 0011: deployable Runtime cgroup compatibility
 
-Status: **Proposed; architecture authorization required before implementation/activation**.
+Status: **Accepted alternative A for software implementation — Owner instructed
+the recommended plan on 2026-09-30. Activation requires actual evidence**.
 This preserves the full deployment goal; neither alternative is qualified yet.
 
 ## Verified conflict
@@ -52,7 +53,8 @@ correction leaves the existing boolean legacy service compatible.
 
 ## Decision and follow-up
 
-Owner selects compatibility-first A or newer-systemd B. Both require exact
+Owner selected compatibility-first A; B remains an alternative if A cannot be
+proved safely. Both require exact
 implementation/host evidence and retain PC/mobile browser scope and all
 later capabilities. Until selected, no enabled profile or fabricated cgroup
 manifest is published. Non-secret resource work may continue when independent;

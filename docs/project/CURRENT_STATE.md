@@ -1,11 +1,54 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T10:09:04Z"
+verified_at_utc: "2026-09-30T10:20:43Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-09-30 Owner selected the recommended architectures
+
+Owner instructed “按你说的做” after the two concrete recommended decisions.
+ADR 0010 HTTPS Web profile and ADR 0011 alternative A (255-compatible scoped
+delegation) are accepted for software implementation. This supersedes the
+authorization blocker below; activation/support still requires real evidence.
+The same complete deployable goal is active; no version bump or later feature
+expansion follows. Original checkout WIP remains protected.
+
+Current implementation starts with a CI-only native PID-1 probe of actual
+delegation: a fixed, uniquely marked transient DynamicUser service, boolean
+ProtectControlGroups, exact service-subtree ReadWritePaths and a supervisor
+subgroup. It tests controller/limit writes, moving only its own PID, outside
+write denial, ro global/rw scoped mount observations and leaf cleanup. Unit
+ownership is checked before cleanup; bounded RuntimeMaxSec prevents an
+unattended probe. No production account, key, credential, HOME or unit is used.
+Local source syntax, Ruff and doc links pass; macOS cannot supply the host
+evidence. Do not issue a manifest or enable the new model until this probe and
+the complete qualification succeed. Web implementation follows the accepted
+profile, with its explicitly weaker independent-client guarantee recorded.
+
+## 2026-09-30 verified checkpoint and architecture dependency
+
+Draft PR #125 exact head a091701178179d0d319729e88a1fa543c1db3533 now has
+24 terminal SUCCESS and the two prescribed historical SKIPPED checks, with
+no pending/failing check. Backend watch run 36701077638 exited successfully.
+No merge/tag/release/deployment occurred; the version remains rc30.
+
+The architecture authorization dependency has persisted through three
+consecutive goal turns. ADR 0010 (PC/mobile Web trust assumptions) and ADR
+0011 (actual cgroup/server compatibility) are still Proposed, with no Owner
+reply observed. Manifest issuance depends on the selected namespace/path
+contract; Runtime activation depends on those real resources; ordinary mobile
+connection depends on the Web trust decision. Do not silently choose either
+architecture or repeat CI/status commits as work. Preserve this exact-head
+checkpoint and await the already requested decisions. The complete deployable
+goal is not achieved, and unrelated later capabilities stay frozen.
+
+This is local post-CI documentation WIP, intentionally not pushed just to
+restart checks. Original checkout WIP is untouched. After Owner replies,
+continue the same branch/PR and version, revalidate live Git, implement the
+selected dependency and carry this snapshot into that code batch.
 
 ## 2026-09-30 actual cgroup compatibility conflict
 
