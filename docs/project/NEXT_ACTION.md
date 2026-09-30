@@ -2,6 +2,14 @@
 
 ## 2026-10-01 issue installable resources using the restart-safe profile
 
+d41974d passed the actual Linux FD check and complete Backend/native/install/
+client jobs. Its Release audit found four virtualenv advisories; the current
+minimal fix pins 21.7.13 and required python-discovery 1.6.0 with verified
+official wheel hashes and three-Python dependency closure. Synchronize and
+inspect its exact-head audit/artifact checks, then continue actual manifest
+issuance/key initialization and activation below. These remain one unfinished
+first-version delivery, not completed product increments.
+
 3b00cb4's real scoped PID-1 probe passed twice, with equal physical identity
 and equal/reused namespace/mount numbers. Backend failed the real FD test on
 an existing mnt_id parser tab-offset bug, corrected in the current follow-up.

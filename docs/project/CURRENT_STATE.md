@@ -9,6 +9,20 @@ repository: "ForceMind/agentbox"
 
 ## 2026-10-01 restart-safe enrollment inputs candidate
 
+d41974dd83a9c954c5a879e204e71b43147d304a's Backend matrices, native,
+installer and frontend/E2E checks passed, including the actual Linux FD test.
+The earlier wire fixture failure did not recur; its root cause remains
+unproven and the production budget/assertions remain unchanged. Terminal CI
+has 19 SUCCESS, three dependency-skipped jobs and two Release failures.
+The direct Release failure is unchanged pip-audit detecting four virtualenv
+21.7.4 advisories (PYSEC-2026-4011/4012/4013/4014). Follow-up pins virtualenv
+21.7.13 plus its required python-discovery 1.6.0, matching downloaded wheel
+hashes to official PyPI JSON. Both dependency closures satisfy the existing
+75-entry lock across Python 3.11–3.13; targeted audit reports no known findings.
+See [upstream virtualenv fixes](https://virtualenv.pypa.io/en/latest/changelog.html).
+No audit exception, runtime dependency, product version or host activation is
+introduced. Complete exact-head CI for this lock repair remains required.
+
 3b00cb4ba5bb93e8e2421a4e9da288326cf21143 reached terminal CI: 21 SUCCESS,
 two prescribed SKIPPED and three Backend matrix failures. Deployment's actual
 two-instance PID-1 probe passed (36743842988/job 109984874332): physical fsid/
