@@ -3,7 +3,8 @@
 ## 2026-09-30 Finish current rc30 candidate
 
 The `4e9c394` frontend audit exposed high-severity brace-expansion findings.
-The same-version patch pins only 1.1.20/5.0.11, preserves the audit level,
+After the additional moderate recursion-complexity advisory, the final
+same-version patch pins only 1.1.21/5.0.12, preserves the audit level,
 passes frozen installation, audit, 1201 Web/6 MV3 tests and lint/types/build.
 Run this new head's required CI; repair failures without relaxing assertions.
 Then normal Ready/merge/read-back follows the current AGENTS.md authority.

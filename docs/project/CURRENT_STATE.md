@@ -7,6 +7,23 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## 2026-09-30 final rc30 brace-expansion correction
+
+The `7365e4e` dependency review found the additional moderate advisory
+GHSA-q2hr-2g5m-vwhr in brace-expansion 1.1.20. Final scoped overrides now
+use 1.1.21 and 5.0.12, covering both high recursion issues and this quadratic
+rewrite issue. No other dependency version was changed. Frozen installation
+with scripts disabled passed; moderate-level audit identifies only the two
+pre-existing Vitest/@vitest-mocker findings (GHSA-82fw-gwwq-j7x9), with
+0 high/critical. The current high-level audit and dependency-review policies
+are retained. No finding was suppressed.
+
+Node 22.23.2 Web tests passed 1201/1201, MV3 tests 6/6, with lint/typecheck
+and production builds passing. The corrected head still requires its full
+CI before normal merge. Main-agent self-review follows the current AGENTS.md;
+the original R12 WIP remains untouched and real host/client/CLI/recovery
+qualification is unfinished. Earlier patch attempts below remain historical.
+
 ## 2026-09-30 rc30 dependency audit recovery
 
 Head `4e9c394188e624aab5c75049441eb043f553a8af` reached terminal
