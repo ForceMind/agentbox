@@ -1,8 +1,23 @@
 # Current Authorized Action
 
+## 2026-10-01 issue installable resources using the restart-safe profile
+
+The synchronized 530fdf5 startup correction passed all 24 checks/two prescribed
+skips. Current uncommitted code fixes install-time namespace IDs and helper
+current-symlink paths, as recorded in ADR 0011. Commit this correction on the
+same Draft/version and inspect its real Linux FD/two-instance PID-1 evidence.
+Then implement the complete root-owned manifest issuer and Runtime-only key
+initialization, followed by delegated workspace allocation and profile/socket
+activation. Do not publish hand-filled numeric namespace IDs, mixed helper
+releases, plaintext key output, or enabled profiles without validated resources.
+Positive Codex Remote evidence and HTTPS Web/client/core/recovery acceptance
+remain required. Keep the four user-path delivery checklist open; no later
+features, product-version bump or subagents are part of this continuation.
+
 ## 2026-09-30 finish installation resources for the fixed production entry
 
-Before installer work, synchronize the production self-conflict correction:
+The production self-conflict correction is synchronized as 530fdf51d517da7245eb1cd253c5bb4368ec18f3;
+finish its pending exact-head CI before relying on complete Linux evidence:
 formal binding reads must permit the WAW start whose legacy probe they serve,
 while managed_conflict_states continues to deny overlapping legacy admission.
 Both AgentType integration start/Stop tests pass with explicit vendor fixtures.

@@ -56,14 +56,31 @@ def child() -> int:
                 mounts.append((fields[4], fields[5].split(",")))
         assert any(path == str(ROOT) and "ro" in flags for path, flags in mounts), mounts
         assert any(path == str(SERVICE) and "rw" in flags for path, flags in mounts), mounts
+        directory_fd = os.open("/run", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        try:
+            facts = os.fstat(directory_fd)
+            filesystem_id = os.fstatvfs(directory_fd).f_fsid
+            mount_ids = [
+                line.split(":", 1)[1].strip()
+                for line in Path(f"/proc/self/fdinfo/{directory_fd}").read_text().splitlines()
+                if line.startswith("mnt_id:")
+            ]
+            assert len(mount_ids) == 1 and mount_ids[0].isdigit()
+            assert filesystem_id > 0 and facts.st_ino > 0
+        finally:
+            os.close(directory_fd)
         print(
             json.dumps(
                 {
-                    "schema_version": "agentbox-waw-delegation-probe.v1",
+                    "schema_version": "agentbox-waw-delegation-probe.v2",
                     "scoped_write": True,
                     "outside_write_denied": True,
                     "global_mount_read_only": True,
                     "subtree_mount_read_write": True,
+                    "filesystem_id": str(filesystem_id),
+                    "inode": str(facts.st_ino),
+                    "mount_id": mount_ids[0],
+                    "mount_namespace": os.readlink("/proc/self/ns/mnt"),
                 }
             )
         )
@@ -110,6 +127,8 @@ def main() -> int:
             "--property=Delegate=cpu memory pids",
             "--property=DelegateSubgroup=supervisor",
             "--property=ProtectControlGroups=yes",
+            "--property=ProtectSystem=strict",
+            "--property=PrivateTmp=yes",
             f"--property=ReadWritePaths={SERVICE}",
             "--property=NoNewPrivileges=yes",
             "--property=RuntimeMaxSec=45",
@@ -123,8 +142,44 @@ def main() -> int:
             "--child",
         ]
         try:
-            result = subprocess.run(command, check=False, timeout=60)
-            return result.returncode
+            records = []
+            for _attempt in range(2):
+                result = subprocess.run(
+                    command, check=False, timeout=60, capture_output=True, text=True
+                )
+                if result.returncode != 0:
+                    sys.stderr.write(result.stderr[-8192:])
+                    return result.returncode
+                assert len(result.stdout) <= 4096, "probe output is oversized"
+                record = json.loads(result.stdout)
+                assert record["schema_version"] == "agentbox-waw-delegation-probe.v2"
+                assert all(
+                    record[key] is True
+                    for key in (
+                        "scoped_write",
+                        "outside_write_denied",
+                        "global_mount_read_only",
+                        "subtree_mount_read_write",
+                    )
+                )
+                records.append(record)
+                print(json.dumps(record))
+            assert (records[0]["filesystem_id"], records[0]["inode"]) == (
+                records[1]["filesystem_id"],
+                records[1]["inode"],
+            ), "physical filesystem identity changed across service instances"
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "agentbox-waw-namespace-restart-probe.v1",
+                        "physical_identity_stable": True,
+                        "mount_id_changed": records[0]["mount_id"] != records[1]["mount_id"],
+                        "namespace_changed": records[0]["mount_namespace"]
+                        != records[1]["mount_namespace"],
+                    }
+                )
+            )
+            return 0
         finally:
             own = subprocess.run(
                 ["/usr/bin/systemctl", "show", UNIT, "--property=Description", "--value"],

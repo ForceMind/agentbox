@@ -99,6 +99,8 @@ class CgroupDelegationManifest:
 SCOPED_CGROUP_PROTECTION_V1 = "delegated-subtree-v1"
 SCOPED_CGROUP_SERVICE_ROOT_V1 = "/sys/fs/cgroup/system.slice/agentbox-runtime.service"
 SCOPED_CGROUP_WORKSPACES_V1 = "agentbox-runtime-workspaces"
+RUNTIME_NAMESPACE_BINDING_V1 = "runtime-namespace-v1"
+SCOPED_CGROUP_FILESYSTEM_V1 = "scoped-runtime-cgroup2-v1"
 SCOPED_CGROUP_TEMPLATE_SHA256_V1 = (
     "0d36fe650d72ffc696a96b6403c2bfa91954fb2e0ea15f8e1e8c0b355fda791b"
 )
@@ -488,12 +490,22 @@ def _validate_project(value: Mapping[str, Any]) -> None:
     if root == "/" or root.startswith("/home/"):
         raise WAWManifestCodecError("configured root is outside the approved project root")
     for field in (
-        "root_device",
-        "root_mount_id",
         "root_uid",
         "root_gid",
     ):
         _u64(value[field])
+    if value["root_mount_id"] == RUNTIME_NAMESPACE_BINDING_V1:
+        if value["root_device"] != RUNTIME_NAMESPACE_BINDING_V1:
+            raise WAWManifestCodecError("mixed ProjectRoot namespace binding")
+        identity = _string(value["root_filesystem_id"])
+        parts = identity.split(";")
+        if len(parts) != 2 or not parts[0].startswith("fsid:") or not parts[1].startswith("inode:"):
+            raise WAWManifestCodecError("invalid ProjectRoot filesystem identity")
+        _u64(parts[0].removeprefix("fsid:"), positive=True)
+        _u64(parts[1].removeprefix("inode:"), positive=True)
+    else:
+        _u64(value["root_device"])
+        _u64(value["root_mount_id"])
     _project_root_mode(value["root_mode"])
     _string(value["root_filesystem_id"])
     if value["relative_key_grammar_version"] != "one-component-v1":
@@ -524,6 +536,11 @@ def _validate_cgroup(value: Mapping[str, Any]) -> None:
         raise WAWManifestCodecError("unsupported cgroup policy identity")
     _string(value["cgroup_mount_device"])
     _string(value["cgroup_mount_filesystem_id"])
+    if value["cgroup_mount_device"] == RUNTIME_NAMESPACE_BINDING_V1 and (
+        value["protect_control_groups"] != SCOPED_CGROUP_PROTECTION_V1
+        or value["cgroup_mount_filesystem_id"] != SCOPED_CGROUP_FILESYSTEM_V1
+    ):
+        raise WAWManifestCodecError("unsupported cgroup namespace binding")
     if not isinstance(value["delegate"], bool) or value["delegate"] is not True:
         raise WAWManifestCodecError("cgroup delegation must be enabled")
     if (
@@ -741,6 +758,11 @@ def verify_api_host_anchor_cross_manifest(
         decode_cgroup_delegation_manifest,
     )
 
+    if (
+        project_record.root_mount_id == RUNTIME_NAMESPACE_BINDING_V1
+        or cgroup_record.cgroup_mount_device == RUNTIME_NAMESPACE_BINDING_V1
+    ):
+        raise WAWManifestCodecError("namespace binding requires the v2 runtime bundle")
     runtime_digest = manifest_sha256(runtime_raw)
     project_digest = manifest_sha256(project_raw)
     cgroup_digest = manifest_sha256(cgroup_raw)
@@ -812,6 +834,10 @@ def verify_api_host_anchor_v2_cross_manifest(
         encode_cgroup_delegation_manifest,
         decode_cgroup_delegation_manifest,
     )
+    if (project_record.root_mount_id == RUNTIME_NAMESPACE_BINDING_V1) != (
+        cgroup_record.cgroup_mount_device == RUNTIME_NAMESPACE_BINDING_V1
+    ):
+        raise WAWManifestCodecError("mixed v2 namespace binding")
     inventory_record, inventory_raw = _strict_record_bytes(
         executable_inventory,
         ExecutableInventoryV1,

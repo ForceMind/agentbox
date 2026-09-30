@@ -53,6 +53,42 @@ correction leaves the existing boolean legacy service compatible.
 
 ## Decision and follow-up
 
+### Restart-safe installation observations — 2026-10-01
+
+The accepted scoped implementation cannot persist an installer's numeric mount
+ID as a Runtime namespace ID. Mount IDs belong to the current namespace; the
+kernel cgroup superblock device is also a boot observation. Pinning those
+numbers at installation would make normal service/host recovery depend on
+stale observations. This correction is resolved under GOVERNANCE's current-task
+software-decision delegation, within alternative A; host qualification remains
+separate.
+
+The v2 bundle has a closed `runtime-namespace-v1` binding mode. ProjectRoot uses
+that exact label in root_device/root_mount_id and pins the positive filesystem
+ID plus root inode as `fsid:<uint64>;inode:<uint64>`. Runtime still verifies the
+held directory against the fixed installed path, UID/GID/mode, filesystem/inode,
+and its actual FD mount ID/device in current mountinfo. Changing the filesystem
+or recreating the root requires explicit re-enrollment; no automatic fallback
+to a new root is provided. A missing/zero filesystem ID fails closed.
+
+Scoped cgroups use the same namespace label in cgroup_mount_device plus the
+fixed `scoped-runtime-cgroup2-v1` identity. Runtime derives the device from the
+held FD and verifies it against the exact scoped RW mount and same-device RO
+global mount; outside RW mounts, wrong paths/owners and controller/limit drift
+still fail. The v2 cross-pin rejects mixed namespace/numeric profiles; v1 cannot
+use this mode. Legacy numeric/private vectors retain their existing semantics.
+
+Installer enrollment must pin the three native helpers below one immutable
+`/opt/agentbox/releases/<version>/libexec` directory. The closed helper names,
+version grammar, digests and root-owned no-follow descriptor checks stay; mixed
+releases or arbitrary roots are rejected. The existing `current` symlink remains
+the service upgrade pointer but is not the new inventory's executable authority.
+
+The CI-only PID-1 probe now runs two scoped services with ProtectSystem/PrivateTmp
+and records actual namespace/mount IDs plus physical filesystem identity. Its
+results and the real Linux ProjectRoot FD test are required evidence for this
+software batch, not a claim of vendor, reboot or complete installation readiness.
+
 Owner selected compatibility-first A; B remains an alternative if A cannot be
 proved safely. Both require exact
 implementation/host evidence and retain PC/mobile browser scope and all

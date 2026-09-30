@@ -47,6 +47,7 @@ from agentbox_runtime.waw_managed_command import (
     validate_managed_command,
 )
 from agentbox_runtime.waw_manifest_codecs import (
+    RUNTIME_NAMESPACE_BINDING_V1,
     SCOPED_CGROUP_PROTECTION_V1,
     SCOPED_CGROUP_SERVICE_ROOT_V1,
     CgroupDelegationManifest,
@@ -2123,8 +2124,15 @@ def _verify_delegate_root(
     if (
         path != expected_path
         or path.endswith(" (deleted)")
-        or device != manifest.cgroup_mount_device
-        or not _mountinfo_matches_cgroup(mount_id, manifest)
+        or (
+            manifest.cgroup_mount_device != RUNTIME_NAMESPACE_BINDING_V1
+            and device != manifest.cgroup_mount_device
+        )
+        or not (
+            _mountinfo_matches_cgroup(mount_id, manifest, device)
+            if manifest.cgroup_mount_device == RUNTIME_NAMESPACE_BINDING_V1
+            else _mountinfo_matches_cgroup(mount_id, manifest)
+        )
         or scoped_owner_invalid
     ):
         raise RuntimeOperationError(
@@ -2144,7 +2152,11 @@ def _validate_delegated_workload(
     cgroup_manifest = authority._manifest.cgroup
     actual_device = f"{os.major(details.st_dev)}:{os.minor(details.st_dev)}"
     if (
-        actual_device != cgroup_manifest.cgroup_mount_device
+        (
+            not _mountinfo_matches_cgroup(mount_identity[0], cgroup_manifest, actual_device)
+            if cgroup_manifest.cgroup_mount_device == RUNTIME_NAMESPACE_BINDING_V1
+            else actual_device != cgroup_manifest.cgroup_mount_device
+        )
         or _fd_mount_id(descriptor) != mount_identity[0]
         or mount_identity[1] != cgroup_manifest.cgroup_mount_filesystem_id
         or details.st_uid != os.geteuid()
@@ -2189,17 +2201,62 @@ def _verify_project_root_descriptor(descriptor: int, manifest: ProjectRootManife
         expected_mode=int(manifest.root_mode, 8),
     )
     details = os.fstat(descriptor)
+    if manifest.root_mount_id == RUNTIME_NAMESPACE_BINDING_V1:
+        identity_invalid = _project_filesystem_identity(
+            descriptor
+        ) != manifest.root_filesystem_id or not _mountinfo_has_device(
+            _fd_mount_id(descriptor), details.st_dev
+        )
+    else:
+        identity_invalid = (
+            str(details.st_dev) != manifest.root_device
+            or _fd_mount_id(descriptor) != manifest.root_mount_id
+        )
     if (
-        str(details.st_dev) != manifest.root_device
+        identity_invalid
         or str(details.st_gid) != manifest.root_gid
         or format(stat.S_IMODE(details.st_mode), "o") != manifest.root_mode
-        or _fd_mount_id(descriptor) != manifest.root_mount_id
     ):
         raise RuntimeOperationError(
             "RUNTIME_UNAVAILABLE",
             "ProjectRoot descriptor does not match its manifest",
             category="unavailable",
         )
+
+
+def _project_filesystem_identity(descriptor: int) -> str:
+    """Persist filesystem ID/inode, never an ephemeral namespace mount ID."""
+
+    try:
+        filesystem_id = os.fstatvfs(descriptor).f_fsid
+        inode = os.fstat(descriptor).st_ino
+    except (OSError, AttributeError) as exc:
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "ProjectRoot filesystem identity is unavailable",
+            category="unavailable",
+        ) from exc
+    if not 0 < filesystem_id <= 2**64 - 1 or not 0 < inode <= 2**64 - 1:
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "ProjectRoot filesystem identity is invalid",
+            category="unavailable",
+        )
+    return f"fsid:{filesystem_id};inode:{inode}"
+
+
+def _mountinfo_has_device(mount_id: str, device: int) -> bool:
+    try:
+        raw = Path("/proc/self/mountinfo").read_text(encoding="ascii", errors="strict")
+    except (OSError, UnicodeError):
+        return False
+    rows = [
+        line.split(" - ", 1)[0].split()
+        for line in raw.splitlines()
+        if " - " in line and len(line.split(" - ", 1)[1].split()) >= 3
+    ]
+    matches = [row for row in rows if len(row) >= 6 and row[0] == mount_id]
+    return len(matches) == 1 and matches[0][2] == f"{os.major(device)}:{os.minor(device)}"
 
 
 def _verify_installed_directory(
@@ -2316,7 +2373,17 @@ def _fd_mount_id(descriptor: int) -> str:
     return matches[0]
 
 
-def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest) -> bool:
+def _mountinfo_matches_cgroup(
+    mount_id: str, manifest: CgroupDelegationManifest, observed_device: str | None = None
+) -> bool:
+    device = manifest.cgroup_mount_device
+    if device == RUNTIME_NAMESPACE_BINDING_V1:
+        if (
+            observed_device is None
+            or manifest.protect_control_groups != SCOPED_CGROUP_PROTECTION_V1
+        ):
+            return False
+        device = observed_device
     try:
         raw = Path("/proc/self/mountinfo").read_text(encoding="ascii", errors="strict")
     except (OSError, UnicodeError):
@@ -2330,7 +2397,7 @@ def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest)
             matches.append((fields, filesystem))
     if manifest.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1:
         scoped = len(matches) == 1 and (
-            matches[0][0][2] == manifest.cgroup_mount_device
+            matches[0][0][2] == device
             and matches[0][0][3] == "/system.slice/agentbox-runtime.service"
             and matches[0][0][4] == SCOPED_CGROUP_SERVICE_ROOT_V1
             and "rw" in matches[0][0][5].split(",")
@@ -2362,14 +2429,14 @@ def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest)
             and not outside_rw
             and len(global_ro) == 1
             and (
-                global_ro[0][0][2] == manifest.cgroup_mount_device
+                global_ro[0][0][2] == device
                 and global_ro[0][0][3] == "/"
                 and "ro" in global_ro[0][0][5].split(",")
                 and global_ro[0][1][0] == manifest.cgroup_mount_type
             )
         )
     return len(matches) == 1 and (
-        matches[0][0][2] == manifest.cgroup_mount_device
+        matches[0][0][2] == device
         and matches[0][0][3] == "/"
         and matches[0][0][4] == "/sys/fs/cgroup"
         and matches[0][1][0] == manifest.cgroup_mount_type

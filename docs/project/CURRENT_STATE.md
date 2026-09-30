@@ -1,13 +1,48 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T15:15:22Z"
+verified_at_utc: "2026-09-30T16:20:30Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 restart-safe enrollment inputs candidate
+
+530fdf51d517da7245eb1cd253c5bb4368ec18f3 is synchronized on Draft #125 and
+reached terminal exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending
+or failing checks. It is still not a deployable release.
+
+Current installer-facing correction adds the distinct runtime-namespace-v1
+binding: persist ProjectRoot filesystem ID/inode and observe actual FD mounts
+per Runtime namespace; observe current cgroup device while retaining exact
+scoped/global mount, ownership and limits checks. v2 cross-pins require one
+consistent profile and reject v1 downgrade. New helper inventory locations are
+closed to three fixed names under one immutable installed release, retaining
+all no-follow/provenance guards. This resolves the current-symlink conflict;
+it does not enable arbitrary executable paths. ADR 0011 records the rationale
+and software-decision delegation.
+
+241 affected profile/manifest/transport tests passed locally, with ten Linux
+checks skipped on macOS. After adding the downgrade assertion, the new focused
+selection passed 31 cases/one Linux skip; mypy passed 343 files and Ruff passed.
+The real Linux FD test and two-instance PID-1 namespace probe remain pending
+this candidate's CI. Main-agent self-review is not independent review.
+Complete manifest issuance, Runtime-only key initialization, enrollment/profile
+activation, delegated root/workload creation, positive Codex Remote evidence,
+HTTPS Web bootstrap and actual PC/mobile CLI/recovery paths remain open.
+No new source version/tag/release or actual user-host activation occurred.
+
 ## 2026-09-30 fixed production entry candidate
+
+Latest synchronized head: 530fdf51d517da7245eb1cd253c5bb4368ec18f3,
+Draft #125 exact remote read-back confirmed. Initial CI snapshot has six
+successful checks, no failures, remaining checks pending. A transient local
+ENOSPC prevented the first staging attempt; no files were lost or reset.
+The subsequent no-cache Ruff, exact staging, commit and push succeeded.
+Disk availability was then 2.1 GiB; no user data/caches were deleted.
+This post-push snapshot is carried locally into the next code batch instead
+of starting an otherwise identical CI run for documentation alone.
 
 Integration follow-up: the production legacy-Claude lookup rejected WAW's own
 in-flight start, causing a self-conflict. The formal-to-key read now fences
