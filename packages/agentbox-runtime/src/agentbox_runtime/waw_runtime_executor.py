@@ -288,7 +288,6 @@ class WAWSupervisorExecutor:
             if (
                 validated in self._binding_reserved
                 or validated in self._binding_inflight
-                or validated in self._inflight_project_ids.values()
                 or any(key.project_id == validated for key in self._restart_quarantine)
             ):
                 return None
@@ -301,6 +300,12 @@ class WAWSupervisorExecutor:
             )
             if matches != 1:
                 return None
+            # A WAW start owns an in-flight operation before it probes legacy
+            # Claude. That operation does not mutate this binding; rejecting
+            # it here would make every production start conflict with itself.
+            # Legacy admission still uses managed_conflict_states(), which
+            # fences all in-flight operations. Start pins are checked again
+            # by _start_snapshot/_commit_start after the legacy observation.
             return relative_key
 
     def managed_conflict_states(

@@ -20,7 +20,12 @@ from agentbox_core.waw_tickets import (
 )
 from agentbox_protocol.abws import ABWSFrame, FrameType
 from agentbox_protocol.waw_wire import Leg, encode_wire_frame
-from agentbox_runtime.models import RuntimeOperationError
+from agentbox_runtime.models import (
+    ClaudeSessionState,
+    CodexStatus,
+    RemoteState,
+    RuntimeOperationError,
+)
 from agentbox_runtime.process import inspect_executable
 from agentbox_runtime.project import ProjectRegistry
 from agentbox_runtime.waw_auth_probe import WAWPublicAuthEvidence, WAWPublicAuthResult
@@ -56,6 +61,7 @@ from agentbox_runtime.waw_process_inspector import (
     FixedStartProof,
     FixedStartState,
 )
+from agentbox_runtime.waw_production import _ProductionConflictProbe
 from agentbox_runtime.waw_pty import PtyGeometry
 from agentbox_runtime.waw_redraw import BoundedRedraw
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
@@ -1645,6 +1651,7 @@ async def test_managed_conflict_snapshot_denies_unsettled_binding_and_quarantine
     executor._binding_reserved.clear()
 
     executor._inflight_project_ids[identity.workspace_id] = PROJECT
+    assert executor.relative_key_for_formal_project(PROJECT) == "project-a"
     assert executor.managed_conflict_states(PROJECT) == (WAWManagedConflictState.UNKNOWN,)
     executor._inflight_project_ids.clear()
 
@@ -1653,6 +1660,44 @@ async def test_managed_conflict_snapshot_denies_unsettled_binding_and_quarantine
         WAWManagedConflictState.RECONCILIATION_REQUIRED,
     )
     assert executor.relative_key_for_formal_project(PROJECT) is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("agent_type", [AgentType.CLAUDE, AgentType.CODEX])
+async def test_production_conflict_probe_does_not_block_its_own_start(
+    tmp_path: Path, agent_type: AgentType
+) -> None:
+    from types import SimpleNamespace
+
+    executor, identity, transport, _ = setup(tmp_path, agent_type)
+    await executor.register_project_binding(binding())
+
+    class LegacyManagers:
+        async def session(self, key: str) -> Any:
+            assert key == "project-a"
+            return SimpleNamespace(state=ClaudeSessionState.STOPPED)
+
+        async def status(self) -> CodexStatus:
+            return CodexStatus(
+                installed=True,
+                version="test",
+                selected_executable="/test/codex",
+                remote_state=RemoteState.STOPPED,
+                remote_confidence="reported",
+            )
+
+    managers = LegacyManagers()
+    probe = _ProductionConflictProbe(cast(Any, managers), cast(Any, managers))
+    probe.bind(executor)
+    coordinator = WAWConflictCoordinator(probe)
+    executor._conflicts = coordinator
+    assert (await executor.start(identity)).state == "RUNNING"
+    assert transport.starts == 1
+    with pytest.raises(WAWConflictError, match="PROJECT_RUNTIME_ACTIVE"):
+        coordinator.acquire_legacy_claude_start(project_id=PROJECT)
+    with pytest.raises(WAWConflictError, match="CODEX_REMOTE_CONFLICT"):
+        coordinator.acquire_legacy_codex_start()
+    assert (await executor.stop(identity)).state == "STOPPED"
 
 
 @pytest.mark.anyio

@@ -9,6 +9,20 @@ repository: "ForceMind/agentbox"
 
 ## 2026-09-30 fixed production entry candidate
 
+Integration follow-up: the production legacy-Claude lookup rejected WAW's own
+in-flight start, causing a self-conflict. The formal-to-key read now fences
+binding mutation/quarantine/ambiguity but permits an in-flight WAW operation;
+legacy admission still rejects those operations through managed_conflict_states.
+Start snapshot/commit pins remain. A test with the real executor/coordinator/
+production bridge proves both AgentTypes start and exact Stop while legacy
+Claude/Codex starts are rejected. Its vendor observations are explicit fixtures,
+not real CLI evidence. 117 executor/production/conflict tests passed; mypy
+passed 341 files. Entry-only RPC tests passed five cases. Full local RPC tests
+also exposed macOS-only AF_UNIX length, epoch/peer-credential failures; assertions
+were not weakened and Linux CI remains the required full RPC evidence.
+e0856be read-back has no failing check, 21 SUCCESS/two SKIPPED with the three
+Backend matrices still running; this is not a terminal all-green claim.
+
 Follow-up: b966480's native, four installer, frontend and E2E checks passed.
 Release Candidate failed its unchanged pip-audit gate: build-only urllib3
 2.7.0 now reports CVE-2026-97687/97688/97689. The official 2.8.0 release fixes

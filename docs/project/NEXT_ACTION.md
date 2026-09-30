@@ -2,6 +2,12 @@
 
 ## 2026-09-30 finish installation resources for the fixed production entry
 
+Before installer work, synchronize the production self-conflict correction:
+formal binding reads must permit the WAW start whose legacy probe they serve,
+while managed_conflict_states continues to deny overlapping legacy admission.
+Both AgentType integration start/Stop tests pass with explicit vendor fixtures.
+This correction stays within the existing startup scope and product version.
+
 The b966480 Release Candidate audit found three new urllib3 2.7.0 advisories.
 The follow-up pins official 2.8.0 plus independently verified PyPI wheel hash,
 without bypassing audit. Finish the resulting exact-head checks, then continue
