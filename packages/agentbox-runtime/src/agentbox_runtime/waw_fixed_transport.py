@@ -47,9 +47,12 @@ from agentbox_runtime.waw_managed_command import (
     validate_managed_command,
 )
 from agentbox_runtime.waw_manifest_codecs import (
+    SCOPED_CGROUP_PROTECTION_V1,
+    SCOPED_CGROUP_SERVICE_ROOT_V1,
     CgroupDelegationManifest,
     CrossManifestPinV2,
     ProjectRootManifest,
+    cgroup_delegate_root_path,
 )
 from agentbox_runtime.waw_process_inspector import (
     FixedAttachmentPort,
@@ -2108,13 +2111,21 @@ def _verify_delegate_root(
             "RUNTIME_UNAVAILABLE", "Delegated cgroup path is unavailable", category="unavailable"
         ) from exc
     device = f"{os.major(details.st_dev)}:{os.minor(details.st_dev)}"
-    expected_path = f"/sys/fs/cgroup/{manifest.delegate_subgroup}"
+    expected_path = cgroup_delegate_root_path(manifest)
     mount_id = _fd_mount_id(descriptor)
+    scoped_owner_invalid = manifest.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1 and (
+        not stat.S_ISDIR(details.st_mode)
+        or os.geteuid() == 0
+        or details.st_uid != os.geteuid()
+        or details.st_gid != os.getegid()
+        or details.st_mode & 0o022
+    )
     if (
         path != expected_path
         or path.endswith(" (deleted)")
         or device != manifest.cgroup_mount_device
         or not _mountinfo_matches_cgroup(mount_id, manifest)
+        or scoped_owner_invalid
     ):
         raise RuntimeOperationError(
             "RUNTIME_UNAVAILABLE",
@@ -2317,6 +2328,46 @@ def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest)
         filesystem = after.split()
         if separator and len(fields) >= 6 and len(filesystem) >= 3 and fields[0] == mount_id:
             matches.append((fields, filesystem))
+    if manifest.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1:
+        scoped = len(matches) == 1 and (
+            matches[0][0][2] == manifest.cgroup_mount_device
+            and matches[0][0][3] == "/system.slice/agentbox-runtime.service"
+            and matches[0][0][4] == SCOPED_CGROUP_SERVICE_ROOT_V1
+            and "rw" in matches[0][0][5].split(",")
+            and matches[0][1][0] == manifest.cgroup_mount_type
+        )
+        global_ro = []
+        outside_rw = False
+        for line in raw.splitlines():
+            before, separator, after = line.partition(" - ")
+            fields, filesystem = before.split(), after.split()
+            if (
+                separator
+                and len(fields) >= 6
+                and len(filesystem) >= 3
+                and filesystem[0] == "cgroup2"
+                and "rw" in fields[5].split(",")
+                and fields[4] != SCOPED_CGROUP_SERVICE_ROOT_V1
+            ):
+                outside_rw = True
+            if (
+                separator
+                and len(fields) >= 6
+                and len(filesystem) >= 3
+                and fields[4] == "/sys/fs/cgroup"
+            ):
+                global_ro.append((fields, filesystem))
+        return (
+            scoped
+            and not outside_rw
+            and len(global_ro) == 1
+            and (
+                global_ro[0][0][2] == manifest.cgroup_mount_device
+                and global_ro[0][0][3] == "/"
+                and "ro" in global_ro[0][0][5].split(",")
+                and global_ro[0][1][0] == manifest.cgroup_mount_type
+            )
+        )
     return len(matches) == 1 and (
         matches[0][0][2] == manifest.cgroup_mount_device
         and matches[0][0][3] == "/"

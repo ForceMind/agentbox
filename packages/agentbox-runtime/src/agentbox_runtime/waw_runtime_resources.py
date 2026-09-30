@@ -23,7 +23,7 @@ from agentbox_runtime.waw_fixed_transport import (
     WAWVerifiedLaunchHandleFactory,
     _verify_delegate_root,
 )
-from agentbox_runtime.waw_manifest_codecs import CrossManifestPinV2
+from agentbox_runtime.waw_manifest_codecs import CrossManifestPinV2, cgroup_delegate_root_path
 
 _RESOURCE_TOKEN = object()
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
@@ -203,7 +203,7 @@ def build_waw_production_resources(
                 cleanup_uncertain = True
                 raise
         delegate_root = _open_role(
-            f"/sys/fs/cgroup/{manifest.cgroup.delegate_subgroup}", directory=True
+            cgroup_delegate_root_path(manifest.cgroup), directory=True
         )
         _verify_delegate_root(delegate_root, authority)
         return WAWProductionResources(

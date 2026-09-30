@@ -7,6 +7,34 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## 2026-09-30 scoped delegation Runtime wiring candidate
+
+88d1e99's Deployment native PID-1 probe passed on Ubuntu 24.04: emitted
+scoped_write/outside_write_denied/global_mount_read_only/subtree_mount_read_write
+all true. Run 36708294115, job 109863711328, step at 11:24:46Z. Its unrelated
+Backend native job 109863711471 failed the incomplete-DCS pane exit assertion
+after five seconds with observed 1::; do not call this head fully green.
+The assertion/expected exit 74/time limit remain. A test-only bounded numeric
+pane diagnostic is added to locate the failure; no terminal/argv/env capture
+or unmodified rerun substitutes for evidence.
+
+Current startup wiring distinguishes the accepted delegated-subtree-v1 policy
+from legacy private. The shared resolver binds only the fixed service path and
+agentbox-runtime-workspaces component. Codec pins the exact new Installer
+drop-in SHA; resource opening and FD verification use the same resolver.
+The scoped mount checker requires exact service-relative mount root/device,
+RW service bind, RO global mount and no outside RW cgroup mount. Its root FD
+must be owned by the exact non-root Runtime UID/GID and not group/other writable.
+The drop-in is packaged as an explicit enrollment input, not activated by this
+candidate. Legacy private fields/path behavior stay separate.
+
+Focused codecs/resources/mount tests passed 135 cases; full mypy passed 339
+files and Ruff/doc links passed. Native Linux diagnostic and complete startup
+still need exact-head CI. Missing generated manifests, key/profile activation,
+production _main and Web client/core flow remain current first-version blockers.
+Delivery correction is recorded in RELEASE_ITERATION_PLAN's top checklist;
+this is internal startup work, not another product release.
+
 ## 2026-09-30 Owner selected the recommended architectures
 
 Owner instructed “按你说的做” after the two concrete recommended decisions.

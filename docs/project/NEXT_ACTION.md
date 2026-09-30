@@ -1,5 +1,18 @@
 # Current Authorized Action
 
+## 2026-09-30 direct scoped startup wiring
+
+The real systemd 255 probe passed (36708294115 / 109863711328). Current
+uncommitted Runtime wiring adds the versioned delegated-subtree-v1 policy,
+fixed path, exact template pin, UID/GID and RO/RW mount verification, and the
+enrollment-only drop-in. 135 focused cases / 339-file mypy / Ruff pass.
+88d1e99's native incomplete-DCS exit test failed with 1::; the follow-up keeps
+the expected exit/time bound and adds bounded numeric-only failure diagnostics.
+Commit this wiring on the same Draft, inspect Linux failure evidence, and
+continue complete manifest/enrollment/_main within the four user-path checklist.
+Do not call internal slices complete versions or expand unrelated recovery,
+abstractions, labels, navigation or the 70-item backlog.
+
 ## 2026-09-30 resume accepted Web / cgroup architecture A
 
 Owner approved the recommended HTTPS Web profile and 255-compatible scoped

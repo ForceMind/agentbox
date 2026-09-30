@@ -93,6 +93,27 @@ class CgroupDelegationManifest:
     policy_template_digest: str
 
 
+# Distinct accepted policy: the service's delegated bind mount is writable;
+# the host hierarchy remains read-only. It is not the old private-namespace
+# profile even though the record's field encoding remains compatible.
+SCOPED_CGROUP_PROTECTION_V1 = "delegated-subtree-v1"
+SCOPED_CGROUP_SERVICE_ROOT_V1 = "/sys/fs/cgroup/system.slice/agentbox-runtime.service"
+SCOPED_CGROUP_WORKSPACES_V1 = "agentbox-runtime-workspaces"
+SCOPED_CGROUP_TEMPLATE_SHA256_V1 = (
+    "0d36fe650d72ffc696a96b6403c2bfa91954fb2e0ea15f8e1e8c0b355fda791b"
+)
+
+
+def cgroup_delegate_root_path(manifest: CgroupDelegationManifest) -> str:
+    if manifest.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1:
+        if manifest.delegate_subgroup != SCOPED_CGROUP_WORKSPACES_V1:
+            raise WAWManifestCodecError("unexpected scoped delegation workspace root")
+        return f"{SCOPED_CGROUP_SERVICE_ROOT_V1}/{SCOPED_CGROUP_WORKSPACES_V1}"
+    if manifest.protect_control_groups != "private":
+        raise WAWManifestCodecError("unsupported cgroup protection profile")
+    return f"/sys/fs/cgroup/{_cgroup_subgroup(manifest.delegate_subgroup)}"
+
+
 @dataclass(frozen=True)
 class APIHostAnchor:
     runtime_host_installation_id: str
@@ -505,8 +526,21 @@ def _validate_cgroup(value: Mapping[str, Any]) -> None:
     _string(value["cgroup_mount_filesystem_id"])
     if not isinstance(value["delegate"], bool) or value["delegate"] is not True:
         raise WAWManifestCodecError("cgroup delegation must be enabled")
-    if value["protect_control_groups"] != "private" or value["kill_mode"] != "process":
+    if (
+        value["protect_control_groups"] not in {"private", SCOPED_CGROUP_PROTECTION_V1}
+        or value["kill_mode"] != "process"
+    ):
         raise WAWManifestCodecError("unsupported cgroup service policy")
+    if (
+        value["protect_control_groups"] == SCOPED_CGROUP_PROTECTION_V1
+        and value["delegate_subgroup"] != SCOPED_CGROUP_WORKSPACES_V1
+    ):
+        raise WAWManifestCodecError("unexpected scoped delegation workspace root")
+    if (
+        value["protect_control_groups"] == SCOPED_CGROUP_PROTECTION_V1
+        and value["policy_template_digest"] != SCOPED_CGROUP_TEMPLATE_SHA256_V1
+    ):
+        raise WAWManifestCodecError("scoped delegation policy template does not match")
     controllers = value["controllers"]
     if type(controllers) not in (list, tuple) or tuple(controllers) != ("cpu", "memory", "pids"):
         raise WAWManifestCodecError("controller set must be canonical")
@@ -893,6 +927,11 @@ def manifest_sha256(raw: bytes) -> str:
 
 
 __all__ = [
+    "SCOPED_CGROUP_PROTECTION_V1",
+    "SCOPED_CGROUP_SERVICE_ROOT_V1",
+    "SCOPED_CGROUP_WORKSPACES_V1",
+    "SCOPED_CGROUP_TEMPLATE_SHA256_V1",
+    "cgroup_delegate_root_path",
     "APIHostAnchor",
     "APIHostAnchorV2",
     "CgroupDelegationManifest",

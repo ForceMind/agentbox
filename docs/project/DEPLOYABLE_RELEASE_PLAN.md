@@ -22,7 +22,7 @@ Owner 在 2026-09-30 要求交付自己能在服务器运行的安装版本，�
 
 ## 必须闭合的依赖
 
-实际部署还存在 cgroup 合同冲突：v1 要求 ProtectControlGroups=private，而当前平台基线 255 只支持布尔值；257 才支持 private/strict。现有关闭态 unit 不能通过填写摘要变成可运行 WAW。具体选择见 [ADR 0011](../adr/0011-deployable-cgroup-compatibility.md)，需要 Owner 选择兼容 255 的版本化受限子树方案，或采用更新 systemd 的 private 方案。Legacy core 平台支持不被本记录删除，首版可用目标也不缩减；实际 WAW 支持仍须完整实施和资格化。
+Owner 已选择 [ADR 0011](../adr/0011-deployable-cgroup-compatibility.md) 的 A 方案：兼容 255 的版本化受限子树。v1 private 合同不被冒充为等价；现有关闭态 unit 仍须完整接线。Legacy core 平台支持保留，实际 WAW 支持须完整实施和资格化。下一步将已通过的探针结果接入启动链，而非继续新增基础批次。
 
 当前 production _main 仍拒绝 filesystem-v2；安装器也没有现场生成完整 v2 资源的步骤。新注册命令只发布非敏感观察记录，不启用服务、不运行 CLI Login、不读取 Provider Secret。
 
@@ -34,7 +34,7 @@ Codex Remote 的 host-global 冲突来源也必须提供可信的 STOPPED/ABSENT
 
 现有浏览器信任合同依赖 managed Chromium/MV3/Native Messaging/trustd，并明确禁止以 API/DOM/localStorage 等作为生产 fallback。普通手机浏览器不具备这条桌面链。跨平台连接方案必须明确对应可信客户端来源，复核原合同及授权，再实现；不得通过删除该 gate 声称手机可用。原生 App 的安装/签名/分发与浏览器网页支持也分别记录。
 
-具体网页方案见 [ADR 0010](../adr/0010-cross-platform-web-bootstrap.md)，待 Owner 授权新的网页信任前提。依赖已满足的服务器软件继续实现；客户端方案未确认时，不把手机支持写成 PASS。最后要分别说明源码/CI、安装制品、真实客户端/CLI和用户服务器资格化。
+Owner 已批准 [ADR 0010](../adr/0010-cross-platform-web-bootstrap.md) 的 HTTPS Web 信任前提；直接实施 PC/手机浏览器核心流程。授权不等于手机支持已通过验收；最后仍分别说明源码/CI、安装制品、真实客户端/CLI和用户服务器资格化。
 
 ## 当前事实
 
