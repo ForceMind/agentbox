@@ -1,5 +1,22 @@
 # Current Authorized Action
 
+## 2026-10-01 verify activation then close Codex Remote and HTTPS Web
+
+41280ce reached terminal 24 SUCCESS/two prescribed SKIPPED. Current fixed
+activation composes offline/idle guards, enrolled public-fingerprint comparison,
+Root-private recoverable journal, paired profiles, scoped drop-in and ordered
+named socket/service start. 49 focused regressions/Ruff/354-file mypy pass.
+Inspect its exact-head CI. Service-manager active status alone is not usable
+graph or target qualification; retain actual install/CLI/reboot/rollback gates.
+
+Next implement positive, complete and fresh Codex Remote evidence without
+converting ordinary process absence into ABSENT. Then the accepted HTTPS Web
+trust/bootstrap profile must provide PC/mobile input/output/resize/detach/
+reconnect/exact Stop. Validate the composed installer/application on isolated
+Linux before claiming a deployable artifact. Scope remains this single full
+self-installable version; no unrelated capability expansion or user-host
+activation/publication is implied.
+
 ## 2026-10-01 compose fixed offline activation
 
 001c4bd currently has terminal 24 SUCCESS/two prescribed SKIPPED, actual

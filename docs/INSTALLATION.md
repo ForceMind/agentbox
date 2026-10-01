@@ -45,6 +45,25 @@ are preserved, and explicit `--recover` can finish only a matching safe prefix.
 This step does not initialize keys, enable profiles, start services, log in a
 vendor, or qualify the currently inert templates.
 
+The candidate's separate activation transaction is:
+
+```bash
+agentbox-install activate-waw --plan --json
+agentbox-install activate-waw --json
+```
+
+Plan checks the complete bundle, enrollment, policies and exact units without
+writing or observing the Runtime key. Apply requires the same offline/idle
+guard, compares only the Runtime-owned initializer's public fingerprint with
+the enrolled anchor, records a fixed recoverable intent, installs the scoped
+drop-in and publishes both profiles. It then starts both named sockets, Runtime,
+Worker and API in that order. `services_started` is service-manager evidence;
+`qualified` remains false. It does not prove actual CLI/client/reboot readiness.
+After interruption or failed start, stop the fixed services and any owned work,
+then use `activate-waw --recover --json`. Recovery requires the exact same
+installation/version/digest and safely matching pending files; it cannot adopt
+or kill an unknown Runtime process or silently replace unrelated configuration.
+
 ## Safety boundary
 
 The installer owns only AgentBox users, groups, FHS paths, release files, unit

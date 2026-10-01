@@ -1,11 +1,37 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T02:00:11Z"
+verified_at_utc: "2026-10-01T02:30:47Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 fixed activation transaction candidate
+
+Base 41280ce50b97917282ac1a66e25c7e59461f538b reached terminal exact-head
+CI: 24 SUCCESS/two prescribed SKIPPED. Current software adds activate-waw
+--plan/--recover. Plan is read-only and explicitly does not observe the key.
+Apply validates fixed enrollment/policies/units, offline services and no
+remaining Runtime UID processes; it compares only the local Runtime-owned
+public fingerprint with the enrolled anchor. No Root/API/Worker key read.
+
+A Root-private journal pins version/host/digest and preparing/configured/started
+phases. Atomic pending files have content-derived names, exact modes/owners and
+explicit matching-prefix recovery. Paired profiles are published while offline;
+the scoped drop-in directory rejects foreign entries. Named sockets start before
+Runtime, then Worker/API. A failed start stops only fixed AgentBox services and
+retains the recoverable configured state; no unknown process is killed/adopted.
+Service-manager active checks are not graph/CLI/browser qualification.
+
+49 activation/policy/manifest/host regressions, Ruff and 354-file mypy passed,
+including profile/journal partial writes, mixed pair recovery, start failure,
+key/enrollment/unit/drop-in drift and fixed command ordering. Evidence uses
+local files and injected service/key observations; no actual user-host service
+or credential operation occurred. Main-agent self-review only. Positive Codex
+Remote evidence, HTTPS PC/mobile workflow and actual install/CLI/reboot/
+upgrade/rollback qualification remain open. Version remains rc30, not a usable
+release; no tag/publication/production support claim is made.
 
 ## 2026-10-01 fixed vendor-policy preparation candidate
 

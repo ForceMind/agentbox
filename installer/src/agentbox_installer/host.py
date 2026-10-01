@@ -359,6 +359,32 @@ class HostOperations:
                         "Runtime processes remain; policy preparation is fenced"
                     )
 
+    def start_waw_services(self) -> None:
+        """Fixed ordered activation; Root Helper is outside the WAW path."""
+        if not self.real_host:
+            return
+        if self._installed_waw_socket_units() != WAW_SOCKET_UNIT_NAMES:
+            raise HostMutationError("both exact WAW socket units are required")
+        self.daemon_reload()
+        self._run(("/usr/bin/systemctl", "enable", "--now", *WAW_SOCKET_UNIT_NAMES))
+        self._run(("/usr/bin/systemctl", "enable", "--now", "agentbox-runtime.service"))
+        self._run(
+            (
+                "/usr/bin/systemctl",
+                "enable",
+                "--now",
+                "agentbox-worker.service",
+                "agentbox-api.service",
+            )
+        )
+        for unit in (
+            *WAW_SOCKET_UNIT_NAMES,
+            "agentbox-runtime.service",
+            "agentbox-worker.service",
+            "agentbox-api.service",
+        ):
+            self._run(("/usr/bin/systemctl", "is-active", "--quiet", unit), timeout=10)
+
     def enable_and_start(self) -> None:
         if not self.real_host:
             return

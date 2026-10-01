@@ -44,6 +44,7 @@ from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, Instal
 from agentbox_installer.platform import PlatformFacts, detect_platform, resolve_packages
 from agentbox_installer.retention import enforce_retention
 from agentbox_installer.versioning import valid_version, version_precedence
+from agentbox_installer.waw_activation import WAWActivationTransaction
 from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublication,
     WAWEnrollmentPublisher,
@@ -254,6 +255,90 @@ class AgentBoxInstaller:
             "profiles": "disabled",
             "services_started": False,
         }
+
+    def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
+        """Activate only the fixed enrolled graph; service start is not qualification."""
+        self.host.require_root()
+        if type(plan) is not bool or type(recover) is not bool:
+            raise TypeError("activation flags must be bool")
+        try:
+            if plan:
+                return self._activate_waw_locked(plan=True, recover=recover)
+            with self._lifecycle_lock():
+                return self._activate_waw_locked(plan=False, recover=recover)
+        except OSError as exc:
+            raise InstallError("fixed WAW activation resource failed") from exc
+
+    def _activate_waw_locked(self, *, plan: bool, recover: bool) -> dict[str, object]:
+        if self.installation_state() != "installed":
+            raise InstallError("activation requires a completed installation")
+        version = self.current_version()
+        if version is None:
+            raise InstallError("activation release is unavailable")
+        runtime_uid, runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+        _, api_gid = self.host.owner_ids("agentbox", "agentbox")
+        if runtime_uid == 0 or runtime_gid == 0 or api_gid == 0:
+            raise InstallError("activation identities are invalid")
+        owner = 0 if self.host.real_host else os.geteuid()
+        pin = load_verified_canonical_waw_manifest_bundle_v2(
+            self.layout.map("/var/lib/agentbox-waw/runtime-host-installation.v2.json"),
+            self.layout.map("/usr/share/agentbox/waw"),
+            expected_runtime_uid=owner,
+            expected_runtime_gid=runtime_gid if self.host.real_host else os.getegid(),
+            expected_public_uid=owner,
+            expected_public_gid=0 if self.host.real_host else os.getegid(),
+            runtime_trusted_root=self.layout.root,
+        )
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=owner,
+            root_gid=0 if self.host.real_host else os.getegid(),
+            runtime_uid=runtime_uid if self.host.real_host else os.geteuid(),
+            runtime_gid=runtime_gid if self.host.real_host else os.getegid(),
+        )
+        transaction = WAWActivationTransaction(
+            issuer, pin, api_gid=api_gid if self.host.real_host else os.getegid()
+        )
+        transaction.inspect(recover=recover)
+        self._validate_waw_activation_units()
+        if plan:
+            return {
+                "status": "resources_validated_key_not_observed",
+                "services_started": False,
+                "qualified": False,
+            }
+        self.host.require_waw_policy_quiescence()
+        fingerprint = self.host.initialize_waw_runtime_key(self.layout.release(version))
+        if fingerprint != pin.runtime.runtime_attestation_x25519_fingerprint:
+            raise InstallError("activation Runtime public identity changed")
+        transaction.configure(recover=recover, quiescent=self.host.require_waw_policy_quiescence)
+        try:
+            self.host.start_waw_services()
+            transaction.mark_started(recover=recover)
+        except Exception:
+            # Stop only the fixed AgentBox services. Do not kill/adopt any
+            # surviving Runtime process or revert across unresolved authority.
+            self.host.stop_agentbox()
+            raise InstallError(
+                "WAW start failed; stop work and use activate-waw --recover"
+            ) from None
+        return {"status": "services_started", "services_started": True, "qualified": False}
+
+    def _validate_waw_activation_units(self) -> None:
+        resources = importlib.resources.files("agentbox_installer") / "assets/systemd"
+        version = self.host.systemd_version()
+        dropin = Path(str(resources / "agentbox-runtime-waw.v1.conf")).read_bytes()
+        validate_unit_compatibility(dropin.decode(), version)
+        for name in ("agentbox-runtime.service", *WAW_SOCKET_UNIT_NAMES):
+            raw = Path(str(resources / name)).read_bytes()
+            self._validate_fixed_waw_file(
+                self.layout.map("/etc/systemd/system/" + name),
+                owner="root",
+                group="root",
+                mode=0o644,
+                allowed=(raw,),
+            )
 
     def enroll_waw_vendors(
         self,
