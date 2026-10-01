@@ -51,6 +51,14 @@ installations require explicit enrollment; they are not replaced. Recover only
 matching interrupted publication with `--recover`. Version pins update with a
 reviewed AgentBox batch, not automatically from an upstream latest endpoint.
 
+Fresh browser setup can use `apply --artifact ... --sha256 ... --defer-activation`
+to install the verified release, database and disabled profiles without starting
+the legacy services. The result explicitly reports health_verified=false. A
+staged retry must retain `resume-install ... --defer-activation`; changing this
+mode rejects. This option is fresh-install only and does not disable an existing
+installation. It provides the offline stage for vendor/enrollment/setup; the
+final download entry still needs that complete sequence.
+
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
 normal callers cannot select an alternate filesystem root. See

@@ -1,5 +1,20 @@
 # Current Authorized Action
 
+## 2026-10-01 qualify deferred fresh install and compose prerequisites
+
+PR #129 merged at 7761310; exact source afafe55 has 24 SUCCESS/two prescribed
+SKIPPED and actual official native/signature/version/unauthenticated evidence.
+Continue on codex/r12-first-install with uncommitted deferred apply/resume and
+its staged intent test. 160 affected checks/Ruff/372-file mypy pass. The mode
+discrepancy was proven to be sandbox setgid removal by isolated probes; unchanged
+tests outside that restriction passed 119 cases. Commit this batch and inspect
+exact-head Linux CI; no assertion/permission relaxation is needed.
+
+Then finish fixed Web/runtime dependencies and derive version/auth registration
+from actual isolated observations, compose deferred apply/vendor/manifest/
+enrollment/setup into the download entry, and qualify the complete installed
+CLI/browser/reboot/upgrade/rollback path. Goal and first-version scope unchanged.
+
 ## 2026-10-01 verify actual native vendors then close initial install sequencing
 
 PR #128 merged at 4f849be; source 131aadb reached 24 SUCCESS/two prescribed

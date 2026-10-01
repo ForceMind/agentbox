@@ -910,14 +910,22 @@ class AgentBoxInstaller:
             network_changes=(),
         )
 
-    def apply(self, artifact: Path, expected_sha256: str) -> LifecycleResult:
+    def apply(
+        self, artifact: Path, expected_sha256: str, *, defer_activation: bool = False
+    ) -> LifecycleResult:
         self.host.require_root()
+        if type(defer_activation) is not bool:
+            raise TypeError("defer_activation must be bool")
         with self._lifecycle_lock():
-            return self._apply_locked(artifact, expected_sha256)
+            return self._apply_locked(artifact, expected_sha256, defer_activation=defer_activation)
 
-    def resume_install(self, artifact: Path, expected_sha256: str) -> LifecycleResult:
+    def resume_install(
+        self, artifact: Path, expected_sha256: str, *, defer_activation: bool = False
+    ) -> LifecycleResult:
         """Explicitly continue only an attested, pre-activation fresh install."""
         self.host.require_root()
+        if type(defer_activation) is not bool:
+            raise TypeError("defer_activation must be bool")
         with self._lifecycle_lock():
             verify_artifact_digest(artifact, expected_sha256)
             candidate = self._peek_artifact_manifest(artifact)
@@ -961,22 +969,39 @@ class AgentBoxInstaller:
                 )
                 or not isinstance(evidence, dict)
                 or set(evidence)
-                != {
-                    "artifact_sha256",
-                    "identities",
-                    "runtime_gid",
-                    "files",
-                    "directories",
-                    "resources_sha256",
-                }
+                not in (
+                    {
+                        "artifact_sha256",
+                        "identities",
+                        "runtime_gid",
+                        "files",
+                        "directories",
+                        "resources_sha256",
+                    },
+                    {
+                        "artifact_sha256",
+                        "identities",
+                        "runtime_gid",
+                        "files",
+                        "directories",
+                        "resources_sha256",
+                        "activation_policy",
+                    },
+                )
                 or evidence["artifact_sha256"] != expected_sha256
             ):
                 raise InstallError("staged recovery evidence is invalid")
+            if evidence.get("activation_policy", "legacy-v1") != (
+                "deferred-v1" if defer_activation else "legacy-v1"
+            ):
+                raise InstallError("resume activation policy differs; retain --defer-activation")
             identities = self._receipt_identities({"identities": evidence["identities"]})
             if identities is None:
                 raise InstallError("staged recovery identity evidence is missing")
             self.host.verify_identities(identities)
-            current_evidence = self._staging_evidence(expected_sha256, identities, resources)
+            current_evidence = self._staging_evidence(
+                expected_sha256, identities, resources, defer_activation=defer_activation
+            )
             if evidence != current_evidence:
                 raise InstallError("staged recovery resources changed")
             expected_paths = {
@@ -1008,7 +1033,9 @@ class AgentBoxInstaller:
                 allowed=(_WAW_RUNTIME_DISABLED_PROFILE,),
             )
             context = _StagedInstallContext(transaction_id, resources, identities, evidence)
-            return self._apply_locked(artifact, expected_sha256, staged=context)
+            return self._apply_locked(
+                artifact, expected_sha256, staged=context, defer_activation=defer_activation
+            )
 
     def _begin_install_transaction(
         self,
@@ -1057,6 +1084,8 @@ class AgentBoxInstaller:
         artifact_sha256: str,
         identities: IdentityFacts,
         resources: list[dict[str, Any]],
+        *,
+        defer_activation: bool = False,
     ) -> dict[str, Any]:
         """Record only fixed-file digests/identity, never their contents."""
         specs = (
@@ -1127,7 +1156,7 @@ class AgentBoxInstaller:
         runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")[1]
         if runtime_gid <= 0:
             raise InstallError("staged Runtime group is invalid")
-        return {
+        result = {
             "artifact_sha256": artifact_sha256,
             "identities": asdict(identities),
             "runtime_gid": runtime_gid,
@@ -1140,6 +1169,9 @@ class AgentBoxInstaller:
                 json.dumps(resources, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
         }
+        if defer_activation:
+            result["activation_policy"] = "deferred-v1"
+        return result
 
     def _apply_locked(
         self,
@@ -1147,6 +1179,7 @@ class AgentBoxInstaller:
         expected_sha256: str,
         *,
         staged: _StagedInstallContext | None = None,
+        defer_activation: bool = False,
     ) -> LifecycleResult:
         plan = self.plan(artifact, expected_sha256)
         if not plan.platform.supported:
@@ -1155,6 +1188,8 @@ class AgentBoxInstaller:
             raise InstallError("native systemd is required")
         state = plan.state
         current = self.current_version()
+        if defer_activation and current is not None:
+            raise InstallError("deferred activation is only supported for a fresh installation")
         if staged is not None and state != "staged":
             raise InstallError("staged recovery transaction is no longer current")
         if state == "installed_same_version" and current == plan.version:
@@ -1207,7 +1242,9 @@ class AgentBoxInstaller:
 
         if staged is None:
             transaction_id, resources, identities = self._begin_install_transaction(plan.version)
-            staging_evidence = self._staging_evidence(expected_sha256, identities, resources)
+            staging_evidence = self._staging_evidence(
+                expected_sha256, identities, resources, defer_activation=defer_activation
+            )
         else:
             transaction_id, resources, identities = (
                 staged.transaction_id,
@@ -1216,7 +1253,9 @@ class AgentBoxInstaller:
             )
             staging_evidence = staged.evidence
             self.host.verify_identities(identities)
-            if staging_evidence != self._staging_evidence(expected_sha256, identities, resources):
+            if staging_evidence != self._staging_evidence(
+                expected_sha256, identities, resources, defer_activation=defer_activation
+            ):
                 raise InstallError("staged recovery resources changed before continuation")
         self._write_journal(
             status="running",
@@ -1318,8 +1357,9 @@ class AgentBoxInstaller:
                 resources=resources,
             )
             self.host.daemon_reload()
-            self.host.enable_and_start()
-            if not self.health_check():
+            if not defer_activation:
+                self.host.enable_and_start()
+            if not defer_activation and not self.health_check():
                 raise InstallError("post-install health verification failed")
             enforce_retention(
                 backups_root=self.layout.backups,
@@ -1342,7 +1382,7 @@ class AgentBoxInstaller:
                     "database_migrated",
                     "units_installed",
                     "release_activated",
-                    "health_verified",
+                    "activation_deferred" if defer_activation else "health_verified",
                     "retention_applied",
                     "receipt_write_started",
                 ),
@@ -1361,7 +1401,7 @@ class AgentBoxInstaller:
                     "database_migrated",
                     "units_installed",
                     "release_activated",
-                    "health_verified",
+                    "activation_deferred" if defer_activation else "health_verified",
                     "retention_applied",
                     "receipt_written",
                 ),
@@ -1373,7 +1413,7 @@ class AgentBoxInstaller:
                 previous,
                 True,
                 backup.backup_id if backup else None,
-                True,
+                not defer_activation,
             )
         except Exception as exc:
             rollback_ok = self._rollback_failed_change(

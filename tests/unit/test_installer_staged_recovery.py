@@ -43,6 +43,39 @@ def _stage(
     return installer, layout, artifact, digest
 
 
+def test_deferred_fresh_install_never_starts_legacy_services_and_pins_resume_mode(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    installer, layout = _installer(tmp_path)
+    artifact, digest = _artifact(tmp_path, "0.3.0rc30", "revision_one")
+
+    def forbidden() -> None:
+        raise AssertionError("deferred install must not start legacy services or probe live health")
+
+    monkeypatch.setattr(installer.host, "enable_and_start", forbidden)
+    monkeypatch.setattr(installer, "health_check", forbidden)
+    with monkeypatch.context() as scoped:
+
+        def fail(_release: Path) -> None:
+            raise HostMutationError("injected native build failure")
+
+        scoped.setattr(installer.host, "prepare_waw_helpers", fail)
+        with pytest.raises(HostMutationError):
+            installer.apply(artifact, digest, defer_activation=True)
+    evidence = json.loads(layout.journal.read_text())["staging_recovery"]
+    assert evidence["activation_policy"] == "deferred-v1"
+    with pytest.raises(InstallError, match="activation policy"):
+        installer.resume_install(artifact, digest)
+    result = installer.resume_install(artifact, digest, defer_activation=True)
+    assert result.health_verified is False
+    assert installer.installation_state() == "installed"
+    journal = json.loads(layout.journal.read_text())
+    assert "activation_deferred" in journal["completed_steps"]
+    assert "health_verified" not in journal["completed_steps"]
+    with pytest.raises(InstallError, match="fresh"):
+        installer.apply(artifact, digest, defer_activation=True)
+
+
 def test_staged_resume_cli_requires_explicit_fixture_mode_and_returns_real_result(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
