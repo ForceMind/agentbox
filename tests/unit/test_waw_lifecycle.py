@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from contextlib import suppress
 from dataclasses import replace
@@ -21,6 +22,7 @@ from agentbox_runtime.waw_cgroup_attestation import (
 )
 from agentbox_runtime.waw_cgroup_attestation_store import (
     WAWCgroupAttestationStore,
+    WAWCgroupAttestationStoreError,
 )
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_encrypted_stream import (
@@ -51,6 +53,7 @@ from agentbox_runtime.waw_project_binding_store import (
     WAWProjectBindingVerifierError,
 )
 from agentbox_runtime.waw_workspace_attestation import (
+    WAWWorkspaceAttestation,
     WAWWorkspaceAttestationError,
     WAWWorkspaceAttestationStore,
 )
@@ -272,6 +275,7 @@ def registry(
     peer_authority: WAWPeerAuthority | None = None,
     binding_verifier: WAWProjectBindingVerifier | None = None,
     binding_store: WAWProjectBindingStore | None = None,
+    runtime_epoch: str = "1",
 ) -> WAWLifecycleRegistry:
     return WAWLifecycleRegistry(
         runtime_host_installation_id=HOST,
@@ -282,6 +286,7 @@ def registry(
         binding_digest_factory=(None if binding_verifier is not None else lambda _request: DIGEST),
         binding_verifier=binding_verifier,
         binding_store=binding_store,
+        runtime_epoch=runtime_epoch,
         attestation_store=attestation_store,
         cgroup_attestation_store=cgroup_attestation_store,
         cgroup_attestation_factory=cgroup_attestation_factory,
@@ -1754,9 +1759,23 @@ async def test_host_gated_empty_acknowledgement_is_required_to_clear_quarantine(
         expected_uid=os.geteuid(),
         expected_gid=os.getegid(),
     )
+
+    class ReservedFloor(FailingAttestationStore):
+        reserved = False
+
+        def advance(self, **kwargs: Any) -> None:
+            super().advance(**kwargs)
+            self.reserved = True
+
+        def read(self, workspace_id: str) -> Any:
+            super().read(workspace_id)
+            if not self.reserved:
+                return None
+            return WAWWorkspaceAttestation(WORKSPACE, 1, "1", DIGEST, HOST, "1", "1")
+
     runtime = registry(
         FakeExecutor(),
-        cast(WAWWorkspaceAttestationStore, FailingAttestationStore()),
+        cast(WAWWorkspaceAttestationStore, ReservedFloor()),
         cgroup_attestation_store=store,
         cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
     )
@@ -2311,6 +2330,171 @@ async def test_failed_start_cleanup_can_retry_exact_stop_without_durable_stores(
     assert stopped["status"] == "STOPPED"
     with pytest.raises(WAWControlDispatchError, match="PROJECT_IDENTITY_CHANGED"):
         await runtime.dispatch(lifecycle_request("workspace.workspace.start"))
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("recovery_state", ["EMPTY_DURABLE", "FENCED", "missing", "absent"])
+async def test_start_recovers_old_generation_only_with_positive_empty_proof(
+    tmp_path: Path, recovery_state: str
+) -> None:
+    floor_dir = tmp_path / "floors"
+    group_dir = tmp_path / "groups"
+    floor_dir.mkdir(mode=0o700)
+    group_dir.mkdir(mode=0o700)
+    floors = WAWWorkspaceAttestationStore(
+        floor_dir, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    groups = WAWCgroupAttestationStore(
+        group_dir, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    old = floors.advance(
+        workspace_id=WORKSPACE,
+        generation=1,
+        binding_revision="1",
+        binding_digest=DIGEST,
+        runtime_host_installation_id=HOST,
+        runtime_host_installation_revision="1",
+        runtime_epoch="1",
+    )
+    old_group = cgroup_record()
+    if recovery_state == "absent":
+        name = "ws-" + hashlib.sha256(WORKSPACE.encode()).hexdigest() + "-g1"
+        old_group = replace(
+            old_group, workspace_relative_path=name, workload_relative_path=name + "/workload"
+        )
+    groups.write(old_group)
+    recovered: list[WAWLifecycleIdentity] = []
+
+    class Observer:
+        def observe_recovery(self, identity: WAWLifecycleIdentity) -> WAWCgroupAttestation:
+            recovered.append(identity)
+            if recovery_state == "missing":
+                raise FileNotFoundError("synthetic missing group")
+            candidate = replace(
+                old_group,
+                runtime_epoch="2",
+                service_invocation_id="invocation-2",
+                attachment_leaves=(),
+                last_populated="0",
+                cleanup_state="EMPTY_DURABLE" if recovery_state == "absent" else recovery_state,
+            )
+            if recovery_state == "absent":
+                candidate = replace(
+                    candidate,
+                    workspace_presence="absent",
+                    workspace_device="absent",
+                    workspace_inode="absent",
+                    workload_device="absent",
+                    workload_inode="absent",
+                )
+            return candidate
+
+        def __call__(
+            self, identity: WAWLifecycleIdentity, _observation: WAWLifecycleObservation
+        ) -> WAWCgroupAttestation:
+            return replace(
+                old_group,
+                generation=int(identity.generation),
+                runtime_epoch="2",
+                service_invocation_id="invocation-2",
+            )
+
+    class NewEpochExecutor(FakeExecutor):
+        async def start(self, identity: WAWLifecycleIdentity) -> WAWLifecycleObservation:
+            return replace(await super().start(identity), runtime_epoch="2")
+
+    executor = NewEpochExecutor()
+    runtime = registry(
+        executor,
+        attestation_store=floors,
+        cgroup_attestation_store=groups,
+        cgroup_attestation_factory=Observer(),
+        runtime_epoch="2",
+    )
+    await runtime.dispatch(bind_request())
+    await runtime.dispatch(register_request())
+    request = lifecycle_request("workspace.workspace.start", generation="2")
+    if recovery_state in {"EMPTY_DURABLE", "absent"}:
+        result = await runtime.dispatch(request)
+        assert result["status"] == "STARTED" and result["state"] == "RUNNING"
+        assert [name for name, _identity in executor.calls] == ["start"]
+        current = floors.read(WORKSPACE)
+        assert current is not None and current.runtime_epoch == "2" and current.min_generation == 2
+        if recovery_state == "absent":
+            persisted = groups.read(workspace_id=WORKSPACE, generation=1)
+            assert persisted is not None and persisted.workspace_presence == "absent"
+            with pytest.raises(WAWCgroupAttestationStoreError, match="explicit recovery"):
+                groups.write(persisted)
+    else:
+        with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+            await runtime.dispatch(request)
+        assert executor.calls == []
+        assert floors.read(WORKSPACE) == old
+        assert WORKSPACE in runtime._cleanup_quarantine
+    assert len(recovered) == 1 and recovered[0].generation == "1"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("interrupted", [False, True])
+async def test_new_epoch_empty_ack_migrates_floor_with_interrupted_write_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupted: bool
+) -> None:
+    workspace_dir = tmp_path / "workspaces"
+    cgroup_dir = tmp_path / "cgroups"
+    workspace_dir.mkdir(mode=0o700)
+    cgroup_dir.mkdir(mode=0o700)
+    floors = WAWWorkspaceAttestationStore(
+        workspace_dir, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    groups = WAWCgroupAttestationStore(
+        cgroup_dir, expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    old = floors.advance(
+        workspace_id=WORKSPACE,
+        generation=1,
+        binding_revision="1",
+        binding_digest=DIGEST,
+        runtime_host_installation_id=HOST,
+        runtime_host_installation_revision="1",
+        runtime_epoch="1",
+    )
+    groups.write(cgroup_record())
+    restarted = registry(
+        FakeExecutor(),
+        attestation_store=floors,
+        cgroup_attestation_store=groups,
+        cgroup_attestation_factory=lambda _identity, _observation: cgroup_record(),
+        runtime_epoch="2",
+    )
+    await restarted.dispatch(bind_request())
+    await restarted.dispatch(register_request())
+    empty = replace(
+        cgroup_record(),
+        runtime_epoch="2",
+        service_invocation_id="invocation-2",
+        attachment_leaves=(),
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    original = floors.recover_epoch
+    if interrupted:
+
+        def fail(**_kwargs: Any) -> Any:
+            raise WAWWorkspaceAttestationError("synthetic interrupted floor write")
+
+        monkeypatch.setattr(floors, "recover_epoch", fail)
+        with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
+            await restarted.acknowledge_cgroup_cleanup(
+                empty, binding_revision="1", binding_digest=DIGEST
+            )
+        assert WORKSPACE in restarted._cleanup_quarantine
+        assert floors.read(WORKSPACE) == old
+        assert groups.read(workspace_id=WORKSPACE, generation=1) == empty
+        monkeypatch.setattr(floors, "recover_epoch", original)
+    await restarted.acknowledge_cgroup_cleanup(empty, binding_revision="1", binding_digest=DIGEST)
+    assert floors.read(WORKSPACE) == replace(old, runtime_epoch="2")
+    assert WORKSPACE not in restarted._cleanup_quarantine
+    assert restarted._recovered_generation_floor[WORKSPACE] == 1
 
 
 @pytest.mark.anyio

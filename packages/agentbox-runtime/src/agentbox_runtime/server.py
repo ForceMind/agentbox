@@ -50,6 +50,7 @@ from agentbox_runtime.waw_bootstrap import (
     build_waw_control_server,
     create_waw_lifecycle_registry_from_filesystem_bundle,
 )
+from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_conflicts import (
     WAWConflictCoordinator,
     WAWLegacyClaudeState,
@@ -59,7 +60,7 @@ from agentbox_runtime.waw_conflicts import (
 from agentbox_runtime.waw_control_server import WAWControlServer
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochError, WAWRuntimeEpochStore
 from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
-from agentbox_runtime.waw_lifecycle import BindingDigestFactory
+from agentbox_runtime.waw_lifecycle import BindingDigestFactory, CgroupAttestationFactory
 from agentbox_runtime.waw_peer_authority import WAWPeerAuthority
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
 from agentbox_runtime.waw_runtime_profile import (
@@ -68,6 +69,7 @@ from agentbox_runtime.waw_runtime_profile import (
     revalidate_waw_runtime_profile,
 )
 from agentbox_runtime.waw_vendor_probe import WAWVendorProbeRunner
+from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager, validate_operation_id
 
 _CODEX_ACTIONS = frozenset(
@@ -1166,6 +1168,9 @@ def _build_runtime_server_from_filesystem_v2(
     binding_digest_factory: BindingDigestFactory | None = None,
     project_manager: ProjectWorkspaceManager | None = None,
     capability_collector: RuntimeCapabilityCollector | None = None,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> RuntimeExecutorServer:
     """Build one R11 server from the sole filesystem-v2 epoch composition."""
 
@@ -1179,6 +1184,9 @@ def _build_runtime_server_from_filesystem_v2(
             epoch_store=epoch_store,
             executor_factory=executor_factory,
             binding_digest_factory=binding_digest_factory,
+            attestation_store=attestation_store,
+            cgroup_attestation_store=cgroup_attestation_store,
+            cgroup_attestation_factory=cgroup_attestation_factory,
         )
         control_server = build_waw_control_server(
             sockets=activated_sockets,
@@ -1231,7 +1239,6 @@ async def _main() -> None:
     runtime_profile = load_waw_runtime_profile() if environment == "production" else None
     if runtime_profile is not None and runtime_profile.mode is WAWRuntimeMode.FILESYSTEM_V2:
         revalidate_waw_runtime_profile(runtime_profile)
-        raise RuntimeError("WAW Runtime production composition is not yet available")
     allowed = (
         frozenset(int(value) for value in configured_uids.split(","))
         if configured_uids
@@ -1264,6 +1271,21 @@ async def _main() -> None:
     github = GitHubAdapter(git)
     claude_manager = ClaudeSessionManager(ClaudeAdapter(), TmuxAdapter(), project_registry)
     codex_manager = CodexManager(CodexAdapter(), pair_cooldown_seconds=pair_cooldown)
+    if runtime_profile is not None and runtime_profile.mode is WAWRuntimeMode.FILESYSTEM_V2:
+        # Local import keeps the application/server ownership graph acyclic.
+        from agentbox_runtime.waw_production import run_waw_production
+
+        await run_waw_production(
+            socket_path=socket_path,
+            codex_manager=codex_manager,
+            claude_manager=claude_manager,
+            projects=project_registry,
+            project_manager=ProjectWorkspaceManager(project_registry, git, github),
+            allowed_uids=allowed,
+            allowed_gids=allowed_gids,
+            profile=runtime_profile,
+        )
+        return
     server = RuntimeExecutorServer(
         socket_path,
         codex_manager,

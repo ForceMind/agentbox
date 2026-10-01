@@ -77,7 +77,7 @@ def unit_security_directives(content: str) -> tuple[str, ...]:
         line = raw_line.strip()
         if not line or line.startswith(("#", "[")) or "=" not in line:
             continue
-        directive = line.split("=", 1)[0]
+        directive = line.split("=", 1)[0].strip()
         if directive in DIRECTIVE_MINIMUM_VERSION:
             directives.append(directive)
     return tuple(dict.fromkeys(directives))
@@ -87,11 +87,39 @@ def systemd_capabilities(content: str, version: int) -> SystemdCapabilityMatrix:
     if version < 1:
         raise ValueError("systemd version must be positive")
     directives = unit_security_directives(content)
+    minimums = dict(DIRECTIVE_MINIMUM_VERSION)
+    invalid_values: set[str] = set()
+    # ProtectControlGroups existed as a boolean long before its private/strict
+    # modes. A name-only test would incorrectly approve that WAW policy on 255.
+    # Use the last assignment, matching systemd's scalar override semantics.
+    value: str | None = None
+    for raw_line in content.splitlines():
+        directive, separator, argument = raw_line.strip().partition("=")
+        if separator and directive.strip() == "ProtectControlGroups":
+            value = argument.strip()
+    if value in {"private", "strict"}:
+        minimums["ProtectControlGroups"] = 257
+    elif value is not None and value.lower() not in {
+        "",
+        "0",
+        "1",
+        "yes",
+        "no",
+        "true",
+        "false",
+        "on",
+        "off",
+    }:
+        invalid_values.add("ProtectControlGroups")
     supported = tuple(
-        directive for directive in directives if DIRECTIVE_MINIMUM_VERSION[directive] <= version
+        directive
+        for directive in directives
+        if minimums[directive] <= version and directive not in invalid_values
     )
     unsupported = tuple(
-        directive for directive in directives if DIRECTIVE_MINIMUM_VERSION[directive] > version
+        directive
+        for directive in directives
+        if minimums[directive] > version or directive in invalid_values
     )
     return SystemdCapabilityMatrix(version, supported, unsupported)
 

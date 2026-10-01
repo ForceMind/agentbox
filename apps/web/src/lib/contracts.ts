@@ -111,7 +111,7 @@ export type CodexStatusData = {
     status: CapabilityState
   }
   remote_state: RemoteState
-  remote_confidence: 'reported' | 'inferred' | 'unknown'
+  remote_confidence: 'reported' | 'observed' | 'inferred' | 'unknown'
   diagnostics: Array<{
     code: string
     severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info'
@@ -874,7 +874,7 @@ export function parseCodexStatusResponse(value: unknown): CodexStatusResponse {
       ),
       remote_confidence: literal(
         data.remote_confidence,
-        ['reported', 'inferred', 'unknown'],
+        ['reported', 'observed', 'inferred', 'unknown'],
         'Remote confidence',
       ),
       diagnostics,

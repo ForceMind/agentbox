@@ -16,16 +16,26 @@ if [[
   exit 16
 fi
 
-bootstrap_python="/usr/bin/python3"
+bootstrap_python=""
 if [[ -n "${AGENTBOX_RELEASE_BOOTSTRAP_PYTHON:-}" ]]; then
   if [[ "${AGENTBOX_INSTALLER_TEST_MODE:-}" != "1" ]]; then
     printf 'AgentBox bootstrap Python override is available only in explicit test mode.\n' >&2
     exit 18
   fi
   bootstrap_python="${AGENTBOX_RELEASE_BOOTSTRAP_PYTHON}"
+else
+  for candidate_python in /usr/bin/python3 /usr/bin/python3.13 /usr/bin/python3.12 /usr/bin/python3.11; do
+    if [[ -x "${candidate_python}" ]] && "${candidate_python}" -I -c '
+import sys
+raise SystemExit(0 if sys.version_info[:2] in ((3, 11), (3, 12), (3, 13)) else 1)
+' >/dev/null 2>&1; then
+      bootstrap_python="${candidate_python}"
+      break
+    fi
+  done
 fi
 if [[ "${bootstrap_python}" != /* || ! -x "${bootstrap_python}" ]]; then
-  printf 'AgentBox requires an executable absolute Python path.\n' >&2
+  printf 'AgentBox requires Python 3.11, 3.12 or 3.13 in /usr/bin.\n' >&2
   exit 18
 fi
 

@@ -1,11 +1,742 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T05:33:56Z"
-verified_by: "codex-rc30-wire-validation"
+verified_at_utc: "2026-10-01T12:02:28Z"
+verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 independent HTTPS Web ingress integration
+
+7c6db085f5b71e00d639a16054df63565e5155a8 reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED, re-read from PR #125 during this task.
+The current batch implements an
+immutable overlay publisher and its focused regressions. It reads only
+manifest-listed, SHA-verified Web source files, preserves the original release,
+adds fixed public markers/bootstrap and a closed publication ledger, builds
+Root-owned staging and switches only the fixed current pointer. Matching
+recovery is explicit; source drift and foreign tree/pointer entries reject.
+The `publish-waw-web` lifecycle/CLI now owns publication under the installation
+lock and converts filesystem failures into installer errors. It also writes a
+fixed Root-owned nginx configuration and separate `agentbox-web.service`.
+Only `/api/v1/` proxies to fixed loopback `127.0.0.1:8787`; HTML/bootstrap/assets
+come from the independent publication tree. Upstream X-Accel internal redirect
+is ignored; API Content-Type/CSP/cache headers are replaced with data-only
+JSON/no-store/sandbox rules. Static CSP, hidden-file denial, exact Host and
+GET-only serving are explicit. Foreign configuration is never overwritten.
+
+The ingress runs as a systemd DynamicUser with only CAP_NET_BIND_SERVICE;
+Root-owned TLS files are delivered through LoadCredential. Automatic review
+rejected CAP_CHOWN; the implementation removed Root worker switching instead.
+32 publication/bootstrap/activation regressions, Ruff and 362-file mypy pass.
+An actual nginx/TLS integration test was added to the Ubuntu installer CI
+matrix; local macOS lacks nginx, so local skipping is not Linux proof.
+
+No user-host service was started. Dependencies, TLS provisioning/renewal,
+Origin/API configuration and explicit activation are not yet composed.
+Platform write-denial, actual systemd credential startup, complete failure/
+rollback and PC/mobile real CLI qualification remain outstanding. This batch
+does not produce a usable version or authorize release publication.
+
+## 2026-10-01 distinct HTTPS client profile candidate
+
+Base e1055e0b2b7b03f4a1db82c55772bd99b05f1cb3 reached terminal CI:
+24 SUCCESS/two prescribed SKIPPED. Deployment run 36809114137/job
+110199972295 at 03:09:11Z emitted complete_remote_stopped_observed=true
+alongside all seven prior actual cgroup creation/store/absence/cleanup flags.
+The observer executes on actual Linux/non-root/native PID 1 with a selected
+false executable and synthetic metadata; it does not qualify real vendor
+Remote implementations or a complete application deployment.
+
+Current code adds a separate HTTPS consumer/lease schema and canonical public
+bootstrap encoder under ADR 0010. Explicit secure static-document meta markers
+select it; otherwise the native path remains separate. Exact Origin, host,
+revision, fingerprint, build, canonical fields/encoding and UTC validity are
+checked with two bounded fresh no-redirect/credential-omitted reads. Rotation,
+read loss, expiry, stale freshness, build/Origin drift, backward browser time
+and close fence authorization. No native signature/persisted-floor/clock
+guarantee is claimed. No plaintext terminal fallback is added.
+
+70 HTTPS/native-consumer/hook/encrypted-controller Web regressions, Web
+typecheck/ESLint, 17 public-codec/activation regressions, Ruff and 358-file mypy
+passed. Evidence is client/file fixtures, not deployed HTTPS distribution or
+actual vendor sessions. Main-agent self-review only. Root-owned publication,
+independent static serving/proxy/CSP and complete composed install/client/CLI/
+reboot/upgrade/rollback evidence remain open. No document markers or bootstrap
+were published to a user server. Version stays rc30; no usable-release claim.
+
+## 2026-10-01 complete UID Remote observation candidate
+
+Base 537b02d85db7bad7a30e42e78da040ba8191acb1 reached terminal CI:
+24 SUCCESS/two prescribed SKIPPED. Current code separates complete Linux
+observation from the existing lossy boolean heuristic. Native systemd/public
+namespace metadata, initial UID mapping, zero capabilities, unrestricted held
+proc mount and two stable current-UID PID/start/executable/argv-hash snapshots
+are required before observed STOPPED. Read denial, hidden/malformed/changing
+processes and alternate Codex Remote executable evidence remain UNKNOWN.
+No process text or argv is exported through API or logs. The actual supported
+vendor Remote implementation still needs target qualification.
+
+The WAW-only drop-in now uses ProtectProc=default, with the explicit privacy
+tradeoff recorded in ADR 0011. Legacy/API/Worker and vendor isolation retain
+their existing boundaries; no capability is added. Whole-template digest is
+0f4723a099a7afb3d237ce38532d10d3d42c0b421969a5ccdea151d077ac9563.
+Runtime status, protocol/API/Web metadata and localized confidence labels agree
+on observed. The native PID-1 probe now exercises the actual observer; its
+Linux result is pending this batch.
+
+173 focused backend regressions, Ruff and 356-file mypy passed. Eleven Web
+DOM/hook tests and Web typecheck passed. Actual Chromium rendered the observed
+label at desktop 1280x800 and mobile 390x844 with no horizontal overflow (two
+passes using mocked metadata); this is not real mobile-device or CLI evidence.
+Main-agent self-review only. HTTPS trust/bootstrap, complete composed install,
+actual double-CLI/core/reboot/upgrade/rollback qualification and final artifact/
+install command remain open. Version stays rc30; no user-host operation/release.
+
+## 2026-10-01 fixed activation transaction candidate
+
+Base 41280ce50b97917282ac1a66e25c7e59461f538b reached terminal exact-head
+CI: 24 SUCCESS/two prescribed SKIPPED. Current software adds activate-waw
+--plan/--recover. Plan is read-only and explicitly does not observe the key.
+Apply validates fixed enrollment/policies/units, offline services and no
+remaining Runtime UID processes; it compares only the local Runtime-owned
+public fingerprint with the enrolled anchor. No Root/API/Worker key read.
+
+A Root-private journal pins version/host/digest and preparing/configured/started
+phases. Atomic pending files have content-derived names, exact modes/owners and
+explicit matching-prefix recovery. Paired profiles are published while offline;
+the scoped drop-in directory rejects foreign entries. Named sockets start before
+Runtime, then Worker/API. A failed start stops only fixed AgentBox services and
+retains the recoverable configured state; no unknown process is killed/adopted.
+Service-manager active checks are not graph/CLI/browser qualification.
+
+49 activation/policy/manifest/host regressions, Ruff and 354-file mypy passed,
+including profile/journal partial writes, mixed pair recovery, start failure,
+key/enrollment/unit/drop-in drift and fixed command ordering. Evidence uses
+local files and injected service/key observations; no actual user-host service
+or credential operation occurred. Main-agent self-review only. Positive Codex
+Remote evidence, HTTPS PC/mobile workflow and actual install/CLI/reboot/
+upgrade/rollback qualification remain open. Version remains rc30, not a usable
+release; no tag/publication/production support claim is made.
+
+## 2026-10-01 fixed vendor-policy preparation candidate
+
+Base 001c4bdd8acc3cfe42b328f36e2272e4ff9fcdab reached current terminal CI:
+24 SUCCESS/two prescribed SKIPPED. Deployment run 36801295653/job
+110175996950 at 01:29:36Z reported positive_absence_observed,
+fixed_empty_cleanup_executed and partial_empty_cleanup_recovered all true,
+alongside the prior four creation/FD/store checks. This is actual native
+PID-1/cgroupfs producer and cleanup execution with synthetic authority and
+empty workloads, not service/host reboot or actual vendor qualification.
+
+The first sanitizer native job 110175996308 failed the incomplete-DCS exact
+exit-74 check with tmux metadata 1::. Same-head retry job 110178385065 passed
+without native source changes. The original failure remains recorded; its
+root cause is unconfirmed, not claimed fixed by the retry.
+
+Current software adds prepare-waw-policies --plan/--recover: exactly three
+cross-pinned policies at fixed global Claude/Codex paths, Root-owned 444;
+no key initialization, profile enable or service start. Plan does not write.
+Apply requires inactive fixed services/sockets and complete Root-visible UID
+metadata with no remaining Runtime processes. Different files/links/unsafe
+directories reject before target creation; explicit recovery finishes only
+matching safe prefixes. No Runtime HOME/credential read or generic command/path
+action is added. 24 policy/manifest/guard regressions, Ruff and 352-file mypy
+passed; evidence uses local files and injected host metadata, not user-host
+policy preparation. Main-agent self-review only. Fixed activation, positive
+Codex Remote, HTTPS browser/core CLI and full recovery qualification remain
+open. No product version/tag/publication or user-host activation occurred.
+
+## 2026-10-01 positive absence and fixed cleanup candidate
+
+Candidate 001c4bdd8acc3cfe42b328f36e2272e4ff9fcdab is pushed on Draft #125
+with exact remote read-back. CI is confirmed live, including Deployment run
+36801295653/job 110175996950 for the native PID-1 probe. This post-push note
+stays local for the next code batch; no docs-only CI rerun.
+
+Synchronized base: ccf8bf537d4c1206ce786fedccec8006a9cc9f74 on Draft
+#125; exact remote read-back and terminal CI confirmed: 24 SUCCESS/two
+prescribed SKIPPED. The current follow-up connects the actual FD recovery
+observer to the existing start path before executor side effects. It uses the
+persisted generation, not the request's next generation, preserves bound host
+and binding provenance, and imposes the existing observation timeout. Unknown,
+live or failed observations retain quarantine. Status/reconcile stay
+read-only. Recovery observation does not perform an ordinary cross-epoch write;
+the registry's explicit CAS is the only commit path.
+
+Earlier head 0d7d2b3ce6ea0cc2cfd64205107708135554daef reached terminal
+CI: 24 SUCCESS/two prescribed SKIPPED. Deployment run 36792740947, job
+110149149904 confirmed production_helpers_executed, limits_read_back,
+existing_generation_rejected and fd_observation_persisted all true under
+native PID 1. This is actual Linux helper/FD/store evidence with synthetic
+metadata and an empty workload, not vendor/reboot acceptance.
+
+Current changes add explicit compare-and-swap recovery in both Runtime stores
+and integrate it into the existing internal cleanup acknowledgement. Fresh
+new-epoch/new-invocation EMPTY_DURABLE evidence preserves logical identity,
+controller policy and generation; host/binding provenance remains pinned.
+Ordinary writes still reject epoch drift. Cgroup persistence precedes the
+Workspace floor migration; interruption leaves quarantine set and exact
+read-back can retry without lowering the floor. Older unresolved generations
+remain fenced. No HTTP recovery action, generic path or command was added.
+
+Current changes add the distinct v2 absence record described in ADR 0011;
+current service/delegate FDs and repeated exact-component ENOENT are required,
+with explicit absent Workspace/workload identities. Ordinary writes cannot
+publish absence. Runtime removes only the durably empty exact old generation,
+rechecking FD ownership/inodes/mount/limits, populated state and unknown leaves.
+Partial workload deletion can retry from durable empty evidence; same-epoch
+absence requires that prior emptiness and unchanged invocation/delegate facts.
+There is no kill, recursive deletion or adoption of unknown generations.
+
+152 recovery observer/store/lifecycle regressions passed; Ruff and 351-file
+mypy passed. The native PID-1 probe now includes actual absent-directory,
+full empty cleanup and interrupted-workload cleanup checks; its result is
+pending this candidate. This is main-agent self-review, with local directory
+and synthetic kernel/metadata fixtures. Whole service/host reboot, actual CLI,
+upgrade/rollback qualification and fixed activation remain open, alongside
+positive Codex Remote evidence and HTTPS PC/mobile workflow also remain open.
+This batch is not a usable release. Product version remains rc30; no user-host
+operation, tag or publication occurred.
+
+## 2026-10-01 fixed durable storage and FD observations candidate
+
+e474466733d75bb78a08e4b3644b97d8f466b437 reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED. Current _main creates fixed Runtime-only
+Workspace/cgroup stores and forwards a bound FD observation factory through
+the production graph. Installer provisions private 700 store directories;
+the Runtime unit adds only their fixed writable paths. No API/Worker authority
+or generic path/command action is added.
+
+The factory records held service/delegate/workspace/workload identities, mount
+and owner facts, actual limits and hierarchy populated/frozen state. It refuses
+unknown child directories and reads state twice. STOPPED alone cannot claim
+empty: positive populated=0 with no unknown leaves is required and the record
+is written/read through the Runtime store. Workspace and workload limits now
+both have finite closed policy values. The attestation codec accepts only the
+exact generated 64-hex Workspace/generation component beyond the old 64-byte
+component ceiling; arbitrary long path components remain rejected.
+
+85 focused observation/production/setup/attestation/enrollment tests passed;
+Ruff and 351-file mypy passed. These use explicit FD/kernel fixtures locally.
+The native PID-1 probe now executes the actual factory with an empty workload
+and Runtime-owned temporary store read-back; real Linux result is pending this
+batch. Main-agent self-review only. Epoch/provenance migration, abandoned-group
+cleanup and full restart/rollback acceptance remain required; this does not
+claim reboot recovery complete. Fixed activation, positive Codex Remote state,
+HTTPS Web and actual PC/mobile CLI workflow remain unfinished. No user-host
+key/profile/service operation or product release occurred.
+
+## 2026-10-01 durable port forwarding candidate
+
+Latest synchronized head: e474466733d75bb78a08e4b3644b97d8f466b437 on Draft
+#125, exact remote read-back confirmed. CI currently has 21 SUCCESS/two
+prescribed SKIPPED and three live Backend jobs, no failure. This post-push
+snapshot is local for the next code batch, not another docs-only CI restart.
+
+Current application/server filesystem-v2 builders forward the same Workspace
+attestation store, cgroup attestation store and factory into the existing
+registry composition. The previous production signature dropped these inputs;
+this closes that ownership/identity handoff gap. Regression verifies object
+identity alongside key/provider/socket one-owner construction and cleanup.
+43 application/bootstrap tests passed; Ruff and 349-file mypy passed.
+Main-agent self-review only. Fixed _main store construction, real FD-backed
+factory, epoch/generation transition and cleanup/restart recovery are still
+required before durable recovery is claimed. No service/user-host activation.
+
+## 2026-10-01 actual creation-helper Linux evidence
+
+d313624e93aac9b6a9307457a138f2b2a68b6a18 on Draft #125 reached terminal
+exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending/failure.
+Deployment run 36766671223/job 110062461054 at 19:35:41Z executed the actual
+Runtime setup helpers under native systemd PID 1. It emitted production_helpers_executed,
+limits_read_back and existing_generation_rejected all true, actual mount ID 418.
+The fixture uses DynamicUser and synthetic metadata authority; cgroupfs,
+namespace/ownership/controller/limit checks and helper code execution are real.
+This closes the software creation-path Linux evidence gap, not cryptographic
+admission, actual vendor session, host reboot or whole application qualification.
+
+Durable Workspace/cgroup attestation composition, recovery/cleanup and fixed
+service activation remain next. The production builder still has optional
+attestation inputs without complete _main ownership; its in-memory defaults
+must not be called recovery-ready. Positive Codex Remote and HTTPS Web/client
+core flow also remain required. No user-host operation or product release.
+This evidence snapshot is local for the next code batch, avoiding a docs-only
+restart of the already terminal checks.
+
+## 2026-10-01 fixed delegated cgroup creation candidate
+
+Follow-up CI fixture adds a separate native PID-1 step that executes the
+actual _open_scoped_workspace_root/_create_bound_workload_cgroup helpers.
+It refuses an existing Runtime unit, uses only a uniquely marked transient
+DynamicUser service, root-owned copied checkout packages and the CI Python
+interpreter. Metadata authority is explicitly synthetic, while cgroupfs,
+mount/owner/domain/controller checks and limit read-back are real. It tests
+existing-generation refusal and cleans only its marked unit. No production
+account, key, HOME, vendor session or credentials are involved. Static lint/
+syntax pass; actual Linux result remains pending the new exact head.
+
+Latest synchronized head: 714473bf786c7eaa33084eaa53608153fd3b5d40 on Draft
+#125, exact remote read-back confirmed. Initial CI has 15 SUCCESS/no failures
+with five pending checks. This post-push snapshot remains local for the next
+code batch and does not restart unchanged CI.
+
+fa2ae6e3c25f1e22923bb7aa0401e392c67654cf reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED, no pending/failure. Complete manifest
+preparation remains disabled-mode software, not an activated deployment.
+
+Current Runtime resources create/open only the scoped service workspace root
+after exact non-root owner/group/mode and current RW-service/RO-global mount
+verification. Empty domain/controllers are required and enabled controllers
+are positively read back. The production provider requests create-only
+Workspace/generation workload setup; identities are fixed from the authorized
+tuple, limits are from the closed verified policy and are read back before
+the existing cgroup handle is returned. Existing generations require
+reconciliation; they are never adopted, killed or recursively removed.
+Failure cleanup targets only newly created directories. Legacy private
+resource-root opening and lifecycle freeze/kill write allowlists remain separate.
+
+101 focused setup/resources/provider/transport tests passed; nine Linux cases
+were skipped on macOS. Ruff passed; mypy passed 349 files. Setup fixtures
+validate failure/control boundaries, not actual kernel controller creation.
+The existing PID-1 probe proves the kernel hierarchy but does not directly
+exercise this new production helper; real Linux integration remains required.
+Main-agent self-review only. Activation, durable cgroup/workspace attestation
+composition and cleanup/restart recovery, positive Codex Remote evidence,
+HTTPS Web and actual PC/mobile CLI flows remain unfinished first-version work.
+No product-version bump or actual user-host operation occurred.
+
+## 2026-10-01 complete installation-manifest preparation candidate
+
+Latest synchronized head: fa2ae6e3c25f1e22923bb7aa0401e392c67654cf on Draft
+#125, exact remote read-back confirmed. Initial CI has 15 SUCCESS/no failure
+and five pending checks. This post-push snapshot stays local for the next
+code batch; it does not restart identical CI for documentation alone.
+
+a417addf315ed9f1caf037d4ab18af351ef6961c reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED, no failure/pending. Current source adds
+prepare-waw-manifests --plan/--recover/--json and connects the Runtime-only
+key public pin to all 13 cross-verified manifest records. Release building
+copies the exact five inert policy templates into the verified release;
+preparation pins their bytes without claiming vendor/host policy qualification.
+
+The issuer observes the physical ProjectRoot filesystem/inode, exact-six native
+ELF identities and one immutable helper release. Held no-follow provenance,
+source/parent revalidation, create-only publication, exact full-bundle checking,
+explicit matching-prefix/link-pair recovery and rotation refusal preserve the
+disabled-profile boundary. Fresh installation identity is derived in a distinct
+domain from the unique Runtime public fingerprint, making unpublished recovery
+deterministic; existing enrolled identity is preserved and drift is refused.
+Plan does not initialize a key or write manifests. Private key bytes do not
+enter this issuer or the Installer's public-output consumer.
+
+33 manifest/preparation/enrollment/build tests passed with explicit binary/key
+fixtures; Ruff and 348-file mypy passed. Main-agent self-review only. This is
+actual software wiring, not a real user-host preparation or activated session.
+Linux packaging/whole-source CI is pending this candidate. Delegated root and
+workload creation, activation, positive Codex Remote evidence, HTTPS Web and
+actual PC/mobile CLI/recovery acceptance remain open. No product version/tag,
+public install command or user-host activation occurred.
+
+## 2026-10-01 Runtime-only initial key software
+
+Latest synchronized head is a417addf315ed9f1caf037d4ab18af351ef6961c on
+Draft #125, exact remote read-back confirmed. Initial matrix snapshot has
+15 SUCCESS/no failure and five pending checks. 1db8428's Backend failure was
+Black after a final test-import change; a417add corrects that one test layout
+and verifies idempotent Black formatting for all five changed Python files.
+Do not label the new head fully green before terminal CI. This post-push
+snapshot remains local for the next code batch, avoiding a docs-only CI restart.
+
+591d86f4f4aca6d0c079962c1d930f4a77b19a85's dependency repair reached terminal
+exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending/failure.
+
+Current code adds the fixed local `python -I -m agentbox_runtime.waw_key_initialize`
+command under the exact non-root Runtime account. Disabled-profile first setup
+may create one private 32-byte key; enabled mode is read-only. The existing
+startup reader still never generates a missing key. Held no-follow parents,
+directory lock, exclusive private pending publication, fsync, mode/owner/link
+checks and parent revalidation fence creation. Explicit disabled-mode recovery
+handles only an unpublished prefix/full pending key or exact two-link pair.
+Missing enrolled keys, mismatched pending files, symlinks and unsafe provenance
+are rejected; no automatic rotation is introduced.
+
+Stdout is a closed schema plus public fingerprint, never private material.
+Installer HostOperations invokes only fixed runuser/Runtime/module/recover
+arguments from a fixed installed release, kills the child process group on
+failure/timeout, and rejects oversized/duplicate/extra/untrusted public output
+without printing its bytes. Fixture HostOperations cannot invent a production
+fingerprint. The complete manifest issuer still needs to call this operation;
+no apply/profile activation path is advertised as complete yet.
+
+92 focused Runtime key/application/installer Host regressions passed on private
+test data; Ruff passed and mypy passed 346 files. Main-agent self-review only.
+Actual Linux non-root command/installed-key evidence and exact-head CI remain
+pending this batch. No actual user-host key, Secret, profile or service was
+created/activated. The deployable first-version goal remains open.
+
+## 2026-10-01 restart-safe enrollment inputs candidate
+
+d41974dd83a9c954c5a879e204e71b43147d304a's Backend matrices, native,
+installer and frontend/E2E checks passed, including the actual Linux FD test.
+The earlier wire fixture failure did not recur; its root cause remains
+unproven and the production budget/assertions remain unchanged. Terminal CI
+has 19 SUCCESS, three dependency-skipped jobs and two Release failures.
+The direct Release failure is unchanged pip-audit detecting four virtualenv
+21.7.4 advisories (PYSEC-2026-4011/4012/4013/4014). Follow-up pins virtualenv
+21.7.13 plus its required python-discovery 1.6.0, matching downloaded wheel
+hashes to official PyPI JSON. Both dependency closures satisfy the existing
+75-entry lock across Python 3.11–3.13; targeted audit reports no known findings.
+See [upstream virtualenv fixes](https://virtualenv.pypa.io/en/latest/changelog.html).
+No audit exception, runtime dependency, product version or host activation is
+introduced. Complete exact-head CI for this lock repair remains required.
+
+3b00cb4ba5bb93e8e2421a4e9da288326cf21143 reached terminal CI: 21 SUCCESS,
+two prescribed SKIPPED and three Backend matrix failures. Deployment's actual
+two-instance PID-1 probe passed (36743842988/job 109984874332): physical fsid/
+inode stayed equal, scoped RW/global RO/outside denial passed. Both namespace
+and mount numbers were equal/reused in this sample; no changed-number or reboot
+proof is claimed. The real Linux FD test exposed a pre-existing off-by-one
+fdinfo parser: line[7:] retained the tab in mnt_id, rejecting valid decimal IDs.
+The correction removes the exact separator and keeps duplicate/invalid rejection.
+
+The 3.11 matrix also failed one existing wire fixture with PROTOCOL_INVALID;
+cause is not established. Failure-only fixture diagnostics now include bounded
+numeric type/sequence/CPU duration; protocol assertions and the 5ms deadline
+remain unchanged. Local wire/namespace/transport regression passed 356 cases,
+ten Linux skips; Ruff and 343-file mypy passed. This does not turn 3b00cb4 into
+a green head or prove the unrelated wire issue resolved. Inspect the next
+exact-head real FD and full protocol/Backend results before readiness claims.
+
+530fdf51d517da7245eb1cd253c5bb4368ec18f3 is synchronized on Draft #125 and
+reached terminal exact-head CI: 24 SUCCESS/two prescribed SKIPPED, no pending
+or failing checks. It is still not a deployable release.
+
+Current installer-facing correction adds the distinct runtime-namespace-v1
+binding: persist ProjectRoot filesystem ID/inode and observe actual FD mounts
+per Runtime namespace; observe current cgroup device while retaining exact
+scoped/global mount, ownership and limits checks. v2 cross-pins require one
+consistent profile and reject v1 downgrade. New helper inventory locations are
+closed to three fixed names under one immutable installed release, retaining
+all no-follow/provenance guards. This resolves the current-symlink conflict;
+it does not enable arbitrary executable paths. ADR 0011 records the rationale
+and software-decision delegation.
+
+241 affected profile/manifest/transport tests passed locally, with ten Linux
+checks skipped on macOS. After adding the downgrade assertion, the new focused
+selection passed 31 cases/one Linux skip; mypy passed 343 files and Ruff passed.
+The real Linux FD test and two-instance PID-1 namespace probe remain pending
+this candidate's CI. Main-agent self-review is not independent review.
+Complete manifest issuance, Runtime-only key initialization, enrollment/profile
+activation, delegated root/workload creation, positive Codex Remote evidence,
+HTTPS Web bootstrap and actual PC/mobile CLI/recovery paths remain open.
+No new source version/tag/release or actual user-host activation occurred.
+
+## 2026-09-30 fixed production entry candidate
+
+Latest synchronized head: 530fdf51d517da7245eb1cd253c5bb4368ec18f3,
+Draft #125 exact remote read-back confirmed. Initial CI snapshot has six
+successful checks, no failures, remaining checks pending. A transient local
+ENOSPC prevented the first staging attempt; no files were lost or reset.
+The subsequent no-cache Ruff, exact staging, commit and push succeeded.
+Disk availability was then 2.1 GiB; no user data/caches were deleted.
+This post-push snapshot is carried locally into the next code batch instead
+of starting an otherwise identical CI run for documentation alone.
+
+Integration follow-up: the production legacy-Claude lookup rejected WAW's own
+in-flight start, causing a self-conflict. The formal-to-key read now fences
+binding mutation/quarantine/ambiguity but permits an in-flight WAW operation;
+legacy admission still rejects those operations through managed_conflict_states.
+Start snapshot/commit pins remain. A test with the real executor/coordinator/
+production bridge proves both AgentTypes start and exact Stop while legacy
+Claude/Codex starts are rejected. Its vendor observations are explicit fixtures,
+not real CLI evidence. 117 executor/production/conflict tests passed; mypy
+passed 341 files. Entry-only RPC tests passed five cases. Full local RPC tests
+also exposed macOS-only AF_UNIX length, epoch/peer-credential failures; assertions
+were not weakened and Linux CI remains the required full RPC evidence.
+e0856be read-back has no failing check, 21 SUCCESS/two SKIPPED with the three
+Backend matrices still running; this is not a terminal all-green claim.
+
+Follow-up: b966480's native, four installer, frontend and E2E checks passed.
+Release Candidate failed its unchanged pip-audit gate: build-only urllib3
+2.7.0 now reports CVE-2026-97687/97688/97689. The official 2.8.0 release fixes
+the three advisories; only its build-lock entry is updated, with downloaded
+wheel SHA256 matched to PyPI JSON. Python >=3.10 covers this project's
+3.11–3.13 range. No advisory is ignored and no runtime dependency is added.
+Complete exact-head CI remains required before any merge/readiness claim.
+Its Backend matrix also identified the old runtime_rpc test that required the
+unimplemented-entry exception (3.11: 4485 passed, 83 skipped, one failed).
+The replacement checks actual enabled-profile routing and failure propagation,
+while preserving the assertion that no standalone legacy server is constructed.
+The updated entry/RPC tests pass locally; this does not convert the old failed
+head into a full CI pass.
+
+Current Draft #125 continues from 94b92d4; fetched origin/main remains
+19f8c5125d5a831e3db2d9724a1cc7985b091294. 94b92d4's native and installer
+checks passed, but all three Backend quality jobs failed Black on one
+waw_runtime_resources.py expression. The exact job log (109885521498)
+identified the formatting mismatch; this batch corrects it without changing
+resource behavior. Do not describe 94b92d4 as fully green.
+
+The filesystem-v2 branch of Runtime _main now calls the production application
+builder. It pins Runtime/Control Plane account identities and exact allowlists,
+fixed manifest/public/epoch/key paths, two named systemd sockets, one provider
+and one executor. SIGTERM/SIGINT, cancellation and startup/serve failures join
+the application cleanup owner. Only RuntimeAttachmentLease is allowed in the
+encrypted production path; API ActiveAttachment is rejected. Fresh legacy
+observations run on the event loop from start worker threads with a bounded
+wait, binding recheck and UNKNOWN on missing evidence. There is no process-
+absence-to-STOPPED conversion. Main-agent self-review is not independent review.
+
+91 focused application/provider/profile/scoped tests and 139 Runtime executor/
+conflict/server tests passed (overlapping selections, not 230 unique tests).
+Ruff passed; mypy passed 341 files; changed Runtime files match Black.
+These are software fixtures, not a real activated service or vendor session.
+Complete generated manifests, delegated workspace directory, key/enrollment
+and profile activation remain installer prerequisites. Positive Codex Remote
+STOPPED evidence, HTTPS Web bootstrap, PC/mobile CLI flow and restart/rollback
+acceptance remain first-version blockers. No product version/tag/release or
+public install command has been issued. The current delivery checklist remains
+open; the source startup entry does not close it.
+
+## 2026-09-30 scoped delegation Runtime wiring candidate
+
+88d1e99's Deployment native PID-1 probe passed on Ubuntu 24.04: emitted
+scoped_write/outside_write_denied/global_mount_read_only/subtree_mount_read_write
+all true. Run 36708294115, job 109863711328, step at 11:24:46Z. Its unrelated
+Backend native job 109863711471 failed the incomplete-DCS pane exit assertion
+after five seconds with observed 1::; do not call this head fully green.
+The assertion/expected exit 74/time limit remain. A test-only bounded numeric
+pane diagnostic is added to locate the failure; no terminal/argv/env capture
+or unmodified rerun substitutes for evidence.
+
+Current startup wiring distinguishes the accepted delegated-subtree-v1 policy
+from legacy private. The shared resolver binds only the fixed service path and
+agentbox-runtime-workspaces component. Codec pins the exact new Installer
+drop-in SHA; resource opening and FD verification use the same resolver.
+The scoped mount checker requires exact service-relative mount root/device,
+RW service bind, RO global mount and no outside RW cgroup mount. Its root FD
+must be owned by the exact non-root Runtime UID/GID and not group/other writable.
+The drop-in is packaged as an explicit enrollment input, not activated by this
+candidate. Legacy private fields/path behavior stay separate.
+
+Focused codecs/resources/mount tests passed 135 cases; full mypy passed 339
+files and Ruff/doc links passed. Native Linux diagnostic and complete startup
+still need exact-head CI. Missing generated manifests, key/profile activation,
+production _main and Web client/core flow remain current first-version blockers.
+Delivery correction is recorded in RELEASE_ITERATION_PLAN's top checklist;
+this is internal startup work, not another product release.
+
+## 2026-09-30 Owner selected the recommended architectures
+
+Owner instructed “按你说的做” after the two concrete recommended decisions.
+ADR 0010 HTTPS Web profile and ADR 0011 alternative A (255-compatible scoped
+delegation) are accepted for software implementation. This supersedes the
+authorization blocker below; activation/support still requires real evidence.
+The same complete deployable goal is active; no version bump or later feature
+expansion follows. Original checkout WIP remains protected.
+
+Current implementation starts with a CI-only native PID-1 probe of actual
+delegation: a fixed, uniquely marked transient DynamicUser service, boolean
+ProtectControlGroups, exact service-subtree ReadWritePaths and a supervisor
+subgroup. It tests controller/limit writes, moving only its own PID, outside
+write denial, ro global/rw scoped mount observations and leaf cleanup. Unit
+ownership is checked before cleanup; bounded RuntimeMaxSec prevents an
+unattended probe. No production account, key, credential, HOME or unit is used.
+Local source syntax, Ruff and doc links pass; macOS cannot supply the host
+evidence. Do not issue a manifest or enable the new model until this probe and
+the complete qualification succeed. Web implementation follows the accepted
+profile, with its explicitly weaker independent-client guarantee recorded.
+
+## 2026-09-30 verified checkpoint and architecture dependency
+
+Draft PR #125 exact head a091701178179d0d319729e88a1fa543c1db3533 now has
+24 terminal SUCCESS and the two prescribed historical SKIPPED checks, with
+no pending/failing check. Backend watch run 36701077638 exited successfully.
+No merge/tag/release/deployment occurred; the version remains rc30.
+
+The architecture authorization dependency has persisted through three
+consecutive goal turns. ADR 0010 (PC/mobile Web trust assumptions) and ADR
+0011 (actual cgroup/server compatibility) are still Proposed, with no Owner
+reply observed. Manifest issuance depends on the selected namespace/path
+contract; Runtime activation depends on those real resources; ordinary mobile
+connection depends on the Web trust decision. Do not silently choose either
+architecture or repeat CI/status commits as work. Preserve this exact-head
+checkpoint and await the already requested decisions. The complete deployable
+goal is not achieved, and unrelated later capabilities stay frozen.
+
+This is local post-CI documentation WIP, intentionally not pushed just to
+restart checks. Original checkout WIP is untouched. After Owner replies,
+continue the same branch/PR and version, revalidate live Git, implement the
+selected dependency and carry this snapshot into that code batch.
+
+## 2026-09-30 actual cgroup compatibility conflict
+
+9dda54d's exact-head CI is terminal with only the prescribed historical skips;
+no remaining running or failing check was observed at readback. PR #125 stays
+Draft because complete manifest/key/profile/Runtime and client flow are absent.
+
+Manifest v1 requires ProtectControlGroups=private, but the current platform
+baseline is systemd 255. Official versioned exec manuals show 255/256 accept
+only booleans, while 257 adds private/strict. The legacy installed unit uses
+true with no delegation, so it cannot be hashed into a valid active WAW policy.
+The name-only compatibility checker incorrectly treated private as a 232
+feature. Current WIP fixes value-aware/last-assignment/unknown-value checking;
+existing boolean service support remains unchanged. 54 focused compatibility,
+asset and platform cases passed with one local systemd-analyze skip; mypy
+and Ruff passed. This is not a qualified WAW host or a new version.
+
+ADR 0011 records two concrete alternatives: a separately versioned, scoped
+delegated-subtree policy compatible with 255, or a private profile requiring
+257 plus actual image/namespace qualification. Owner authorization is pending;
+do not silently weaken the existing private contract, drop legacy support,
+fabricate namespace observations, or install arbitrary replacement systemd.
+The independent Web trust authorization (ADR 0010) is also still pending.
+
+## 2026-09-30 staging recovery exact-head deployment evidence
+
+Commit 9dda54d3d24adfe57dcf2f92544ba5a86ca5b0d5 is pushed to Draft PR #125.
+Deployment run 36697969316 completed all four installer matrix jobs and
+deployment-gate successfully. Job 109830394190's dedicated Linux/root step
+"Verify actual native-helper build, retry and Runtime-owned epoch bootstrap"
+ran successfully from 09:44:31Z to 09:44:37Z. This is real CI filesystem/build
+evidence for the fixed epoch and helper paths, with isolated temporary data;
+it is not a deployed host, real provider login or PC/mobile core-flow claim.
+Other exact-head checks were still running at the last readback. Preserve
+this post-commit evidence as local doc WIP until the next validated batch;
+do not restart the current CI solely to commit this snapshot.
+
+## 2026-09-30 same-artifact staging recovery candidate
+
+PR #125 remains the single deployment Draft; version stays rc30. The
+03ca4ed head completed native, deployment matrix, boundaries and several
+other checks, but Backend/Release Candidate failed the unchanged packaging
+contract forbidding sudo in the Release workflow. The failing Release unit
+test was test_release_packaging_compatibility_lock_and_gate_are_fail_closed.
+The new root fixture step is moved to Deployment; the sudo prohibition and
+release gate assertions are preserved. Both focused workflow-contract tests
+pass locally. No unchanged failed job is rerun as a substitute for repair.
+
+Current software adds resume-install and bootstrap --resume. Only fresh,
+unactivated schema-3 staging records may continue with the exact archive
+digest, account/group identity, fixed-file/dir observations and original
+transaction/resources. DB, receipt/current, unknown activation resources,
+old logs, drift, migration/activation steps and unsupported states refuse
+before continuation. Repeated staging failures retain the same proof;
+accounts/configuration are not replayed. This does not close account-creation,
+partial preflight, upgrade staging or all recovery requirements.
+
+Self-review found the generic root-parent writer could not initialize the
+fixed Runtime-owned epoch directory on a real host. Its general guard remains;
+the fixed epoch initializer now validates root ancestors plus the exact
+Runtime parent, holds no-follow FDs, creates exclusively, writes/fsyncs,
+sets Runtime ownership and checks readback identity. A dedicated Linux/root
+case asserts initialization, reuse and continued rejection by the generic
+writer. This new case is pending CI.
+
+Local evidence: 124 passes/3 Linux skips/1 known Mac setgid case deselected
+for lifecycle/native/recovery; later 47 downloader/recovery/host cases pass.
+Full Linux-target mypy passes 337 files; Ruff and source boundaries pass.
+No new artifact publication, real CLI login, target activation or complete
+PC/mobile core-flow evidence exists. Full manifests and production _main
+remain unfinished; ADR 0010 architecture authorization remains pending.
+
+## 2026-09-30 deployment Draft CI feedback
+
+PR #125 is Draft/Open at first checkpoint
+c05cc3d56410003dde06de42bd1793d2c3f62762. Version remains rc30; no release
+or deployment is claimed. Release run 36691377561 / job 109809151521 passed
+the actual Linux/root native-helper compilation and interrupted-retry step,
+and the artifact-only offline install smoke. The complete run failed:
+repository-boundaries rejected process execution in the new native module,
+and root pytest's default development configuration polluted the checkout,
+causing a later non-root configuration read to fail.
+
+The follow-up moves both fixed build/check actions and process-group cleanup
+into the already allowed Installer HostOperations, without expanding the
+subprocess whitelist. Root CI configuration/data/pytest state now lives in a
+dedicated runner temporary fixture, with bytecode writes disabled. The local
+source-boundary check passes. Follow-up native/host/publication tests passed
+37 cases with two Linux/root skips; full mypy passed 336 files and Ruff passed.
+These repairs require a fresh exact-head CI result. PR stays Draft while the
+complete deployment flow, staged recovery and Web trust implementation remain.
+
+## 2026-09-30 deployable-version work in progress
+
+Owner now requests a server-side one-command installer that they execute
+themselves, with PC and phone support. No SSH target is required from the
+Owner before independent software work. DEPLOYABLE_RELEASE_PLAN records
+this scope and keeps the full core-flow acceptance; it is not replaced by
+a software-only rc number or a desktop-only implementation.
+
+The clean managed worktree now uses codex/r12-deployable-runtime from main
+19f8c5125d5a831e3db2d9724a1cc7985b091294. The original R12 checkout and
+the rc30 worktree's post-merge doc/build WIP remain separate and untouched.
+Current uncommitted work adds a fixed installer publication/recovery module,
+the actual enroll-waw-vendors CLI, manifest/profile currentness checks,
+read-only --plan and explicit --recover. Publication is create-only,
+idempotent, descriptor-held and never enables Runtime or reads credentials.
+14 publication/CLI tests passed, including full cross-pinned fixture input;
+the wider enrollment/build matrix passed 59 tests. Linux-target mypy passed
+333 files and Ruff passed. These are local software/fixture observations,
+not actual server/CLI qualification.
+
+The offline release bootstrap now selects only supported fixed /usr/bin
+Python candidates (3.11/3.12/3.13); installed venv creation uses that running
+interpreter. Two selection tests and Bash syntax validation passed.
+A broader script run had 73 passes and two existing Mac platform-order
+failures before malformed-version/checksum checks; no assertion was relaxed.
+New Linux CI is still needed. No new version, public release or installation
+command URL has been issued for this incomplete iteration. The checkpoint
+is for Draft CI verification, not a deployable release or merge decision.
+
+Owner selected PC and phone browsers first; native Apps remain later scope.
+ADR 0010 is Proposed and explicitly describes the weaker client assumption
+relative to the managed native provider. Its architecture authorization is
+pending; no page fallback or production trust gate has changed.
+
+installer/bootstrap.sh now requires a fixed release version and independently
+pinned archive digest, uses only the repository's HTTPS release URL, bounds
+downloads/extraction, rejects archive links/traversal/collisions, then executes
+bundle verification and plan before optional --apply. It does not use latest
+or downloaded checksums as its trust anchor. No public release URL exists yet.
+The downloader, interpreter and publication focused run passed 39 cases;
+these include local transport/platform fixtures, not a real Linux install.
+Bash syntax, Ruff and Black checks passed for the new files.
+
+Server-side resource generation and production _main are still unfinished.
+Installer apply now prepares the three fixed native helpers from verified
+release sources on the target Linux host, with fixed gcc/binutils dependencies,
+version/closed-command/hardening checks, an exact source/output digest ledger
+and atomic directory publication before activation. Installed-state,
+rollback/uninstall/retention verification explicitly validates this closed
+generated subtree; the original artifact manifest is unchanged. No compiler
+or command input is exposed to Web/API/Worker.
+The local installer/native/platform/retention/host matrix passed 145 cases,
+with one unchanged Mac setgid-directory assertion failing and two Linux/root
+build cases skipped. The lifecycle fixture now explicitly models x86_64
+OpenCloudOS instead of borrowing the test Mac's ARM architecture. The separate
+platform rejection tests remain intact. Linux CI includes actual compilation,
+hardening and failed-build retry, and has not yet run for this source batch.
+Full Linux-target mypy passed 336 files; Ruff passed.
+The later focused native/publication run passed 24 cases with two Linux/root
+skips. It includes actual timeout/cancellation of a child process group and
+proves that no child completion output is written after cancellation.
+Helper-level build retry is covered separately from whole-installer recovery:
+a fresh-install journal already classified as staged still lacks an explicit
+resume operation. That existing recovery gap must be closed before delivery.
+The current managed Chromium trust chain cannot be assumed to work in
+ordinary mobile browsers.
+Paseo's fixed connectivity/pairing source was re-read at
+30178c4f58b67f8472901356e1484022bd835de0. The selected cross-platform
+trust/connection contract must preserve AgentBox boundaries and get the
+required architecture decision before any production activation.
+
+Next: implement full trusted-resource generation and production Runtime
+composition, including an authoritative positive Codex Remote conflict source.
+Keep PC/mobile acceptance explicit, preserve data and
+recoverability, and do not claim a deployable core flow before it is proved.
 
 ## 2026-09-30 rc30 protocol validation follow-up
 

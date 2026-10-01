@@ -37,6 +37,7 @@ import {
   WAWTrustProviderConsumer,
   type WAWTrustProviderPort,
 } from './wawTrustProvider'
+import { httpsWebTrustSelected, WAWHTTPSTrustConsumer } from './wawTrustHTTPS'
 import {
   workspaceApiError,
   workspaceError,
@@ -274,7 +275,7 @@ export function useWAWBrowserAttachment(options: {
     () =>
       dependencies?.createProvider !== undefined
         ? dependencies.providerAvailable === true
-        : managedChromiumTrustProviderAvailable(),
+        : httpsWebTrustSelected() || managedChromiumTrustProviderAvailable(),
     [dependencies],
   )
   const [snapshot, setSnapshot] = useState<AttachmentSnapshotView>(IDLE_VIEW)
@@ -471,17 +472,27 @@ export function useWAWBrowserAttachment(options: {
     ) {
       throw asError('ATTACHMENT_UNAVAILABLE')
     }
+    const webProfile =
+      dependencies?.createProvider === undefined && httpsWebTrustSelected()
     const provider =
       dependencies?.createProvider !== undefined
         ? dependencies.createProvider()
-        : createManagedChromiumTrustProvider()
-    if (provider === null) throw asError('ATTACHMENT_UNAVAILABLE')
+        : webProfile
+          ? null
+          : createManagedChromiumTrustProvider()
+    if (provider === null && !webProfile)
+      throw asError('ATTACHMENT_UNAVAILABLE')
     let trust: OwnedTrust | null = null
     const portFailure: { value: WorkspaceApiErrorView | null } = { value: null }
     try {
-      trust =
-        dependencies?.createTrust?.(provider) ??
-        new WAWTrustProviderConsumer([provider])
+      if (webProfile) {
+        trust = new WAWHTTPSTrustConsumer()
+      } else {
+        if (provider === null) throw asError('ATTACHMENT_UNAVAILABLE')
+        trust =
+          dependencies?.createTrust?.(provider) ??
+          new WAWTrustProviderConsumer([provider])
+      }
       const abort = new AbortController()
       const epoch = options.contextEpoch.current
       const token = Symbol(String(epoch))
@@ -618,7 +629,7 @@ export function useWAWBrowserAttachment(options: {
         }
       } else {
         try {
-          provider.dispose()
+          provider?.dispose()
         } catch {
           // A failed provider cannot block a fail-closed attempt.
         }

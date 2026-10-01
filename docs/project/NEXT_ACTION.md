@@ -1,5 +1,383 @@
 # Current Authorized Action
 
+## 2026-10-01 qualify ingress then compose self-install activation
+
+Base 7c6db08 has terminal 24 SUCCESS/two prescribed SKIPPED, live re-read.
+Publication lifecycle/CLI, independent nginx configuration and DynamicUser/
+LoadCredential service are composed as software. Inspect this batch's exact-
+head CI, especially actual nginx TLS/static/API routing. Local 32 focused
+regressions/Ruff/362-file mypy pass; local macOS has no nginx.
+
+Next compose fixed nginx dependency checks, certificate provisioning/renewal,
+exact allowed Origin and trusted proxy configuration, and explicit service
+activation with systemd credential/read-only path evidence. Do not add CAP_CHOWN
+or use the API static route as the HTTPS profile entry. Then prove API/Worker
+write denial, publication/rollback and actual PC/mobile CLI/reboot/recovery;
+finish the self-install artifact and command. The first full deployable version
+remains the sole iteration; no user-host activation or release is implied.
+
+## 2026-10-01 publish Root-owned HTTPS entry and independent serving
+
+e1055e0 reached terminal 24 SUCCESS/two prescribed SKIPPED and actual native
+PID-1 complete_remote_stopped_observed=true evidence. Current distinct HTTPS
+consumer/lease, explicit secure-document selector and twelve-field canonical
+public encoder have 70 Web/17 backend focused regressions and static checks.
+Inspect this batch's exact-head CI before relying on it.
+
+Next implement the Root-only public bootstrap/static overlay transaction and
+independent serving at the accepted HTTPS Origin, with immutable assets,
+API/Worker write denial, exact proxy routing/CSP and source/build replacement
+recovery. Do not inject bootstrap into an API-controlled HTML route or call
+Web trust independent/native-equivalent. Then close actual browser/core CLI
+and composed installer/reboot/upgrade/rollback evidence plus the final
+self-install command. This is one full deployment version, not a new scope.
+
+## 2026-10-01 verify complete Remote evidence then HTTPS Web bootstrap
+
+537b02d reached terminal 24 SUCCESS/two prescribed SKIPPED. Current complete
+UID observer and observed confidence are connected through Runtime conflict,
+protocol/API and Web. 173 backend regressions/Ruff/356-file mypy and eleven
+Web DOM/hook tests/typecheck pass; two mocked Chromium desktop/mobile render
+checks pass. Inspect the actual native PID-1 observer result and exact-head CI.
+Permission, namespace, PID or alternate-executable uncertainty stays UNKNOWN;
+never use the old boolean negative as STOPPED. The vendor Remote implementation
+itself is not qualified by synthetic/current-process observations.
+
+Then implement ADR 0010's canonical root-owned HTTPS public bootstrap and
+distinct Web trust provider, with independent static serving and exact Origin/
+CSRF/CSP boundaries. Complete the PC/mobile core input/output/resize/detach/
+reconnect/exact Stop path, then isolated composed installation and real CLI/
+reboot/upgrade/rollback evidence. No scope expansion, extra product version or
+production/readiness claim substitutes for the full first self-installable
+version.
+
+## 2026-10-01 verify activation then close Codex Remote and HTTPS Web
+
+41280ce reached terminal 24 SUCCESS/two prescribed SKIPPED. Current fixed
+activation composes offline/idle guards, enrolled public-fingerprint comparison,
+Root-private recoverable journal, paired profiles, scoped drop-in and ordered
+named socket/service start. 49 focused regressions/Ruff/354-file mypy pass.
+Inspect its exact-head CI. Service-manager active status alone is not usable
+graph or target qualification; retain actual install/CLI/reboot/rollback gates.
+
+Next implement positive, complete and fresh Codex Remote evidence without
+converting ordinary process absence into ABSENT. Then the accepted HTTPS Web
+trust/bootstrap profile must provide PC/mobile input/output/resize/detach/
+reconnect/exact Stop. Validate the composed installer/application on isolated
+Linux before claiming a deployable artifact. Scope remains this single full
+self-installable version; no unrelated capability expansion or user-host
+activation/publication is implied.
+
+## 2026-10-01 compose fixed offline activation
+
+001c4bd currently has terminal 24 SUCCESS/two prescribed SKIPPED, actual
+absence/full/partial cleanup Linux probe evidence, and a retained first-run
+sanitizer/tmux DCS failure that passed on same-head retry without a code fix.
+Current policy preparation adds only three fixed cross-pinned global policies
+while profiles stay disabled; 24 regressions/Ruff/352-file mypy pass. Inspect
+its exact-head CI before relying on the new candidate.
+
+Next complete the fixed systemd drop-in, named socket and paired profile
+activation transaction with offline/idle evidence and recoverable failure
+states. Existing services/processes may not be silently killed or adopted.
+Then close positive Codex Remote and the accepted HTTPS PC/mobile core flow.
+No new workstation feature, product version, user-host activation or release
+is authorized by these internal software checkpoints; the full self-install,
+CLI, reboot and upgrade/rollback delivery objective remains open.
+
+## 2026-10-01 verify absence/cleanup Linux evidence then fixed activation
+
+Both stores now have explicit new-epoch CAS operations, composed into the
+existing Runtime-only cleanup acknowledgement with interrupted-write retry.
+ccf8bf5 reached terminal 24 SUCCESS/two prescribed SKIPPED. Current follow-up
+adds distinct absence records and exact empty-generation removal/partial retry.
+152 local regressions, Ruff and 351-file mypy pass. Inspect the actual native
+PID-1 producer/cleanup probe and exact-head CI before relying on Linux evidence.
+It exercises real removal/ENOENT, not a host reboot or cross-invocation CLI
+recovery. Preserve all generation floors, binding/host provenance and
+fail-closed multi-generation ambiguity; never kill/adopt unknown groups.
+
+Then complete fixed installer activation, positive Codex Remote evidence and
+the accepted HTTPS Web PC/mobile flow. The sole delivery target remains the
+full self-installable browser/CLI version; these internal batches do not close
+reboot/upgrade/rollback acceptance or constitute separate product versions.
+
+## 2026-10-01 verify FD persistence then close epoch recovery
+
+The fixed Runtime stores and actual FD-backed observation factory are wired
+in _main, with exact systemd invocation identity, fixed private directories,
+finite Workspace/workload policy values and guarded persisted empty evidence.
+85 focused tests/351-file mypy/Ruff pass. Synchronize this same Draft/version
+and inspect the native PID-1 factory/store read-back. Then close explicit
+Runtime epoch/generation provenance transitions and abandoned cgroup cleanup;
+existing floors currently reject changed epochs, so reboot readiness remains
+unproven. Follow with fixed activation, positive Codex Remote and HTTPS client
+core/recovery flow. Do not equate stores being wired with full recovery.
+
+## 2026-10-01 bind fixed stores and real FD observations in production
+
+Port forwarding is synchronized as e474466733d75bb78a08e4b3644b97d8f466b437.
+Three Backend checks are confirmed live; inspect their terminal results before
+relying on full exact-head evidence. Continue the actual fixed instances/factory
+below; optional forwarding is deliberately not the completion condition.
+
+The application/server now forwards existing durable ports into registry;
+43 construction/cleanup regressions and 349-file mypy/Ruff pass. Synchronize
+this ownership gap fix on the same Draft/version, then build the fixed Runtime-
+owned storage instances and real cgroup observation factory in _main. Preserve
+explicit epoch/provenance transitions and positive empty cleanup; do not label
+optional-port forwarding alone as recovery-ready. Actual creator evidence is
+already recorded at d313624; no unchanged native probe rerun is needed.
+
+## 2026-10-01 compose durable recovery and fixed activation
+
+Actual creation helpers passed native PID-1 cgroupfs in Deployment
+36766671223/job 110062461054 (three proof booleans true, mount 418).
+d313624 has terminal 24 SUCCESS/two prescribed SKIPPED. Do not rerun unchanged
+checks. Next connect existing Runtime-only Workspace/cgroup stores and a real
+FD-backed attestation factory through application/server/bootstrap/_main;
+provide cleanup/restart evidence, then fixed policy/socket/profile activation.
+Use the existing contracts and current version, preserving exact Stop,
+controller limits, private-key boundaries and no generic shell/filesystem path.
+Continue positive Codex Remote plus HTTPS PC/mobile workflow afterward.
+
+## 2026-10-01 complete delegated lifecycle and activation
+
+The new isolated Deployment PID-1 fixture directly executes actual creation
+helpers under a transient DynamicUser Runtime service (existing unit refusal,
+unique cleanup marker, explicit metadata fixture). Inspect its real cgroupfs
+result before claiming the creation path is host-verified. Continue durable
+ports/activation afterward; a passing probe does not satisfy whole CLI recovery.
+
+Creation wiring is synchronized as 714473bf786c7eaa33084eaa53608153fd3b5d40.
+Its five pending CI jobs are confirmed live. Revalidate exact-head results,
+then proceed with actual helper evidence and the remaining lifecycle ports.
+
+Manifest preparation fa2ae6e passed terminal CI (24 SUCCESS/two prescribed
+skips). Current code wires scoped root/workload creation to the actual Runtime
+resource/provider path, with owner/mount/domain/controller/limit guards and
+101 focused passes/349-file mypy. Synchronize this batch and obtain actual
+Linux helper evidence; ordinary directory fixtures do not prove cgroupfs.
+Then compose durable cgroup/workspace attestation and cleanup/restart behavior,
+and fixed installed policy/socket/profile activation. Missing attestation ports
+in the production builder must not be treated as recovery-ready defaults.
+Continue positive Codex Remote and HTTPS Web/client acceptance within the same
+first version; do not publish a deployable claim from internal green checks.
+
+## 2026-10-01 validate complete issuer then activate bounded resources
+
+Complete issuer is synchronized as fa2ae6e3c25f1e22923bb7aa0401e392c67654cf.
+Its five pending CI jobs are confirmed live. Revalidate this exact head and
+inspect failures rather than restarting unchanged runs, then proceed below.
+
+The key batch a417add has terminal 24 SUCCESS/two prescribed SKIPPED. Complete
+manifest preparation is now wired to its fixed Runtime public pin via the
+installer command, with strict installed-resource observations, all 13 records,
+explicit prefix/link recovery, plan-without-writes and disabled profiles.
+33 focused tests/348-file mypy/Ruff pass. Synchronize the same Draft/version,
+inspect Linux packaging/Backend evidence, then implement delegated root/workload
+allocation and verified policy/socket/profile activation. Keep vendor login,
+positive Codex Remote state, HTTPS trust/client flow and real recovery acceptance
+as required first-version work; never treat prepared manifests as usable release.
+
+## 2026-10-01 connect Runtime public pin to complete manifest issuance
+
+Key initialization software and formatting correction are synchronized as
+a417addf315ed9f1caf037d4ab18af351ef6961c. Its five pending CI jobs are live;
+finish exact-head revalidation without restarting unchanged runs. Then wire
+the existing HostOperations public-pin result into the complete issuer.
+
+591d86f passed terminal exact-head CI (24 SUCCESS/two prescribed SKIPPED).
+Runtime-only fixed initial-key command and installer public-output consumer
+are implemented in the current batch, with 92 regressions/346-file mypy.
+Synchronize this software, inspect its Linux checks, then connect the command
+to the root-owned full v2 manifest issuer using restart-safe physical root
+identity and one immutable helper release. Do not output/read private key bytes
+in Installer/API/Worker, silently rotate lost enrolled keys, or activate profiles
+without complete verified resources. Delegated root/workload creation, positive
+Codex Remote evidence, HTTPS Web and actual PC/mobile CLI/recovery flow remain
+first-version work. No new product version or later functionality is authorized.
+
+## 2026-10-01 issue installable resources using the restart-safe profile
+
+d41974d passed the actual Linux FD check and complete Backend/native/install/
+client jobs. Its Release audit found four virtualenv advisories; the current
+minimal fix pins 21.7.13 and required python-discovery 1.6.0 with verified
+official wheel hashes and three-Python dependency closure. Synchronize and
+inspect its exact-head audit/artifact checks, then continue actual manifest
+issuance/key initialization and activation below. These remain one unfinished
+first-version delivery, not completed product increments.
+
+3b00cb4's real scoped PID-1 probe passed twice, with equal physical identity
+and equal/reused namespace/mount numbers. Backend failed the real FD test on
+an existing mnt_id parser tab-offset bug, corrected in the current follow-up.
+One existing wire fixture also failed; bounded numeric diagnostics are added
+without relaxing its 5ms budget/assertions. Synchronize this correction and
+inspect exact-head Linux results. Continue the issuer/key/delegation/client
+work below once these direct startup checks are established.
+
+The synchronized 530fdf5 startup correction passed all 24 checks/two prescribed
+skips. Current uncommitted code fixes install-time namespace IDs and helper
+current-symlink paths, as recorded in ADR 0011. Commit this correction on the
+same Draft/version and inspect its real Linux FD/two-instance PID-1 evidence.
+Then implement the complete root-owned manifest issuer and Runtime-only key
+initialization, followed by delegated workspace allocation and profile/socket
+activation. Do not publish hand-filled numeric namespace IDs, mixed helper
+releases, plaintext key output, or enabled profiles without validated resources.
+Positive Codex Remote evidence and HTTPS Web/client/core/recovery acceptance
+remain required. Keep the four user-path delivery checklist open; no later
+features, product-version bump or subagents are part of this continuation.
+
+## 2026-09-30 finish installation resources for the fixed production entry
+
+The production self-conflict correction is synchronized as 530fdf51d517da7245eb1cd253c5bb4368ec18f3;
+finish its pending exact-head CI before relying on complete Linux evidence:
+formal binding reads must permit the WAW start whose legacy probe they serve,
+while managed_conflict_states continues to deny overlapping legacy admission.
+Both AgentType integration start/Stop tests pass with explicit vendor fixtures.
+This correction stays within the existing startup scope and product version.
+
+The b966480 Release Candidate audit found three new urllib3 2.7.0 advisories.
+The follow-up pins official 2.8.0 plus independently verified PyPI wheel hash,
+without bypassing audit. Finish the resulting exact-head checks, then continue
+the installer resources below; dependency repair is part of this same version.
+
+The filesystem-v2 _main candidate now composes the existing application using
+fixed identities/resources, fresh fail-closed conflict probes and signal cleanup.
+Focused application and Runtime regressions pass; the previous exact head's
+Backend failure is a confirmed Black mismatch corrected in this batch.
+Continue on Draft #125 and the same product version. Verify this batch's CI,
+then implement complete installer resource issuance/enrollment and delegated
+workspace creation before profile activation. Resolve positive Codex Remote
+STOPPED evidence rather than relabeling UNKNOWN as absence. Follow with the
+accepted HTTPS Web bootstrap and actual PC/mobile core workflow. Current code
+has not been activated on a real host and is not a deployable-version claim.
+Preserve the four-path checklist in RELEASE_ITERATION_PLAN; no later features,
+additional candidate versions or subagents are authorized by this continuation.
+
+## 2026-09-30 direct scoped startup wiring
+
+The real systemd 255 probe passed (36708294115 / 109863711328). Current
+uncommitted Runtime wiring adds the versioned delegated-subtree-v1 policy,
+fixed path, exact template pin, UID/GID and RO/RW mount verification, and the
+enrollment-only drop-in. 135 focused cases / 339-file mypy / Ruff pass.
+88d1e99's native incomplete-DCS exit test failed with 1::; the follow-up keeps
+the expected exit/time bound and adds bounded numeric-only failure diagnostics.
+Commit this wiring on the same Draft, inspect Linux failure evidence, and
+continue complete manifest/enrollment/_main within the four user-path checklist.
+Do not call internal slices complete versions or expand unrelated recovery,
+abstractions, labels, navigation or the 70-item backlog.
+
+## 2026-09-30 resume accepted Web / cgroup architecture A
+
+Owner approved the recommended HTTPS Web profile and 255-compatible scoped
+delegation (“按你说的做”). ADRs 0010/0011 are accepted for software work;
+do not ask the same architecture questions again. Continue the same Draft,
+version and complete deployment goal, with no subagents or later features.
+
+First run scripts/probe-waw-delegation.py through the Deployment Ubuntu 24.04
+root CI fixture. It must prove actual scoped RW/global RO, limits, own-PID
+movement and cleanup under native PID 1. If it fails, use the exact error to
+correct the selected design; never substitute a simulated pass or unrestricted
+cgroup mount. After proof, version and implement the exact Runtime path/policy
+contract, non-secret manifest generation and _main. Then implement the accepted
+Web trust bootstrap and actual PC/mobile core flow. No deployable claim yet.
+
+## 2026-09-30 await the concrete architecture choices
+
+Exact head a091701 on Draft #125 has 24 SUCCESS / two prescribed SKIPPED,
+no pending/failing check. Backend run 36701077638 is terminal successful;
+there is no live CI task left to poll or rerun.
+
+The same unresolved architecture dependency has persisted for three goal
+turns: Owner must answer the already submitted ADR 0010 Web-trust question
+and ADR 0011 server/cgroup choice. Do not treat elapsed time or automatic
+continuation as approval. Full deployment is unfinished; keep the goal's
+complete scope. Stop automatic goal work at this dependency, preserve all
+source/branch/artifact evidence, and resume the same version after answers.
+These two post-CI docs remain local WIP for the next code batch; no version,
+merge or public release is made for a status-only checkpoint.
+
+## 2026-09-30 cgroup deployment prerequisite
+
+9dda54d exact-head CI is now terminal. Keep Draft #125 and the same version;
+the full deployable flow remains incomplete. Current compatibility correction
+rejects private/strict on systemd <257 instead of pretending the directive's
+boolean-era introduction covers those modes. 54 cases passed (one local
+systemd-analyze skip), mypy/Ruff pass. ADR 0011 is Proposed, with an explicit
+Owner choice requested for 255-compatible scoped delegation versus a newer
+private-namespace target. ADR 0010's Web trust question is still pending.
+
+Preserve all code and original checkout WIP. Do not issue/activate a cgroup
+manifest until the selected versioned namespace/path contract and actual
+Runtime observations exist; do not replace independent client trust before
+the Web decision. Non-secret independent work may continue where possible.
+
+## 2026-09-30 next after 9dda54d deployment matrix
+
+Draft #125 head 9dda54d has successful Deployment run 36697969316, including
+the actual root native-helper build/retry and Runtime-owned epoch check.
+Inspect the still-running Backend/Frontend/Release/E2E checks on this same
+head, repair concrete failures, then continue actual manifest generation and
+the production Runtime graph. This snapshot is post-commit local doc WIP;
+carry it into the next code batch instead of restarting CI for a status-only
+commit. Full browser trust decision and core-flow qualification remain open.
+
+## 2026-09-30 explicit staged recovery and fixed epoch candidate
+
+Current PR #125 follow-up adds resume-install/bootstrap --resume for fresh
+pre-activation staging only, with same artifact/transaction and preserved
+account/configuration evidence. It also fixes Runtime-owned epoch bootstrap
+without weakening the generic root-parent writer. Old/unknown/migrated/
+activated/preflight/account-creation/upgrade stages are not auto-resumed.
+Those remaining recovery states remain in the full delivery objective.
+
+03ca4ed completed CI but failed the Release sudo prohibition. Move the root
+fixture into Deployment; keep that assertion and release dependencies intact.
+Local 47 focused cases, 124 broader cases (3 Linux skips and one known Mac
+permission case deselected), 337-file mypy, Ruff and boundaries pass.
+Commit/push this repaired batch to the same Draft; inspect actual Linux
+epoch/root build evidence before continuing manifest generation and _main.
+
+## 2026-09-30 deployment Draft CI repair
+
+Continue PR #125, keeping the same version and Draft state. First checkpoint
+c05cc3d passed actual Linux/root helper build/retry but failed the source
+boundary and later root-polluted configuration read. Current repairs relocate
+fixed execution into HostOperations and isolate root CI data/config/bytecode.
+Local boundary, 37 focused cases (two Linux skips), 336-file mypy and Ruff pass.
+Push the repaired head and inspect its Linux CI. Do not rerun an unchanged
+failed head or call a partial installer a deployable version.
+
+## 2026-09-30 Deliver the Owner's self-deployed PC/mobile version
+
+Use DEPLOYABLE_RELEASE_PLAN. Owner will run the final server installer
+themselves; do not ask again for an SSH deployment target. Finish the
+current codex/r12-deployable-runtime branch from main 19f8c51.
+Fixed enrollment publication/plan/recovery and interpreter selection are
+uncommitted software WIP, with 59 focused tests, two selection tests,
+333-file mypy and Ruff passes. No deployment or full core-flow claim follows.
+
+The pinned downloader is now local WIP: fixed version/digest, HTTPS-only fixed
+repository source, bounded safe extraction, verify/plan before optional apply.
+Downloader/interpreter/publication tests passed 39 cases with local fixtures;
+no Linux install or published URL follows from this result.
+Native helper generation is now wired before activation and recorded with an
+exact source/binary ledger; installed-state and recovery/retention readers
+validate it explicitly. Linux/root actual-build and failed-build retry tests
+are added to CI; local 145 passes plus one existing Mac permission failure
+and two Linux skips are not target evidence. Full mypy passed 336 files.
+Next close explicit whole-installer staged recovery, then generate actual
+trusted manifests and wire the single production _main graph.
+Close the positive Codex Remote conflict-state source without
+turning UNKNOWN into ABSENT. Owner selected PC/mobile browsers first; ADR 0010
+is a concrete Proposed Web trust profile awaiting architecture authorization.
+Preserve the existing managed gate until that decision and implementation.
+No subagent was started.
+
+The eventual version is fixed only when its deployable software/installation
+scope is complete; do not bump rc numbers for these debugging checkpoints.
+
 ## 2026-09-30 Close rc30 protocol-check failure
 
 `64f3e69` passed dependency audits and all other jobs, but the complete

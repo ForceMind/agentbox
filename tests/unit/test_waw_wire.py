@@ -215,7 +215,15 @@ def raw_json(kind: F, text: str | bytes, seq: int = 1) -> bytes:
 
 
 def encoded(kind: F, leg: Leg, seq: int) -> bytes:
-    return encode_wire_frame(kind, leg, payload(kind, leg), seq)
+    started = time.thread_time_ns()
+    try:
+        return encode_wire_frame(kind, leg, payload(kind, leg), seq)
+    except WireError as error:
+        error.add_note(
+            f"fixture encode failed: type={int(kind)},hop_sequence={seq},"
+            f"cpu_ns={time.thread_time_ns() - started}"
+        )
+        raise
 
 
 @pytest.mark.parametrize("leg", list(Leg))

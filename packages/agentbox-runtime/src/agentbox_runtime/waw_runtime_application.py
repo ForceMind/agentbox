@@ -21,12 +21,14 @@ from agentbox_runtime.server import (
 )
 from agentbox_runtime.waw_activation import WAWActivatedSockets
 from agentbox_runtime.waw_bootstrap import _build_waw_encrypted_stream_server
+from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
 from agentbox_runtime.waw_encrypted_server import WAWEncryptedServer
 from agentbox_runtime.waw_encrypted_stream import WAWEncryptedRegistry
 from agentbox_runtime.waw_epoch import WAWRuntimeEpochStore
 from agentbox_runtime.waw_fixed_transport import WAWVerifiedExecutionAuthority
-from agentbox_runtime.waw_lifecycle import BindingDigestFactory
+from agentbox_runtime.waw_lifecycle import BindingDigestFactory, CgroupAttestationFactory
 from agentbox_runtime.waw_runtime_executor import WAWSupervisorExecutor
+from agentbox_runtime.waw_workspace_attestation import WAWWorkspaceAttestationStore
 from agentbox_runtime.workspace import ProjectWorkspaceManager
 
 
@@ -274,6 +276,17 @@ class WAWRuntimeApplication:
     def shutdown_evidence(self) -> WAWRuntimeShutdownEvidence | None:
         return self._shutdown_evidence
 
+    @property
+    def executor(self) -> WAWSupervisorExecutor:
+        """The one owned executor for Runtime-local conflict/binding probes."""
+
+        return self._composition.executor
+
+    async def serve_forever(self) -> None:
+        if self.state is not WAWRuntimeApplicationState.RUNNING:
+            raise RuntimeError("WAW Runtime application is not running")
+        await self._runtime.serve_forever()
+
     async def start(self, *, create_development_parent: bool = False) -> None:
         with self._state_lock:
             if self._state is WAWRuntimeApplicationState.RUNNING:
@@ -483,6 +496,9 @@ async def build_waw_runtime_application_from_filesystem_v2(
     binding_digest_factory: BindingDigestFactory | None = None,
     project_manager: ProjectWorkspaceManager | None = None,
     capability_collector: RuntimeCapabilityCollector | None = None,
+    attestation_store: WAWWorkspaceAttestationStore | None = None,
+    cgroup_attestation_store: WAWCgroupAttestationStore | None = None,
+    cgroup_attestation_factory: CgroupAttestationFactory | None = None,
 ) -> WAWRuntimeApplication:
     """Compose one epoch and one control/stream/legacy Runtime application."""
 
@@ -535,6 +551,9 @@ async def build_waw_runtime_application_from_filesystem_v2(
             binding_digest_factory=binding_digest_factory,
             project_manager=project_manager,
             capability_collector=capability_collector,
+            attestation_store=attestation_store,
+            cgroup_attestation_store=cgroup_attestation_store,
+            cgroup_attestation_factory=cgroup_attestation_factory,
         )
         cleanup.runtime_server = runtime_server
         composition = runtime_server.waw_fixed_runtime

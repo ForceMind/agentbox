@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -16,6 +17,39 @@ from agentbox_runtime.waw_cgroup_attestation import (
     verify_waw_cgroup_attestation_context,
     waw_cgroup_attestation_sha256,
 )
+
+
+def test_absence_has_distinct_schema_and_no_fictitious_workspace_inode() -> None:
+    name = "ws-" + "a" * 64 + "-g1"
+    absent = replace(
+        _record(),
+        workspace_presence="absent",
+        workspace_relative_path=name,
+        workload_relative_path=name + "/workload",
+        workspace_device="absent",
+        workspace_inode="absent",
+        workload_device="absent",
+        workload_inode="absent",
+        attachment_leaves=(),
+        last_frozen="0",
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    raw = encode_waw_cgroup_attestation(absent)
+    assert json.loads(raw)["schema_version"] == "waw-cgroup-absence-attestation-v2"
+    assert decode_waw_cgroup_attestation(raw) == absent
+    changes: list[dict[str, Any]] = [
+        {"workspace_inode": "42"},
+        {"cleanup_state": "LIVE"},
+        {"workspace_relative_path": "unrelated"},
+    ]
+    for change in changes:
+        with pytest.raises(WAWCgroupAttestationError):
+            encode_waw_cgroup_attestation(replace(absent, **change))
+    downgraded = json.loads(raw)
+    downgraded["schema_version"] = "waw-cgroup-attestation-v1"
+    with pytest.raises(WAWCgroupAttestationError):
+        decode_waw_cgroup_attestation(json.dumps(downgraded).encode())
 
 
 def _limits() -> WAWCgroupLimits:

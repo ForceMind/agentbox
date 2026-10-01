@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import grp
 import importlib.resources
+import json
 import os
 import pwd
 import re
 import shutil
+import signal
 import socket
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -197,6 +200,25 @@ class HostOperations:
             raise HostMutationError("AgentBox identity no longer matches its installation receipt")
         return observed
 
+    def verify_identities(self, expected: IdentityFacts) -> None:
+        """Read the receipt-bound identity set without repairing memberships."""
+        if not self.real_host:
+            if expected != IdentityFacts(19001, 19001, 19002, 19003):
+                raise HostMutationError("staged identity evidence does not match")
+            return
+        self.require_root()
+        try:
+            users = {name: pwd.getpwnam(name) for name in ("agentbox", "agentbox-runtime")}
+            groups = {
+                name: grp.getgrnam(name)
+                for name in ("agentbox", "agentbox-runtime", "agentbox-runtime-ipc")
+            }
+        except KeyError as exc:
+            raise HostMutationError("staged identity set is incomplete") from exc
+        self._validate_existing_identities(users, groups, expected)
+        if set(groups["agentbox-runtime-ipc"].gr_mem) != {"agentbox", "agentbox-runtime"}:
+            raise HostMutationError("staged IPC group membership changed")
+
     @staticmethod
     def _validate_existing_identities(
         users: Mapping[str, object],
@@ -266,6 +288,102 @@ class HostOperations:
     def daemon_reload(self) -> None:
         if self.real_host:
             self._run(("/usr/bin/systemctl", "daemon-reload"))
+
+    def require_waw_policy_quiescence(self) -> None:
+        """Fixed read-only guard; never inspect Runtime HOME or credentials."""
+        if not self.real_host:
+            return
+        try:
+            self._require_waw_policy_quiescence()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HostMutationError("WAW policy quiescence could not be verified") from exc
+
+    def _require_waw_policy_quiescence(self) -> None:
+        self.require_root()
+        runtime_uid, _ = self.owner_ids("agentbox-runtime", "agentbox-runtime")
+        if runtime_uid == 0 or sys.platform != "linux":
+            raise HostMutationError("WAW policy preparation requires a non-root Linux Runtime")
+        for unit in (
+            "agentbox-api.service",
+            "agentbox-worker.service",
+            "agentbox-runtime.service",
+            *WAW_SOCKET_UNIT_NAMES,
+        ):
+            result = subprocess.run(  # noqa: S603 - fixed read-only systemd query
+                ("/usr/bin/systemctl", "show", unit, "--property=ActiveState", "--value"),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+                env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+            )
+            if result.returncode != 0 or result.stdout.strip() != "inactive":
+                raise HostMutationError(
+                    "stop AgentBox services and WAW sockets before policy preparation"
+                )
+        deadline = time.monotonic() + 5
+        with os.scandir("/proc") as entries:
+            count = 0
+            for entry in entries:
+                if re.fullmatch(r"[1-9][0-9]{0,9}", entry.name) is None:
+                    continue
+                count += 1
+                if count > 65536 or time.monotonic() >= deadline:
+                    raise HostMutationError("Runtime process visibility is incomplete")
+                try:
+                    descriptor = os.open(
+                        f"/proc/{entry.name}/status", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+                    )
+                except FileNotFoundError:
+                    continue
+                try:
+                    try:
+                        raw = os.read(descriptor, 65537)
+                    except ProcessLookupError:
+                        continue
+                finally:
+                    os.close(descriptor)
+                lines = [
+                    line.split()[1:] for line in raw.splitlines() if line.startswith(b"Uid:\t")
+                ]
+                if (
+                    len(raw) > 65536
+                    or len(lines) != 1
+                    or len(lines[0]) != 4
+                    or any(not value.isdigit() for value in lines[0])
+                ):
+                    raise HostMutationError("Runtime process visibility is incomplete")
+                if runtime_uid in {int(value) for value in lines[0]}:
+                    raise HostMutationError(
+                        "Runtime processes remain; policy preparation is fenced"
+                    )
+
+    def start_waw_services(self) -> None:
+        """Fixed ordered activation; Root Helper is outside the WAW path."""
+        if not self.real_host:
+            return
+        if self._installed_waw_socket_units() != WAW_SOCKET_UNIT_NAMES:
+            raise HostMutationError("both exact WAW socket units are required")
+        self.daemon_reload()
+        self._run(("/usr/bin/systemctl", "enable", "--now", *WAW_SOCKET_UNIT_NAMES))
+        self._run(("/usr/bin/systemctl", "enable", "--now", "agentbox-runtime.service"))
+        self._run(
+            (
+                "/usr/bin/systemctl",
+                "enable",
+                "--now",
+                "agentbox-worker.service",
+                "agentbox-api.service",
+            )
+        )
+        for unit in (
+            *WAW_SOCKET_UNIT_NAMES,
+            "agentbox-runtime.service",
+            "agentbox-worker.service",
+            "agentbox-api.service",
+        ):
+            self._run(("/usr/bin/systemctl", "is-active", "--quiet", unit), timeout=10)
 
     def enable_and_start(self) -> None:
         if not self.real_host:
@@ -448,7 +566,9 @@ class HostOperations:
             if executable.is_file() and not executable.is_symlink():
                 return
             raise HostMutationError("release Python environment is incomplete")
-        self._run(("/usr/bin/python3", "-m", "venv", str(venv)), timeout=180)
+        if sys.version_info[:2] not in {(3, 11), (3, 12), (3, 13)}:
+            raise HostMutationError("release environment requires Python 3.11, 3.12 or 3.13")
+        self._run((sys.executable, "-m", "venv", str(venv)), timeout=180)
         pip = venv / "bin/pip"
         try:
             result = subprocess.run(  # noqa: S603 - verified release wheel and fixed argv
@@ -474,6 +594,133 @@ class HostOperations:
         if result.returncode != 0:
             raise HostMutationError("release Python environment installation failed")
         self._run((str(venv / "bin/agentbox"), "--version"), timeout=30)
+
+    def prepare_waw_helpers(self, release: Path) -> None:
+        if not self.real_host:
+            return
+        from agentbox_installer.waw_native_install import (
+            WAWNativeInstallError,
+            prepare_waw_helpers,
+        )
+
+        try:
+            prepare_waw_helpers(release)
+        except WAWNativeInstallError as exc:
+            raise HostMutationError("WAW native helpers could not be prepared") from exc
+
+    @staticmethod
+    def _run_waw_build_command(release: Path, output: Path, *, check: bool) -> None:
+        if type(check) is not bool:
+            raise HostMutationError("fixed WAW native action is invalid")
+        script = "check-waw-native.py" if check else "build-waw-native.py"
+        arguments = ("--no-build", "--binary-dir") if check else ("--output",)
+        argv = (
+            sys.executable,
+            "-I",
+            str(release / "scripts" / script),
+            "--cc",
+            "/usr/bin/cc",
+            *arguments,
+            str(output),
+        )
+        try:
+            # The process group owns compiler children as well as the script.
+            with subprocess.Popen(
+                argv,
+                cwd=release,
+                env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            ) as process:
+                try:
+                    code = process.wait(timeout=180)
+                except BaseException:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=10)
+                    raise
+                if code != 0:
+                    raise HostMutationError("fixed WAW native action failed")
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise HostMutationError("fixed WAW native action failed to execute") from exc
+
+    def initialize_waw_runtime_key(self, release: Path, *, recover: bool = False) -> str:
+        """Run the fixed non-root key owner; consume public metadata only."""
+
+        if (
+            not self.real_host
+            or type(recover) is not bool
+            or not release.is_absolute()
+            or release.parent != Path("/opt/agentbox/releases")
+            or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:(?:a|b|rc)[0-9]+)?", release.name) is None
+        ):
+            raise HostMutationError(
+                "fixed Runtime key initialization requires an installed release"
+            )
+        argv = (
+            "/usr/sbin/runuser",
+            "-u",
+            "agentbox-runtime",
+            "--",
+            str(release / "venv/bin/python"),
+            "-I",
+            "-m",
+            "agentbox_runtime.waw_key_initialize",
+            *(("--recover",) if recover else ()),
+        )
+        try:
+            with subprocess.Popen(
+                argv,
+                cwd=release,
+                env={
+                    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG": "C.UTF-8",
+                    "HOME": "/home/agentbox-runtime",
+                },
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            ) as process:
+                try:
+                    stdout, _stderr = process.communicate(timeout=30)
+                except BaseException:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=10)
+                    raise
+                if process.returncode != 0 or not isinstance(stdout, bytes) or len(stdout) > 512:
+                    raise HostMutationError("Runtime key initialization failed")
+
+            def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+                result: dict[str, object] = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate field")
+                    result[key] = value
+                return result
+
+            result = json.loads(stdout.decode("ascii"), object_pairs_hook=closed_object)
+            if (
+                not isinstance(result, dict)
+                or set(result) != {"schema_version", "runtime_attestation_x25519_fingerprint"}
+                or result["schema_version"] != "agentbox-runtime-key-public.v1"
+            ):
+                raise ValueError("invalid public key record")
+            fingerprint = result["runtime_attestation_x25519_fingerprint"]
+            if (
+                type(fingerprint) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+                or fingerprint == "0" * 64
+            ):
+                raise ValueError("invalid public key fingerprint")
+            return fingerprint
+        except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
+            raise HostMutationError(
+                "Runtime key initialization public record is unavailable"
+            ) from None
 
     def install_packages(self, family: PackageFamily, packages: tuple[str, ...]) -> None:
         if not self.real_host or not packages:

@@ -358,9 +358,38 @@ def _validate_entry(data: Mapping[str, Any], expected: ExecutablePolicyV1) -> No
         or data["max_bytes"] != expected.max_bytes
         or data["version_identity"] != expected.version_identity
         or data["version_probe_id"] != expected.version_probe_id
-        or (expected.fixed_path is not None and path != expected.fixed_path)
+        or (
+            expected.fixed_path is not None
+            and path != expected.fixed_path
+            and _helper_release_root(path, expected) is None
+        )
     ):
         raise WAWProcessProfileError("executable entry does not match the fixed policy")
+
+
+def _helper_release_root(path: str, policy: ExecutablePolicyV1) -> str | None:
+    """The exact three helper names under one immutable installer release."""
+
+    if policy.kind not in {"pane_bootstrap", "bridge", "attach_supervisor"}:
+        return None
+    assert policy.fixed_path is not None
+    name = policy.fixed_path.rsplit("/", 1)[1]
+    match = re.fullmatch(
+        r"(/opt/agentbox/releases/[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}"
+        r"(?:(?:a|b|rc)[0-9]{1,6})?)/libexec/" + re.escape(name),
+        path,
+    )
+    return None if match is None else match.group(1)
+
+
+def _require_one_helper_release(entries: list[dict[str, Any]]) -> None:
+    roots = {
+        _helper_release_root(entry["path"], policy) or "legacy-current"
+        for entry, policy in zip(entries, EXECUTABLE_POLICIES_V1, strict=True)
+        if policy.kind in {"pane_bootstrap", "bridge", "attach_supervisor"}
+    }
+    if len(roots) != 1:
+        raise WAWProcessProfileError("native helpers must belong to one installed release")
 
 
 def encode_executable_inventory_v1(
@@ -380,6 +409,7 @@ def encode_executable_inventory_v1(
         encoded.append(data)
     if len({entry["path"] for entry in encoded}) != len(encoded):
         raise WAWProcessProfileError("executable inventory paths must be distinct")
+    _require_one_helper_release(encoded)
     return _canonical({"schema_version": EXECUTABLE_INVENTORY_SCHEMA_V1, "executables": encoded})
 
 
@@ -394,6 +424,7 @@ def decode_executable_inventory_v1(raw: bytes) -> ExecutableInventoryV1:
         decoded.append(ExecutableInventoryEntryV1(**data))
     if len({entry.path for entry in decoded}) != len(decoded):
         raise WAWProcessProfileError("executable inventory paths must be distinct")
+    _require_one_helper_release([_entry_data(entry) for entry in decoded])
     return ExecutableInventoryV1(tuple(decoded))
 
 

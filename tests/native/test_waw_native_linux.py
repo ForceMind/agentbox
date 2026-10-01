@@ -568,7 +568,32 @@ def _wait_for_exact_pane_death(session: str, exit_code: int) -> None:
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            pytest.fail(f"exact pane did not exit as expected: observed={observed!r}")
+            # Bounded numeric-only metadata distinguishes tmux publication
+            # uncertainty from a concrete wrong exit. Never capture pane text,
+            # argv, environments or credential-bearing output for diagnostics.
+            diagnostic = subprocess.run(
+                [
+                    "/usr/bin/tmux",
+                    "-S",
+                    str(TMUX_SOCKET),
+                    "list-panes",
+                    "-t",
+                    f"={session}:0.0",
+                    "-F",
+                    "#{pane_pid}:#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+            metadata = diagnostic.stdout.strip()
+            if len(metadata) > 96 or any(char not in "0123456789:-" for char in metadata):
+                metadata = "unavailable"
+            pytest.fail(
+                f"exact pane did not exit as expected: observed={observed!r}; "
+                f"numeric_metadata={metadata!r}; query_exit={diagnostic.returncode}"
+            )
         result = subprocess.run(
             [
                 "/usr/bin/tmux",

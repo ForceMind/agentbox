@@ -21,9 +21,14 @@ from agentbox_runtime.waw_executable import (
 from agentbox_runtime.waw_fixed_transport import (
     WAWVerifiedExecutionAuthority,
     WAWVerifiedLaunchHandleFactory,
+    _open_scoped_workspace_root,
     _verify_delegate_root,
 )
-from agentbox_runtime.waw_manifest_codecs import CrossManifestPinV2
+from agentbox_runtime.waw_manifest_codecs import (
+    SCOPED_CGROUP_PROTECTION_V1,
+    CrossManifestPinV2,
+    cgroup_delegate_root_path,
+)
 
 _RESOURCE_TOKEN = object()
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
@@ -202,8 +207,10 @@ def build_waw_production_resources(
             except OSError:
                 cleanup_uncertain = True
                 raise
-        delegate_root = _open_role(
-            f"/sys/fs/cgroup/{manifest.cgroup.delegate_subgroup}", directory=True
+        delegate_root = (
+            _open_scoped_workspace_root(authority)
+            if manifest.cgroup.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1
+            else _open_role(cgroup_delegate_root_path(manifest.cgroup), directory=True)
         )
         _verify_delegate_root(delegate_root, authority)
         return WAWProductionResources(

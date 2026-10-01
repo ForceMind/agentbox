@@ -44,6 +44,55 @@ def test_migration_injects_fixed_production_database_url(
     )
 
 
+@pytest.mark.parametrize("version", [(3, 11), (3, 12), (3, 13)])
+def test_release_environment_uses_selected_bootstrap_interpreter(
+    tmp_path: Path, monkeypatch: MonkeyPatch, version: tuple[int, int]
+) -> None:
+    release = tmp_path / "release"
+    wheelhouse = release / "wheelhouse"
+    wheelhouse.mkdir(parents=True)
+    (wheelhouse / "agentbox-0.3.0rc30-py3-none-any.whl").write_bytes(b"fixture")
+    monkeypatch.setattr("agentbox_installer.host.sys.version_info", version)
+    monkeypatch.setattr("agentbox_installer.host.sys.executable", "/usr/bin/python3.11")
+    commands: list[tuple[str, ...]] = []
+    host = HostOperations(real_host=True)
+    monkeypatch.setattr(host, "_run", lambda argv, **_kwargs: commands.append(argv))
+    installs: list[tuple[str, ...]] = []
+
+    def install(argv: tuple[str, ...], **kwargs: object) -> SimpleNamespace:
+        installs.append(argv)
+        assert kwargs["env"] == {
+            "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG": "C.UTF-8",
+        }
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("agentbox_installer.host.subprocess.run", install)
+    host.prepare_release_environment(release)
+
+    assert commands[0] == ("/usr/bin/python3.11", "-m", "venv", str(release / "venv"))
+    assert "--no-index" in installs[0]
+    assert commands[-1] == (str(release / "venv/bin/agentbox"), "--version")
+
+
+@pytest.mark.parametrize("version", [(3, 9), (3, 10), (3, 14)])
+def test_release_environment_rejects_unsupported_interpreter_before_mutation(
+    tmp_path: Path, monkeypatch: MonkeyPatch, version: tuple[int, int]
+) -> None:
+    release = tmp_path / "release"
+    wheelhouse = release / "wheelhouse"
+    wheelhouse.mkdir(parents=True)
+    (wheelhouse / "agentbox-0.3.0rc30-py3-none-any.whl").write_bytes(b"fixture")
+    monkeypatch.setattr("agentbox_installer.host.sys.version_info", version)
+    host = HostOperations(real_host=True)
+    monkeypatch.setattr(host, "_run", lambda *_args, **_kwargs: pytest.fail("host mutated"))
+
+    with pytest.raises(HostMutationError, match="requires Python"):
+        host.prepare_release_environment(release)
+
+    assert not (release / "venv").exists()
+
+
 @pytest.mark.parametrize(
     "injection",
     [
@@ -143,3 +192,33 @@ def test_receipt_bound_service_accounts_require_exact_shape(
     users["agentbox-runtime"].pw_dir = "/home/unrelated"
     with pytest.raises(HostMutationError, match="does not match its receipt"):
         host.ensure_identities(expected)
+
+
+def test_staged_identity_verification_is_read_only_and_rejects_membership_drift(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("agentbox_installer.host.os.geteuid", lambda: 0)
+    users = {
+        "agentbox": SimpleNamespace(
+            pw_uid=993, pw_gid=994, pw_dir="/var/lib/agentbox", pw_shell="/usr/sbin/nologin"
+        ),
+        "agentbox-runtime": SimpleNamespace(
+            pw_uid=992, pw_gid=995, pw_dir="/home/agentbox-runtime", pw_shell="/usr/sbin/nologin"
+        ),
+    }
+    groups = {
+        "agentbox": SimpleNamespace(gr_gid=994, gr_mem=[]),
+        "agentbox-runtime": SimpleNamespace(gr_gid=995, gr_mem=[]),
+        "agentbox-runtime-ipc": SimpleNamespace(
+            gr_gid=991, gr_mem=["agentbox", "agentbox-runtime"]
+        ),
+    }
+    monkeypatch.setattr("agentbox_installer.host.pwd.getpwnam", users.__getitem__)
+    monkeypatch.setattr("agentbox_installer.host.grp.getgrnam", groups.__getitem__)
+    host = HostOperations(real_host=True)
+    monkeypatch.setattr(host, "_run", lambda *_args, **_kwargs: pytest.fail("identity mutation"))
+    expected = IdentityFacts(993, 994, 992, 991)
+    host.verify_identities(expected)
+    groups["agentbox-runtime-ipc"].gr_mem.append("unrelated")
+    with pytest.raises(HostMutationError, match="membership changed"):
+        host.verify_identities(expected)

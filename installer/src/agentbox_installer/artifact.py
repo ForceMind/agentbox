@@ -350,6 +350,7 @@ def verify_release(
     manifest: ReleaseManifest | None = None,
     *,
     allow_generated_venv: bool = False,
+    allow_generated_native: bool = False,
 ) -> ReleaseManifest:
     try:
         root_details = release.lstat()
@@ -358,10 +359,23 @@ def verify_release(
     if stat.S_ISLNK(root_details.st_mode) or not stat.S_ISDIR(root_details.st_mode):
         raise ArtifactError("release root is unsafe")
     actual = manifest or load_manifest(release)
+    generated_native: set[str] = set()
+    if allow_generated_native:
+        from agentbox_installer.waw_native_install import (
+            WAWNativeInstallError,
+            verify_installed_waw_helpers,
+        )
+
+        try:
+            generated_native = verify_installed_waw_helpers(release, actual.files)
+        except WAWNativeInstallError as exc:
+            raise ArtifactError("installed WAW native helpers are invalid") from exc
     observed: set[str] = set()
     observed_executables: set[str] = set()
     for path in release.rglob("*"):
         relative = path.relative_to(release).as_posix()
+        if relative in generated_native:
+            continue
         if allow_generated_venv and (relative == "venv" or relative.startswith("venv/")):
             continue
         details = path.lstat()

@@ -85,7 +85,11 @@ def _harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Harness:
     object.__setattr__(
         manifest, "project_root", SimpleNamespace(configured_root="/srv/agentbox/projects")
     )
-    object.__setattr__(manifest, "cgroup", SimpleNamespace(delegate_subgroup="agentbox-waw"))
+    object.__setattr__(
+        manifest,
+        "cgroup",
+        SimpleNamespace(delegate_subgroup="agentbox-waw", protect_control_groups="private"),
+    )
     authority = object.__new__(WAWVerifiedExecutionAuthority)
     object.__setattr__(authority, "_manifest", manifest)
     inventory = _Inventory()

@@ -154,7 +154,7 @@ def _verified_release(path: Path) -> bool:
     if not valid_version(path.name) or path.is_symlink() or not path.is_dir():
         return False
     try:
-        manifest = verify_release(path, allow_generated_venv=True)
+        manifest = verify_release(path, allow_generated_venv=True, allow_generated_native=True)
     except (ArtifactError, OSError):
         return False
     return manifest.version == path.name

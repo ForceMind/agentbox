@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import grp
 import hashlib
 import hmac
@@ -9,7 +10,8 @@ import os
 import pwd
 import stat
 import threading
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -203,6 +205,19 @@ class _WAWRuntimeStaticKey:
                 ):
                     raise WAWRuntimeStaticKeyError("Runtime static key changed after binding")
                 return raw
+            except BaseException:
+                self._poison()
+                raise
+
+    def public_fingerprint(self) -> str:
+        """Return only the public enrollment fingerprint as the key owner."""
+
+        with self._lock:
+            self._require_owned()
+            if not self._preflight_complete:
+                raise WAWRuntimeStaticKeyError("Runtime static key preflight is incomplete")
+            try:
+                return _public_fingerprint(self._read_validated_key())
             except BaseException:
                 self._poison()
                 raise
@@ -402,6 +417,8 @@ def _open_fixed_key(
     runtime_gid: int,
     ancestor_uid: int,
     syscalls: _StaticKeySyscalls,
+    initialize: bool = False,
+    recover: bool = False,
 ) -> _WAWRuntimeStaticKey:
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
     key_flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
@@ -445,6 +462,38 @@ def _open_fixed_key(
             )
             directories.append(_Directory(child_fd, component, index, role, opened))
             parent_fd = child_fd
+        if initialize:
+
+            def revalidate_directories() -> None:
+                for item in directories:
+                    observed = _Identity.capture(syscalls.fstat(item.fd))
+                    _validate_directory_identity(
+                        observed,
+                        role=item.role,
+                        runtime_uid=runtime_uid,
+                        runtime_gid=runtime_gid,
+                        ancestor_uid=ancestor_uid,
+                    )
+                    if observed.stable_directory_identity != item.opened.stable_directory_identity:
+                        raise WAWRuntimeStaticKeyError("Runtime key initialization parent changed")
+                    if item.parent_index is not None and item.name is not None:
+                        entry = _Identity.capture(
+                            syscalls.stat(item.name, dir_fd=directories[item.parent_index].fd)
+                        )
+                        if entry.stable_directory_identity != observed.stable_directory_identity:
+                            raise WAWRuntimeStaticKeyError(
+                                "Runtime key initialization parent entry changed"
+                            )
+
+            _prepare_initial_key(
+                parent_fd,
+                runtime_uid,
+                runtime_gid,
+                runtime_root_fd=directories[-2].fd,
+                public_anchor_path=root / "usr/share/agentbox/waw/api-host-anchor.v2.json",
+                recover=recover,
+                revalidate=revalidate_directories,
+            )
         key_entry = _Identity.capture(syscalls.stat(_KEY_FILENAME, dir_fd=parent_fd))
         _validate_key_identity(key_entry, runtime_uid, runtime_gid)
         key_fd = syscalls.open(_KEY_FILENAME, key_flags, dir_fd=parent_fd)
@@ -479,6 +528,115 @@ def _open_fixed_key(
         raise WAWRuntimeStaticKeyConstructionCleanupError(failure) from failure
     assert failure is not None
     raise failure
+
+
+def _prepare_initial_key(
+    directory_fd: int,
+    runtime_uid: int,
+    runtime_gid: int,
+    *,
+    runtime_root_fd: int,
+    public_anchor_path: Path,
+    recover: bool,
+    revalidate: Callable[[], None],
+) -> None:
+    """Create-only Runtime key publication; never replace an enrolled key."""
+
+    pending = "static-x25519.initial-v1.pending"
+    fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        revalidate()
+
+        def inspect(name: str) -> os.stat_result | None:
+            try:
+                return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return None
+
+        final = inspect(_KEY_FILENAME)
+        staged = inspect(pending)
+        if final is not None:
+            if staged is None:
+                _validate_key_identity(_Identity.capture(final), runtime_uid, runtime_gid)
+                return
+            if not recover or (final.st_dev, final.st_ino) != (staged.st_dev, staged.st_ino):
+                raise WAWRuntimeStaticKeyError("Runtime key publication requires recovery")
+            # Only the exact create-only hardlink pair can be completed.
+            for facts in (final, staged):
+                if facts.st_nlink != 2:
+                    raise WAWRuntimeStaticKeyError("Runtime key recovery link count is invalid")
+                _validate_key_identity(
+                    replace(_Identity.capture(facts), links=1), runtime_uid, runtime_gid
+                )
+            revalidate()
+            os.unlink(pending, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+            return
+        # Losing an enrolled key never permits silent generation/rotation.
+        for path, parent in (
+            ("runtime-host-installation.v2.json", runtime_root_fd),
+            ("vendor-enrollment.v1.json", runtime_root_fd),
+            (str(public_anchor_path), None),
+        ):
+            try:
+                os.stat(path, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise WAWRuntimeStaticKeyError(
+                "Missing enrolled Runtime key requires operator recovery"
+            )
+        if staged is not None:
+            if (
+                not recover
+                or not stat.S_ISREG(staged.st_mode)
+                or staged.st_uid != runtime_uid
+                or staged.st_gid != runtime_gid
+                or stat.S_IMODE(staged.st_mode) != 0o600
+                or staged.st_nlink != 1
+                or not 0 <= staged.st_size <= _KEY_BYTES
+            ):
+                raise WAWRuntimeStaticKeyError("Runtime pending key is unsafe or needs recovery")
+            if staged.st_size < _KEY_BYTES:
+                # No final key or public enrollment exists, so a partial,
+                # unpublished private prefix can be regenerated explicitly.
+                revalidate()
+                os.unlink(pending, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+                staged = None
+        if staged is None:
+            revalidate()
+            fd = os.open(
+                pending,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=directory_fd,
+            )
+            try:
+                raw = os.urandom(_KEY_BYTES)
+                offset = 0
+                while offset < len(raw):
+                    written = os.write(fd, raw[offset:])
+                    if written <= 0:
+                        raise WAWRuntimeStaticKeyError("Runtime key write is incomplete")
+                    offset += written
+                os.fchmod(fd, 0o600)
+                os.fsync(fd)
+                _validate_key_identity(_Identity.capture(os.fstat(fd)), runtime_uid, runtime_gid)
+            finally:
+                os.close(fd)
+        revalidate()
+        os.link(
+            pending,
+            _KEY_FILENAME,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        os.fsync(directory_fd)
+        os.unlink(pending, dir_fd=directory_fd)
+        os.fsync(directory_fd)
+    finally:
+        fcntl.flock(directory_fd, fcntl.LOCK_UN)
 
 
 def _safe_construction_failure(failure: BaseException) -> BaseException:

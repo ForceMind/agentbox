@@ -18,6 +18,7 @@ import math
 import os
 import platform
 import pty
+import re
 import select
 import signal
 import socket
@@ -47,9 +48,13 @@ from agentbox_runtime.waw_managed_command import (
     validate_managed_command,
 )
 from agentbox_runtime.waw_manifest_codecs import (
+    RUNTIME_NAMESPACE_BINDING_V1,
+    SCOPED_CGROUP_PROTECTION_V1,
+    SCOPED_CGROUP_SERVICE_ROOT_V1,
     CgroupDelegationManifest,
     CrossManifestPinV2,
     ProjectRootManifest,
+    cgroup_delegate_root_path,
 )
 from agentbox_runtime.waw_process_inspector import (
     FixedAttachmentPort,
@@ -285,11 +290,14 @@ class LinuxCgroupControlHandle:
         authority: WAWVerifiedExecutionAuthority,
         identity: FixedProcessIdentity,
         delegate_root: int,
+        *,
+        create_workload: bool = False,
     ) -> LinuxCgroupControlHandle:
         if (
             platform.system() != "Linux"
             or type(authority) is not WAWVerifiedExecutionAuthority
             or type(identity) is not FixedProcessIdentity
+            or type(create_workload) is not bool
             or not authority.authorizes(identity)
         ):
             raise RuntimeOperationError(
@@ -300,6 +308,8 @@ class LinuxCgroupControlHandle:
         _role_fd(delegate_root, "directory")
         mount_identity = _verify_delegate_root(delegate_root, authority)
         workspace_name = f"ws-{identity.workspace_hash}-g{identity.generation}"
+        if create_workload:
+            _create_bound_workload_cgroup(delegate_root, workspace_name, authority)
         workspace = _open_relative_directory(
             delegate_root,
             workspace_name,
@@ -2108,13 +2118,28 @@ def _verify_delegate_root(
             "RUNTIME_UNAVAILABLE", "Delegated cgroup path is unavailable", category="unavailable"
         ) from exc
     device = f"{os.major(details.st_dev)}:{os.minor(details.st_dev)}"
-    expected_path = f"/sys/fs/cgroup/{manifest.delegate_subgroup}"
+    expected_path = cgroup_delegate_root_path(manifest)
     mount_id = _fd_mount_id(descriptor)
+    scoped_owner_invalid = manifest.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1 and (
+        not stat.S_ISDIR(details.st_mode)
+        or os.geteuid() == 0
+        or details.st_uid != os.geteuid()
+        or details.st_gid != os.getegid()
+        or details.st_mode & 0o022
+    )
     if (
         path != expected_path
         or path.endswith(" (deleted)")
-        or device != manifest.cgroup_mount_device
-        or not _mountinfo_matches_cgroup(mount_id, manifest)
+        or (
+            manifest.cgroup_mount_device != RUNTIME_NAMESPACE_BINDING_V1
+            and device != manifest.cgroup_mount_device
+        )
+        or not (
+            _mountinfo_matches_cgroup(mount_id, manifest, device)
+            if manifest.cgroup_mount_device == RUNTIME_NAMESPACE_BINDING_V1
+            else _mountinfo_matches_cgroup(mount_id, manifest)
+        )
+        or scoped_owner_invalid
     ):
         raise RuntimeOperationError(
             "RUNTIME_UNAVAILABLE",
@@ -2133,7 +2158,11 @@ def _validate_delegated_workload(
     cgroup_manifest = authority._manifest.cgroup
     actual_device = f"{os.major(details.st_dev)}:{os.minor(details.st_dev)}"
     if (
-        actual_device != cgroup_manifest.cgroup_mount_device
+        (
+            not _mountinfo_matches_cgroup(mount_identity[0], cgroup_manifest, actual_device)
+            if cgroup_manifest.cgroup_mount_device == RUNTIME_NAMESPACE_BINDING_V1
+            else actual_device != cgroup_manifest.cgroup_mount_device
+        )
         or _fd_mount_id(descriptor) != mount_identity[0]
         or mount_identity[1] != cgroup_manifest.cgroup_mount_filesystem_id
         or details.st_uid != os.geteuid()
@@ -2170,6 +2199,158 @@ def _validate_delegated_workload(
         )
 
 
+def _write_cgroup_setup(directory_fd: int, name: str, payload: bytes) -> None:
+    """Closed setup writes, separate from freeze/kill lifecycle actions."""
+    if name not in {
+        "cgroup.subtree_control",
+        "pids.max",
+        "memory.max",
+        "memory.swap.max",
+        "cpu.max",
+    }:
+        raise ValueError("unsupported cgroup setup field")
+    descriptor = os.open(name, os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=directory_fd)
+    try:
+        if os.write(descriptor, payload) != len(payload):
+            raise OSError(errno.EIO, "short cgroup setup write")
+    finally:
+        _close_fd(descriptor)
+
+
+def _enable_cgroup_controllers(directory_fd: int) -> None:
+    if (
+        _read_cgroup_file(directory_fd, "cgroup.type").strip() != "domain"
+        or _read_cgroup_file(directory_fd, "cgroup.procs").strip()
+    ):
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "Cgroup setup parent is not an empty domain",
+            category="unavailable",
+        )
+    if not {"cpu", "memory", "pids"}.issubset(
+        _read_cgroup_file(directory_fd, "cgroup.controllers").split()
+    ):
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE", "Delegated controllers are unavailable", category="unavailable"
+        )
+    _write_cgroup_setup(directory_fd, "cgroup.subtree_control", b"+cpu +memory +pids\n")
+    if not {"cpu", "memory", "pids"}.issubset(
+        _read_cgroup_file(directory_fd, "cgroup.subtree_control").split()
+    ):
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "Delegated controller activation is unconfirmed",
+            category="unavailable",
+        )
+
+
+def _create_bound_workload_cgroup(
+    delegate_root: int, workspace_name: str, authority: WAWVerifiedExecutionAuthority
+) -> None:
+    if re.fullmatch(r"ws-[0-9a-f]{64}-g[1-9][0-9]{0,19}", workspace_name) is None:
+        raise RuntimeOperationError(
+            "WAW_BINDING_INVALID",
+            "Fixed workspace cgroup identity is invalid",
+            category="validation",
+        )
+    _enable_cgroup_controllers(delegate_root)
+    try:
+        os.mkdir(workspace_name, 0o755, dir_fd=delegate_root)
+    except FileExistsError:
+        raise RuntimeOperationError(
+            "RECONCILIATION_REQUIRED", "Workspace cgroup already exists", category="conflict"
+        ) from None
+    workspace = -1
+    workload = -1
+    workload_created = False
+    try:
+        workspace = _open_relative_directory(
+            delegate_root, workspace_name, path_only=False, expected_uid=os.geteuid()
+        )
+        manifest = authority._manifest.cgroup
+        quota = manifest.cpu_quota_percent * manifest.cpu_quota_period_usec // 100
+        values = {
+            "pids.max": str(manifest.tasks_max),
+            "memory.max": str(manifest.memory_max),
+            "memory.swap.max": str(manifest.memory_swap_max),
+            "cpu.max": f"{quota} {manifest.cpu_quota_period_usec}",
+        }
+        for name, value in values.items():
+            _write_cgroup_setup(workspace, name, (value + "\n").encode("ascii"))
+        _enable_cgroup_controllers(workspace)
+        os.mkdir("workload", 0o755, dir_fd=workspace)
+        workload_created = True
+        workload = _open_relative_directory(
+            workspace, "workload", path_only=False, expected_uid=os.geteuid()
+        )
+        manifest = authority._manifest.cgroup
+        quota = manifest.cpu_quota_percent * manifest.cpu_quota_period_usec // 100
+        values = {
+            "pids.max": str(manifest.tasks_max),
+            "memory.max": str(manifest.memory_max),
+            "memory.swap.max": str(manifest.memory_swap_max),
+            "cpu.max": f"{quota} {manifest.cpu_quota_period_usec}",
+        }
+        for name, value in values.items():
+            _write_cgroup_setup(workload, name, (value + "\n").encode("ascii"))
+        _validate_delegated_workload(
+            workload, authority, _verify_delegate_root(delegate_root, authority)
+        )
+    except BaseException:
+        if workload >= 0:
+            _close_fd(workload)
+            workload = -1
+        if workload_created and workspace >= 0:
+            os.rmdir("workload", dir_fd=workspace)
+        os.rmdir(workspace_name, dir_fd=delegate_root)
+        raise
+    finally:
+        _close_fd(workload)
+        _close_fd(workspace)
+
+
+def _open_scoped_workspace_root(authority: WAWVerifiedExecutionAuthority) -> int:
+    manifest = authority._manifest.cgroup
+    if manifest.protect_control_groups != SCOPED_CGROUP_PROTECTION_V1 or os.geteuid() == 0:
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "Scoped Runtime cgroup policy is required",
+            category="unavailable",
+        )
+    service = os.open(
+        SCOPED_CGROUP_SERVICE_ROOT_V1, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    try:
+        facts = os.fstat(service)
+        device = f"{os.major(facts.st_dev)}:{os.minor(facts.st_dev)}"
+        if (
+            facts.st_uid != os.geteuid()
+            or facts.st_gid != os.getegid()
+            or facts.st_mode & 0o022
+            or not _mountinfo_matches_cgroup(_fd_mount_id(service), manifest, device)
+        ):
+            raise RuntimeOperationError(
+                "RUNTIME_UNAVAILABLE",
+                "Scoped service delegation is unverified",
+                category="unavailable",
+            )
+        _enable_cgroup_controllers(service)
+        with contextlib.suppress(FileExistsError):
+            os.mkdir(manifest.delegate_subgroup, 0o755, dir_fd=service)
+        root = _open_relative_directory(
+            service, manifest.delegate_subgroup, path_only=False, expected_uid=os.geteuid()
+        )
+        try:
+            _verify_delegate_root(root, authority)
+            _enable_cgroup_controllers(root)
+        except BaseException:
+            _close_fd(root)
+            raise
+        return root
+    finally:
+        _close_fd(service)
+
+
 def _verify_project_root_descriptor(descriptor: int, manifest: ProjectRootManifest) -> None:
     _verify_installed_directory(
         descriptor,
@@ -2178,17 +2359,62 @@ def _verify_project_root_descriptor(descriptor: int, manifest: ProjectRootManife
         expected_mode=int(manifest.root_mode, 8),
     )
     details = os.fstat(descriptor)
+    if manifest.root_mount_id == RUNTIME_NAMESPACE_BINDING_V1:
+        identity_invalid = _project_filesystem_identity(
+            descriptor
+        ) != manifest.root_filesystem_id or not _mountinfo_has_device(
+            _fd_mount_id(descriptor), details.st_dev
+        )
+    else:
+        identity_invalid = (
+            str(details.st_dev) != manifest.root_device
+            or _fd_mount_id(descriptor) != manifest.root_mount_id
+        )
     if (
-        str(details.st_dev) != manifest.root_device
+        identity_invalid
         or str(details.st_gid) != manifest.root_gid
         or format(stat.S_IMODE(details.st_mode), "o") != manifest.root_mode
-        or _fd_mount_id(descriptor) != manifest.root_mount_id
     ):
         raise RuntimeOperationError(
             "RUNTIME_UNAVAILABLE",
             "ProjectRoot descriptor does not match its manifest",
             category="unavailable",
         )
+
+
+def _project_filesystem_identity(descriptor: int) -> str:
+    """Persist filesystem ID/inode, never an ephemeral namespace mount ID."""
+
+    try:
+        filesystem_id = os.fstatvfs(descriptor).f_fsid
+        inode = os.fstat(descriptor).st_ino
+    except (OSError, AttributeError) as exc:
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "ProjectRoot filesystem identity is unavailable",
+            category="unavailable",
+        ) from exc
+    if not 0 < filesystem_id <= 2**64 - 1 or not 0 < inode <= 2**64 - 1:
+        raise RuntimeOperationError(
+            "RUNTIME_UNAVAILABLE",
+            "ProjectRoot filesystem identity is invalid",
+            category="unavailable",
+        )
+    return f"fsid:{filesystem_id};inode:{inode}"
+
+
+def _mountinfo_has_device(mount_id: str, device: int) -> bool:
+    try:
+        raw = Path("/proc/self/mountinfo").read_text(encoding="ascii", errors="strict")
+    except (OSError, UnicodeError):
+        return False
+    rows = [
+        line.split(" - ", 1)[0].split()
+        for line in raw.splitlines()
+        if " - " in line and len(line.split(" - ", 1)[1].split()) >= 3
+    ]
+    matches = [row for row in rows if len(row) >= 6 and row[0] == mount_id]
+    return len(matches) == 1 and matches[0][2] == f"{os.major(device)}:{os.minor(device)}"
 
 
 def _verify_installed_directory(
@@ -2297,7 +2523,9 @@ def _fd_mount_id(descriptor: int) -> str:
             "Descriptor mount identity is unavailable",
             category="unavailable",
         ) from exc
-    matches = [line[7:] for line in raw.splitlines() if line.startswith("mnt_id:\t")]
+    matches = [
+        line.removeprefix("mnt_id:\t") for line in raw.splitlines() if line.startswith("mnt_id:\t")
+    ]
     if len(matches) != 1 or not matches[0].isdecimal():
         raise RuntimeOperationError(
             "RUNTIME_UNAVAILABLE", "Descriptor mount identity is invalid", category="unavailable"
@@ -2305,7 +2533,17 @@ def _fd_mount_id(descriptor: int) -> str:
     return matches[0]
 
 
-def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest) -> bool:
+def _mountinfo_matches_cgroup(
+    mount_id: str, manifest: CgroupDelegationManifest, observed_device: str | None = None
+) -> bool:
+    device = manifest.cgroup_mount_device
+    if device == RUNTIME_NAMESPACE_BINDING_V1:
+        if (
+            observed_device is None
+            or manifest.protect_control_groups != SCOPED_CGROUP_PROTECTION_V1
+        ):
+            return False
+        device = observed_device
     try:
         raw = Path("/proc/self/mountinfo").read_text(encoding="ascii", errors="strict")
     except (OSError, UnicodeError):
@@ -2317,8 +2555,48 @@ def _mountinfo_matches_cgroup(mount_id: str, manifest: CgroupDelegationManifest)
         filesystem = after.split()
         if separator and len(fields) >= 6 and len(filesystem) >= 3 and fields[0] == mount_id:
             matches.append((fields, filesystem))
+    if manifest.protect_control_groups == SCOPED_CGROUP_PROTECTION_V1:
+        scoped = len(matches) == 1 and (
+            matches[0][0][2] == device
+            and matches[0][0][3] == "/system.slice/agentbox-runtime.service"
+            and matches[0][0][4] == SCOPED_CGROUP_SERVICE_ROOT_V1
+            and "rw" in matches[0][0][5].split(",")
+            and matches[0][1][0] == manifest.cgroup_mount_type
+        )
+        global_ro = []
+        outside_rw = False
+        for line in raw.splitlines():
+            before, separator, after = line.partition(" - ")
+            fields, filesystem = before.split(), after.split()
+            if (
+                separator
+                and len(fields) >= 6
+                and len(filesystem) >= 3
+                and filesystem[0] == "cgroup2"
+                and "rw" in fields[5].split(",")
+                and fields[4] != SCOPED_CGROUP_SERVICE_ROOT_V1
+            ):
+                outside_rw = True
+            if (
+                separator
+                and len(fields) >= 6
+                and len(filesystem) >= 3
+                and fields[4] == "/sys/fs/cgroup"
+            ):
+                global_ro.append((fields, filesystem))
+        return (
+            scoped
+            and not outside_rw
+            and len(global_ro) == 1
+            and (
+                global_ro[0][0][2] == device
+                and global_ro[0][0][3] == "/"
+                and "ro" in global_ro[0][0][5].split(",")
+                and global_ro[0][1][0] == manifest.cgroup_mount_type
+            )
+        )
     return len(matches) == 1 and (
-        matches[0][0][2] == manifest.cgroup_mount_device
+        matches[0][0][2] == device
         and matches[0][0][3] == "/"
         and matches[0][0][4] == "/sys/fs/cgroup"
         and matches[0][1][0] == manifest.cgroup_mount_type
@@ -2437,6 +2715,7 @@ def _role_fd(value: object, role: str) -> int:
 def _read_cgroup_file(directory_fd: int, name: str) -> str:
     if name not in {
         "cgroup.controllers",
+        "cgroup.subtree_control",
         "cgroup.events",
         "cgroup.procs",
         "cgroup.type",

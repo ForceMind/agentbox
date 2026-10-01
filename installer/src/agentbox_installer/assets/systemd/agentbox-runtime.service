@@ -36,7 +36,7 @@ RestrictSUIDSGID=true
 LockPersonality=true
 SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-ReadWritePaths=/run/agentbox /run/agentbox-waw/tmp /run/agentbox-waw/tmux /srv/agentbox/projects /home/agentbox-runtime /var/lib/agentbox-waw/runtime-epoch-v1 /var/lib/agentbox-waw/bindings-v1 /var/lib/agentbox-waw/vendor-homes/claude /var/lib/agentbox-waw/vendor-homes/codex
+ReadWritePaths=/run/agentbox /run/agentbox-waw/tmp /run/agentbox-waw/tmux /srv/agentbox/projects /home/agentbox-runtime /var/lib/agentbox-waw/runtime-epoch-v1 /var/lib/agentbox-waw/bindings-v1 /var/lib/agentbox-waw/workspaces-v1 /var/lib/agentbox-waw/cgroups-v1 /var/lib/agentbox-waw/vendor-homes/claude /var/lib/agentbox-waw/vendor-homes/codex
 
 [Install]
 WantedBy=multi-user.target

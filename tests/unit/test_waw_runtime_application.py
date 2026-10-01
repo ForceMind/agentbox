@@ -435,9 +435,17 @@ async def test_production_builder_uses_one_composition_and_typed_port_methods(
     key = _KeyPort(events)
     provider = _Provider(events)
     captured: dict[str, Any] = {}
+    workspace_store = object()
+    cgroup_store = object()
+
+    def cgroup_factory(_identity: Any, _observation: Any) -> object:
+        return object()
 
     def build_runtime(**kwargs: Any) -> RuntimeExecutorServer:
         captured["executor_factory"] = kwargs["executor_factory"]
+        captured["attestation_store"] = kwargs["attestation_store"]
+        captured["cgroup_attestation_store"] = kwargs["cgroup_attestation_store"]
+        captured["cgroup_attestation_factory"] = kwargs["cgroup_attestation_factory"]
         return runtime
 
     def build_stream(**kwargs: Any) -> tuple[WAWEncryptedServer, WAWEncryptedRegistry]:
@@ -472,11 +480,17 @@ async def test_production_builder_uses_one_composition_and_typed_port_methods(
             key_port=key,
             binding_digest_factory=lambda _request: "a" * 64,
             clock=lambda: 0.0,
+            attestation_store=cast(Any, workspace_store),
+            cgroup_attestation_store=cast(Any, cgroup_store),
+            cgroup_attestation_factory=cast(Any, cgroup_factory),
         )
 
         assert type(app) is WAWRuntimeApplication
         assert captured["executor_factory"]._provider is provider.taken
         assert captured["executor_factory"]._key_port is key.taken
+        assert captured["attestation_store"] is workspace_store
+        assert captured["cgroup_attestation_store"] is cgroup_store
+        assert captured["cgroup_attestation_factory"] is cgroup_factory
         assert getattr(captured["static_key"], "__self__", None) is key.taken
         assert captured["peer_authority"] is authority
         assert captured["registry"] is registry and captured["executor"] is executor

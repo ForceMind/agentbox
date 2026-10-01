@@ -1,0 +1,38 @@
+[Unit]
+Description=AgentBox independent HTTPS Web ingress
+After=network.target agentbox-api.service
+Wants=agentbox-api.service
+
+[Service]
+Type=simple
+User=agentbox-web
+DynamicUser=true
+LoadCredential=fullchain.pem:/etc/agentbox-web/tls/fullchain.pem
+LoadCredential=privkey.pem:/etc/agentbox-web/tls/privkey.pem
+ExecStartPre=/usr/sbin/nginx -t -c /etc/agentbox-web/nginx.conf
+ExecStart=/usr/sbin/nginx -c /etc/agentbox-web/nginx.conf -g "daemon off;"
+Restart=on-failure
+RestartSec=5s
+RuntimeDirectory=agentbox-web
+RuntimeDirectoryMode=0755
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/run/agentbox-web
+InaccessiblePaths=-/home/agentbox-runtime -/var/lib/agentbox-waw -/var/lib/agentbox -/etc/agentbox/environment
+
+[Install]
+WantedBy=multi-user.target

@@ -25,7 +25,9 @@ compact separators and one trailing newline, at most 1024 bytes:
 | `claude_vendor_version`, `codex_vendor_version` | Exact observed printable version strings, 1–96 bytes |
 | `codex_unauthenticated_output_sha256` | Lowercase SHA-256 of the target's enrolled fixed unauthenticated output |
 
-Only `agentbox-runtime` may read the installed record. The Runtime process
+Web/API/Worker cannot read the installed record. The local root installer
+may inspect its non-secret contents only for fixed publication/recovery;
+Root Helper gains no action or Secret authority. The Runtime process
 checks its real/effective/saved UID/GID against that non-root account. The
 reader walks from `/` with held no-follow descriptors, requires root-owned
 non-writable ancestors, the root:`agentbox-runtime` 0750 final directory,
@@ -66,3 +68,26 @@ read, using identical content. Both replacements are rejected. An injected
 descriptor-close error rejects the record and still attempts the remaining
 descriptor cleanup. These are portable software failure-path checks, not
 real Linux enrollment or independent security-review evidence.
+
+## Local installer publication
+
+The current implementation exposes `agentbox-install enroll-waw-vendors`
+with the three externally observed version/digest values, `--plan`,
+`--recover` and optional JSON metadata output. It requires a completed
+installation, safe disabled API/Runtime profiles and the fixed, fully
+cross-pinned v2 manifest resources. Host/epoch/digest pins come from those
+resources, not user flags. It shares the installer lifecycle lock.
+
+Publication uses a fixed root-private 0600 pending file, finishes and fsyncs
+its content, changes it to root:Runtime 0440, then links it into the fixed
+record name without replacing an existing file. The final single-link
+record is re-read after unlinking the pending name and fsyncing the directory.
+An interrupted operation requires explicit recovery with the same observation.
+An owned private partial stage can only resume an exact canonical prefix;
+unknown data, a truncated ready stage, foreign links, path replacement or
+manifest/profile drift fail closed. A differing existing record is never
+replaced; vendor rotation needs its own future closed-mode transaction.
+
+This is an installation building block, not automatic vendor observation,
+runtime-mode activation, platform qualification or a usable product release.
+Real user input is not logged or placed in this non-secret record.

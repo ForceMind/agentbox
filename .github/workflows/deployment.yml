@@ -24,6 +24,11 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip "setuptools>=83"
       - run: python -m pip install -e ".[dev]"
+      - name: Verify independent HTTPS ingress with actual nginx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nginx
+          python -m pytest -q tests/integration/test_waw_web_ingress.py
       - run: >-
           pytest
           tests/unit/test_installer_platform.py
@@ -33,10 +38,28 @@ jobs:
           tests/unit/test_database_security.py
           tests/unit/test_installer_host.py
           tests/unit/test_installer_lifecycle.py
+          tests/unit/test_installer_staged_recovery.py
           tests/unit/test_helper_protocol.py
           tests/unit/test_deployment_assets.py
           tests/unit/test_privilege_isolation.py
           tests/integration/test_static_web.py
+      - name: Verify actual native-helper build, retry and Runtime-owned epoch bootstrap
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
+        run: |
+          native_fixture_dir="$(mktemp -d "$RUNNER_TEMP/agentbox-native-root.XXXXXX")"
+          sudo env AGENTBOX_ENV=test PYTHONDONTWRITEBYTECODE=1 \
+            AGENTBOX_DATA_DIR="$native_fixture_dir/data" \
+            AGENTBOX_TOML_FILE="$native_fixture_dir/config.toml" \
+            AGENTBOX_DATABASE_URL=sqlite+pysqlite:///:memory: \
+            "$(command -v python)" -m pytest -q -p no:cacheprovider \
+            --basetemp "$native_fixture_dir/pytest" \
+            tests/unit/test_installer_waw_native.py -k linux
+      - name: Prove systemd 255 scoped cgroup delegation with native PID 1
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
+        run: sudo env GITHUB_ACTIONS=true /usr/bin/python3 scripts/probe-waw-delegation.py
+      - name: Exercise actual Runtime cgroup creation helpers under native PID 1
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
+        run: sudo env GITHUB_ACTIONS=true "$(command -v python)" scripts/probe-waw-cgroup-setup.py
       - run: bash scripts/check-skeleton-boundaries.sh
 
   deployment-gate:

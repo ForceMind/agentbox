@@ -2,10 +2,74 @@
 
 Status: Phase 10 MVP Release Candidate runbook
 
+## WAW installation-resource preparation candidate
+
+The current development candidate adds a fixed preparation command. It requires
+a completed installation, disabled API/Runtime WAW profiles, root-owned native
+Linux x86_64 Claude/Codex at the supported system paths, compiled helpers in
+the active immutable release, and its bundled policy templates.
+
+```bash
+agentbox-install prepare-waw-manifests --plan --json
+agentbox-install prepare-waw-manifests --json
+```
+
+`--plan` validates non-secret installed resources without initializing a key.
+The preparation action runs the fixed Runtime account's local key initializer,
+receives only its public fingerprint, and creates the complete cross-pinned
+public bundle plus Runtime-private manifest. It preserves disabled profiles and
+does not activate a service, log in a vendor, qualify its policy templates, or
+establish a usable Workspace. Continue with the separate vendor-enrollment
+command only after preparation succeeds. Source changes or a missing enrolled
+key require explicit operator recovery/rotation; they are never overwritten.
+
+After interrupted preparation, `--recover` resumes only matching manifest
+bytes/prefixes under verified ownership/modes. Unrelated files are preserved.
+This candidate is not the final one-command deployable release; activation,
+HTTPS Web and actual CLI/client/recovery qualification remain pending.
+
+After manifest preparation, inspect the separate fixed vendor-policy step:
+
+```bash
+agentbox-install prepare-waw-policies --plan --json
+agentbox-install prepare-waw-policies --json
+```
+
+Its plan is read-only. Apply requires disabled profiles, inactive AgentBox
+services/WAW sockets, and complete Root-visible UID metadata with no remaining
+Runtime processes. It copies only the cross-pinned public policies to
+`/etc/claude-code/managed-settings.json`, `/etc/codex/requirements.toml`, and
+`/etc/codex/managed_config.toml`, as Root-owned 444 files. These are global
+vendor policy paths; an existing different policy is rejected. Exact files
+are preserved, and explicit `--recover` can finish only a matching safe prefix.
+This step does not initialize keys, enable profiles, start services, log in a
+vendor, or qualify the currently inert templates.
+
+The candidate's separate activation transaction is:
+
+```bash
+agentbox-install activate-waw --plan --json
+agentbox-install activate-waw --json
+```
+
+Plan checks the complete bundle, enrollment, policies and exact units without
+writing or observing the Runtime key. Apply requires the same offline/idle
+guard, compares only the Runtime-owned initializer's public fingerprint with
+the enrolled anchor, records a fixed recoverable intent, installs the scoped
+drop-in and publishes both profiles. It then starts both named sockets, Runtime,
+Worker and API in that order. `services_started` is service-manager evidence;
+`qualified` remains false. It does not prove actual CLI/client/reboot readiness.
+After interruption or failed start, stop the fixed services and any owned work,
+then use `activate-waw --recover --json`. Recovery requires the exact same
+installation/version/digest and safely matching pending files; it cannot adopt
+or kill an unknown Runtime process or silently replace unrelated configuration.
+
 ## Safety boundary
 
 The installer owns only AgentBox users, groups, FHS paths, release files, unit
 files, configuration, and database state listed by `agentbox-install plan`.
+The separate WAW policy command lists its three fixed global policy targets in
+its own `--plan` output; it does not overwrite unrelated vendor configuration.
 It does not modify SSH, firewall rules, cloud security groups, cloudflared,
 reverse proxies, Docker, existing root Runtime installations, root tmux
 sessions, `/root/projects`, or Provider/Secret configuration.

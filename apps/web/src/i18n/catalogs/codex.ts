@@ -54,6 +54,7 @@ export interface CodexMessageParameters {
   readonly 'codex.remoteBroken': NoMessageParameters
   readonly 'codex.remoteUnknown': NoMessageParameters
   readonly 'codex.confidenceReported': NoMessageParameters
+  readonly 'codex.confidenceObserved': NoMessageParameters
   readonly 'codex.confidenceInferred': NoMessageParameters
   readonly 'codex.confidenceUnknown': NoMessageParameters
   readonly 'codex.installationStandalone': NoMessageParameters
@@ -131,6 +132,7 @@ export const codexCatalog = defineCatalogShard<CodexMessageParameters>(
       'codex.remoteBroken': () => 'Broken',
       'codex.remoteUnknown': () => 'Unknown',
       'codex.confidenceReported': () => 'Reported',
+      'codex.confidenceObserved': () => 'Complete system observation',
       'codex.confidenceInferred': () => 'Inferred',
       'codex.confidenceUnknown': () => 'Unknown',
       'codex.installationStandalone': () => 'Standalone',
@@ -204,6 +206,7 @@ export const codexCatalog = defineCatalogShard<CodexMessageParameters>(
       'codex.remoteBroken': () => '异常',
       'codex.remoteUnknown': () => '未知',
       'codex.confidenceReported': () => '已报告',
+      'codex.confidenceObserved': () => '系统完整观测',
       'codex.confidenceInferred': () => '已推断',
       'codex.confidenceUnknown': () => '未知',
       'codex.installationStandalone': () => '独立安装',

@@ -283,10 +283,13 @@ def _runtime_profile(mode: WAWRuntimeMode) -> WAWRuntimeProfileObservation:
 
 
 @pytest.mark.anyio
-async def test_runtime_main_rejects_enabled_profile_before_legacy_construction(
+@pytest.mark.parametrize("startup_failure", [False, True])
+async def test_runtime_main_routes_enabled_profile_without_legacy_fallback(
+    startup_failure: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from agentbox_runtime import server as subject
+    from agentbox_runtime import waw_production
 
     _production_runtime_environment(monkeypatch)
     observed = _runtime_profile(WAWRuntimeMode.FILESYSTEM_V2)
@@ -297,10 +300,26 @@ async def test_runtime_main_rejects_enabled_profile_before_legacy_construction(
     def unexpected_server(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("enabled WAW profile must not construct the legacy Runtime server")
 
+    calls: list[dict[str, object]] = []
+
+    async def production(**kwargs: object) -> None:
+        calls.append(kwargs)
+        if startup_failure:
+            raise RuntimeError("production startup failed")
+
     monkeypatch.setattr(subject, "RuntimeExecutorServer", unexpected_server)
-    with pytest.raises(RuntimeError, match="production composition is not yet available"):
+    monkeypatch.setattr(waw_production, "run_waw_production", production)
+    if startup_failure:
+        with pytest.raises(RuntimeError, match="production startup failed"):
+            await _main()
+    else:
         await _main()
     assert checked == [observed]
+    assert len(calls) == 1
+    assert calls[0]["profile"] is observed
+    assert calls[0]["socket_path"] == Path("/run/agentbox/runtime.sock")
+    assert calls[0]["allowed_uids"] == frozenset({os.geteuid()})
+    assert calls[0]["allowed_gids"] == frozenset({os.getegid()})
 
 
 @pytest.mark.anyio

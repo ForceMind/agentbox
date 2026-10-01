@@ -42,7 +42,20 @@ export interface WAWTrustProviderConsumerOptions {
  * Provider invalidation aborts the signal synchronously; this still does not
  * grant Noise, ADMITTED, writer, terminal-input or attachment authority.
  */
-export interface WAWTrustAuthorizationLease extends WAWRuntimePinAuthorization {
+export interface WAWHTTPSPinAuthorization {
+  readonly schema_version: 'agentbox-waw-https-bootstrap.v1'
+  readonly trust_profile: 'https-web-v1'
+  readonly repository: 'ForceMind/agentbox'
+  readonly origin: string
+  readonly runtime_host_installation_id: string
+  readonly runtime_host_installation_revision: string
+  readonly runtime_attestation_x25519_fingerprint: string
+  readonly build_identity: string
+}
+
+export type WAWTrustAuthorizationLease = (
+  WAWRuntimePinAuthorization | WAWHTTPSPinAuthorization
+) & {
   readonly generation: number
   readonly signal: AbortSignal
   isCurrent(): boolean
