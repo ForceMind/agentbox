@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from agentbox_runtime.waw_cgroup_attestation import (
@@ -82,6 +83,55 @@ def test_store_writes_and_reads_validated_record(tmp_path: Path) -> None:
     files = list(directory.glob("*.json"))
     assert len(files) == 1
     assert files[0].stat().st_mode & 0o777 == 0o600
+
+
+def test_recovery_requires_new_invocation_and_preserves_next_generation(tmp_path: Path) -> None:
+    store, _ = _store(tmp_path)
+    old = _record()
+    store.write(old)
+    empty = replace(
+        old,
+        runtime_epoch="4",
+        service_invocation_id="invocation-2",
+        attachment_leaves=(),
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    assert store.recover_empty(expected=old, observed=empty)
+    assert store.recover_empty(expected=old, observed=empty)
+    assert store.read(workspace_id=old.workspace_id, generation=1) == empty
+    store.write(replace(empty, generation=2, cleanup_state="LIVE", last_populated="1"))
+    with pytest.raises(WAWCgroupAttestationStoreError, match="latest generation"):
+        store.recover_empty(expected=old, observed=empty)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"runtime_epoch": "3"},
+        {"service_invocation_id": "invocation-1"},
+        {"project_id": "prj_" + "9" * 32},
+        {"controller_configuration_digest": "b" * 64},
+        {"cleanup_state": "FENCED"},
+    ],
+)
+def test_recovery_rejects_stale_or_mismatched_evidence(
+    tmp_path: Path, change: dict[str, Any]
+) -> None:
+    store, _ = _store(tmp_path)
+    old = _record()
+    store.write(old)
+    empty = replace(
+        old,
+        runtime_epoch="4",
+        service_invocation_id="invocation-2",
+        attachment_leaves=(),
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    with pytest.raises(WAWCgroupAttestationStoreError):
+        store.recover_empty(expected=old, observed=replace(empty, **change))
+    assert store.read(workspace_id=old.workspace_id, generation=1) == old
 
 
 def test_store_requires_first_generation_and_rejects_cross_generation_copy(

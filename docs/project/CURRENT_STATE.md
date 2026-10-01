@@ -1,11 +1,37 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-09-30T23:43:01Z"
+verified_at_utc: "2026-10-01T00:55:21Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 explicit epoch recovery candidate
+
+Live remote head 0d7d2b3ce6ea0cc2cfd64205107708135554daef reached terminal
+CI: 24 SUCCESS/two prescribed SKIPPED. Deployment run 36792740947, job
+110149149904 confirmed production_helpers_executed, limits_read_back,
+existing_generation_rejected and fd_observation_persisted all true under
+native PID 1. This is actual Linux helper/FD/store evidence with synthetic
+metadata and an empty workload, not vendor/reboot acceptance.
+
+Current changes add explicit compare-and-swap recovery in both Runtime stores
+and integrate it into the existing internal cleanup acknowledgement. Fresh
+new-epoch/new-invocation EMPTY_DURABLE evidence preserves logical identity,
+controller policy and generation; host/binding provenance remains pinned.
+Ordinary writes still reject epoch drift. Cgroup persistence precedes the
+Workspace floor migration; interruption leaves quarantine set and exact
+read-back can retry without lowering the floor. Older unresolved generations
+remain fenced. No HTTP recovery action, generic path or command was added.
+
+104 focused store/lifecycle regressions passed, including interrupted migration
+and stale/mismatched evidence. This is main-agent self-review and synthetic
+recovery evidence. The actual restart recovery producer/dispatch, absent-group
+proof and abandoned-group cleanup are still missing; fixed activation,
+positive Codex Remote evidence and HTTPS PC/mobile workflow also remain open.
+This batch is not a usable release. Product version remains rc30; no user-host
+operation, tag or publication occurred.
 
 ## 2026-10-01 fixed durable storage and FD observations candidate
 

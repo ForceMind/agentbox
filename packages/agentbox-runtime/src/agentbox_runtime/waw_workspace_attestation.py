@@ -10,8 +10,14 @@ import secrets
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+
+from agentbox_runtime.waw_cgroup_attestation import (
+    WAWCgroupAttestation,
+    WAWCgroupAttestationError,
+    encode_waw_cgroup_attestation,
+)
 
 _SCHEMA = "waw-workspace-attestation-v1"
 _MAX_BYTES = 4096
@@ -54,6 +60,47 @@ class WAWWorkspaceAttestationStore:
         _validate_id(workspace_id, "workspace_id")
         with self._locked_directory() as directory_fd:
             return self._read_locked(directory_fd, workspace_id)
+
+    def recover_epoch(
+        self,
+        *,
+        expected: WAWWorkspaceAttestation,
+        empty: WAWCgroupAttestation,
+    ) -> WAWWorkspaceAttestation:
+        """Move a floor to a newer epoch after Runtime's fresh empty proof.
+
+        This internal persistence operation does not observe or authenticate
+        cgroupfs. The Runtime recovery owner must supply independently verified
+        current-epoch evidence for the exact old binding/generation. No HTTP
+        action or automatic epoch fallback is provided. Host/binding provenance
+        and the generation floor are preserved, including across a retry.
+        """
+        if type(expected) is not WAWWorkspaceAttestation or type(empty) is not WAWCgroupAttestation:
+            raise WAWWorkspaceAttestationError("recovery requires typed evidence")
+        _validate_id(expected.workspace_id, "workspace_id")
+        _validate_decimal(expected.runtime_epoch, "runtime_epoch")
+        try:
+            encode_waw_cgroup_attestation(empty)
+        except WAWCgroupAttestationError as exc:
+            raise WAWWorkspaceAttestationError("recovery evidence is malformed") from exc
+        if (
+            empty.workspace_id != expected.workspace_id
+            or empty.generation != expected.min_generation
+            or int(empty.runtime_epoch) <= int(expected.runtime_epoch)
+            or empty.cleanup_state != "EMPTY_DURABLE"
+            or empty.last_populated != "0"
+            or empty.attachment_leaves
+        ):
+            raise WAWWorkspaceAttestationError("recovery empty evidence does not match floor")
+        recovered = replace(expected, runtime_epoch=empty.runtime_epoch)
+        with self._locked_directory() as directory_fd:
+            current = self._read_locked(directory_fd, expected.workspace_id)
+            if current == recovered:
+                return current
+            if current != expected:
+                raise WAWWorkspaceAttestationError("recovery floor changed")
+            self._write_locked(directory_fd, recovered)
+            return recovered
 
     def advance(
         self,

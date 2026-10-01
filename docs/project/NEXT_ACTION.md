@@ -1,5 +1,21 @@
 # Current Authorized Action
 
+## 2026-10-01 finish the actual restart recovery owner
+
+Both stores now have explicit new-epoch CAS operations, composed into the
+existing Runtime-only cleanup acknowledgement with interrupted-write retry.
+104 focused regressions pass. Inspect this batch's exact-head CI, then finish
+the actual bound recovery producer and invocation: the normal observation
+factory must not attempt an ordinary cross-epoch write before acknowledgement.
+Prove current fixed cgroup emptiness/absence and handle abandoned generations
+without adopting or killing unknown groups. Preserve all generation floors,
+binding/host provenance and fail-closed multi-generation ambiguity.
+
+Then complete fixed installer activation, positive Codex Remote evidence and
+the accepted HTTPS Web PC/mobile flow. The sole delivery target remains the
+full self-installable browser/CLI version; these internal batches do not close
+reboot/upgrade/rollback acceptance or constitute separate product versions.
+
 ## 2026-10-01 verify FD persistence then close epoch recovery
 
 The fixed Runtime stores and actual FD-backed observation factory are wired

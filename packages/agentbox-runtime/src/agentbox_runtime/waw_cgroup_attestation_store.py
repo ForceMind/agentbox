@@ -153,6 +153,59 @@ class WAWCgroupAttestationStore:
             self._replace_locked(directory_fd, record, raw)
         return record
 
+    def recover_empty(
+        self, *, expected: WAWCgroupAttestation, observed: WAWCgroupAttestation
+    ) -> bool:
+        """CAS a latest generation into a fresh invocation's empty evidence.
+
+        Only the Runtime recovery owner may call this after independent kernel
+        read-back. Ordinary write/ack rules retain immutable epoch/FD identity.
+        Multi-generation ambiguity fails closed; no previous record is deleted.
+        """
+        if type(expected) is not WAWCgroupAttestation or type(observed) is not WAWCgroupAttestation:
+            raise WAWCgroupAttestationStoreError("recovery requires typed evidence")
+        try:
+            encode_waw_cgroup_attestation(expected)
+            raw = encode_waw_cgroup_attestation(observed)
+        except WAWCgroupAttestationError as exc:
+            raise WAWCgroupAttestationStoreError("recovery evidence is malformed") from exc
+        preserved = (
+            "workspace_id",
+            "project_id",
+            "agent_type",
+            "generation",
+            "service_unit",
+            "delegated_subgroup",
+            "workspace_relative_path",
+            "workload_relative_path",
+            "controller_configuration_digest",
+            "workspace_limits",
+            "workload_limits",
+            "attachment_limits",
+        )
+        if (
+            any(getattr(expected, name) != getattr(observed, name) for name in preserved)
+            or int(observed.runtime_epoch) <= int(expected.runtime_epoch)
+            or observed.service_invocation_id == expected.service_invocation_id
+            or observed.cleanup_state != "EMPTY_DURABLE"
+            or observed.last_populated != "0"
+            or observed.attachment_leaves
+        ):
+            raise WAWCgroupAttestationStoreError("recovery evidence changed logical identity")
+        with self._locked_directory() as directory_fd:
+            records = self._records_for_workspace_locked(directory_fd, expected.workspace_id)
+            if not records or records[-1].generation != expected.generation:
+                raise WAWCgroupAttestationStoreError("recovery does not target latest generation")
+            if any(item.cleanup_state != "EMPTY_DURABLE" for item in records[:-1]):
+                raise WAWCgroupAttestationStoreError("recovery has older unresolved generations")
+            current = records[-1]
+            if current == observed:
+                return True
+            if current != expected:
+                raise WAWCgroupAttestationStoreError("recovery record changed")
+            self._replace_locked(directory_fd, observed, raw)
+            return True
+
     def acknowledge_empty(self, record: WAWCgroupAttestation) -> bool:
         """Atomically persist an EMPTY_DURABLE record and report full cleanup.
 
