@@ -1,5 +1,21 @@
 # Current Authorized Action
 
+## 2026-10-01 publish Root-owned HTTPS entry and independent serving
+
+e1055e0 reached terminal 24 SUCCESS/two prescribed SKIPPED and actual native
+PID-1 complete_remote_stopped_observed=true evidence. Current distinct HTTPS
+consumer/lease, explicit secure-document selector and twelve-field canonical
+public encoder have 70 Web/17 backend focused regressions and static checks.
+Inspect this batch's exact-head CI before relying on it.
+
+Next implement the Root-only public bootstrap/static overlay transaction and
+independent serving at the accepted HTTPS Origin, with immutable assets,
+API/Worker write denial, exact proxy routing/CSP and source/build replacement
+recovery. Do not inject bootstrap into an API-controlled HTML route or call
+Web trust independent/native-equivalent. Then close actual browser/core CLI
+and composed installer/reboot/upgrade/rollback evidence plus the final
+self-install command. This is one full deployment version, not a new scope.
+
 ## 2026-10-01 verify complete Remote evidence then HTTPS Web bootstrap
 
 537b02d reached terminal 24 SUCCESS/two prescribed SKIPPED. Current complete

@@ -46,6 +46,31 @@ must not be silently relabeled as equivalent to the proposed Web profile.
 
 ## Explicit change in security assumptions
 
+### First-release public wire format and client selection — 2026-10-01
+
+The accepted software profile uses agentbox-waw-https-bootstrap.v1 at the fixed
+/.well-known/agentbox/waw-bootstrap.v1.json path, canonical sorted ASCII JSON
+with a trailing newline and exactly twelve string fields: schema_version,
+trust_profile (https-web-v1), repository, origin, runtime_host_installation_id,
+runtime_host_installation_revision (exact positive uint64 wire string),
+runtime_attestation_x25519_fingerprint, host_manifest_digest, build_identity,
+version, valid_from and valid_until. Validity is exact UTC, positive and at most
+31 days. It contains no native signatures, native clocks or persisted floors.
+
+Root-owned static HTML must explicitly supply the unique meta names
+agentbox-waw-trust-profile and agentbox-waw-build-identity. The latter must
+match the public bootstrap. Missing markers retain the separate native route;
+HTTP/insecure context cannot select Web trust. Two initial fresh, bounded,
+same-Origin/no-redirect/credential-omitted reads must match before a lease is
+issued. Periodic read loss/change, expiry, build/Origin drift, browser-clock
+backward movement or close fences the lease. Authorization identifies this
+distinct schema/profile, never an independent native provider.
+
+Client/codec implementation is not publication or distribution evidence. The
+Root-only transaction, immutable overlay/static path, independent serving,
+proxy/CSP boundary and actual client/CLI qualification still must be completed
+before exposing this profile as a deployable entry point.
+
 | Situation | Managed desktop provider | Proposed Web profile |
 | --- | --- | --- |
 | API/Worker cannot read Runtime/Provider Secrets | Retained | Retained |

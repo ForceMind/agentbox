@@ -1,11 +1,38 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T03:07:01Z"
+verified_at_utc: "2026-10-01T03:28:06Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 distinct HTTPS client profile candidate
+
+Base e1055e0b2b7b03f4a1db82c55772bd99b05f1cb3 reached terminal CI:
+24 SUCCESS/two prescribed SKIPPED. Deployment run 36809114137/job
+110199972295 at 03:09:11Z emitted complete_remote_stopped_observed=true
+alongside all seven prior actual cgroup creation/store/absence/cleanup flags.
+The observer executes on actual Linux/non-root/native PID 1 with a selected
+false executable and synthetic metadata; it does not qualify real vendor
+Remote implementations or a complete application deployment.
+
+Current code adds a separate HTTPS consumer/lease schema and canonical public
+bootstrap encoder under ADR 0010. Explicit secure static-document meta markers
+select it; otherwise the native path remains separate. Exact Origin, host,
+revision, fingerprint, build, canonical fields/encoding and UTC validity are
+checked with two bounded fresh no-redirect/credential-omitted reads. Rotation,
+read loss, expiry, stale freshness, build/Origin drift, backward browser time
+and close fence authorization. No native signature/persisted-floor/clock
+guarantee is claimed. No plaintext terminal fallback is added.
+
+70 HTTPS/native-consumer/hook/encrypted-controller Web regressions, Web
+typecheck/ESLint, 17 public-codec/activation regressions, Ruff and 358-file mypy
+passed. Evidence is client/file fixtures, not deployed HTTPS distribution or
+actual vendor sessions. Main-agent self-review only. Root-owned publication,
+independent static serving/proxy/CSP and complete composed install/client/CLI/
+reboot/upgrade/rollback evidence remain open. No document markers or bootstrap
+were published to a user server. Version stays rc30; no usable-release claim.
 
 ## 2026-10-01 complete UID Remote observation candidate
 
