@@ -1,12 +1,29 @@
 # Current Authorized Action
 
+## 2026-10-01 verify fixed Web activation then automate certificate/setup
+
+Current branch codex/r12-web-activation starts from merged f2af937. The batch
+adds configure-waw-web/activate-waw-web: verified current overlay, fixed TLS
+provenance/hostname/validity/key checks, offline atomic Origin/proxy configuration,
+and HTTPS-only restart with WAW-started admission and fixed failure cleanup.
+32 focused regressions/Ruff/365-file mypy pass. Read back the actual native
+PID-1 DynamicUser/LoadCredential/TLS/write-denial CI probe before relying on it.
+
+Next compose explicit operator-approved automatic certificate issuance and
+renewal, public bootstrap refresh before expiry, and the single installer
+setup sequence. Retain the final PC/mobile real CLI/input/reconnect/exact Stop,
+reboot and upgrade/rollback gates. No user SSH target or new feature is needed;
+the operator supplies domain/certificate/ACME choices in the installer itself.
+
 ## 2026-10-01 qualify ingress then compose self-install activation
 
-Base 7c6db08 has terminal 24 SUCCESS/two prescribed SKIPPED, live re-read.
+PR #125 merged at f2af937; source 4f86c4d reached terminal 24 SUCCESS/two
+prescribed SKIPPED. Both GitHub and fetched origin/main were read back.
 Publication lifecycle/CLI, independent nginx configuration and DynamicUser/
-LoadCredential service are composed as software. Inspect this batch's exact-
-head CI, especially actual nginx TLS/static/API routing. Local 32 focused
-regressions/Ruff/362-file mypy pass; local macOS has no nginx.
+LoadCredential service are composed as software. Actual nginx TLS/static/API
+routing passed all four installer matrix combinations, run 36859319313.
+Local 43 affected regressions/Ruff/362-file mypy pass; local systemd/nginx
+checks skipped. Continue on codex/r12-web-activation from merged origin/main.
 
 Next compose fixed nginx dependency checks, certificate provisioning/renewal,
 exact allowed Origin and trusted proxy configuration, and explicit service

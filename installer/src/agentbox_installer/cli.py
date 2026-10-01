@@ -63,6 +63,12 @@ def create_parser() -> argparse.ArgumentParser:
     web.add_argument("--plan", action="store_true")
     web.add_argument("--recover", action="store_true")
     web.add_argument("--json", action="store_true")
+    for name in ("configure-waw-web", "activate-waw-web"):
+        web_configuration = commands.add_parser(name)
+        web_configuration.add_argument("--origin", required=True)
+        web_configuration.add_argument("--plan", action="store_true")
+        web_configuration.add_argument("--recover", action="store_true")
+        web_configuration.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -176,6 +182,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     valid_until=datetime.fromisoformat(args.valid_until),
                     plan=args.plan,
                     recover=args.recover,
+                ),
+                json_output=json_output,
+            )
+            return 0
+        if args.command in {"configure-waw-web", "activate-waw-web"}:
+            _print(
+                installer.configure_waw_web(
+                    origin=args.origin,
+                    plan=args.plan,
+                    recover=args.recover,
+                    activate=args.command == "activate-waw-web",
                 ),
                 json_output=json_output,
             )

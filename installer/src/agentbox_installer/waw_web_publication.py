@@ -8,7 +8,7 @@ import json
 import os
 import re
 import stat
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
 from agentbox_runtime.waw_manifest_codecs import CrossManifestPinV2
@@ -31,6 +31,36 @@ class WAWWebPublisher:
     def __init__(self, issuer: WAWManifestIssuer, pin: CrossManifestPinV2) -> None:
         self.issuer = issuer
         self.pin = pin
+
+    def inspect_current(self, origin: str) -> str:
+        """Verify the complete current overlay against the active cross-pinned source."""
+        with self.issuer._directory(_ROOT) as parent:
+            facts = os.stat("current", dir_fd=parent, follow_symlinks=False)
+            target = os.readlink("current", dir_fd=parent)
+            if (
+                not stat.S_ISLNK(facts.st_mode)
+                or facts.st_uid != self.issuer.owner_uid
+                or re.fullmatch(r"releases/[0-9a-f]{64}", target) is None
+            ):
+                raise WAWManifestInstallError("Web current pointer is unsafe")
+        logical = _ROOT + "/" + target
+        raw = self.issuer._read(logical + "/.well-known/agentbox/waw-bootstrap.v1.json", 8192)
+        try:
+            bootstrap = json.loads(raw)
+            if type(bootstrap) is not dict:
+                raise ValueError("public bootstrap must be an object")
+            valid_from = datetime.fromisoformat(bootstrap["valid_from"])
+            valid_until = datetime.fromisoformat(bootstrap["valid_until"])
+        except (ValueError, TypeError, KeyError) as exc:
+            raise WAWManifestInstallError("public bootstrap is malformed") from exc
+        identity, files = self._observe(
+            origin=origin, valid_from=valid_from, valid_until=valid_until
+        )
+        if target != "releases/" + identity or not valid_from <= datetime.now(UTC) < valid_until:
+            raise WAWManifestInstallError("Web publication is stale or inconsistent")
+        self._verify(logical, files)
+        self._prepare_ingress(origin, plan=True, recover=False)
+        return identity
 
     def _prepare_ingress(self, origin: str, *, plan: bool, recover: bool) -> None:
         unit = (

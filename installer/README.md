@@ -5,6 +5,20 @@ only a root/bootstrap gate; Python owns detection, planning, artifact safety,
 identities, FHS layout, migrations, systemd, backup, update, rollback, and
 data-preserving uninstall.
 
+The first browser deployment is still under qualification. After fixed WAW
+enrollment/publication, `configure-waw-web --origin https://host.example --plan`
+checks the current Root-owned overlay and `/etc/agentbox-web/tls/fullchain.pem`
+(Root 0644) plus `privkey.pem` (Root 0600), then plans only the exact browser
+Origin and loopback trusted proxy. Applying configuration requires WAW services
+to be offline; it starts no service. Run fixed WAW activation before
+`activate-waw-web --origin https://host.example`. Web activation restarts only
+the separate HTTPS service and requires an already configured Origin.
+
+These internal commands are not yet the promised self-install command:
+automatic certificates/renewal and the final installer sequence remain open.
+PEM/hostname checks and service-manager status do not prove public CA trust,
+actual browser/CLI use or reboot/upgrade/rollback qualification.
+
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
 normal callers cannot select an alternate filesystem root. See

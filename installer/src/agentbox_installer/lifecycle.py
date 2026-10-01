@@ -50,6 +50,7 @@ from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublisher,
 )
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
+from agentbox_installer.waw_web_configuration import configure_browser_origin, validate_web_tls
 from agentbox_installer.waw_web_publication import WAWWebPublisher
 
 CORE_UNIT_NAMES = (
@@ -293,6 +294,15 @@ class AgentBoxInstaller:
     def _publish_waw_web_locked(
         self, *, origin: str, valid_from: datetime, valid_until: datetime, plan: bool, recover: bool
     ) -> dict[str, object]:
+        return self._web_publisher().publish(
+            origin=origin,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            plan=plan,
+            recover=recover,
+        )
+
+    def _web_publisher(self) -> WAWWebPublisher:
         version = self.current_version()
         if self.installation_state() != "installed" or version is None:
             raise InstallError("Web publication requires a completed installation")
@@ -319,12 +329,97 @@ class AgentBoxInstaller:
             runtime_uid=uid if self.host.real_host else os.geteuid(),
             runtime_gid=group,
         )
-        return WAWWebPublisher(issuer, pin).publish(
-            origin=origin,
-            valid_from=valid_from,
-            valid_until=valid_until,
-            plan=plan,
-            recover=recover,
+        return WAWWebPublisher(issuer, pin)
+
+    def configure_waw_web(
+        self, *, origin: str, plan: bool = False, recover: bool = False, activate: bool = False
+    ) -> dict[str, object]:
+        self.host.require_root()
+        if any(type(flag) is not bool for flag in (plan, recover, activate)):
+            raise TypeError("Web configuration flags must be bool")
+        try:
+            if plan:
+                return self._configure_waw_web_locked(
+                    origin, plan=True, recover=recover, activate=activate
+                )
+            with self._lifecycle_lock():
+                return self._configure_waw_web_locked(
+                    origin, plan=False, recover=recover, activate=activate
+                )
+        except OSError as exc:
+            raise InstallError("fixed Web configuration resource failed") from exc
+
+    def _configure_waw_web_locked(
+        self, origin: str, *, plan: bool, recover: bool, activate: bool
+    ) -> dict[str, object]:
+        publisher = self._web_publisher()
+        issuer = publisher.issuer
+        identity = publisher.inspect_current(origin)
+        transaction = WAWActivationTransaction(issuer, publisher.pin, api_gid=self._web_api_gid())
+        with issuer._directory("/etc/agentbox-web/tls") as parent:
+            certificates = transaction._read(
+                parent, "fullchain.pem", mode=0o644, gid=issuer.root_gid, maximum=262144
+            )
+            private_key = transaction._read(
+                parent, "privkey.pem", mode=0o600, gid=issuer.root_gid, maximum=65536
+            )
+        expiration = validate_web_tls(certificates, private_key, origin, datetime.now(UTC))
+        for logical, raw, maximum in (
+            ("/etc/agentbox-web/tls/fullchain.pem", certificates, 262144),
+            ("/etc/agentbox-web/tls/privkey.pem", private_key, 65536),
+        ):
+            if issuer._read(logical, maximum) != raw:
+                raise InstallError("Web TLS input changed during validation")
+        api_gid = self._web_api_gid()
+        with issuer._directory("/etc/agentbox") as parent:
+            before = transaction._read(parent, "agentbox.toml", mode=0o640, gid=api_gid)
+            if issuer._read("/etc/agentbox/agentbox.toml", 65536) != before:
+                raise InstallError("Web configuration changed during validation")
+            after = configure_browser_origin(before, origin)
+            if not plan and before != after:
+                if activate:
+                    raise InstallError("configure-waw-web must complete before WAW activation")
+                self.host.require_waw_policy_quiescence()
+                name = ".agentbox.toml.web-" + hashlib.sha256(after).hexdigest()[:16]
+                issuer._create_file(
+                    parent,
+                    name,
+                    after,
+                    0o640,
+                    api_gid,
+                    allow_existing=recover,
+                    repair_prefix=recover,
+                )
+                issuer.revalidate()
+                issuer._require_bytes(parent, "agentbox.toml", before, 0o640, api_gid)
+                os.replace(name, "agentbox.toml", src_dir_fd=parent, dst_dir_fd=parent)
+                os.fsync(parent)
+        if activate:
+            if before != after:
+                raise InstallError("Web Origin configuration is not committed")
+            if transaction.inspect(recover=False) != "started":
+                raise InstallError("fixed WAW activation must complete before Web activation")
+            self.host.require_web_dependencies()
+            if not plan:
+                issuer.revalidate()
+                try:
+                    self.host.start_web_service()
+                except Exception:
+                    with suppress(Exception):
+                        self.host.stop_web_service()
+                    raise
+        return {
+            "status": "validated" if plan else "started" if activate else "configured",
+            "origin": origin,
+            "build_identity": identity,
+            "tls_valid_until": expiration,
+            "services_started": activate and not plan,
+            "qualified": False,
+        }
+
+    def _web_api_gid(self) -> int:
+        return (
+            self.host.owner_ids("agentbox", "agentbox")[1] if self.host.real_host else os.getegid()
         )
 
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:

@@ -54,6 +54,12 @@ jobs:
             "$(command -v python)" -m pytest -q -p no:cacheprovider \
             --basetemp "$native_fixture_dir/pytest" \
             tests/unit/test_installer_waw_native.py -k linux
+      - name: Prove independent HTTPS unit DynamicUser and TLS credentials
+        if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
+        run: |
+          sudo env GITHUB_ACTIONS=true AGENTBOX_ENV=test \
+            "$(command -v python)" -m pytest -q -s -p no:cacheprovider \
+            tests/integration/test_waw_web_systemd.py
       - name: Prove systemd 255 scoped cgroup delegation with native PID 1
         if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
         run: sudo env GITHUB_ACTIONS=true /usr/bin/python3 scripts/probe-waw-delegation.py

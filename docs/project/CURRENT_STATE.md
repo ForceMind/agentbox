@@ -1,13 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T12:02:28Z"
+verified_at_utc: "2026-10-01T12:27:09Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 Web Origin/TLS configuration and fixed activation
+
+Base HEAD/origin/main is f2af937dcf3c437409400ebcf1ba1d56c5a21f3a on
+codex/r12-web-activation; previous PR #125 is merged, not a published version.
+`configure-waw-web` now checks the complete current overlay against the active
+cross-pinned release, fixed TLS leaf/key provenance, SAN/validity/key match,
+and atomically changes only empty/equal allowed_origins and trusted_proxies.
+Changing another Origin is rejected. Writes require existing offline/idle
+evidence; matching interrupted config writes use explicit --recover.
+
+`activate-waw-web` requires already committed browser configuration and a
+started WAW activation record. It restarts only the independent HTTPS unit
+after fixed nginx/API checks, rereads protected inputs and stops that unit if
+startup fails. Runtime/API are not restarted. No real user-host execution or
+provider login occurred. Certificate CA trust is not inferred from PEM checks.
+
+32 configuration/publication/activation regressions, Ruff and 365-file mypy
+pass. A native PID-1 CI probe now exercises the actual DynamicUser/LoadCredential
+unit, HTTPS with a fixture trust anchor, and kernel write-denial; local macOS
+skips this gated test. Its Linux result and exact-head CI still need read-back.
+Automatic certificate issuance/renewal, bootstrap refresh, one-command setup,
+actual PC/mobile CLI use and reboot/upgrade/rollback acceptance remain open.
+
 ## 2026-10-01 independent HTTPS Web ingress integration
+
+PR #125 is MERGED. Exact source head
+4f86c4d54d84d2a845dfaed23cfc0a56ffd20349 reached 24 SUCCESS/two prescribed
+SKIPPED. Merge read-back and fetched origin/main both equal
+f2af937dcf3c437409400ebcf1ba1d56c5a21f3a. Work continues on
+codex/r12-web-activation in the existing managed worktree; original checkout
+WIP remains untouched. This is software integration, not a published version.
 
 7c6db085f5b71e00d639a16054df63565e5155a8 reached terminal exact-head CI:
 24 SUCCESS/two prescribed SKIPPED, re-read from PR #125 during this task.
@@ -30,8 +60,13 @@ The ingress runs as a systemd DynamicUser with only CAP_NET_BIND_SERVICE;
 Root-owned TLS files are delivered through LoadCredential. Automatic review
 rejected CAP_CHOWN; the implementation removed Root worker switching instead.
 32 publication/bootstrap/activation regressions, Ruff and 362-file mypy pass.
-An actual nginx/TLS integration test was added to the Ubuntu installer CI
-matrix; local macOS lacks nginx, so local skipping is not Linux proof.
+An actual nginx/TLS integration test passed in all four Ubuntu 22.04/24.04 and
+Python 3.11/3.13 installer combinations (Deployment run 36859319313).
+It checks SPA/static/bootstrap routes, unknown Host/hidden-file/missing-script
+rejection, API JSON/sandbox headers and ignored malicious X-Accel-Redirect.
+Fixture paths/ports/certificate replace production inputs; DynamicUser and
+LoadCredential startup are not exercised by this probe. Local affected checks
+passed 43 tests; systemd-analyze/nginx checks skipped locally on macOS.
 
 No user-host service was started. Dependencies, TLS provisioning/renewal,
 Origin/API configuration and explicit activation are not yet composed.
