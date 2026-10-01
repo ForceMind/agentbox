@@ -92,6 +92,10 @@ def create_parser() -> argparse.ArgumentParser:
     vendors.add_argument("--plan", action="store_true")
     vendors.add_argument("--recover", action="store_true")
     vendors.add_argument("--json", action="store_true")
+    dependencies = commands.add_parser("install-waw-dependencies")
+    dependencies.add_argument("--plan", action="store_true")
+    dependencies.add_argument("--recover", action="store_true")
+    dependencies.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -244,6 +248,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     plan=args.plan,
                     recover=args.recover,
                 ),
+                json_output=json_output,
+            )
+            return 0
+        if args.command == "install-waw-dependencies":
+            _print(
+                installer.install_waw_dependencies(plan=args.plan, recover=args.recover),
                 json_output=json_output,
             )
             return 0

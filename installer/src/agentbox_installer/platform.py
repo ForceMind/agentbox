@@ -235,6 +235,8 @@ LOGICAL_PACKAGES: dict[PackageFamily, dict[str, tuple[str, ...]]] = {
         "systemd": ("systemd",),
     },
     PackageFamily.APT: {
+        "nginx": ("nginx",),
+        "certbot": ("certbot",),
         "native_compiler": ("gcc", "libc6-dev"),
         "native_binutils": ("binutils",),
         "python": ("python3", "python3-venv"),

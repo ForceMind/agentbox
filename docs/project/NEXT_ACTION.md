@@ -1,5 +1,19 @@
 # Current Authorized Action
 
+## 2026-10-02 qualify fixed dependencies and compose actual enrollment
+
+PR #130 merged at ba065e3; source 1972f75 has 24 SUCCESS/two prescribed SKIPPED.
+Current fixed APT browser dependency command has read-only planning, completed
+deferred-install/offline guards, exact temporary policy preservation and final
+detection. 37 affected regressions/Ruff/374-file mypy pass. Inspect exact-head CI;
+actual APT startup suppression/boot enablement are not yet proven. Nonmatching
+policy prefixes remain untouched and require operator attention.
+
+Next prove package behavior on isolated Linux and preserve pre-existing services,
+then derive vendor registration from actual empty-HOME observations and compose
+deferred apply/dependencies/vendors/manifests/enrollment/setup in the download
+entry. Retain maintenance, full PC/mobile CLI and reboot/upgrade/rollback gates.
+
 ## 2026-10-01 qualify deferred fresh install and compose prerequisites
 
 PR #129 merged at 7761310; exact source afafe55 has 24 SUCCESS/two prescribed

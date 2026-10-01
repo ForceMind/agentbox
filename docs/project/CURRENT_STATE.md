@@ -1,11 +1,32 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T15:07:32Z"
+verified_at_utc: "2026-10-01T16:27:54Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-02 fixed browser dependency installation
+
+PR #130 merged at ba065e355cbf17ea4d68e8badcdde4ca81f46c41; source 1972f75
+reached 24 SUCCESS/two prescribed SKIPPED, with GitHub/fetched origin/main
+read-back. Work is on codex/r12-browser-dependencies; original checkout is safe.
+
+install-waw-dependencies plans only missing tmux/bubblewrap/nginx/certbot from
+fixed APT mappings, requires systemd >=255 and completed deferred installation,
+checks offline/idle evidence, and verifies dependencies again after installation.
+APT gets a temporary exact Root-owned policy-rc.d with exit 101. Foreign policy
+is never overwritten; matching full guard requires explicit --recover. Cleanup
+on an ordinary failure verifies exact bytes before removal. Automatic approval
+rejected repairing nonmatching policy prefixes; that code is not applied. A
+partial/foreign guard needs operator attention, not automatic adoption.
+
+37 dependency/platform/host regressions, Ruff and 374-file mypy pass. These use
+temporary fixtures, not actual APT or service-start suppression. Real package
+maintainer-script behavior, boot enablement and maintenance sandbox must be
+qualified before the whole installer is admitted. This is not a usable version.
+Registration, final download/apply/setup, full CLI/browser and recovery remain open.
 
 ## 2026-10-01 native vendor evidence and deferred-install WIP
 

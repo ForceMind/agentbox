@@ -59,6 +59,16 @@ mode rejects. This option is fresh-install only and does not disable an existing
 installation. It provides the offline stage for vendor/enrollment/setup; the
 final download entry still needs that complete sequence.
 
+`install-waw-dependencies --plan` reports missing fixed browser dependencies
+(tmux, bubblewrap, nginx, certbot) for APT/systemd >=255 targets. Apply requires
+the completed deferred/offline stage and verifies results after installation.
+A temporary exact APT service-start policy is removed after the transaction;
+another operator's policy is never replaced. Only a complete matching guard can
+be recovered with `--recover`; partial or foreign state needs operator attention.
+Actual package startup/boot behavior remains under qualification. Other legacy
+platform support is preserved; automatic browser dependency provisioning is
+currently APT-only.
+
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
 normal callers cannot select an alternate filesystem root. See
