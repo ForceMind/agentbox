@@ -1,5 +1,21 @@
 # Current Authorized Action
 
+## 2026-10-01 qualify ingress then compose self-install activation
+
+Base 7c6db08 has terminal 24 SUCCESS/two prescribed SKIPPED, live re-read.
+Publication lifecycle/CLI, independent nginx configuration and DynamicUser/
+LoadCredential service are composed as software. Inspect this batch's exact-
+head CI, especially actual nginx TLS/static/API routing. Local 32 focused
+regressions/Ruff/362-file mypy pass; local macOS has no nginx.
+
+Next compose fixed nginx dependency checks, certificate provisioning/renewal,
+exact allowed Origin and trusted proxy configuration, and explicit service
+activation with systemd credential/read-only path evidence. Do not add CAP_CHOWN
+or use the API static route as the HTTPS profile entry. Then prove API/Worker
+write denial, publication/rollback and actual PC/mobile CLI/reboot/recovery;
+finish the self-install artifact and command. The first full deployable version
+remains the sole iteration; no user-host activation or release is implied.
+
 ## 2026-10-01 publish Root-owned HTTPS entry and independent serving
 
 e1055e0 reached terminal 24 SUCCESS/two prescribed SKIPPED and actual native

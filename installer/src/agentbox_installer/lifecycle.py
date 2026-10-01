@@ -50,6 +50,7 @@ from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublisher,
 )
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
+from agentbox_installer.waw_web_publication import WAWWebPublisher
 
 CORE_UNIT_NAMES = (
     "agentbox-api.service",
@@ -255,6 +256,76 @@ class AgentBoxInstaller:
             "profiles": "disabled",
             "services_started": False,
         }
+
+    def publish_waw_web(
+        self,
+        *,
+        origin: str,
+        valid_from: datetime,
+        valid_until: datetime,
+        plan: bool = False,
+        recover: bool = False,
+    ) -> dict[str, object]:
+        """Publish public static data only; never start a host service."""
+        self.host.require_root()
+        if type(plan) is not bool or type(recover) is not bool:
+            raise TypeError("Web publication flags must be bool")
+        try:
+            if plan:
+                return self._publish_waw_web_locked(
+                    origin=origin,
+                    valid_from=valid_from,
+                    valid_until=valid_until,
+                    plan=True,
+                    recover=recover,
+                )
+            with self._lifecycle_lock():
+                return self._publish_waw_web_locked(
+                    origin=origin,
+                    valid_from=valid_from,
+                    valid_until=valid_until,
+                    plan=False,
+                    recover=recover,
+                )
+        except OSError as exc:
+            raise InstallError("fixed Web publication resource failed") from exc
+
+    def _publish_waw_web_locked(
+        self, *, origin: str, valid_from: datetime, valid_until: datetime, plan: bool, recover: bool
+    ) -> dict[str, object]:
+        version = self.current_version()
+        if self.installation_state() != "installed" or version is None:
+            raise InstallError("Web publication requires a completed installation")
+        uid, gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+        if uid == 0 or gid == 0:
+            raise InstallError("Web publication Runtime identity is invalid")
+        owner = 0 if self.host.real_host else os.geteuid()
+        group = gid if self.host.real_host else os.getegid()
+        root_group = 0 if self.host.real_host else os.getegid()
+        pin = load_verified_canonical_waw_manifest_bundle_v2(
+            self.layout.map("/var/lib/agentbox-waw/runtime-host-installation.v2.json"),
+            self.layout.map("/usr/share/agentbox/waw"),
+            expected_runtime_uid=owner,
+            expected_runtime_gid=group,
+            expected_public_uid=owner,
+            expected_public_gid=root_group,
+            runtime_trusted_root=self.layout.root,
+        )
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=owner,
+            root_gid=root_group,
+            runtime_uid=uid if self.host.real_host else os.geteuid(),
+            runtime_gid=group,
+        )
+        return WAWWebPublisher(issuer, pin).publish(
+            origin=origin,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            plan=plan,
+            recover=recover,
+        )
 
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
         """Activate only the fixed enrolled graph; service start is not qualification."""

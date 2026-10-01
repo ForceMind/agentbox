@@ -1,11 +1,43 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T03:28:06Z"
+verified_at_utc: "2026-10-01T12:02:28Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 independent HTTPS Web ingress integration
+
+7c6db085f5b71e00d639a16054df63565e5155a8 reached terminal exact-head CI:
+24 SUCCESS/two prescribed SKIPPED, re-read from PR #125 during this task.
+The current batch implements an
+immutable overlay publisher and its focused regressions. It reads only
+manifest-listed, SHA-verified Web source files, preserves the original release,
+adds fixed public markers/bootstrap and a closed publication ledger, builds
+Root-owned staging and switches only the fixed current pointer. Matching
+recovery is explicit; source drift and foreign tree/pointer entries reject.
+The `publish-waw-web` lifecycle/CLI now owns publication under the installation
+lock and converts filesystem failures into installer errors. It also writes a
+fixed Root-owned nginx configuration and separate `agentbox-web.service`.
+Only `/api/v1/` proxies to fixed loopback `127.0.0.1:8787`; HTML/bootstrap/assets
+come from the independent publication tree. Upstream X-Accel internal redirect
+is ignored; API Content-Type/CSP/cache headers are replaced with data-only
+JSON/no-store/sandbox rules. Static CSP, hidden-file denial, exact Host and
+GET-only serving are explicit. Foreign configuration is never overwritten.
+
+The ingress runs as a systemd DynamicUser with only CAP_NET_BIND_SERVICE;
+Root-owned TLS files are delivered through LoadCredential. Automatic review
+rejected CAP_CHOWN; the implementation removed Root worker switching instead.
+32 publication/bootstrap/activation regressions, Ruff and 362-file mypy pass.
+An actual nginx/TLS integration test was added to the Ubuntu installer CI
+matrix; local macOS lacks nginx, so local skipping is not Linux proof.
+
+No user-host service was started. Dependencies, TLS provisioning/renewal,
+Origin/API configuration and explicit activation are not yet composed.
+Platform write-denial, actual systemd credential startup, complete failure/
+rollback and PC/mobile real CLI qualification remain outstanding. This batch
+does not produce a usable version or authorize release publication.
 
 ## 2026-10-01 distinct HTTPS client profile candidate
 

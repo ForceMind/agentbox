@@ -8,6 +8,7 @@ import os
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 from agentbox_installer.artifact import verify_release_bundle
@@ -55,6 +56,13 @@ def create_parser() -> argparse.ArgumentParser:
     activation.add_argument("--plan", action="store_true")
     activation.add_argument("--recover", action="store_true")
     activation.add_argument("--json", action="store_true")
+    web = commands.add_parser("publish-waw-web")
+    web.add_argument("--origin", required=True)
+    web.add_argument("--valid-from", required=True)
+    web.add_argument("--valid-until", required=True)
+    web.add_argument("--plan", action="store_true")
+    web.add_argument("--recover", action="store_true")
+    web.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -157,6 +165,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "prepare-waw-policies":
             _print(
                 installer.prepare_waw_policies(plan=args.plan, recover=args.recover),
+                json_output=json_output,
+            )
+            return 0
+        if args.command == "publish-waw-web":
+            _print(
+                installer.publish_waw_web(
+                    origin=args.origin,
+                    valid_from=datetime.fromisoformat(args.valid_from),
+                    valid_until=datetime.fromisoformat(args.valid_until),
+                    plan=args.plan,
+                    recover=args.recover,
+                ),
                 json_output=json_output,
             )
             return 0

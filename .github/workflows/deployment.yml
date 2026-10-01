@@ -24,6 +24,11 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip "setuptools>=83"
       - run: python -m pip install -e ".[dev]"
+      - name: Verify independent HTTPS ingress with actual nginx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nginx
+          python -m pytest -q tests/integration/test_waw_web_ingress.py
       - run: >-
           pytest
           tests/unit/test_installer_platform.py
