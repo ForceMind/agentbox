@@ -87,6 +87,7 @@ agentbox_worker = "apps/worker/src/agentbox_worker"
 agentbox_installer = [
   "assets/systemd/*.service",
   "assets/systemd/*.socket",
+  "assets/systemd/*.timer",
   "assets/tmpfiles.d/*.conf",
 ]
 agentbox_runtime = [

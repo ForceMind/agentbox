@@ -1,13 +1,33 @@
 # Current Authorized Action
 
+## 2026-10-01 verify ACME/maintenance then compose the install entry
+
+The current certificate batch adds fixed, explicitly consented ACME issuance,
+private policy/storage, sealed TLS pair recovery, and a daily Root-only Web
+maintenance service/timer. Bootstrap refresh supports automatic and operator-
+managed TLS; certificate renewal never touches Runtime services or credentials.
+40 local affected regressions/Ruff/367-file mypy pass. Inspect exact-head CI and
+the actual distro Certbot parser check; generated certificates are not public
+CA evidence and the maintenance service sandbox still needs Linux execution.
+
+Next finish fixed dependency installation without adopting/stopping unrelated
+services, exercise the actual maintenance unit, and compose one operator setup
+sequence for PKI, publication, Origin and WAW/HTTPS activation. Then close real
+vendor CLI, PC/mobile input/reconnect/Stop and install/reboot/upgrade/rollback
+acceptance before publishing the artifact and self-install command. Keep the
+same first-version target and source version; no unrelated features.
+
 ## 2026-10-01 verify fixed Web activation then automate certificate/setup
 
-Current branch codex/r12-web-activation starts from merged f2af937. The batch
+PR #126 merged at ebf06758b93423b7110539854e9d30dd80b4266f; source f72ea3a
+has 24 SUCCESS/two prescribed SKIPPED, with GitHub/fetched origin/main read-back.
+Continue on codex/r12-web-certificates. The merged batch
 adds configure-waw-web/activate-waw-web: verified current overlay, fixed TLS
 provenance/hostname/validity/key checks, offline atomic Origin/proxy configuration,
 and HTTPS-only restart with WAW-started admission and fixed failure cleanup.
-32 focused regressions/Ruff/365-file mypy pass. Read back the actual native
-PID-1 DynamicUser/LoadCredential/TLS/write-denial CI probe before relying on it.
+32 focused regressions/Ruff/365-file mypy pass. Actual native PID-1
+DynamicUser/LoadCredential/TLS/write-denial passed, run 36862158050/job
+110368738448. Public CA/user-host/client/CLI qualification remains separate.
 
 Next compose explicit operator-approved automatic certificate issuance and
 renewal, public bootstrap refresh before expiry, and the single installer

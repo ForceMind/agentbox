@@ -32,8 +32,7 @@ class WAWWebPublisher:
         self.issuer = issuer
         self.pin = pin
 
-    def inspect_current(self, origin: str) -> str:
-        """Verify the complete current overlay against the active cross-pinned source."""
+    def _current_logical(self) -> str:
         with self.issuer._directory(_ROOT) as parent:
             facts = os.stat("current", dir_fd=parent, follow_symlinks=False)
             target = os.readlink("current", dir_fd=parent)
@@ -43,7 +42,23 @@ class WAWWebPublisher:
                 or re.fullmatch(r"releases/[0-9a-f]{64}", target) is None
             ):
                 raise WAWManifestInstallError("Web current pointer is unsafe")
-        logical = _ROOT + "/" + target
+        return _ROOT + "/" + target
+
+    def current_origin(self) -> str:
+        raw = self.issuer._read(
+            self._current_logical() + "/.well-known/agentbox/waw-bootstrap.v1.json", 8192
+        )
+        value = json.loads(raw)
+        if type(value) is not dict or type(value.get("origin")) is not str:
+            raise WAWManifestInstallError("public bootstrap Origin is invalid")
+        origin = str(value["origin"])
+        self.inspect_current(origin, allow_expired=True)
+        return origin
+
+    def inspect_current(self, origin: str, *, allow_expired: bool = False) -> str:
+        """Verify the complete current overlay against the active cross-pinned source."""
+        logical = self._current_logical()
+        target = logical[len(_ROOT) + 1 :]
         raw = self.issuer._read(logical + "/.well-known/agentbox/waw-bootstrap.v1.json", 8192)
         try:
             bootstrap = json.loads(raw)
@@ -56,7 +71,13 @@ class WAWWebPublisher:
         identity, files = self._observe(
             origin=origin, valid_from=valid_from, valid_until=valid_until
         )
-        if target != "releases/" + identity or not valid_from <= datetime.now(UTC) < valid_until:
+        now = datetime.now(UTC)
+        if (
+            target != "releases/" + identity
+            or now < valid_from
+            or not allow_expired
+            and now >= valid_until
+        ):
             raise WAWManifestInstallError("Web publication is stale or inconsistent")
         self._verify(logical, files)
         self._prepare_ingress(origin, plan=True, recover=False)
@@ -72,6 +93,12 @@ class WAWWebPublisher:
             "/etc/agentbox-web/nginx.conf": render_web_ingress(origin),
             "/etc/systemd/system/agentbox-web.service": unit,
         }
+        for name in ("agentbox-web-maintenance.service", "agentbox-web-maintenance.timer"):
+            targets["/etc/systemd/system/" + name] = (
+                importlib.resources.files("agentbox_installer")
+                .joinpath("assets/systemd/" + name)
+                .read_bytes()
+            )
         # Check all existing entries before creating any configuration. No
         # replacement of another ingress or implicit Origin change is allowed.
         for logical, raw in targets.items():

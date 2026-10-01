@@ -15,9 +15,24 @@ to be offline; it starts no service. Run fixed WAW activation before
 the separate HTTPS service and requires an already configured Origin.
 
 These internal commands are not yet the promised self-install command:
-automatic certificates/renewal and the final installer sequence remain open.
+the final installer/dependency sequence and qualification remain open.
 PEM/hostname checks and service-manager status do not prove public CA trust,
 actual browser/CLI use or reboot/upgrade/rollback qualification.
+
+`provision-waw-web-certificate --origin https://host.example --email owner@example.com
+--plan` plans fixed standalone ACME issuance without network or writes. Apply
+requires `--agree-acme-terms`, distro `/usr/bin/certbot` and available/inbound
+port 80; it never stops another listener. The CA/account/archive use only the
+private AgentBox namespace. A matching interrupted TLS pair needs `--recover`;
+another operator's certificate or certificate store is not adopted.
+
+`maintain-waw-web --recover` is the fixed daily maintenance action. It refreshes
+the public bootstrap before expiry and, for explicitly configured ACME, renews
+near-expiry certificates. Only changed TLS triggers an HTTPS restart; Runtime
+continues. Operator-managed TLS remains operator-managed. A refreshed bootstrap
+invalidates old browser leases and may require reloading the page; it does not
+stop the server CLI. Public CA/DNS/firewall validation still belongs to the
+operator's real installation.
 
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;

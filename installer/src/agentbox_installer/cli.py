@@ -69,6 +69,16 @@ def create_parser() -> argparse.ArgumentParser:
         web_configuration.add_argument("--plan", action="store_true")
         web_configuration.add_argument("--recover", action="store_true")
         web_configuration.add_argument("--json", action="store_true")
+    certificate = commands.add_parser("provision-waw-web-certificate")
+    certificate.add_argument("--origin", required=True)
+    certificate.add_argument("--email", required=True)
+    certificate.add_argument("--agree-acme-terms", action="store_true")
+    certificate.add_argument("--plan", action="store_true")
+    certificate.add_argument("--recover", action="store_true")
+    certificate.add_argument("--json", action="store_true")
+    maintenance = commands.add_parser("maintain-waw-web")
+    maintenance.add_argument("--recover", action="store_true")
+    maintenance.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -196,6 +206,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 json_output=json_output,
             )
+            return 0
+        if args.command == "provision-waw-web-certificate":
+            _print(
+                installer.provision_waw_web_certificate(
+                    origin=args.origin,
+                    email=args.email,
+                    agree_terms=args.agree_acme_terms,
+                    plan=args.plan,
+                    recover=args.recover,
+                ),
+                json_output=json_output,
+            )
+            return 0
+        if args.command == "maintain-waw-web":
+            _print(installer.maintain_waw_web(recover=args.recover), json_output=json_output)
             return 0
         if args.command == "activate-waw":
             _print(

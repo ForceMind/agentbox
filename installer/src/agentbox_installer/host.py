@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import grp
 import importlib.resources
 import json
@@ -413,11 +414,63 @@ class HostOperations:
         self._run(
             ("/usr/bin/systemctl", "is-active", "--quiet", "agentbox-web.service"), timeout=10
         )
+        self._run(("/usr/bin/systemctl", "enable", "--now", "agentbox-web-maintenance.timer"))
 
     def stop_web_service(self) -> None:
         if self.real_host:
             self.require_root()
             self._run(("/usr/bin/systemctl", "stop", "agentbox-web.service"))
+
+    def issue_web_certificate(self, argv: tuple[str, ...]) -> None:
+        """Only the installer-generated fixed ACME command can reach this boundary."""
+        if not self.real_host:
+            raise HostMutationError("fixture ACME execution requires an explicit test adapter")
+        self.require_root()
+        from agentbox_installer.waw_web_certificates import web_acme_argv
+
+        if (
+            len(argv) != 21
+            or not argv[9].startswith("--domains=")
+            or not argv[10].startswith("--email=")
+        ):
+            raise HostMutationError("fixed ACME command is required")
+        expected = web_acme_argv("https://" + argv[9][10:], argv[10][8:])
+        if argv != expected:
+            raise HostMutationError("fixed ACME command is required")
+        path = Path("/usr/bin/certbot")
+        facts = path.lstat()
+        if not stat.S_ISREG(facts.st_mode) or facts.st_uid != 0 or facts.st_mode & 0o022:
+            raise HostMutationError("fixed certbot dependency is unavailable or unsafe")
+        # Test both address families without stealing or stopping a listener.
+        with socket.socket(socket.AF_INET) as listener:
+            listener.bind(("0.0.0.0", 80))
+        if socket.has_ipv6:
+            try:
+                with socket.socket(socket.AF_INET6) as listener:
+                    listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                    listener.bind(("::", 80))
+            except OSError as exc:
+                if exc.errno not in {errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL}:
+                    raise
+        try:
+            result = subprocess.run(  # noqa: S603 - fixed generated ACME argv, no shell or hooks
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=180,
+                check=False,
+                env={
+                    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG": "C.UTF-8",
+                    "HOME": "/etc/agentbox-web/acme",
+                    "XDG_CONFIG_HOME": "/etc/agentbox-web/acme",
+                },
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HostMutationError("fixed ACME request failed") from exc
+        if result.returncode != 0:
+            raise HostMutationError("fixed ACME request failed; inspect the private ACME log")
 
     def enable_and_start(self) -> None:
         if not self.real_host:

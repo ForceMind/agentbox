@@ -27,8 +27,8 @@ jobs:
       - name: Verify independent HTTPS ingress with actual nginx
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nginx
-          python -m pytest -q tests/integration/test_waw_web_ingress.py
+          sudo apt-get install -y --no-install-recommends nginx certbot
+          python -m pytest -q tests/integration/test_waw_web_ingress.py tests/integration/test_waw_certbot_cli.py
       - run: >-
           pytest
           tests/unit/test_installer_platform.py
