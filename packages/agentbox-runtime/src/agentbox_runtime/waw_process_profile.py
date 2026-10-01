@@ -125,7 +125,7 @@ EXECUTABLE_POLICIES_V1 = (
         "/opt/agentbox/current/libexec/agentbox-waw-attach-supervisor",
     ),
     ExecutablePolicyV1("claude", 256 * 1024 * 1024, "claude-version-v1", "claude-probe-v1", None),
-    ExecutablePolicyV1("codex", 256 * 1024 * 1024, "codex-version-v1", "codex-probe-v1", None),
+    ExecutablePolicyV1("codex", 384 * 1024 * 1024, "codex-version-v1", "codex-probe-v1", None),
 )
 EXECUTABLE_POLICY_BY_KIND_V1 = MappingProxyType(
     {policy.kind: policy for policy in EXECUTABLE_POLICIES_V1}
@@ -352,10 +352,15 @@ def _entry_data(entry: ExecutableInventoryEntryV1 | Mapping[str, Any]) -> dict[s
 def _validate_entry(data: Mapping[str, Any], expected: ExecutablePolicyV1) -> None:
     path = _absolute_path(data["path"])
     _digest(data["sha256"])
+    limits = {expected.max_bytes}
+    if expected.kind == "codex":
+        limits = {256 * 1024 * 1024}
+        if path in {"/usr/local/bin/codex", "/usr/bin/codex"}:
+            limits.add(expected.max_bytes)
     if (
         data["kind"] != expected.kind
         or type(data["max_bytes"]) is not int
-        or data["max_bytes"] != expected.max_bytes
+        or data["max_bytes"] not in limits
         or data["version_identity"] != expected.version_identity
         or data["version_probe_id"] != expected.version_probe_id
         or (

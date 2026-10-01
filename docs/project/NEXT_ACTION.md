@@ -1,5 +1,21 @@
 # Current Authorized Action
 
+## 2026-10-01 verify actual native vendors then close initial install sequencing
+
+PR #128 merged at 4f849be; source 131aadb reached 24 SUCCESS/two prescribed
+SKIPPED. Current vendor bootstrap pins Claude 2.1.286/Codex 0.159.3 official
+downloads and publishes verified ELF files create-only. Local real downloads
+passed SHA/ELF checks; 153 affected regressions/Ruff/372-file mypy pass. Codex's
+287086056-byte binary requires a fixed-path/kind-only 384 MiB pin; other/default
+limits and legacy 256 MiB Codex pins remain. Inspect actual Linux signature,
+version and unauthenticated-output evidence plus exact-head CI before merging.
+
+Next compose fresh-install defer-activation, fixed Web/runtime dependencies,
+native vendor installation and actual version/auth observation into manifest/
+enrollment/setup. Do not make the operator supply synthetic vendor versions or
+digests. Then qualify maintenance and the full installed CLI/browser/recovery
+path and publish the immutable artifact/install command. No unrelated features.
+
 ## 2026-10-01 finish setup qualification and initial-install prerequisites
 
 PR #127 merged at 753e8be; exact source ba13d10 has 24 SUCCESS/two prescribed

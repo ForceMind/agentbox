@@ -43,6 +43,14 @@ started WAW graph keeps its Runtime process. This still requires prior vendor/
 manifest enrollment and fixed dependencies; it is not the final download/install
 entry and does not claim real browser/CLI qualification.
 
+`install-waw-vendors --plan` describes the fixed native Claude/Codex download
+set without network or writes. Apply requires a completed installation and
+offline/idle WAW evidence, installs only verified Root-owned native executables,
+and never executes an upstream install script or logs in. Foreign/distro
+installations require explicit enrollment; they are not replaced. Recover only
+matching interrupted publication with `--recover`. Version pins update with a
+reviewed AgentBox batch, not automatically from an upstream latest endpoint.
+
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
 normal callers cannot select an alternate filesystem root. See

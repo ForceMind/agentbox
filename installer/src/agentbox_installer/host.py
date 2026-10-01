@@ -15,6 +15,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Mapping
 from contextlib import suppress
@@ -471,6 +472,45 @@ class HostOperations:
             raise HostMutationError("fixed ACME request failed") from exc
         if result.returncode != 0:
             raise HostMutationError("fixed ACME request failed; inspect the private ACME log")
+
+    def download_waw_vendor(self, spec: object) -> bytes:
+        from agentbox_installer.waw_vendor_bootstrap import VENDOR_DOWNLOADS, VendorDownload
+
+        if (
+            not self.real_host
+            or not isinstance(spec, VendorDownload)
+            or spec not in VENDOR_DOWNLOADS
+        ):
+            raise HostMutationError("fixed official vendor download is required")
+        self.require_root()
+        with tempfile.TemporaryDirectory(prefix="agentbox-vendor-") as directory:
+            path = Path(directory) / "download"
+            self._run(
+                (
+                    "/usr/bin/curl",
+                    "-q",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "--proto",
+                    "=https",
+                    "--proto-redir",
+                    "=https",
+                    "--location",
+                    "--connect-timeout",
+                    "15",
+                    "--max-time",
+                    "180",
+                    "--max-filesize",
+                    "268435456",
+                    "--output",
+                    str(path),
+                    spec.url,
+                ),
+                timeout=190,
+            )
+            with path.open("rb") as stream:
+                return stream.read(256 * 1024 * 1024 + 1)
 
     def enable_and_start(self) -> None:
         if not self.real_host:
