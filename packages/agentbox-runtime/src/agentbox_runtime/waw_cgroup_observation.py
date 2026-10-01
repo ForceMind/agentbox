@@ -8,7 +8,7 @@ import os
 import re
 import stat
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from agentbox_runtime.models import RuntimeOperationError
 from agentbox_runtime.waw_cgroup_attestation import (
@@ -23,6 +23,7 @@ from agentbox_runtime.waw_fixed_transport import (
     _cgroup_event,
     _fd_mount_id,
     _open_relative_directory,
+    _open_scoped_workspace_root,
     _read_cgroup_file,
     _verify_delegate_root,
 )
@@ -92,15 +93,24 @@ class WAWCgroupObservationFactory:
                 os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
             )
             fds.append(service)
-            delegate = os.open(
-                cgroup_delegate_root_path(manifest),
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            delegate = (
+                _open_scoped_workspace_root(authority)
+                if not persist_empty
+                else os.open(
+                    cgroup_delegate_root_path(manifest),
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                )
             )
             fds.append(delegate)
             mount, filesystem = _verify_delegate_root(delegate, authority)
-            workspace = _open_relative_directory(
-                delegate, name, path_only=False, expected_uid=os.geteuid()
-            )
+            try:
+                workspace = _open_relative_directory(
+                    delegate, name, path_only=False, expected_uid=os.geteuid()
+                )
+            except FileNotFoundError:
+                if persist_empty:
+                    raise
+                return self._observe_absence(identity, service, delegate, name, mount, filesystem)
             fds.append(workspace)
             workload = _open_relative_directory(
                 workspace, "workload", path_only=False, expected_uid=os.geteuid()
@@ -204,6 +214,186 @@ class WAWCgroupObservationFactory:
             if cleanup == "EMPTY_DURABLE" and persist_empty:
                 self._store.write(record)
             return record
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
+
+    def _observe_absence(
+        self,
+        identity: WAWLifecycleIdentity,
+        service: int,
+        delegate: int,
+        name: str,
+        mount: str,
+        filesystem: str,
+    ) -> WAWCgroupAttestation:
+        """Prove absence under the verified current scoped cgroup mount.
+
+        Only an ENOENT for the exact generated Workspace component qualifies.
+        Service/delegate FDs are real; nonexistent Workspace/workload physical
+        identities use explicit absence markers. Limits are retained policy
+        metadata, not measurements of a nonexistent group.
+        """
+        old = self._store.read(
+            workspace_id=identity.workspace_id, generation=int(identity.generation)
+        )
+        if old is None or (
+            old.project_id != identity.project_id
+            or old.agent_type != identity.agent_type
+            or old.workspace_relative_path != name
+            or old.workload_relative_path != name + "/workload"
+            or int(old.runtime_epoch) > int(self._runtime_epoch())
+        ):
+            raise RuntimeOperationError(
+                "RECONCILIATION_REQUIRED", "Absence provenance changed", category="conflict"
+            )
+        facts = [os.fstat(service), os.fstat(delegate)]
+        if any(
+            fact.st_uid != os.geteuid() or fact.st_gid != os.getegid() or fact.st_mode & 0o022
+            for fact in facts
+        ):
+            raise RuntimeOperationError(
+                "RECONCILIATION_REQUIRED", "Absence FD ownership changed", category="conflict"
+            )
+        for _ in range(2):
+            try:
+                os.stat(name, dir_fd=delegate, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED", "Workspace reappeared", category="conflict"
+                )
+            if _verify_delegate_root(delegate, self._authority()) != (mount, filesystem):
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED", "Absence mount changed", category="conflict"
+                )
+        record = replace(
+            old,
+            runtime_epoch=self._runtime_epoch(),
+            service_invocation_id=self._invocation,
+            service_cgroup_device=f"{os.major(facts[0].st_dev)}:{os.minor(facts[0].st_dev)}",
+            service_cgroup_inode=str(facts[0].st_ino),
+            service_cgroup_mount_id=_fd_mount_id(service),
+            delegate_subgroup_device=f"{os.major(facts[1].st_dev)}:{os.minor(facts[1].st_dev)}",
+            delegate_subgroup_inode=str(facts[1].st_ino),
+            delegate_subgroup_mount_id=mount,
+            cgroup_mount_id=mount,
+            cgroup_filesystem_id=filesystem,
+            workspace_device="absent",
+            workspace_inode="absent",
+            workload_device="absent",
+            workload_inode="absent",
+            workspace_presence="absent",
+            attachment_leaves=(),
+            last_frozen="0",
+            last_populated="0",
+            cleanup_state="EMPTY_DURABLE",
+        )
+        return decode_waw_cgroup_attestation(encode_waw_cgroup_attestation(record))
+
+    def finalize_recovery(self, record: WAWCgroupAttestation) -> None:
+        """Remove only the durably empty, exact observed old generation.
+
+        No kill, adoption or recursive deletion. Kernel busy/nonempty failures
+        retain quarantine; an interrupted deletion is handled by fresh absence
+        observation on the next start attempt.
+        """
+        record = decode_waw_cgroup_attestation(encode_waw_cgroup_attestation(record))
+        name = (
+            "ws-"
+            + hashlib.sha256(record.workspace_id.encode()).hexdigest()
+            + "-g"
+            + str(record.generation)
+        )
+        if (
+            record.runtime_epoch != self._runtime_epoch()
+            or record.service_invocation_id != self._invocation
+            or record.workspace_relative_path != name
+            or record.workload_relative_path != name + "/workload"
+            or record.cleanup_state != "EMPTY_DURABLE"
+            or record.last_populated != "0"
+            or record.attachment_leaves
+            or self._store.read(workspace_id=record.workspace_id, generation=record.generation)
+            != record
+        ):
+            raise RuntimeOperationError(
+                "RECONCILIATION_REQUIRED", "Cleanup record changed", category="conflict"
+            )
+        if record.workspace_presence == "absent":
+            return
+        fds: list[int] = []
+        try:
+            delegate = os.open(
+                cgroup_delegate_root_path(self._authority()._manifest.cgroup),
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            )
+            fds.append(delegate)
+            mount, filesystem = _verify_delegate_root(delegate, self._authority())
+            workspace = _open_relative_directory(
+                delegate, name, path_only=False, expected_uid=os.geteuid()
+            )
+            fds.append(workspace)
+            try:
+                workload = _open_relative_directory(
+                    workspace, "workload", path_only=False, expected_uid=os.geteuid()
+                )
+            except FileNotFoundError:
+                workload = None
+            if workload is not None:
+                fds.append(workload)
+            identities = [
+                (delegate, record.delegate_subgroup_device, record.delegate_subgroup_inode),
+                (workspace, record.workspace_device, record.workspace_inode),
+            ]
+            if workload is not None:
+                identities.append((workload, record.workload_device, record.workload_inode))
+            for fd, device, inode in identities:
+                fact = os.fstat(fd)
+                if (
+                    f"{os.major(fact.st_dev)}:{os.minor(fact.st_dev)}" != device
+                    or str(fact.st_ino) != inode
+                    or fact.st_uid != os.geteuid()
+                    or fact.st_gid != os.getegid()
+                    or fact.st_mode & 0o022
+                    or _fd_mount_id(fd) != mount
+                ):
+                    raise RuntimeOperationError(
+                        "RECONCILIATION_REQUIRED", "Cleanup FD changed", category="conflict"
+                    )
+            if mount != record.cgroup_mount_id or filesystem != record.cgroup_filesystem_id:
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED", "Cleanup mount changed", category="conflict"
+                )
+            if self._limits(workspace) != record.workspace_limits or (
+                workload is not None and self._limits(workload) != record.workload_limits
+            ):
+                raise RuntimeOperationError(
+                    "RECONCILIATION_REQUIRED", "Cleanup limits changed", category="conflict"
+                )
+            hierarchy = [(workspace, {"workload"} if workload is not None else set())]
+            if workload is not None:
+                hierarchy.append((workload, set()))
+            for parent, allowed in hierarchy:
+                directories = {
+                    entry
+                    for entry in os.listdir(parent)
+                    if stat.S_ISDIR(os.stat(entry, dir_fd=parent, follow_symlinks=False).st_mode)
+                }
+                if directories != allowed or _cgroup_event(workspace, "populated") != 0:
+                    raise RuntimeOperationError(
+                        "RECONCILIATION_REQUIRED", "Cleanup is not empty", category="conflict"
+                    )
+            removals = []
+            if workload is not None:
+                removals.append((workspace, "workload", record.workload_inode))
+            removals.append((delegate, name, record.workspace_inode))
+            for parent, child, inode in removals:
+                if str(os.stat(child, dir_fd=parent, follow_symlinks=False).st_ino) != inode:
+                    raise RuntimeOperationError(
+                        "RECONCILIATION_REQUIRED", "Cleanup path changed", category="conflict"
+                    )
+                os.rmdir(child, dir_fd=parent)
         finally:
             for fd in reversed(fds):
                 os.close(fd)

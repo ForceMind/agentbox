@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from contextlib import suppress
 from dataclasses import replace
@@ -21,6 +22,7 @@ from agentbox_runtime.waw_cgroup_attestation import (
 )
 from agentbox_runtime.waw_cgroup_attestation_store import (
     WAWCgroupAttestationStore,
+    WAWCgroupAttestationStoreError,
 )
 from agentbox_runtime.waw_control_server import WAWControlDispatchError
 from agentbox_runtime.waw_encrypted_stream import (
@@ -2331,7 +2333,7 @@ async def test_failed_start_cleanup_can_retry_exact_stop_without_durable_stores(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("recovery_state", ["EMPTY_DURABLE", "FENCED", "missing"])
+@pytest.mark.parametrize("recovery_state", ["EMPTY_DURABLE", "FENCED", "missing", "absent"])
 async def test_start_recovers_old_generation_only_with_positive_empty_proof(
     tmp_path: Path, recovery_state: str
 ) -> None:
@@ -2354,7 +2356,13 @@ async def test_start_recovers_old_generation_only_with_positive_empty_proof(
         runtime_host_installation_revision="1",
         runtime_epoch="1",
     )
-    groups.write(cgroup_record())
+    old_group = cgroup_record()
+    if recovery_state == "absent":
+        name = "ws-" + hashlib.sha256(WORKSPACE.encode()).hexdigest() + "-g1"
+        old_group = replace(
+            old_group, workspace_relative_path=name, workload_relative_path=name + "/workload"
+        )
+    groups.write(old_group)
     recovered: list[WAWLifecycleIdentity] = []
 
     class Observer:
@@ -2362,20 +2370,30 @@ async def test_start_recovers_old_generation_only_with_positive_empty_proof(
             recovered.append(identity)
             if recovery_state == "missing":
                 raise FileNotFoundError("synthetic missing group")
-            return replace(
-                cgroup_record(),
+            candidate = replace(
+                old_group,
                 runtime_epoch="2",
                 service_invocation_id="invocation-2",
                 attachment_leaves=(),
                 last_populated="0",
-                cleanup_state=recovery_state,
+                cleanup_state="EMPTY_DURABLE" if recovery_state == "absent" else recovery_state,
             )
+            if recovery_state == "absent":
+                candidate = replace(
+                    candidate,
+                    workspace_presence="absent",
+                    workspace_device="absent",
+                    workspace_inode="absent",
+                    workload_device="absent",
+                    workload_inode="absent",
+                )
+            return candidate
 
         def __call__(
             self, identity: WAWLifecycleIdentity, _observation: WAWLifecycleObservation
         ) -> WAWCgroupAttestation:
             return replace(
-                cgroup_record(),
+                old_group,
                 generation=int(identity.generation),
                 runtime_epoch="2",
                 service_invocation_id="invocation-2",
@@ -2396,12 +2414,17 @@ async def test_start_recovers_old_generation_only_with_positive_empty_proof(
     await runtime.dispatch(bind_request())
     await runtime.dispatch(register_request())
     request = lifecycle_request("workspace.workspace.start", generation="2")
-    if recovery_state == "EMPTY_DURABLE":
+    if recovery_state in {"EMPTY_DURABLE", "absent"}:
         result = await runtime.dispatch(request)
         assert result["status"] == "STARTED" and result["state"] == "RUNNING"
         assert [name for name, _identity in executor.calls] == ["start"]
         current = floors.read(WORKSPACE)
         assert current is not None and current.runtime_epoch == "2" and current.min_generation == 2
+        if recovery_state == "absent":
+            persisted = groups.read(workspace_id=WORKSPACE, generation=1)
+            assert persisted is not None and persisted.workspace_presence == "absent"
+            with pytest.raises(WAWCgroupAttestationStoreError, match="explicit recovery"):
+                groups.write(persisted)
     else:
         with pytest.raises(WAWControlDispatchError, match="RECONCILIATION_REQUIRED"):
             await runtime.dispatch(request)

@@ -1,25 +1,25 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T01:06:42Z"
+verified_at_utc: "2026-10-01T01:27:18Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-10-01 explicit epoch recovery candidate
+## 2026-10-01 positive absence and fixed cleanup candidate
 
-Synchronized base: 99050c1cf853ed176f16d566acf1bde6ae352b64 on Draft
+Synchronized base: ccf8bf537d4c1206ce786fedccec8006a9cc9f74 on Draft
 #125; exact remote read-back and terminal CI confirmed: 24 SUCCESS/two
 prescribed SKIPPED. The current follow-up connects the actual FD recovery
 observer to the existing start path before executor side effects. It uses the
 persisted generation, not the request's next generation, preserves bound host
 and binding provenance, and imposes the existing observation timeout. Unknown,
-live, missing or failed observations retain quarantine. Status/reconcile stay
+live or failed observations retain quarantine. Status/reconcile stay
 read-only. Recovery observation does not perform an ordinary cross-epoch write;
 the registry's explicit CAS is the only commit path.
 
-Live remote head 0d7d2b3ce6ea0cc2cfd64205107708135554daef reached terminal
+Earlier head 0d7d2b3ce6ea0cc2cfd64205107708135554daef reached terminal
 CI: 24 SUCCESS/two prescribed SKIPPED. Deployment run 36792740947, job
 110149149904 confirmed production_helpers_executed, limits_read_back,
 existing_generation_rejected and fd_observation_persisted all true under
@@ -35,12 +35,21 @@ Workspace floor migration; interruption leaves quarantine set and exact
 read-back can retry without lowering the floor. Older unresolved generations
 remain fenced. No HTTP recovery action, generic path or command was added.
 
-113 recovery observer/store/lifecycle regressions passed; Ruff and 351-file
-mypy passed. Regressions cover automatic start of the next
-generation after positive emptiness, rejection of FENCED/missing observations,
-and interrupted migration. This is main-agent self-review and synthetic
-recovery evidence. Positive absent-group proof and abandoned-group cleanup
-are still missing; fixed activation,
+Current changes add the distinct v2 absence record described in ADR 0011;
+current service/delegate FDs and repeated exact-component ENOENT are required,
+with explicit absent Workspace/workload identities. Ordinary writes cannot
+publish absence. Runtime removes only the durably empty exact old generation,
+rechecking FD ownership/inodes/mount/limits, populated state and unknown leaves.
+Partial workload deletion can retry from durable empty evidence; same-epoch
+absence requires that prior emptiness and unchanged invocation/delegate facts.
+There is no kill, recursive deletion or adoption of unknown generations.
+
+152 recovery observer/store/lifecycle regressions passed; Ruff and 351-file
+mypy passed. The native PID-1 probe now includes actual absent-directory,
+full empty cleanup and interrupted-workload cleanup checks; its result is
+pending this candidate. This is main-agent self-review, with local directory
+and synthetic kernel/metadata fixtures. Whole service/host reboot, actual CLI,
+upgrade/rollback qualification and fixed activation remain open, alongside
 positive Codex Remote evidence and HTTPS PC/mobile workflow also remain open.
 This batch is not a usable release. Product version remains rc30; no user-host
 operation, tag or publication occurred.

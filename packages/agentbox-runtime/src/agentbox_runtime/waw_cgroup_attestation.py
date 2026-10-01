@@ -32,6 +32,7 @@ _WORKSPACE_COMPONENT = re.compile(r"\Aws-[0-9a-f]{64}-g[1-9][0-9]{0,19}\Z")
 _CLEANUP_STATES = frozenset({"LIVE", "FENCED", "EMPTY_DURABLE"})
 _AGENT_TYPES = frozenset({"claude", "codex"})
 _SCHEMA = "waw-cgroup-attestation-v1"
+_ABSENCE_SCHEMA = "waw-cgroup-absence-attestation-v2"
 
 
 class WAWCgroupAttestationError(ValueError):
@@ -95,6 +96,7 @@ class WAWCgroupAttestation:
     last_frozen: str
     last_populated: str
     cleanup_state: str
+    workspace_presence: str = "present"
 
 
 def _strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -246,14 +248,28 @@ def _leaf(value: object) -> WAWCgroupAttachmentLeaf:
 def _mapping(value: object) -> dict[str, Any]:
     if isinstance(value, WAWCgroupAttestation):
         result = {key: getattr(value, key) for key in _FIELDS}
+        presence = value.workspace_presence
     elif isinstance(value, dict):
         result = dict(value)
+        typed_mapping = "schema_version" not in result
+        schema = result.pop("schema_version", _SCHEMA)
+        if schema == _ABSENCE_SCHEMA:
+            presence = result.pop("workspace_presence", None)
+            if presence != "absent":
+                raise WAWCgroupAttestationError("absence schema requires absent workspace")
+        elif schema == _SCHEMA:
+            presence = "present"
+            if typed_mapping and result.get("workspace_presence") == "present":
+                result.pop("workspace_presence")
+        else:
+            raise WAWCgroupAttestationError("invalid schema_version")
     else:
         raise WAWCgroupAttestationError("attestation must be a mapping or typed record")
-    if "schema_version" in result and result.pop("schema_version") != _SCHEMA:
-        raise WAWCgroupAttestationError("invalid schema_version")
     if set(result) != set(_FIELDS):
         raise WAWCgroupAttestationError("attestation fields are not closed")
+    if presence not in {"present", "absent"}:
+        raise WAWCgroupAttestationError("invalid workspace presence")
+    result["workspace_presence"] = presence
     return result
 
 
@@ -314,7 +330,14 @@ def _validated(value: object) -> WAWCgroupAttestation:
         "workspace_device",
         "workload_device",
     ):
-        _device(values[field], field)
+        if values["workspace_presence"] == "absent" and field in {
+            "workspace_device",
+            "workload_device",
+        }:
+            if values[field] != "absent":
+                raise WAWCgroupAttestationError("absent workspace cannot have physical identity")
+        else:
+            _device(values[field], field)
     for field in (
         "service_cgroup_inode",
         "service_cgroup_mount_id",
@@ -324,7 +347,14 @@ def _validated(value: object) -> WAWCgroupAttestation:
         "workspace_inode",
         "workload_inode",
     ):
-        _decimal(values[field], field, positive=True)
+        if values["workspace_presence"] == "absent" and field in {
+            "workspace_inode",
+            "workload_inode",
+        }:
+            if values[field] != "absent":
+                raise WAWCgroupAttestationError("absent workspace cannot have physical identity")
+        else:
+            _decimal(values[field], field, positive=True)
     delegated_subgroup = _component(values["delegated_subgroup"], "delegated_subgroup")
     cgroup_filesystem_id = _component(values["cgroup_filesystem_id"], "cgroup_filesystem_id")
     workspace_relative_path = _relative_path(
@@ -333,6 +363,11 @@ def _validated(value: object) -> WAWCgroupAttestation:
     workload_relative_path = _relative_path(
         values["workload_relative_path"], "workload_relative_path"
     )
+    if values["workspace_presence"] == "absent" and (
+        _WORKSPACE_COMPONENT.fullmatch(workspace_relative_path) is None
+        or workload_relative_path != workspace_relative_path + "/workload"
+    ):
+        raise WAWCgroupAttestationError("absence requires exact generated workspace path")
     leaves = values["attachment_leaves"]
     if type(leaves) not in (list, tuple) or len(leaves) > 1:
         raise WAWCgroupAttestationError("attachment_leaves must contain at most one leaf")
@@ -359,6 +394,13 @@ def _validated(value: object) -> WAWCgroupAttestation:
         raise WAWCgroupAttestationError(
             "EMPTY_DURABLE requires no attachment leaves and populated=0"
         )
+    if values["workspace_presence"] == "absent" and (
+        cleanup_state != "EMPTY_DURABLE"
+        or last_populated != "0"
+        or last_frozen != "0"
+        or attachment_leaves
+    ):
+        raise WAWCgroupAttestationError("absence requires empty workspace without leaves")
     return WAWCgroupAttestation(
         workspace_id=workspace_id,
         project_id=project_id,
@@ -390,6 +432,7 @@ def _validated(value: object) -> WAWCgroupAttestation:
         last_frozen=last_frozen,
         last_populated=last_populated,
         cleanup_state=cleanup_state,
+        workspace_presence=values["workspace_presence"],
     )
 
 
@@ -440,6 +483,9 @@ def encode_waw_cgroup_attestation(value: object) -> bytes:
         "workspace_limits": _limits_payload(record.workspace_limits),
         "workspace_relative_path": record.workspace_relative_path,
     }
+    if record.workspace_presence == "absent":
+        payload["schema_version"] = _ABSENCE_SCHEMA
+        payload["workspace_presence"] = "absent"
     try:
         raw = rfc8785.dumps(payload)
     except (TypeError, ValueError, rfc8785.CanonicalizationError) as exc:

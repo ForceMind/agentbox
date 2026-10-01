@@ -211,6 +211,11 @@ class WAWCgroupRecoveryObserver(Protocol):
     def observe_recovery(self, identity: WAWLifecycleIdentity) -> WAWCgroupAttestation: ...
 
 
+@runtime_checkable
+class WAWCgroupRecoveryCleaner(WAWCgroupRecoveryObserver, Protocol):
+    def finalize_recovery(self, record: WAWCgroupAttestation) -> None: ...
+
+
 class WAWLifecycleRegistry:
     """Serialize and fence Runtime lifecycle dispatch for one host instance."""
 
@@ -1753,7 +1758,9 @@ class WAWLifecycleRegistry:
                 or int(floor.runtime_epoch) > int(self._runtime_epoch)
             ):
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED")
-            if int(unresolved.runtime_epoch) < int(self._runtime_epoch):
+            if int(unresolved.runtime_epoch) < int(self._runtime_epoch) or (
+                unresolved.workspace_presence == "present" and record.workspace_presence == "absent"
+            ):
                 fully_empty = self._cgroup_attestation_store.recover_empty(
                     expected=unresolved, observed=record
                 )
@@ -1913,6 +1920,23 @@ class WAWLifecycleRegistry:
             ):
                 return
             old_identity = replace(identity, generation=str(floor.min_generation))
+            previous = self._cgroup_attestation_store.read(
+                workspace_id=identity.workspace_id, generation=floor.min_generation
+            )
+            if (
+                previous is not None
+                and previous.cleanup_state == "EMPTY_DURABLE"
+                and previous.runtime_epoch == self._runtime_epoch
+                and previous.workspace_presence == "present"
+                and isinstance(observer, WAWCgroupRecoveryCleaner)
+            ):
+                # ENOENT here still requires fresh verified absence below;
+                # it never acknowledges cleanup or releases quarantine.
+                with suppress(FileNotFoundError):
+                    await asyncio.wait_for(
+                        asyncio.to_thread(observer.finalize_recovery, previous),
+                        timeout=self._cgroup_attestation_timeout_seconds,
+                    )
             candidate = await asyncio.wait_for(
                 asyncio.to_thread(observer.observe_recovery, old_identity),
                 timeout=self._cgroup_attestation_timeout_seconds,
@@ -1922,6 +1946,11 @@ class WAWLifecycleRegistry:
                 binding_revision=identity.binding_revision,
                 binding_digest=identity.binding_digest,
             )
+            if isinstance(observer, WAWCgroupRecoveryCleaner):
+                await asyncio.wait_for(
+                    asyncio.to_thread(observer.finalize_recovery, candidate),
+                    timeout=self._cgroup_attestation_timeout_seconds,
+                )
         except (
             RuntimeOperationError,
             WAWWorkspaceAttestationError,

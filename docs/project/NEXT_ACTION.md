@@ -1,16 +1,16 @@
 # Current Authorized Action
 
-## 2026-10-01 close absent-group proof and abandoned-group cleanup
+## 2026-10-01 verify absence/cleanup Linux evidence then fixed activation
 
 Both stores now have explicit new-epoch CAS operations, composed into the
 existing Runtime-only cleanup acknowledgement with interrupted-write retry.
-99050c1 reached terminal 24 SUCCESS/two prescribed SKIPPED. Current follow-up
-connects the production FD factory's read-only recovery observation to start;
-it uses the durable old generation and does not write before acknowledgement.
-Inspect its exact-head CI, then prove positive absence after service/host
-restart and handle abandoned generations
-without adopting or killing unknown groups. Preserve all generation floors,
-binding/host provenance and fail-closed multi-generation ambiguity.
+ccf8bf5 reached terminal 24 SUCCESS/two prescribed SKIPPED. Current follow-up
+adds distinct absence records and exact empty-generation removal/partial retry.
+152 local regressions, Ruff and 351-file mypy pass. Inspect the actual native
+PID-1 producer/cleanup probe and exact-head CI before relying on Linux evidence.
+It exercises real removal/ENOENT, not a host reboot or cross-invocation CLI
+recovery. Preserve all generation floors, binding/host provenance and
+fail-closed multi-generation ambiguity; never kill/adopt unknown groups.
 
 Then complete fixed installer activation, positive Codex Remote evidence and
 the accepted HTTPS Web PC/mobile flow. The sole delivery target remains the

@@ -122,6 +122,8 @@ class WAWCgroupAttestationStore:
     def write(self, record: WAWCgroupAttestation) -> WAWCgroupAttestation:
         if not isinstance(record, WAWCgroupAttestation):
             raise TypeError("record must be WAWCgroupAttestation")
+        if record.workspace_presence != "present":
+            raise WAWCgroupAttestationStoreError("absence requires explicit recovery")
         try:
             raw = encode_waw_cgroup_attestation(record)
         except WAWCgroupAttestationError as exc:
@@ -183,10 +185,33 @@ class WAWCgroupAttestationStore:
             "workload_limits",
             "attachment_limits",
         )
+        same_epoch_removal = (
+            observed.runtime_epoch == expected.runtime_epoch
+            and observed.service_invocation_id == expected.service_invocation_id
+            and expected.cleanup_state == "EMPTY_DURABLE"
+            and expected.workspace_presence == "present"
+            and observed.workspace_presence == "absent"
+            and all(
+                getattr(expected, name) == getattr(observed, name)
+                for name in (
+                    "service_cgroup_device",
+                    "service_cgroup_inode",
+                    "service_cgroup_mount_id",
+                    "delegate_subgroup_device",
+                    "delegate_subgroup_inode",
+                    "delegate_subgroup_mount_id",
+                    "cgroup_mount_id",
+                    "cgroup_filesystem_id",
+                )
+            )
+        )
         if (
             any(getattr(expected, name) != getattr(observed, name) for name in preserved)
-            or int(observed.runtime_epoch) <= int(expected.runtime_epoch)
-            or observed.service_invocation_id == expected.service_invocation_id
+            or not same_epoch_removal
+            and (
+                int(observed.runtime_epoch) <= int(expected.runtime_epoch)
+                or observed.service_invocation_id == expected.service_invocation_id
+            )
             or observed.cleanup_state != "EMPTY_DURABLE"
             or observed.last_populated != "0"
             or observed.attachment_leaves
@@ -454,6 +479,7 @@ def _validate_update(current: WAWCgroupAttestation, updated: WAWCgroupAttestatio
         "workload_relative_path",
         "workload_device",
         "workload_inode",
+        "workspace_presence",
         "controller_configuration_digest",
         "workspace_limits",
         "workload_limits",

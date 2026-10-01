@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -83,6 +84,41 @@ def test_store_writes_and_reads_validated_record(tmp_path: Path) -> None:
     files = list(directory.glob("*.json"))
     assert len(files) == 1
     assert files[0].stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("state", ["empty", "live", "delegate-drift"])
+def test_same_epoch_absence_requires_previously_empty_exact_delegate(
+    tmp_path: Path, state: str
+) -> None:
+    store, _ = _store(tmp_path)
+    original = _record()
+    name = "ws-" + hashlib.sha256(original.workspace_id.encode()).hexdigest() + "-g1"
+    old = replace(original, workspace_relative_path=name, workload_relative_path=name + "/workload")
+    if state != "live":
+        old = replace(old, attachment_leaves=(), last_populated="0", cleanup_state="EMPTY_DURABLE")
+    store.write(old)
+    absent = replace(
+        old,
+        workspace_presence="absent",
+        workspace_device="absent",
+        workspace_inode="absent",
+        workload_device="absent",
+        workload_inode="absent",
+        attachment_leaves=(),
+        last_frozen="0",
+        last_populated="0",
+        cleanup_state="EMPTY_DURABLE",
+    )
+    if state == "delegate-drift":
+        absent = replace(absent, delegate_subgroup_inode="999")
+    if state == "empty":
+        assert store.recover_empty(expected=old, observed=absent)
+        assert store.recover_empty(expected=old, observed=absent)
+        assert store.read(workspace_id=old.workspace_id, generation=1) == absent
+    else:
+        with pytest.raises(WAWCgroupAttestationStoreError):
+            store.recover_empty(expected=old, observed=absent)
+        assert store.read(workspace_id=old.workspace_id, generation=1) == old
 
 
 def test_recovery_requires_new_invocation_and_preserves_next_generation(tmp_path: Path) -> None:

@@ -103,24 +103,68 @@ def child() -> int:
                     assert getattr(error, "code", None) == "RECONCILIATION_REQUIRED"
                 else:
                     raise AssertionError("existing generation was adopted")
-                print(
-                    json.dumps(
-                        {
-                            "schema_version": "agentbox-cgroup-setup-probe.v1",
-                            "production_helpers_executed": True,
-                            "limits_read_back": True,
-                            "existing_generation_rejected": True,
-                            "fd_observation_persisted": True,
-                            "mount_id": mount[0],
-                        }
-                    )
-                )
             finally:
                 os.close(workload)
             os.rmdir("workload", dir_fd=workspace)
         finally:
             os.close(workspace)
         os.rmdir(name, dir_fd=root)
+        # This proves actual ENOENT production observation after directory
+        # removal, not a service/host reboot or a cross-invocation migration.
+        with tempfile.TemporaryDirectory(prefix="agentbox-absence-") as record_path:
+            record_dir = Path(record_path)
+            record_dir.chmod(0o700)
+            store = WAWCgroupAttestationStore(
+                record_dir, expected_uid=os.geteuid(), expected_gid=os.getegid()
+            )
+            store.write(record)
+            factory = WAWCgroupObservationFactory(
+                lambda: authority,
+                store,
+                invocation_id=os.environ["INVOCATION_ID"],
+                runtime_epoch=lambda: "1",
+            )
+            absent = factory.observe_recovery(identity)
+            assert absent.workspace_presence == "absent"
+            assert absent.workspace_inode == absent.workload_inode == "absent"
+            assert store.read(workspace_id=workspace_id, generation=1) == record
+            for digit, partial in (("4", False), ("5", True)):
+                cleanup_id = "aws_" + digit * 32
+                cleanup_name = "ws-" + hashlib.sha256(cleanup_id.encode()).hexdigest() + "-g1"
+                _create_bound_workload_cgroup(root, cleanup_name, authority)
+                cleanup_identity = SimpleNamespace(
+                    workspace_id=cleanup_id,
+                    project_id="prj_" + "3" * 32,
+                    agent_type="claude",
+                    generation="1",
+                )
+                cleanup_record = factory(cleanup_identity, SimpleNamespace(state="STOPPED"))
+                if partial:
+                    cleanup_fd = os.open(
+                        cleanup_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root
+                    )
+                    try:
+                        os.rmdir("workload", dir_fd=cleanup_fd)
+                    finally:
+                        os.close(cleanup_fd)
+                factory.finalize_recovery(cleanup_record)
+                cleanup_absent = factory.observe_recovery(cleanup_identity)
+                assert cleanup_absent.workspace_presence == "absent"
+        print(
+            json.dumps(
+                {
+                    "schema_version": "agentbox-cgroup-setup-probe.v1",
+                    "production_helpers_executed": True,
+                    "limits_read_back": True,
+                    "existing_generation_rejected": True,
+                    "fd_observation_persisted": True,
+                    "positive_absence_observed": True,
+                    "fixed_empty_cleanup_executed": True,
+                    "partial_empty_cleanup_recovered": True,
+                    "mount_id": mount[0],
+                }
+            )
+        )
     finally:
         os.close(root)
     return 0

@@ -53,6 +53,37 @@ correction leaves the existing boolean legacy service compatible.
 
 ## Decision and follow-up
 
+### Positive absence during restart recovery — 2026-10-01
+
+Under the existing software-decision delegation, Runtime-only recovery uses
+`waw-cgroup-absence-attestation-v2` when the exact generated Workspace directory
+is absent under the current verified scoped delegate. A pathname failure alone
+is insufficient: two no-follow stat lookups must return ENOENT, the held
+service/delegate FDs must have the Runtime owner and current verified mounts,
+and the durable old logical identity/path must match. EACCES, missing workload
+inside an existing Workspace, reappearance, bad owners and mount drift fail
+closed. Runtime may provision only the already-approved fixed delegate root;
+it does not create/adopt an absent old generation.
+
+The new record explicitly sets workspace_presence=absent and uses the literal
+absent marker for Workspace/workload device/inode. Service/delegate physical
+identities are measured. Limits remain historical policy values, not measured
+values for nonexistent groups; zero state flags mean absence under this schema.
+The v1 encoder is unchanged for present records; downgrade and mixed physical
+identity are rejected. Ordinary store writes cannot publish absence: only the
+explicit latest-generation recovery CAS, followed by host/binding-preserving
+floor migration, may commit it. No Browser/API path, command or recovery grant
+is introduced. Linux producer evidence and full reboot acceptance are distinct.
+
+After that acknowledgement, Runtime may remove only the exact durably empty
+old Workspace/workload directories. It rechecks held FD device/inode/owner,
+mount/limits, populated=0 and the closed child-directory layout; kernel busy
+or unknown children retain quarantine. No kill or recursive removal exists.
+An interrupted workload-only removal may resume from the stored empty record,
+then requires fresh positive absence. Same-epoch present-to-absent CAS is limited
+to a prior EMPTY_DURABLE record with the same invocation and exact unchanged
+service/delegate identities. Ordinary live/same-epoch drift remains rejected.
+
 ### Restart-safe installation observations — 2026-10-01
 
 The accepted scoped implementation cannot persist an installer's numeric mount
