@@ -50,6 +50,7 @@ class _Executor:
     ("state", "confidence", "expected"),
     [
         (RemoteState.STOPPED, "reported", WAWLegacyCodexState.STOPPED),
+        (RemoteState.STOPPED, "observed", WAWLegacyCodexState.STOPPED),
         (RemoteState.STOPPED, "inferred", WAWLegacyCodexState.UNKNOWN),
         (RemoteState.UNKNOWN, "unknown", WAWLegacyCodexState.UNKNOWN),
         (RemoteState.RUNNING, "inferred", WAWLegacyCodexState.RUNNING),

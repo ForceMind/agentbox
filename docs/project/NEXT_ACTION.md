@@ -1,5 +1,24 @@
 # Current Authorized Action
 
+## 2026-10-01 verify complete Remote evidence then HTTPS Web bootstrap
+
+537b02d reached terminal 24 SUCCESS/two prescribed SKIPPED. Current complete
+UID observer and observed confidence are connected through Runtime conflict,
+protocol/API and Web. 173 backend regressions/Ruff/356-file mypy and eleven
+Web DOM/hook tests/typecheck pass; two mocked Chromium desktop/mobile render
+checks pass. Inspect the actual native PID-1 observer result and exact-head CI.
+Permission, namespace, PID or alternate-executable uncertainty stays UNKNOWN;
+never use the old boolean negative as STOPPED. The vendor Remote implementation
+itself is not qualified by synthetic/current-process observations.
+
+Then implement ADR 0010's canonical root-owned HTTPS public bootstrap and
+distinct Web trust provider, with independent static serving and exact Origin/
+CSRF/CSP boundaries. Complete the PC/mobile core input/output/resize/detach/
+reconnect/exact Stop path, then isolated composed installation and real CLI/
+reboot/upgrade/rollback evidence. No scope expansion, extra product version or
+production/readiness claim substitutes for the full first self-installable
+version.
+
 ## 2026-10-01 verify activation then close Codex Remote and HTTPS Web
 
 41280ce reached terminal 24 SUCCESS/two prescribed SKIPPED. Current fixed

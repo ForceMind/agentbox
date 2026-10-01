@@ -160,6 +160,32 @@ function statusEnvelope(
   }
 }
 
+for (const viewport of RC9_VIEWPORTS) {
+  test(`Complete Remote observation renders without overflow at ${viewport.name}`, async ({
+    browser,
+  }) => {
+    const context = await createRc9DocumentContext(browser, {
+      viewport,
+      locale: RC9_LOCALE_SCENARIOS[0],
+      baseURL,
+    })
+    try {
+      const page = await context.newPage()
+      await installAuthenticatedShellRoutes(page)
+      const envelope = statusEnvelope()
+      envelope.data.remote_confidence = 'observed'
+      await page.route('**/api/v1/codex/status', (route) =>
+        route.fulfill({ json: envelope }),
+      )
+      await page.goto('/codex')
+      await expect(page.getByText(/系统完整观测/)).toBeVisible()
+      await assertRc9NoHorizontalOverflow(page)
+    } finally {
+      await context.close()
+    }
+  })
+}
+
 async function installAuthenticatedShellRoutes(page: Page): Promise<void> {
   await page.route('**/auth/me', (route) =>
     route.fulfill({

@@ -117,7 +117,7 @@ class CodexStatusData(StrictMetadataModel):
     authentication: Literal["authenticated", "unauthenticated", "unknown"]
     capabilities: CodexCapabilityView
     remote_state: Literal["running", "stopped", "broken", "unknown"]
-    remote_confidence: Literal["reported", "inferred", "unknown"]
+    remote_confidence: Literal["reported", "observed", "inferred", "unknown"]
     diagnostics: list[CodexDiagnosticView]
 
 

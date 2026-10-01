@@ -114,10 +114,10 @@ class _ProductionConflictProbe:
         observed = self._observe(self._codex.status())
         # Process absence, CLI installation absence and unsupported status are
         # not positive host-global STOPPED evidence.
-        if (
-            observed.remote_state is RemoteState.STOPPED
-            and observed.remote_confidence == "reported"
-        ):
+        if observed.remote_state is RemoteState.STOPPED and observed.remote_confidence in {
+            "reported",
+            "observed",
+        }:
             return WAWLegacyCodexState.STOPPED
         if observed.remote_state is RemoteState.RUNNING:
             return WAWLegacyCodexState.RUNNING

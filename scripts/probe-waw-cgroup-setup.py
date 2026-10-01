@@ -23,6 +23,8 @@ def child() -> int:
     # authority here is explicitly a metadata fixture, not a cryptographic
     # Runtime admission claim. Actual filesystem and production helpers run.
     sys.path.insert(0, str(Path(__file__).parent / "packages"))
+    from agentbox_runtime.codex_remote_observation import LinuxCodexRemoteObserver
+    from agentbox_runtime.models import RemoteState
     from agentbox_runtime.waw_cgroup_attestation_store import WAWCgroupAttestationStore
     from agentbox_runtime.waw_cgroup_observation import WAWCgroupObservationFactory
     from agentbox_runtime.waw_fixed_transport import (
@@ -150,6 +152,9 @@ def child() -> int:
                 factory.finalize_recovery(cleanup_record)
                 cleanup_absent = factory.observe_recovery(cleanup_identity)
                 assert cleanup_absent.workspace_presence == "absent"
+        remote_observer = LinuxCodexRemoteObserver()
+        observed_remote = remote_observer.observe(Path("/usr/bin/false"))
+        assert observed_remote is RemoteState.STOPPED
         print(
             json.dumps(
                 {
@@ -161,6 +166,7 @@ def child() -> int:
                     "positive_absence_observed": True,
                     "fixed_empty_cleanup_executed": True,
                     "partial_empty_cleanup_recovered": True,
+                    "complete_remote_stopped_observed": True,
                     "mount_id": mount[0],
                 }
             )
@@ -223,6 +229,7 @@ def main() -> int:
             "--property=DelegateSubgroup=agentbox-runtime-supervisor",
             "--property=ProtectControlGroups=yes",
             "--property=ProtectSystem=strict",
+            "--property=ProtectProc=default",
             "--property=PrivateTmp=yes",
             "--property=ReadWritePaths=/sys/fs/cgroup/system.slice/agentbox-runtime.service",
             "--property=NoNewPrivileges=yes",

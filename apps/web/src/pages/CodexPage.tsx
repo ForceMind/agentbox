@@ -46,6 +46,7 @@ const REMOTE_COPY = {
 
 const CONFIDENCE_COPY = {
   reported: 'codex.confidenceReported',
+  observed: 'codex.confidenceObserved',
   inferred: 'codex.confidenceInferred',
   unknown: 'codex.confidenceUnknown',
 } as const satisfies Record<

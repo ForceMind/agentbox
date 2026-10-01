@@ -53,6 +53,25 @@ function model(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CodexPage localized safety boundary', () => {
+  it('renders complete system observation as a distinct confidence source', () => {
+    const view = loadedView()
+    useCodexMock.mockReturnValue(
+      model({
+        view: {
+          ...view,
+          response: {
+            ...view.response,
+            data: {
+              ...view.response.data,
+              remote_confidence: 'observed',
+            },
+          },
+        },
+      }),
+    )
+    render(<CodexPage />)
+    expect(screen.getByText(/Complete system observation/)).toBeInTheDocument()
+  })
   beforeEach(() => {
     useCodexMock.mockReset()
   })

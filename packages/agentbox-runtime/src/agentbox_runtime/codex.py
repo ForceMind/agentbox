@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from agentbox_runtime.codex_remote_observation import LinuxCodexRemoteObserver
 from agentbox_runtime.models import (
     AuthenticationState,
     CapabilityState,
@@ -111,6 +112,10 @@ class CurrentUserProcessInspector:
             if "remote-control" in decoded and "start" in decoded:
                 return True
         return False
+
+    def observe_complete_remote_state(self, executable: Path) -> RemoteState:
+        """Fresh complete UID evidence, separate from the legacy boolean probe."""
+        return LinuxCodexRemoteObserver(self._proc_root).observe(executable)
 
 
 class CodexAdapter:
@@ -495,6 +500,10 @@ class CodexAdapter:
                 return RemoteState.BROKEN, "reported"
         if self._process_inspector.is_remote_running(identity.path):
             return RemoteState.RUNNING, "inferred"
+        if isinstance(self._process_inspector, CurrentUserProcessInspector):
+            observed = self._process_inspector.observe_complete_remote_state(identity.path)
+            if observed is not RemoteState.UNKNOWN:
+                return observed, "observed"
         return RemoteState.UNKNOWN, "unknown"
 
     def _require_action(self, status: CodexStatus, action: str) -> ExecutableIdentity:

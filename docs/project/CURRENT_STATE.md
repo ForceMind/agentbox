@@ -1,11 +1,39 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T02:30:47Z"
+verified_at_utc: "2026-10-01T03:07:01Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 complete UID Remote observation candidate
+
+Base 537b02d85db7bad7a30e42e78da040ba8191acb1 reached terminal CI:
+24 SUCCESS/two prescribed SKIPPED. Current code separates complete Linux
+observation from the existing lossy boolean heuristic. Native systemd/public
+namespace metadata, initial UID mapping, zero capabilities, unrestricted held
+proc mount and two stable current-UID PID/start/executable/argv-hash snapshots
+are required before observed STOPPED. Read denial, hidden/malformed/changing
+processes and alternate Codex Remote executable evidence remain UNKNOWN.
+No process text or argv is exported through API or logs. The actual supported
+vendor Remote implementation still needs target qualification.
+
+The WAW-only drop-in now uses ProtectProc=default, with the explicit privacy
+tradeoff recorded in ADR 0011. Legacy/API/Worker and vendor isolation retain
+their existing boundaries; no capability is added. Whole-template digest is
+0f4723a099a7afb3d237ce38532d10d3d42c0b421969a5ccdea151d077ac9563.
+Runtime status, protocol/API/Web metadata and localized confidence labels agree
+on observed. The native PID-1 probe now exercises the actual observer; its
+Linux result is pending this batch.
+
+173 focused backend regressions, Ruff and 356-file mypy passed. Eleven Web
+DOM/hook tests and Web typecheck passed. Actual Chromium rendered the observed
+label at desktop 1280x800 and mobile 390x844 with no horizontal overflow (two
+passes using mocked metadata); this is not real mobile-device or CLI evidence.
+Main-agent self-review only. HTTPS trust/bootstrap, complete composed install,
+actual double-CLI/core/reboot/upgrade/rollback qualification and final artifact/
+install command remain open. Version stays rc30; no user-host operation/release.
 
 ## 2026-10-01 fixed activation transaction candidate
 

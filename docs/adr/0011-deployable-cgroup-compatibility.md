@@ -53,6 +53,33 @@ correction leaves the existing boolean legacy service compatible.
 
 ## Decision and follow-up
 
+### Complete Runtime UID process visibility — 2026-10-01
+
+Under the existing software-decision delegation, the WAW-only drop-in now
+sets ProtectProc=default. The legacy base unit and API/Worker retain invisible;
+vendor PID/mount/User namespaces and sandbox restrictions remain unchanged.
+This exposes additional public process metadata to the Runtime account, without
+adding capabilities or exporting argv/process text through API or logs. It is
+required because invisible/hidepid can hide same-UID nondumpable processes and
+therefore cannot establish positive Remote absence.
+
+The Runtime observer requires the native systemd target's public namespace
+metadata, one NSpid, zero effective capabilities, initial UID mapping, exact
+held /proc mount with no hidepid restriction, bounded complete UID reads, and
+two matching same-UID PID/start/executable/argv-hash snapshots. Permission,
+missing/racing process, argv, executable or namespace errors remain UNKNOWN.
+Another Codex executable carrying a Remote command remains ambiguous, not
+STOPPED. Only closed selected-executable Remote evidence enters observed
+confidence; the older boolean heuristic cannot produce STOPPED.
+
+Kernel provenance and PID-reuse limits follow the official
+[/proc documentation](https://www.kernel.org/doc/html/latest/filesystems/proc.html).
+The changed whole drop-in SHA256 is
+0f4723a099a7afb3d237ce38532d10d3d42c0b421969a5ccdea151d077ac9563;
+the closed manifest pin changes with it. Previous scoped-template bytes are not
+silently accepted as equivalent. Actual Linux observer evidence and vendor/
+Remote implementation qualification remain distinct required checks.
+
 ### Positive absence during restart recovery — 2026-10-01
 
 Under the existing software-decision delegation, Runtime-only recovery uses

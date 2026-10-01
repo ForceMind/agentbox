@@ -102,7 +102,7 @@ SCOPED_CGROUP_WORKSPACES_V1 = "agentbox-runtime-workspaces"
 RUNTIME_NAMESPACE_BINDING_V1 = "runtime-namespace-v1"
 SCOPED_CGROUP_FILESYSTEM_V1 = "scoped-runtime-cgroup2-v1"
 SCOPED_CGROUP_TEMPLATE_SHA256_V1 = (
-    "0d36fe650d72ffc696a96b6403c2bfa91954fb2e0ea15f8e1e8c0b355fda791b"
+    "0f4723a099a7afb3d237ce38532d10d3d42c0b421969a5ccdea151d077ac9563"
 )
 
 
