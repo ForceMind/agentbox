@@ -1,11 +1,24 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T15:07:32Z"
-verified_by: "codex-deployable-installer-work"
+verified_at_utc: "2026-10-01T17:50:25Z"
+verified_by: "codex-development-handoff"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-02 交接快照（当前入口）
+
+Owner 要求本批停止新增开发，更新 GitHub/文档后转交新对话。
+完整记录以 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 为准；旧条目是历史
+证据，实时 Git/GitHub 优先。仍为 rc30，首个可部署版本未完成。
+
+本次 fetch/read-back exit 0：origin/main 为
+ba065e355cbf17ea4d68e8badcdde4ca81f46c41（PR #130 merge）。
+Draft #131 HEAD 797204e2dc0430eb56ffb6c3e56b93c1e465d04b 已推送；当前查询为
+24 SUCCESS、2 SKIPPED，未合并。实际 APT/boot/完整首装/CLI/PC手机未验收。
+托管执行工作树从干净候选切到 codex/handoff-2026-10-02，仅更新文档；原工作区
+旧 WIP 保留。本次不升级产品版本、不发布制品、不激活用户主机。
 
 ## 2026-10-01 native vendor evidence and deferred-install WIP
 

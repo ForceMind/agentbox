@@ -1,5 +1,21 @@
 # AgentBox 逐版本交付计划
 
+## 2026-10-02 当前计划与交接
+
+当前状态与阻断以 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 为准。
+只交付一个完整单机首版：Owner 自行一条命令安装 → PC/手机 → 正式 Project →
+真实 Claude/Codex 输入输出、resize、detach/reconnect、exact Stop → 恢复/回退。
+源码仍 rc30，未交付可用版本，不因基础 PR 另起版本。
+
+Runtime graph/完整资源、Web/HTTPS/setup、固定 vendor、deferred 首装已有合并
+成果；依赖候选在 Draft #131。下一步关闭实际 APT/boot 与 guard 恢复缺口，再
+组合真实观察/enrollment/完整首装，最后完成客户端/CLI/恢复验收。
+ADR 0010/0011 已批准，PC/手机覆盖旧 Mac/MV3-only 顺序。默认单智能体，
+后续 70 项范围保留；不推进 #117 或旁支。下方旧“当前事实”“下一步”是历史
+阶段记录，不覆盖本段及交接入口。
+
+## 历史版本计划记录
+
 ## 2026-09-30 交付纠偏：以完整用户流程关闭首版
 
 Owner 指出执行可能偏离逐版本计划。Coding Agent 确认：后续功能范围没有

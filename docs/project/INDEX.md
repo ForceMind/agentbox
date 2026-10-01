@@ -1,11 +1,13 @@
 # AgentBox Project Context Index
 
+- [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-02 新对话/新模型首读入口；
+  Git 基线、WIP 保护、已合并成果、Draft #131、首版未完成项与恢复步骤。
 - [Deployable release plan](DEPLOYABLE_RELEASE_PLAN.md)：Owner 自行运行一键安装的
   首版目标、实际命令入口、PC/手机范围及部署链剩余依赖。
 - [Cross-platform Web bootstrap proposal](../adr/0010-cross-platform-web-bootstrap.md)：
-  首版 PC/手机浏览器的 HTTPS 信任前提、与原生保护的差别及待授权架构。
+  已批准 PC/手机浏览器的 HTTPS 信任前提、与原生保护的差别及实际验收条件。
 - [Deployable cgroup compatibility proposal](../adr/0011-deployable-cgroup-compatibility.md)：
-  当前 private 合同与 systemd 255 的实际冲突、兼容方案及待确认服务器路线。
+  已批准 systemd 255 受限子树方案；不等同旧 private 合同，激活仍须真实证据。
 
 - [Release iteration plan](RELEASE_ITERATION_PLAN.md)：当前唯一目标是首个可用单机 RC；
   明确软件候选、真实目标验收和后续逐版本吸收的退出条件与范围冻结。

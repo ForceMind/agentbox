@@ -1,5 +1,13 @@
 # AgentBox Roadmap
 
+## 2026-10-02 接手顺序
+
+[开发交接](DEVELOPMENT_HANDOFF.md) 为当前状态入口；
+[逐版本计划](RELEASE_ITERATION_PLAN.md) 和 [首版部署计划](DEPLOYABLE_RELEASE_PLAN.md)
+定义当前验收。只推进完整单机首版：一条安装命令、PC/手机、真实双 CLI 与恢复。
+软件已持续实施，首版尚未完成；下方“not started”等是当时的历史快照。
+长期 70 项范围保留，在首版验收后逐版本展开。
+
 ## Current release focus — 2026-09-29
 
 当前唯一产品目标是 [首个可用单机 RC](RELEASE_ITERATION_PLAN.md)：

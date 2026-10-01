@@ -1,5 +1,16 @@
 # Current Authorized Action
 
+## 2026-10-02 接手动作（覆盖下方历史施工指令）
+
+当前任务仅完成文档与 GitHub 交接，停止新增开发。
+新对话按 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 核对 main、Draft #131、
+工作区与原 WIP，再接续同一首版：先修复/实测固定依赖安装的服务副作用与
+guard 恢复缺口，再将实际 vendor 观察/enrollment/setup 接成完整首装，验收
+双 CLI、PC/手机、重启与升级回退。未验收前不称可用或发布 URL。
+默认单智能体，不重设路线，不推进 #117 或长期 70 项旁支。
+
+## 历史行动记录
+
 ## 2026-10-01 qualify deferred fresh install and compose prerequisites
 
 PR #129 merged at 7761310; exact source afafe55 has 24 SUCCESS/two prescribed
