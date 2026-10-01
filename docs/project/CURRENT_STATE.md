@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T00:55:21Z"
+verified_at_utc: "2026-10-01T01:06:42Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
@@ -8,6 +8,16 @@ repository: "ForceMind/agentbox"
 # Current Verified State
 
 ## 2026-10-01 explicit epoch recovery candidate
+
+Synchronized base: 99050c1cf853ed176f16d566acf1bde6ae352b64 on Draft
+#125; exact remote read-back and terminal CI confirmed: 24 SUCCESS/two
+prescribed SKIPPED. The current follow-up connects the actual FD recovery
+observer to the existing start path before executor side effects. It uses the
+persisted generation, not the request's next generation, preserves bound host
+and binding provenance, and imposes the existing observation timeout. Unknown,
+live, missing or failed observations retain quarantine. Status/reconcile stay
+read-only. Recovery observation does not perform an ordinary cross-epoch write;
+the registry's explicit CAS is the only commit path.
 
 Live remote head 0d7d2b3ce6ea0cc2cfd64205107708135554daef reached terminal
 CI: 24 SUCCESS/two prescribed SKIPPED. Deployment run 36792740947, job
@@ -25,10 +35,12 @@ Workspace floor migration; interruption leaves quarantine set and exact
 read-back can retry without lowering the floor. Older unresolved generations
 remain fenced. No HTTP recovery action, generic path or command was added.
 
-104 focused store/lifecycle regressions passed, including interrupted migration
-and stale/mismatched evidence. This is main-agent self-review and synthetic
-recovery evidence. The actual restart recovery producer/dispatch, absent-group
-proof and abandoned-group cleanup are still missing; fixed activation,
+113 recovery observer/store/lifecycle regressions passed; Ruff and 351-file
+mypy passed. Regressions cover automatic start of the next
+generation after positive emptiness, rejection of FENCED/missing observations,
+and interrupted migration. This is main-agent self-review and synthetic
+recovery evidence. Positive absent-group proof and abandoned-group cleanup
+are still missing; fixed activation,
 positive Codex Remote evidence and HTTPS PC/mobile workflow also remain open.
 This batch is not a usable release. Product version remains rc30; no user-host
 operation, tag or publication occurred.

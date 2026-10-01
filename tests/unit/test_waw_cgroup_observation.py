@@ -88,6 +88,12 @@ def test_fd_observation_never_claims_empty_from_status_alone(
         assert bool(records) == (expected == "EMPTY_DURABLE")
         assert result.workspace_relative_path.startswith("ws-")
         assert len(result.workspace_relative_path) > 64
+        if state == "STOPPED":
+            records.clear()
+            opened = iter([9, 10])
+            recovery = factory.observe_recovery(cast(Any, identity))
+            assert recovery == result
+            assert records == []
 
 
 def test_observation_requires_real_systemd_invocation_identity() -> None:

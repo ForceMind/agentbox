@@ -202,6 +202,15 @@ class WAWExecutableEvidenceProvider(Protocol):
     async def executable_evidence(self, identity: WAWLifecycleIdentity) -> str: ...
 
 
+@runtime_checkable
+class WAWCgroupRecoveryObserver(Protocol):
+    def __call__(
+        self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
+    ) -> WAWCgroupAttestation | Awaitable[WAWCgroupAttestation]: ...
+
+    def observe_recovery(self, identity: WAWLifecycleIdentity) -> WAWCgroupAttestation: ...
+
+
 class WAWLifecycleRegistry:
     """Serialize and fence Runtime lifecycle dispatch for one host instance."""
 
@@ -1191,6 +1200,8 @@ class WAWLifecycleRegistry:
                     self._cleanup_quarantine.add(identity.workspace_id)
             except WAWCgroupAttestationStoreError as exc:
                 raise WAWControlDispatchError("RECONCILIATION_REQUIRED") from exc
+        if action == _START and identity.workspace_id in self._cleanup_quarantine:
+            await self._recover_persisted_workspace(identity)
         if action == _RECONCILE and identity.workspace_id in self._cleanup_quarantine:
             return self._quarantine_reconcile_response(request)
         # In the in-memory development composition an exact Stop may retry
@@ -1872,6 +1883,56 @@ class WAWLifecycleRegistry:
             or identity.binding_digest != binding.binding_digest
         ):
             raise WAWControlDispatchError("PROJECT_IDENTITY_CHANGED")
+
+    async def _recover_persisted_workspace(self, identity: WAWLifecycleIdentity) -> None:
+        """Recover a known generation before start, using only Runtime FDs.
+
+        Never stops/adopts a surviving process, creates a missing cgroup or
+        changes an active identity. Failed/ambiguous observations keep the
+        existing quarantine. Reconcile/status remain read-only.
+        """
+        observer = self._cgroup_attestation_factory
+        if (
+            identity.workspace_id in self._workspaces
+            or self._attestation_store is None
+            or self._cgroup_attestation_store is None
+            or not isinstance(observer, WAWCgroupRecoveryObserver)
+            or self._detached_cleanup_tasks
+        ):
+            return
+        try:
+            floor = self._attestation_store.read(identity.workspace_id)
+            snapshot = self._cgroup_attestation_store.snapshot(workspace_id=identity.workspace_id)
+            if floor is None or (
+                snapshot.latest_generation != floor.min_generation
+                or floor.binding_revision != identity.binding_revision
+                or floor.binding_digest != identity.binding_digest
+                or floor.runtime_host_installation_id != self._host_id
+                or floor.runtime_host_installation_revision != self._host_revision
+                or int(floor.runtime_epoch) > int(self._runtime_epoch)
+            ):
+                return
+            old_identity = replace(identity, generation=str(floor.min_generation))
+            candidate = await asyncio.wait_for(
+                asyncio.to_thread(observer.observe_recovery, old_identity),
+                timeout=self._cgroup_attestation_timeout_seconds,
+            )
+            self._acknowledge_cgroup_cleanup_unlocked(
+                candidate,
+                binding_revision=identity.binding_revision,
+                binding_digest=identity.binding_digest,
+            )
+        except (
+            RuntimeOperationError,
+            WAWWorkspaceAttestationError,
+            WAWCgroupAttestationStoreError,
+            WAWControlDispatchError,
+            OSError,
+            TimeoutError,
+        ):
+            # Missing groups require a separate positive absence proof; a
+            # pathname error must never become an empty attestation.
+            self._cleanup_quarantine.add(identity.workspace_id)
 
     def _hydrate_durable_generation_floor(self, workspace_id: str) -> None:
         if self._attestation_store is None:

@@ -1,13 +1,14 @@
 # Current Authorized Action
 
-## 2026-10-01 finish the actual restart recovery owner
+## 2026-10-01 close absent-group proof and abandoned-group cleanup
 
 Both stores now have explicit new-epoch CAS operations, composed into the
 existing Runtime-only cleanup acknowledgement with interrupted-write retry.
-104 focused regressions pass. Inspect this batch's exact-head CI, then finish
-the actual bound recovery producer and invocation: the normal observation
-factory must not attempt an ordinary cross-epoch write before acknowledgement.
-Prove current fixed cgroup emptiness/absence and handle abandoned generations
+99050c1 reached terminal 24 SUCCESS/two prescribed SKIPPED. Current follow-up
+connects the production FD factory's read-only recovery observation to start;
+it uses the durable old generation and does not write before acknowledgement.
+Inspect its exact-head CI, then prove positive absence after service/host
+restart and handle abandoned generations
 without adopting or killing unknown groups. Preserve all generation floors,
 binding/host provenance and fail-closed multi-generation ambiguity.
 

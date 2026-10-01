@@ -56,6 +56,27 @@ class WAWCgroupObservationFactory:
     def __call__(
         self, identity: WAWLifecycleIdentity, observation: WAWLifecycleObservation
     ) -> WAWCgroupAttestation:
+        return self._observe(identity, observation, persist_empty=True)
+
+    def observe_recovery(self, identity: WAWLifecycleIdentity) -> WAWCgroupAttestation:
+        """Read current FDs without overwriting the old epoch's record.
+
+        STOPPED selects an empty candidate, never proves emptiness: the same
+        populated/leaf/ownership/limit checks below remain mandatory. The
+        registry persists this candidate through its recovery CAS before
+        releasing quarantine.
+        """
+        return self._observe(
+            identity, WAWLifecycleObservation(state="STOPPED"), persist_empty=False
+        )
+
+    def _observe(
+        self,
+        identity: WAWLifecycleIdentity,
+        observation: WAWLifecycleObservation,
+        *,
+        persist_empty: bool,
+    ) -> WAWCgroupAttestation:
         authority = self._authority()
         manifest = authority._manifest.cgroup
         name = (
@@ -180,7 +201,7 @@ class WAWCgroupObservationFactory:
                 raise RuntimeOperationError(
                     "RECONCILIATION_REQUIRED", "Cgroup observation changed", category="conflict"
                 )
-            if cleanup == "EMPTY_DURABLE":
+            if cleanup == "EMPTY_DURABLE" and persist_empty:
                 self._store.write(record)
             return record
         finally:
