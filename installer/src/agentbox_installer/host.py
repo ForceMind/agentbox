@@ -385,6 +385,40 @@ class HostOperations:
         ):
             self._run(("/usr/bin/systemctl", "is-active", "--quiet", unit), timeout=10)
 
+    def require_web_dependencies(self) -> None:
+        if not self.real_host:
+            return
+        self.require_root()
+        path = Path("/usr/sbin/nginx")
+        facts = path.lstat()
+        if (
+            not stat.S_ISREG(facts.st_mode)
+            or facts.st_uid != 0
+            or facts.st_mode & 0o022
+            or not facts.st_mode & 0o111
+        ):
+            raise HostMutationError("fixed nginx dependency is unavailable or unsafe")
+
+    def start_web_service(self) -> None:
+        if not self.real_host:
+            return
+        self.require_root()
+        self.require_web_dependencies()
+        self._run(
+            ("/usr/bin/systemctl", "is-active", "--quiet", "agentbox-api.service"), timeout=10
+        )
+        self.daemon_reload()
+        self._run(("/usr/bin/systemctl", "enable", "agentbox-web.service"))
+        self._run(("/usr/bin/systemctl", "restart", "agentbox-web.service"))
+        self._run(
+            ("/usr/bin/systemctl", "is-active", "--quiet", "agentbox-web.service"), timeout=10
+        )
+
+    def stop_web_service(self) -> None:
+        if self.real_host:
+            self.require_root()
+            self._run(("/usr/bin/systemctl", "stop", "agentbox-web.service"))
+
     def enable_and_start(self) -> None:
         if not self.real_host:
             return
