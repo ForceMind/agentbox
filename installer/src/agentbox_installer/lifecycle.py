@@ -532,6 +532,79 @@ class AgentBoxInstaller:
         except OSError as exc:
             raise InstallError("fixed Web maintenance failed") from exc
 
+    def setup_waw_web(
+        self,
+        *,
+        origin: str,
+        email: str,
+        agree_terms: bool = False,
+        plan: bool = False,
+        recover: bool = False,
+    ) -> dict[str, object]:
+        """Compose the enrolled installation's browser entry under one lifecycle lock."""
+        self.host.require_root()
+        if any(type(value) is not bool for value in (agree_terms, plan, recover)):
+            raise TypeError("Web setup flags must be bool")
+        if plan:
+            self._activate_waw_locked(plan=True, recover=recover)
+            result = WAWWebCertificates(self._web_publisher()).provision(
+                origin=origin,
+                email=email,
+                agree_terms=agree_terms,
+                plan=True,
+                recover=recover,
+                issue=self.host.issue_web_certificate,
+            )
+            result["steps"] = ["certificate", "publication", "origin", "waw", "https"]
+            return result
+        if not agree_terms:
+            raise InstallError("explicit ACME terms acceptance is required")
+        try:
+            with self._lifecycle_lock():
+                publisher = self._web_publisher()
+                transaction = WAWActivationTransaction(
+                    publisher.issuer, publisher.pin, api_gid=self._web_api_gid()
+                )
+                phase = transaction.inspect(recover=recover)
+                self._validate_waw_activation_units()
+                publisher._prepare_ingress(origin, plan=True, recover=False)
+                with publisher.issuer._directory("/etc/agentbox") as parent:
+                    before = transaction._read(
+                        parent, "agentbox.toml", mode=0o640, gid=self._web_api_gid()
+                    )
+                    after = configure_browser_origin(before, origin)
+                if phase == "started" and before != after:
+                    raise InstallError("running WAW requires an already committed matching Origin")
+                if phase != "started":
+                    self.host.require_waw_policy_quiescence()
+                self.host.require_web_dependencies()
+                WAWWebCertificates(publisher).provision(
+                    origin=origin,
+                    email=email,
+                    agree_terms=True,
+                    plan=False,
+                    recover=recover,
+                    issue=self.host.issue_web_certificate,
+                )
+                now = datetime.now(UTC).replace(microsecond=0)
+                self._publish_waw_web_locked(
+                    origin=origin,
+                    valid_from=now - timedelta(minutes=1),
+                    valid_until=now + timedelta(days=30),
+                    plan=False,
+                    recover=recover,
+                )
+                self._configure_waw_web_locked(origin, plan=False, recover=recover, activate=False)
+                if phase != "started":
+                    self._activate_waw_locked(plan=False, recover=recover)
+                result = self._configure_waw_web_locked(
+                    origin, plan=False, recover=recover, activate=True
+                )
+                result["runtime_restarted"] = phase != "started"
+                return result
+        except OSError as exc:
+            raise InstallError("fixed browser setup failed; retry setup-waw-web --recover") from exc
+
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
         """Activate only the fixed enrolled graph; service start is not qualification."""
         self.host.require_root()

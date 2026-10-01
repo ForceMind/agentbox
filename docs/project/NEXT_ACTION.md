@@ -1,5 +1,19 @@
 # Current Authorized Action
 
+## 2026-10-01 finish setup qualification and initial-install prerequisites
+
+PR #127 merged at 753e8be; exact source ba13d10 has 24 SUCCESS/two prescribed
+SKIPPED. The setup-waw-web WIP is on codex/r12-web-setup and composes the enrolled
+installation under one lock, with consent/preflight before certificate effects
+and no Runtime restart on recovery. 42 affected regressions/Ruff/369-file mypy
+passed; the setup cases passed again after ingress preflight. Inspect exact-head CI.
+
+Next add the initial-install prerequisite sequence: fixed dependencies and
+actual vendor distribution/enrollment, maintenance sandbox evidence, then the
+version-pinned download/apply/setup entry. Keep the explicit actual PC/mobile
+CLI/input/reconnect/exact Stop and reboot/upgrade/rollback gates. Do not describe
+the enrolled-host setup command as the final self-install command.
+
 ## 2026-10-01 verify ACME/maintenance then compose the install entry
 
 The current certificate batch adds fixed, explicitly consented ACME issuance,
