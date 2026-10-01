@@ -1,11 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T14:18:35Z"
+verified_at_utc: "2026-10-01T15:07:32Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 native vendor evidence and deferred-install WIP
+
+PR #129 merged at 7761310647b62a8a0fd1489715f0cdc2af40787f; source
+afafe5503a8d1dde0f31aa8c52db991edac81601 reached 24 SUCCESS/two prescribed
+SKIPPED after fixing nonstandard-path legacy inventory fixtures. First source
+0374179 had three backend failures; the fixed paths/byte bounds were retained.
+GitHub/fetched origin/main were read back. Deferred-install WIP was carried
+unchanged into codex/r12-first-install; original checkout remains untouched.
+
+Actual Ubuntu native distribution/signature/version probe passed, Deployment
+36875716477: Claude 2.1.286, codex-cli 0.159.3. Empty-HOME Codex status returned
+unauthenticated output SHA256
+56c1a8f094f5c8b995364d199aaa5d852eb99928ee36ff1fe5e994288c68512c.
+This is version/read-only unauthenticated evidence, not login or workspace use.
+
+Current uncommitted apply/resume --defer-activation installs without service
+start/live health and records deferred intent in closed staged-recovery evidence.
+Resume without the same mode rejects; completed journals say activation_deferred
+and health_verified=false. Fresh-only admission preserves existing installs.
+160 manifest/namespace/staged-recovery regressions passed (one Linux-only gate
+skipped locally), Ruff/372-file mypy pass. The local lifecycle failure was traced
+to the filesystem sandbox: chmod(03770) immediately returned 01770, even for the
+current user/group. The identical isolated temporary-directory probe outside
+the sandbox retained 03770. Running the unchanged lifecycle/staged assertions
+outside that restriction passed all 119 tests. No mode assertion or production
+permission was relaxed. Exact-head Linux CI is still required for this batch.
+
+Fresh dependencies, actual registration/setup/download composition, maintenance
+sandbox and full CLI/client/reboot/upgrade/rollback acceptance remain open.
 
 ## 2026-10-01 fixed native vendor bootstrap
 

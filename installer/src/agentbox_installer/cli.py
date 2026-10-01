@@ -32,6 +32,8 @@ def create_parser() -> argparse.ArgumentParser:
         command.add_argument("--artifact", type=Path, required=True)
         command.add_argument("--sha256", required=True)
         command.add_argument("--json", action="store_true")
+        if name in {"apply", "resume-install"}:
+            command.add_argument("--defer-activation", action="store_true")
     rollback = commands.add_parser("rollback")
     rollback.add_argument("--to")
     rollback.add_argument("--json", action="store_true")
@@ -272,9 +274,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command in {"apply", "update", "resume-install"}:
             result = (
-                installer.resume_install(args.artifact, args.sha256)
+                installer.resume_install(
+                    args.artifact, args.sha256, defer_activation=args.defer_activation
+                )
                 if args.command == "resume-install"
-                else installer.apply(args.artifact, args.sha256)
+                else installer.apply(
+                    args.artifact,
+                    args.sha256,
+                    defer_activation=getattr(args, "defer_activation", False),
+                )
             )
             _print(result.__dict__, json_output=json_output)
             return 0
