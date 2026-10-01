@@ -20,12 +20,13 @@ import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from agentbox_runtime.waw_host_manifest import load_verified_canonical_waw_manifest_bundle_v2
 from agentbox_runtime.waw_manifest_codecs import CrossManifestPinV2
+from cryptography import x509
 
 from agentbox_installer.artifact import (
     ArtifactError,
@@ -50,6 +51,7 @@ from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublisher,
 )
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
+from agentbox_installer.waw_web_certificates import WAWWebCertificates
 from agentbox_installer.waw_web_configuration import configure_browser_origin, validate_web_tls
 from agentbox_installer.waw_web_publication import WAWWebPublisher
 
@@ -421,6 +423,114 @@ class AgentBoxInstaller:
         return (
             self.host.owner_ids("agentbox", "agentbox")[1] if self.host.real_host else os.getegid()
         )
+
+    def provision_waw_web_certificate(
+        self,
+        *,
+        origin: str,
+        email: str,
+        agree_terms: bool = False,
+        plan: bool = False,
+        recover: bool = False,
+    ) -> dict[str, object]:
+        self.host.require_root()
+        if any(type(value) is not bool for value in (agree_terms, plan, recover)):
+            raise TypeError("certificate flags must be bool")
+        try:
+            if plan:
+                return WAWWebCertificates(self._web_publisher()).provision(
+                    origin=origin,
+                    email=email,
+                    agree_terms=agree_terms,
+                    plan=True,
+                    recover=recover,
+                    issue=self.host.issue_web_certificate,
+                )
+            with self._lifecycle_lock():
+                return WAWWebCertificates(self._web_publisher()).provision(
+                    origin=origin,
+                    email=email,
+                    agree_terms=agree_terms,
+                    plan=False,
+                    recover=recover,
+                    issue=self.host.issue_web_certificate,
+                )
+        except OSError as exc:
+            raise InstallError("fixed certificate resource/port check failed") from exc
+
+    def maintain_waw_web(self, *, recover: bool = False) -> dict[str, object]:
+        self.host.require_root()
+        if type(recover) is not bool:
+            raise TypeError("maintenance recovery must be bool")
+        try:
+            with self._lifecycle_lock():
+                publisher = self._web_publisher()
+                certificates = WAWWebCertificates(publisher)
+                origin = publisher.current_origin()
+                policy_path = self.layout.map("/etc/agentbox-web/acme-policy.v1.json")
+                automatic = policy_path.exists() or policy_path.is_symlink()
+                email = ""
+                if automatic:
+                    policy_origin, email = certificates.policy()
+                    if policy_origin != origin:
+                        raise InstallError("ACME policy and current publication Origin disagree")
+                identity = publisher.inspect_current(origin, allow_expired=True)
+                logical = "/var/lib/agentbox-web/releases/" + identity
+                bootstrap = json.loads(
+                    publisher.issuer._read(
+                        logical + "/.well-known/agentbox/waw-bootstrap.v1.json", 8192
+                    )
+                )
+                now = datetime.now(UTC).replace(microsecond=0)
+                refreshed = datetime.fromisoformat(bootstrap["valid_until"]) <= now + timedelta(
+                    days=7
+                )
+                if refreshed:
+                    publisher.publish(
+                        origin=origin,
+                        valid_from=now - timedelta(minutes=1),
+                        valid_until=now + timedelta(days=30),
+                        recover=recover,
+                    )
+                if not automatic:
+                    return {
+                        "status": "maintained",
+                        "bootstrap_refreshed": refreshed,
+                        "certificate_changed": False,
+                        "certificate_mode": "operator-managed",
+                        "qualified": False,
+                    }
+                state = certificates._state(origin)
+                certificates._verify_current(state, recover=recover)
+                renewal = state is not None and state["phase"] == "preparing"
+                if not renewal:
+                    leaf = x509.load_pem_x509_certificates(
+                        certificates._read("/etc/agentbox-web/tls", "fullchain.pem", 0o644)
+                    )[0]
+                    renewal = leaf.not_valid_after_utc <= now + timedelta(days=31)
+                changed = False
+                if renewal:
+                    result = certificates.provision(
+                        origin=origin,
+                        email=email,
+                        agree_terms=True,
+                        plan=False,
+                        recover=recover,
+                        issue=self.host.issue_web_certificate,
+                    )
+                    changed = result["changed"] is True
+                    if changed:
+                        self._configure_waw_web_locked(
+                            origin, plan=False, recover=recover, activate=True
+                        )
+                return {
+                    "status": "maintained",
+                    "bootstrap_refreshed": refreshed,
+                    "certificate_changed": changed,
+                    "qualified": False,
+                }
+        except OSError as exc:
+            raise InstallError("fixed Web maintenance failed") from exc
 
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
         """Activate only the fixed enrolled graph; service start is not qualification."""

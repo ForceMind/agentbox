@@ -1,13 +1,44 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T12:27:09Z"
+verified_at_utc: "2026-10-01T13:25:55Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 fixed ACME issuance and Web maintenance
+
+Base HEAD/origin/main is ebf06758b93423b7110539854e9d30dd80b4266f; original
+checkout WIP is untouched. The current batch adds provision-waw-web-certificate
+with explicit ACME terms acceptance, one fixed Let's Encrypt server/domain/
+certificate name and private directories, closed hook-free argv, and port-80
+checks that never stop another listener. Foreign ACME/TLS state is rejected
+before network side effects. Only fixed same-revision archive links are read.
+TLS pair replacement has a Root-private sealed preparing/published record;
+matching --recover resumes without another CA request. No private key is output.
+
+maintain-waw-web refreshes the independently verified bootstrap before expiry,
+including controlled restoration of an expired Root publication. Automatic
+certificate renewal uses the saved Root-only policy and restarts HTTPS only
+when certificate bytes change. Operator-managed TLS gets bootstrap refresh
+without certificate adoption. Fixed daily maintenance service/timer assets are
+published with the ingress; the HTTPS activation enables that timer.
+
+40 affected regressions/Ruff/367-file mypy pass. These CA adapters use local
+generated fixture certificates, not real public CA issuance. An actual distro
+Certbot parser check was added to the Ubuntu CI matrix; inspect exact-head CI.
+The maintenance sandbox, package installation, complete installer sequencing,
+real CLI/PC/mobile use and reboot/upgrade/rollback remain unqualified. No user
+host, public CA, provider login or release publication was operated.
+
 ## 2026-10-01 Web Origin/TLS configuration and fixed activation
+
+PR #126 is MERGED. Source head f72ea3ad1a948f216a6e2cb9024805bb714439ba
+has terminal 24 SUCCESS/two prescribed SKIPPED. Merge read-back and fetched
+origin/main both equal ebf06758b93423b7110539854e9d30dd80b4266f. Continue on
+codex/r12-web-certificates in the same managed worktree. Original checkout WIP
+remains untouched. No source-version bump or release publication occurred.
 
 Base HEAD/origin/main is f2af937dcf3c437409400ebcf1ba1d56c5a21f3a on
 codex/r12-web-activation; previous PR #125 is merged, not a published version.
@@ -24,9 +55,11 @@ startup fails. Runtime/API are not restarted. No real user-host execution or
 provider login occurred. Certificate CA trust is not inferred from PEM checks.
 
 32 configuration/publication/activation regressions, Ruff and 365-file mypy
-pass. A native PID-1 CI probe now exercises the actual DynamicUser/LoadCredential
-unit, HTTPS with a fixture trust anchor, and kernel write-denial; local macOS
-skips this gated test. Its Linux result and exact-head CI still need read-back.
+pass. The native PID-1 CI probe passed with actual DynamicUser/LoadCredential,
+HTTPS using a fixture trust anchor, non-zero process UIDs and kernel write-denial
+(Deployment run 36862158050, job 110368738448, PASS at 12:30:59Z). Local macOS
+skips this gated test. This validates the disposable service fixture, not public
+CA issuance, a user's installation, vendor CLI execution or mobile behavior.
 Automatic certificate issuance/renewal, bootstrap refresh, one-command setup,
 actual PC/mobile CLI use and reboot/upgrade/rollback acceptance remain open.
 
