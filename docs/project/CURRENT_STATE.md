@@ -1,13 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T01:27:18Z"
+verified_at_utc: "2026-10-01T02:00:11Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
+## 2026-10-01 fixed vendor-policy preparation candidate
+
+Base 001c4bdd8acc3cfe42b328f36e2272e4ff9fcdab reached current terminal CI:
+24 SUCCESS/two prescribed SKIPPED. Deployment run 36801295653/job
+110175996950 at 01:29:36Z reported positive_absence_observed,
+fixed_empty_cleanup_executed and partial_empty_cleanup_recovered all true,
+alongside the prior four creation/FD/store checks. This is actual native
+PID-1/cgroupfs producer and cleanup execution with synthetic authority and
+empty workloads, not service/host reboot or actual vendor qualification.
+
+The first sanitizer native job 110175996308 failed the incomplete-DCS exact
+exit-74 check with tmux metadata 1::. Same-head retry job 110178385065 passed
+without native source changes. The original failure remains recorded; its
+root cause is unconfirmed, not claimed fixed by the retry.
+
+Current software adds prepare-waw-policies --plan/--recover: exactly three
+cross-pinned policies at fixed global Claude/Codex paths, Root-owned 444;
+no key initialization, profile enable or service start. Plan does not write.
+Apply requires inactive fixed services/sockets and complete Root-visible UID
+metadata with no remaining Runtime processes. Different files/links/unsafe
+directories reject before target creation; explicit recovery finishes only
+matching safe prefixes. No Runtime HOME/credential read or generic command/path
+action is added. 24 policy/manifest/guard regressions, Ruff and 352-file mypy
+passed; evidence uses local files and injected host metadata, not user-host
+policy preparation. Main-agent self-review only. Fixed activation, positive
+Codex Remote, HTTPS browser/core CLI and full recovery qualification remain
+open. No product version/tag/publication or user-host activation occurred.
+
 ## 2026-10-01 positive absence and fixed cleanup candidate
+
+Candidate 001c4bdd8acc3cfe42b328f36e2272e4ff9fcdab is pushed on Draft #125
+with exact remote read-back. CI is confirmed live, including Deployment run
+36801295653/job 110175996950 for the native PID-1 probe. This post-push note
+stays local for the next code batch; no docs-only CI rerun.
 
 Synchronized base: ccf8bf537d4c1206ce786fedccec8006a9cc9f74 on Draft
 #125; exact remote read-back and terminal CI confirmed: 24 SUCCESS/two

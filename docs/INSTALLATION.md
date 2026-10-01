@@ -28,10 +28,29 @@ bytes/prefixes under verified ownership/modes. Unrelated files are preserved.
 This candidate is not the final one-command deployable release; activation,
 HTTPS Web and actual CLI/client/recovery qualification remain pending.
 
+After manifest preparation, inspect the separate fixed vendor-policy step:
+
+```bash
+agentbox-install prepare-waw-policies --plan --json
+agentbox-install prepare-waw-policies --json
+```
+
+Its plan is read-only. Apply requires disabled profiles, inactive AgentBox
+services/WAW sockets, and complete Root-visible UID metadata with no remaining
+Runtime processes. It copies only the cross-pinned public policies to
+`/etc/claude-code/managed-settings.json`, `/etc/codex/requirements.toml`, and
+`/etc/codex/managed_config.toml`, as Root-owned 444 files. These are global
+vendor policy paths; an existing different policy is rejected. Exact files
+are preserved, and explicit `--recover` can finish only a matching safe prefix.
+This step does not initialize keys, enable profiles, start services, log in a
+vendor, or qualify the currently inert templates.
+
 ## Safety boundary
 
 The installer owns only AgentBox users, groups, FHS paths, release files, unit
 files, configuration, and database state listed by `agentbox-install plan`.
+The separate WAW policy command lists its three fixed global policy targets in
+its own `--plan` output; it does not overwrite unrelated vendor configuration.
 It does not modify SSH, firewall rules, cloud security groups, cloudflared,
 reverse proxies, Docker, existing root Runtime installations, root tmux
 sessions, `/root/projects`, or Provider/Secret configuration.

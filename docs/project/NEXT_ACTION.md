@@ -1,5 +1,22 @@
 # Current Authorized Action
 
+## 2026-10-01 compose fixed offline activation
+
+001c4bd currently has terminal 24 SUCCESS/two prescribed SKIPPED, actual
+absence/full/partial cleanup Linux probe evidence, and a retained first-run
+sanitizer/tmux DCS failure that passed on same-head retry without a code fix.
+Current policy preparation adds only three fixed cross-pinned global policies
+while profiles stay disabled; 24 regressions/Ruff/352-file mypy pass. Inspect
+its exact-head CI before relying on the new candidate.
+
+Next complete the fixed systemd drop-in, named socket and paired profile
+activation transaction with offline/idle evidence and recoverable failure
+states. Existing services/processes may not be silently killed or adopted.
+Then close positive Codex Remote and the accepted HTTPS PC/mobile core flow.
+No new workstation feature, product version, user-host activation or release
+is authorized by these internal software checkpoints; the full self-install,
+CLI, reboot and upgrade/rollback delivery objective remains open.
+
 ## 2026-10-01 verify absence/cleanup Linux evidence then fixed activation
 
 Both stores now have explicit new-epoch CAS operations, composed into the

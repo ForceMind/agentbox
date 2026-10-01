@@ -203,6 +203,58 @@ class AgentBoxInstaller:
         issuer.revalidate()
         return issuer.publish(observed, fingerprint, recover=recover)
 
+    def prepare_waw_policies(
+        self, *, plan: bool = False, recover: bool = False
+    ) -> dict[str, object]:
+        """Install fixed enrolled vendor policies without activating WAW."""
+        self.host.require_root()
+        if type(plan) is not bool or type(recover) is not bool:
+            raise TypeError("policy preparation flags must be bool")
+        try:
+            if plan:
+                return self._prepare_waw_policies_locked(plan=True, recover=recover)
+            with self._lifecycle_lock():
+                return self._prepare_waw_policies_locked(plan=False, recover=recover)
+        except OSError as exc:
+            raise InstallError("fixed policy preparation failed") from exc
+
+    def _prepare_waw_policies_locked(self, *, plan: bool, recover: bool) -> dict[str, object]:
+        if self.installation_state() != "installed" or self.current_version() is None:
+            raise InstallError("policy preparation requires a completed installation")
+        for path, group, expected in (
+            ("/etc/agentbox/waw-api-profile.v1.json", "agentbox", _WAW_API_DISABLED_PROFILE),
+            (
+                "/var/lib/agentbox-waw/runtime-profile.v1.json",
+                "agentbox-runtime",
+                _WAW_RUNTIME_DISABLED_PROFILE,
+            ),
+        ):
+            self._validate_fixed_waw_file(
+                self.layout.map(path), owner="root", group=group, mode=0o440, allowed=(expected,)
+            )
+        runtime_uid, runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+        if runtime_uid == 0 or runtime_gid == 0:
+            raise InstallError("policy Runtime identity is invalid")
+        if not plan:
+            self.host.require_waw_policy_quiescence()
+        version = self.current_version()
+        assert version is not None
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=0 if self.host.real_host else os.geteuid(),
+            root_gid=0 if self.host.real_host else os.getegid(),
+            runtime_uid=runtime_uid if self.host.real_host else os.geteuid(),
+            runtime_gid=runtime_gid if self.host.real_host else os.getegid(),
+        )
+        targets = issuer.prepare_fixed_policies(plan=plan, recover=recover)
+        return {
+            "status": "validated" if plan else "prepared",
+            "targets": targets,
+            "profiles": "disabled",
+            "services_started": False,
+        }
+
     def enroll_waw_vendors(
         self,
         *,

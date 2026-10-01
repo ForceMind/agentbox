@@ -14,6 +14,104 @@ from agentbox_runtime.waw_host_manifest import (
 from agentbox_runtime.waw_manifest_codecs import RUNTIME_NAMESPACE_BINDING_V1
 
 
+def test_fixed_policy_plan_is_read_only_and_preparation_is_idempotent(tmp_path: Path) -> None:
+    issuer, root = _fixture(tmp_path)
+    (root / "etc").mkdir(mode=0o755)
+    issuer.publish(issuer.observe(), "a" * 64)
+    before = {str(path.relative_to(root)) for path in root.rglob("*")}
+    targets = issuer.prepare_fixed_policies(plan=True)
+    assert before == {str(path.relative_to(root)) for path in root.rglob("*")}
+    assert issuer.prepare_fixed_policies() == targets
+    inodes = [(root / target.lstrip("/")).stat().st_ino for target in targets]
+    assert issuer.prepare_fixed_policies() == targets
+    assert inodes == [(root / target.lstrip("/")).stat().st_ino for target in targets]
+    for target, source in zip(
+        targets,
+        ("claude-managed-policy.v1.json", "codex-requirements.toml", "codex-managed-config.toml"),
+        strict=True,
+    ):
+        path = root / target.lstrip("/")
+        assert path.read_bytes() == (root / "usr/share/agentbox/waw" / source).read_bytes()
+        assert path.stat().st_mode & 0o777 == 0o444
+
+
+@pytest.mark.parametrize("kind", ["different", "prefix", "symlink"])
+def test_fixed_policy_recovery_rejects_unrelated_or_linked_targets(
+    tmp_path: Path, kind: str
+) -> None:
+    issuer, root = _fixture(tmp_path)
+    directory = root / "etc/codex"
+    directory.mkdir(parents=True, mode=0o755)
+    issuer.publish(issuer.observe(), "a" * 64)
+    target = directory / "requirements.toml"
+    source = root / "usr/share/agentbox/waw/codex-requirements.toml"
+    if kind == "symlink":
+        target.symlink_to(source)
+    else:
+        target.write_bytes(source.read_bytes()[:8] if kind == "prefix" else b"different policy")
+        target.chmod(0o444)
+    with pytest.raises((WAWManifestInstallError, OSError)):
+        issuer.prepare_fixed_policies()
+    assert not (root / "etc/claude-code").exists()
+    if kind == "prefix":
+        issuer.prepare_fixed_policies(recover=True)
+        assert target.read_bytes() == source.read_bytes()
+        assert target.stat().st_mode & 0o777 == 0o444
+    else:
+        with pytest.raises((WAWManifestInstallError, OSError)):
+            issuer.prepare_fixed_policies(recover=True)
+        assert not (root / "etc/claude-code").exists()
+
+
+@pytest.mark.parametrize("plan", [False, True])
+def test_policy_lifecycle_keeps_profiles_disabled_and_never_initializes_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, plan: bool
+) -> None:
+    from agentbox_installer.cli import create_parser
+    from agentbox_installer.host import HostOperations
+    from agentbox_installer.layout import InstallLayout
+    from agentbox_installer.lifecycle import AgentBoxInstaller
+
+    issuer, root = _fixture(tmp_path)
+    issuer.publish(issuer.observe(), "a" * 64)
+    profiles = {
+        "etc/agentbox/waw-api-profile.v1.json": (
+            b'{"mode":"disabled","schema_version":"agentbox-waw-api-profile.v1"}\n'
+        ),
+        "var/lib/agentbox-waw/runtime-profile.v1.json": (
+            b'{"mode":"disabled","schema_version":"agentbox-waw-runtime-profile.v1"}\n'
+        ),
+    }
+    for name, raw in profiles.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.chmod(0o750)
+        path.write_bytes(raw)
+        path.chmod(0o440)
+    (root / "etc").chmod(0o755)
+    host = HostOperations(real_host=False)
+    installer = AgentBoxInstaller(InstallLayout(root), host)
+    monkeypatch.setattr(installer, "installation_state", lambda: "installed")
+    monkeypatch.setattr(installer, "current_version", lambda: "0.3.0rc30")
+    calls: list[str] = []
+    monkeypatch.setattr(host, "require_waw_policy_quiescence", lambda: calls.append("quiescent"))
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("policy preparation must not initialize keys or start services")
+
+    monkeypatch.setattr(host, "initialize_waw_runtime_key", forbidden)
+    monkeypatch.setattr(host, "enable_and_start", forbidden)
+    before = {str(path.relative_to(root)) for path in root.rglob("*")}
+    result = installer.prepare_waw_policies(plan=plan)
+    assert result["profiles"] == "disabled" and result["services_started"] is False
+    assert calls == ([] if plan else ["quiescent"])
+    assert all((root / name).read_bytes() == raw for name, raw in profiles.items())
+    if plan:
+        assert before == {str(path.relative_to(root)) for path in root.rglob("*")}
+    args = create_parser().parse_args(["prepare-waw-policies", "--plan", "--recover", "--json"])
+    assert args.plan and args.recover and args.json
+
+
 def _fixture(tmp_path: Path) -> tuple[WAWManifestIssuer, Path]:
     root = tmp_path / "root"
     root.mkdir(mode=0o700)

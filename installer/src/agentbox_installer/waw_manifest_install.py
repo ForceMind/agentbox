@@ -14,7 +14,10 @@ from typing import Any
 
 from agentbox_runtime.waw_executable import _validate_elf_header
 from agentbox_runtime.waw_fixed_transport import _project_filesystem_identity
-from agentbox_runtime.waw_host_manifest import WAW_PUBLIC_MANIFEST_FILENAMES_V2
+from agentbox_runtime.waw_host_manifest import (
+    WAW_PUBLIC_MANIFEST_FILENAMES_V2,
+    load_verified_canonical_waw_manifest_bundle_v2,
+)
 from agentbox_runtime.waw_manifest_codecs import (
     RUNTIME_HOST_MANIFEST_SCHEMA_V2,
     RUNTIME_HOST_MANIFEST_V2_PATHS,
@@ -178,6 +181,105 @@ class WAWManifestIssuer:
                 return raw
             finally:
                 os.close(fd)
+
+    def prepare_fixed_policies(
+        self, *, plan: bool = False, recover: bool = False
+    ) -> tuple[str, ...]:
+        """Prepare only three fixed vendor policies from the verified bundle.
+
+        The lifecycle caller verifies the complete bundle, disabled profiles
+        and host quiescence. This operation never enables mode or services.
+        Existing unrelated policy files are rejected, not overwritten.
+        """
+        fixed = (
+            ("/etc/claude-code", "managed-settings.json", "claude-managed-policy.v1.json"),
+            ("/etc/codex", "requirements.toml", "codex-requirements.toml"),
+            ("/etc/codex", "managed_config.toml", "codex-managed-config.toml"),
+        )
+        pin = load_verified_canonical_waw_manifest_bundle_v2(
+            self.root / "var/lib/agentbox-waw/runtime-host-installation.v2.json",
+            self.root / "usr/share/agentbox/waw",
+            expected_runtime_uid=self.owner_uid,
+            expected_runtime_gid=self.runtime_gid,
+            expected_public_uid=self.owner_uid,
+            expected_public_gid=self.root_gid,
+            runtime_trusted_root=self.root,
+        )
+        sources = {
+            source: self._read("/usr/share/agentbox/waw/" + source, 65536) for _, _, source in fixed
+        }
+        digests = (
+            pin.claude_managed_policy_digest,
+            pin.codex_requirements_policy_digest,
+            pin.codex_managed_config_policy_digest,
+        )
+        for (_, _, source), digest in zip(fixed, digests, strict=True):
+            if hashlib.sha256(sources[source]).hexdigest() != digest:
+                raise WAWManifestInstallError("fixed policy source changed after bundle validation")
+        for directory, name, source in fixed:
+            try:
+                with self._directory(directory) as parent:
+                    facts = os.fstat(parent)
+                    if facts.st_gid != self.root_gid or stat.S_IMODE(facts.st_mode) != 0o755:
+                        raise WAWManifestInstallError("fixed policy directory is unsafe")
+                    self._validate_policy_target(parent, name, sources[source], recover=recover)
+            except FileNotFoundError:
+                pass
+        self.revalidate()
+        if plan:
+            return tuple(directory + "/" + name for directory, name, _ in fixed)
+        with self._directory("/etc") as parent:
+            for directory in ("claude-code", "codex"):
+                try:
+                    os.mkdir(directory, 0o755, dir_fd=parent)
+                except FileExistsError:
+                    pass
+                else:
+                    descriptor = os.open(directory, _DIR, dir_fd=parent)
+                    try:
+                        os.fchown(descriptor, self.owner_uid, self.root_gid)
+                        os.fchmod(descriptor, 0o755)
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
+            os.fsync(parent)
+        for directory, name, source in fixed:
+            self.revalidate()
+            with self._directory(directory) as parent:
+                facts = os.fstat(parent)
+                if facts.st_gid != self.root_gid or stat.S_IMODE(facts.st_mode) != 0o755:
+                    raise WAWManifestInstallError("fixed policy directory is unsafe")
+                self._create_file(
+                    parent,
+                    name,
+                    sources[source],
+                    0o444,
+                    self.root_gid,
+                    allow_existing=True,
+                    repair_prefix=recover,
+                )
+        return tuple(directory + "/" + name for directory, name, _ in fixed)
+
+    def _validate_policy_target(self, parent: int, name: str, raw: bytes, *, recover: bool) -> None:
+        fd = os.open(name, _FILE, dir_fd=parent)
+        try:
+            facts = os.fstat(fd)
+            if (
+                not stat.S_ISREG(facts.st_mode)
+                or facts.st_uid != self.owner_uid
+                or facts.st_gid != self.root_gid
+                or stat.S_IMODE(facts.st_mode) != 0o444
+                or facts.st_nlink != 1
+                or not 0 <= facts.st_size <= len(raw)
+            ):
+                raise WAWManifestInstallError("existing fixed policy is unsafe")
+            existing = os.read(fd, len(raw) + 1)
+            if _identity(os.fstat(fd)) != _identity(facts) or not (
+                existing == raw or recover and len(existing) < len(raw) and raw.startswith(existing)
+            ):
+                raise WAWManifestInstallError("existing fixed policy differs")
+        finally:
+            os.close(fd)
 
     def observe(self) -> dict[str, Any]:
         self.observations.clear()

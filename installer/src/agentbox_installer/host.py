@@ -14,6 +14,7 @@ import socket
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -287,6 +288,76 @@ class HostOperations:
     def daemon_reload(self) -> None:
         if self.real_host:
             self._run(("/usr/bin/systemctl", "daemon-reload"))
+
+    def require_waw_policy_quiescence(self) -> None:
+        """Fixed read-only guard; never inspect Runtime HOME or credentials."""
+        if not self.real_host:
+            return
+        try:
+            self._require_waw_policy_quiescence()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HostMutationError("WAW policy quiescence could not be verified") from exc
+
+    def _require_waw_policy_quiescence(self) -> None:
+        self.require_root()
+        runtime_uid, _ = self.owner_ids("agentbox-runtime", "agentbox-runtime")
+        if runtime_uid == 0 or sys.platform != "linux":
+            raise HostMutationError("WAW policy preparation requires a non-root Linux Runtime")
+        for unit in (
+            "agentbox-api.service",
+            "agentbox-worker.service",
+            "agentbox-runtime.service",
+            *WAW_SOCKET_UNIT_NAMES,
+        ):
+            result = subprocess.run(  # noqa: S603 - fixed read-only systemd query
+                ("/usr/bin/systemctl", "show", unit, "--property=ActiveState", "--value"),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+                env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+            )
+            if result.returncode != 0 or result.stdout.strip() != "inactive":
+                raise HostMutationError(
+                    "stop AgentBox services and WAW sockets before policy preparation"
+                )
+        deadline = time.monotonic() + 5
+        with os.scandir("/proc") as entries:
+            count = 0
+            for entry in entries:
+                if re.fullmatch(r"[1-9][0-9]{0,9}", entry.name) is None:
+                    continue
+                count += 1
+                if count > 65536 or time.monotonic() >= deadline:
+                    raise HostMutationError("Runtime process visibility is incomplete")
+                try:
+                    descriptor = os.open(
+                        f"/proc/{entry.name}/status", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+                    )
+                except FileNotFoundError:
+                    continue
+                try:
+                    try:
+                        raw = os.read(descriptor, 65537)
+                    except ProcessLookupError:
+                        continue
+                finally:
+                    os.close(descriptor)
+                lines = [
+                    line.split()[1:] for line in raw.splitlines() if line.startswith(b"Uid:\t")
+                ]
+                if (
+                    len(raw) > 65536
+                    or len(lines) != 1
+                    or len(lines[0]) != 4
+                    or any(not value.isdigit() for value in lines[0])
+                ):
+                    raise HostMutationError("Runtime process visibility is incomplete")
+                if runtime_uid in {int(value) for value in lines[0]}:
+                    raise HostMutationError(
+                        "Runtime processes remain; policy preparation is fenced"
+                    )
 
     def enable_and_start(self) -> None:
         if not self.real_host:

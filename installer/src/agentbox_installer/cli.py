@@ -47,6 +47,10 @@ def create_parser() -> argparse.ArgumentParser:
     preparation.add_argument("--plan", action="store_true")
     preparation.add_argument("--recover", action="store_true")
     preparation.add_argument("--json", action="store_true")
+    policy = commands.add_parser("prepare-waw-policies")
+    policy.add_argument("--plan", action="store_true")
+    policy.add_argument("--recover", action="store_true")
+    policy.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -143,6 +147,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "prepare-waw-manifests":
             _print(
                 asdict(installer.prepare_waw_manifests(recover=args.recover, plan=args.plan)),
+                json_output=json_output,
+            )
+            return 0
+        if args.command == "prepare-waw-policies":
+            _print(
+                installer.prepare_waw_policies(plan=args.plan, recover=args.recover),
                 json_output=json_output,
             )
             return 0
