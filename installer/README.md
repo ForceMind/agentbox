@@ -34,6 +34,15 @@ invalidates old browser leases and may require reloading the page; it does not
 stop the server CLI. Public CA/DNS/firewall validation still belongs to the
 operator's real installation.
 
+`setup-waw-web --origin https://host.example --email owner@example.com --plan`
+composes the browser entry for an already installed, fully enrolled WAW host.
+Applying needs `--agree-acme-terms`; matching recovery adds `--recover`.
+It checks prerequisites before requesting a certificate, then publishes the
+page, commits Origin, activates WAW if necessary and starts HTTPS. A previously
+started WAW graph keeps its Runtime process. This still requires prior vendor/
+manifest enrollment and fixed dependencies; it is not the final download/install
+entry and does not claim real browser/CLI qualification.
+
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
 normal callers cannot select an alternate filesystem root. See

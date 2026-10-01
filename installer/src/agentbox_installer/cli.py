@@ -79,6 +79,13 @@ def create_parser() -> argparse.ArgumentParser:
     maintenance = commands.add_parser("maintain-waw-web")
     maintenance.add_argument("--recover", action="store_true")
     maintenance.add_argument("--json", action="store_true")
+    setup_web = commands.add_parser("setup-waw-web")
+    setup_web.add_argument("--origin", required=True)
+    setup_web.add_argument("--email", required=True)
+    setup_web.add_argument("--agree-acme-terms", action="store_true")
+    setup_web.add_argument("--plan", action="store_true")
+    setup_web.add_argument("--recover", action="store_true")
+    setup_web.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -221,6 +228,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "maintain-waw-web":
             _print(installer.maintain_waw_web(recover=args.recover), json_output=json_output)
+            return 0
+        if args.command == "setup-waw-web":
+            _print(
+                installer.setup_waw_web(
+                    origin=args.origin,
+                    email=args.email,
+                    agree_terms=args.agree_acme_terms,
+                    plan=args.plan,
+                    recover=args.recover,
+                ),
+                json_output=json_output,
+            )
             return 0
         if args.command == "activate-waw":
             _print(

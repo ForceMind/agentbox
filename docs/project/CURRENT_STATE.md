@@ -1,11 +1,31 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T13:25:55Z"
+verified_at_utc: "2026-10-01T13:39:11Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 enrolled browser setup composition
+
+PR #127 merged at 753e8be423e4a72276e28d93ac9e74a42961120f; source
+ba13d10ee1c88678e04001b18ea80d55052594fa reached 24 SUCCESS/two prescribed
+SKIPPED. GitHub/fetched origin/main were read back. Setup WIP was carried
+unchanged into codex/r12-web-setup; original checkout remains untouched.
+
+setup-waw-web now composes an already installed/enrolled host's certificate,
+publication, Origin, WAW and HTTPS stages under one lifecycle lock. Plan is
+read-only; applying requires explicit ACME consent. Existing enrollment, units,
+browser configuration and offline evidence are checked before CA side effects.
+A started WAW graph requires matching committed Origin and is never restarted
+by setup recovery. Failures preserve the existing stage-specific recovery state.
+
+42 affected regressions, Ruff and 369-file mypy passed. The two setup cases were
+rerun after the final ingress preflight addition and passed. Full initial
+installation/vendor/dependency sequencing, maintenance sandbox execution and
+real CLI/client/reboot/upgrade/rollback are still outstanding. This command is
+an internal composed entry, not yet the published self-install command.
 
 ## 2026-10-01 fixed ACME issuance and Web maintenance
 
