@@ -1,11 +1,37 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T13:39:11Z"
+verified_at_utc: "2026-10-01T14:18:35Z"
 verified_by: "codex-deployable-installer-work"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-01 fixed native vendor bootstrap
+
+PR #128 merged at 4f849bea943e6062fac80d3c876f3e70a69d5a8d; exact source
+131aadba66471612358f2f09ce6437c6ede795b5 has 24 SUCCESS/two prescribed SKIPPED.
+GitHub/fetched origin/main were read back. Work is on codex/r12-vendor-bootstrap;
+original checkout remains untouched. install-waw-vendors now plans/downloads
+two fixed official native versions, verifies pinned archive/file SHA and ELF,
+and publishes Root-owned executables without executing installers or reading
+credentials. Existing foreign/distro vendors are not overwritten. Both payloads
+are validated before publication; exact interrupted hardlink publication recovers.
+
+Actual downloaded Claude 2.1.286 is 241667256 bytes; Codex 0.159.3 is 287086056
+bytes. Both fixed SHA/ELF checks passed locally without running Linux binaries.
+The Codex size exceeds the old 256 MiB ceiling: only CODEX at the two fixed
+vendor paths may now carry a 384 MiB inventory pin. Generic/default/other-kind
+limits remain 256 MiB; old 256 MiB Codex pins remain supported. Kind mismatches
+reject. Automatic review rejected global/any-path expansion; neither is applied.
+
+153 affected regressions pass (one Linux descriptor gate skipped on macOS),
+Ruff/372-file mypy pass. Ubuntu CI now checks the official Claude signing-key
+fingerprint/signature and runs both verified --version commands plus Codex's
+unauthenticated status in empty HOME. Those Linux results/exact-head CI are
+pending; local downloads do not prove CLI execution, login or compatibility.
+Initial-install dependency/registration sequence, maintenance sandbox, full
+browser/CLI/reboot/upgrade/rollback and the published command remain open.
 
 ## 2026-10-01 enrolled browser setup composition
 

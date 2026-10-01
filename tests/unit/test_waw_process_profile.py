@@ -30,7 +30,7 @@ def executable_inventory() -> dict[str, object]:
                 "kind": policy.kind,
                 "path": policy.fixed_path or f"/opt/vendor/{policy.kind}",
                 "sha256": f"{index:x}" * 64,
-                "max_bytes": policy.max_bytes,
+                "max_bytes": 256 * 1024 * 1024 if policy.kind == "codex" else policy.max_bytes,
                 "version_identity": policy.version_identity,
                 "version_probe_id": policy.version_probe_id,
             }

@@ -64,6 +64,7 @@ class WAWExecutablePin:
     path: Path
     sha256: str
     max_bytes: int = _MAX_BYTES
+    kind: WAWExecutableKind | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -79,7 +80,13 @@ class WAWExecutablePin:
             raise WAWExecutableError("executable inventory path is invalid")
         if type(self.sha256) is not str or not _DIGEST.fullmatch(self.sha256):
             raise WAWExecutableError("executable SHA-256 pin is invalid")
-        if type(self.max_bytes) is not int or not 64 <= self.max_bytes <= _MAX_BYTES:
+        limit = _MAX_BYTES
+        if self.kind is WAWExecutableKind.CODEX and str(self.path) in {
+            "/usr/local/bin/codex",
+            "/usr/bin/codex",
+        }:
+            limit = 384 * 1024 * 1024
+        if type(self.max_bytes) is not int or not 64 <= self.max_bytes <= limit:
             raise WAWExecutableError("executable byte limit is invalid")
 
 
@@ -123,6 +130,8 @@ class WAWExecutableInventory:
         for kind, pin in copied.items():
             if type(kind) is not WAWExecutableKind or type(pin) is not WAWExecutablePin:
                 raise WAWExecutableError("executable inventory entry is invalid")
+            if pin.kind is not None and pin.kind is not kind:
+                raise WAWExecutableError("executable inventory kind binding is invalid")
             pin.__post_init__()
         self._pins = copied
         self._version_records: dict[WAWExecutableKind, tuple[str, str]] = {}
@@ -144,7 +153,7 @@ class WAWExecutableInventory:
             checked = decode_executable_inventory_v1(encode_executable_inventory_v1(manifest))
             pins = {
                 WAWExecutableKind(entry.kind): WAWExecutablePin(
-                    Path(entry.path), entry.sha256, entry.max_bytes
+                    Path(entry.path), entry.sha256, entry.max_bytes, WAWExecutableKind(entry.kind)
                 )
                 for entry in checked.executables
             }

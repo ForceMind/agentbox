@@ -51,6 +51,7 @@ from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublisher,
 )
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
+from agentbox_installer.waw_vendor_bootstrap import WAWVendorBootstrap
 from agentbox_installer.waw_web_certificates import WAWWebCertificates
 from agentbox_installer.waw_web_configuration import configure_browser_origin, validate_web_tls
 from agentbox_installer.waw_web_publication import WAWWebPublisher
@@ -604,6 +605,38 @@ class AgentBoxInstaller:
                 return result
         except OSError as exc:
             raise InstallError("fixed browser setup failed; retry setup-waw-web --recover") from exc
+
+    def install_waw_vendors(
+        self, *, plan: bool = False, recover: bool = False
+    ) -> dict[str, object]:
+        self.host.require_root()
+        if type(plan) is not bool or type(recover) is not bool:
+            raise TypeError("vendor installation flags must be bool")
+        version = self.current_version()
+        if version is None or self.installation_state() != "installed":
+            raise InstallError("vendor installation requires a completed AgentBox installation")
+        owner = 0 if self.host.real_host else os.geteuid()
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=owner,
+            root_gid=0 if self.host.real_host else os.getegid(),
+            runtime_uid=owner,
+            runtime_gid=0 if self.host.real_host else os.getegid(),
+        )
+        bootstrap = WAWVendorBootstrap(issuer)
+        try:
+            if plan:
+                return bootstrap.install(
+                    plan=True, recover=recover, download=self.host.download_waw_vendor
+                )
+            with self._lifecycle_lock():
+                self.host.require_waw_policy_quiescence()
+                return bootstrap.install(
+                    plan=False, recover=recover, download=self.host.download_waw_vendor
+                )
+        except OSError as exc:
+            raise InstallError("fixed native vendor installation failed") from exc
 
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
         """Activate only the fixed enrolled graph; service start is not qualification."""
