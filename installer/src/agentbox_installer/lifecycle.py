@@ -716,30 +716,54 @@ class AgentBoxInstaller:
         except OSError as exc:
             raise InstallError("fixed browser dependency operation failed") from exc
 
+    def _observe_waw_vendors_locked(self) -> WAWVendorObservation:
+        if self.installation_state() != "installed":
+            raise InstallError("vendor observation requires a completed AgentBox installation")
+        self.host.require_waw_policy_quiescence()
+        observed = self.host.observe_waw_vendors()
+        self._enroll_waw_vendors_locked(
+            claude_version=observed.claude_vendor_version,
+            codex_version=observed.codex_vendor_version,
+            codex_unauthenticated_output_sha256=(
+                observed.codex_unauthenticated_output_sha256
+            ),
+            recover=False,
+            plan=True,
+        )
+        return observed
+
     def observe_waw_vendors(self) -> WAWVendorObservation:
         """Read bounded non-secret enrollment facts from fixed installed CLIs."""
 
         self.host.require_root()
         try:
             with self._lifecycle_lock():
-                if self.installation_state() != "installed":
-                    raise InstallError(
-                        "vendor observation requires a completed AgentBox installation"
-                    )
-                self.host.require_waw_policy_quiescence()
-                observed = self.host.observe_waw_vendors()
-                self._enroll_waw_vendors_locked(
+                return self._observe_waw_vendors_locked()
+        except OSError as exc:
+            raise InstallError("fixed Runtime vendor observation failed") from exc
+
+    def observe_and_enroll_waw_vendors(
+        self, *, recover: bool = False
+    ) -> WAWEnrollmentPublication:
+        """Observe and publish the same fixed Runtime facts without manual transcription."""
+
+        self.host.require_root()
+        if type(recover) is not bool:
+            raise TypeError("vendor observation recovery flag must be bool")
+        try:
+            with self._lifecycle_lock():
+                observed = self._observe_waw_vendors_locked()
+                return self._enroll_waw_vendors_locked(
                     claude_version=observed.claude_vendor_version,
                     codex_version=observed.codex_vendor_version,
                     codex_unauthenticated_output_sha256=(
                         observed.codex_unauthenticated_output_sha256
                     ),
-                    recover=False,
-                    plan=True,
+                    recover=recover,
+                    plan=False,
                 )
-                return observed
         except OSError as exc:
-            raise InstallError("fixed Runtime vendor observation failed") from exc
+            raise InstallError("fixed Runtime vendor observation/enrollment failed") from exc
 
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
         """Activate only the fixed enrolled graph; service start is not qualification."""
