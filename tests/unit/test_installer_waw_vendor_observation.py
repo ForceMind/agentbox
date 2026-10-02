@@ -14,9 +14,11 @@ def _host(monkeypatch: pytest.MonkeyPatch) -> HostOperations:
     monkeypatch.setattr(host, "require_root", lambda: None)
     monkeypatch.setattr(
         "agentbox_installer.host.pwd.getpwnam",
-        lambda name: SimpleNamespace(pw_uid=19002, pw_gid=19002)
-        if name == "agentbox-runtime"
-        else pytest.fail("unexpected identity"),
+        lambda name: (
+            SimpleNamespace(pw_uid=19002, pw_gid=19002)
+            if name == "agentbox-runtime"
+            else pytest.fail("unexpected identity")
+        ),
     )
     original_lstat = Path.lstat
 
