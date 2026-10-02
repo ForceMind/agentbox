@@ -1,23 +1,34 @@
 # Current Authorized Action
 
-## 2026-10-02 当前开发动作（覆盖下方交接指令）
+## 2026-10-02 Runtime-only vendor observation/enrollment
 
-Draft #131 已关闭最初的 package-guard crash-window，并由实际 Ubuntu 24.04
-APT probe 发现第二个真实副作用：certbot 没有启动，但 `certbot.timer` 会在
-安装后自动变成 enabled。当前候选已把 dependency ownership 写入 v2 guard，
-只对安装前证明不存在的 nginx/certbot unit 执行 disable --now；armed 中断由
-`--recover` 恢复同一集合，preparing 中断不获得 unit mutation 权限。foreign/
-partial policy 和预装 dependency service 均不被收养或修改。
+Live GitHub state is now `main` =
+`3da84df5fcc8b5543405f651d1a78c21ea9a8376`; PR #131 is merged and must not
+be repeated. Continue the same first deployable release.
 
-当前唯一动作是读取最终 exact-head 六套 CI，并检查 native PID-1 APT probe 与
-maintenance sandbox 的实际日志。所有 required/additional checks 都必须终态
-SUCCESS；若失败按实际日志修复，不能降低 gate。通过后按治理把 #131 退出 Draft、
-merge、read-back main，再进入 Runtime-only vendor observation/enrollment 与
-完整 fresh-install composition。
+The immediate narrow batch is branch
+`codex/r12-vendor-observation-digest`. It fixes the confirmed Codex
+unauthenticated digest mismatch by making the actual pinned-vendor observation
+use the same length-framed `waw_vendor_probe_output_digest(stdout, stderr)`
+contract as the production Runtime parser, with a regression that rejects raw
+stdout+stderr concatenation semantics.
 
-之后直接进入真实 Runtime-only vendor observation/enrollment 和完整 fresh
-install composition，再做 PC/Android/iOS 双 CLI、重连、exact Stop、重启、
-升级/回退。继续同一个首版，不推进 #117 或长期旁支。
+Current action: push/read back this exact branch head, open the PR, require the
+normal exact-head CI contract, fix any real failures, merge normally and read
+back main. Do not weaken the parser or replace framed output with a synthetic
+digest.
+
+After that merge, implement the actual Runtime-only observation/enrollment
+composition: derive the fixed Claude/Codex versions and Codex unauthenticated
+framed digest from qualified Runtime-owned observation rather than operator-
+supplied synthetic values, then compose deferred fresh install -> fixed
+dependencies/vendors -> manifests/keys/public observations -> enrollment ->
+`setup-waw-web` -> actual HTTPS entry.
+
+Only after the composed install is closed proceed to real Claude/Codex
+login/input/output/resize/detach/reconnect/exact Stop on PC/Android/iOS,
+service/host reboot, upgrade/rollback and immutable release publication.
+Do not advance #117 or unrelated workstation features.
 
 ## 历史行动记录
 
