@@ -10,7 +10,7 @@ from agentbox_installer.layout import InstallLayout
 from agentbox_installer.lifecycle import AgentBoxInstaller, InstallError
 from agentbox_installer.platform import detect_platform
 from agentbox_installer.waw_manifest_install import WAWManifestInstallError
-from agentbox_installer.waw_package_guard import _RAW, _guard_raw, WAWPackageStartGuard
+from agentbox_installer.waw_package_guard import _RAW, WAWPackageStartGuard, _guard_raw
 from test_installer_waw_manifests import _fixture
 
 
