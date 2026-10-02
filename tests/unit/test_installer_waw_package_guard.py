@@ -111,7 +111,9 @@ def _dependency_installer(
     (root / "etc").mkdir()
     (root / "etc/os-release").write_text('ID="ubuntu"\nVERSION_ID="24.04"\n')
     monkeypatch.setattr(
-        lifecycle, "detect_platform", lambda source: detect_platform(source, architecture="x86_64")
+        lifecycle,
+        "detect_platform",
+        lambda source: detect_platform(source, architecture="x86_64"),
     )
     installer = AgentBoxInstaller(InstallLayout(root), HostOperations(real_host=False))
     monkeypatch.setattr(installer, "installation_state", lambda: "installed")
@@ -142,7 +144,9 @@ def test_dependency_recovery_restores_recorded_units_after_packages_are_present(
         lambda *_args: pytest.fail("APT must not rerun after dependencies completed"),
     )
     restored: list[tuple[str, ...]] = []
-    monkeypatch.setattr(installer.host, "quiesce_waw_dependency_units", restored.append)
+    monkeypatch.setattr(
+        installer.host, "quiesce_waw_dependency_units", restored.append
+    )
 
     with pytest.raises(WAWManifestInstallError, match="recover"):
         installer.install_waw_dependencies()
@@ -233,8 +237,12 @@ def test_dependency_plan_apply_quiesces_only_recorded_dependencies(
 
     monkeypatch.setattr(lifecycle, "detect_dependencies", detect)
     monkeypatch.setattr(installer.host, "install_packages", install)
-    monkeypatch.setattr(installer.host, "require_waw_dependency_units_absent", prepared.append)
-    monkeypatch.setattr(installer.host, "quiesce_waw_dependency_units", quiesced.append)
+    monkeypatch.setattr(
+        installer.host, "require_waw_dependency_units_absent", prepared.append
+    )
+    monkeypatch.setattr(
+        installer.host, "quiesce_waw_dependency_units", quiesced.append
+    )
 
     result = installer.install_waw_dependencies(plan=True)
     assert result["packages"] == ("nginx", "certbot") and calls == []
