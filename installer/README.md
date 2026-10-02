@@ -51,6 +51,15 @@ installations require explicit enrollment; they are not replaced. Recover only
 matching interrupted publication with `--recover`. Version pins update with a
 reviewed AgentBox batch, not automatically from an upstream latest endpoint.
 
+`observe-waw-vendors --json` runs only the installed fixed Claude/Codex
+version/status probes as `agentbox-runtime` with an empty temporary HOME and
+returns bounded non-secret enrollment facts. Codex uses the same length-framed
+stdout/stderr SHA-256 contract as the production auth parser.
+`observe-enroll-waw-vendors --recover --json` observes and publishes those
+same facts under one installer lifecycle lock, avoiding manual version/digest
+transcription. Neither command performs Provider login or reads Runtime
+credentials.
+
 Fresh browser setup can use `apply --artifact ... --sha256 ... --defer-activation`
 to install the verified release, database and disabled profiles without starting
 the legacy services. The result explicitly reports health_verified=false. A
@@ -65,9 +74,10 @@ the completed deferred/offline stage and verifies results after installation.
 A temporary exact APT service-start policy is removed after the transaction;
 another operator's policy is never replaced. Only a complete matching guard can
 be recovered with `--recover`; partial or foreign state needs operator attention.
-Actual package startup/boot behavior remains under qualification. Other legacy
-platform support is preserved; automatic browser dependency provisioning is
-currently APT-only.
+Native Ubuntu 24.04/PID1 qualification proves a newly introduced certbot timer
+is kept inactive and disabled after APT while a pre-existing nginx unit remains
+unchanged. Other legacy platform support is preserved; automatic browser
+dependency provisioning is currently APT-only.
 
 Use `install.sh plan` before `install.sh apply`. Fixture tests set
 `AGENTBOX_INSTALLER_TEST_MODE=1` and redirect every path to a temporary root;
