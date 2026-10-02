@@ -96,10 +96,11 @@ output.write_text(json.dumps({
             "ExecStart=/opt/agentbox/current/venv/bin/agentbox-install maintain-waw-web --recover",
             f"ExecStart=/usr/bin/python3 {script} {allowed} {secret} {outside} {output}",
         )
-        source = source.replace(
-            "ReadWritePaths=/etc/agentbox-web /var/lib/agentbox-web /var/lib/agentbox/.install.lock",
-            f"ReadWritePaths={allowed}",
+        read_write_paths = (
+            "ReadWritePaths=/etc/agentbox-web /var/lib/agentbox-web "
+            "/var/lib/agentbox/.install.lock"
         )
+        source = source.replace(read_write_paths, f"ReadWritePaths={allowed}")
         inaccessible = next(
             line for line in source.splitlines() if line.startswith("InaccessiblePaths=")
         )
