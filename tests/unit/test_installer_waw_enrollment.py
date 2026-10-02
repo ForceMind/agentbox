@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from agentbox_installer import cli
+from agentbox_installer.host import WAWVendorObservation
 from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublicationError,
     WAWEnrollmentPublisher,
@@ -254,3 +255,45 @@ def test_cli_refuses_enabled_profiles_before_writing(
     assert "disabled WAW profiles" in capsys.readouterr().err
     assert not (root / "var/lib/agentbox-waw/vendor-enrollment.v1.json").exists()
     assert not (root / "var/lib/agentbox-waw/vendor-enrollment.v1.pending").exists()
+
+
+def test_cli_observe_enroll_uses_one_runtime_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    root = _installed_fixture(tmp_path)
+    monkeypatch.setenv("AGENTBOX_INSTALLER_TEST_MODE", "1")
+    observed = WAWVendorObservation(
+        claude_vendor_version="2.1.286 (Claude Code)",
+        codex_vendor_version="codex-cli 0.159.3",
+        codex_unauthenticated_output_sha256="c" * 64,
+    )
+    calls = 0
+
+    def observe(_self: object) -> WAWVendorObservation:
+        nonlocal calls
+        calls += 1
+        return observed
+
+    monkeypatch.setattr("agentbox_installer.host.HostOperations.observe_waw_vendors", observe)
+    args = [
+        "--fixture-root",
+        str(root),
+        "observe-enroll-waw-vendors",
+        "--json",
+    ]
+    assert cli.main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "published"
+    assert calls == 1
+    record = json.loads(
+        (root / "var/lib/agentbox-waw/vendor-enrollment.v1.json").read_text(
+            encoding="ascii"
+        )
+    )
+    assert record["claude_vendor_version"] == observed.claude_vendor_version
+    assert record["codex_vendor_version"] == observed.codex_vendor_version
+    assert (
+        record["codex_unauthenticated_output_sha256"]
+        == observed.codex_unauthenticated_output_sha256
+    )
