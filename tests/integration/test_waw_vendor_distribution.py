@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from agentbox_installer.waw_vendor_bootstrap import VENDOR_DOWNLOADS, decode_vendor_download
+from agentbox_runtime.waw_vendor_probe import waw_vendor_probe_output_digest
 
 
 @pytest.mark.skipif(
@@ -102,7 +103,8 @@ def test_actual_pinned_vendor_version_and_unauthenticated_probe(tmp_path: Path) 
             )
             assert result.returncode != 0
             assert b"not logged in" in (result.stdout + result.stderr).lower()
-            print(
-                "codex unauthenticated stdout+stderr SHA256:",
-                hashlib.sha256(result.stdout + result.stderr).hexdigest(),
-            )
+            legacy_digest = hashlib.sha256(result.stdout + result.stderr).hexdigest()
+            framed_digest = waw_vendor_probe_output_digest(result.stdout, result.stderr)
+            assert framed_digest != legacy_digest
+            print("codex unauthenticated legacy concat SHA256:", legacy_digest)
+            print("codex unauthenticated framed SHA256:", framed_digest)
