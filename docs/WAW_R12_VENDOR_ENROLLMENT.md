@@ -11,7 +11,9 @@ explicit enrollment operation must create the record after observing the
 exact target binaries and the bounded unauthenticated Codex probe output.
 It is not generated from a fake vendor, current developer Mac, environment
 variable, API request, Browser, Worker or Provider Secret. A missing file
-fails closed. No code in this batch creates the file on a host.
+fails closed. The installer now has a fixed Runtime-only observation path for
+the installed AgentBox-owned native CLIs; only that bounded observation or the
+older explicit enrollment command may supply these non-secret values.
 
 The canonical JSON object has these exact keys, ASCII JSON with sorted keys,
 compact separators and one trailing newline, at most 1024 bytes:
@@ -69,14 +71,33 @@ descriptor-close error rejects the record and still attempts the remaining
 descriptor cleanup. These are portable software failure-path checks, not
 real Linux enrollment or independent security-review evidence.
 
-## Local installer publication
+## Local installer observation and publication
 
-The current implementation exposes `agentbox-install enroll-waw-vendors`
-with the three externally observed version/digest values, `--plan`,
-`--recover` and optional JSON metadata output. It requires a completed
-installation, safe disabled API/Runtime profiles and the fixed, fully
-cross-pinned v2 manifest resources. Host/epoch/digest pins come from those
-resources, not user flags. It shares the installer lifecycle lock.
+`agentbox-install observe-waw-vendors` performs a read-only target observation
+under the installer lifecycle lock. It requires the AgentBox-owned
+`/usr/local/bin/claude` and `/usr/local/bin/codex` files to be single-link,
+Root-owned 0755 regular files and executes only the fixed `--version` and
+Codex `login status` argv as the non-root `agentbox-runtime` user. Each
+observation uses an empty temporary HOME, bounded stdout/stderr and closed
+process-group cleanup. It does not read the normal Runtime HOME or any Provider
+Secret, perform login, or make a paid Provider call.
+
+The Codex unauthenticated value uses the same production framing as
+`waw_vendor_probe_output_digest`: the two streams are length-prefixed before
+SHA-256. The older `sha256(stdout + stderr)` diagnostic is not enrollment
+evidence. Observation is immediately validated against the existing enrollment
+plan and fixed cross-pinned manifest.
+
+`agentbox-install observe-enroll-waw-vendors` keeps that observation and the
+existing fail-closed publication inside one installer lifecycle lock so no
+manual transcription is needed. `--recover` applies only to an exact matching
+interrupted publication. The older `agentbox-install enroll-waw-vendors`
+remains available for explicitly supplied, independently observed values with
+`--plan`, `--recover` and optional JSON metadata output.
+
+Both publication paths require a completed installation, safe disabled
+API/Runtime profiles and the fixed, fully cross-pinned v2 manifest resources.
+Host/epoch/digest pins come from those resources, not user flags.
 
 Publication uses a fixed root-private 0600 pending file, finishes and fsyncs
 its content, changes it to root:Runtime 0440, then links it into the fixed
