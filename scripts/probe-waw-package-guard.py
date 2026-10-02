@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """CI-only actual APT package-guard probe on a native systemd runner.
 
-The probe requires a disposable GitHub Actions Ubuntu 24.04 host where nginx,
-certbot and /usr/sbin/policy-rc.d are absent before the test. It installs only
-the fixed browser packages through the production HostOperations APT boundary
+The probe requires a disposable GitHub Actions Ubuntu 24.04 host with no
+pre-existing /usr/sbin/policy-rc.d and at least one missing fixed browser
+package. It installs only missing fixed packages through the production
+HostOperations APT boundary
 while the production WAWPackageStartGuard is present, records systemd state
 before/during/after installation, and removes package unit enablement in cleanup.
 
@@ -135,6 +136,15 @@ def main() -> int:
             raise AssertionError(
                 f"pre-existing dependency units changed during install: {changed_preexisting}"
             )
+        boot_enabled = {
+            unit: after[unit]["UnitFileState"]
+            for unit in introduced_units
+            if after[unit]["UnitFileState"] in {"enabled", "enabled-runtime"}
+        }
+        if boot_enabled:
+            raise AssertionError(
+                f"new dependency units would start after reboot: {boot_enabled}"
+            )
         print(
             json.dumps(
                 {
@@ -146,6 +156,7 @@ def main() -> int:
                     "during_guard": during,
                     "after_guard": after,
                     "services_started": False,
+                    "boot_enabled": False,
                     "guard_removed": True,
                 },
                 sort_keys=True,
