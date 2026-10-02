@@ -1,11 +1,38 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-02T08:25:47Z"
-verified_by: "agentbox-development-continuation"
+verified_at_utc: "2026-10-02T10:34:00Z"
+verified_by: "agentbox-vendor-observation-continuation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-02 Runtime vendor observation digest continuation
+
+Live GitHub read-back confirms `main` =
+`3da84df5fcc8b5543405f651d1a78c21ea9a8376` (PR #131 merge).
+PR #132 merge `bac457b43efaa12c3a0a11f36af2cf5250b9a268` is the
+first parent of that merge, so older handoff text naming bac457 as current main
+is historical rather than the live branch tip.
+
+The first post-#131 vendor-observation defect is confirmed in source:
+`tests/integration/test_waw_vendor_distribution.py` computed the Codex
+unauthenticated digest as `sha256(stdout + stderr)`, while the production
+Runtime parser accepts only `waw_vendor_probe_output_digest(stdout, stderr)`,
+which length-frames stdout and stderr before SHA-256.
+
+Branch `codex/r12-vendor-observation-digest` starts from exact main.
+`e7e49516f9b8f3c14bc1a2cc95fc9fbc914b4a8e` makes the actual pinned-vendor
+CI observation call the production digest helper directly.
+`48a7c4b21299dc068a0b6601519cbce7be416aa9` adds a unit regression proving
+that stdout/stderr boundary framing is part of the digest contract and that
+raw concatenation is not equivalent.
+
+This closes only the digest-contract drift. It does **not** yet prove the full
+Runtime-only observation/enrollment path, real authenticated Claude/Codex
+sessions, fresh-install composition, mobile/browser acceptance, reboot or
+upgrade/rollback. Exact-head CI for this branch is pending; failures must be
+fixed without weakening the production parser or isolation boundary.
 
 ## 2026-10-02 #131 package-guard recovery continuation
 
