@@ -1,5 +1,21 @@
 # AgentBox 开发交接 — 2026-10-02
 
+## 2026-10-02 #131 合并后继续开发
+
+实时 GitHub 状态覆盖下方历史快照：当前 `main` =
+`3da84df5fcc8b5543405f651d1a78c21ea9a8376`，PR #131 已 MERGED；
+其 exact PR head 为 `2cc3443bb42c58fe066be60f42f6c62aafa1c00d`。
+PR #132 的 merge `bac457b43efaa12c3a0a11f36af2cf5250b9a268` 是当前 merge 的第一父提交，
+因此下方把 bac457 写成“current main”以及把 #131 写成 Draft 的段落仅保留为历史证据。
+
+当前继续分支为 `codex/r12-vendor-observation-digest`。已确认并修复首个
+post-#131 缺口：真实 pinned-vendor CI 曾使用 `sha256(stdout + stderr)`
+生成 Codex unauthenticated digest，而生产 Runtime parser 使用带 stdout/stderr
+长度 framing 的 `waw_vendor_probe_output_digest`。当前分支改为复用生产 helper，
+并增加 framing 回归。此批只统一真实 observation 的 digest contract；
+完整 Runtime-only observation/enrollment、fresh-install composition、真实双 CLI、
+PC/Android/iOS、reboot/upgrade/rollback 与 release 仍按原主线继续。
+
 ## 2026-10-02 新环境继续开发更新
 
 新环境不依赖旧机器路径、临时文件或未提交 WIP；GitHub 已推送内容是交付基线。
