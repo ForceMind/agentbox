@@ -1,5 +1,24 @@
 # 首个用户可部署版本
 
+## 2026-10-02 当前事实与执行顺序
+
+状态入口为 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md)。当前 main 为
+bac457b43efaa12c3a0a11f36af2cf5250b9a268（PR #132 merge）。Draft #131 已在
+新环境继续修复 package-guard crash-window；软件修复 commits 为 a6dd02b、
+e1653a4、144817d，并通过正常 merge 同步 main。源码仍 rc30，首版尚未可部署。
+
+Runtime filesystem-v2 graph、完整资源、HTTPS Web bootstrap、证书/setup、
+固定 native vendor、deferred 首装已有软件成果；真实双 CLI/PC手机/完整安装
+与恢复尚未验收。下方旧 `_main` 拒绝 v2、资源未生成等只记录当时状态，不重做。
+
+同一版本顺序：#131 exact-head CI 与实际 APT/boot/guard 资格化 → Runtime-only vendor 观察与
+enrollment → 完整下载/deferred apply/依赖/vendor/资源/setup → PC/手机双 CLI →
+中断/重启/升级回退 → 不可变制品与有效安装命令。不能把 `setup-waw-web`
+当作新机安装器，不提供不存在的发布 URL。Owner 自行安装，不需要 SSH。
+PUBLIC 仓库不等于制品已发布；真实 host/Secret/付费调用/发行另按具体授权。
+
+## 历史部署记录（当前状态以交接入口为准）
+
 Owner 在 2026-09-30 要求交付自己能在服务器运行的安装版本，并再次明确 PC 和手机支持。本记录承接 RELEASE_ITERATION_PLAN，不建立新路线，不缩减完整功能目标。
 
 ## 交付与入口

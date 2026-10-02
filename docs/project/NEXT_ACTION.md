@@ -1,18 +1,22 @@
 # Current Authorized Action
 
-## 2026-10-02 qualify fixed dependencies and compose actual enrollment
+## 2026-10-02 当前开发动作（覆盖下方交接指令）
 
-PR #130 merged at ba065e3; source 1972f75 has 24 SUCCESS/two prescribed SKIPPED.
-Current fixed APT browser dependency command has read-only planning, completed
-deferred-install/offline guards, exact temporary policy preservation and final
-detection. 37 affected regressions/Ruff/374-file mypy pass. Inspect exact-head CI;
-actual APT startup suppression/boot enablement are not yet proven. Nonmatching
-policy prefixes remain untouched and require operator attention.
+Draft #131 的 package-guard crash-window 软件修复已经提交：a6dd02b/e1653a4/
+144817d。依赖已齐全时仍检查 exact stale AgentBox guard；没有 `--recover`
+时明确拒绝，显式恢复只删除严格匹配的 guard。foreign/partial policy 不自动
+删除、修补或收养；普通 no-op 不改 foreign policy。
 
-Next prove package behavior on isolated Linux and preserve pre-existing services,
-then derive vendor registration from actual empty-HOME observations and compose
-deferred apply/dependencies/vendors/manifests/enrollment/setup in the download
-entry. Retain maintenance, full PC/mobile CLI and reboot/upgrade/rollback gates.
+当前先完成两件事：一是把当前 main 正常 merge 到 #131 并读取最终 exact-head
+CI；二是在隔离 Linux/PID 1 环境资格化真实 APT maintainer-script、nginx/
+certbot unit/timer、boot/reboot 和 maintenance sandbox。未得到真实 host 证据
+前 #131 保持 Draft，不把 `services_started=false` 当作实际观察。
+
+之后直接进入真实 Runtime-only vendor observation/enrollment 和完整 fresh
+install composition，再做 PC/Android/iOS 双 CLI、重连、exact Stop、重启、
+升级/回退。继续同一个首版，不推进 #117 或长期旁支。
+
+## 历史行动记录
 
 ## 2026-10-01 qualify deferred fresh install and compose prerequisites
 

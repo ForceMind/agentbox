@@ -1,32 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T16:27:54Z"
-verified_by: "codex-deployable-installer-work"
+verified_at_utc: "2026-10-02T08:25:47Z"
+verified_by: "agentbox-development-continuation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-10-02 fixed browser dependency installation
+## 2026-10-02 #131 package-guard recovery continuation
 
-PR #130 merged at ba065e355cbf17ea4d68e8badcdde4ca81f46c41; source 1972f75
-reached 24 SUCCESS/two prescribed SKIPPED, with GitHub/fetched origin/main
-read-back. Work is on codex/r12-browser-dependencies; original checkout is safe.
+新开发环境以 GitHub 已提交内容为基线继续 Draft #131。交接时确认的恢复缺口
+仍存在于 797204e：当 APT 已完成而进程在 guard cleanup 前终止，下一次依赖
+检测为空，旧控制流不会进入 guard，即使 `--recover` 也无法清理。
 
-install-waw-dependencies plans only missing tmux/bubblewrap/nginx/certbot from
-fixed APT mappings, requires systemd >=255 and completed deferred installation,
-checks offline/idle evidence, and verifies dependencies again after installation.
-APT gets a temporary exact Root-owned policy-rc.d with exit 101. Foreign policy
-is never overwritten; matching full guard requires explicit --recover. Cleanup
-on an ordinary failure verifies exact bytes before removal. Automatic approval
-rejected repairing nonmatching policy prefixes; that code is not applied. A
-partial/foreign guard needs operator attention, not automatic adoption.
+本批已提交三个窄修复 commit：`a6dd02b` 增加 exact stale guard 的显式恢复，
+`e1653a4` 让依赖已齐全的 no-op 路径仍执行恢复检查，`144817d` 增加
+post-APT crash-window 和 foreign-policy no-op/recovery 回归。普通 no-op 不改写
+foreign policy；显式 recovery 只删除 ownership/mode/link/size/content 全部严格
+匹配的 AgentBox guard。partial/foreign state 仍 fail closed，不被收养或修补。
 
-37 dependency/platform/host regressions, Ruff and 374-file mypy pass. These use
-temporary fixtures, not actual APT or service-start suppression. Real package
-maintainer-script behavior, boot enablement and maintenance sandbox must be
-qualified before the whole installer is admitted. This is not a usable version.
-Registration, final download/apply/setup, full CLI/browser and recovery remain open.
+当前分支将通过正常 merge 带入 `origin/main` 的 PR #132 文档，不做 rebase、
+force push 或 history rewrite。上述软件修复尚不能替代真实 APT maintainer-script、
+boot enablement、nginx/certbot unit/timer 与 maintenance sandbox 资格化；#131
+在这些证据完成前继续保持 Draft。exact-head CI 必须以最终 merge head 重新读取。
+
+## 2026-10-02 交接快照（当前入口）
+
+Owner 要求本批停止新增开发，更新 GitHub/文档后转交新对话。
+完整记录以 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 为准；旧条目是历史
+证据，实时 Git/GitHub 优先。仍为 rc30，首个可部署版本未完成。
+
+本次 fetch/read-back exit 0：origin/main 为
+ba065e355cbf17ea4d68e8badcdde4ca81f46c41（PR #130 merge）。
+Draft #131 HEAD 797204e2dc0430eb56ffb6c3e56b93c1e465d04b 已推送；当前查询为
+24 SUCCESS、2 SKIPPED，未合并。实际 APT/boot/完整首装/CLI/PC手机未验收。
+托管执行工作树从干净候选切到 codex/handoff-2026-10-02，仅更新文档；原工作区
+旧 WIP 保留。本次不升级产品版本、不发布制品、不激活用户主机。
 
 ## 2026-10-01 native vendor evidence and deferred-install WIP
 
