@@ -4,8 +4,10 @@
 
 状态入口为 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md)。当前 main 为
 bac457b43efaa12c3a0a11f36af2cf5250b9a268（PR #132 merge）。Draft #131 已在
-新环境继续修复 package-guard crash-window；软件修复 commits 为 a6dd02b、
-e1653a4、144817d，并通过正常 merge 同步 main。源码仍 rc30，首版尚未可部署。
+新环境继续修复 package transaction：最初 crash-window 修复后的 `e23119d`
+六套 CI 全绿；真实 Ubuntu 24.04 APT 又发现 certbot.timer boot-enable 副作用，
+当前候选已加入 v2 dependency ownership/recovery、introduced-unit quiescence
+和 native maintenance sandbox gate。源码仍 rc30，首版尚未可部署。
 
 Runtime filesystem-v2 graph、完整资源、HTTPS Web bootstrap、证书/setup、
 固定 native vendor、deferred 首装已有软件成果；真实双 CLI/PC手机/完整安装

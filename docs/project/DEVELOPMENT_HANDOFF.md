@@ -11,9 +11,12 @@ crash window，`144817d` 增加回归测试并保证普通 no-op 不改 foreign 
 分支随后正常 merge 当前 main，不进行 history rewrite。下方关于 797204e 和
 “恢复缺口尚未修复”的内容保留为交接时历史证据，不覆盖本节。
 
-#131 仍保持 Draft：真实 APT maintainer-script 服务启动抑制、nginx/certbot
-boot enablement、重启状态和 maintenance sandbox 还没有独立 Linux/PID 1
-资格化。软件 CI 也必须以最终 merge head 重新读取后才能作为本批证据。
+#131 的 `e23119d` 软件基线六套 CI 已全绿。新增 native PID-1 APT probe
+随后证明：实际安装缺失 certbot 时服务没有进入 active，但 `certbot.timer`
+被 distro 自动 enable；这暴露了重启副作用而不是被 fixture 掩盖。当前候选已
+增加 v2 guard dependency/phase recovery、只对本次新引入 unit 的 disable+readback，
+并增加 maintenance service native sandbox 执行。预装 nginx 状态必须前后不变。
+最终 exact-head CI 仍待全部终态成功；在此之前 #131 保持 Draft。
 
 Owner 要求更新 GitHub/文档后转交新对话。本批只交接文档，停止新增开发。
 实时 Git/GitHub 优先于本文快照；其他状态文档的旧条目是历史证据。

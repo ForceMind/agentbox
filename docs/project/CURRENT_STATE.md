@@ -19,10 +19,28 @@ post-APT crash-window 和 foreign-policy no-op/recovery 回归。普通 no-op �
 foreign policy；显式 recovery 只删除 ownership/mode/link/size/content 全部严格
 匹配的 AgentBox guard。partial/foreign state 仍 fail closed，不被收养或修补。
 
-当前分支将通过正常 merge 带入 `origin/main` 的 PR #132 文档，不做 rebase、
-force push 或 history rewrite。上述软件修复尚不能替代真实 APT maintainer-script、
-boot enablement、nginx/certbot unit/timer 与 maintenance sandbox 资格化；#131
-在这些证据完成前继续保持 Draft。exact-head CI 必须以最终 merge head 重新读取。
+分支已通过正常 merge 带入 `origin/main` 的 PR #132 文档，不做 rebase、
+force push 或 history rewrite。merge head `e23119d` 的 Backend/Frontend/Security/
+Deployment/E2E/Release Candidate 六套 workflow 均 SUCCESS，证明最初 crash-window
+软件修复没有破坏基线。
+
+随后新增 native PID-1 实际 APT probe。第一轮真实证据发现 GitHub Ubuntu 24.04
+runner 预装 nginx，而 AgentBox 安装缺失 certbot 时，`policy-rc.d` 成功阻止
+`certbot.timer` 启动，但 distro post-install 仍把 timer 设为 `enabled`。
+因此“当前 inactive”不能等价为“重启后保持关闭”。
+
+当前候选据此升级为 v2 package guard：guard 持久化本次缺失 dependency 与
+preparing/armed phase；只有安装前证明 fixed unit 为 not-found 的 dependency
+才可在 APT 后执行 `systemctl disable --now`，并在 guard 仍生效时回读
+inactive+disabled。armed crash 可由 `--recover` 从 guard 恢复同一 dependency
+集合；preparing crash 不执行 unit mutation。预装 nginx 不在本次 ownership
+集合内，实际 probe 要求其 systemd state 前后完全一致。partial/foreign policy
+仍不被收养、修补或删除。
+
+Deployment 还新增 native PID-1 maintenance service sandbox 执行：验证 root
+oneshot 的 NoNewPrivileges、允许目录写入、敏感路径不可读以及 unrelated
+ProtectSystem=strict 写入拒绝。最终 exact-head CI 仍需全部终态成功后才能把
+#131 转为可合并证据。
 
 ## 2026-10-02 交接快照（当前入口）
 

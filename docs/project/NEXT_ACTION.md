@@ -2,15 +2,18 @@
 
 ## 2026-10-02 当前开发动作（覆盖下方交接指令）
 
-Draft #131 的 package-guard crash-window 软件修复已经提交：a6dd02b/e1653a4/
-144817d。依赖已齐全时仍检查 exact stale AgentBox guard；没有 `--recover`
-时明确拒绝，显式恢复只删除严格匹配的 guard。foreign/partial policy 不自动
-删除、修补或收养；普通 no-op 不改 foreign policy。
+Draft #131 已关闭最初的 package-guard crash-window，并由实际 Ubuntu 24.04
+APT probe 发现第二个真实副作用：certbot 没有启动，但 `certbot.timer` 会在
+安装后自动变成 enabled。当前候选已把 dependency ownership 写入 v2 guard，
+只对安装前证明不存在的 nginx/certbot unit 执行 disable --now；armed 中断由
+`--recover` 恢复同一集合，preparing 中断不获得 unit mutation 权限。foreign/
+partial policy 和预装 dependency service 均不被收养或修改。
 
-当前先完成两件事：一是把当前 main 正常 merge 到 #131 并读取最终 exact-head
-CI；二是在隔离 Linux/PID 1 环境资格化真实 APT maintainer-script、nginx/
-certbot unit/timer、boot/reboot 和 maintenance sandbox。未得到真实 host 证据
-前 #131 保持 Draft，不把 `services_started=false` 当作实际观察。
+当前唯一动作是读取最终 exact-head 六套 CI，并检查 native PID-1 APT probe 与
+maintenance sandbox 的实际日志。所有 required/additional checks 都必须终态
+SUCCESS；若失败按实际日志修复，不能降低 gate。通过后按治理把 #131 退出 Draft、
+merge、read-back main，再进入 Runtime-only vendor observation/enrollment 与
+完整 fresh-install composition。
 
 之后直接进入真实 Runtime-only vendor observation/enrollment 和完整 fresh
 install composition，再做 PC/Android/iOS 双 CLI、重连、exact Stop、重启、
