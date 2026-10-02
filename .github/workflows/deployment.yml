@@ -58,12 +58,13 @@ jobs:
             "$(command -v python)" -m pytest -q -p no:cacheprovider \
             --basetemp "$native_fixture_dir/pytest" \
             tests/unit/test_installer_waw_native.py -k linux
-      - name: Prove independent HTTPS unit DynamicUser and TLS credentials
+      - name: Prove independent HTTPS and maintenance systemd sandboxes
         if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
         run: |
           sudo env GITHUB_ACTIONS=true AGENTBOX_ENV=test \
             "$(command -v python)" -m pytest -q -s -p no:cacheprovider \
-            tests/integration/test_waw_web_systemd.py
+            tests/integration/test_waw_web_systemd.py \
+            tests/integration/test_waw_web_maintenance_systemd.py
       - name: Verify actual pinned native vendors without login
         if: ${{ matrix.os == 'ubuntu-24.04' && matrix.python-version == '3.11' }}
         env:
