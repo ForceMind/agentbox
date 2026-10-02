@@ -683,7 +683,6 @@ class HostOperations:
                     ) from exc
                 if (
                     code != 0
-                    or stderr
                     or not 1 <= len(observed.encode("ascii")) <= 96
                     or any(char in observed for char in "\r\n\x00")
                     or not observed.isprintable()
