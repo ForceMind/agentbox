@@ -26,7 +26,8 @@ from agentbox_installer.waw_manifest_install import WAWManifestIssuer
 from agentbox_installer.waw_package_guard import _RAW, WAWPackageStartGuard
 
 PACKAGES = ("nginx", "certbot")
-UNITS = ("nginx.service", "certbot.timer")
+PACKAGE_UNITS = {"nginx": "nginx.service", "certbot": "certbot.timer"}
+UNITS = tuple(PACKAGE_UNITS.values())
 POLICY = Path("/usr/sbin/policy-rc.d")
 
 
@@ -84,9 +85,12 @@ def main() -> int:
         raise SystemExit("native systemd PID 1 required; no simulated pass")
     if POLICY.exists() or POLICY.is_symlink():
         raise SystemExit("pre-existing policy-rc.d makes this runner unsuitable")
-    already = [name for name in PACKAGES if package_installed(name)]
-    if already:
-        raise SystemExit(f"fresh package evidence requires absent packages: {already}")
+    preexisting = tuple(name for name in PACKAGES if package_installed(name))
+    missing = tuple(name for name in PACKAGES if name not in preexisting)
+    if not missing:
+        raise SystemExit("runner has no missing fixed package to qualify")
+    introduced_units = tuple(PACKAGE_UNITS[name] for name in missing)
+    preserved_units = tuple(PACKAGE_UNITS[name] for name in preexisting)
 
     before = {unit: unit_state(unit) for unit in UNITS}
     issuer = WAWManifestIssuer(
@@ -101,14 +105,14 @@ def main() -> int:
     during: dict[str, dict[str, str]] = {}
 
     def install() -> None:
-        host.install_packages(PackageFamily.APT, PACKAGES)
+        host.install_packages(PackageFamily.APT, missing)
         if POLICY.read_bytes() != _RAW:
             raise AssertionError("package guard changed during APT")
         during.update({unit: unit_state(unit) for unit in UNITS})
         active = {
-            unit: state["ActiveState"]
-            for unit, state in during.items()
-            if state["ActiveState"] == "active"
+            unit: during[unit]["ActiveState"]
+            for unit in introduced_units
+            if during[unit]["ActiveState"] == "active"
         }
         if active:
             raise AssertionError(f"package services started despite policy-rc.d: {active}")
@@ -122,11 +126,22 @@ def main() -> int:
         after = {unit: unit_state(unit) for unit in UNITS}
         if during != after:
             raise AssertionError("unit state changed when the package guard was removed")
+        changed_preexisting = {
+            unit: (before[unit], after[unit])
+            for unit in preserved_units
+            if before[unit] != after[unit]
+        }
+        if changed_preexisting:
+            raise AssertionError(
+                f"pre-existing dependency units changed during install: {changed_preexisting}"
+            )
         print(
             json.dumps(
                 {
                     "schema_version": "agentbox-waw-package-guard-probe.v1",
                     "packages": list(PACKAGES),
+                    "preexisting_packages": list(preexisting),
+                    "installed_packages": list(missing),
                     "before": before,
                     "during_guard": during,
                     "after_guard": after,
@@ -139,7 +154,7 @@ def main() -> int:
         return 0
     finally:
         subprocess.run(
-            ("/usr/bin/systemctl", "disable", "--now", *UNITS),
+            ("/usr/bin/systemctl", "disable", "--now", *introduced_units),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
