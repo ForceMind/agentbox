@@ -54,7 +54,7 @@ def test_runtime_vendor_observation_uses_framed_codex_digest(
         if kind == "claude":
             assert str(executable) == "/usr/local/bin/claude"
             assert arguments == ("--version",)
-            return 0, b"2.1.286 (Claude Code)\n", b""
+            return 0, b"2.1.286 (Claude Code)\n", b"bounded version diagnostic\n"
         if arguments == ("--version",):
             return 0, b"codex-cli 0.159.3\n", b""
         assert arguments == ("login", "status")
