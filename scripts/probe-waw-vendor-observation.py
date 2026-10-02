@@ -8,7 +8,6 @@ import json
 import os
 import platform
 import pwd
-import shutil
 import stat
 import subprocess
 import sys
@@ -161,7 +160,6 @@ def main() -> int:
         home = Path("/home/agentbox-runtime")
         if home.exists() and home.is_dir() and not any(home.iterdir()):
             home.rmdir()
-        shutil.rmtree("/tmp/agentbox-waw-vendor-observe-orphan", ignore_errors=True)
 
 
 if __name__ == "__main__":
