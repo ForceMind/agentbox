@@ -263,6 +263,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 json_output=json_output,
             )
             return 0
+        if args.command == "observe-waw-vendors":
+            _print(asdict(installer.observe_waw_vendors()), json_output=json_output)
+            return 0
         if args.command == "activate-waw":
             _print(
                 installer.activate_waw(plan=args.plan, recover=args.recover),
