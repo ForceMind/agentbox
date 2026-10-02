@@ -70,7 +70,9 @@ def test_package_guard_prepare_failure_removes_preparing_guard(tmp_path: Path) -
     assert not path.exists()
 
 
-def test_package_guard_preserves_foreign_policy_even_with_recovery(tmp_path: Path) -> None:
+def test_package_guard_preserves_foreign_policy_even_with_recovery(
+    tmp_path: Path,
+) -> None:
     issuer, root = _fixture(tmp_path)
     (root / "usr/sbin").mkdir()
     path = root / "usr/sbin/policy-rc.d"
