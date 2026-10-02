@@ -681,11 +681,14 @@ class AgentBoxInstaller:
         try:
             with self._lifecycle_lock():
                 self.host.require_waw_policy_quiescence()
+                guard = WAWPackageStartGuard(issuer)
                 if packages:
-                    WAWPackageStartGuard(issuer).run(
+                    guard.run(
                         lambda: self.host.install_packages(platform.package_family, packages),
                         recover=recover,
                     )
+                else:
+                    guard.recover_interrupted(recover=recover)
                 remaining = tuple(
                     item.name
                     for item in detect_dependencies(self.layout)
