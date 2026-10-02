@@ -31,6 +31,10 @@ jobs:
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "/run/agentbox-waw/tmp/${WORKSPACE_HASH}" "/run/agentbox-waw/tmp/${AUTH_WORKSPACE_HASH}"
           sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes/claude /var/lib/agentbox-waw/vendor-homes/codex
+          for vendor in claude codex; do
+            state_leaf="$vendor"
+            sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)"               "/var/lib/agentbox-waw/vendor-homes/$vendor/.config"               "/var/lib/agentbox-waw/vendor-homes/$vendor/.config/$state_leaf"               "/var/lib/agentbox-waw/vendor-homes/$vendor/.cache"               "/var/lib/agentbox-waw/vendor-homes/$vendor/.local"               "/var/lib/agentbox-waw/vendor-homes/$vendor/.local/share"               "/var/lib/agentbox-waw/vendor-homes/$vendor/.local/state"
+          done
           sudo install -d -m 0755 -o root -g root /etc/claude-code /etc/codex
           sudo install -d -m 0755 -o root -g root /srv/agentbox/projects
           sudo install -m 0644 -o root -g root /dev/null /srv/agentbox/projects/auth-probe-canary
@@ -51,6 +55,7 @@ jobs:
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
+          AGENTBOX_WAW_ACTUAL_CODEX_AUTH_PROBE: "1"
       - run: python scripts/build-waw-native.py --sanitizers --output build/native/waw-sanitized
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw-sanitized --no-build
       - run: |
