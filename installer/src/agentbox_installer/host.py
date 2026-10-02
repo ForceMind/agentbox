@@ -700,9 +700,12 @@ class HostOperations:
                 codex_home,
                 codex_scratch,
             )
-            if code != 1 or b"not logged in" not in (stdout + stderr).lower():
+            combined = stdout + stderr
+            if code != 1 or b"not logged in" not in combined.lower():
+                diagnostic = combined[:256].decode("utf-8", errors="backslashreplace")
                 raise HostMutationError(
-                    "Codex empty-HOME observation is not the fixed unauthenticated state"
+                    "Codex empty-HOME observation is not the fixed unauthenticated state "
+                    f"(exit={code}, output={diagnostic!r})"
                 )
             digest = waw_vendor_probe_output_digest(stdout, stderr)
 
