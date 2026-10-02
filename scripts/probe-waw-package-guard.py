@@ -54,6 +54,7 @@ def unit_state(name: str) -> dict[str, str]:
             "--property=LoadState",
             "--property=ActiveState",
             "--property=UnitFileState",
+            "--property=ActiveEnterTimestampMonotonic",
         ),
         stdin=subprocess.DEVNULL,
         capture_output=True,
@@ -67,9 +68,19 @@ def unit_state(name: str) -> dict[str, str]:
     state: dict[str, str] = {}
     for line in result.stdout.splitlines():
         key, separator, value = line.partition("=")
-        if separator and key in {"LoadState", "ActiveState", "UnitFileState"}:
+        if separator and key in {
+            "LoadState",
+            "ActiveState",
+            "UnitFileState",
+            "ActiveEnterTimestampMonotonic",
+        }:
             state[key] = value
-    if set(state) != {"LoadState", "ActiveState", "UnitFileState"}:
+    if set(state) != {
+        "LoadState",
+        "ActiveState",
+        "UnitFileState",
+        "ActiveEnterTimestampMonotonic",
+    }:
         raise RuntimeError(f"incomplete systemd state for {name}")
     return state
 
@@ -117,8 +128,16 @@ def main() -> int:
             for unit in introduced_units
             if post_apt[unit]["ActiveState"] == "active"
         }
-        if active:
-            raise AssertionError(f"package services started despite policy-rc.d: {active}")
+        activated = {
+            unit: post_apt[unit]["ActiveEnterTimestampMonotonic"]
+            for unit in introduced_units
+            if post_apt[unit]["ActiveEnterTimestampMonotonic"] not in {"", "0"}
+        }
+        if active or activated:
+            raise AssertionError(
+                f"package services entered active state despite policy-rc.d: "
+                f"active={active}, timestamps={activated}"
+            )
         host.quiesce_waw_dependency_units(guard_dependencies)
         quiesced.update({unit: unit_state(unit) for unit in UNITS})
 
