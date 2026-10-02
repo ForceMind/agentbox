@@ -649,8 +649,7 @@ class HostOperations:
             prefix="agentbox-waw-vendor-observe-", dir="/tmp"
         ) as directory:
             root = Path(directory)
-            os.chmod(root, 0o700)
-            os.chown(root, runtime.pw_uid, runtime.pw_gid)
+            os.chmod(root, 0o755)
             for kind in ("claude", "codex"):
                 home = root / kind
                 home.mkdir(mode=0o700)
