@@ -16,7 +16,9 @@ def test_vendor_probe_output_digest_frames_stdout_and_stderr_boundary() -> None:
     )
 
     assert waw_vendor_probe_output_digest(stdout, stderr) == hashlib.sha256(framed).hexdigest()
-    assert waw_vendor_probe_output_digest(stdout, stderr) != hashlib.sha256(stdout + stderr).hexdigest()
+    assert waw_vendor_probe_output_digest(stdout, stderr) != hashlib.sha256(
+        stdout + stderr
+    ).hexdigest()
     assert waw_vendor_probe_output_digest(b"a", b"bc") != waw_vendor_probe_output_digest(
         b"ab", b"c"
     )
