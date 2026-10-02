@@ -287,9 +287,7 @@ def test_cli_observe_enroll_uses_one_runtime_observation(
     assert result["status"] == "published"
     assert calls == 1
     record = json.loads(
-        (root / "var/lib/agentbox-waw/vendor-enrollment.v1.json").read_text(
-            encoding="ascii"
-        )
+        (root / "var/lib/agentbox-waw/vendor-enrollment.v1.json").read_text(encoding="ascii")
     )
     assert record["claude_vendor_version"] == observed.claude_vendor_version
     assert record["codex_vendor_version"] == observed.codex_vendor_version
