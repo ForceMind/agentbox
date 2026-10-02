@@ -43,9 +43,14 @@ def test_runtime_vendor_observation_uses_framed_codex_digest(
     codex_stderr = b"Not logged in\n"
 
     def run(
-        executable: Path, arguments: tuple[str, ...], _home: Path
+        kind: str,
+        executable: Path,
+        arguments: tuple[str, ...],
+        _home: Path,
+        _scratch: Path,
     ) -> tuple[int, bytes, bytes]:
-        if str(executable) == "/usr/local/bin/claude":
+        if kind == "claude":
+            assert str(executable) == "/usr/local/bin/claude"
             assert arguments == ("--version",)
             return 0, b"2.1.286 (Claude Code)\n", b""
         if arguments == ("--version",):
@@ -72,9 +77,14 @@ def test_runtime_vendor_observation_rejects_non_unauthenticated_codex(
     host = _host(monkeypatch)
 
     def run(
-        executable: Path, arguments: tuple[str, ...], _home: Path
+        kind: str,
+        executable: Path,
+        arguments: tuple[str, ...],
+        _home: Path,
+        _scratch: Path,
     ) -> tuple[int, bytes, bytes]:
-        if str(executable) == "/usr/local/bin/claude":
+        if kind == "claude":
+            assert str(executable) == "/usr/local/bin/claude"
             return 0, b"2.1.286 (Claude Code)\n", b""
         if arguments == ("--version",):
             return 0, b"codex-cli 0.159.3\n", b""
