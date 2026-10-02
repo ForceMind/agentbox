@@ -24,7 +24,7 @@ from pathlib import Path
 from agentbox_installer.host import HostOperations
 from agentbox_installer.platform import PackageFamily
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer
-from agentbox_installer.waw_package_guard import _RAW, WAWPackageStartGuard
+from agentbox_installer.waw_package_guard import _guard_raw, WAWPackageStartGuard
 
 PACKAGES = ("nginx", "certbot")
 PACKAGE_UNITS = {"nginx": "nginx.service", "certbot": "certbot.timer"}
@@ -103,29 +103,38 @@ def main() -> int:
         runtime_gid=0,
     )
     host = HostOperations(real_host=True)
-    during: dict[str, dict[str, str]] = {}
+    post_apt: dict[str, dict[str, str]] = {}
+    quiesced: dict[str, dict[str, str]] = {}
+    guard_dependencies = tuple(sorted(missing))
 
     def install() -> None:
         host.install_packages(PackageFamily.APT, missing)
-        if POLICY.read_bytes() != _RAW:
+        if POLICY.read_bytes() != _guard_raw(guard_dependencies, "armed"):
             raise AssertionError("package guard changed during APT")
-        during.update({unit: unit_state(unit) for unit in UNITS})
+        post_apt.update({unit: unit_state(unit) for unit in UNITS})
         active = {
-            unit: during[unit]["ActiveState"]
+            unit: post_apt[unit]["ActiveState"]
             for unit in introduced_units
-            if during[unit]["ActiveState"] == "active"
+            if post_apt[unit]["ActiveState"] == "active"
         }
         if active:
             raise AssertionError(f"package services started despite policy-rc.d: {active}")
+        host.quiesce_waw_dependency_units(guard_dependencies)
+        quiesced.update({unit: unit_state(unit) for unit in UNITS})
 
     try:
-        WAWPackageStartGuard(issuer).run(install)
+        WAWPackageStartGuard(issuer).run(
+            install,
+            dependencies=guard_dependencies,
+            prepare=host.require_waw_dependency_units_absent,
+            restore=host.quiesce_waw_dependency_units,
+        )
         if POLICY.exists() or POLICY.is_symlink():
             raise AssertionError("package guard survived successful APT transaction")
         if not all(package_installed(name) for name in PACKAGES):
             raise AssertionError("fixed APT packages were not installed")
         after = {unit: unit_state(unit) for unit in UNITS}
-        if during != after:
+        if quiesced != after:
             raise AssertionError("unit state changed when the package guard was removed")
         changed_preexisting = {
             unit: (before[unit], after[unit])
@@ -153,7 +162,8 @@ def main() -> int:
                     "preexisting_packages": list(preexisting),
                     "installed_packages": list(missing),
                     "before": before,
-                    "during_guard": during,
+                    "post_apt_before_quiesce": post_apt,
+                    "during_guard_after_quiesce": quiesced,
                     "after_guard": after,
                     "services_started": False,
                     "boot_enabled": False,
@@ -173,8 +183,13 @@ def main() -> int:
             timeout=30,
             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
         )
-        if POLICY.exists() and POLICY.read_bytes() == _RAW:
-            POLICY.unlink()
+        if POLICY.exists():
+            raw = POLICY.read_bytes()
+            if raw in {
+                _guard_raw(guard_dependencies, "preparing"),
+                _guard_raw(guard_dependencies, "armed"),
+            }:
+                POLICY.unlink()
 
 
 if __name__ == "__main__":
