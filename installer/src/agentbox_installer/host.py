@@ -940,15 +940,27 @@ class HostOperations:
         """Disable only units whose dependencies were proven absent before this transaction."""
         states = self._waw_dependency_unit_states(dependencies)
         for state in states:
+            if (
+                state.load_state == "not-found"
+                and state.active_state == "inactive"
+                and not state.unit_file_state
+            ):
+                continue
             if state.load_state != "loaded":
-                raise HostMutationError("installed WAW dependency unit is unavailable")
+                raise HostMutationError("installed WAW dependency unit state is ambiguous")
             self._run(("/usr/bin/systemctl", "disable", "--now", state.unit), timeout=30)
         for state in self._waw_dependency_unit_states(dependencies):
-            if (
-                state.load_state != "loaded"
-                or state.active_state != "inactive"
-                or state.unit_file_state != "disabled"
-            ):
+            absent = (
+                state.load_state == "not-found"
+                and state.active_state == "inactive"
+                and not state.unit_file_state
+            )
+            disabled = (
+                state.load_state == "loaded"
+                and state.active_state == "inactive"
+                and state.unit_file_state == "disabled"
+            )
+            if not (absent or disabled):
                 raise HostMutationError("installed WAW dependency unit is not quiescent")
 
     def install_packages(self, family: PackageFamily, packages: tuple[str, ...]) -> None:
