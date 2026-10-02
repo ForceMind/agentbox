@@ -222,3 +222,73 @@ def test_staged_identity_verification_is_read_only_and_rejects_membership_drift(
     groups["agentbox-runtime-ipc"].gr_mem.append("unrelated")
     with pytest.raises(HostMutationError, match="membership changed"):
         host.verify_identities(expected)
+
+
+def test_waw_dependency_unit_preflight_rejects_existing_unit(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("agentbox_installer.host.os.geteuid", lambda: 0)
+
+    def query(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            returncode=0,
+            stdout="LoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\n",
+        )
+
+    monkeypatch.setattr("agentbox_installer.host.subprocess.run", query)
+    host = HostOperations(real_host=True)
+
+    with pytest.raises(HostMutationError, match="refusing automatic adoption"):
+        host.require_waw_dependency_units_absent(("certbot",))
+
+
+def test_waw_dependency_unit_quiescence_disables_only_recorded_unit(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("agentbox_installer.host.os.geteuid", lambda: 0)
+    disabled = False
+
+    def query(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "LoadState=loaded\n"
+                "ActiveState=inactive\n"
+                f"UnitFileState={'disabled' if disabled else 'enabled'}\n"
+            ),
+        )
+
+    monkeypatch.setattr("agentbox_installer.host.subprocess.run", query)
+    commands: list[tuple[str, ...]] = []
+    host = HostOperations(real_host=True)
+
+    def mutate(argv: tuple[str, ...], *, timeout: int = 120) -> None:
+        nonlocal disabled
+        commands.append(argv)
+        assert timeout == 30
+        disabled = True
+
+    monkeypatch.setattr(host, "_run", mutate)
+    host.quiesce_waw_dependency_units(("certbot",))
+
+    assert commands == [
+        ("/usr/bin/systemctl", "disable", "--now", "certbot.timer"),
+    ]
+
+
+def test_waw_dependency_unit_quiescence_accepts_uninstalled_unit_during_recovery(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("agentbox_installer.host.os.geteuid", lambda: 0)
+
+    def query(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            returncode=0,
+            stdout="LoadState=not-found\nActiveState=inactive\nUnitFileState=\n",
+        )
+
+    monkeypatch.setattr("agentbox_installer.host.subprocess.run", query)
+    host = HostOperations(real_host=True)
+    monkeypatch.setattr(host, "_run", lambda *_args, **_kwargs: pytest.fail("unit mutated"))
+
+    host.quiesce_waw_dependency_units(("certbot",))
