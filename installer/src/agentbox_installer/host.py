@@ -48,6 +48,13 @@ class DependencyUnitState:
 
 
 @dataclass(frozen=True)
+class WAWVendorObservation:
+    claude_vendor_version: str
+    codex_vendor_version: str
+    codex_unauthenticated_output_sha256: str
+
+
+@dataclass(frozen=True)
 class IdentityFacts:
     agentbox_uid: int
     agentbox_gid: int
@@ -528,6 +535,161 @@ class HostOperations:
             )
             with path.open("rb") as stream:
                 return stream.read(256 * 1024 * 1024 + 1)
+
+    @staticmethod
+    def _run_waw_vendor_observation(
+        executable: Path, arguments: tuple[str, ...], home: Path
+    ) -> tuple[int, bytes, bytes]:
+        allowed = {
+            ("/usr/local/bin/claude", ("--version",)),
+            ("/usr/local/bin/codex", ("--version",)),
+            ("/usr/local/bin/codex", ("login", "status")),
+        }
+        if (
+            (str(executable), arguments) not in allowed
+            or not home.is_absolute()
+            or not home.is_dir()
+        ):
+            raise HostMutationError("fixed Runtime vendor observation is invalid")
+        argv = (
+            "/usr/sbin/runuser",
+            "--preserve-environment",
+            "-u",
+            "agentbox-runtime",
+            "--",
+            str(executable),
+            *arguments,
+        )
+        try:
+            with subprocess.Popen(  # noqa: S603 - closed vendor executable/argv set
+                argv,
+                cwd=home,
+                env={
+                    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG": "C.UTF-8",
+                    "HOME": str(home),
+                    "TERM": "dumb",
+                },
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            ) as process:
+                try:
+                    stdout, stderr = process.communicate(timeout=30)
+                except BaseException:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.communicate(timeout=10)
+                    raise
+                try:
+                    os.killpg(process.pid, 0)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    raise HostMutationError(
+                        "Runtime vendor observation cleanup could not be proven"
+                    ) from None
+                else:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    raise HostMutationError(
+                        "Runtime vendor observation left a process group"
+                    )
+                if (
+                    process.returncode is None
+                    or not isinstance(stdout, bytes)
+                    or not isinstance(stderr, bytes)
+                    or len(stdout) + len(stderr) > 4096
+                ):
+                    raise HostMutationError("Runtime vendor observation output is invalid")
+                return process.returncode, stdout, stderr
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise HostMutationError("Runtime vendor observation failed") from exc
+
+    def observe_waw_vendors(self) -> WAWVendorObservation:
+        """Observe fixed installed CLIs as agentbox-runtime with an empty HOME."""
+
+        from agentbox_installer.waw_vendor_bootstrap import VENDOR_DOWNLOADS
+        from agentbox_runtime.waw_vendor_probe import waw_vendor_probe_output_digest
+
+        if not self.real_host:
+            raise HostMutationError("actual Runtime vendor observation requires a real host")
+        self.require_root()
+        try:
+            runtime = pwd.getpwnam("agentbox-runtime")
+        except KeyError as exc:
+            raise HostMutationError("Runtime vendor observation identity is unavailable") from exc
+        if runtime.pw_uid == 0 or runtime.pw_gid == 0:
+            raise HostMutationError("Runtime vendor observation identity is invalid")
+        specs = {spec.kind: spec for spec in VENDOR_DOWNLOADS}
+        if set(specs) != {"claude", "codex"}:
+            raise HostMutationError("fixed Runtime vendor set is invalid")
+        executables = {
+            kind: Path("/usr/local/bin") / kind for kind in ("claude", "codex")
+        }
+        for path in executables.values():
+            try:
+                facts = path.lstat()
+            except OSError as exc:
+                raise HostMutationError("fixed Runtime vendor executable is unavailable") from exc
+            if (
+                not stat.S_ISREG(facts.st_mode)
+                or facts.st_uid != 0
+                or facts.st_gid != 0
+                or stat.S_IMODE(facts.st_mode) != 0o755
+                or facts.st_nlink != 1
+            ):
+                raise HostMutationError("fixed Runtime vendor executable is unsafe")
+
+        versions: dict[str, str] = {}
+        with tempfile.TemporaryDirectory(
+            prefix="agentbox-waw-vendor-observe-", dir="/tmp"
+        ) as directory:
+            root = Path(directory)
+            os.chmod(root, 0o700)
+            os.chown(root, runtime.pw_uid, runtime.pw_gid)
+            for kind in ("claude", "codex"):
+                home = root / kind
+                home.mkdir(mode=0o700)
+                os.chown(home, runtime.pw_uid, runtime.pw_gid)
+                code, stdout, stderr = self._run_waw_vendor_observation(
+                    executables[kind], ("--version",), home
+                )
+                try:
+                    observed = stdout.decode("ascii").strip()
+                except UnicodeError as exc:
+                    raise HostMutationError(
+                        "Runtime vendor version output is not ASCII"
+                    ) from exc
+                if (
+                    code != 0
+                    or stderr
+                    or not 1 <= len(observed.encode("ascii")) <= 96
+                    or any(char in observed for char in "\r\n\x00")
+                    or not observed.isprintable()
+                    or specs[kind].version not in observed
+                ):
+                    raise HostMutationError("Runtime vendor version observation is invalid")
+                versions[kind] = observed
+
+            codex_home = root / "codex"
+            code, stdout, stderr = self._run_waw_vendor_observation(
+                executables["codex"], ("login", "status"), codex_home
+            )
+            if code != 1 or b"not logged in" not in (stdout + stderr).lower():
+                raise HostMutationError(
+                    "Codex empty-HOME observation is not the fixed unauthenticated state"
+                )
+            digest = waw_vendor_probe_output_digest(stdout, stderr)
+
+        return WAWVendorObservation(
+            claude_vendor_version=versions["claude"],
+            codex_vendor_version=versions["codex"],
+            codex_unauthenticated_output_sha256=digest,
+        )
 
     def enable_and_start(self) -> None:
         if not self.real_host:
