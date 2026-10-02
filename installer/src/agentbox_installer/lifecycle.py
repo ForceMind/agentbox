@@ -683,15 +683,17 @@ class AgentBoxInstaller:
                 self.host.require_waw_policy_quiescence()
                 guard = WAWPackageStartGuard(issuer)
                 if packages:
+                    guard_dependencies = tuple(sorted(missing))
+
                     def install_dependencies() -> None:
                         try:
                             self.host.install_packages(platform.package_family, packages)
                         finally:
-                            self.host.quiesce_waw_dependency_units(missing)
+                            self.host.quiesce_waw_dependency_units(guard_dependencies)
 
                     guard.run(
                         install_dependencies,
-                        dependencies=missing,
+                        dependencies=guard_dependencies,
                         prepare=self.host.require_waw_dependency_units_absent,
                         restore=self.host.quiesce_waw_dependency_units,
                         recover=recover,
