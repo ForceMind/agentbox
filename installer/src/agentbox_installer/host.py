@@ -669,7 +669,18 @@ class HostOperations:
             for kind in ("claude", "codex"):
                 home = root / kind
                 scratch = root / (kind + "-scratch")
-                for path in (home, scratch):
+                state_leaf = ".config/claude" if kind == "claude" else ".config/codex"
+                directories = (
+                    home,
+                    home / ".config",
+                    home / state_leaf,
+                    home / ".cache",
+                    home / ".local",
+                    home / ".local/share",
+                    home / ".local/state",
+                    scratch,
+                )
+                for path in directories:
                     path.mkdir(mode=0o700)
                     os.chown(path, runtime.pw_uid, runtime.pw_gid)
                 code, stdout, stderr = self._run_waw_vendor_observation(
