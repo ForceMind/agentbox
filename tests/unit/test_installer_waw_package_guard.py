@@ -146,9 +146,7 @@ def test_dependency_recovery_restores_recorded_units_after_packages_are_present(
         lambda *_args: pytest.fail("APT must not rerun after dependencies completed"),
     )
     restored: list[tuple[str, ...]] = []
-    monkeypatch.setattr(
-        installer.host, "quiesce_waw_dependency_units", restored.append
-    )
+    monkeypatch.setattr(installer.host, "quiesce_waw_dependency_units", restored.append)
 
     with pytest.raises(WAWManifestInstallError, match="recover"):
         installer.install_waw_dependencies()
@@ -173,9 +171,7 @@ def test_preparing_dependency_guard_recovery_does_not_restore_units(
     monkeypatch.setattr(
         lifecycle,
         "detect_dependencies",
-        lambda _layout: (
-            DependencyStatus("certbot", False, False, True, None, "fixture"),
-        ),
+        lambda _layout: (DependencyStatus("certbot", False, False, True, None, "fixture"),),
     )
     monkeypatch.setattr(
         installer.host,
@@ -239,12 +235,8 @@ def test_dependency_plan_apply_quiesces_only_recorded_dependencies(
 
     monkeypatch.setattr(lifecycle, "detect_dependencies", detect)
     monkeypatch.setattr(installer.host, "install_packages", install)
-    monkeypatch.setattr(
-        installer.host, "require_waw_dependency_units_absent", prepared.append
-    )
-    monkeypatch.setattr(
-        installer.host, "quiesce_waw_dependency_units", quiesced.append
-    )
+    monkeypatch.setattr(installer.host, "require_waw_dependency_units_absent", prepared.append)
+    monkeypatch.setattr(installer.host, "quiesce_waw_dependency_units", quiesced.append)
 
     result = installer.install_waw_dependencies(plan=True)
     assert result["packages"] == ("nginx", "certbot") and calls == []
