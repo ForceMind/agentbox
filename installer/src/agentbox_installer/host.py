@@ -538,19 +538,40 @@ class HostOperations:
 
     @staticmethod
     def _run_waw_vendor_observation(
-        executable: Path, arguments: tuple[str, ...], home: Path
+        kind: str,
+        executable: Path,
+        arguments: tuple[str, ...],
+        home: Path,
+        scratch: Path,
     ) -> tuple[int, bytes, bytes]:
         allowed = {
-            ("/usr/local/bin/claude", ("--version",)),
-            ("/usr/local/bin/codex", ("--version",)),
-            ("/usr/local/bin/codex", ("login", "status")),
+            ("claude", "/usr/local/bin/claude", ("--version",)),
+            ("codex", "/usr/local/bin/codex", ("--version",)),
+            ("codex", "/usr/local/bin/codex", ("login", "status")),
         }
         if (
-            (str(executable), arguments) not in allowed
+            (kind, str(executable), arguments) not in allowed
             or not home.is_absolute()
             or not home.is_dir()
+            or not scratch.is_absolute()
+            or not scratch.is_dir()
         ):
             raise HostMutationError("fixed Runtime vendor observation is invalid")
+        state_name = "CLAUDE_CONFIG_DIR" if kind == "claude" else "CODEX_HOME"
+        state_leaf = ".config/claude" if kind == "claude" else ".config/codex"
+        environment = {
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "XDG_CACHE_HOME": str(home / ".cache"),
+            "XDG_DATA_HOME": str(home / ".local/share"),
+            "XDG_STATE_HOME": str(home / ".local/state"),
+            "TMPDIR": str(scratch),
+            "PATH": "/usr/bin:/opt/agentbox/current/libexec",
+            "LANG": "C.UTF-8",
+            "LC_CTYPE": "C.UTF-8",
+            "TERM": "dumb",
+            state_name: str(home / state_leaf),
+        }
         argv = (
             "/usr/sbin/runuser",
             "--preserve-environment",
@@ -564,12 +585,7 @@ class HostOperations:
             with subprocess.Popen(  # noqa: S603 - closed vendor executable/argv set
                 argv,
                 cwd=home,
-                env={
-                    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
-                    "LANG": "C.UTF-8",
-                    "HOME": str(home),
-                    "TERM": "dumb",
-                },
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -652,10 +668,12 @@ class HostOperations:
             os.chmod(root, 0o755)
             for kind in ("claude", "codex"):
                 home = root / kind
-                home.mkdir(mode=0o700)
-                os.chown(home, runtime.pw_uid, runtime.pw_gid)
+                scratch = root / (kind + "-scratch")
+                for path in (home, scratch):
+                    path.mkdir(mode=0o700)
+                    os.chown(path, runtime.pw_uid, runtime.pw_gid)
                 code, stdout, stderr = self._run_waw_vendor_observation(
-                    executables[kind], ("--version",), home
+                    kind, executables[kind], ("--version",), home, scratch
                 )
                 try:
                     observed = stdout.decode("ascii").strip()
@@ -675,8 +693,13 @@ class HostOperations:
                 versions[kind] = observed
 
             codex_home = root / "codex"
+            codex_scratch = root / "codex-scratch"
             code, stdout, stderr = self._run_waw_vendor_observation(
-                executables["codex"], ("login", "status"), codex_home
+                "codex",
+                executables["codex"],
+                ("login", "status"),
+                codex_home,
+                codex_scratch,
             )
             if code != 1 or b"not logged in" not in (stdout + stderr).lower():
                 raise HostMutationError(
