@@ -38,6 +38,8 @@ DEPENDENCY_PATHS: dict[str, tuple[str, ...]] = {
     "systemd": ("/usr/bin/systemctl",),
     "native_compiler": ("/usr/bin/cc",),
     "native_binutils": ("/usr/bin/readelf",),
+    "nginx": ("/usr/sbin/nginx",),
+    "certbot": ("/usr/bin/certbot",),
     "codex": (
         "/usr/bin/codex",
         "/usr/local/bin/codex",
@@ -64,6 +66,7 @@ REQUIRED_BASE = frozenset(
 )
 
 OPTIONAL_RUNTIME = frozenset({"tmux", "bubblewrap", "gh", "node", "npm", "pnpm", "codex", "claude"})
+REQUIRED_BROWSER = frozenset({"tmux", "bubblewrap", "nginx", "certbot"})
 
 
 def detect_dependencies(layout: InstallLayout) -> tuple[DependencyStatus, ...]:

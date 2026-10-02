@@ -1,11 +1,46 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-01T17:50:25Z"
-verified_by: "codex-development-handoff"
+verified_at_utc: "2026-10-02T08:25:47Z"
+verified_by: "agentbox-development-continuation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-02 #131 package-guard recovery continuation
+
+新开发环境以 GitHub 已提交内容为基线继续 Draft #131。交接时确认的恢复缺口
+仍存在于 797204e：当 APT 已完成而进程在 guard cleanup 前终止，下一次依赖
+检测为空，旧控制流不会进入 guard，即使 `--recover` 也无法清理。
+
+本批已提交三个窄修复 commit：`a6dd02b` 增加 exact stale guard 的显式恢复，
+`e1653a4` 让依赖已齐全的 no-op 路径仍执行恢复检查，`144817d` 增加
+post-APT crash-window 和 foreign-policy no-op/recovery 回归。普通 no-op 不改写
+foreign policy；显式 recovery 只删除 ownership/mode/link/size/content 全部严格
+匹配的 AgentBox guard。partial/foreign state 仍 fail closed，不被收养或修补。
+
+分支已通过正常 merge 带入 `origin/main` 的 PR #132 文档，不做 rebase、
+force push 或 history rewrite。merge head `e23119d` 的 Backend/Frontend/Security/
+Deployment/E2E/Release Candidate 六套 workflow 均 SUCCESS，证明最初 crash-window
+软件修复没有破坏基线。
+
+随后新增 native PID-1 实际 APT probe。第一轮真实证据发现 GitHub Ubuntu 24.04
+runner 预装 nginx，而 AgentBox 安装缺失 certbot 时，`policy-rc.d` 成功阻止
+`certbot.timer` 启动，但 distro post-install 仍把 timer 设为 `enabled`。
+因此“当前 inactive”不能等价为“重启后保持关闭”。
+
+当前候选据此升级为 v2 package guard：guard 持久化本次缺失 dependency 与
+preparing/armed phase；只有安装前证明 fixed unit 为 not-found 的 dependency
+才可在 APT 后执行 `systemctl disable --now`，并在 guard 仍生效时回读
+inactive+disabled。armed crash 可由 `--recover` 从 guard 恢复同一 dependency
+集合；preparing crash 不执行 unit mutation。预装 nginx 不在本次 ownership
+集合内，实际 probe 要求其 systemd state 前后完全一致。partial/foreign policy
+仍不被收养、修补或删除。
+
+Deployment 还新增 native PID-1 maintenance service sandbox 执行：验证 root
+oneshot 的 NoNewPrivileges、允许目录写入、敏感路径不可读以及 unrelated
+ProtectSystem=strict 写入拒绝。最终 exact-head CI 仍需全部终态成功后才能把
+#131 转为可合并证据。
 
 ## 2026-10-02 交接快照（当前入口）
 

@@ -30,6 +30,23 @@ class HostMutationError(RuntimeError):
     pass
 
 
+_WAW_DEPENDENCY_UNITS: dict[str, tuple[str, ...]] = {
+    "tmux": (),
+    "bubblewrap": (),
+    "nginx": ("nginx.service",),
+    "certbot": ("certbot.timer",),
+}
+
+
+@dataclass(frozen=True)
+class DependencyUnitState:
+    dependency: str
+    unit: str
+    load_state: str
+    active_state: str
+    unit_file_state: str
+
+
 @dataclass(frozen=True)
 class IdentityFacts:
     agentbox_uid: int
@@ -848,6 +865,103 @@ class HostOperations:
             raise HostMutationError(
                 "Runtime key initialization public record is unavailable"
             ) from None
+
+    def _waw_dependency_unit_states(
+        self, dependencies: tuple[str, ...]
+    ) -> tuple[DependencyUnitState, ...]:
+        if (
+            type(dependencies) is not tuple
+            or len(set(dependencies)) != len(dependencies)
+            or any(name not in _WAW_DEPENDENCY_UNITS for name in dependencies)
+        ):
+            raise HostMutationError("fixed WAW dependency unit selection is invalid")
+        if not self.real_host:
+            return ()
+        self.require_root()
+        states: list[DependencyUnitState] = []
+        for dependency in dependencies:
+            for unit in _WAW_DEPENDENCY_UNITS[dependency]:
+                try:
+                    result = subprocess.run(  # noqa: S603 - fixed allowlisted unit names
+                        (
+                            "/usr/bin/systemctl",
+                            "show",
+                            unit,
+                            "--property=LoadState",
+                            "--property=ActiveState",
+                            "--property=UnitFileState",
+                        ),
+                        stdin=subprocess.DEVNULL,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=10,
+                        env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise HostMutationError(
+                        "fixed WAW dependency unit state is unavailable"
+                    ) from exc
+                values: dict[str, str] = {}
+                for line in result.stdout.splitlines():
+                    key, separator, value = line.partition("=")
+                    if separator and key in {"LoadState", "ActiveState", "UnitFileState"}:
+                        values[key] = value
+                if result.returncode != 0 or set(values) != {
+                    "LoadState",
+                    "ActiveState",
+                    "UnitFileState",
+                }:
+                    raise HostMutationError("fixed WAW dependency unit state is unavailable")
+                states.append(
+                    DependencyUnitState(
+                        dependency,
+                        unit,
+                        values["LoadState"],
+                        values["ActiveState"],
+                        values["UnitFileState"],
+                    )
+                )
+        return tuple(states)
+
+    def require_waw_dependency_units_absent(self, dependencies: tuple[str, ...]) -> None:
+        """Reject ambiguous pre-existing units before AgentBox owns a package transaction."""
+        for state in self._waw_dependency_unit_states(dependencies):
+            if (
+                state.load_state != "not-found"
+                or state.active_state != "inactive"
+                or state.unit_file_state
+            ):
+                raise HostMutationError(
+                    "fixed WAW dependency unit already exists; refusing automatic adoption"
+                )
+
+    def quiesce_waw_dependency_units(self, dependencies: tuple[str, ...]) -> None:
+        """Disable only units whose dependencies were proven absent before this transaction."""
+        states = self._waw_dependency_unit_states(dependencies)
+        for state in states:
+            if (
+                state.load_state == "not-found"
+                and state.active_state == "inactive"
+                and not state.unit_file_state
+            ):
+                continue
+            if state.load_state != "loaded":
+                raise HostMutationError("installed WAW dependency unit state is ambiguous")
+            self._run(("/usr/bin/systemctl", "disable", "--now", state.unit), timeout=30)
+        for state in self._waw_dependency_unit_states(dependencies):
+            absent = (
+                state.load_state == "not-found"
+                and state.active_state == "inactive"
+                and not state.unit_file_state
+            )
+            disabled = (
+                state.load_state == "loaded"
+                and state.active_state == "inactive"
+                and state.unit_file_state == "disabled"
+            )
+            if not (absent or disabled):
+                raise HostMutationError("installed WAW dependency unit is not quiescent")
 
     def install_packages(self, family: PackageFamily, packages: tuple[str, ...]) -> None:
         if not self.real_host or not packages:

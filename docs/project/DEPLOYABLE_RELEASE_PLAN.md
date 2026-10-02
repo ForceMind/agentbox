@@ -2,15 +2,18 @@
 
 ## 2026-10-02 当前事实与执行顺序
 
-状态入口为 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md)。本次核对 main 为
-ba065e355cbf17ea4d68e8badcdde4ca81f46c41；Draft #131 HEAD 为
-797204e2dc0430eb56ffb6c3e56b93c1e465d04b。源码 rc30，首版尚未可部署。
+状态入口为 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md)。当前 main 为
+bac457b43efaa12c3a0a11f36af2cf5250b9a268（PR #132 merge）。Draft #131 已在
+新环境继续修复 package transaction：最初 crash-window 修复后的 `e23119d`
+六套 CI 全绿；真实 Ubuntu 24.04 APT 又发现 certbot.timer boot-enable 副作用，
+当前候选已加入 v2 dependency ownership/recovery、introduced-unit quiescence
+和 native maintenance sandbox gate。源码仍 rc30，首版尚未可部署。
 
 Runtime filesystem-v2 graph、完整资源、HTTPS Web bootstrap、证书/setup、
 固定 native vendor、deferred 首装已有软件成果；真实双 CLI/PC手机/完整安装
 与恢复尚未验收。下方旧 `_main` 拒绝 v2、资源未生成等只记录当时状态，不重做。
 
-同一版本顺序：依赖实际 APT/boot 与 guard 恢复 → Runtime-only vendor 观察与
+同一版本顺序：#131 exact-head CI 与实际 APT/boot/guard 资格化 → Runtime-only vendor 观察与
 enrollment → 完整下载/deferred apply/依赖/vendor/资源/setup → PC/手机双 CLI →
 中断/重启/升级回退 → 不可变制品与有效安装命令。不能把 `setup-waw-web`
 当作新机安装器，不提供不存在的发布 URL。Owner 自行安装，不需要 SSH。

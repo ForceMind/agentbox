@@ -1,13 +1,23 @@
 # Current Authorized Action
 
-## 2026-10-02 接手动作（覆盖下方历史施工指令）
+## 2026-10-02 当前开发动作（覆盖下方交接指令）
 
-当前任务仅完成文档与 GitHub 交接，停止新增开发。
-新对话按 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 核对 main、Draft #131、
-工作区与原 WIP，再接续同一首版：先修复/实测固定依赖安装的服务副作用与
-guard 恢复缺口，再将实际 vendor 观察/enrollment/setup 接成完整首装，验收
-双 CLI、PC/手机、重启与升级回退。未验收前不称可用或发布 URL。
-默认单智能体，不重设路线，不推进 #117 或长期 70 项旁支。
+Draft #131 已关闭最初的 package-guard crash-window，并由实际 Ubuntu 24.04
+APT probe 发现第二个真实副作用：certbot 没有启动，但 `certbot.timer` 会在
+安装后自动变成 enabled。当前候选已把 dependency ownership 写入 v2 guard，
+只对安装前证明不存在的 nginx/certbot unit 执行 disable --now；armed 中断由
+`--recover` 恢复同一集合，preparing 中断不获得 unit mutation 权限。foreign/
+partial policy 和预装 dependency service 均不被收养或修改。
+
+当前唯一动作是读取最终 exact-head 六套 CI，并检查 native PID-1 APT probe 与
+maintenance sandbox 的实际日志。所有 required/additional checks 都必须终态
+SUCCESS；若失败按实际日志修复，不能降低 gate。通过后按治理把 #131 退出 Draft、
+merge、read-back main，再进入 Runtime-only vendor observation/enrollment 与
+完整 fresh-install composition。
+
+之后直接进入真实 Runtime-only vendor observation/enrollment 和完整 fresh
+install composition，再做 PC/Android/iOS 双 CLI、重连、exact Stop、重启、
+升级/回退。继续同一个首版，不推进 #117 或长期旁支。
 
 ## 历史行动记录
 

@@ -38,7 +38,7 @@ from agentbox_installer.artifact import (
     verify_release,
 )
 from agentbox_installer.backup import BackupResult, create_sqlite_backup, verify_sqlite_backup
-from agentbox_installer.dependencies import REQUIRED_BASE, detect_dependencies
+from agentbox_installer.dependencies import REQUIRED_BASE, REQUIRED_BROWSER, detect_dependencies
 from agentbox_installer.hardening import validate_unit_compatibility
 from agentbox_installer.host import HostOperations, IdentityFacts
 from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, InstallLayout
@@ -51,6 +51,7 @@ from agentbox_installer.waw_enrollment import (
     WAWEnrollmentPublisher,
 )
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
+from agentbox_installer.waw_package_guard import WAWPackageStartGuard
 from agentbox_installer.waw_vendor_bootstrap import WAWVendorBootstrap
 from agentbox_installer.waw_web_certificates import WAWWebCertificates
 from agentbox_installer.waw_web_configuration import configure_browser_origin, validate_web_tls
@@ -637,6 +638,83 @@ class AgentBoxInstaller:
                 )
         except OSError as exc:
             raise InstallError("fixed native vendor installation failed") from exc
+
+    def install_waw_dependencies(
+        self, *, plan: bool = False, recover: bool = False
+    ) -> dict[str, object]:
+        self.host.require_root()
+        if type(plan) is not bool or type(recover) is not bool:
+            raise TypeError("dependency flags must be bool")
+        platform = detect_platform(self.layout.map("/etc/os-release"))
+        from agentbox_installer.platform import PackageFamily
+
+        if platform.package_family is not PackageFamily.APT:
+            raise InstallError("automatic browser dependencies currently require an APT target")
+        if self.host.systemd_version() < 255:
+            raise InstallError("WAW browser installation requires systemd 255 or newer")
+        version = self.current_version()
+        if version is None or self.installation_state() != "installed":
+            raise InstallError("browser dependencies require a completed deferred installation")
+        missing = tuple(
+            item.name
+            for item in detect_dependencies(self.layout)
+            if item.name in REQUIRED_BROWSER and not item.installed
+        )
+        packages = resolve_packages(platform.package_family, missing)
+        result: dict[str, object] = {
+            "status": "planned" if plan else "installed",
+            "packages": packages,
+            "services_started": False,
+            "qualified": False,
+        }
+        if plan:
+            return result
+        owner = 0 if self.host.real_host else os.geteuid()
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=owner,
+            root_gid=0 if self.host.real_host else os.getegid(),
+            runtime_uid=owner,
+            runtime_gid=0 if self.host.real_host else os.getegid(),
+        )
+        try:
+            with self._lifecycle_lock():
+                self.host.require_waw_policy_quiescence()
+                guard = WAWPackageStartGuard(issuer)
+                if packages:
+                    guard_dependencies = tuple(sorted(missing))
+
+                    def install_dependencies() -> None:
+                        try:
+                            self.host.install_packages(platform.package_family, packages)
+                        finally:
+                            self.host.quiesce_waw_dependency_units(guard_dependencies)
+
+                    guard.run(
+                        install_dependencies,
+                        dependencies=guard_dependencies,
+                        prepare=self.host.require_waw_dependency_units_absent,
+                        restore=self.host.quiesce_waw_dependency_units,
+                        recover=recover,
+                    )
+                else:
+                    guard.recover_interrupted(
+                        recover=recover,
+                        restore=self.host.quiesce_waw_dependency_units,
+                    )
+                remaining = tuple(
+                    item.name
+                    for item in detect_dependencies(self.layout)
+                    if item.name in REQUIRED_BROWSER and not item.installed
+                )
+                if remaining:
+                    raise InstallError(
+                        "browser dependencies remain missing after fixed package installation"
+                    )
+                return result
+        except OSError as exc:
+            raise InstallError("fixed browser dependency operation failed") from exc
 
     def activate_waw(self, *, plan: bool = False, recover: bool = False) -> dict[str, object]:
         """Activate only the fixed enrolled graph; service start is not qualification."""

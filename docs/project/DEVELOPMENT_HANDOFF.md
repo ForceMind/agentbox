@@ -1,5 +1,23 @@
 # AgentBox 开发交接 — 2026-10-02
 
+## 2026-10-02 新环境继续开发更新
+
+新环境不依赖旧机器路径、临时文件或未提交 WIP；GitHub 已推送内容是交付基线。
+当前 main 已是 `bac457b43efaa12c3a0a11f36af2cf5250b9a268`（PR #132 merge）。
+
+Draft #131 的已知 package-guard 恢复缺口已进入软件修复：`a6dd02b` 增加严格
+matching guard 的独立 recovery，`e1653a4` 覆盖 packages 为空的 post-APT
+crash window，`144817d` 增加回归测试并保证普通 no-op 不改 foreign policy。
+分支随后正常 merge 当前 main，不进行 history rewrite。下方关于 797204e 和
+“恢复缺口尚未修复”的内容保留为交接时历史证据，不覆盖本节。
+
+#131 的 `e23119d` 软件基线六套 CI 已全绿。新增 native PID-1 APT probe
+随后证明：实际安装缺失 certbot 时服务没有进入 active，但 `certbot.timer`
+被 distro 自动 enable；这暴露了重启副作用而不是被 fixture 掩盖。当前候选已
+增加 v2 guard dependency/phase recovery、只对本次新引入 unit 的 disable+readback，
+并增加 maintenance service native sandbox 执行。预装 nginx 状态必须前后不变。
+最终 exact-head CI 仍待全部终态成功；在此之前 #131 保持 Draft。
+
 Owner 要求更新 GitHub/文档后转交新对话。本批只交接文档，停止新增开发。
 实时 Git/GitHub 优先于本文快照；其他状态文档的旧条目是历史证据。
 本机工作区路径与未提交 WIP 清单保存在本地交接附件，不发布到公开仓库。
