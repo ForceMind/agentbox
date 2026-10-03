@@ -9,7 +9,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from agentbox_installer.waw_vendor_bootstrap import VENDOR_DOWNLOADS, decode_vendor_download
+from agentbox_installer.waw_vendor_bootstrap import (
+    QUALIFIED_VENDOR_FACTS,
+    VENDOR_DOWNLOADS,
+    decode_vendor_download,
+)
 from agentbox_runtime.waw_vendor_probe import waw_vendor_probe_output_digest
 
 
@@ -60,6 +64,8 @@ def test_actual_pinned_vendor_version_and_unauthenticated_probe(tmp_path: Path) 
     manifest = json.loads((tmp_path / "manifest.json").read_bytes())
     assert manifest["platforms"]["linux-x64"]["checksum"] == VENDOR_DOWNLOADS[0].sha256
     for spec in VENDOR_DOWNLOADS:
+        qualification = next(item for item in QUALIFIED_VENDOR_FACTS if item.kind == spec.kind)
+        assert qualification.version == spec.version
         artifact = tmp_path / (spec.kind + ".download")
         subprocess.run(  # noqa: S603 - two fixed, pinned HTTPS artifacts
             [
@@ -86,10 +92,12 @@ def test_actual_pinned_vendor_version_and_unauthenticated_probe(tmp_path: Path) 
         binary = decode_vendor_download(spec, artifact.read_bytes())
         executable.write_bytes(binary)
         executable.chmod(0o755)
+        executable_sha256 = hashlib.sha256(binary).hexdigest()
+        assert executable_sha256 == qualification.executable_sha256
         print(
             spec.kind,
             "actual verified native executable SHA256:",
-            hashlib.sha256(binary).hexdigest(),
+            executable_sha256,
         )
         home = tmp_path / (spec.kind + "-home")
         home.mkdir(mode=0o700)
@@ -98,7 +106,9 @@ def test_actual_pinned_vendor_version_and_unauthenticated_probe(tmp_path: Path) 
             [str(executable), "--version"], capture_output=True, timeout=30, env=env, check=False
         )
         assert result.returncode == 0 and spec.version.encode() in result.stdout
-        print(spec.kind, "actual verified native version:", result.stdout.decode().strip())
+        version_output = result.stdout.decode().strip()
+        assert version_output == qualification.version_output
+        print(spec.kind, "actual verified native version:", version_output)
         if spec.kind == "codex":
             result = subprocess.run(  # noqa: S603 - fixed readonly status in empty HOME
                 [str(executable), "login", "status"],
@@ -109,7 +119,9 @@ def test_actual_pinned_vendor_version_and_unauthenticated_probe(tmp_path: Path) 
             )
             assert result.returncode != 0
             assert b"not logged in" in (result.stdout + result.stderr).lower()
+            framed_digest = waw_vendor_probe_output_digest(result.stdout, result.stderr)
+            assert framed_digest != qualification.codex_unauthenticated_output_sha256
             print(
-                "codex unauthenticated framed stdout/stderr SHA256:",
-                waw_vendor_probe_output_digest(result.stdout, result.stderr),
+                "codex simple empty-HOME framed stdout/stderr SHA256:",
+                framed_digest,
             )
