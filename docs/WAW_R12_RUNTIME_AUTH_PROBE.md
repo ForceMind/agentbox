@@ -66,9 +66,18 @@ vendor argv仅Claude `auth status`或Codex `login status`。HOME/XDG/state/PATH/
 LC_CTYPE依固定auth profile；TMPDIR/cwd映射到隔离内`/run/agentbox-waw/auth-probe`，
 TERM=dumb，不继承Runtime完整环境。selected HOME/policy只提供所需受限视图，禁止
 通过scratch、proc或继承FD访问Project、其他vendor HOME、Runtime key或Provider Secret。
-auth namespace增加CLONE_NEWNET、无接口配置，auth-only seccomp禁止network socket/
-connect/bind/listen/accept/send等。需要联网才能status的vendor版本保持unsupported，
+auth namespace增加CLONE_NEWNET、无接口配置。auth-only seccomp按socket family
+拒绝AF_INET/AF_INET6等network socket，并继续拒绝connect/bind/listen/accept/
+send/recv等网络动作；仅允许创建AF_UNIX socket/socketpair供vendor runtime内部本地IPC，
+且不能借此bind/connect到任意本地端点。需要联网才能status的vendor版本保持unsupported，
 不得在实现中临时开放网络或更换认证方式。
+
+2026-10-03真实Codex 0.159.3资格化暴露了此前“socket/socketpair全部EPERM”的兼容性
+缺口：CLI在AWRP placement后以exit 101 panic，分类为Operation not permitted/thread。
+把例外收窄到AF_UNIX创建后，原fake-vendor矩阵同时证明Unix socketpair可用、
+AF_INET仍EPERM；真实官方Codex通过同一native helper返回exit 1的未登录状态，
+普通native矩阵109 passed/1 skipped，sanitizer矩阵60 passed/1 skipped。该变化不增加
+Internet能力，也不放开connect/bind/listen/send/recv。
 auth scratch anchor`/run/agentbox-waw/auth-probe`必须由host provisioning创建为
 root:root 0755；helper在进入第一层user namespace前（初始namespace，uid 0有意义的
 上下文）fail-closed校验其type/ownership/mode，namespace内仅复验type/mode。生产
