@@ -175,7 +175,9 @@ int main(int argc, char **argv) {
     const char *home_marker;
     char cwd[256];
     char cgroup[512];
+    char local_byte = '\0';
     int fd;
+    int local_pair[2] = {-1, -1};
     ssize_t count;
     home_marker = strcmp(agent, "claude") == 0
                       ? "/var/lib/agentbox-waw/vendor-homes/claude/.auth-home-canary"
@@ -201,6 +203,10 @@ int main(int argc, char **argv) {
 #ifdef AUTH_EARLY_EXIT
     return 42;
 #endif
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, local_pair) != 0 ||
+        write(local_pair[0], "u", 1U) != 1 ||
+        read(local_pair[1], &local_byte, 1U) != 1 || local_byte != 'u' ||
+        close(local_pair[0]) != 0 || close(local_pair[1]) != 0) return 100;
     errno = 0;
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd >= 0 || errno != EPERM) return 94;
