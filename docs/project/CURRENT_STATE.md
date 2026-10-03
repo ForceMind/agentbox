@@ -1,5 +1,13 @@
 ---
 
+schema_version: 1
+verified_at_utc: "2026-10-02T10:34:00Z"
+verified_by: "agentbox-vendor-observation-continuation"
+repository: "ForceMind/agentbox"
+---
+
+# Current Verified State
+
 ## 2026-10-03 qualified vendor enrollment continuation
 
 Live GitHub read-back: PR #134 is MERGED. Its exact head
@@ -45,14 +53,6 @@ enrollment. After the native evidence is terminal, pin the exact qualified
 facts to the fixed release/executable inventory and let the installer publish
 only when the target manifest and AgentBox-owned binaries match those pins.
 Actual authenticated state remains a Runtime native-auth-probe responsibility.
-
-schema_version: 1
-verified_at_utc: "2026-10-02T10:34:00Z"
-verified_by: "agentbox-vendor-observation-continuation"
-repository: "ForceMind/agentbox"
----
-
-# Current Verified State
 
 ## 2026-10-02 Runtime vendor observation digest continuation
 
