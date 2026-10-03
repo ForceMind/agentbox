@@ -1,4 +1,51 @@
 ---
+
+## 2026-10-03 qualified vendor enrollment continuation
+
+Live GitHub read-back: PR #134 is MERGED. Its exact head
+`24a66e93fbe90eaff7d1b592456adef0adcea3d5` completed Backend, Frontend,
+Security, Deployment, E2E and Release Candidate successfully; merge/main became
+`7c29a470c35b61646e6f6c6a646d3fab9eefb497`.
+
+The corrected pinned-vendor Deployment evidence runs Claude Code 2.1.286 and
+Codex CLI 0.159.3 and uses the production length-framed
+`waw_vendor_probe_output_digest(stdout, stderr)` helper. A simple empty-HOME
+Codex observation produced
+`6284874c92abb47b118705966e92e67035c377e557dce041f4c15313961d0381`.
+
+Draft PR #133 was reviewed and CLOSED without merge. Its Root-installer
+`runuser -u agentbox-runtime` observation changes UID but bypasses the already
+accepted native auth isolation contract (pre-birth cgroup, fixed FDs,
+user/PID/network namespaces, network denial and cleanup proof). It is retained
+as historical WIP only and is superseded by PR #135.
+
+Current Draft PR #135 / branch `codex/r12-qualified-vendor-enrollment`
+starts from merged #134. Real official-download Deployment evidence established
+the final executable digests:
+- Claude ELF:
+  `fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f`
+- Codex ELF:
+  `8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479`
+
+A second observation using a native-shaped environment in the superseded #133
+produced a different Codex framed digest
+`76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
+Therefore neither environment-derived digest is promoted to the production
+qualification contract yet. Current #135 head
+`c78a0ac9895bcffa62a7459a8cd174cc7e1dfc63` adds a dedicated Backend native
+evidence step that downloads the pinned Codex artifact, verifies/decodes it,
+passes the resulting ELF on FD5 through
+`agentbox-waw-pane-bootstrap --auth-probe`, requires AWRP placement,
+unauthenticated exit 1, <=4096 bytes and empty cgroup cleanup, and emits the
+production-path framed digest. Exact-head CI for that head is queued at this
+snapshot.
+
+Do not reintroduce installer-side `runuser` execution merely to automate
+enrollment. After the native evidence is terminal, pin the exact qualified
+facts to the fixed release/executable inventory and let the installer publish
+only when the target manifest and AgentBox-owned binaries match those pins.
+Actual authenticated state remains a Runtime native-auth-probe responsibility.
+
 schema_version: 1
 verified_at_utc: "2026-10-02T10:34:00Z"
 verified_by: "agentbox-vendor-observation-continuation"
