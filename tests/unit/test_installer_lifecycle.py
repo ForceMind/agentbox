@@ -124,6 +124,28 @@ def test_waw_socket_and_runtime_resource_layout_is_fixed_and_private() -> None:
     assert all(not specs[path].persistent for path in expected if path.startswith("/run/"))
 
 
+@pytest.mark.parametrize("agent", ["claude", "codex"])
+def test_vendor_state_roots_are_fixed_runtime_private(agent: str) -> None:
+    specs = {item.path: item for item in DIRECTORIES}
+    for suffix in (
+        ".config",
+        f".config/{agent}",
+        ".cache",
+        ".local",
+        ".local/share",
+        ".local/state",
+    ):
+        path = f"/var/lib/agentbox-waw/vendor-homes/{agent}/{suffix}"
+        spec = specs[path]
+        assert (spec.owner, spec.group, spec.mode) == (
+            "agentbox-runtime",
+            "agentbox-runtime",
+            0o700,
+        )
+        assert spec.persistent is True
+        assert spec.strict_existing is True
+
+
 def test_fresh_install_and_reinstall_are_idempotent_and_preserve_data(tmp_path: Path) -> None:
     installer, layout = _installer(tmp_path)
     artifact, digest = _artifact(tmp_path, "0.2.0+dev.8", "0002_project_jobs")

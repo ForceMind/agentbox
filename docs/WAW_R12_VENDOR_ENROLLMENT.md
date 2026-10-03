@@ -6,12 +6,18 @@ permission to read a real CLI login. The approved
 [R12 plan](project/PRODUCTION_READINESS_PLAN.md) remains authoritative.
 
 The Runtime reads only
-`/var/lib/agentbox-waw/vendor-enrollment.v1.json`. The installer or a later
-explicit enrollment operation must create the record after observing the
-exact target binaries and the bounded unauthenticated Codex probe output.
-It is not generated from a fake vendor, current developer Mac, environment
-variable, API request, Browser, Worker or Provider Secret. A missing file
-fails closed. No code in this batch creates the file on a host.
+`/var/lib/agentbox-waw/vendor-enrollment.v1.json`. For the fixed AgentBox-owned
+vendor release, qualification is produced in isolated Linux CI from the pinned
+official artifacts: exact decoded ELF SHA-256, exact version output and the
+Codex unauthenticated digest observed through the production native auth helper.
+The target installer does not execute a vendor CLI to recreate those facts.
+It may publish them only after the verified v2 executable inventory and a fresh
+held-file re-read prove that the installed `/usr/local/bin/claude` and
+`/usr/local/bin/codex` bytes match the qualified release exactly.
+
+The record is not generated from a fake vendor, current developer Mac,
+environment variable, API request, Browser, Worker or Provider Secret. A
+missing or mismatched qualification fails closed.
 
 The canonical JSON object has these exact keys, ASCII JSON with sorted keys,
 compact separators and one trailing newline, at most 1024 bytes:
@@ -71,12 +77,32 @@ real Linux enrollment or independent security-review evidence.
 
 ## Local installer publication
 
-The current implementation exposes `agentbox-install enroll-waw-vendors`
-with the three externally observed version/digest values, `--plan`,
-`--recover` and optional JSON metadata output. It requires a completed
+For the fixed AgentBox-owned vendor set, the preferred path is
+`agentbox-install enroll-qualified-waw-vendors`. It accepts no version or
+digest arguments and executes no vendor process. It requires a completed
 installation, safe disabled API/Runtime profiles and the fixed, fully
-cross-pinned v2 manifest resources. Host/epoch/digest pins come from those
-resources, not user flags. It shares the installer lifecycle lock.
+cross-pinned v2 manifest resources. The executable inventory must name exactly
+the qualified `/usr/local/bin` vendor paths and pin the qualified final ELF
+digests; the installer re-reads those executable bytes through the existing
+no-follow/provenance-checked manifest issuer immediately before publication.
+Manifest and executable observations are revalidated during the atomic
+publication transaction.
+
+The older `agentbox-install enroll-waw-vendors` remains available for
+explicit independently qualified values with `--plan`, `--recover` and
+optional JSON metadata output. Neither path performs Provider login, reads
+Runtime credentials or starts a service. Host/epoch/digest pins come from the
+verified manifest, not user flags. Both share the installer lifecycle lock.
+
+The current fixed qualification is Claude 2.1.286 with ELF SHA-256
+`fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f`,
+and Codex 0.159.3 with decoded ELF SHA-256
+`8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479`.
+The production native auth helper observes the empty qualified Codex HOME as
+exit 1 with framed stdout/stderr SHA-256
+`76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
+A simpler empty-HOME subprocess produced a different digest and is therefore
+diagnostic only, not enrollment authority.
 
 Publication uses a fixed root-private 0600 pending file, finishes and fsyncs
 its content, changes it to root:Runtime 0440, then links it into the fixed
@@ -88,6 +114,9 @@ unknown data, a truncated ready stage, foreign links, path replacement or
 manifest/profile drift fail closed. A differing existing record is never
 replaced; vendor rotation needs its own future closed-mode transaction.
 
-This is an installation building block, not automatic vendor observation,
-runtime-mode activation, platform qualification or a usable product release.
-Real user input is not logged or placed in this non-secret record.
+This closes fixed-release non-executing automatic enrollment for the currently
+qualified AgentBox-owned vendor binaries. It does not qualify an authenticated
+user session, runtime-mode activation, the complete fresh-install composition or
+a usable product release. Runtime still performs the actual bounded native auth
+probe before interactive Start/Resume. Real user input is not logged or placed
+in this non-secret record.

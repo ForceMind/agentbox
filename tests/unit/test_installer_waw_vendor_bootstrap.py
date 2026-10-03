@@ -10,6 +10,10 @@ import agentbox_installer.waw_vendor_bootstrap as module
 import pytest
 from agentbox_installer.waw_manifest_install import WAWManifestInstallError
 from agentbox_runtime.waw_executable import WAWExecutableError, WAWExecutableKind, WAWExecutablePin
+from agentbox_runtime.waw_process_profile import (
+    ExecutableInventoryEntryV1,
+    ExecutableInventoryV1,
+)
 from test_installer_waw_manifests import _fixture
 
 
@@ -67,6 +71,97 @@ def test_vendor_plan_and_atomic_install_never_execute_cli(
     inode = (root / "usr/local/bin/codex").stat().st_ino
     bootstrap.install(plan=False, recover=False, download=download)
     assert (root / "usr/local/bin/codex").stat().st_ino == inode
+
+
+def _qualified_inventory(
+    *,
+    claude_sha256: str,
+    codex_sha256: str,
+    codex_path: str = "/usr/local/bin/codex",
+) -> ExecutableInventoryV1:
+    return ExecutableInventoryV1(
+        (
+            ExecutableInventoryEntryV1(
+                "claude",
+                "/usr/local/bin/claude",
+                claude_sha256,
+                256 * 1024 * 1024,
+                "fixture-version",
+                "fixture-probe",
+            ),
+            ExecutableInventoryEntryV1(
+                "codex",
+                codex_path,
+                codex_sha256,
+                384 * 1024 * 1024,
+                "fixture-version",
+                "fixture-probe",
+            ),
+        )
+    )
+
+
+def test_qualified_enrollment_revalidates_exact_installed_vendor_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap, root, payloads = _downloads(tmp_path, monkeypatch)
+    bootstrap.install(plan=False, recover=False, download=lambda spec: payloads[spec.kind])
+    claude = (root / "usr/local/bin/claude").read_bytes()
+    codex = (root / "usr/local/bin/codex").read_bytes()
+    claude_sha256 = hashlib.sha256(claude).hexdigest()
+    codex_sha256 = hashlib.sha256(codex).hexdigest()
+    monkeypatch.setattr(
+        module,
+        "QUALIFIED_VENDOR_FACTS",
+        (
+            module.VendorQualification("claude", "fixture", "fixture claude", claude_sha256),
+            module.VendorQualification("codex", "fixture", "fixture codex", codex_sha256, "d" * 64),
+        ),
+    )
+    inventory = _qualified_inventory(
+        claude_sha256=claude_sha256,
+        codex_sha256=codex_sha256,
+    )
+
+    assert bootstrap.qualified_enrollment_values(inventory) == {
+        "claude_vendor_version": "fixture",
+        "codex_vendor_version": "fixture",
+        "codex_unauthenticated_output_sha256": "d" * 64,
+    }
+
+    changed = bytearray(codex)
+    changed[-1] ^= 1
+    target = root / "usr/local/bin/codex"
+    target.write_bytes(changed)
+    target.chmod(0o755)
+    with pytest.raises(WAWManifestInstallError, match="qualified release"):
+        bootstrap.qualified_enrollment_values(inventory)
+
+
+def test_qualified_enrollment_never_adopts_distro_vendor_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap, root, payloads = _downloads(tmp_path, monkeypatch)
+    bootstrap.install(plan=False, recover=False, download=lambda spec: payloads[spec.kind])
+    claude_sha256 = hashlib.sha256((root / "usr/local/bin/claude").read_bytes()).hexdigest()
+    codex_sha256 = hashlib.sha256((root / "usr/local/bin/codex").read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        module,
+        "QUALIFIED_VENDOR_FACTS",
+        (
+            module.VendorQualification("claude", "fixture", "fixture claude", claude_sha256),
+            module.VendorQualification("codex", "fixture", "fixture codex", codex_sha256, "d" * 64),
+        ),
+    )
+
+    with pytest.raises(WAWManifestInstallError, match="qualified release"):
+        bootstrap.qualified_enrollment_values(
+            _qualified_inventory(
+                claude_sha256=claude_sha256,
+                codex_sha256=codex_sha256,
+                codex_path="/usr/bin/codex",
+            )
+        )
 
 
 def test_invalid_second_payload_does_not_publish_first(
