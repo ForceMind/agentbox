@@ -14,7 +14,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from agentbox_installer.waw_vendor_bootstrap import VENDOR_DOWNLOADS, decode_vendor_download
+from agentbox_installer.waw_vendor_bootstrap import (
+    QUALIFIED_VENDOR_FACTS,
+    VENDOR_DOWNLOADS,
+    decode_vendor_download,
+)
 from agentbox_runtime.waw_vendor_probe import waw_vendor_probe_output_digest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -801,6 +805,8 @@ def test_actual_pinned_codex_runs_through_native_auth_probe(
     native_binaries: Path, tmp_path: Path
 ) -> None:
     spec = next(item for item in VENDOR_DOWNLOADS if item.kind == "codex")
+    qualification = next(item for item in QUALIFIED_VENDOR_FACTS if item.kind == "codex")
+    assert qualification.version == spec.version
     artifact = tmp_path / "codex.download"
     subprocess.run(  # noqa: S603 - fixed pinned HTTPS artifact
         [
@@ -851,6 +857,8 @@ def test_actual_pinned_codex_runs_through_native_auth_probe(
             hashlib.sha256(binary).hexdigest(),
         )
         print("codex native auth-probe framed SHA256:", digest)
+        assert hashlib.sha256(binary).hexdigest() == qualification.executable_sha256
+        assert digest == qualification.codex_unauthenticated_output_sha256
         assert returncode == 1
         assert len(stdout) + len(stderr) <= 4096
         assert b"not logged in" in (stdout + stderr).lower()
