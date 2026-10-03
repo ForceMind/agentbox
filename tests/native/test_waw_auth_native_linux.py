@@ -857,6 +857,24 @@ def test_actual_pinned_codex_runs_through_native_auth_probe(
             hashlib.sha256(binary).hexdigest(),
         )
         print("codex native auth-probe framed SHA256:", digest)
+        stderr_lower = stderr.lower()
+        classifications = {
+            "panic": b"panicked at" in stderr_lower or b"panic" in stderr_lower,
+            "operation_not_permitted": b"operation not permitted" in stderr_lower,
+            "permission_denied": b"permission denied" in stderr_lower,
+            "socket": b"socket" in stderr_lower,
+            "thread": b"thread" in stderr_lower,
+            "not_found": b"not found" in stderr_lower
+            or b"no such file or directory" in stderr_lower,
+            "runtime": b"runtime" in stderr_lower,
+        }
+        print(
+            "codex native auth-probe stderr classes:",
+            ",".join(
+                f"{name}={str(value).lower()}"
+                for name, value in sorted(classifications.items())
+            ),
+        )
         assert hashlib.sha256(binary).hexdigest() == qualification.executable_sha256
         assert digest == qualification.codex_unauthenticated_output_sha256
         assert returncode == 1
