@@ -1,5 +1,33 @@
 # Current Authorized Action
 
+## 2026-10-03 qualify vendor facts through native auth helper
+
+PR #134 is merged at
+`7c29a470c35b61646e6f6c6a646d3fab9eefb497`; do not repeat the digest-contract
+repair. PR #133 is closed and superseded because its installer-side `runuser`
+execution is weaker than the existing production native auth isolation.
+
+Current work is Draft PR #135,
+`codex/r12-qualified-vendor-enrollment`, head
+`c78a0ac9895bcffa62a7459a8cd174cc7e1dfc63`.
+First require the dedicated native CI evidence to run the exact pinned Codex
+0.159.3 ELF through `agentbox-waw-pane-bootstrap --auth-probe` and record the
+framed unauthenticated digest from that path. Do not guess between the already
+observed 628487... simple-empty-HOME digest and 76522c... native-shaped
+environment digest.
+
+Once terminal native evidence exists, add a closed release qualification
+record containing exact vendor version strings, final ELF SHA256 values and the
+native-path Codex unauthenticated digest. Automatic installer enrollment may
+consume only that record after proving the verified v2 executable inventory
+matches the same final executable digests and both WAW profiles remain disabled.
+It must execute no vendor CLI, read no Provider Secret and start no service.
+
+Then compose the qualified enrollment operation into the deferred fresh-install
+sequence, followed by fixed policy/activation/Web setup and the real
+Claude/Codex PC/Android/iOS/reboot/upgrade/rollback gates.
+
+
 ## 2026-10-02 Runtime-only vendor observation/enrollment
 
 Live GitHub state is now `main` =
