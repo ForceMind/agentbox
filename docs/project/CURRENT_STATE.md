@@ -1,8 +1,8 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-02T10:34:00Z"
-verified_by: "agentbox-vendor-observation-continuation"
+verified_at_utc: "2026-10-03T15:54:23Z"
+verified_by: "agentbox-qualified-vendor-enrollment"
 repository: "ForceMind/agentbox"
 ---
 
@@ -10,49 +10,55 @@ repository: "ForceMind/agentbox"
 
 ## 2026-10-03 qualified vendor enrollment continuation
 
-Live GitHub read-back: PR #134 is MERGED. Its exact head
-`24a66e93fbe90eaff7d1b592456adef0adcea3d5` completed Backend, Frontend,
-Security, Deployment, E2E and Release Candidate successfully; merge/main became
-`7c29a470c35b61646e6f6c6a646d3fab9eefb497`.
+PR #134 is MERGED at
+`7c29a470c35b61646e6f6c6a646d3fab9eefb497`; its exact source head
+`24a66e93fbe90eaff7d1b592456adef0adcea3d5` completed all six workflows.
+Draft #133 is CLOSED/unmerged and superseded because installer-side `runuser`
+did not satisfy the existing native auth-isolation contract.
 
-The corrected pinned-vendor Deployment evidence runs Claude Code 2.1.286 and
-Codex CLI 0.159.3 and uses the production length-framed
-`waw_vendor_probe_output_digest(stdout, stderr)` helper. A simple empty-HOME
-Codex observation produced
-`6284874c92abb47b118705966e92e67035c377e557dce041f4c15313961d0381`.
+Current Draft #135 / `codex/r12-qualified-vendor-enrollment` implements
+non-executing qualified enrollment. The fixed official artifact evidence pins:
+- Claude 2.1.286 final ELF SHA-256
+  `fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f`;
+- Codex 0.159.3 final decoded ELF SHA-256
+  `8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479`;
+- Codex production native-auth unauthenticated framed digest
+  `76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
 
-Draft PR #133 was reviewed and CLOSED without merge. Its Root-installer
-`runuser -u agentbox-runtime` observation changes UID but bypasses the already
-accepted native auth isolation contract (pre-birth cgroup, fixed FDs,
-user/PID/network namespaces, network denial and cleanup proof). It is retained
-as historical WIP only and is superseded by PR #135.
+The earlier simple empty-HOME subprocess digest
+`6284874c92abb47b118705966e92e67035c377e557dce041f4c15313961d0381`
+is diagnostic only. Real qualification proved that environment/isolation
+changes affect the exact output tuple, so it is not enrollment authority.
 
-Current Draft PR #135 / branch `codex/r12-qualified-vendor-enrollment`
-starts from merged #134. Real official-download Deployment evidence established
-the final executable digests:
-- Claude ELF:
-  `fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f`
-- Codex ELF:
-  `8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479`
+The first real official-Codex native run exposed an actual compatibility defect:
+AWRP placement succeeded, but Codex exited 101 with a panic/EPERM/thread-shaped
+diagnostic because auth seccomp denied all `socket/socketpair`. The narrow
+repair `293c4bffcf174c18c840f9787fc6d53be9444ed4` allows creation only for
+AF_UNIX while keeping AF_INET/AF_INET6 socket creation and all
+connect/bind/listen/accept/send/recv actions denied. Regression
+`f6eb036490c508571fea8e145e2a4c5079c9fc6a` requires a working local Unix
+socketpair and continued AF_INET EPERM.
 
-A second observation using a native-shaped environment in the superseded #133
-produced a different Codex framed digest
-`76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
-Therefore neither environment-derived digest is promoted to the production
-qualification contract yet. Current #135 head
-`c78a0ac9895bcffa62a7459a8cd174cc7e1dfc63` adds a dedicated Backend native
-evidence step that downloads the pinned Codex artifact, verifies/decodes it,
-passes the resulting ELF on FD5 through
-`agentbox-waw-pane-bootstrap --auth-probe`, requires AWRP placement,
-unauthenticated exit 1, <=4096 bytes and empty cgroup cleanup, and emits the
-production-path framed digest. Exact-head CI for that head is queued at this
-snapshot.
+Exact native evidence for `f6eb0364...` then succeeded:
+- ordinary native matrix: 109 passed, 1 prescribed skip;
+- actual pinned Codex through `agentbox-waw-pane-bootstrap --auth-probe`:
+  AWRP placed, exit 1, stdout 0 bytes, stderr 14 bytes, exact ELF digest above,
+  exact framed digest `76522c70...`, no panic/EPERM classification;
+- sanitizer native matrix: 60 passed, 1 prescribed skip.
 
-Do not reintroduce installer-side `runuser` execution merely to automate
-enrollment. After the native evidence is terminal, pin the exact qualified
-facts to the fixed release/executable inventory and let the installer publish
-only when the target manifest and AgentBox-owned binaries match those pins.
-Actual authenticated state remains a Runtime native-auth-probe responsibility.
+The branch also defines release-qualified vendor facts, revalidates the verified
+v2 executable inventory and current held vendor bytes, and exposes
+`enroll-qualified-waw-vendors`. The qualified path takes no version/digest
+arguments, executes no vendor CLI, reads no Provider Secret and starts no
+service. Explicit `enroll-waw-vendors` remains for independently qualified
+inputs. Runtime still owns the actual auth-state probe before Start/Resume.
+
+Documentation commits after the native evidence intentionally advance the PR
+head again. Do not merge from the earlier successful native head alone. Require
+all six workflows on the final documentation-inclusive exact head, then merge
+normally and read back main. This batch closes fixed-release enrollment
+qualification only; full fresh-install composition, authenticated Claude/Codex,
+PC/Android/iOS, reboot, upgrade/rollback and release remain open.
 
 ## 2026-10-02 Runtime vendor observation digest continuation
 
