@@ -838,20 +838,22 @@ def test_actual_pinned_codex_runs_through_native_auth_probe(
         _send_record_and_close(control, _auth_record(agent=2))
         control.settimeout(5.0)
         assert control.recv(8) == b"AWRP\x01\x01\x00\x00"
-        assert process.wait(timeout=5.0) == 1
+        returncode = process.wait(timeout=5.0)
         stdout = _read_to_eof(stdout_fd)
         stderr = _read_to_eof(stderr_fd)
-        assert len(stdout) + len(stderr) <= 4096
-        assert b"not logged in" in (stdout + stderr).lower()
+        digest = waw_vendor_probe_output_digest(stdout, stderr)
         _wait_cgroup_empty()
+        print("codex native auth-probe exit:", returncode)
+        print("codex native auth-probe stdout bytes:", len(stdout))
+        print("codex native auth-probe stderr bytes:", len(stderr))
         print(
             "codex native auth-probe executable SHA256:",
             hashlib.sha256(binary).hexdigest(),
         )
-        print(
-            "codex native auth-probe unauthenticated framed SHA256:",
-            waw_vendor_probe_output_digest(stdout, stderr),
-        )
+        print("codex native auth-probe framed SHA256:", digest)
+        assert returncode == 1
+        assert len(stdout) + len(stderr) <= 4096
+        assert b"not logged in" in (stdout + stderr).lower()
     finally:
         control.close()
         for descriptor in descriptors:
