@@ -51,6 +51,7 @@ jobs:
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
+          AGENTBOX_WAW_ACTUAL_CODEX_AUTH_PROBE: "1"
       - run: python scripts/build-waw-native.py --sanitizers --output build/native/waw-sanitized
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw-sanitized --no-build
       - run: |
