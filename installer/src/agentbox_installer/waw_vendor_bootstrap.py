@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from agentbox_runtime.waw_executable import _validate_elf_header
+from agentbox_runtime.waw_process_profile import ExecutableInventoryV1
 
 from agentbox_installer.waw_manifest_install import WAWManifestInstallError, WAWManifestIssuer
 
@@ -22,6 +23,15 @@ class VendorDownload:
     url: str
     sha256: str
     archive_member: str | None
+
+
+@dataclass(frozen=True)
+class VendorQualification:
+    kind: str
+    version: str
+    version_output: str
+    executable_sha256: str
+    codex_unauthenticated_output_sha256: str | None = None
 
 
 VENDOR_DOWNLOADS = (
@@ -38,6 +48,22 @@ VENDOR_DOWNLOADS = (
         "https://releases.openai.com/codex/releases/0.159.3/codex-x86_64-unknown-linux-musl.tar.gz",
         "b48ca1b2d6b1bf42b944e02c3d937c898e24651916684cdc35fdedf31b291bcb",
         "codex-x86_64-unknown-linux-musl",
+    ),
+)
+
+QUALIFIED_VENDOR_FACTS = (
+    VendorQualification(
+        "claude",
+        "2.1.286",
+        "2.1.286 (Claude Code)",
+        "fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f",
+    ),
+    VendorQualification(
+        "codex",
+        "0.159.3",
+        "codex-cli 0.159.3",
+        "8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479",
+        "76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c",
     ),
 )
 _MAXIMUM = 256 * 1024 * 1024
@@ -71,6 +97,48 @@ def decode_vendor_download(spec: VendorDownload, raw: bytes) -> bytes:
 class WAWVendorBootstrap:
     def __init__(self, issuer: WAWManifestIssuer) -> None:
         self.issuer = issuer
+
+    def qualified_enrollment_values(
+        self, inventory: ExecutableInventoryV1
+    ) -> dict[str, str]:
+        """Verify installed AgentBox-owned vendor ELFs against qualified release facts."""
+
+        if type(inventory) is not ExecutableInventoryV1:
+            raise TypeError("qualified vendor inventory is invalid")
+        downloads = {spec.kind: spec for spec in VENDOR_DOWNLOADS}
+        qualifications = {item.kind: item for item in QUALIFIED_VENDOR_FACTS}
+        if set(downloads) != {"claude", "codex"} or set(qualifications) != set(downloads):
+            raise WAWManifestInstallError("qualified vendor set is invalid")
+        entries = {entry.kind: entry for entry in inventory.executables}
+        if not set(qualifications).issubset(entries):
+            raise WAWManifestInstallError("qualified vendor inventory is incomplete")
+
+        for kind, qualification in qualifications.items():
+            spec = downloads[kind]
+            entry = entries[kind]
+            if (
+                spec.version != qualification.version
+                or entry.path != f"/usr/local/bin/{kind}"
+                or entry.sha256 != qualification.executable_sha256
+            ):
+                raise WAWManifestInstallError(
+                    "installed vendor does not match the qualified release"
+                )
+            raw = self.issuer._read(entry.path, entry.max_bytes, executable=True)
+            if hashlib.sha256(raw).hexdigest() != qualification.executable_sha256:
+                raise WAWManifestInstallError(
+                    "installed vendor bytes do not match the qualified release"
+                )
+        self.issuer.revalidate()
+
+        codex = qualifications["codex"]
+        if codex.codex_unauthenticated_output_sha256 is None:
+            raise WAWManifestInstallError("qualified Codex unauthenticated digest is missing")
+        return {
+            "claude_vendor_version": qualifications["claude"].version,
+            "codex_vendor_version": codex.version,
+            "codex_unauthenticated_output_sha256": codex.codex_unauthenticated_output_sha256,
+        }
 
     def install(
         self, *, plan: bool, recover: bool, download: Callable[[VendorDownload], bytes]
