@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import hashlib
 import os
 import platform
 import select
@@ -13,6 +14,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from agentbox_installer.waw_vendor_bootstrap import VENDOR_DOWNLOADS, decode_vendor_download
+from agentbox_runtime.waw_vendor_probe import waw_vendor_probe_output_digest
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "scripts" / "build-waw-native.py"
@@ -788,6 +791,88 @@ def test_auth_probe_helper_death_reaps_hanging_namespace_descendants_and_closes_
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5.0)
+
+
+@pytest.mark.skipif(
+    os.environ.get("AGENTBOX_WAW_ACTUAL_CODEX_AUTH_PROBE") != "1",
+    reason="actual pinned Codex download is reserved for the native CI evidence gate",
+)
+def test_actual_pinned_codex_runs_through_native_auth_probe(
+    native_binaries: Path, tmp_path: Path
+) -> None:
+    spec = next(item for item in VENDOR_DOWNLOADS if item.kind == "codex")
+    artifact = tmp_path / "codex.download"
+    subprocess.run(  # noqa: S603 - fixed pinned HTTPS artifact
+        [
+            "/usr/bin/curl",
+            "-q",
+            "-fsSL",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-time",
+            "240",
+            "--max-filesize",
+            "268435456",
+            "-o",
+            str(artifact),
+            spec.url,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=250,
+    )
+    binary = decode_vendor_download(spec, artifact.read_bytes())
+    vendor = tmp_path / "codex"
+    vendor.write_bytes(binary)
+    vendor.chmod(0o755)
+
+    home = Path("/var/lib/agentbox-waw/vendor-homes/codex")
+    before_home = {item.relative_to(home) for item in home.rglob("*")}
+    before_scratch = {item.relative_to(SCRATCH_SOURCE) for item in SCRATCH_SOURCE.rglob("*")}
+    process, control, stdout_fd, stderr_fd, descriptors = _mapped_process(
+        native_binaries, vendor, agent=2
+    )
+    try:
+        _send_record_and_close(control, _auth_record(agent=2))
+        control.settimeout(5.0)
+        assert control.recv(8) == b"AWRP\x01\x01\x00\x00"
+        assert process.wait(timeout=5.0) == 1
+        stdout = _read_to_eof(stdout_fd)
+        stderr = _read_to_eof(stderr_fd)
+        assert len(stdout) + len(stderr) <= 4096
+        assert b"not logged in" in (stdout + stderr).lower()
+        _wait_cgroup_empty()
+        print(
+            "codex native auth-probe executable SHA256:",
+            hashlib.sha256(binary).hexdigest(),
+        )
+        print(
+            "codex native auth-probe unauthenticated framed SHA256:",
+            waw_vendor_probe_output_digest(stdout, stderr),
+        )
+    finally:
+        control.close()
+        for descriptor in descriptors:
+            os.close(descriptor)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5.0)
+        for root, before in ((home, before_home), (SCRATCH_SOURCE, before_scratch)):
+            current = sorted(
+                root.rglob("*"),
+                key=lambda item: len(item.relative_to(root).parts),
+                reverse=True,
+            )
+            for item in current:
+                if item.relative_to(root) in before:
+                    continue
+                if item.is_dir() and not item.is_symlink():
+                    item.rmdir()
+                else:
+                    item.unlink()
+        _wait_cgroup_empty()
 
 
 def test_auth_protocol_layout_and_portable_mode_are_separate_from_interactive_ready(
