@@ -240,8 +240,7 @@ def test_cli_qualified_enrollment_uses_verified_fixed_values_without_arguments(
         return dict(values)
 
     monkeypatch.setattr(
-        "agentbox_installer.waw_vendor_bootstrap.WAWVendorBootstrap."
-        "qualified_enrollment_values",
+        "agentbox_installer.waw_vendor_bootstrap.WAWVendorBootstrap." "qualified_enrollment_values",
         qualified,
     )
     args = [
