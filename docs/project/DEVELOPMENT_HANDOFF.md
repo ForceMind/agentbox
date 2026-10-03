@@ -1,5 +1,32 @@
 # AgentBox 开发交接 — 2026-10-02
 
+## 2026-10-03 #135 vendor qualification continuation
+
+Latest durable main before this Draft is
+`7c29a470c35b61646e6f6c6a646d3fab9eefb497` (PR #134 merge). #134 unified the
+CI and Runtime Codex output-digest algorithm and completed all six exact-head
+workflows successfully.
+
+Draft #133 is intentionally CLOSED/unmerged. Its useful enrollment publication
+work is historical evidence, but its Root-installer `runuser` vendor execution
+must not become the production observation path because it does not satisfy the
+existing native auth isolation contract.
+
+Continue Draft #135 `codex/r12-qualified-vendor-enrollment`. Published official
+artifact evidence already pins Claude 2.1.286 ELF SHA256
+`fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f`
+and Codex 0.159.3 ELF SHA256
+`8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479`.
+The immediate gate is the new exact native-helper official-Codex probe at head
+`c78a0ac9895bcffa62a7459a8cd174cc7e1dfc63`. Use its terminal log to pin the
+only production-qualified unauthenticated framed digest; do not reuse either
+earlier environment-dependent value without that proof.
+
+Afterwards implement non-executing automatic enrollment bound to the fixed
+manifest/inventory and continue the same fresh-install -> real dual CLI ->
+PC/Android/iOS -> reboot/upgrade/rollback -> release path.
+
+
 ## 2026-10-02 #131 合并后继续开发
 
 实时 GitHub 状态覆盖下方历史快照：当前 `main` =
