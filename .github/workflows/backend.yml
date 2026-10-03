@@ -51,6 +51,13 @@ jobs:
         env:
           AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw
           AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
+      - name: Prove pinned Codex through the native auth helper
+        run: |
+          echo $ | sudo tee "/sys/fs/cgroup/agentbox-waw-test/ws-${WORKSPACE_HASH}-g7/workload/cgroup.procs" >/dev/null
+          python -m pytest -q -s tests/native/test_waw_auth_native_linux.py -k actual_pinned_codex_runs_through_native_auth_probe
+        env:
+          AGENTBOX_WAW_NATIVE_BIN_DIR: build/native/waw
+          AGENTBOX_WAW_NATIVE_HOST_GATE: "1"
           AGENTBOX_WAW_ACTUAL_CODEX_AUTH_PROBE: "1"
       - run: python scripts/build-waw-native.py --sanitizers --output build/native/waw-sanitized
       - run: python scripts/check-waw-native.py --binary-dir build/native/waw-sanitized --no-build
