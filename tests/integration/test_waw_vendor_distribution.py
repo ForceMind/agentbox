@@ -86,7 +86,11 @@ def test_actual_pinned_vendor_version_and_unauthenticated_probe(tmp_path: Path) 
         binary = decode_vendor_download(spec, artifact.read_bytes())
         executable.write_bytes(binary)
         executable.chmod(0o755)
-        print(spec.kind, "actual verified native executable SHA256:", hashlib.sha256(binary).hexdigest())
+        print(
+            spec.kind,
+            "actual verified native executable SHA256:",
+            hashlib.sha256(binary).hexdigest(),
+        )
         home = tmp_path / (spec.kind + "-home")
         home.mkdir(mode=0o700)
         env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "LANG": "C.UTF-8"}
