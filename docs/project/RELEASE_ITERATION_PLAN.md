@@ -1,18 +1,20 @@
 # AgentBox 逐版本交付计划
 
-## 2026-10-02 当前计划与交接
+## 2026-10-03 当前计划与交接
 
 当前状态与阻断以 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 为准。
 只交付一个完整单机首版：Owner 自行一条命令安装 → PC/手机 → 正式 Project →
 真实 Claude/Codex 输入输出、resize、detach/reconnect、exact Stop → 恢复/回退。
-源码仍 rc30，未交付可用版本，不因基础 PR 另起版本。
+源码仍 rc30，未交付可用版本，不因内部资格化 PR 另起产品版本。
 
-Runtime graph/完整资源、Web/HTTPS/setup、固定 vendor、deferred 首装已有合并
-成果；依赖候选在 Draft #131。guard crash-window 已有软件修复，下一步先完成
-最终 exact-head CI 与实际 APT/boot 资格化，再组合真实观察/enrollment/完整
-首装，最后完成客户端/CLI/恢复验收。
-ADR 0010/0011 已批准，PC/手机覆盖旧 Mac/MV3-only 顺序。默认单智能体，
-后续 70 项范围保留；不推进 #117 或旁支。下方旧“当前事实”“下一步”是历史
+APT/package-guard、Runtime graph/完整资源、Web/HTTPS/setup、固定 vendor 与 deferred
+首装已有软件/CI成果。当前 Draft #135 已把固定官方 vendor 的最终 ELF、Codex
+production native auth 未登录 digest 与不执行 vendor CLI 的 qualified enrollment
+闭合；真实 Codex native helper 和 sanitizer evidence 已通过。当前只等待 #135 最终
+documentation-inclusive exact-head 六套 CI、正常 merge 与 read-back。随后直接把
+deferred apply/依赖/vendor/manifests/policies/qualified enrollment/activation/Web setup
+组合成完整 fresh-install，再完成客户端/双 CLI/恢复验收。
+ADR 0010/0011 已批准；不推进 #117 或旁支。下方旧“当前事实”“下一步”是历史
 阶段记录，不覆盖本段及交接入口。
 
 ## 历史版本计划记录
