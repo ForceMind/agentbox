@@ -114,12 +114,8 @@ def test_qualified_enrollment_revalidates_exact_installed_vendor_bytes(
         module,
         "QUALIFIED_VENDOR_FACTS",
         (
-            module.VendorQualification(
-                "claude", "fixture", "fixture claude", claude_sha256
-            ),
-            module.VendorQualification(
-                "codex", "fixture", "fixture codex", codex_sha256, "d" * 64
-            ),
+            module.VendorQualification("claude", "fixture", "fixture claude", claude_sha256),
+            module.VendorQualification("codex", "fixture", "fixture codex", codex_sha256, "d" * 64),
         ),
     )
     inventory = _qualified_inventory(
@@ -153,12 +149,8 @@ def test_qualified_enrollment_never_adopts_distro_vendor_path(
         module,
         "QUALIFIED_VENDOR_FACTS",
         (
-            module.VendorQualification(
-                "claude", "fixture", "fixture claude", claude_sha256
-            ),
-            module.VendorQualification(
-                "codex", "fixture", "fixture codex", codex_sha256, "d" * 64
-            ),
+            module.VendorQualification("claude", "fixture", "fixture claude", claude_sha256),
+            module.VendorQualification("codex", "fixture", "fixture codex", codex_sha256, "d" * 64),
         ),
     )
 
