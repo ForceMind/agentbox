@@ -96,6 +96,10 @@ def create_parser() -> argparse.ArgumentParser:
     dependencies.add_argument("--plan", action="store_true")
     dependencies.add_argument("--recover", action="store_true")
     dependencies.add_argument("--json", action="store_true")
+    qualified_enrollment = commands.add_parser("enroll-qualified-waw-vendors")
+    qualified_enrollment.add_argument("--plan", action="store_true")
+    qualified_enrollment.add_argument("--recover", action="store_true")
+    qualified_enrollment.add_argument("--json", action="store_true")
     enrollment = commands.add_parser("enroll-waw-vendors")
     enrollment.add_argument("--claude-version", required=True)
     enrollment.add_argument("--codex-version", required=True)
@@ -268,6 +272,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 installer.activate_waw(plan=args.plan, recover=args.recover),
                 json_output=json_output,
             )
+            return 0
+        if args.command == "enroll-qualified-waw-vendors":
+            enrollment_result = installer.enroll_qualified_waw_vendors(
+                recover=args.recover,
+                plan=args.plan,
+            )
+            _print(asdict(enrollment_result), json_output=json_output)
             return 0
         if args.command == "enroll-waw-vendors":
             enrollment_result = installer.enroll_waw_vendors(
