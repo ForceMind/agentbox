@@ -871,8 +871,7 @@ def test_actual_pinned_codex_runs_through_native_auth_probe(
         print(
             "codex native auth-probe stderr classes:",
             ",".join(
-                f"{name}={str(value).lower()}"
-                for name, value in sorted(classifications.items())
+                f"{name}={str(value).lower()}" for name, value in sorted(classifications.items())
             ),
         )
         assert hashlib.sha256(binary).hexdigest() == qualification.executable_sha256
