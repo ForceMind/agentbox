@@ -31,6 +31,15 @@ jobs:
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "/run/agentbox-waw/tmp/${WORKSPACE_HASH}" "/run/agentbox-waw/tmp/${AUTH_WORKSPACE_HASH}"
           sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes
           sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" /var/lib/agentbox-waw/vendor-homes/claude /var/lib/agentbox-waw/vendor-homes/codex
+          for vendor in claude codex; do
+            sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" \
+              "/var/lib/agentbox-waw/vendor-homes/$vendor/.config" \
+              "/var/lib/agentbox-waw/vendor-homes/$vendor/.config/$vendor" \
+              "/var/lib/agentbox-waw/vendor-homes/$vendor/.cache" \
+              "/var/lib/agentbox-waw/vendor-homes/$vendor/.local" \
+              "/var/lib/agentbox-waw/vendor-homes/$vendor/.local/share" \
+              "/var/lib/agentbox-waw/vendor-homes/$vendor/.local/state"
+          done
           sudo install -d -m 0755 -o root -g root /etc/claude-code /etc/codex
           sudo install -d -m 0755 -o root -g root /srv/agentbox/projects
           sudo install -m 0644 -o root -g root /dev/null /srv/agentbox/projects/auth-probe-canary
