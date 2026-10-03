@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/mount.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/types.h>
@@ -799,12 +800,6 @@ static int apply_seccomp(int deny_network) {
     DENY_SYSCALL(mount_setattr);
 #endif
     if (deny_network != 0) {
-#ifdef SYS_socket
-        DENY_SYSCALL(socket);
-#endif
-#ifdef SYS_socketpair
-        DENY_SYSCALL(socketpair);
-#endif
 #ifdef SYS_connect
         DENY_SYSCALL(connect);
 #endif
@@ -902,6 +897,32 @@ static int apply_seccomp(int deny_network) {
     filters[index++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS,
                                                      offsetof(struct seccomp_data, nr));
 #endif
+    if (deny_network != 0) {
+#ifdef SYS_socket
+        filters[index++] = (struct sock_filter)BPF_JUMP(
+            BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)SYS_socket, 0U, 3U);
+        filters[index++] = (struct sock_filter)BPF_STMT(
+            BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
+        filters[index++] = (struct sock_filter)BPF_JUMP(
+            BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)AF_UNIX, 1U, 0U);
+        filters[index++] = (struct sock_filter)BPF_STMT(
+            BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (uint32_t)EPERM);
+        filters[index++] = (struct sock_filter)BPF_STMT(
+            BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr));
+#endif
+#ifdef SYS_socketpair
+        filters[index++] = (struct sock_filter)BPF_JUMP(
+            BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)SYS_socketpair, 0U, 3U);
+        filters[index++] = (struct sock_filter)BPF_STMT(
+            BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
+        filters[index++] = (struct sock_filter)BPF_JUMP(
+            BPF_JMP | BPF_JEQ | BPF_K, (uint32_t)AF_UNIX, 1U, 0U);
+        filters[index++] = (struct sock_filter)BPF_STMT(
+            BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (uint32_t)EPERM);
+        filters[index++] = (struct sock_filter)BPF_STMT(
+            BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr));
+#endif
+    }
     for (size_t denied_index = 0; denied_index < denied_count; ++denied_index) {
         filters[index++] = (struct sock_filter)BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,
                                                          (uint32_t)denied[denied_index], 0U, 1U);
