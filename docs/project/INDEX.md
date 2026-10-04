@@ -1,7 +1,7 @@
 # AgentBox Project Context Index
 
-- [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-02 新对话/新模型首读入口；
-  Git 基线、WIP 保护、已合并成果、Draft #131、首版未完成项与恢复步骤。
+- [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-03 新对话/新模型首读入口；
+  当前 main、Draft #135、已资格化 vendor enrollment、完整 fresh-install 下一步及未完成验收。
 - [Deployable release plan](DEPLOYABLE_RELEASE_PLAN.md)：Owner 自行运行一键安装的
   首版目标、实际命令入口、PC/手机范围及部署链剩余依赖。
 - [Cross-platform Web bootstrap proposal](../adr/0010-cross-platform-web-bootstrap.md)：

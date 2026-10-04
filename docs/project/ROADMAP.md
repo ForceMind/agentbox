@@ -1,11 +1,16 @@
 # AgentBox Roadmap
 
-## 2026-10-02 接手顺序
+## 2026-10-03 接手顺序
 
 [开发交接](DEVELOPMENT_HANDOFF.md) 为当前状态入口；
 [逐版本计划](RELEASE_ITERATION_PLAN.md) 和 [首版部署计划](DEPLOYABLE_RELEASE_PLAN.md)
 定义当前验收。只推进完整单机首版：一条安装命令、PC/手机、真实双 CLI 与恢复。
-软件已持续实施，首版尚未完成；下方“not started”等是当时的历史快照。
+
+PR #134 已合并并统一真实 vendor/Runtime digest framing。当前 Draft #135 已完成
+固定 Claude/Codex ELF 资格化、真实 Codex native auth probe 和不执行 vendor CLI 的
+qualified enrollment；其最终 documentation-inclusive exact-head CI 与 merge/read-back
+仍是当前动作。#135 合并后直接组合完整 fresh-install，再进入真实客户端/双 CLI/
+reboot/upgrade/rollback。下方“not started”等均为历史阶段快照，不覆盖本节。
 长期 70 项范围保留，在首版验收后逐版本展开。
 
 ## Current release focus — 2026-09-29

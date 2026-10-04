@@ -17,7 +17,7 @@ import time
 import tomllib
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
@@ -809,74 +809,125 @@ class AgentBoxInstaller:
         recover: bool = False,
         plan: bool = False,
     ) -> WAWEnrollmentPublication:
-        """Publish only fixed non-secret observations; never enable Runtime mode."""
+        """Publish explicit non-secret observations; never enable Runtime mode."""
         self.host.require_root()
         if type(recover) is not bool or type(plan) is not bool:
             raise TypeError("enrollment plan/recovery flags must be bool")
+        values = {
+            "claude_vendor_version": claude_version,
+            "codex_vendor_version": codex_version,
+            "codex_unauthenticated_output_sha256": codex_unauthenticated_output_sha256,
+        }
         if plan:
             return self._enroll_waw_vendors_locked(
-                claude_version=claude_version,
-                codex_version=codex_version,
-                codex_unauthenticated_output_sha256=codex_unauthenticated_output_sha256,
+                values=values,
                 recover=recover,
                 plan=True,
             )
         with self._lifecycle_lock():
             return self._enroll_waw_vendors_locked(
-                claude_version=claude_version,
-                codex_version=codex_version,
-                codex_unauthenticated_output_sha256=codex_unauthenticated_output_sha256,
+                values=values,
                 recover=recover,
                 plan=False,
             )
 
-    def _enroll_waw_vendors_locked(
-        self,
-        *,
-        claude_version: str,
-        codex_version: str,
-        codex_unauthenticated_output_sha256: str,
-        recover: bool,
-        plan: bool,
+    def enroll_qualified_waw_vendors(
+        self, *, recover: bool = False, plan: bool = False
     ) -> WAWEnrollmentPublication:
+        """Publish only the release-qualified AgentBox-owned vendor facts."""
+
+        self.host.require_root()
+        if type(recover) is not bool or type(plan) is not bool:
+            raise TypeError("qualified enrollment plan/recovery flags must be bool")
+        if plan:
+            return self._enroll_qualified_waw_vendors_locked(
+                recover=recover,
+                plan=True,
+            )
+        with self._lifecycle_lock():
+            return self._enroll_qualified_waw_vendors_locked(
+                recover=recover,
+                plan=False,
+            )
+
+    def _waw_enrollment_context(
+        self,
+    ) -> tuple[int, int, int, int, CrossManifestPinV2]:
         if self.installation_state() != "installed":
             raise InstallError("vendor enrollment requires a completed AgentBox installation")
-        runtime_uid, runtime_gid = self.host.owner_ids("agentbox-runtime", "agentbox-runtime")
+        runtime_uid, runtime_gid = self.host.owner_ids(
+            "agentbox-runtime", "agentbox-runtime"
+        )
         if runtime_uid == 0 or runtime_gid == 0:
             raise InstallError("vendor enrollment Runtime identity is invalid")
         owner_uid = 0 if self.host.real_host else os.geteuid()
         root_gid = 0 if self.host.real_host else os.getegid()
         file_runtime_gid = runtime_gid if self.host.real_host else os.getegid()
+        return (
+            owner_uid,
+            root_gid,
+            runtime_uid,
+            file_runtime_gid,
+            self._load_waw_enrollment_manifest(
+                owner_uid=owner_uid,
+                root_gid=root_gid,
+                file_runtime_gid=file_runtime_gid,
+            ),
+        )
 
-        def load_pinned_manifest() -> CrossManifestPinV2:
-            try:
-                self._validate_fixed_waw_file(
-                    self.layout.map("/etc/agentbox/waw-api-profile.v1.json"),
-                    owner="root",
-                    group="agentbox",
-                    mode=0o440,
-                    allowed=(_WAW_API_DISABLED_PROFILE,),
-                )
-                self._validate_fixed_waw_file(
-                    self.layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json"),
-                    owner="root",
-                    group="agentbox-runtime",
-                    mode=0o440,
-                    allowed=(_WAW_RUNTIME_DISABLED_PROFILE,),
-                )
-            except InstallError as exc:
-                raise InstallError("vendor enrollment requires safe disabled WAW profiles") from exc
-            return load_verified_canonical_waw_manifest_bundle_v2(
-                self.layout.map("/var/lib/agentbox-waw/runtime-host-installation.v2.json"),
-                self.layout.map("/usr/share/agentbox/waw"),
-                expected_runtime_uid=owner_uid,
-                expected_runtime_gid=file_runtime_gid,
-                expected_public_uid=owner_uid,
-                expected_public_gid=root_gid,
-                runtime_trusted_root=self.layout.root,
+    def _load_waw_enrollment_manifest(
+        self, *, owner_uid: int, root_gid: int, file_runtime_gid: int
+    ) -> CrossManifestPinV2:
+        try:
+            self._validate_fixed_waw_file(
+                self.layout.map("/etc/agentbox/waw-api-profile.v1.json"),
+                owner="root",
+                group="agentbox",
+                mode=0o440,
+                allowed=(_WAW_API_DISABLED_PROFILE,),
             )
+            self._validate_fixed_waw_file(
+                self.layout.map("/var/lib/agentbox-waw/runtime-profile.v1.json"),
+                owner="root",
+                group="agentbox-runtime",
+                mode=0o440,
+                allowed=(_WAW_RUNTIME_DISABLED_PROFILE,),
+            )
+        except InstallError as exc:
+            raise InstallError(
+                "vendor enrollment requires safe disabled WAW profiles"
+            ) from exc
+        return load_verified_canonical_waw_manifest_bundle_v2(
+            self.layout.map("/var/lib/agentbox-waw/runtime-host-installation.v2.json"),
+            self.layout.map("/usr/share/agentbox/waw"),
+            expected_runtime_uid=owner_uid,
+            expected_runtime_gid=file_runtime_gid,
+            expected_public_uid=owner_uid,
+            expected_public_gid=root_gid,
+            runtime_trusted_root=self.layout.root,
+        )
 
-        manifest = load_pinned_manifest()
+    def _publish_waw_vendor_enrollment_locked(
+        self,
+        *,
+        values: dict[str, str],
+        owner_uid: int,
+        root_gid: int,
+        file_runtime_gid: int,
+        manifest: CrossManifestPinV2,
+        recover: bool,
+        plan: bool,
+        revalidate_extra: Callable[[], None] | None = None,
+    ) -> WAWEnrollmentPublication:
+        expected = {
+            "claude_vendor_version",
+            "codex_vendor_version",
+            "codex_unauthenticated_output_sha256",
+        }
+        if set(values) != expected or any(
+            type(value) is not str or not value for value in values.values()
+        ):
+            raise InstallError("vendor enrollment values are invalid")
         runtime = manifest.runtime
         fields: dict[str, object] = {
             "schema_version": "agentbox-waw-vendor-enrollment.v1",
@@ -885,14 +936,21 @@ class AgentBoxInstaller:
             "host_manifest_digest": manifest.runtime_manifest_digest,
             "enrollment_epoch": runtime.enrollment_epoch,
             "enrollment_state": runtime.enrollment_state,
-            "claude_vendor_version": claude_version,
-            "codex_vendor_version": codex_version,
-            "codex_unauthenticated_output_sha256": codex_unauthenticated_output_sha256,
+            **values,
         }
 
         def revalidate() -> None:
-            if load_pinned_manifest() != manifest:
+            if (
+                self._load_waw_enrollment_manifest(
+                    owner_uid=owner_uid,
+                    root_gid=root_gid,
+                    file_runtime_gid=file_runtime_gid,
+                )
+                != manifest
+            ):
                 raise InstallError("vendor enrollment manifest changed")
+            if revalidate_extra is not None:
+                revalidate_extra()
 
         return WAWEnrollmentPublisher(
             self.layout.root,
@@ -900,6 +958,57 @@ class AgentBoxInstaller:
             root_gid=root_gid,
             runtime_gid=file_runtime_gid,
         ).publish(fields, revalidate=revalidate, recover=recover, plan=plan)
+
+    def _enroll_waw_vendors_locked(
+        self,
+        *,
+        values: dict[str, str],
+        recover: bool,
+        plan: bool,
+    ) -> WAWEnrollmentPublication:
+        owner_uid, root_gid, _runtime_uid, file_runtime_gid, manifest = (
+            self._waw_enrollment_context()
+        )
+        return self._publish_waw_vendor_enrollment_locked(
+            values=values,
+            owner_uid=owner_uid,
+            root_gid=root_gid,
+            file_runtime_gid=file_runtime_gid,
+            manifest=manifest,
+            recover=recover,
+            plan=plan,
+        )
+
+    def _enroll_qualified_waw_vendors_locked(
+        self, *, recover: bool, plan: bool
+    ) -> WAWEnrollmentPublication:
+        owner_uid, root_gid, runtime_uid, file_runtime_gid, manifest = (
+            self._waw_enrollment_context()
+        )
+        version = self.current_version()
+        if version is None:
+            raise InstallError("qualified vendor enrollment release is unavailable")
+        issuer = WAWManifestIssuer(
+            self.layout.root,
+            version,
+            owner_uid=owner_uid,
+            root_gid=root_gid,
+            runtime_uid=runtime_uid if self.host.real_host else os.geteuid(),
+            runtime_gid=file_runtime_gid,
+        )
+        values = WAWVendorBootstrap(issuer).qualified_enrollment_values(
+            manifest.executable_inventory
+        )
+        return self._publish_waw_vendor_enrollment_locked(
+            values=values,
+            owner_uid=owner_uid,
+            root_gid=root_gid,
+            file_runtime_gid=file_runtime_gid,
+            manifest=manifest,
+            recover=recover,
+            plan=plan,
+            revalidate_extra=issuer.revalidate,
+        )
 
     def installation_state(self) -> str:
         receipt = self._read_receipt()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import hashlib
 import os
 import platform
 import select
@@ -13,6 +14,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from agentbox_installer.waw_vendor_bootstrap import (
+    QUALIFIED_VENDOR_FACTS,
+    VENDOR_DOWNLOADS,
+    decode_vendor_download,
+)
+from agentbox_runtime.waw_vendor_probe import waw_vendor_probe_output_digest
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "scripts" / "build-waw-native.py"
@@ -168,7 +175,9 @@ int main(int argc, char **argv) {
     const char *home_marker;
     char cwd[256];
     char cgroup[512];
+    char local_byte = '\0';
     int fd;
+    int local_pair[2] = {-1, -1};
     ssize_t count;
     home_marker = strcmp(agent, "claude") == 0
                       ? "/var/lib/agentbox-waw/vendor-homes/claude/.auth-home-canary"
@@ -194,6 +203,10 @@ int main(int argc, char **argv) {
 #ifdef AUTH_EARLY_EXIT
     return 42;
 #endif
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, local_pair) != 0 ||
+        write(local_pair[0], "u", 1U) != 1 ||
+        read(local_pair[1], &local_byte, 1U) != 1 || local_byte != 'u' ||
+        close(local_pair[0]) != 0 || close(local_pair[1]) != 0) return 100;
     errno = 0;
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd >= 0 || errno != EPERM) return 94;
@@ -788,6 +801,127 @@ def test_auth_probe_helper_death_reaps_hanging_namespace_descendants_and_closes_
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5.0)
+
+
+@pytest.mark.skipif(
+    os.environ.get("AGENTBOX_WAW_ACTUAL_CODEX_AUTH_PROBE") != "1",
+    reason="actual pinned Codex download is reserved for the native CI evidence gate",
+)
+def test_actual_pinned_codex_runs_through_native_auth_probe(
+    native_binaries: Path, tmp_path: Path
+) -> None:
+    spec = next(item for item in VENDOR_DOWNLOADS if item.kind == "codex")
+    qualification = next(item for item in QUALIFIED_VENDOR_FACTS if item.kind == "codex")
+    assert qualification.version == spec.version
+    artifact = tmp_path / "codex.download"
+    subprocess.run(  # noqa: S603 - fixed pinned HTTPS artifact
+        [
+            "/usr/bin/curl",
+            "-q",
+            "-fsSL",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-time",
+            "240",
+            "--max-filesize",
+            "268435456",
+            "-o",
+            str(artifact),
+            spec.url,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=250,
+    )
+    binary = decode_vendor_download(spec, artifact.read_bytes())
+    vendor = tmp_path / "codex"
+    vendor.write_bytes(binary)
+    vendor.chmod(0o755)
+
+    home = Path("/var/lib/agentbox-waw/vendor-homes/codex")
+    before_home = {item.relative_to(home) for item in home.rglob("*")}
+    before_scratch = {item.relative_to(SCRATCH_SOURCE) for item in SCRATCH_SOURCE.rglob("*")}
+    process, control, stdout_fd, stderr_fd, descriptors = _mapped_process(
+        native_binaries, vendor, agent=2
+    )
+    try:
+        _send_record_and_close(control, _auth_record(agent=2))
+        control.settimeout(5.0)
+        assert control.recv(8) == b"AWRP\x01\x01\x00\x00"
+        returncode = process.wait(timeout=5.0)
+        stdout = _read_to_eof(stdout_fd)
+        stderr = _read_to_eof(stderr_fd)
+        digest = waw_vendor_probe_output_digest(stdout, stderr)
+        _wait_cgroup_empty()
+        print("codex native auth-probe exit:", returncode)
+        print("codex native auth-probe stdout bytes:", len(stdout))
+        print("codex native auth-probe stderr bytes:", len(stderr))
+        print(
+            "codex native auth-probe executable SHA256:",
+            hashlib.sha256(binary).hexdigest(),
+        )
+        print("codex native auth-probe framed SHA256:", digest)
+        stderr_lower = stderr.lower()
+        classifications = {
+            "panic": b"panicked at" in stderr_lower or b"panic" in stderr_lower,
+            "operation_not_permitted": b"operation not permitted" in stderr_lower,
+            "permission_denied": b"permission denied" in stderr_lower,
+            "failed_to_spawn_thread": b"failed to spawn thread" in stderr_lower,
+            "pthread": b"pthread" in stderr_lower,
+            "clone": b"clone" in stderr_lower,
+            "unshare": b"unshare" in stderr_lower,
+            "namespace": b"namespace" in stderr_lower,
+            "landlock": b"landlock" in stderr_lower,
+            "seccomp": b"seccomp" in stderr_lower,
+            "socket": b"socket" in stderr_lower,
+            "socketpair": b"socketpair" in stderr_lower,
+            "tokio": b"tokio" in stderr_lower,
+            "rayon": b"rayon" in stderr_lower,
+            "keyring": b"keyring" in stderr_lower,
+            "dbus": b"dbus" in stderr_lower,
+            "mio": b"mio" in stderr_lower,
+            "signal": b"signal" in stderr_lower,
+            "epoll": b"epoll" in stderr_lower,
+            "eventfd": b"eventfd" in stderr_lower,
+            "thread": b"thread" in stderr_lower,
+            "not_found": b"not found" in stderr_lower
+            or b"no such file or directory" in stderr_lower,
+            "runtime": b"runtime" in stderr_lower,
+        }
+        print(
+            "codex native auth-probe stderr classes:",
+            ",".join(
+                f"{name}={str(value).lower()}" for name, value in sorted(classifications.items())
+            ),
+        )
+        assert hashlib.sha256(binary).hexdigest() == qualification.executable_sha256
+        assert digest == qualification.codex_unauthenticated_output_sha256
+        assert returncode == 1
+        assert len(stdout) + len(stderr) <= 4096
+        assert b"not logged in" in (stdout + stderr).lower()
+    finally:
+        control.close()
+        for descriptor in descriptors:
+            os.close(descriptor)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5.0)
+        for root, before in ((home, before_home), (SCRATCH_SOURCE, before_scratch)):
+            current = sorted(
+                root.rglob("*"),
+                key=lambda item: len(item.relative_to(root).parts),
+                reverse=True,
+            )
+            for item in current:
+                if item.relative_to(root) in before:
+                    continue
+                if item.is_dir() and not item.is_symlink():
+                    item.rmdir()
+                else:
+                    item.unlink()
+        _wait_cgroup_empty()
 
 
 def test_auth_protocol_layout_and_portable_mode_are_separate_from_interactive_ready(

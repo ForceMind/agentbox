@@ -1,5 +1,38 @@
 # AgentBox 开发交接 — 2026-10-02
 
+## 2026-10-03 #135 qualified enrollment continuation
+
+Durable main before this Draft is
+`7c29a470c35b61646e6f6c6a646d3fab9eefb497` (PR #134 merge). Draft #133 is
+CLOSED/unmerged and must not be resumed; its installer `runuser` observation
+is weaker than the production native auth boundary.
+
+Continue Draft #135 `codex/r12-qualified-vendor-enrollment`. The fixed release
+facts are now backed by actual official-download and native-helper evidence:
+Claude 2.1.286 ELF
+`fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f`;
+Codex 0.159.3 ELF
+`8bf204b36a2f6dd0dab73aa2f639892e67ef9ac8befccb4a05b1496ebf25c479`;
+Codex native unauthenticated framed digest
+`76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
+
+The real native probe originally exposed exit 101/panic/EPERM because all socket
+creation was denied. The accepted repair allows only AF_UNIX local socket/socketpair
+creation; Internet-family socket creation and network operations remain denied.
+At exact code head `f6eb036490c508571fea8e145e2a4c5079c9fc6a`, the ordinary native
+matrix passed 109/1 skip, the real pinned Codex probe passed with AWRP + exit 1
+and the digest above, and sanitizer native passed 60/1 skip.
+
+#135 now also provides `enroll-qualified-waw-vendors`: no caller version/digest
+arguments, no installer vendor execution, exact v2 inventory/ELF revalidation,
+atomic existing enrollment publication/recovery, no Secret read and no service
+start. Runtime remains responsible for the actual auth-state observation.
+
+Several documentation commits follow the native evidence, so first read live PR
+head and require all six workflows on that exact head. After terminal SUCCESS,
+merge #135 normally and read back main. Then continue complete fresh-install
+composition; do not return to #133 or #117.
+
 ## 2026-10-02 #131 合并后继续开发
 
 实时 GitHub 状态覆盖下方历史快照：当前 `main` =

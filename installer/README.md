@@ -51,6 +51,15 @@ installations require explicit enrollment; they are not replaced. Recover only
 matching interrupted publication with `--recover`. Version pins update with a
 reviewed AgentBox batch, not automatically from an upstream latest endpoint.
 
+`enroll-qualified-waw-vendors --plan` validates the current fixed
+AgentBox-owned Claude/Codex release without executing either CLI. Apply publishes
+only the release-qualified normalized versions and Codex unauthenticated digest,
+after the verified v2 executable inventory and a fresh executable re-read both
+match the qualified final ELF SHA-256 values. `--recover` resumes only the
+same matching publication. The Runtime later verifies actual login state through
+the native auth helper; installer enrollment never reads credentials or starts a
+Provider process.
+
 Fresh browser setup can use `apply --artifact ... --sha256 ... --defer-activation`
 to install the verified release, database and disabled profiles without starting
 the legacy services. The result explicitly reports health_verified=false. A

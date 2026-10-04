@@ -221,6 +221,49 @@ def test_cli_plan_and_apply_use_actual_cross_pinned_fixture(
     assert record.stat().st_nlink == 1
 
 
+def test_cli_qualified_enrollment_uses_verified_fixed_values_without_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("agentbox_installer.platform.platform_module.machine", lambda: "x86_64")
+    root = _installed_fixture(tmp_path)
+    monkeypatch.setenv("AGENTBOX_INSTALLER_TEST_MODE", "1")
+    values = {
+        "claude_vendor_version": "2.1.286",
+        "codex_vendor_version": "0.159.3",
+        "codex_unauthenticated_output_sha256": "d" * 64,
+    }
+    calls = 0
+
+    def qualified(_self: object, _inventory: object) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        return dict(values)
+
+    monkeypatch.setattr(
+        "agentbox_installer.waw_vendor_bootstrap.WAWVendorBootstrap." "qualified_enrollment_values",
+        qualified,
+    )
+    args = [
+        "--fixture-root",
+        str(root),
+        "enroll-qualified-waw-vendors",
+        "--json",
+    ]
+    assert cli.main([*args, "--plan"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "planned"
+    record = root / "var/lib/agentbox-waw/vendor-enrollment.v1.json"
+    assert not record.exists()
+
+    assert cli.main(args) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "published"
+    assert calls == 2
+    published = json.loads(record.read_text(encoding="ascii"))
+    assert published["claude_vendor_version"] == "2.1.286"
+    assert published["codex_vendor_version"] == "0.159.3"
+    assert published["codex_unauthenticated_output_sha256"] == "d" * 64
+    assert record.stat().st_nlink == 1
+
+
 @pytest.mark.parametrize(
     "profile",
     ["/etc/agentbox/waw-api-profile.v1.json", "/var/lib/agentbox-waw/runtime-profile.v1.json"],

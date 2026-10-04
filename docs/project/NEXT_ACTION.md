@@ -1,5 +1,33 @@
 # Current Authorized Action
 
+## 2026-10-03 finish qualified enrollment and merge #135
+
+The production native qualification is now proven. Fixed Codex 0.159.3 runs
+through `agentbox-waw-pane-bootstrap --auth-probe` after the narrow AF_UNIX
+local-IPC seccomp compatibility repair, while AF_INET and all network
+connect/bind/listen/send/recv operations remain denied. The accepted
+unauthenticated framed digest is
+`76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
+
+Current action is to inspect the final documentation-inclusive exact head of
+Draft #135. All Backend, Frontend, Security, Deployment, E2E and Release
+Candidate workflows must reach terminal SUCCESS. Fix real failures without
+weakening the native isolation or substituting the simple empty-HOME digest.
+Then exit Draft if necessary, merge normally with exact-head protection and
+read back `main`.
+
+After #135 merge, start a fresh feature branch from the new main and compose
+the already-built first-install pieces into one recoverable sequence:
+
+`deferred apply -> dependencies -> fixed vendors -> manifests/policies ->
+qualified vendor enrollment -> activation -> setup-waw-web`.
+
+The composed path must keep explicit plan/recover semantics and may not execute
+a vendor CLI from the Root installer. After complete fresh-install composition,
+continue real Claude/Codex login/input/output/resize/detach/reconnect/exact Stop,
+PC/Android/iOS, service/host reboot, upgrade/rollback and immutable release.
+Do not advance #117 or unrelated workstation features.
+
 ## 2026-10-02 Runtime-only vendor observation/enrollment
 
 Live GitHub state is now `main` =
