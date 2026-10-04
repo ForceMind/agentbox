@@ -20,7 +20,9 @@ vectors before any Runtime/API content path may open.
 
 ## Independent crypto continuation
 
-`crypto-v1.json` adds public deterministic A3 crypto fixtures. All private-key
+`crypto-v1.json` retains historical rejected-profile evidence. `crypto-v2.json`
+is the current public deterministic A3 crypto fixture, adding authenticated
+uint32be remaining_ms=30000 and the separate v2 domains/prologue. All private-key
 inputs are the already public values from the upstream Noise-C fixture; challenge
 is bytes 0..31. They are test data, never production credentials.
 `scripts/check-a3-crypto-vector.py` uses the existing standalone TEST oracle's

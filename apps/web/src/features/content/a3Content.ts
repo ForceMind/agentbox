@@ -425,7 +425,7 @@ export async function preparePages(
 /** Pure single-use transcript model. The owner supplies trusted currentness/time. */
 export class ContentRead {
   readonly #context: ContentContext
-  readonly #deadline: number
+  #deadline: number
   #last: number
   #closed = false
   #busy = false
@@ -447,6 +447,24 @@ export class ContentRead {
     this.#pages = []
     this.#size = 0
     this.#description = undefined
+  }
+  /** Tighten in place: never renew expiry or reset READ/pages/sequence state. */
+  tightenDeadline(
+    deadlineMs: number,
+    nowMs: number,
+    currentContext: unknown,
+  ): void {
+    try {
+      this.check(nowMs, currentContext)
+      this.#deadline = Math.min(
+        this.#deadline,
+        integer(deadlineMs, 0, MAX_TIME),
+      )
+      this.check(nowMs, currentContext)
+    } catch (error) {
+      this.close()
+      throw error
+    }
   }
   check(nowMs: number, currentContext: unknown): void {
     try {

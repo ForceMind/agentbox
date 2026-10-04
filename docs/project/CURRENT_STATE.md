@@ -1,12 +1,60 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T12:04:00Z"
-verified_by: "agentbox-encrypted-single-read"
+verified_at_utc: "2026-10-04T12:50:00Z"
+verified_by: "agentbox-admission-lifetime-bridge"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 A3 admission 与 authenticated lifetime bridge（当前软件候选）
+
+显式 `git fetch origin refs/heads/main:refs/remotes/origin/main` 与 GitHub main
+read-back 均核对 `1c2befb9be47c8f7181accd67965e4187fcf06cf`，tree
+`9c79cb24a121ff7641e191547a10823df3e1caef`。#141 parents 为 `57cb8cd` 与
+`44da270`；exact-head 六套首次 SUCCESS（24 jobs success/2 prescribed skips），
+post-main 六套首次 SUCCESS（23 success/3 prescribed skips），三版本 Python
+各 5049 passed/88 skipped。该证据属于 #141，不是本候选 CI。
+
+本批独立 `feature/a3-admission-lifetime-bridge` 保留所有旧 staged/readback
+worktrees。实现 [default-off admission/lifetime 合同](../WORKBENCH_A3_ADMISSION_LIFETIME.md)：
+API 只导出 noncredential scope/auth_epoch 与 current READY/fullbinding/host
+facts，Runtime 复用原有 executor/lifecycle authority；单 owner replacement
+先关闭旧 selector/handle/key，保留 nonce ledger 语义。新 TEST relay/专用 synthetic
+key 默认关闭；无生产导入、route、socket、真实 key/pin/host 或 public UI。
+
+Crypto v2 NX message2=132 bytes，authenticated payload challenge32+remaining-ms4；
+Browser preINIT local anchor + remaining 原位收紧 deadline/ContentRead，保持
+Runtime originalexpiry、ACK 5s、每次 await/send fence。不同单调时钟原点与
+非对称 RTT 的证明依赖可信递进且兼容速率的 elapsed clocks；不宣称任意 skew
+或 suspend-paused browser clock 安全。明确 interruption close，未接入真实 DOM。
+
+本候选最终本地 evidence（未发布新 PR/CI；真实 host/device NOT RUN）：
+
+- focused Python 1229 passed，exit 0；含 A3/Git/Noise、Project safety、WAW
+  crypto/profile/lifecycle/executor 回归，不用旧 CI 替代新候选证据
+- full Web 1351 passed（63 files）；extension 6 passed；两者 lint、format、
+  typecheck/build 均 exit 0。直接运行已锁定依赖的实际 script binaries；
+  dependencies 仅使用原 lockfile-identical symlink，未修改 lockfile/配置/阈值。
+  pnpm wrapper 初次 attempted auto-install 的 ENOENT 不是测试失败；直接工具
+  验证通过。build 保留既有 >500 kB bundle warning
+- 独立 `check-a3-crypto-vector.py`、native Git→实际 API adapter→admitted owner
+  →opaque relay→Web `check-a3-crypto-interop.mjs`、既有 A3 plaintext codec 与
+  WAW crypto 双角色 interoperability 全 exit 0
+- canonical Ruff PASS；mypy PASS（370 source files）；canonical Black scope
+  single-process safe-mode library check PASS（383 files，非受 AF_UNIX 阻断的
+  Black CLI）；source-boundary/secret-pattern/665 relative doc links/diff-check PASS
+- 独立 reviewer 完成 source/delta review，relay receive ownership 与 cleanup-await
+  cancellation 问题修复后再次 read-back APPROVE，无遗留 blocking source finding。
+  reviewer 未运行测试/CI；此结果不是 host/pin/key custody 或生产 activation 许可
+
+
+历史全量 Python 111 项环境限制保留，不反复执行已知 AF_UNIX/root 阻断基线；
+新 exact-head CI 负责完整 native matrix。初轮新 fixture 误改 immutable binding
+被数据库拒绝，已改为匹配已登记目录；未放宽约束。relay 审查发现的 receive
+cancellation/并发 waiter 问题已封闭并补负例，最终复审单独记录。
+
 
 ## 2026-10-04 A3 encrypted single-read（当前独立软件批次）
 

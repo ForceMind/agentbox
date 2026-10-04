@@ -11,7 +11,7 @@ import pytest
 from agentbox_protocol.a3_content import ContentError, application_aad, prepare_pages
 from agentbox_protocol.a3_crypto import A3Browser, A3Runtime, decode_key, decode_record
 
-VECTOR = json.loads((Path(__file__).parents[1] / "fixtures/a3_content/crypto-v1.json").read_bytes())
+VECTOR = json.loads((Path(__file__).parents[1] / "fixtures/a3_content/crypto-v2.json").read_bytes())
 C = VECTOR["context"]
 
 
@@ -37,6 +37,8 @@ def pair(
         C,
         bytes.fromhex(VECTOR["resp_static"]),
         ephemeral_private_key=bytes.fromhex(VECTOR["resp_ephemeral"]),
+        original_expiry_ns=30_000_000_000,
+        clock_ns=lambda: now[0] * 1_000_000,
         random_bytes=lambda n: bytes.fromhex(VECTOR["challenge"]),
         clock_ms=lambda: now[0],
         current=lambda: current[0],
@@ -223,7 +225,7 @@ def test_exact_max_outer_byte_proof_and_capacity_preflight() -> None:
     # Longest allowed kind, two-digit sequence, full max PAGE+tag and fixed context.
     raw = canonical(
         {
-            "domain": "agentbox-a3-content/record/v1",
+            "domain": "agentbox-a3-content/record/v2",
             "context_digest": "f" * 64,
             "kind": "PATCH_PAGE",
             "sequence": 15,
@@ -281,3 +283,132 @@ def test_huge_integer_parsing_never_exposes_untrusted_values(length: int) -> Non
         with pytest.raises(ContentError) as error:
             decode(b'{"sequence":' + b"9" * length + b"}")
         assert str(error.value) == "PATCH_PROTOCOL_INVALID"
+
+
+@pytest.mark.parametrize(
+    "budget_ns,accepted",
+    [
+        (999999, False),
+        (1000000, True),
+        (30000000000, True),
+        (30001000000, False),
+        (0, False),
+        (-1, False),
+    ],
+)
+def test_original_ns_budget_floor_and_bounds(budget_ns: int, accepted: bool) -> None:
+    browser, runtime = pair()
+    # Distinct origin; fractional current time catches floor(E)-floor(now) errors.
+    origin = 10**15 + 999999
+    runtime._clock_ns = lambda: origin
+    runtime._last_ns = origin
+    runtime._expiry_ns = origin + budget_ns
+    if accepted:
+        ready(browser, runtime)
+        assert browser._deadline == budget_ns // 1000000
+    else:
+        with pytest.raises(ContentError):
+            runtime.receive_init(browser.start())
+        assert not runtime.crypto_ready
+
+
+@pytest.mark.parametrize("budget", [0, 30001, 2**32 - 1])
+def test_authenticated_invalid_lifetime_refused(budget: int) -> None:
+    from agentbox_protocol.a3_content import context_bytes
+    from agentbox_protocol.a3_crypto import PROLOGUE_DOMAIN
+    from agentbox_protocol.noise_nx import NXResponder
+
+    browser, _ = pair()
+    initial = json.loads(browser.start())
+    peer = NXResponder(PROLOGUE_DOMAIN + context_bytes(C), bytes.fromhex(VECTOR["resp_static"]))
+    peer.read_message1(base64.urlsafe_b64decode(initial["data"] + "=="))
+    message = peer.write_message2(bytes(range(32)) + budget.to_bytes(4, "big"))
+    wire = json.loads(VECTOR["key_frames"][1])
+    wire["data"] = base64.urlsafe_b64encode(message).decode().rstrip("=")
+    with pytest.raises(ContentError):
+        browser.receive_attest(canonical(wire))
+    assert not browser.crypto_ready
+
+
+def test_crypto_delay_past_original_expiry_never_returns_attestation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentbox_protocol.noise_nx import NXResponder
+
+    now = [0]
+    browser, runtime = pair(now)
+    original = NXResponder.write_message2
+
+    def delayed(self: Any, payload: bytes = b"") -> bytes:
+        result = original(self, payload)
+        now[0] = 30000
+        return result
+
+    monkeypatch.setattr(NXResponder, "write_message2", delayed)
+    with pytest.raises(ContentError):
+        runtime.receive_init(browser.start())
+    assert not runtime.crypto_ready
+
+
+def test_distinct_origins_asymmetric_delay_and_tighten_no_reset() -> None:
+    browser_now = [500000000]
+    runtime_now = [123]
+    browser = A3Browser(
+        C,
+        expected_pin=lambda: VECTOR["runtime_fingerprint"],
+        clock_ms=lambda: browser_now[0],
+        current=lambda: C,
+        deadline_ms=browser_now[0] + 30000,
+    )
+    runtime = A3Runtime(
+        C,
+        bytes.fromhex(VECTOR["resp_static"]),
+        clock_ms=lambda: runtime_now[0],
+        current=lambda: C,
+        deadline_ms=30123,
+        original_expiry_ns=30123000000,
+        clock_ns=lambda: runtime_now[0] * 1000000,
+    )
+    init = browser.start()
+    browser_now[0] += 400
+    runtime_now[0] += 400
+    attest = runtime.receive_init(init)
+    browser_now[0] += 1700
+    runtime_now[0] += 1700
+    confirm = browser.receive_attest(attest)
+    assert browser._deadline == 500029600  # preINITanchor + 29600, not responseNow+29600
+    runtime.receive_confirm(confirm)
+    with pytest.raises(ContentError):
+        browser.receive_attest(attest)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("protocol_id", "agentbox-a3-content/v1"),
+        ("protocol_version", 1),
+        ("data", base64.urlsafe_b64encode(b"x" * 128).decode().rstrip("=")),
+    ],
+)
+def test_all_old_key_profiles_refused(field: str, value: Any) -> None:
+    wire = json.loads(VECTOR["key_frames"][1])
+    wire[field] = value
+    with pytest.raises(ContentError):
+        decode_key(canonical(wire))
+
+
+def test_legacy_record_domain_refused() -> None:
+    wire = json.loads(VECTOR["records"][0])
+    wire["domain"] = "agentbox-a3-content/record/v1"
+    with pytest.raises(ContentError):
+        decode_record(canonical(wire))
+
+
+def test_authenticated_lifetime_changes_final_hash_and_confirmation() -> None:
+    browser1, runtime1 = pair()
+    browser2, runtime2 = pair()
+    runtime2._expiry_ns -= 1000000
+    frames1, frames2 = ready(browser1, runtime1), ready(browser2, runtime2)
+    assert frames1[0] == frames2[0]
+    assert frames1[1:] != frames2[1:]
+    assert runtime1._hash != runtime2._hash

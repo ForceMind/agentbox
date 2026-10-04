@@ -1,5 +1,16 @@
 # AgentBox Project Context Index
 
+## 2026-10-04 A3 admission/lifetime software continuation
+
+#141 已正常合并为 `1c2befb9be47c8f7181accd67965e4187fcf06cf`，tree
+`9c79cb24a121ff7641e191547a10823df3e1caef`；exact-head/post-main 六套首次
+CI 全 SUCCESS。当前独立批次为 [default-off admission 与 crypto v2 lifetime](../WORKBENCH_A3_ADMISSION_LIFETIME.md)：
+复用现有 API session/READY 与 Runtime binding/lifecycle owner，专用 synthetic
+key/opaque TEST wiring，以及原始 selector lifetime 的 authenticated remaining-ms
+桥接。plaintext/context/AAD v1 不变，无生产 route/key/pin/host/UI 激活。
+候选需完成源代码独立审查、全量适用检查和新 exact-head CI；下方为历史批次。
+
+
 - **当前优先级（2026-10-04）**：#140 已正常合并，exact-head/post-main 六套
   CI 全终态 SUCCESS。当前推进 [独立 encrypted single-read](../WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)
   的 synthetic Git→fresh A3 Noise→opaque relay→Web 软件链；真实 host/device

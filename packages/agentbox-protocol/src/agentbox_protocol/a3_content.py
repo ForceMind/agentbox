@@ -380,6 +380,15 @@ class ContentRead:
             self.close()
             raise
 
+    def tighten_deadline(self, deadline_ms: int, *, now_ms: int, current_context: object) -> None:
+        """Tighten in place after authenticated lifetime; never reset transcript."""
+        try:
+            self._deadline = min(self._deadline, _integer(deadline_ms, 0, MAX_TIME))
+            self.check(now_ms=now_ms, current_context=current_context)
+        except ContentError:
+            self.close()
+            raise
+
     def accept(self, raw: bytes, *, now_ms: int, current_context: object) -> bytes | None:
         try:
             self.check(now_ms=now_ms, current_context=current_context)

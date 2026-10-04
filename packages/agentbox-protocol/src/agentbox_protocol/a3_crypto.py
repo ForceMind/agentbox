@@ -35,12 +35,13 @@ MAX_OUTER_BYTES = 24 * 1024
 MAX_KEY_BYTES = 4096
 MAX_CIPHERTEXT_BYTES = 16384 + 16
 HANDSHAKE_MS = 5000
-RECORD_DOMAIN = "agentbox-a3-content/record/v1"
-CONFIRM_DOMAIN = b"agentbox-a3-content/noise-confirm/v1"
-ACK_CANARY = hashlib.sha256(b"agentbox-a3-content/noise-confirm-ack/v1").digest()
+PROLOGUE_DOMAIN = b"agentbox-a3-content/noise-prologue/v2\0"
+RECORD_DOMAIN = "agentbox-a3-content/record/v2"
+CONFIRM_DOMAIN = b"agentbox-a3-content/noise-confirm/v2"
+ACK_CANARY = hashlib.sha256(b"agentbox-a3-content/noise-confirm-ack/v2").digest()
 _KEY_LENGTHS = {
     "A3_KEY_INIT": 32,
-    "A3_KEY_ATTEST": 128,
+    "A3_KEY_ATTEST": 132,
     "A3_KEY_CONFIRM": 48,
     "A3_KEY_CONFIRM_ACK": 48,
 }
@@ -103,9 +104,9 @@ def decode_key(raw: bytes) -> dict[str, Any]:
         _hex(value.get("transcript_hash"))
     if (
         value.keys() != keys
-        or value["protocol_id"] != "agentbox-a3-content/v1"
+        or value["protocol_id"] != "agentbox-a3-content/crypto/v2"
         or type(value["protocol_version"]) is not int
-        or value["protocol_version"] != 1
+        or value["protocol_version"] != 2
     ):
         raise ContentError()
     _hex(value["context_digest"])
@@ -235,8 +236,8 @@ class _Profile:
     def _key(self, kind: str, data: bytes, **extra: str) -> bytes:
         raw = _canonical(
             {
-                "protocol_id": "agentbox-a3-content/v1",
-                "protocol_version": 1,
+                "protocol_id": "agentbox-a3-content/crypto/v2",
+                "protocol_version": 2,
                 "context_digest": self._digest,
                 "kind": kind,
                 "data": _b64(data),
@@ -340,7 +341,9 @@ class A3Browser(_Profile):
         super().__init__(context, clock_ms=clock_ms, current=current, deadline_ms=deadline_ms)
         self._pin_port = expected_pin
         self._pin = _hex(expected_pin())
-        self._handshake = NXInitiator(context_bytes(self._context), ephemeral_private_key)
+        self._handshake = NXInitiator(
+            PROLOGUE_DOMAIN + context_bytes(self._context), ephemeral_private_key
+        )
 
     def _check(self, pending: bool) -> None:
         super()._check(pending)
@@ -350,6 +353,7 @@ class A3Browser(_Profile):
     @_operation
     def start(self) -> bytes:
         self._expect("INIT")
+        self._anchor = self._clock()
         raw = cast(NXInitiator, self._handshake).write_message1()
         self._phase = "ATTEST"
         return self._key("A3_KEY_INIT", raw)
@@ -358,16 +362,24 @@ class A3Browser(_Profile):
     def receive_attest(self, raw: bytes) -> bytes:
         self._expect("ATTEST")
         value = self._bound_key(raw, "A3_KEY_ATTEST")
-        self._challenge = cast(NXInitiator, self._handshake).read_message2(
-            _unb64(value["data"], 128, 128)
-        )
-        if len(self._challenge) != 32:
+        payload = cast(NXInitiator, self._handshake).read_message2(_unb64(value["data"], 132, 132))
+        if len(payload) != 36:
             raise ContentError()
         transport = self._take()
         if not hmac.compare_digest(
             hashlib.sha256(transport.remote_static_public_key).hexdigest(), self._pin
         ):
             raise ContentError()
+        remaining_ms = int.from_bytes(payload[32:], "big")
+        if not 1 <= remaining_ms <= 30000:
+            raise ContentError()
+        self._challenge = payload[:32]
+        self._deadline = min(self._deadline, self._anchor + remaining_ms)
+        self._handshake_deadline = min(self._handshake_deadline, self._deadline)
+        self._read.tighten_deadline(
+            self._deadline, now_ms=self._clock(), current_context=self._current()
+        )
+        self._check(True)
         confirm = transport.send.encrypt(self._confirmation(), b"")
         self._challenge = b""
         self._phase = "ACK"
@@ -414,12 +426,28 @@ class A3Runtime(_Profile):
         deadline_ms: int,
         ephemeral_private_key: bytes | None = None,
         random_bytes: Callable[[int], bytes] = secrets.token_bytes,
+        original_expiry_ns: int,
+        clock_ns: Callable[[], int],
     ) -> None:
         super().__init__(context, clock_ms=clock_ms, current=current, deadline_ms=deadline_ms)
+        if type(original_expiry_ns) is not int:
+            raise ContentError()
+        self._expiry_ns = original_expiry_ns
+        self._clock_ns = clock_ns
+        self._last_ns = clock_ns()
         self._random = random_bytes
         self._handshake = NXResponder(
-            context_bytes(self._context), static_private_key, ephemeral_private_key
+            PROLOGUE_DOMAIN + context_bytes(self._context),
+            static_private_key,
+            ephemeral_private_key,
         )
+
+    def _check(self, pending: bool) -> None:
+        super()._check(pending)
+        now = self._clock_ns()
+        if type(now) is not int or now < self._last_ns or now >= self._expiry_ns:
+            raise ContentError("PATCH_TIMEOUT")
+        self._last_ns = now
 
     @_operation
     def receive_init(self, raw: bytes) -> bytes:
@@ -432,7 +460,15 @@ class A3Runtime(_Profile):
         if type(self._challenge) is not bytes or len(self._challenge) != 32:
             raise ContentError()
         self._check(True)
-        message = handshake.write_message2(self._challenge)
+        now_ns = self._clock_ns()
+        if type(now_ns) is not int or now_ns < self._last_ns:
+            raise ContentError("PATCH_TIMEOUT")
+        self._last_ns = now_ns
+        remaining_ms = (self._expiry_ns - now_ns) // 1_000_000
+        if not 1 <= remaining_ms <= 30000:
+            raise ContentError("PATCH_TIMEOUT")
+        message = handshake.write_message2(self._challenge + remaining_ms.to_bytes(4, "big"))
+        self._check(True)
         self._take()
         self._phase = "CONFIRM"
         return self._key("A3_KEY_ATTEST", message)
