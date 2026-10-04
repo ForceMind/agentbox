@@ -37,6 +37,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
+from agentbox_api.a3_observation import A3ObservationSource
+from agentbox_api.a3_observation import router as a3_observation_router
 from agentbox_api.auth import BoundedLoginExecutor
 from agentbox_api.auth import router as auth_router
 from agentbox_api.claude import router as claude_router
@@ -130,9 +132,12 @@ def create_app(
     waw_authorization_policy: WorkspaceAuthorizationPolicy | None = None,
     waw_attachment_authority: AttachmentAuthority | None = None,
     waw_stream_handler: object | None = None,
+    a3_observation_source: A3ObservationSource | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
+    if a3_observation_source is not None and actual_settings.env is not Environment.TEST:
+        raise ValueError("A3 observation source is TEST-only; production remains unavailable")
     legacy_waw_components = (
         waw_bind_coordinator,
         waw_authorization_policy,
@@ -373,6 +378,8 @@ def create_app(
         async def metadata() -> MetaResponse:
             return MetaResponse(version=__version__, environment=actual_settings.env.value)
 
+        application.state.a3_observation_source = a3_observation_source
+        application.include_router(a3_observation_router)
         application.include_router(auth_router)
         application.include_router(codex_router)
         application.include_router(claude_router)

@@ -1,12 +1,58 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T12:50:00Z"
-verified_by: "agentbox-admission-lifetime-bridge"
+verified_at_utc: "2026-10-04T13:47:00Z"
+verified_by: "agentbox-changes-a3-reader"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 A3 Changes-page staged reader 软件候选
+
+已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，
+tree `2cdfa72e7ca99b57312dadf156af1b74d82db15e`；#142 exact-head 六套
+workflow 均 SUCCESS。旧 staged/readback worktrees 全保留，新独立
+`feature/s02-changes-a3-reader` 接续 [Changes-page 软件合同](../WORKBENCH_A3_CHANGES_READER.md)。
+
+本批加入独立 staged-observation metadata route、purpose-specific A3 trust port、
+显式点击/完整 END 后 inert text 展示和 page-owned lifecycle。API 新边界仅用 typed
+metadata port，不导入/执行 Runtime；生产 source 默认缺失且拒绝注入，正式页面无
+A3 adapter/pin 时明确不可用。实际 Git→API route→existing admission→opaque relay→
+Web DOM 将由 isolated fixture 与新 exact-head CI Chromium 验证；此刻浏览器尚未运行，
+不称生产可用或真实 host PASS。
+无新 listener、WAW trust fallback、真实 key/pin enrollment、安装激活或发布。
+
+本地检查与独立 source review 已完成；新 exact-head CI、merge/read-back 尚未运行，
+不能使用 #142 的 CI 替代本候选证据。后续为候选审阅、Draft PR 与新 CI。
+下方旧批次边界保留为历史，不覆盖本合同已批准的 source-only 页面接线。
+
+
+### 本候选本地验证与明确未运行项
+
+- focused Python：606 passed，包含所有 A3/Git/Project/API/Noise 相关文件，exit 0。
+  初轮604 passed/1 fail为旧source-boundary尚禁止新增metadata文件导入API currentness；
+  只允许新route复用a3_admission，并新增无Runtime/subprocess断言；crypto/relay禁令不变。
+  新fixture的late-close、task首次调度前cancel及UTC revocation缺陷均修复并补回归。
+- Web final source：1394 passed / 65 files；extension 6 passed / 3 files。两者
+  lint、Prettier、typecheck/build exit 0；沿用lock-identical dependency symlink与现有工具，
+  无lockfile/阈值/timeout放宽。Web build保留既有 >500 kB bundle warning。
+- A3独立crypto vector、plaintext interop、既有 encrypted Git interop、WAW crypto
+  interop与新增actual API/Git/opaque→WebController 7场景均PASS，exit 0。
+  新互通包括success/binary/large/denied path/tamper/lost page/真实session撤销；Node
+  验证不等同DOM。Frontend使用现有dev dependency集为fixture提供httpx，无新增依赖。
+- canonical Ruff PASS；mypy PASS（374 source files）；canonical Black同scope的
+  single-process safe-mode library检查PASS（387 files，避开已知AF_UNIX CLI环境限制）。
+  source-boundary/secret-pattern/doc-links（675）/diff-check与生产Web fixture-marker、
+  extension bundle gate均PASS。新增POST采用exact route白名单与53条route计数。
+- 独立只读source review APPROVE，auth_epoch decimal string、actual-publication
+  guard、late open/crypto/END generation fence、fixture exact-handle cleanup均已复读。
+  reviewer未运行tests/CI/browser，不冒充独立运行证据。
+- 新CI desktop/phone 28个Changes DOM场景及synthetic-only截图：NOT RUN，待新head。
+  本地浏览器此前被拒，未运行/安装或另走browser路径。全量Python已知AF_UNIX/root
+  基线限制未反复重跑；新exact-head三版本CI负责完整matrix。
+
+
 
 ## 2026-10-04 A3 admission 与 authenticated lifetime bridge（当前软件候选）
 

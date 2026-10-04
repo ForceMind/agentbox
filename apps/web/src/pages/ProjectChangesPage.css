@@ -77,3 +77,56 @@
 .changes-more {
   margin-top: 1rem;
 }
+
+.changes-read {
+  min-height: 2.75rem;
+  max-width: 100%;
+  margin-inline-start: auto;
+}
+
+.changes-reader {
+  margin-top: 1rem;
+  min-width: 0;
+}
+
+.changes-reader h2 {
+  margin-top: 0;
+}
+
+.changes-reader-path,
+.changes-reader-time {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.changes-patch {
+  max-width: 100%;
+  max-height: 65vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font:
+    0.8rem / 1.6 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  tab-size: 4;
+  unicode-bidi: plaintext;
+}
+
+.changes-patch:focus-visible,
+.changes-read:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .changes-read {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+  }
+}

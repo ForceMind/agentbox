@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { LocalizedApiError } from '../components/i18n'
@@ -12,6 +12,9 @@ import {
 } from '../features/changes/diffTree'
 import { useGitChanges } from '../features/changes/useGitChanges'
 import { visibleGitPath } from '../features/changes/visibleGitPath'
+import { useA3ChangesReader } from '../features/content/useA3ChangesReader'
+import type { A3ChangesDependencies } from '../features/content/a3ChangesTrust'
+import type { A3ChangesStatus } from '../features/content/a3ChangesController'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { currentLocale, formatMessage, type Locale } from '../i18n'
 import type { GitChangeKind } from '../lib/contracts'
@@ -28,13 +31,40 @@ const KIND_COPY = {
   typechanged: 'changes.kindTypechanged',
 } as const satisfies Record<GitChangeKind, `changes.${string}`>
 
+const READER_COPY: Record<A3ChangesStatus, string> = {
+  empty: '尚未读取内容。请明确选择一个已暂存的新增、修改或删除文件。',
+  loading: '正在验证身份并读取完整暂存补丁，可随时取消。',
+  unavailable:
+    '暂存内容暂不可用。需要独立 A3 内容连接和可信凭据；仍可查看路径与状态。',
+  stale: '此次读取已失效，内容已清除。请刷新路径后重新选择文件。',
+  'too-large': '补丁超出完整读取上限，未显示任何片段。请选择较小的暂存变更。',
+  binary: '这是二进制文件，暂不支持文本补丁。请选择文本文件。',
+  permission:
+    '读取权限或可信凭据已失效，内容已清除。请重新验证访问权限后再试。',
+  failed: '完整性验证或连接失败，内容已清除。请刷新后重新选择文件。',
+  completed: '完整暂存补丁已验证。内容仅作文本显示，到期或离开页面后清除。',
+}
+
 export function ProjectChangesPage({
   locale = currentLocale(),
+  a3Dependencies,
 }: {
   locale?: Locale
+  a3Dependencies?: A3ChangesDependencies
 }) {
   const { projectId } = useParams<{ projectId: string }>()
   const changes = useGitChanges(projectId)
+  const reader = useA3ChangesReader(projectId, a3Dependencies)
+  const readerController = reader.controller
+  useLayoutEffect(() => {
+    readerController.clear(changes.stale || changes.error ? 'stale' : 'empty')
+  }, [
+    readerController,
+    changes.files,
+    changes.loading,
+    changes.stale,
+    changes.error,
+  ])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   usePageTitle(formatMessage(locale, 'changes.title', {}))
 
@@ -73,7 +103,10 @@ export function ProjectChangesPage({
         action={
           <button
             className="secondary-button"
-            onClick={() => void changes.refresh()}
+            onClick={() => {
+              readerController.clear('stale')
+              void changes.refresh()
+            }}
             type="button"
           >
             <RefreshCw aria-hidden="true" size={16} />{' '}
@@ -82,7 +115,9 @@ export function ProjectChangesPage({
         }
       />
       <p className="interaction-notice changes-metadata-note">
-        {formatMessage(locale, 'changes.metadataOnly', {})}
+        {reader.available
+          ? '路径与状态来自元数据观察。暂存补丁需要单独明确读取。'
+          : formatMessage(locale, 'changes.metadataOnly', {})}
       </p>
 
       {changes.error ? (
@@ -172,6 +207,21 @@ export function ProjectChangesPage({
                       {formatMessage(locale, 'changes.unstaged', {})}
                     </span>
                   )}
+                  {file.staged &&
+                    ['added', 'modified', 'deleted'].includes(file.kind) && (
+                      <button
+                        className="secondary-button changes-read"
+                        type="button"
+                        disabled={
+                          !reader.available || changes.loading || changes.stale
+                        }
+                        aria-label={`读取暂存补丁：${visibleGitPath(file.path)}`}
+                        aria-controls="a3-changes-reader"
+                        onClick={() => void readerController.read(file)}
+                      >
+                        读取暂存补丁
+                      </button>
+                    )}
                   {file.previous_path && (
                     <small className="changes-previous">
                       {formatMessage(locale, 'changes.was', {})}{' '}
@@ -188,7 +238,10 @@ export function ProjectChangesPage({
             <button
               className="secondary-button changes-more"
               disabled={changes.loadingMore}
-              onClick={() => void changes.loadMore()}
+              onClick={() => {
+                readerController.clear('stale')
+                void changes.loadMore()
+              }}
               type="button"
             >
               {formatMessage(
@@ -202,6 +255,51 @@ export function ProjectChangesPage({
           )}
         </section>
       )}
+      <section
+        className="runtime-card changes-reader"
+        id="a3-changes-reader"
+        aria-labelledby="a3-reader-heading"
+      >
+        <h2 id="a3-reader-heading">暂存补丁（只读）</h2>
+        <p className="interaction-notice">
+          源码可能含敏感信息。仅在明确点击后读取，不支持未暂存内容；不会自动读取或重试。
+        </p>
+        <p role="status" aria-live="polite" data-testid="a3-reader-status">
+          {READER_COPY[reader.state.status]}
+        </p>
+        {reader.state.path && (
+          <p className="changes-reader-path">
+            <OpaqueUserValue value={visibleGitPath(reader.state.path)} />
+          </p>
+        )}
+        {(reader.state.status === 'loading' ||
+          reader.state.status === 'completed') && (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => readerController.clear()}
+          >
+            {reader.state.status === 'loading' ? '取消读取' : '清除内容'}
+          </button>
+        )}
+        {reader.state.status === 'completed' && reader.state.text !== null && (
+          <>
+            <p className="changes-reader-time">
+              浏览器读取完成时间：
+              {new Date(reader.state.completedAtMs!).toLocaleString('zh-CN')}
+              （非仓库观察时间）
+            </p>
+            <pre
+              className="changes-patch"
+              tabIndex={0}
+              aria-label="完整暂存补丁"
+              data-testid="a3-complete-patch"
+            >
+              {reader.state.text}
+            </pre>
+          </>
+        )}
+      </section>
     </>
   )
 }

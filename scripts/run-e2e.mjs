@@ -66,6 +66,10 @@ async function assertCanaryAbsent(path, canary) {
  * treating source-graph inspection as release evidence.
  */
 const productionBundleForbiddenMarkers = Object.freeze([
+  "a3-changes-harness",
+  "__a3FixtureCall",
+  "a3_changes_peer",
+  "A3 synthetic complete diff",
   "rc9-workspace-harness",
   "workspace-harness-evidence",
   "__AGENTBOX_RC9_WORKSPACE_DEPENDENCIES__",

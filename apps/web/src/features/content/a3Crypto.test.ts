@@ -105,6 +105,30 @@ async function started() {
   return p
 }
 describe('inert independent A3 encryption', () => {
+  it('keeps a readonly authenticated tightened deadline after END and close', async () => {
+    const p = await pair(false)
+    const init = await p.browser.start()
+    p.change({ nowMs: 1200 })
+    const confirm = await p.browser.acceptAttest(
+      await p.runtime.acceptInit(init),
+    )
+    expect(p.browser.effectiveDeadlineMs).toBe(28_800)
+    await p.browser.acceptAck(await p.runtime.acceptConfirm(confirm))
+    await p.runtime.decryptRead(await p.browser.encryptRead(read))
+    await p.browser.acceptResponse(await p.runtime.encryptResponse(page))
+    await p.browser.acceptResponse(await p.runtime.encryptResponse(end))
+    expect(p.browser.state).toBe('CLOSED')
+    expect(p.browser.effectiveDeadlineMs).toBe(28_800)
+    p.browser.close()
+    expect(p.browser.effectiveDeadlineMs).toBe(28_800)
+    expect(
+      Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(Object.getPrototypeOf(p.browser)),
+        'effectiveDeadlineMs',
+      )?.set,
+    ).toBeUndefined()
+  })
+
   it('matches independent PyCA/Noise-C literal handshake and encrypted records exactly', async () => {
     const pairFromPublicFixture = async (
       raw: string,
