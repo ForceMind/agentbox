@@ -172,10 +172,13 @@ class GitStagedSelectors:
         self._active = 0
         # Lives with the selector key/process owner, never with a channel.
         self._burned_nonces: dict[bytes, int] = {}
+        self._handles: set[AdmittedStagedRead] = set()
 
     def close(self) -> None:
         with self._lock:
             self._key = None
+            for handle in self._handles:
+                handle.close()
 
     def _now(self) -> int:
         # All calls are under _lock. A regressing/invalid clock permanently
@@ -456,8 +459,12 @@ class GitStagedSelectors:
                         check=check_current,
                         read=read,
                     )
-                    handle.check()
+                    with self._lock:
+                        self._handles.add(handle)
+                        handle.check()
                     yield handle
             finally:
                 if handle is not None:
                     handle.close()
+                    with self._lock:
+                        self._handles.discard(handle)

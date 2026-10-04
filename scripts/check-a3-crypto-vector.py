@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET = ROOT / "tests/fixtures/a3_content/crypto-v1.json"
+TARGET = ROOT / "tests/fixtures/a3_content/crypto-v2.json"
 
 
 def canonical(value: object) -> bytes:
@@ -38,14 +38,14 @@ def build() -> dict[str, Any]:
         bytes.fromhex(source["init_ephemeral"]),
         bytes.fromhex(source["resp_ephemeral"]),
         bytes.fromhex(source["resp_static"]),
-        context,
+        b"agentbox-a3-content/noise-prologue/v2\0" + context,
         b"",
-        challenge,
+        challenge + (30000).to_bytes(4, "big"),
     )
     confirm = oracle.digest(
-        b"agentbox-a3-content/noise-confirm/v1" + (32).to_bytes(4, "big") + challenge + transcript
+        b"agentbox-a3-content/noise-confirm/v2" + (32).to_bytes(4, "big") + challenge + transcript
     )
-    ack = oracle.digest(b"agentbox-a3-content/noise-confirm-ack/v1")
+    ack = oracle.digest(b"agentbox-a3-content/noise-confirm-ack/v2")
     digest = oracle.digest(context).hex()
 
     def b64(raw: bytes) -> str:
@@ -54,8 +54,8 @@ def build() -> dict[str, Any]:
     def key(kind: str, data: bytes, **extra: str) -> str:
         return canonical(
             {
-                "protocol_id": "agentbox-a3-content/v1",
-                "protocol_version": 1,
+                "protocol_id": "agentbox-a3-content/crypto/v2",
+                "protocol_version": 2,
                 "context_digest": digest,
                 "kind": kind,
                 "data": b64(data),
@@ -87,7 +87,7 @@ def build() -> dict[str, Any]:
         records.append(
             canonical(
                 {
-                    "domain": "agentbox-a3-content/record/v1",
+                    "domain": "agentbox-a3-content/record/v2",
                     "context_digest": digest,
                     "kind": kind,
                     "sequence": sequence,
@@ -96,7 +96,7 @@ def build() -> dict[str, Any]:
             ).decode()
         )
     return {
-        "schema": "agentbox-a3-public-crypto-vector/v1",
+        "schema": "agentbox-a3-public-crypto-vector/v2",
         "source_vector_sha256": oracle.digest(oracle.SOURCE.read_bytes()).hex(),
         "context_json": fixture["context_json"],
         "context": fixture["context"],
@@ -108,6 +108,7 @@ def build() -> dict[str, Any]:
             oracle.public(bytes.fromhex(source["resp_static"]))
         ).hex(),
         "challenge": challenge.hex(),
+        "remaining_ms": 30000,
         "final_hash": transcript.hex(),
         "key_frames": [
             key("A3_KEY_INIT", first),

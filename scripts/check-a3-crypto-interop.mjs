@@ -25,7 +25,7 @@ try {
   }
   const { A3Browser } = await import(pathToFileURL(join(temporary, 'a3Crypto.mjs')).href)
   const { contextDigest, encodeMessage } = await import(pathToFileURL(join(temporary, 'a3Content.mjs')).href)
-  const fixture = JSON.parse(await readFile(join(root, 'tests/fixtures/a3_content/crypto-v1.json'), 'utf8'))
+  const fixture = JSON.parse(await readFile(join(root, 'tests/fixtures/a3_content/crypto-v2.json'), 'utf8'))
   // Runtime static input is bytes(range(32)), distinct from deterministic oracle keys.
   const publicKey = await crypto.subtle.importKey('pkcs8', bytes('302e020100300506032b656e04220420' + Array.from({length:32}, (_, i) => i.toString(16).padStart(2, '0')).join('')), {name:'X25519'}, true, ['deriveBits'])
   const jwk = await crypto.subtle.exportKey('jwk', publicKey)
@@ -45,8 +45,10 @@ try {
       const bootstrap = (await next()).fixture_bootstrap
       const context = bootstrap.context
       assert.equal(createHash('sha256').update(runtimePin).digest('hex'), bootstrap.pin_sha256)
-      const trusted = {current: () => ({context, nowMs:bootstrap.now_ms, runtimePin})}
-      browser = new A3Browser(context, trusted, {admissionStartedAtMs:bootstrap.now_ms, admissionExpiresAtMs:bootstrap.expires_ms})
+      // Independent local origin; Runtime absolute expiry is never browser input.
+      const browserNow = 987654321
+      const trusted = {current: () => ({context, nowMs:browserNow, runtimePin})}
+      browser = new A3Browser(context, trusted, {admissionStartedAtMs:browserNow, admissionExpiresAtMs:browserNow + 30000})
       const opaque = []
       send(await browser.start())
       const attest = bytes((await next()).wire); opaque.push(attest)
@@ -92,6 +94,6 @@ try {
       assert.equal(result.code,0,stderr)
     } finally {browser?.close(); clearTimeout(timer); peer.stdin.end(); if(peer.exitCode===null) peer.kill('SIGTERM')}
   }
-  assert.equal(fixture.schema, 'agentbox-a3-public-crypto-vector/v1')
+  assert.equal(fixture.schema, 'agentbox-a3-public-crypto-vector/v2')
   console.log('A3 encrypted Git interop PASS: native double observation, original-expiry admission, opaque-only relay, verified Web bytes; loss/tamper/visibility publish no partial bytes')
 } finally {await rm(temporary,{recursive:true,force:true})}

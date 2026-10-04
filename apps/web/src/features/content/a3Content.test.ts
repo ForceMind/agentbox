@@ -364,3 +364,27 @@ it('does not coerce an AAD kind or call its toString', async () => {
   }
   expect(toString).not.toHaveBeenCalled()
 })
+
+it('tightens deadline in place without clearing pages, renewing expiry or resetting READ', async () => {
+  const r = await started()
+  await r.accept(messages[1], 2, c)
+  r.tightenDeadline(100, 3, c)
+  r.tightenDeadline(30000, 4, c)
+  expect(await r.accept(messages[2], 99, c)).toEqual(patch)
+  const expired = await started()
+  expired.tightenDeadline(100, 2, c)
+  expired.tightenDeadline(30000, 3, c)
+  await expect(expired.accept(messages[1], 100, c)).rejects.toThrow(
+    'PATCH_TIMEOUT',
+  )
+  const replay = await started()
+  replay.tightenDeadline(100, 2, c)
+  await expect(replay.accept(messages[0], 3, c)).rejects.toThrow()
+})
+it('closes when tightening to an already elapsed or malformed deadline', async () => {
+  for (const deadline of [0, 2, NaN, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const r = await started()
+    expect(() => r.tightenDeadline(deadline, 2, c)).toThrow()
+    await expect(r.accept(messages[1], 3, c)).rejects.toThrow()
+  }
+})

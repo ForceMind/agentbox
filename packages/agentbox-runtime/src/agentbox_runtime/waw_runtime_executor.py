@@ -277,6 +277,28 @@ class WAWSupervisorExecutor:
             ]
             return candidates[0] if len(candidates) == 1 else None
 
+    def content_project_binding(self, project_id: str) -> WAWProjectBinding | None:
+        """Copied current full binding for inert A3 admission, never a WAW start."""
+        with self._map_lock:
+            bound = self._bindings.get(project_id)
+            if (
+                bound is None
+                or project_id in self._binding_reserved
+                or project_id in self._binding_inflight
+                or project_id in self._inflight_project_ids.values()
+                or any(key.project_id == project_id for key in self._restart_quarantine)
+            ):
+                return None
+            binding = bound[0]
+            if (
+                sum(
+                    item.relative_key == binding.relative_key for item, _ in self._bindings.values()
+                )
+                != 1
+            ):
+                return None
+            return WAWProjectBinding(**vars(binding))
+
     def relative_key_for_formal_project(self, project_id: str) -> str | None:
         """Resolve one stable formal binding for a same-Project legacy probe."""
 

@@ -324,11 +324,21 @@ def test_no_production_composition_or_activation() -> None:
     root = Path(__file__).parents[2]
     for directory in ["apps/api", "apps/worker", "packages/agentbox-runtime"]:
         for path in (root / directory).rglob("*.py"):
-            if path.name not in {"a3_content_session.py", "git_staged_selectors.py"}:
+            if path.name not in {
+                "a3_content_session.py",
+                "git_staged_selectors.py",
+                "a3_admission.py",
+            }:
                 assert "a3_content" not in path.read_text()
                 assert "a3_crypto" not in path.read_text()
                 assert "a3_content_session" not in path.read_text()
-                assert "git_staged_selectors" not in path.read_text()
+                if path.name != "waw_lifecycle.py":
+                    assert "git_staged_selectors" not in path.read_text()
+            if path.name not in {"a3_admission.py", "a3_relay.py"}:
+                assert "a3_admission" not in path.read_text()
+                assert "a3_relay" not in path.read_text()
+            if path.name not in {"a3_admission.py", "waw_lifecycle.py"}:
+                assert "replace_content_selector_owner" not in path.read_text()
     for path in (root / "apps/web/src").rglob("*"):
         if path.suffix not in {".ts", ".tsx"} or "content" in path.parts:
             continue

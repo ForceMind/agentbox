@@ -8,7 +8,6 @@ import {
 import {
   ContentError,
   ContentRead,
-  PROTOCOL_ID,
   applicationAad,
   contextBytes,
   contextDigest,
@@ -23,8 +22,12 @@ export const MAX_ENVELOPE_BYTES = 24 * 1024
 export const MAX_CIPHERTEXT_BYTES = 16_400
 export const MAX_CIPHERTEXT_BASE64URL = 21_867
 export const HANDSHAKE_TIMEOUT_MS = 5000
+export const CRYPTO_PROTOCOL_ID = 'agentbox-a3-content/crypto/v2'
+export const CRYPTO_VERSION = 2
 export interface A3Current {
   readonly context: ContentContext
+  /** Trusted progressing elapsed milliseconds, compatible rate with Runtime.
+   * Origin is local; wall clocks and clocks stopped during suspension are unsafe. */
   readonly nowMs: number
   /** Independently obtained raw X25519 public key, never obtained from the wire. */
   readonly runtimePin: Uint8Array
@@ -33,6 +36,7 @@ export interface A3TrustedPort {
   current(): A3Current
 }
 export interface A3Options {
+  /** Role-local cap inputs; Browser must never receive Runtime absolute time. */
   readonly admissionStartedAtMs: number
   readonly admissionExpiresAtMs: number
   /** Test-only deterministic ephemeral input; omitted for fresh random keys. */
@@ -42,7 +46,7 @@ export type A3State =
   'NEW' | 'WAIT_ATTEST' | 'WAIT_CONFIRM' | 'WAIT_ACK' | 'READY' | 'CLOSED'
 type KeyKind =
   'A3_KEY_INIT' | 'A3_KEY_ATTEST' | 'A3_KEY_CONFIRM' | 'A3_KEY_CONFIRM_ACK'
-const DOMAIN = 'agentbox-a3-content/record/v1'
+const DOMAIN = 'agentbox-a3-content/record/v2'
 const enc = new TextEncoder()
 const dec = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const EMPTY = new Uint8Array()
@@ -129,8 +133,8 @@ function keyFrame(
   transcript?: string,
 ): Uint8Array {
   return canonical({
-    protocol_id: PROTOCOL_ID,
-    protocol_version: 1,
+    protocol_id: CRYPTO_PROTOCOL_ID,
+    protocol_version: CRYPTO_VERSION,
     context_digest: digest,
     kind,
     data: encode64(data),
@@ -153,20 +157,20 @@ function keyData(
     ...(kind === 'A3_KEY_CONFIRM_ACK' ? ['transcript_hash'] : []),
   ])
   if (
-    r.protocol_id !== PROTOCOL_ID ||
-    r.protocol_version !== 1 ||
+    r.protocol_id !== CRYPTO_PROTOCOL_ID ||
+    r.protocol_version !== CRYPTO_VERSION ||
     r.kind !== kind ||
     r.context_digest !== digest ||
     (kind === 'A3_KEY_CONFIRM_ACK' && r.transcript_hash !== transcript)
   )
     fail()
-  const size = kind === 'A3_KEY_INIT' ? 32 : kind === 'A3_KEY_ATTEST' ? 128 : 48
+  const size = kind === 'A3_KEY_INIT' ? 32 : kind === 'A3_KEY_ATTEST' ? 132 : 48
   return decode64(r.data, size, size)
 }
 const sha = async (raw: Uint8Array): Promise<Uint8Array> =>
   new Uint8Array(await crypto.subtle.digest('SHA-256', raw as BufferSource))
 function confirmation(challenge: Uint8Array, hash: Uint8Array): Uint8Array {
-  const prefix = enc.encode('agentbox-a3-content/noise-confirm/v1')
+  const prefix = enc.encode('agentbox-a3-content/noise-confirm/v2')
   const result = new Uint8Array(prefix.length + 4 + 32 + 32)
   result.set(prefix)
   new DataView(result.buffer).setUint32(prefix.length, 32, false)
@@ -181,7 +185,7 @@ class A3Role {
   readonly #bound: Uint8Array
   readonly #pin: Uint8Array
   readonly #trusted: A3TrustedPort
-  readonly #expires: number
+  #expires: number
   readonly #handshakeExpires: number
   #last: number
   #state: A3State = 'NEW'
@@ -240,6 +244,14 @@ class A3Role {
     this.challenge = undefined
     this.#read.close()
   }
+  /** Owner MUST call this on interruption; no restart/resume on this role.
+   * No DOM/network wiring is installed by this inert profile. */
+  interrupt(
+    _reason: 'visibility' | 'lifecycle' | 'freeze' | 'disconnect',
+  ): void {
+    void _reason
+    this.close()
+  }
   /** Owner calls this on idle revocation/currentness notifications. */
   check(): void {
     try {
@@ -291,11 +303,27 @@ class A3Role {
       this.#busy = false
     }
   }
+  protected remainingMs(): number {
+    const remaining = Math.floor(this.#expires - this.guard().nowMs)
+    if (remaining < 1 || remaining > 30_000) fail()
+    return remaining
+  }
+  protected tightenDeadline(deadlineMs: number): void {
+    if (!time(deadlineMs)) fail()
+    const current = this.guard()
+    this.#expires = Math.min(this.#expires, deadlineMs)
+    this.#read.tightenDeadline(this.#expires, current.nowMs, current.context)
+    this.guard()
+  }
   protected get context(): ContentContext {
     return this.#context
   }
   protected get prologue(): Uint8Array {
-    return new Uint8Array(this.#bound)
+    const prefix = enc.encode('agentbox-a3-content/noise-prologue/v2\0')
+    const result = new Uint8Array(prefix.length + this.#bound.length)
+    result.set(prefix)
+    result.set(this.#bound, prefix.length)
+    return result
   }
   protected get pin(): Uint8Array {
     return new Uint8Array(this.#pin)
@@ -393,6 +421,7 @@ class A3Role {
 export class A3Browser extends A3Role {
   #ephemeral?: CryptoKeyPair
   #nx?: NXInitiator
+  #anchor?: number
   constructor(context: unknown, trusted: A3TrustedPort, options: A3Options) {
     super(context, trusted, options)
     this.#ephemeral = options.ephemeralKeyPair
@@ -404,6 +433,8 @@ export class A3Browser extends A3Role {
   }
   start(): Promise<Uint8Array> {
     return this.operation('NEW', 'WAIT_ATTEST', async () => {
+      // One causal anchor before any hash, DH or INIT publication. Never reset.
+      this.#anchor = this.guard().nowMs
       const digest = await this.checked(this.digest())
       this.#nx = new NXInitiator(this.prologue, this.#ephemeral)
       this.#ephemeral = undefined
@@ -416,19 +447,30 @@ export class A3Browser extends A3Role {
     return this.operation('WAIT_ATTEST', 'WAIT_ACK', async () => {
       raw = bytes(raw, 4096)
       const digest = await this.checked(this.digest())
-      this.challenge = await this.checked(
+      const payload = await this.checked(
         this.#nx!.readMessage2(keyData(raw, 'A3_KEY_ATTEST', digest)),
       )
       this.transport = this.#nx!.takeTransport()
       if (
-        this.challenge.length !== 32 ||
+        payload.length !== 36 ||
         !equal(this.transport.remote_static_public_key, this.pin) ||
         this.transport.send.counter !== 0n
       )
         fail()
+      const remaining = new DataView(
+        payload.buffer,
+        payload.byteOffset,
+        payload.byteLength,
+      ).getUint32(32, false)
+      if (remaining < 1 || remaining > 30_000 || this.#anchor === undefined)
+        fail()
+      this.challenge = payload.slice(0, 32)
+      // Apply only authenticated remaining time after independent pin verification.
+      this.tightenDeadline(this.#anchor! + remaining)
       const proof = await this.checked(
         sha(confirmation(this.challenge, this.transport.handshake_hash)),
       )
+      this.guard() // Immediate pre-CONFIRM fence after proof hashing.
       const data = await this.checked(this.transport.send.encrypt(proof, EMPTY))
       return keyFrame('A3_KEY_CONFIRM', data, digest)
     })
@@ -450,7 +492,7 @@ export class A3Browser extends A3Role {
         ),
       )
       const expected = await this.checked(
-        sha(enc.encode('agentbox-a3-content/noise-confirm-ack/v1')),
+        sha(enc.encode('agentbox-a3-content/noise-confirm-ack/v2')),
       )
       if (!equal(proof, expected)) fail()
       this.challenge?.fill(0)
@@ -512,7 +554,11 @@ export class A3Runtime extends A3Role {
       )
       if (payload.length !== 0) fail()
       this.challenge = crypto.getRandomValues(new Uint8Array(32))
-      const data = await this.checked(this.#nx.writeMessage2(this.challenge))
+      const attestation = new Uint8Array(36)
+      attestation.set(this.challenge)
+      // Fixture-only Runtime clock; sample before the unchanged NX byte API.
+      new DataView(attestation.buffer).setUint32(32, this.remainingMs(), false)
+      const data = await this.checked(this.#nx.writeMessage2(attestation))
       this.transport = this.#nx.takeTransport()
       return keyFrame('A3_KEY_ATTEST', data, digest)
     })
@@ -537,7 +583,7 @@ export class A3Runtime extends A3Role {
       )
       if (!equal(proof, expected)) fail()
       const ack = await this.checked(
-        sha(enc.encode('agentbox-a3-content/noise-confirm-ack/v1')),
+        sha(enc.encode('agentbox-a3-content/noise-confirm-ack/v2')),
       )
       const data = await this.checked(this.transport.send.encrypt(ack, EMPTY))
       this.challenge?.fill(0)

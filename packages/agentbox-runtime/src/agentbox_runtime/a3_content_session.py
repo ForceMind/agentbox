@@ -72,6 +72,8 @@ async def serve_admitted_staged_read(
             clock_ms=clock,
             current=lambda: admitted.context,
             deadline_ms=expiry_ns // 1_000_000,
+            original_expiry_ns=expiry_ns,
+            clock_ns=time.monotonic_ns,
         )
         handshake_deadline_ns = min(expiry_ns, handshake_started_ns + 5_000_000_000)
 
@@ -99,9 +101,22 @@ async def serve_admitted_staged_read(
                 check()
                 return result
 
-            result = await asyncio.wait_for(guarded(), remaining)
-            check()
-            return result
+            pending = asyncio.create_task(asyncio.wait_for(guarded(), remaining))
+            try:
+                while not pending.done():
+                    # Bounded idle revalidation: revocation does not wait for input.
+                    remaining = (end - time.monotonic_ns()) / 1_000_000_000
+                    if remaining <= 0:
+                        raise ContentError("PATCH_TIMEOUT")
+                    await asyncio.wait({pending}, timeout=min(remaining, 0.05))
+                    check()
+                result = pending.result()
+                check()
+                return result
+            finally:
+                if not pending.done():
+                    pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
 
         async def send(raw: bytes) -> None:
             check()

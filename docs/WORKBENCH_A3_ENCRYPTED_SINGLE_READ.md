@@ -1,5 +1,9 @@
 # A3 independent encrypted single-read software slice
 
+Current continuation: [default-off admission and crypto v2 lifetime bridge](WORKBENCH_A3_ADMISSION_LIFETIME.md)
+supersedes the historical crypto v1 framing/timing below. Plaintext/context/AAD v1
+and reader bounds remain unchanged; no production path is activated.
+
 Status: inert software candidate, 2026-10-04, based on verified #140 merge
 `57cb8cd643ca0531b805459998d71cbe13369823`, tree
 `ef47c85676c36ce9bde730e7814d5628c5653fa3`. This implements the next bounded

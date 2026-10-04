@@ -18,7 +18,10 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+
+if TYPE_CHECKING:
+    from agentbox_runtime.git_staged_selectors import GitStagedSelectors
 
 from agentbox_core.waw import AgentType
 from agentbox_core.waw_recovery import RecoveryError, ResumeHint
@@ -291,6 +294,7 @@ class WAWLifecycleRegistry:
         self._cleanup_quarantine: set[str] = set()
         self._authority: tuple[str, str] | None = None
         self._bindings: dict[str, WAWProjectBinding] = {}
+        self._a3_selector_owner: GitStagedSelectors | None = None
         self._durable_bindings: dict[str, WAWDurableProjectBinding] = {}
         self._hydrated_bindings: set[str] = set()
         self._workspaces: dict[str, tuple[WAWLifecycleIdentity, WAWLifecycleObservation]] = {}
@@ -314,6 +318,51 @@ class WAWLifecycleRegistry:
         self._binding_replay_operation: asyncio.Task[None] | None = None
         self._binding_replay_complete = binding_store is None
         self._binding_inventory_finalized: tuple[tuple[str, str], str, str] | None = None
+
+    def replace_content_selector_owner(self, owner: GitStagedSelectors) -> None:
+        """One inert owner per existing lifecycle; replacement fences old authority."""
+        from agentbox_runtime.git_staged_selectors import GitStagedSelectors
+
+        if type(owner) is not GitStagedSelectors or self._shutting_down:
+            raise ValueError("content owner unavailable")
+        if self._a3_selector_owner is not owner:
+            self._close_content_selector_owner()
+            self._a3_selector_owner = owner
+
+    def _close_content_selector_owner(self) -> None:
+        owner, self._a3_selector_owner = self._a3_selector_owner, None
+        if owner is not None:
+            owner.close()
+
+    def content_project_current(
+        self,
+        binding: WAWProjectBinding,
+        runtime_epoch: str,
+        peer: RuntimePeer,
+        owner: GitStagedSelectors,
+    ) -> bool:
+        """Same inventory/peer gates; no workspace/attachment identity is A3 authority."""
+        if (
+            self._a3_selector_owner is not owner
+            or self._lock.locked()
+            or self._shutting_down
+            or self._authority_quarantined
+            or not self.application_gate_open
+            or not self._binding_replay_complete
+            or (
+                self.binding_inventory_finalize_required
+                and self._binding_inventory_finalized is None
+            )
+            or self._authority is None
+            or peer.api_authority_epoch != self._authority[0]
+            or peer.identity is not self._peer_authority_identity
+            or not peer.current()
+            or runtime_epoch != self._runtime_epoch
+            or binding.runtime_host_installation_id != self._host_id
+            or binding.runtime_host_installation_revision != self._host_revision
+        ):
+            return False
+        return self._bindings.get(binding.project_id) == binding
 
     def configure_encrypted_attachments(self, service: WAWEncryptedAttachmentService) -> None:
         """Install the real fixed service before serving; never replace live wiring."""
@@ -496,6 +545,7 @@ class WAWLifecycleRegistry:
         """Fence dispatch and revoke authority state without closing its pidfd owner."""
 
         self._shutting_down = True
+        self._close_content_selector_owner()
         operation = self._begin_shutdown_operation
         if operation is None:
             operation = asyncio.create_task(self._perform_begin_shutdown())
@@ -848,6 +898,7 @@ class WAWLifecycleRegistry:
         }
 
     def _clear_peer_authority_caches(self) -> None:
+        self._close_content_selector_owner()
         self._authority = None
         self._peer_authority_identity = None
         self._attachments.clear()

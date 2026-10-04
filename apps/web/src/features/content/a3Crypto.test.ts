@@ -10,14 +10,15 @@ import {
 } from './a3Crypto'
 import {
   applicationAad,
+  contextBytes,
   decodeMessage,
   preparePages,
   type Message,
   type ContentContext,
 } from './a3Content'
-import { generateX25519KeyPair } from '../workspace/noiseNx'
+import { NXResponder, generateX25519KeyPair } from '../workspace/noiseNx'
 import fixture from '../../../../../tests/fixtures/a3_content/v1.json'
-import vector from '../../../../../tests/fixtures/a3_content/crypto-v1.json'
+import vector from '../../../../../tests/fixtures/a3_content/crypto-v2.json'
 const text = (raw: Uint8Array) => new TextDecoder().decode(raw)
 const bytes = (s: string) => new Uint8Array(new TextEncoder().encode(s))
 const canon = (r: object) =>
@@ -54,7 +55,7 @@ class MaliciousRuntime extends A3Runtime {
       sequence,
     )
     return canon({
-      domain: 'agentbox-a3-content/record/v1',
+      domain: 'agentbox-a3-content/record/v2',
       context_digest: fixture.context_digest,
       kind,
       sequence,
@@ -229,11 +230,11 @@ describe('inert independent A3 encryption', () => {
     const frames = await p.handshake()
     for (const [name, frame] of Object.entries(frames)) {
       const r = JSON.parse(text(frame))
-      expect(r.protocol_id).toBe('agentbox-a3-content/v1')
-      expect(r.protocol_version).toBe(1)
+      expect(r.protocol_id).toBe('agentbox-a3-content/crypto/v2')
+      expect(r.protocol_version).toBe(2)
       expect(r.context_digest).toBe(fixture.context_digest)
       expect(Buffer.from(r.data, 'base64url').length).toBe(
-        name === 'init' ? 32 : name === 'attest' ? 128 : 48,
+        name === 'init' ? 32 : name === 'attest' ? 132 : 48,
       )
       expect(frame).toEqual(canon(r))
       expect(Object.keys(r)).toHaveLength(name === 'ack' ? 6 : 5)
@@ -383,7 +384,7 @@ describe('inert independent A3 encryption', () => {
     expect(MAX_CIPHERTEXT_BYTES).toBe(16400)
     const q = await started()
     const bad = canon({
-      domain: 'agentbox-a3-content/record/v1',
+      domain: 'agentbox-a3-content/record/v2',
       context_digest: fixture.context_digest,
       kind: 'PATCH_PAGE',
       sequence: 0,
@@ -452,4 +453,194 @@ describe('inert independent A3 encryption', () => {
     await p.handshake()
     expect(JSON.stringify(p.browser)).toBe('{"state":"READY"}')
   })
+})
+
+/** Origins intentionally differ; only elapsed rates are compatible. */
+async function independentClocks(remaining = 1500, browserCap = 30100) {
+  const keys = await generateX25519KeyPair()
+  const pin = new Uint8Array(
+    await crypto.subtle.exportKey('raw', keys.publicKey),
+  )
+  let browserNow = 100
+  let runtimeNow = 900000
+  const browser = new A3Browser(
+    context,
+    {
+      current: () => ({ context, runtimePin: pin, nowMs: browserNow }),
+    },
+    { admissionStartedAtMs: 100, admissionExpiresAtMs: browserCap },
+  )
+  const runtime = new A3Runtime(
+    context,
+    {
+      current: () => ({ context, runtimePin: pin, nowMs: runtimeNow }),
+    },
+    { admissionStartedAtMs: 900000, admissionExpiresAtMs: 900000 + remaining },
+    keys,
+  )
+  return {
+    browser,
+    runtime,
+    keys,
+    setBrowser: (n: number) => {
+      browserNow = n
+    },
+    setRuntime: (n: number) => {
+      runtimeNow = n
+    },
+  }
+}
+
+describe('authenticated v2 admission lifetime bridge', () => {
+  it('uses one pre-INIT local anchor across unrelated origins and asymmetric RTT', async () => {
+    const p = await independentClocks()
+    const init = await p.browser.start() // browser anchor = 100
+    p.setRuntime(900200) // 200 outbound / Runtime processing, remaining = 1300
+    const attest = await p.runtime.acceptInit(init)
+    p.setBrowser(800) // another 500 on inbound path; never anchor here
+    const confirm = await p.browser.acceptAttest(attest)
+    await p.browser.acceptAck(await p.runtime.acceptConfirm(confirm))
+    await p.runtime.decryptRead(await p.browser.encryptRead(read))
+    const wire = await p.runtime.encryptResponse(page)
+    p.setBrowser(1399)
+    expect(await p.browser.acceptResponse(wire)).toBeUndefined()
+    const complete = await p.runtime.encryptResponse(end)
+    p.setBrowser(1400) // anchor 100 + remaining 1300, not receipt 800 + 1300
+    await expect(p.browser.acceptResponse(complete)).rejects.toThrow()
+    expect(p.browser.state).toBe('CLOSED')
+  })
+  it('never extends an existing shorter local cap', async () => {
+    const p = await independentClocks(1500, 1000)
+    const confirm = await p.browser.acceptAttest(
+      await p.runtime.acceptInit(await p.browser.start()),
+    )
+    await p.browser.acceptAck(await p.runtime.acceptConfirm(confirm))
+    p.setBrowser(999)
+    p.browser.check()
+    p.setBrowser(1000)
+    expect(() => p.browser.check()).toThrow()
+    expect(p.browser.state).toBe('CLOSED')
+  })
+  it('rejects an ACK arriving at the tightened deadline', async () => {
+    const p = await independentClocks(1000)
+    const confirm = await p.browser.acceptAttest(
+      await p.runtime.acceptInit(await p.browser.start()),
+    )
+    const ack = await p.runtime.acceptConfirm(confirm)
+    p.setBrowser(1100)
+    await expect(p.browser.acceptAck(ack)).rejects.toThrow()
+    expect(p.browser.state).toBe('CLOSED')
+  })
+  it('anchors before INIT hashing and does not regain crypto processing time', async () => {
+    const p = await independentClocks(1000)
+    const original = crypto.subtle.digest.bind(crypto.subtle)
+    vi.spyOn(crypto.subtle, 'digest').mockImplementationOnce(
+      async (...args) => {
+        const result = await original(...args)
+        p.setBrowser(500)
+        return result
+      },
+    )
+    const init = await p.browser.start()
+    const attest = await p.runtime.acceptInit(init)
+    p.setBrowser(1100)
+    await expect(p.browser.acceptAttest(attest)).rejects.toThrow()
+    expect(p.browser.state).toBe('CLOSED')
+  })
+  it.each(['decrypt', 'proof', 'encrypt'])(
+    'fences expiration during %s before CONFIRM escapes',
+    async (stage) => {
+      const p = await independentClocks(1000)
+      const attest = await p.runtime.acceptInit(await p.browser.start())
+      p.setBrowser(1099)
+      if (stage === 'decrypt') {
+        const original = crypto.subtle.decrypt.bind(crypto.subtle)
+        vi.spyOn(crypto.subtle, 'decrypt').mockImplementation(
+          async (...args) => {
+            const result = await original(...args)
+            if (args[2].byteLength === 52) p.setBrowser(1100)
+            return result
+          },
+        )
+      } else if (stage === 'proof') {
+        const original = crypto.subtle.digest.bind(crypto.subtle)
+        vi.spyOn(crypto.subtle, 'digest').mockImplementation(
+          async (...args) => {
+            const result = await original(...args)
+            const input = new Uint8Array(args[1] as ArrayBuffer)
+            if (text(input).startsWith('agentbox-a3-content/noise-confirm/v2'))
+              p.setBrowser(1100)
+            return result
+          },
+        )
+      } else {
+        const original = crypto.subtle.encrypt.bind(crypto.subtle)
+        vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(
+          async (...args) => {
+            const result = await original(...args)
+            p.setBrowser(1100)
+            return result
+          },
+        )
+      }
+      await expect(p.browser.acceptAttest(attest)).rejects.toThrow()
+      expect(p.browser.state).toBe('CLOSED')
+    },
+  )
+  it.each([0, 30001])(
+    'rejects authenticated invalid remaining lifetime %s',
+    async (remaining) => {
+      const p = await independentClocks()
+      const init = JSON.parse(text(await p.browser.start()))
+      const prefix = bytes('agentbox-a3-content/noise-prologue/v2\0')
+      const bound = contextBytes(context)
+      const prologue = new Uint8Array(prefix.length + bound.length)
+      prologue.set(prefix)
+      prologue.set(bound, prefix.length)
+      const nx = new NXResponder(prologue, p.keys)
+      await nx.readMessage1(new Uint8Array(Buffer.from(init.data, 'base64url')))
+      const payload = new Uint8Array(36)
+      payload.fill(1, 0, 32)
+      new DataView(payload.buffer).setUint32(32, remaining, false)
+      const data = await nx.writeMessage2(payload)
+      await expect(
+        p.browser.acceptAttest(
+          canon({ ...init, kind: 'A3_KEY_ATTEST', data: b64(data) }),
+        ),
+      ).rejects.toThrow()
+      expect(p.browser.state).toBe('CLOSED')
+      nx.destroy()
+    },
+  )
+  it.each(['version', 'profile', 'length'])(
+    'rejects v1 %s without fallback',
+    async (mode) => {
+      const p = await pair(false)
+      const r = JSON.parse(
+        text(await p.runtime.acceptInit(await p.browser.start())),
+      )
+      if (mode === 'version') r.protocol_version = 1
+      if (mode === 'profile') r.protocol_id = 'agentbox-a3-content/v1'
+      if (mode === 'length') r.data = b64(new Uint8Array(128))
+      await expect(p.browser.acceptAttest(canon(r))).rejects.toThrow()
+      expect(p.browser.state).toBe('CLOSED')
+    },
+  )
+  it('rejects a second authenticated ATTEST rather than renewing deadline', async () => {
+    const p = await pair(false)
+    const attest = await p.runtime.acceptInit(await p.browser.start())
+    await p.browser.acceptAttest(attest)
+    await expect(p.browser.acceptAttest(attest)).rejects.toThrow()
+    expect(p.browser.state).toBe('CLOSED')
+  })
+  it.each(['visibility', 'lifecycle', 'freeze', 'disconnect'] as const)(
+    'permanently closes on explicit %s interruption',
+    async (reason) => {
+      const p = await started()
+      const wire = await p.runtime.encryptResponse(page)
+      p.browser.interrupt(reason)
+      await expect(p.browser.acceptResponse(wire)).rejects.toThrow()
+      expect(p.browser.state).toBe('CLOSED')
+    },
+  )
 })
