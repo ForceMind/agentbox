@@ -73,41 +73,40 @@ def _install_downstream_stubs(
     monkeypatch: pytest.MonkeyPatch,
     events: list[str],
 ) -> None:
-    monkeypatch.setattr(
-        installer,
-        "install_waw_dependencies",
-        lambda **_kwargs: events.append("browser-dependencies") or {},
-    )
-    monkeypatch.setattr(
-        installer,
-        "install_waw_vendors",
-        lambda **_kwargs: events.append("fixed-vendors") or {},
-    )
-    monkeypatch.setattr(
-        installer,
-        "prepare_waw_manifests",
-        lambda **_kwargs: events.append("manifests") or object(),
-    )
-    monkeypatch.setattr(
-        installer,
-        "prepare_waw_policies",
-        lambda **_kwargs: events.append("policies") or {},
-    )
-    monkeypatch.setattr(
-        installer,
-        "enroll_qualified_waw_vendors",
-        lambda **_kwargs: events.append("qualified-enrollment") or object(),
-    )
-    monkeypatch.setattr(
-        installer,
-        "setup_waw_web",
-        lambda **_kwargs: events.append("https")
-        or {
+    def dependencies(**_kwargs: object) -> dict[str, object]:
+        events.append("browser-dependencies")
+        return {}
+
+    def vendors(**_kwargs: object) -> dict[str, object]:
+        events.append("fixed-vendors")
+        return {}
+
+    def manifests(**_kwargs: object) -> object:
+        events.append("manifests")
+        return object()
+
+    def policies(**_kwargs: object) -> dict[str, object]:
+        events.append("policies")
+        return {}
+
+    def enrollment(**_kwargs: object) -> object:
+        events.append("qualified-enrollment")
+        return object()
+
+    def web(**_kwargs: object) -> dict[str, object]:
+        events.append("https")
+        return {
             "status": "started",
             "services_started": True,
             "runtime_restarted": True,
-        },
-    )
+        }
+
+    monkeypatch.setattr(installer, "install_waw_dependencies", dependencies)
+    monkeypatch.setattr(installer, "install_waw_vendors", vendors)
+    monkeypatch.setattr(installer, "prepare_waw_manifests", manifests)
+    monkeypatch.setattr(installer, "prepare_waw_policies", policies)
+    monkeypatch.setattr(installer, "enroll_qualified_waw_vendors", enrollment)
+    monkeypatch.setattr(installer, "setup_waw_web", web)
 
 
 def test_fresh_setup_plan_is_read_only_and_lists_closed_sequence(
