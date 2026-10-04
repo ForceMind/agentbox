@@ -1,12 +1,28 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T16:32:00Z"
+verified_at_utc: "2026-10-04T16:41:00Z"
 verified_by: "agentbox-changes-a3-reader"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 DOM 已通过，CJK 截图资格待补
+
+head `d0648eed7d14c5ae35ba6ca2df0e71f252b4171f` 的
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37217280128) SUCCESS：
+144 passed/30 prescribed skipped，包含全部28个新增desktop/phone场景，无本head重跑。
+取消+刷新同步已在实际浏览器通过。artifact `11308473073` ZIP SHA256
+`c59ab6ccc847bc4d762f721e004b2ba3185a7979d42d912763bc46ba5eb0fc76` 已下载核验。
+
+实际像素复读发现CI runner缺少中文glyph：两个viewport的中文控件/说明呈方框。
+DOM字符串断言与无overflow虽通过，仍不能称截图可读或完成视觉验收。仅为E2E
+Ubuntu runner安装官方`fonts-noto-cjk`并以`fc-match`核对CJK fallback，再跑新head
+全量CI与截图复读；不增加产品字体/framework依赖、不改UI/权限/crypto或放宽断言。
+本地不安装/执行浏览器；前两次失败和本head DOM成功事实均保留。待可读截图和
+新head全部checks终态后才能审阅merge，真实host/pin/production仍未开放。
+
 
 ## 2026-10-04 第二轮 CI 与 metadata teardown 同步
 
