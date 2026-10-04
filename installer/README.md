@@ -5,6 +5,20 @@ only a root/bootstrap gate; Python owns detection, planning, artifact safety,
 identities, FHS layout, migrations, systemd, backup, update, rollback, and
 data-preserving uninstall.
 
+`setup-fresh-waw` is now the composed fresh-install candidate in PR #136.
+It accepts the verified release artifact/checksum plus Origin/ACME contact and
+runs the already-qualified phases in a fixed order: deferred install, fixed
+browser dependencies, fixed vendors, manifests, policies, qualified enrollment,
+then the existing HTTPS setup. A staged interruption needs explicit
+`--recover`; a same-version continuation is admitted only with exact artifact
+and committed deferred-install evidence. If WAW activation already began, the
+recovery path skips offline phases and resumes the existing Web setup instead of
+replaying policy/vendor work.
+
+This is a software composition candidate, not yet a published one-command
+release. Real public-host fresh install, ACME/HTTPS, authenticated Claude/Codex,
+physical clients, reboot, upgrade and rollback still require qualification.
+
 The first browser deployment is still under qualification. After fixed WAW
 enrollment/publication, `configure-waw-web --origin https://host.example --plan`
 checks the current Root-owned overlay and `/etc/agentbox-web/tls/fullchain.pem`
