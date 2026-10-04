@@ -42,7 +42,12 @@ from agentbox_installer.dependencies import REQUIRED_BASE, REQUIRED_BROWSER, det
 from agentbox_installer.hardening import validate_unit_compatibility
 from agentbox_installer.host import HostOperations, IdentityFacts
 from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, InstallLayout
-from agentbox_installer.platform import PackageFamily, PlatformFacts, detect_platform, resolve_packages
+from agentbox_installer.platform import (
+    PackageFamily,
+    PlatformFacts,
+    detect_platform,
+    resolve_packages,
+)
 from agentbox_installer.retention import enforce_retention
 from agentbox_installer.versioning import valid_version, version_precedence
 from agentbox_installer.waw_activation import WAWActivationTransaction
