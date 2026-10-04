@@ -605,11 +605,13 @@ class AgentBoxInstaller:
         elif install_plan.state == "staged":
             self.resume_install(artifact, expected_sha256, defer_activation=True)
 
-        self.install_waw_dependencies(plan=False, recover=recover)
-        self.install_waw_vendors(plan=False, recover=recover)
-        self.prepare_waw_manifests(plan=False, recover=recover)
-        self.prepare_waw_policies(plan=False, recover=recover)
-        self.enroll_qualified_waw_vendors(plan=False, recover=recover)
+        activation_phase = self._fresh_waw_activation_phase(recover=recover)
+        if activation_phase is None:
+            self.install_waw_dependencies(plan=False, recover=recover)
+            self.install_waw_vendors(plan=False, recover=recover)
+            self.prepare_waw_manifests(plan=False, recover=recover)
+            self.prepare_waw_policies(plan=False, recover=recover)
+            self.enroll_qualified_waw_vendors(plan=False, recover=recover)
         web = self.setup_waw_web(
             origin=origin,
             email=email,
@@ -626,8 +628,23 @@ class AgentBoxInstaller:
             "steps": list(_FRESH_WAW_SETUP_STEPS),
             "services_started": web.get("services_started", False),
             "runtime_restarted": web.get("runtime_restarted", False),
+            "resumed_activation_phase": activation_phase,
             "qualified": False,
         }
+
+    def _fresh_waw_activation_phase(self, *, recover: bool) -> str | None:
+        """Inspect an existing activation transaction before replaying offline phases."""
+
+        path = self.layout.map("/var/lib/agentbox-waw/activation.v1.json")
+        if not path.exists() and not path.is_symlink():
+            return None
+        publisher = self._web_publisher()
+        transaction = WAWActivationTransaction(
+            publisher.issuer,
+            publisher.pin,
+            api_gid=self._web_api_gid(),
+        )
+        return transaction.inspect(recover=recover)
 
     def _verify_deferred_fresh_install(
         self, *, artifact: Path, expected_sha256: str, version: str
