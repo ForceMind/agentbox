@@ -1,9 +1,9 @@
 # AgentBox Project Context Index
 
 - **当前优先级（2026-10-04）**：Owner 暂缓真实 host/device 验收，继续独立软件；
-  [当前行动](NEXT_ACTION.md) 的最新段落覆盖下方历史冻结。当前批次只接续
-  [Runtime-only staged reader/selector](../WORKBENCH_A3_STAGED_READER.md)：#138 已合并，
-  当前接续短期 selector 与同一 held observation 校验；不开放内容通道。
+  #139 Runtime-only selectors 已合并，exact-head/post-main CI 全绿。当前批次是
+  [A3 content schema/codecs](../WORKBENCH_A3_CONTENT_CODECS.md) 的纯 Python/Web
+  协议/向量，不是 encrypted transport/production resolver/UI。
 
 - [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-04 接续入口；
   PR #136 完整 fresh-install 已实现，documentation-inclusive CI 全绿；
@@ -28,7 +28,7 @@
 - [A3 Git Changes metadata](../WORKBENCH_A3_GIT_CHANGES.md)：
   READY Project 范围内的只读路径/状态分页合同，不授予正文或 patch 读取。
 - [A3 Git patch content contract](../WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md)：
-  reader 已随 #138 合并；internal selector 为当前候选，独立加密内容通道尚未实施。
+  reader/selector 已随 #138/#139 合并；纯 content codec 候选不开放加密通道。
 - [A3 Git child cwd](../WORKBENCH_A3_GIT_CWD.md)：
   Linux-only 子进程目录 descriptor 前后身份验证基础；尚无内容读取动作。
 - [A3 staged reader candidate](../WORKBENCH_A3_STAGED_READER.md)：

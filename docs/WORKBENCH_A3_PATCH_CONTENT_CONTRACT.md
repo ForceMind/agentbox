@@ -23,8 +23,8 @@ mutable and are revalidated; metadata/FD/storage limits are explicit in that
 contract. It returns text only to Runtime-internal code and adds no RPC, API,
 encrypted channel or UI. The reader has merged in #138 with exact-head and
 post-main CI; see [current state](project/CURRENT_STATE.md), including the retained
-first post-main Frontend failure. The next Runtime-only selector is a software
-candidate with an uncomposed trusted current-context resolver. Its full sorted
+first post-main Frontend failure. The Runtime-only selector has merged in #139,
+with its trusted current-context resolver still uncomposed. Its full sorted
 snapshot digest and same-view validation/read contract are specified in
 [the reader/selector contract](WORKBENCH_A3_STAGED_READER.md#internal-staged-selector-candidate).
 No v1 API migration or production admission is implied. Real host/device acceptance
@@ -43,6 +43,14 @@ private-key extensions are denied case-insensitively. This is metadata-only:
 no Git child, object read, patch bytes, Runtime action or browser route exists.
 Object-store provenance, snapshot/re-read and encrypted delivery gates below
 remain open.
+
+The next [independent schema/codecs candidate](WORKBENCH_A3_CONTENT_CODECS.md)
+freezes canonical context/AAD bytes, four strict plaintext record schemas and
+pure Python/Web transcript/vector behavior. It does not implement or open an
+encrypted channel. Its 16 KiB page ceiling includes ALL JSON metadata and
+base64 payload; the 256 KiB reader ceiling is not a promise that every reader
+result fits 16 pages. An all-or-nothing planner rejects transport-oversize
+results with PATCH_TOO_LARGE before any PAGE can escape.
 
 ## Authority and delivery order
 

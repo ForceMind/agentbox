@@ -1,5 +1,14 @@
 # AgentBox Roadmap
 
+## 2026-10-04 A3 独立协议软件候选
+
+#139 已合并到 `587fe8eabf7e5d5e4d3a561091ec00c3e9f40881`，exact-head 与
+post-main 六套 CI 均 SUCCESS。当前独立批次为 [content schema/codecs](../WORKBENCH_A3_CONTENT_CODECS.md)：
+专用 context/AAD bytes、四类严格消息、单次 transcript 和跨语言向量；不实施
+或开放 encrypted Runtime/API/UI path。完整 PAGE 16 KiB 限制不变，超容量先
+TOO_LARGE；真实 host/client 验收继续 NOT RUN。后续 crypto/admission/relay/UI
+按合同与证据分别交付，旧批次范围仅作历史。
+
 ## 2026-10-04 下一项软件边界
 
 PR #138 已合并到 `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`，#117 因保留
