@@ -1,5 +1,14 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-STAGED-READER-RECONCILIATION-2026-10-04`：Owner 暂缓
+  真实目标验收，批准继续独立软件。保留原 Draft #117 的完整历史，接续 bounded
+  Runtime-only reader；配置竞态/helper 和对象 provenance 必须闭合，旧 CI/自查
+  不能称新 head PASS 或独立审查。见 [当前行动](NEXT_ACTION.md)。
+- `WORKBENCH-A3-STAGED-READER-CANDIDATE`（历史 #117）：固定 Project/Git
+  descriptor、bounded local object inventory、固定 child-cwd Git 命令与双 patch
+  观察；没有 RPC/route。原候选需按当前安全发现修正，见
+  [A3 staged reader](../WORKBENCH_A3_STAGED_READER.md)。
+
 - `R12-WEB-HTTPS-BOOTSTRAP`: Owner accepted the recommended first-release
   PC/mobile Web profile on 2026-09-30. Independent native protection against
   compromised Web code is not claimed; Runtime/Secret/action/Stop boundaries

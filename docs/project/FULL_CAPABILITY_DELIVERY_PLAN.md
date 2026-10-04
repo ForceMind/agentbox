@@ -1,5 +1,17 @@
 # AgentBox 全量功能整合与原路线续建计划
 
+## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
+
+Owner 已明确暂缓真实目标测试、继续开发并要求列出后续计划。真实
+host/device/login/reboot/upgrade/rollback 仍为 **NOT RUN**；软件/CI 不能替代
+现场验收或授权发布。当前基线为 PR #136/#137 合并后的
+`7fa54c3f5e3ce7e96c3d2cb33828c759665d81d2`。
+本批仅复用 Draft #117 接续 S02 Runtime-only staged reader、安全修复和必要
+验证，不新增 selector/content channel/UI/Files 编辑。具体边界与事实见
+[当前行动](NEXT_ACTION.md)；该最新 Owner 顺序覆盖下方禁止 #117/S02 的
+历史冻结，其他 S00–S14 依赖和安全边界保持有效。
+
+
 2026-09-30 当前候选：单版本计划已由 PR #124 合并；S01 仅继续 R12。
 固定非 Secret vendor enrollment 的 Draft #122 正对齐 rc29 main 并改为
 rc30 软件候选；新的 exact-head CI 尚待完成。审查按当前 AGENTS.md

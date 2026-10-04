@@ -101,6 +101,10 @@ def test_rejects_unsupported_modes_kinds_and_malformed_oids() -> None:
         code(regular.replace(b"100644 100644", b"100644 120000"), "src/file.txt")
         == "PATCH_UNAVAILABLE_MODE"
     )
+    assert (
+        code(regular.replace(b"100644 100644", b"100644 160000"), "src/file.txt")
+        == "PATCH_UNAVAILABLE_MODE"
+    )
     assert code(regular.replace(old, b"z" * 40), "src/file.txt") == "PATCH_UNAVAILABLE_STATUS"
     assert code(regular.replace(b"1 M.", b"1 T."), "src/file.txt") == "PATCH_UNAVAILABLE_KIND"
     assert code(b"? src/file.txt\0", "src/file.txt") == "PATCH_UNAVAILABLE_KIND"

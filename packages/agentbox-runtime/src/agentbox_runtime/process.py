@@ -11,8 +11,12 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from agentbox_runtime.models import RuntimeOperationError
+
+if TYPE_CHECKING:
+    from agentbox_runtime.git_staged_snapshot import StagedGitSnapshot
 
 ALLOWED_ENVIRONMENT = frozenset(
     {
@@ -172,6 +176,7 @@ class ControlledProcessRunner:
         sensitive_output: bool = False,
         stdin_data: bytes | None = None,
         error_prefix: str = "GIT",
+        staged_git_inputs: StagedGitSnapshot | None = None,
     ) -> ProcessResult:
         """Bind a fixed child cwd to a caller-held directory on Linux only.
 
@@ -191,6 +196,19 @@ class ControlledProcessRunner:
                 "Descriptor-bound working directory is invalid",
                 category="validation",
             )
+        from agentbox_runtime.git_staged_snapshot import StagedGitSnapshot
+
+        if staged_git_inputs is not None and type(staged_git_inputs) is not StagedGitSnapshot:
+            raise TypeError("fixed staged Git input owner is required")
+        if staged_git_inputs is not None and (
+            cwd != staged_git_inputs.path
+            or cwd_directory_fd != staged_git_inputs.directory_fd
+            or error_prefix != "GIT"
+        ):
+            raise ValueError("staged Git inputs require their own fixed directory")
+        input_fds = () if staged_git_inputs is None else staged_git_inputs.input_fds
+        if len(input_fds) > 512:
+            raise ValueError("staged Git input descriptor limit exceeded")
         try:
             held_fd = os.dup(cwd_directory_fd)
         except OSError as exc:
@@ -219,7 +237,7 @@ class ControlledProcessRunner:
                 sensitive_output=sensitive_output,
                 stdin_data=stdin_data,
                 error_prefix=error_prefix,
-                pass_fds=(held_fd,),
+                pass_fds=(held_fd, *input_fds),
             )
             if self._checked_cwd_identity(held_fd, cwd, error_prefix=error_prefix) != identity:
                 raise RuntimeOperationError(
