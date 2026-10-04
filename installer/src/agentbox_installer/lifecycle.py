@@ -42,7 +42,12 @@ from agentbox_installer.dependencies import REQUIRED_BASE, REQUIRED_BROWSER, det
 from agentbox_installer.hardening import validate_unit_compatibility
 from agentbox_installer.host import HostOperations, IdentityFacts
 from agentbox_installer.layout import DIRECTORIES, WAW_SOCKET_UNIT_NAMES, InstallLayout
-from agentbox_installer.platform import PlatformFacts, detect_platform, resolve_packages
+from agentbox_installer.platform import (
+    PackageFamily,
+    PlatformFacts,
+    detect_platform,
+    resolve_packages,
+)
 from agentbox_installer.retention import enforce_retention
 from agentbox_installer.versioning import valid_version, version_precedence
 from agentbox_installer.waw_activation import WAWActivationTransaction
@@ -53,7 +58,7 @@ from agentbox_installer.waw_enrollment import (
 from agentbox_installer.waw_manifest_install import WAWManifestIssuer, WAWManifestPublication
 from agentbox_installer.waw_package_guard import WAWPackageStartGuard
 from agentbox_installer.waw_vendor_bootstrap import WAWVendorBootstrap
-from agentbox_installer.waw_web_certificates import WAWWebCertificates
+from agentbox_installer.waw_web_certificates import WAWWebCertificates, web_acme_argv
 from agentbox_installer.waw_web_configuration import configure_browser_origin, validate_web_tls
 from agentbox_installer.waw_web_publication import WAWWebPublisher
 
@@ -75,6 +80,16 @@ _WAW_RUNTIME_DISABLED_PROFILE = (
 )
 _WAW_RUNTIME_ENABLED_PROFILE = (
     b'{"mode":"filesystem-v2","schema_version":"agentbox-waw-runtime-profile.v1"}\n'
+)
+
+_FRESH_WAW_SETUP_STEPS = (
+    "deferred-install",
+    "browser-dependencies",
+    "fixed-vendors",
+    "manifests",
+    "policies",
+    "qualified-enrollment",
+    "https",
 )
 
 
@@ -533,6 +548,133 @@ class AgentBoxInstaller:
                 }
         except OSError as exc:
             raise InstallError("fixed Web maintenance failed") from exc
+
+    def setup_fresh_waw(
+        self,
+        *,
+        artifact: Path,
+        expected_sha256: str,
+        origin: str,
+        email: str,
+        agree_terms: bool = False,
+        plan: bool = False,
+        recover: bool = False,
+    ) -> dict[str, object]:
+        """Compose a fresh deferred install through the fixed HTTPS entry."""
+
+        self.host.require_root()
+        if any(type(value) is not bool for value in (agree_terms, plan, recover)):
+            raise TypeError("fresh WAW setup flags must be bool")
+        web_acme_argv(origin, email)
+        if not plan and not agree_terms:
+            raise InstallError("explicit ACME terms acceptance is required")
+        install_plan = self.plan(artifact, expected_sha256)
+        if not install_plan.platform.supported:
+            raise InstallError(install_plan.platform.reason)
+        if install_plan.platform.package_family is not PackageFamily.APT:
+            raise InstallError("fresh WAW browser setup currently requires an APT target")
+        if install_plan.systemd_state != "available" or self.host.systemd_version() < 255:
+            raise InstallError("fresh WAW browser setup requires systemd 255 or newer")
+        allowed = {"not_installed", "staged", "installed_same_version"}
+        if install_plan.state not in allowed:
+            raise InstallError(
+                f"fresh WAW setup cannot continue from installation state {install_plan.state}"
+            )
+        if install_plan.state == "staged" and not recover and not plan:
+            raise InstallError("staged fresh installation requires --recover")
+        if install_plan.state == "installed_same_version":
+            self._verify_deferred_fresh_install(
+                artifact=artifact,
+                expected_sha256=expected_sha256,
+                version=install_plan.version,
+            )
+        if plan:
+            return {
+                "status": "planned",
+                "version": install_plan.version,
+                "installation_state": install_plan.state,
+                "origin": origin,
+                "steps": list(_FRESH_WAW_SETUP_STEPS),
+                "requires_recover": install_plan.state == "staged",
+                "services_started": False,
+                "qualified": False,
+            }
+
+        if install_plan.state == "not_installed":
+            self.apply(artifact, expected_sha256, defer_activation=True)
+        elif install_plan.state == "staged":
+            self.resume_install(artifact, expected_sha256, defer_activation=True)
+
+        activation_phase = self._fresh_waw_activation_phase(recover=recover)
+        if activation_phase is None:
+            self.install_waw_dependencies(plan=False, recover=recover)
+            self.install_waw_vendors(plan=False, recover=recover)
+            self.prepare_waw_manifests(plan=False, recover=recover)
+            self.prepare_waw_policies(plan=False, recover=recover)
+            self.enroll_qualified_waw_vendors(plan=False, recover=recover)
+        web = self.setup_waw_web(
+            origin=origin,
+            email=email,
+            agree_terms=True,
+            plan=False,
+            recover=recover,
+        )
+        return {
+            "status": web.get("status", "started"),
+            "version": install_plan.version,
+            "installation_state": "installed",
+            "origin": origin,
+            "https_url": origin,
+            "steps": list(_FRESH_WAW_SETUP_STEPS),
+            "services_started": web.get("services_started", False),
+            "runtime_restarted": web.get("runtime_restarted", False),
+            "resumed_activation_phase": activation_phase,
+            "qualified": False,
+        }
+
+    def _fresh_waw_activation_phase(self, *, recover: bool) -> str | None:
+        """Inspect an existing activation transaction before replaying offline phases."""
+
+        path = self.layout.map("/var/lib/agentbox-waw/activation.v1.json")
+        if not path.exists() and not path.is_symlink():
+            return None
+        publisher = self._web_publisher()
+        transaction = WAWActivationTransaction(
+            publisher.issuer,
+            publisher.pin,
+            api_gid=self._web_api_gid(),
+        )
+        return transaction.inspect(recover=recover)
+
+    def _verify_deferred_fresh_install(
+        self, *, artifact: Path, expected_sha256: str, version: str
+    ) -> None:
+        """Require the same artifact and durable deferred-fresh-install evidence."""
+
+        verify_artifact_digest(artifact, expected_sha256)
+        candidate = self._peek_artifact_manifest(artifact)
+        if candidate.version != version:
+            raise InstallError("fresh WAW artifact version does not match the active release")
+        existing = verify_release(
+            self.layout.release(version),
+            allow_generated_venv=True,
+            allow_generated_native=True,
+        )
+        if existing != candidate:
+            raise InstallError("fresh WAW artifact does not match the installed release")
+        journal = self._read_journal()
+        if (
+            journal is None
+            or journal.get("schema_version") != 3
+            or journal.get("status") != "committed"
+            or journal.get("version") != version
+            or not isinstance(journal.get("completed_steps"), list)
+            or "activation_deferred" not in journal["completed_steps"]
+            or "receipt_written" not in journal["completed_steps"]
+        ):
+            raise InstallError(
+                "fresh WAW setup requires a committed deferred fresh installation"
+            )
 
     def setup_waw_web(
         self,
