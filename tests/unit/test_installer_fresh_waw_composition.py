@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from agentbox_installer import cli, lifecycle as lifecycle_module
+from agentbox_installer import cli
+from agentbox_installer import lifecycle as lifecycle_module
 from agentbox_installer.host import HostOperations
 from agentbox_installer.layout import InstallLayout
 from agentbox_installer.lifecycle import AgentBoxInstaller, InstallError, InstallPlan
