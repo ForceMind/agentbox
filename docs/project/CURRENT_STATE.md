@@ -1,12 +1,32 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-03T15:54:23Z"
-verified_by: "agentbox-qualified-vendor-enrollment"
+verified_at_utc: "2026-10-04T05:12:24Z"
+verified_by: "agentbox-fresh-host-readiness"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 continuation verification
+
+The Owner resumed AgentBox development in the current session. PR #136 head
+`d6ee8c7c9635e2b5ecd58f18048fa8c1aaa59474` has six terminal successful workflows
+(24 successful jobs and two prescribed historical rc8 skips). PR #136 was normally merged after the Owner confirmed continuation and repository
+operations. Main read-back is `7d0521556727d64c80d02d69aea7b9d9b06432af`,
+with parents `769197ed9dda2873b0b066a073efb7319d0665c1` and
+`d6ee8c7c9635e2b5ecd58f18048fa8c1aaa59474`. Its tree exactly matches the
+verified PR head. Post-merge CI is pending at this snapshot; no target-host
+operation or product qualification is claimed.
+
+This documentation-only continuation reconciles the stale #135 roadmap/index
+and historical target inputs with the implemented `setup-fresh-waw` sequence.
+See [target inputs](R12_TARGET_RECORD.md) for the actual remaining qualification
+requirements. Do not redo composition, open #117, or substitute more fixture
+checks for real fresh-host/client/login/reboot/upgrade/rollback evidence.
+Repository link checking and `git diff --check` pass; the existing six workflow
+results validate d6ee8c7 only, not a later documentation commit.
+
 
 ## 2026-10-04 fresh-install composition handoff
 

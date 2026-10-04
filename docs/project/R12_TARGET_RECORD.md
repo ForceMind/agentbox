@@ -1,5 +1,30 @@
 # R12 target and decision record
 
+## 2026-10-04 当前目标输入（优先于下方历史表）
+
+首版采用已批准 ADR 0010 的 HTTPS Web 入口和 ADR 0011 的 systemd 255
+受限子树方案，PC 与手机浏览器均是实际验收目标。旧表中的 Mac-only/MV3
+分发与“手机仅管理”描述不是当前首版范围。Owner 自行安装，不要求提供 SSH。
+
+软件组合已在 PR #136 完成，当前 exact-head 六套 CI 全绿；合并状态见
+[CURRENT_STATE](CURRENT_STATE.md)。实际现场记录必须绑定同一 candidate artifact
+及独立核验的 checksum，不能仅记录源码版本号或使用后续重建的不同制品。
+
+现场尚缺以下事实与具体操作许可；不得填入假值后标记完成：
+
+- 目标 Linux 发行版/版本、x86_64 架构、APT、systemd >=255、Python 3.11–3.13；
+  当前 release bootstrap 仅支持 Linux x86_64，不外推 ARM 或所有发行版。
+- 实际 DNS/HTTPS Origin、80/443 可达性、ACME email 和条款同意。
+- 安装、服务/主机重启、备份、失败恢复、upgrade/rollback 的目标与窗口。
+- 测试 Project、固定 Claude/Codex 版本、由 Owner 完成的安全登录与调用预算。
+  不将密码、token、密钥或登录材料写入聊天、GitHub 或资格化报告。
+- PC/Android/iOS 的真实设备与浏览器版本，逐项记录输入法、触摸、resize、
+  后台返回、detach/reconnect、exact Stop；模拟 viewport 不能替代物理设备。
+
+软件 CI 已有证据继续复用；真实现场项目保持 NOT RUN，直到记录可复核结果。
+
+## 历史 2026-09-08 目标记录
+
 状态：进行中；2026-09-08。依据：[已批准PRP-v1](PRODUCTION_READINESS_PLAN.md)。
 这是非Secret输入/软件决定/外部阻断记录，不是host qualification receipt。
 
