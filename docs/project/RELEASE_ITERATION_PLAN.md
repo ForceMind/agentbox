@@ -7,9 +7,10 @@
 Deployment、E2E、Release Candidate 六套 workflow 均为 terminal SUCCESS。
 其中 24 jobs 成功、2 个历史 rc8 jobs 按版本跳过；不能把 skipped 写成通过。
 [Backend 证据](https://github.com/ForceMind/agentbox/actions/runs/37166599345)。
-当前已验证 main 仍是 `769197ed9dda2873b0b066a073efb7319d0665c1`。
-PR #136 尚未合并；本次会话的 Ready/merge 操作正在等待明确确认。
-实时 GitHub 状态优先于本记录，合并后须重新读取 main 和 post-merge CI。
+Owner 已明确授权继续操作，PR #136 已正常合并，main read-back 为
+`7d0521556727d64c80d02d69aea7b9d9b06432af`；父提交与已验证 PR head
+一致，tree 与该 head 完全相同。此快照时 post-merge CI 尚待终态；
+实时 GitHub 状态优先于本记录。
 
 `setup-fresh-waw` 已完成软件组合与恢复逻辑，不再重做 #131/#134/#135，
 也不再把 composition 当成待开发功能。下一实质阶段是同一固定 candidate 的

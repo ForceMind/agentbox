@@ -4,9 +4,12 @@
 
 The Owner resumed AgentBox development in the current session. PR #136 head
 `d6ee8c7c9635e2b5ecd58f18048fa8c1aaa59474` has six terminal successful workflows
-(24 successful jobs and two prescribed historical rc8 skips). Main remains
-`769197ed9dda2873b0b066a073efb7319d0665c1`; Ready/merge awaits explicit
-confirmation in this session. No merge or target-host operation is claimed.
+(24 successful jobs and two prescribed historical rc8 skips). PR #136 was normally merged after the Owner confirmed continuation and repository
+operations. Main read-back is `7d0521556727d64c80d02d69aea7b9d9b06432af`,
+with parents `769197ed9dda2873b0b066a073efb7319d0665c1` and
+`d6ee8c7c9635e2b5ecd58f18048fa8c1aaa59474`. Its tree exactly matches the
+verified PR head. Post-merge CI is pending at this snapshot; no target-host
+operation or product qualification is claimed.
 
 This documentation-only continuation reconciles the stale #135 roadmap/index
 and historical target inputs with the implemented `setup-fresh-waw` sequence.
