@@ -1,12 +1,77 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T10:26:00Z"
-verified_by: "agentbox-staged-selectors"
+verified_at_utc: "2026-10-04T11:16:00Z"
+verified_by: "agentbox-content-codecs"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 独立 A3 content schema/codecs（当前批次）
+
+已显式 fetch/read-back 核对 #139 正常合并为
+`587fe8eabf7e5d5e4d3a561091ec00c3e9f40881`，tree
+`5fecc5a36e0367ee6c92b6caea405ec9ec592ceb`，parents 为
+`35d25bdccbb9311a57fc06a0683f4f60bf50dd9c` 与
+`744ac4719e072f072c4bc07d5c00b31fdc3f53ad`。#139 exact-head 六套
+workflow SUCCESS（24 jobs SUCCESS、2 历史 rc8 SKIPPED）；post-main 六套
+首次 attempt 全 SUCCESS（23 SUCCESS、push dependency-review 与两项 rc8 共
+3 SKIPPED），没有失败重跑或 pending。证据保存在
+[PR #139](https://github.com/ForceMind/agentbox/pull/139)。旧 selector worktrees
+与原历史提交全部保留；本批从 exact main 新建独立
+`codex/s02-content-channel-codecs`。
+
+本批仅落实 [A3 schema/codecs 合同](../WORKBENCH_A3_CONTENT_CODECS.md)：
+独立 version/domain 与 typed formal Project/binding/session/Runtime epoch/
+selector commitment/staged side/request nonce；四类 canonical flat JSON
+plaintext records、严格 bounded parser、全量分页预检、单次 transcript 顺序/
+complete/hash/expiry/close 模型及 Python/Web exact-byte/negative/interop vectors。
+完整 PAGE plaintext（含 JSON metadata）保持 ≤16 KiB、最多 16 页；256 KiB 是
+reader ceiling，不是可传输保证。固定测试 metadata 下实际上限 191,504 bytes，
+191,505 先报 PATCH_TOO_LARGE，不输出 partial success。
+
+未实现 Noise handshake/AEAD、生产 admission/currentness resolver、全局 nonce
+ledger、Runtime RPC/socket/API relay 或 public patch UI；没有生产入口调用这些
+纯函数。caller-fed context/time 只是模型输入，不能证明 READY/active session
+或生产 authorization；下一层仍须 trusted resolver、独立 pin、新 CipherStates、
+计时/revocation/visibility fencing 与 crypto vectors。真实 host/device 仍 NOT RUN，
+不因 codec PASS 宣称 encrypted transport working。
+
+
+### 本批验证与限制（publication candidate）
+
+- 最终 `pytest -q` A3 codec：162 passed；连同既有 WAW context/profile/AWCE/
+  staged-selector 回归共 764 passed，exit 0。
+- `pnpm test`：Web 1293 passed（其中 A3 77），browser-trust extension 6 passed；
+  `pnpm lint`、`pnpm format:check`、`pnpm typecheck`、`pnpm build` 均 exit 0。
+  build 保留既有 >500 kB bundle warning，未提高阈值或改打包；本模块未进入生产入口。
+- `node scripts/check-a3-content-interop.mjs`：独立 literal context/AAD/four types、
+  16 shared negatives、Python→Web/Web→Python、exact capacity 与 split UTF-8
+  均通过。该命令已加入 Frontend CI；这是 codec interop，不是 crypto interop。
+- canonical Ruff PASS；mypy PASS（360 source files）；canonical Black scope
+  single-process library safe-mode PASS（373 Python files，非 Black CLI）；
+  source-boundary、secret-pattern、643 relative documentation links、diff-check PASS。
+- 额外本地全量 `pytest -q -o faulthandler_timeout=120` **exit 1**：4900 passed /
+  111 failed / 71 skipped，306.62s。该次开始时有 160 项 A3 checks，最终两项
+  no-production-composition/no-scalar-comparison checks 在上述最终套件另行通过。
+  全量不能记 PASS：101 项受 AF_UNIX EPERM 影响（含 rc8 子进程失败后的
+  readiness timeout），8 项 copied `/opt` Python 缺 `encodings`，1 项
+  `/run/systemd` 只读，1 项 sandbox根目录 uid 1000 不满足 root-owned ELF 验证。
+- 从 exact base `587fe8e` 导出独立只读对照目录，socket/systemd/copied-Python/
+  root-owned-ELF 四个代表用例同条件 4/4 复现失败；rc8 baseline 亦复现原
+  AF_UNIX EPERM 与 readiness timeout。没有更改或跳过生产/测试断言、修改权限、
+  降低 timeout 或绕过 sandbox。Runtime-process 原 fixture 单独用系统
+  `/usr/bin/python3` 作为被复制 executable 重跑：13 passed / 1 prescribed skip。
+
+实现者自查及独立 source/delta review 已完成，无遗留 blocking finding；reviewer
+未运行测试或 CI。已封闭 AAD kind 的 object-to-property coercion，Python 也采用
+exact str；新增 array/boxed/custom-toString 和所有 scalar tail negatives。
+regex 尾行符疑虑通过原无 multiline JS regex 实测未复现并撤回，不记为修复。
+初次本批测试的容量算术、fixture realm/导入路径与类型标注问题均已修正并重跑；
+未放宽边界。Git author identity 缺失，未修改身份/凭证；publication 拟使用既有
+GitHub object API，必须逐 blob/tree/parent/ref 回读。此快照尚无本批新 exact-head CI、
+PR、merge 或 host 验收，最终必要 native/full Python matrix 由新 exact-head CI 验证。
 
 ## 2026-10-04 Runtime-only staged selectors（当前批次）
 

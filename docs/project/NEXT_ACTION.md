@@ -1,5 +1,42 @@
 # Current Authorized Action
 
+## 2026-10-04 独立 A3 content schema/codecs（当前批次）
+
+已显式 fetch/read-back 核对 #139 正常合并为
+`587fe8eabf7e5d5e4d3a561091ec00c3e9f40881`，tree
+`5fecc5a36e0367ee6c92b6caea405ec9ec592ceb`，parents 为
+`35d25bdccbb9311a57fc06a0683f4f60bf50dd9c` 与
+`744ac4719e072f072c4bc07d5c00b31fdc3f53ad`。#139 exact-head 六套
+workflow SUCCESS（24 jobs SUCCESS、2 历史 rc8 SKIPPED）；post-main 六套
+首次 attempt 全 SUCCESS（23 SUCCESS、push dependency-review 与两项 rc8 共
+3 SKIPPED），没有失败重跑或 pending。证据保存在
+[PR #139](https://github.com/ForceMind/agentbox/pull/139)。旧 selector worktrees
+与原历史提交全部保留；本批从 exact main 新建独立
+`codex/s02-content-channel-codecs`。
+
+本批仅落实 [A3 schema/codecs 合同](../WORKBENCH_A3_CONTENT_CODECS.md)：
+独立 version/domain 与 typed formal Project/binding/session/Runtime epoch/
+selector commitment/staged side/request nonce；四类 canonical flat JSON
+plaintext records、严格 bounded parser、全量分页预检、单次 transcript 顺序/
+complete/hash/expiry/close 模型及 Python/Web exact-byte/negative/interop vectors。
+完整 PAGE plaintext（含 JSON metadata）保持 ≤16 KiB、最多 16 页；256 KiB 是
+reader ceiling，不是可传输保证。固定测试 metadata 下实际上限 191,504 bytes，
+191,505 先报 PATCH_TOO_LARGE，不输出 partial success。
+
+未实现 Noise handshake/AEAD、生产 admission/currentness resolver、全局 nonce
+ledger、Runtime RPC/socket/API relay 或 public patch UI；没有生产入口调用这些
+纯函数。caller-fed context/time 只是模型输入，不能证明 READY/active session
+或生产 authorization；下一层仍须 trusted resolver、独立 pin、新 CipherStates、
+计时/revocation/visibility fencing 与 crypto vectors。真实 host/device 仍 NOT RUN，
+不因 codec PASS 宣称 encrypted transport working。
+
+当前动作：完成本候选的 canonical 全量质量检查、codec/crypto/selector 回归与
+只读独立审查后再发布 Draft PR；require 新 exact-head 全部 CI 终态，再正常
+merge/read-back。#139 CI 不能代替本批 evidence。下一批是独立 crypto-profile/
+admission composition 合同，不能跳过 key-confirmation/transport schema、生产
+currentness/replay/deadline 所有权或将 WAW state 复用为内容通道。
+
+
 ## 2026-10-04 Runtime-only staged selectors（当前批次）
 
 已通过显式 main fetch/read-back 核对 PR [#138](https://github.com/ForceMind/agentbox/pull/138)

@@ -2,8 +2,8 @@
 
 Status: reader merged in [#138](https://github.com/ForceMind/agentbox/pull/138)
 on 2026-10-04 as `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`; original #117
-history is retained and indirectly merged. The short-lived selector below is
-the current Runtime-only software candidate, not a production content action.
+history is retained and indirectly merged. The short-lived selector below merged in [#139](https://github.com/ForceMind/agentbox/pull/139)
+as `587fe8eabf7e5d5e4d3a561091ec00c3e9f40881`; it is not a production content action.
 It extends the [A3 patch contract](WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
 No Runtime RPC, API endpoint, encrypted content channel, file preview or patch
 UI is added. These remain independent subsequent slices.
@@ -101,8 +101,8 @@ import or execution qualification. Actual target Git/host qualification remains
 NOT RUN. Software self-review is not an independent review. Parent source review
 of snapshot/reader/process completed before commit; no GitHub review submission
 is claimed. The merged reader exact-head CI is recorded in [current state](project/CURRENT_STATE.md).
-Selector candidate CI, encrypted delivery, client rendering and real-host acceptance
-remain distinct.
+The selector exact-head/post-main CI is also recorded there after #139. Encrypted
+delivery, client rendering and real-host acceptance remain distinct.
 
 ## Internal staged selector candidate
 
@@ -156,3 +156,12 @@ error close the view/root before releasing operation capacity. The module adds
 no process, file-storage, network, API, Worker, WAW frame or logging surface.
 Necessary selector tests and review are software evidence only; target-host and
 physical-client acceptance remain NOT RUN.
+
+## Following independent codec slice
+
+The [A3 content schema/codecs](WORKBENCH_A3_CONTENT_CODECS.md) candidate consumes
+no reader or selector directly. It defines dedicated context/AAD bytes, bounded
+plaintext messages, all-or-nothing pagination and a pure transcript model with
+cross-language tests. The selector's production READY/current-binding/session
+resolver is still uncomposed. No Noise profile, Runtime/API content transport,
+patch UI or real-host qualification follows from that candidate.

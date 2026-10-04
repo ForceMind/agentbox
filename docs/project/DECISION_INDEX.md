@@ -1,5 +1,13 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-CONTENT-CODECS-CANDIDATE`: 独立 A3 version/context/AAD 与四类
+  canonical flat JSON 明文 codec；16 KiB 指完整 authenticated plaintext PAGE，
+  包含 metadata/base64 开销。reader 256 KiB 是 extraction ceiling，不能承诺
+  全部都可通过 16 页传输；全量预检后 TOO_LARGE，不截断。单次 transcript 不
+  替代 trusted READY/session resolver、global nonce burn 或实际 Noise state。
+  [专用合同](../WORKBENCH_A3_CONTENT_CODECS.md) 与跨语言 codec vectors 先行，
+  crypto/admission/Runtime/API/UI 和真实 host 继续分门禁。
+
 - `WORKBENCH-A3-STAGED-SELECTORS-2026-10-04`：在 #138 reader 上接续
   Runtime-only short-lived selector；fixed HMAC payload、每实例 CSPRNG 临时 key、
   monotonic 30s TTL、完整 sorted staged snapshot 与可信 Project/session/epoch
