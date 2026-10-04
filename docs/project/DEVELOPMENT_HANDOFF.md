@@ -1,5 +1,67 @@
 # AgentBox 开发交接 — 2026-10-02
 
+## 2026-10-04 PR #136 接手点
+
+Owner 已决定由其他 AI 继续首版开发；本节是当前最高优先级交接快照，
+实时 GitHub 状态始终高于本文。
+
+已完成并 durable 的主线：
+
+- PR #134 MERGED：统一真实 vendor observation 与生产 Runtime 的 framed
+  stdout/stderr digest contract。
+- PR #135 MERGED：固定 Claude 2.1.286 / Codex 0.159.3 的 release-qualified
+  enrollment facts；真实 Codex 通过 native auth helper；只允许 AF_UNIX
+  本地 IPC，AF_INET/AF_INET6 与网络操作继续拒绝。
+- 当前 `main` =
+  `769197ed9dda2873b0b066a073efb7319d0665c1`。
+
+当前未合并工作：
+
+- Draft PR #136：`codex/r12-fresh-install-composition`
+- 最后一个代码-only exact head：
+  `815adfcb60a72c7de48cdfcdc2007c338b7b03cd`
+- 该 exact head 六套 workflow 全部 SUCCESS：Backend / Frontend /
+  Security / Deployment / E2E / Release Candidate。
+- 本次交接文档提交会把 PR head 继续向前推进；下一位 AI **必须重新读取
+  PR #136 的实时 head 和 exact-head CI**，不能拿 815adfcb 的绿灯替代新的
+  documentation-inclusive head。
+
+#136 已实现：
+
+1. 新 root-only CLI：`setup-fresh-waw`；
+2. 固定顺序：
+   deferred install -> browser dependencies -> fixed vendors -> manifests ->
+   policies -> qualified enrollment -> existing `setup-waw-web` / HTTPS；
+3. fresh 用 `apply --defer-activation`；
+4. staged 中断只允许显式 `--recover`，并用
+   `resume-install --defer-activation`；
+5. same-version 继续必须再次验证 exact artifact，并要求 committed journal
+   明确存在 `activation_deferred` + `receipt_written`；
+6. 普通已经运行的旧安装不能被该 fresh-only 命令收养；
+7. 如果 activation journal 已进入 `preparing/configured/started`，恢复时
+   跳过所有要求离线的前置阶段，直接恢复 `setup-waw-web`，避免已启动 WAW
+   被 policy quiescence guard 卡死；
+8. 已新增顺序、staged recovery、same-version deferred evidence、started
+   activation -> HTTPS-only recovery、CLI 参数合同测试。
+
+#136 当前不应被描述为“真实首装已经验证”。仍未闭合：
+
+- 同一 release artifact 在真实目标 Linux 上从零执行完整
+  `setup-fresh-waw`；
+- 真实 DNS/公网 80/443/Let's Encrypt 与最终 HTTPS；
+- 实际初始化管理员；
+- 真实 Claude Code 登录、输入/输出、resize、detach/reconnect、exact Stop；
+- 真实 Codex CLI 登录、输入/输出、resize、detach/reconnect、exact Stop；
+- 物理 PC / Android / iOS 的 IME、触摸、viewport、后台返回与重连；
+- service reboot / host reboot；
+- upgrade / rollback；
+- immutable release artifact + checksum/SBOM/provenance + 正式安装命令。
+
+下一位 AI 的第一步不要写新功能。先：
+读取 `AGENTS.md`、本文件、`CURRENT_STATE.md`、`NEXT_ACTION.md`，
+实时核对 main、PR #136 head、exact-head 六套 CI；若文档-inclusive head 全绿，
+正常合并 #136 并 read-back main。之后直接进入真实首装资格化。
+
 ## 2026-10-03 #135 qualified enrollment continuation
 
 Durable main before this Draft is
