@@ -1,5 +1,16 @@
 # Current Authorized Action
 
+## 2026-10-04 独立 encrypted single-read 软件批次
+
+从 verified #140 merge `57cb8cd` 继续已批准 S02；执行
+[独立 A3 加密单次读取](../WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md) 的完整
+synthetic Git→同一 held view→all-capacity preflight→fresh NX→opaque relay→Web
+verified bytes。先完整 source/security review、focused/full quality 与独立 crypto/
+真实跨语言测试，再提交 exact manifest 供 parent candidate review；发布 Draft 后
+核验新 exact-head 六套 CI，全终态成功再正常 merge/read-back。
+production resolver/key/relay endpoints、UI、Files/unstaged、真实 host/device、
+deploy/release 不在本批。下方 codec-only 为上批历史边界，不覆盖当前已批准软件范围。
+
 ## 2026-10-04 独立 A3 content schema/codecs（当前批次）
 
 已显式 fetch/read-back 核对 #139 正常合并为

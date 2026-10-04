@@ -324,11 +324,16 @@ def test_no_production_composition_or_activation() -> None:
     root = Path(__file__).parents[2]
     for directory in ["apps/api", "apps/worker", "packages/agentbox-runtime"]:
         for path in (root / directory).rglob("*.py"):
-            assert "a3_content" not in path.read_text()
+            if path.name not in {"a3_content_session.py", "git_staged_selectors.py"}:
+                assert "a3_content" not in path.read_text()
+                assert "a3_crypto" not in path.read_text()
+                assert "a3_content_session" not in path.read_text()
+                assert "git_staged_selectors" not in path.read_text()
     for path in (root / "apps/web/src").rglob("*"):
         if path.suffix not in {".ts", ".tsx"} or "content" in path.parts:
             continue
         assert "a3Content" not in path.read_text()
+        assert "a3Crypto" not in path.read_text()
 
 
 def test_profile_type_check_precedes_object_equality() -> None:

@@ -1,5 +1,11 @@
 # A3 Runtime-only staged patch reader
 
+Current continuation (2026-10-04): the [independent encrypted single-read slice](WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)
+now composes these primitives in a synthetic in-memory Git→Noise→Web pipeline.
+The codec/reader-only descriptions below remain the scope of their original
+slices; production resolver/key/relay/UI and host qualification remain unopened.
+
+
 Status: reader merged in [#138](https://github.com/ForceMind/agentbox/pull/138)
 on 2026-10-04 as `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`; original #117
 history is retained and indirectly merged. The short-lived selector below merged in [#139](https://github.com/ForceMind/agentbox/pull/139)

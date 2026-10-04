@@ -1,5 +1,11 @@
 # A3 Project Git patch content contract
 
+Current continuation (2026-10-04): the [independent encrypted single-read slice](WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)
+now composes these primitives in a synthetic in-memory Git→Noise→Web pipeline.
+The codec/reader-only descriptions below remain the scope of their original
+slices; production resolver/key/relay/UI and host qualification remain unopened.
+
+
 Status: software contract candidate, 2026-09-29. This document follows
 [ADR 0009](adr/0009-workbench-identity-and-content-boundary.md), the
 [rc15 path metadata contract](WORKBENCH_A3_GIT_CHANGES.md), and the Owner-approved

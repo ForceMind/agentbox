@@ -161,7 +161,7 @@ class GitStagedPatchReader:
 
     @asynccontextmanager
     async def _observation(
-        self, relative_key: str
+        self, relative_key: str, *, check_current: Callable[[], None] | None = None
     ) -> AsyncIterator[tuple[ExecutableIdentity, StagedGitSnapshot, bytes]]:
         """Keep one private Git view alive from metadata through content read."""
 
@@ -190,8 +190,14 @@ class GitStagedPatchReader:
                 snapshot = StagedGitSnapshot(root)
             except (OSError, UnicodeError, RuntimeOperationError) as exc:
                 raise _error("PATCH_UNAVAILABLE_REPOSITORY", category="forbidden") from exc
+            if check_current is not None:
+                check_current()
             await self._safe_config(executable, snapshot)
+            if check_current is not None:
+                check_current()
             before = await self._status(executable, snapshot)
+            if check_current is not None:
+                check_current()
             yield executable, snapshot, before
         finally:
             try:
@@ -222,15 +228,23 @@ class GitStagedPatchReader:
         if check_current is not None:
             check_current()
         first = await self._patch(executable, snapshot, selected)
+        if check_current is not None:
+            check_current()
         self._revalidate(snapshot)
         middle = await self._status(executable, snapshot)
+        if check_current is not None:
+            check_current()
         if middle != before or select_staged_change(middle, path) != selected:
             raise _error("PATCH_STALE", category="conflict")
         if check_current is not None:
             check_current()
         second = await self._patch(executable, snapshot, selected)
+        if check_current is not None:
+            check_current()
         self._revalidate(snapshot)
         after = await self._status(executable, snapshot)
+        if check_current is not None:
+            check_current()
         if after != before or second != first:
             raise _error("PATCH_STALE", category="conflict")
         if select_staged_change(after, path) != selected:
