@@ -14,6 +14,18 @@ The rc19 source candidate adds an internal Linux-only held-descriptor child
 cwd seam, still without a patch action or object-file provenance proof. See
 [A3 cwd proof](WORKBENCH_A3_GIT_CWD.md).
 
+The current [staged reader candidate](WORKBENCH_A3_STAGED_READER.md) is reconciled
+against main on 2026-10-04. Configuration/helper race evidence requires a private
+staged-only Git view: sealed index/config inputs, held object-file descriptors,
+validated ref metadata, fixed cached raw/patch commands and dual observations.
+It does not run working-tree status for content extraction. Held objects remain
+mutable and are revalidated; metadata/FD/storage limits are explicit in that
+contract. It returns text only to Runtime-internal code and adds no RPC, API,
+selector, encrypted channel or UI. Parent source review completed before commit;
+new exact-head CI remains pending. Real host/device acceptance is deferred, not passed. The implementation
+contract supersedes the older direct-worktree status approach below for this
+first reader only; unstaged extraction and future content delivery remain gated.
+
 The rc23 internal staged-selection slice adds a Runtime-only path policy and
 porcelain-v2 index eligibility check. It accepts only tracked regular staged
 add/modify/delete rows and records the exact HEAD/index modes and OIDs. It

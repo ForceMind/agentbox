@@ -1,5 +1,17 @@
 # AgentBox 逐版本交付计划
 
+## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
+
+Owner 已明确暂缓真实目标测试、继续开发并要求列出后续计划。真实
+host/device/login/reboot/upgrade/rollback 仍为 **NOT RUN**；软件/CI 不能替代
+现场验收或授权发布。当前基线为 PR #136/#137 合并后的
+`7fa54c3f5e3ce7e96c3d2cb33828c759665d81d2`。
+本批仅复用 Draft #117 接续 S02 Runtime-only staged reader、安全修复和必要
+验证，不新增 selector/content channel/UI/Files 编辑。具体边界与事实见
+[当前行动](NEXT_ACTION.md)；该最新 Owner 顺序覆盖下方禁止 #117/S02 的
+历史冻结，其他 S00–S14 依赖和安全边界保持有效。
+
+
 ## 2026-10-04 接续核对与真实首装准备
 
 已重新核对 PR #136 的 documentation-inclusive head

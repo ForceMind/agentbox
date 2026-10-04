@@ -1,12 +1,67 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T05:12:24Z"
-verified_by: "agentbox-fresh-host-readiness"
+verified_at_utc: "2026-10-04T08:33:00Z"
+verified_by: "agentbox-staged-reader-reconciliation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
+
+Owner 在首装软件合并后明确表示暂时不做真实测试、继续开发，并要求列出
+后续计划。本次按该最新指令暂缓真实 host/device/login/reboot/upgrade/rollback
+验收，继续不依赖现场输入的软件工作；这些现场项目仍为 **NOT RUN**，不视为
+通过、取消或已交付可用版本。此段覆盖下方“不得推进 #117/S02”及先完成现场
+验收才可开发后续软件的历史顺序限制，不改变 Runtime/Secret/发布门禁。
+
+已核对 `origin/main = 7fa54c3f5e3ce7e96c3d2cb33828c759665d81d2`，
+PR #136/#137 已合并；不重做 first-install composition。当前唯一实现批次是
+S02 的 [Runtime-only staged reader](../WORKBENCH_A3_STAGED_READER.md)：
+复用 Draft [#117](https://github.com/ForceMind/agentbox/pull/117) 的
+`8ef72862514c27b01f5f52a532e0ac4e16f20775`，在独立 reconciliation branch
+保留两边历史，不改写旧分支/WIP。原 head 六套 workflow 为 terminal SUCCESS，
+但与当前 main 有四份治理文档冲突，且没有 GitHub review submission/thread；
+旧 CI 不能当作新 reconciliation head 的证据。
+
+范围仅为 tracked regular staged add/modify/delete 的 bounded reader、必要
+安全修复/测试与合同。selector、Runtime RPC、独立加密 content channel、
+patch UI、Files 编辑和 provider 功能均不在本批。先闭合配置/对象 provenance、
+helper/network 隔离、超时/取消与双观察，再核验新 exact-head CI；自查须如实
+标注，不称独立审查。全部 S00–S14 仍按 [全量计划](FULL_CAPABILITY_DELIVERY_PLAN.md)
+的依赖逐批推进，真实支持与发布分别依赖实际证据。
+
+
+
+## Staged-reader reconciliation validation (pre-commit)
+
+Branch `codex/s02-staged-reader-reconcile` preserves both verified main
+`7fa54c3f5e3ce7e96c3d2cb33828c759665d81d2` and original #117 source
+`8ef72862514c27b01f5f52a532e0ac4e16f20775` through an ordinary merge.
+Only historical plan documents conflicted; source changes were reused.
+The original 48 A3 checks passed, but two added real-Git race canaries proved
+helper execution before stale rejection. The revised private staged-only view
+closes that observed path; see the [reader contract](../WORKBENCH_A3_STAGED_READER.md).
+
+Local checks on the reconciled working tree:
+- Git adapter/changes/content-root/staged-reader/selection/Project safety:
+  **203 passed**, exit 0, Python 3.12 and Git 2.52.0.
+- Runtime process: **13 passed, 1 prescribed Linux platform skip**, exit 0,
+  with system `/usr/bin/python3` (3.13.5) as the fixture subprocess executable.
+  The container's relocatable `/opt` Python failed eight original subprocess
+  fixture cases because a copied executable cannot locate `encodings`; no
+  production source or test assertion was weakened to hide that environment issue.
+- Canonical Ruff: PASS; canonical mypy: PASS, 355 source files; changed Python
+  files checked individually with Black: PASS; source-boundary/doc links/
+  staged diff whitespace: PASS. Full-tree Black cannot start its multiprocessing
+  AF_UNIX manager in this sandbox (also with one worker); full-tree formatting
+  remains for CI rather than being recorded as a local PASS.
+
+These are software/self-check facts, not independent review or new exact-head
+CI. Parent source review of snapshot/reader/process completed before commit;
+the final committed head's CI remains pending;
+no Ready, merge, release, deployment or target-host operation is claimed here.
 
 ## 2026-10-04 continuation verification
 

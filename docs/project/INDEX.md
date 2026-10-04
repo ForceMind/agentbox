@@ -1,5 +1,9 @@
 # AgentBox Project Context Index
 
+- **当前优先级（2026-10-04）**：Owner 暂缓真实 host/device 验收，继续独立软件；
+  [当前行动](NEXT_ACTION.md) 的最新段落覆盖下方历史冻结。当前批次只接续
+  [Runtime-only staged reader](../WORKBENCH_A3_STAGED_READER.md)，不开放内容通道。
+
 - [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-04 接续入口；
   PR #136 完整 fresh-install 已实现，documentation-inclusive CI 全绿；
   已正常合并为 7d052155；当前进入真实首装资格化准备。
@@ -26,6 +30,8 @@
   下一批 Runtime-only patch 读取、选择器及独立加密内容通道的候选合同；尚未实施。
 - [A3 Git child cwd](../WORKBENCH_A3_GIT_CWD.md)：
   Linux-only 子进程目录 descriptor 前后身份验证基础；尚无内容读取动作。
+- [A3 staged reader candidate](../WORKBENCH_A3_STAGED_READER.md)：
+  Runtime 内部有界暂存 patch 观察、对象库快照与仍未开放的内容门禁。
 - [Project work tabs](../WORKBENCH_PROJECT_TABS.md)：
   固定上游来源、AgentBox 路由身份和纯导航生命周期；多会话仍待后续阶段。
 - [Project search](../WORKBENCH_PROJECT_SEARCH.md)：

@@ -129,6 +129,40 @@ def test_rejects_alternate_store_added_during_hold(tmp_path: Path) -> None:
         assert raised.value.code == "GIT_CONTENT_ROOT_UNSAFE"
 
 
+def test_rejects_symlinked_loose_or_packed_object(tmp_path: Path) -> None:
+    root, project = repository(tmp_path)
+    objects = project / ".git" / "objects"
+    (objects / "ab").symlink_to(tmp_path, target_is_directory=True)
+    assert_code(root, "GIT_CONTENT_ROOT_UNSAFE")
+    (objects / "ab").unlink()
+    (objects / "pack" / "pack-ab.idx").symlink_to(project / ".git" / "config")
+    assert_code(root, "GIT_CONTENT_ROOT_UNSAFE")
+
+
+def test_rejects_object_store_file_change_during_hold(tmp_path: Path) -> None:
+    root, project = repository(tmp_path)
+    loose = project / ".git" / "objects" / "ab"
+    loose.mkdir()
+    object_file = loose / ("c" * 38)
+    object_file.write_bytes(b"first")
+    with open_root(root) as held:
+        object_file.write_bytes(b"second")
+        with pytest.raises(RuntimeOperationError) as raised:
+            held.revalidate()
+        assert raised.value.code == "GIT_CONTENT_ROOT_UNSAFE"
+
+
+def test_object_store_inventory_has_a_bounded_node_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import agentbox_runtime.git_content_root as module
+
+    root, project = repository(tmp_path)
+    (project / ".git" / "objects" / "pack" / "pack-aa.idx").write_bytes(b"fixture")
+    monkeypatch.setattr(module, "_MAX_OBJECT_NODES", 2)
+    assert_code(root, "GIT_CONTENT_ROOT_UNAVAILABLE")
+
+
 def test_rejects_gitfile_commondir_symlink_and_shared_writes(tmp_path: Path) -> None:
     root, project = repository(tmp_path)
     (project / ".git" / "commondir").write_text("../other\n", encoding="utf-8")
