@@ -1,5 +1,47 @@
 # Current Authorized Action
 
+## 2026-10-04 hand off PR #136
+
+Owner has paused this development session and will continue with another AI.
+Do not redesign the first-version route or repeat #131/#134/#135.
+
+Durable `main` is
+`769197ed9dda2873b0b066a073efb7319d0665c1` (PR #135 merge).
+Continue Draft PR #136 / branch
+`codex/r12-fresh-install-composition`.
+
+The last code-only exact head before handoff is
+`815adfcb60a72c7de48cdfcdc2007c338b7b03cd`; all six workflows reached
+SUCCESS on that exact head. Handoff/documentation commits after it intentionally
+advance the branch, so the first action for the next developer is:
+
+1. read live PR #136 head and changed files;
+2. require Backend, Frontend, Security, Deployment, E2E and Release Candidate
+   to be terminal SUCCESS on that **new exact head**;
+3. fix any real documentation/format/test regression without weakening
+   installer recovery or Runtime/native isolation;
+4. if exact-head remains clean, mark #136 ready if necessary, merge normally
+   with exact-head protection, and read back `main`.
+
+Do not reopen #133. Do not replace release-qualified enrollment with installer
+vendor execution. Do not substitute the diagnostic simple-empty-HOME Codex
+digest for the accepted native-auth digest
+`76522c70a3df95fdd59bc4851200017bf42947a49d47e216c95bb0dea1579d9c`.
+
+After #136 merge, the next substantive gate is **real first-install
+qualification**, not another composition redesign. Use the same immutable
+candidate artifact and exercise:
+
+`setup-fresh-waw -> HTTPS entry -> administrator bootstrap -> real Claude login
+and turn -> real Codex login and turn -> resize/detach/reconnect/exact Stop ->
+PC/Android/iOS -> service reboot -> host reboot -> upgrade -> rollback`.
+
+Record concrete evidence and failures. A green fixture/CI composition must not
+be described as a completed real-host or physical-client qualification.
+Only after these gates close should the candidate be frozen and published as
+the first immutable deployable release. #117 and unrelated workstation
+features remain out of scope.
+
 ## 2026-10-03 finish qualified enrollment and merge #135
 
 The production native qualification is now proven. Fixed Codex 0.159.3 runs
