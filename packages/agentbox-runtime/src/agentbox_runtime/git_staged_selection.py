@@ -7,11 +7,12 @@ and after extracting content; this check is not a content authorization.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass
 
-from agentbox_runtime.git_changes import parse_git_change_page
+from agentbox_runtime.git_changes import _parse, parse_git_change_page
 from agentbox_runtime.models import RuntimeOperationError
 
 _OID = re.compile(rb"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
@@ -182,4 +183,87 @@ def select_staged_change(status: bytes, path: str) -> StagedSelection:
     return selected
 
 
-__all__ = ["StagedSelection", "select_staged_change", "validate_patch_path"]
+@dataclass(frozen=True)
+class StagedSnapshotEntry:
+    path: str
+    kind: str
+    selection: StagedSelection | None
+    unavailable_code: str | None
+
+
+@dataclass(frozen=True)
+class StagedSnapshotObservation:
+    """Internal v2 full staged observation; never the v1 display-only digest."""
+
+    sha256: str
+    entries: tuple[StagedSnapshotEntry, ...]
+
+
+def observe_staged_snapshot(status: bytes) -> StagedSnapshotObservation:
+    """Validate once, sort all rows and bind every mode/OID/path, even denied rows.
+
+    Input is the reader's bounded staged-only porcelain translation. Keeping
+    complete raw records in the digest includes rename source and destination,
+    both modes and OIDs, side/status and submodule fields. No page truncation or
+    eligibility filtering can remove an unselected change from this digest.
+    """
+    if type(status) is not bytes or len(status) > 1024 * 1024:
+        raise _reject("PATCH_UNAVAILABLE_STATUS")
+    metadata = _parse(status)
+    rows: dict[str, bytes] = {}
+    records = iter(status.split(b"\0")[:-1])
+    for record in records:
+        if record.startswith(b"1 "):
+            fields = record.split(b" ", 8)
+            path = fields[8].decode("utf-8")
+            row = record + b"\0"
+        elif record.startswith(b"2 "):
+            fields = record.split(b" ", 9)
+            path = fields[9].decode("utf-8")
+            row = record + b"\0" + next(records) + b"\0"
+        else:
+            # Only the fixed staged reader's translation is accepted here.
+            raise _reject("PATCH_UNAVAILABLE_STATUS")
+        if (
+            re.fullmatch(rb"[MADTRC]\.", fields[1]) is None
+            or fields[2] not in {b"N...", b"S..."}
+            or any(re.fullmatch(rb"[0-7]{6}", mode) is None for mode in fields[3:6])
+            or any(re.fullmatch(rb"[0-9a-f]{40}", oid) is None for oid in fields[6:8])
+            or fields[4] != fields[5]
+        ):
+            raise _reject("PATCH_UNAVAILABLE_STATUS")
+        rows[path] = row
+    digest = hashlib.sha256(b"agentbox-staged-observation-v2\0")
+    entries: list[StagedSnapshotEntry] = []
+    for entry in metadata:
+        row = rows[entry.path]
+        digest.update(len(row).to_bytes(4, "big"))
+        digest.update(row)
+        selected = None
+        unavailable = None
+        try:
+            selected = select_staged_change(row, entry.path)
+            if selected.head_oid == selected.index_oid:
+                selected = None
+                unavailable = "PATCH_UNAVAILABLE_MODE"
+        except RuntimeOperationError as exc:
+            if exc.code not in {
+                "PATCH_UNAVAILABLE_KIND",
+                "PATCH_UNAVAILABLE_MODE",
+                "PATCH_UNAVAILABLE_PATH",
+                "PATCH_UNAVAILABLE_SENSITIVE_PATH",
+            }:
+                raise
+            unavailable = exc.code
+        entries.append(StagedSnapshotEntry(entry.path, entry.kind, selected, unavailable))
+    return StagedSnapshotObservation(digest.hexdigest(), tuple(entries))
+
+
+__all__ = [
+    "StagedSelection",
+    "StagedSnapshotEntry",
+    "StagedSnapshotObservation",
+    "observe_staged_snapshot",
+    "select_staged_change",
+    "validate_patch_path",
+]

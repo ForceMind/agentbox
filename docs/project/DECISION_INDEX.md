@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-STAGED-SELECTORS-2026-10-04`：在 #138 reader 上接续
+  Runtime-only short-lived selector；fixed HMAC payload、每实例 CSPRNG 临时 key、
+  monotonic 30s TTL、完整 sorted staged snapshot 与可信 Project/session/epoch
+  绑定。校验和读取同一 held view，禁止 validate 后另开 snapshot。v1 API 不变，
+  current-context resolver/加密 admission/RPC/UI 接线另案；selector 不是授权。
+  见 [reader/selector 合同](../WORKBENCH_A3_STAGED_READER.md)。
+
 - `WORKBENCH-A3-STAGED-READER-RECONCILIATION-2026-10-04`：Owner 暂缓
   真实目标验收，批准继续独立软件。保留原 Draft #117 的完整历史，接续 bounded
   Runtime-only reader；配置竞态/helper 和对象 provenance 必须闭合，旧 CI/自查

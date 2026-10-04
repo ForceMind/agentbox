@@ -12,6 +12,8 @@ import hashlib
 import os
 import re
 import unicodedata
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from agentbox_runtime.git import _SAFE_CONFIG, GitAdapter, _unsafe_config_key
@@ -153,6 +155,16 @@ class GitStagedPatchReader:
         """
 
         validate_patch_path(path)
+        async with self._observation(relative_key) as (executable, snapshot, before):
+            selected = select_staged_change(before, path)
+            return await self._read_observed(executable, snapshot, before, selected)
+
+    @asynccontextmanager
+    async def _observation(
+        self, relative_key: str
+    ) -> AsyncIterator[tuple[ExecutableIdentity, StagedGitSnapshot, bytes]]:
+        """Keep one private Git view alive from metadata through content read."""
+
         try:
             project = self._projects.resolve(relative_key)
             resolved_root = self._projects.resolved_root(required=True)
@@ -180,35 +192,59 @@ class GitStagedPatchReader:
                 raise _error("PATCH_UNAVAILABLE_REPOSITORY", category="forbidden") from exc
             await self._safe_config(executable, snapshot)
             before = await self._status(executable, snapshot)
-            selected = select_staged_change(before, path)
-            if selected.head_oid == selected.index_oid:
-                raise _error("PATCH_UNAVAILABLE_MODE", category="unsupported")
-            first = await self._patch(executable, snapshot, selected)
-            self._revalidate(snapshot)
-            middle = await self._status(executable, snapshot)
-            if middle != before or select_staged_change(middle, path) != selected:
-                raise _error("PATCH_STALE", category="conflict")
-            second = await self._patch(executable, snapshot, selected)
-            self._revalidate(snapshot)
-            after = await self._status(executable, snapshot)
-            if after != before or second != first:
-                raise _error("PATCH_STALE", category="conflict")
-            if select_staged_change(after, path) != selected:
-                raise _error("PATCH_STALE", category="conflict")
-            self._revalidate(snapshot)
-            return StagedPatchObservation(
-                selection=selected,
-                patch=first,
-                sha256=hashlib.sha256(first.encode("utf-8")).hexdigest(),
-                byte_count=len(first.encode("utf-8")),
-                line_count=len(first.splitlines()),
-            )
+            yield executable, snapshot, before
         finally:
             try:
                 if snapshot is not None:
                     snapshot.close()
             finally:
                 root.close()
+
+    async def _read_observed(
+        self,
+        executable: ExecutableIdentity,
+        snapshot: StagedGitSnapshot,
+        before: bytes,
+        selected: StagedSelection,
+        *,
+        check_current: Callable[[], None] | None = None,
+    ) -> StagedPatchObservation:
+        """Use exactly the view/status checked by the internal selector owner.
+
+        No reopening, fresh selection or await separates the synchronous start
+        fence from the first patch. The fixed runner revalidates this same view
+        before and after each child. The callback is Runtime-owned, not RPC data.
+        """
+
+        path = selected.path
+        if selected.head_oid == selected.index_oid:
+            raise _error("PATCH_UNAVAILABLE_MODE", category="unsupported")
+        if check_current is not None:
+            check_current()
+        first = await self._patch(executable, snapshot, selected)
+        self._revalidate(snapshot)
+        middle = await self._status(executable, snapshot)
+        if middle != before or select_staged_change(middle, path) != selected:
+            raise _error("PATCH_STALE", category="conflict")
+        if check_current is not None:
+            check_current()
+        second = await self._patch(executable, snapshot, selected)
+        self._revalidate(snapshot)
+        after = await self._status(executable, snapshot)
+        if after != before or second != first:
+            raise _error("PATCH_STALE", category="conflict")
+        if select_staged_change(after, path) != selected:
+            raise _error("PATCH_STALE", category="conflict")
+        self._revalidate(snapshot)
+        if check_current is not None:
+            check_current()
+        return StagedPatchObservation(
+            selection=selected,
+            patch=first,
+            sha256=hashlib.sha256(first.encode("utf-8")).hexdigest(),
+            byte_count=len(first.encode("utf-8")),
+            line_count=len(first.splitlines()),
+        )
 
     @staticmethod
     def _revalidate(root: StagedGitSnapshot) -> None:

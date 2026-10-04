@@ -1,5 +1,14 @@
 # AgentBox Roadmap
 
+## 2026-10-04 下一项软件边界
+
+PR #138 已合并到 `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`，#117 因保留
+历史而间接合并。当前仅推进 Runtime-only short-lived staged selectors：versioned
+internal observation、完整 snapshot digest、可信 formal Project/session/epoch 绑定
+及同一 held view 的校验/读取；生产 resolver、RPC、encrypted channel 与 UI 均未组合。
+详见 [当前状态](CURRENT_STATE.md) 与 [reader/selector 合同](../WORKBENCH_A3_STAGED_READER.md)。
+此段接续并覆盖下方 reader-only 的历史批次范围，不扩大真实 host/device/Secret 或发布权限。
+
 ## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
 
 Owner 已明确暂缓真实目标测试、继续开发并要求列出后续计划。真实

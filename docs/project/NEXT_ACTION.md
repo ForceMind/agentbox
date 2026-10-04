@@ -1,5 +1,39 @@
 # Current Authorized Action
 
+## 2026-10-04 Runtime-only staged selectors（当前批次）
+
+已通过显式 main fetch/read-back 核对 PR [#138](https://github.com/ForceMind/agentbox/pull/138)
+正常合并为 `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`，tree
+`e74ef60de8c60650008ecd49f049526627f13557`；parents 为
+`7fa54c3f5e3ce7e96c3d2cb33828c759665d81d2` 与
+`f2148148fde8b2056630f6ddf67d3db411678e14`。#117 已因保留历史而间接
+MERGED（GitHub 记录 f214814）；其原 head `8ef72862514c27b01f5f52a532e0ac4e16f20775`
+与本地原提交 `ea6d638` 均保留，未改写旧 branch/worktree。
+
+#138 exact-head 六套 workflow 全成功；post-main 六套 workflow 的最新结果也均
+SUCCESS。post-main Frontend 初次在既有 late-Stop-receipt case 出现 5000ms timeout
+与 PROTOCOL_INVALID，同一 SHA 仅重跑失败 job 后成功；首轮失败仍保留，根因未
+宣称修复，未修改断言或 timeout。post-main 最新 job 汇总为 23 SUCCESS/3 SKIPPED
+（push 的 dependency-review 与两项历史 rc8）；skipped 不算 pass。
+
+Owner 已要求持续完成计划。本批从上述 exact main 的独立 feature branch
+`codex/s02-runtime-staged-selectors` 实施下一项 Runtime-only staged selector：
+完整 sorted staged snapshot（含全部 path/mode/HEAD/index OID）、当前正式 Project
+binding、Runtime epoch、可信 API session scope、entry index 与 staged side 绑定；
+TTL 最多 30 秒，token 校验与实际 patch read 共用同一个 held observation。
+保留 #138 全部 Git isolation、双观察、资源与 cleanup 边界。
+
+可信 current-context resolver 暂未接入生产：必须由未来的 Runtime composition
+提供当前 READY formal mapping、有效 session scope 和 epoch；本批 fixture 回调
+不构成生产 admission。没有 Runtime RPC、encrypted content channel、API/Worker
+plaintext、WAW frame、UI、Files/unstaged、provider 或真实 host 激活。v1 metadata
+schema 与 strict clients 不变；真实 host/device 验收仍为 NOT RUN。
+
+当前动作：闭合本批必要 negative/race/expiry/cancel/cleanup 测试和质量检查，
+完成源代码审查后再发布 Draft PR；待新 exact-head CI 全部终态，按授权流程进行
+后续正常交付。旧 reader/v1 的 CI 不能替代本批证据。下一项是单独审查的 encrypted
+content admission/transport 合同及接线，不能从内部 selector 的完成推导其已开放。
+
 ## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
 
 Owner 在首装软件合并后明确表示暂时不做真实测试、继续开发，并要求列出

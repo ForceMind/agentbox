@@ -1,12 +1,61 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T08:33:00Z"
-verified_by: "agentbox-staged-reader-reconciliation"
+verified_at_utc: "2026-10-04T10:26:00Z"
+verified_by: "agentbox-staged-selectors"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 Runtime-only staged selectors（当前批次）
+
+已通过显式 main fetch/read-back 核对 PR [#138](https://github.com/ForceMind/agentbox/pull/138)
+正常合并为 `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`，tree
+`e74ef60de8c60650008ecd49f049526627f13557`；parents 为
+`7fa54c3f5e3ce7e96c3d2cb33828c759665d81d2` 与
+`f2148148fde8b2056630f6ddf67d3db411678e14`。#117 已因保留历史而间接
+MERGED（GitHub 记录 f214814）；其原 head `8ef72862514c27b01f5f52a532e0ac4e16f20775`
+与本地原提交 `ea6d638` 均保留，未改写旧 branch/worktree。
+
+#138 exact-head 六套 workflow 全成功；post-main 六套 workflow 的最新结果也均
+SUCCESS。post-main Frontend 初次在既有 late-Stop-receipt case 出现 5000ms timeout
+与 PROTOCOL_INVALID，同一 SHA 仅重跑失败 job 后成功；首轮失败仍保留，根因未
+宣称修复，未修改断言或 timeout。post-main 最新 job 汇总为 23 SUCCESS/3 SKIPPED
+（push 的 dependency-review 与两项历史 rc8）；skipped 不算 pass。
+
+Owner 已要求持续完成计划。本批从上述 exact main 的独立 feature branch
+`codex/s02-runtime-staged-selectors` 实施下一项 Runtime-only staged selector：
+完整 sorted staged snapshot（含全部 path/mode/HEAD/index OID）、当前正式 Project
+binding、Runtime epoch、可信 API session scope、entry index 与 staged side 绑定；
+TTL 最多 30 秒，token 校验与实际 patch read 共用同一个 held observation。
+保留 #138 全部 Git isolation、双观察、资源与 cleanup 边界。
+
+可信 current-context resolver 暂未接入生产：必须由未来的 Runtime composition
+提供当前 READY formal mapping、有效 session scope 和 epoch；本批 fixture 回调
+不构成生产 admission。没有 Runtime RPC、encrypted content channel、API/Worker
+plaintext、WAW frame、UI、Files/unstaged、provider 或真实 host 激活。v1 metadata
+schema 与 strict clients 不变；真实 host/device 验收仍为 NOT RUN。
+
+### 本批本地软件验证（pre-commit）
+
+- `pytest -q` Git adapters/changes/content-root/staged reader/selection/selectors/
+  Project Git safety：259 passed，exit 0；覆盖同一 view 的 validation/read race、
+  exact monotonic expiry、tamper、scope/binding/epoch、整份 snapshot/entry 变化、
+  timeout/limit、并发取消与 FD cleanup。真实 Git roundtrip 分别使用测试 shim 与
+  `ControlledProcessRunner`，不把前者当 native runner 证据。
+- Runtime process：13 passed、1 prescribed Linux skip，exit 0；沿用系统
+  `/usr/bin/python3`（3.13.5）作为 copied-executable fixture，避免已记录的
+  relocatable `/opt` Python 缺少 `encodings` 问题；未修改生产代码或断言。
+- canonical Ruff：PASS；canonical mypy：PASS，357 source files；Black 同一
+  canonical scope 使用 single-process library safe-mode 检查 370 Python files：
+  PASS（避免 sandbox AF_UNIX multiprocessing manager；不是 Black CLI 运行）。
+- source-boundary、634 relative documentation links、`git diff --check`：PASS。
+
+首次新测试引用了不存在的 v1 snapshot 属性，随后 strict staged-only fixture 的
+index/worktree mode 未同步；均已修正测试输入并重跑，未放宽生产边界。
+独立只读 source/delta review 已完成，未发现本批阻断问题；审查者未重跑测试
+或 CI，此结论不是独立测试 PASS。尚无本批 exact-head CI、PR、merge 或 host 验收。
 
 ## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
 
