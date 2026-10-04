@@ -1,11 +1,12 @@
 # A3 Runtime-only staged patch reader
 
-Status: reconciled software candidate, 2026-10-04; parent source review completed,
-new exact-head CI pending. This reuses Draft [#117](https://github.com/ForceMind/agentbox/pull/117)
-without rewriting its history. It extends the [A3 patch contract](WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md),
-held Project/Git root and Linux descriptor-cwd process runner. It adds no Runtime
-RPC, API endpoint, selector, browser admission, encrypted content channel, file
-preview or patch UI. These remain independent subsequent slices.
+Status: reader merged in [#138](https://github.com/ForceMind/agentbox/pull/138)
+on 2026-10-04 as `35d25bdccbb9311a57fc06a0683f4f60bf50dd9c`; original #117
+history is retained and indirectly merged. The short-lived selector below is
+the current Runtime-only software candidate, not a production content action.
+It extends the [A3 patch contract](WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md).
+No Runtime RPC, API endpoint, encrypted content channel, file preview or patch
+UI is added. These remain independent subsequent slices.
 
 ## Fixed inputs and private staged view
 
@@ -99,5 +100,59 @@ The new `fcntl`/memfd implementation is Linux-only; it provides no Windows
 import or execution qualification. Actual target Git/host qualification remains
 NOT RUN. Software self-review is not an independent review. Parent source review
 of snapshot/reader/process completed before commit; no GitHub review submission
-is claimed. New exact-head CI, selector, encrypted delivery, client rendering and
-real-host acceptance remain distinct.
+is claimed. The merged reader exact-head CI is recorded in [current state](project/CURRENT_STATE.md).
+Selector candidate CI, encrypted delivery, client rendering and real-host acceptance
+remain distinct.
+
+## Internal staged selector candidate
+
+`GitStagedSelectors` owns the fixed reader and one trusted synchronous context
+resolver. Its input is a formal `prj_` ID and a 32-byte noncredential API session
+scope; `read` additionally accepts only the opaque `selection_id`, never a path,
+OID, revision, side, argv or signer payload. The resolver must return the CURRENT
+READY Project's complete `WAWProjectBinding`, Runtime epoch and active session
+scope, or None for missing/revoked/ambiguous/invalid mappings. This trusted port
+is intentionally **uncomposed**: no production READY/session check, endpoint or
+content authorization is claimed from the fixture implementations. Raw cookies
+and CSRF values must never reach this port.
+
+The internal `runtime-staged-observation-v2` returns sorted metadata entries,
+fixed unavailable reasons and a selector only for eligible regular staged
+add/modify/delete. The digest is SHA-256 over a domain and length-framed complete
+sorted raw rows, including denied/unselected rows, all paths (including rename
+source), HEAD/index OIDs, modes, kind and side. Input remains bounded to 1 MiB and
+10,000 entries. The v1 metadata-only API/parser/digest/strict clients are unchanged;
+its display-only digest is not sufficient to bind content.
+
+Each owner creates a fresh 32-byte CSPRNG key with no caller-supplied key or
+persistence. Fixed binary payload `>BQQI32s32s` contains version 1, monotonic
+issuance/expiry nanoseconds, entry index, full snapshot digest and a keyed opaque
+context commitment. A distinct fixed-domain HMAC-SHA256 authenticates that
+85-byte payload; the complete 117 bytes encode to exactly 156 base64url characters
+with no padding. The context includes every formal binding field, relative key,
+Runtime epoch and session scope. The HMAC domain binds `staged`; no other side or
+generic sign/verify API exists. Tokens contain no host path or raw scope, are not
+bearer authorization, and are neither persisted nor logged. Metadata repr omits
+tokens; errors carry fixed prose only. A new owner/process invalidates prior
+selectors, forked instances fail closed, and close drops the ephemeral key without
+claiming Python memory zeroization.
+
+Validity is exactly `issued <= monotonic_now < issued + 30 seconds`. Regressing or
+invalid monotonic time permanently fences the owner. Issuance checks currentness
+again before publication. Read opens a fresh held view, observes its complete
+staged metadata and validates the token against **that same view**. It resolves
+the selected path only from that current sorted entry index. There is no
+validate-then-reopen path. The reader's synchronous currentness/expiry check is
+immediately before each patch call and before returning its complete result;
+all original pre/post child revalidation and dual-patch checks remain. Changes
+during reading, including expiry/revocation/epoch/close, discard the result.
+This closes the application-level observation swap, not the documented mutable
+object/filesystem transaction limitation.
+
+At most four operations per selector owner can hold views concurrently; excess
+work fails with `PATCH_UNAVAILABLE_BUSY` rather than queueing beyond token TTL.
+Per-operation reader FD/byte/time limits remain unchanged. Cancellation and every
+error close the view/root before releasing operation capacity. The module adds
+no process, file-storage, network, API, Worker, WAW frame or logging surface.
+Necessary selector tests and review are software evidence only; target-host and
+physical-client acceptance remain NOT RUN.

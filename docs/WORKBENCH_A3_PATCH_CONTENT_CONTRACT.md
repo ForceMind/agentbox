@@ -21,8 +21,14 @@ validated ref metadata, fixed cached raw/patch commands and dual observations.
 It does not run working-tree status for content extraction. Held objects remain
 mutable and are revalidated; metadata/FD/storage limits are explicit in that
 contract. It returns text only to Runtime-internal code and adds no RPC, API,
-selector, encrypted channel or UI. Parent source review completed before commit;
-new exact-head CI remains pending. Real host/device acceptance is deferred, not passed. The implementation
+encrypted channel or UI. The reader has merged in #138 with exact-head and
+post-main CI; see [current state](project/CURRENT_STATE.md), including the retained
+first post-main Frontend failure. The next Runtime-only selector is a software
+candidate with an uncomposed trusted current-context resolver. Its full sorted
+snapshot digest and same-view validation/read contract are specified in
+[the reader/selector contract](WORKBENCH_A3_STAGED_READER.md#internal-staged-selector-candidate).
+No v1 API migration or production admission is implied. Real host/device acceptance
+is deferred, not passed. The implementation
 contract supersedes the older direct-worktree status approach below for this
 first reader only; unstaged extraction and future content delivery remain gated.
 
