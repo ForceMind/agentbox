@@ -88,6 +88,15 @@ def create_parser() -> argparse.ArgumentParser:
     setup_web.add_argument("--plan", action="store_true")
     setup_web.add_argument("--recover", action="store_true")
     setup_web.add_argument("--json", action="store_true")
+    fresh = commands.add_parser("setup-fresh-waw")
+    fresh.add_argument("--artifact", type=Path, required=True)
+    fresh.add_argument("--sha256", required=True)
+    fresh.add_argument("--origin", required=True)
+    fresh.add_argument("--email", required=True)
+    fresh.add_argument("--agree-acme-terms", action="store_true")
+    fresh.add_argument("--plan", action="store_true")
+    fresh.add_argument("--recover", action="store_true")
+    fresh.add_argument("--json", action="store_true")
     vendors = commands.add_parser("install-waw-vendors")
     vendors.add_argument("--plan", action="store_true")
     vendors.add_argument("--recover", action="store_true")
@@ -246,6 +255,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "setup-waw-web":
             _print(
                 installer.setup_waw_web(
+                    origin=args.origin,
+                    email=args.email,
+                    agree_terms=args.agree_acme_terms,
+                    plan=args.plan,
+                    recover=args.recover,
+                ),
+                json_output=json_output,
+            )
+            return 0
+        if args.command == "setup-fresh-waw":
+            _print(
+                installer.setup_fresh_waw(
+                    artifact=args.artifact,
+                    expected_sha256=args.sha256,
                     origin=args.origin,
                     email=args.email,
                     agree_terms=args.agree_acme_terms,
