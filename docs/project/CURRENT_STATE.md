@@ -1,12 +1,31 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T14:09:00Z"
+verified_at_utc: "2026-10-04T16:32:00Z"
 verified_by: "agentbox-changes-a3-reader"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 第二轮 CI 与 metadata teardown 同步
+
+第二个head `aa811006bc347fd7c3e4a2e29d387e0fdeda9241` 的Backend/Frontend/
+Security/Deployment/Release Candidate均SUCCESS；[E2E第二轮](https://github.com/ForceMind/agentbox/actions/runs/37216455336)
+142 passed/30 prescribed skipped/2 failed。环境隔离修复已使新增26/28用例通过；仅
+两个viewport的cancel+delayed-END用例出现`A3 fixture bridge closed`，含原retry均失败。
+截图上传步骤因job失败SKIPPED，不能把生成的未回读图片当作已验收截图。
+
+取消用例最后点击metadata刷新，却未等GET/Git结束即关闭fixture stdin；peer取消
+未回复的metadata handler，Node child-exit拒绝pending route promise。独立逐行审查
+确认该race，并在真实Node bridge/Python/Git无浏览器对照复现：不等metadata就close
+返回同一bridge-closed错误，先await metadata再close则成功。CI是否完全闭合仍待新head。
+
+本次只增强该用例：点击前注册精确metadata GET的waitForResponse，验证200/body
+finished，再等success.txt行重新显示；保留原cancel、noPatch、selector observations=1
+和原有timeouts，随后才teardown。没有产品、crypto、权限、bridge或Settings修改。
+原两次失败history保留；新head仍须全量CI、desktop/phone全部用例及截图read-back。
+
 
 ## 2026-10-04 首轮 CI 与 fixture environment 修复
 

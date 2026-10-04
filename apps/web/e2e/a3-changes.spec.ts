@@ -111,7 +111,19 @@ test('cancel fences delayed END and refresh cannot replay a read', async ({
     await fixture.call('release')
     await expect.poll(async () => (await status(fixture)).active).toBe(0)
     await noPatch(page)
+    const refreshed = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname ===
+          `/api/v1/projects/${projectId}/git/changes`,
+    )
     await page.getByRole('button', { name: '刷新', exact: true }).click()
+    const metadataResponse = await refreshed
+    expect(metadataResponse.status()).toBe(200)
+    expect(await metadataResponse.finished()).toBeNull()
+    await expect(
+      page.getByRole('button', { name: '读取暂存补丁：success.txt' }),
+    ).toBeVisible()
     await noPatch(page)
     expect((await status(fixture)).observations).toBe(1)
   } finally {
