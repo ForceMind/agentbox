@@ -1,5 +1,24 @@
 # AgentBox 逐版本交付计划
 
+## 2026-10-04 接续核对与真实首装准备
+
+已重新核对 PR #136 的 documentation-inclusive head
+`d6ee8c7c9635e2b5ecd58f18048fa8c1aaa59474`：Backend、Frontend、Security、
+Deployment、E2E、Release Candidate 六套 workflow 均为 terminal SUCCESS。
+其中 24 jobs 成功、2 个历史 rc8 jobs 按版本跳过；不能把 skipped 写成通过。
+[Backend 证据](https://github.com/ForceMind/agentbox/actions/runs/37166599345)。
+当前已验证 main 仍是 `769197ed9dda2873b0b066a073efb7319d0665c1`。
+PR #136 尚未合并；本次会话的 Ready/merge 操作正在等待明确确认。
+实时 GitHub 状态优先于本记录，合并后须重新读取 main 和 post-merge CI。
+
+`setup-fresh-waw` 已完成软件组合与恢复逻辑，不再重做 #131/#134/#135，
+也不再把 composition 当成待开发功能。下一实质阶段是同一固定 candidate 的
+真实首装资格化，详见 [当前行动](NEXT_ACTION.md) 和
+[目标输入记录](R12_TARGET_RECORD.md)。当前没有指定或激活真实目标服务器；
+公网 HTTPS、管理员初始化、真实双 CLI 登录/turn、物理客户端、重启及升级回退
+仍为 NOT RUN。下方旧阶段叙述仅为历史记录。
+
+
 ## 2026-10-03 当前计划与交接
 
 当前状态与阻断以 [DEVELOPMENT_HANDOFF](DEVELOPMENT_HANDOFF.md) 为准。

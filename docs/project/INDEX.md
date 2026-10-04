@@ -1,7 +1,8 @@
 # AgentBox Project Context Index
 
-- [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-03 新对话/新模型首读入口；
-  当前 main、Draft #135、已资格化 vendor enrollment、完整 fresh-install 下一步及未完成验收。
+- [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-04 接续入口；
+  PR #136 完整 fresh-install 已实现，documentation-inclusive CI 全绿；
+  Ready/merge 待本次明确确认，之后进入真实首装资格化。
 - [Deployable release plan](DEPLOYABLE_RELEASE_PLAN.md)：Owner 自行运行一键安装的
   首版目标、实际命令入口、PC/手机范围及部署链剩余依赖。
 - [Cross-platform Web bootstrap proposal](../adr/0010-cross-platform-web-bootstrap.md)：
