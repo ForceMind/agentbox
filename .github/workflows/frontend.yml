@@ -37,6 +37,7 @@ jobs:
       - run: node scripts/check-a3-content-interop.mjs
       - run: python scripts/check-a3-crypto-vector.py
       - run: node scripts/check-a3-crypto-interop.mjs
+      - run: node scripts/check-a3-bridge-isolation.mjs
       - run: node scripts/check-a3-changes-interop.mjs
       - run: python scripts/check-waw-trust-vector.py
       - run: pnpm build

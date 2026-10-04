@@ -133,3 +133,14 @@ Local focused tests, independent review, full exact-head workflows and later
 merge/read-back are recorded in [current state](project/CURRENT_STATE.md).
 Pending/never-run checks are not PASS. Production adapter/pin/host qualification
 remains a separate future contract and gate.
+
+## First CI integration correction
+
+PR #143 initial head `892dbd8` passed five workflows; E2E failed before all 28 new
+DOM cases because the fixture child inherited the outer E2E application's
+AGENTBOX settings. Product Settings intentionally prioritizes environment over
+constructor values, so the child reached the already initialized outer DB.
+Only the fixture spawn now strips AGENTBOX_*; production settings are unchanged.
+The actual bridge has a poisoned-environment/startup-failure Node regression,
+without launching a browser. First failure remains evidence; a new head needs
+all workflows and actual desktop/phone screenshots before completion.

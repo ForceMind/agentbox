@@ -16,7 +16,17 @@ export async function installA3Fixture(page: Page) {
   const child = spawn(
     process.env.AGENTBOX_A3_PYTHON ?? 'python',
     ['tests/interop/a3_changes_peer.py'],
-    { cwd: root, stdio: ['pipe', 'pipe', 'ignore'] },
+    {
+      cwd: root,
+      // Settings intentionally gives environment precedence over init kwargs.
+      // Never lend the outer E2E app's DB/root/Origin/credentials to this child.
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([name]) => !name.startsWith('AGENTBOX_'),
+        ),
+      ),
+      stdio: ['pipe', 'pipe', 'ignore'],
+    },
   )
   let counter = 0
   let buffered = ''

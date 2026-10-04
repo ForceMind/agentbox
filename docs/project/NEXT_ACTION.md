@@ -1,5 +1,30 @@
 # Current Authorized Action
 
+## 2026-10-04 首轮 CI 与 fixture environment 修复
+
+PR [#143](https://github.com/ForceMind/agentbox/pull/143) 首个 head
+`892dbd87f8ab1bf14016c2581e42bb47f3cdbf3e`，tree
+`4b950105e7709b68bb7bcc9e4720c6e7bc9f3193`，唯一parent为 `b7dd51d`。
+Backend（三Python版本/native）、Frontend、Security、Deployment、Release Candidate
+首轮均SUCCESS。[E2E 首轮](https://github.com/ForceMind/agentbox/actions/runs/37207300345)
+FAILURE：既有116 passed/30 prescribed skipped，新增28个desktop/phone场景均因fixture
+bridge启动失败而失败（含原配置retry），截图步骤SKIPPED，不能称浏览器验收通过。
+
+现有Settings故意让environment优先于显式构造：fixture子进程继承外层E2E的
+AGENTBOX_DATABASE_URL/data/root/Origin/secret，误接已初始化的共享测试DB，在ready
+之前抛AdminAlreadyInitialized。独立重建环境也观察到AUTH_ORIGIN_INVALID。
+仅在Node fixture child spawn时剥离AGENTBOX_*，使用既有临时DB/testOrigin/synthetic
+构造输入；不改产品Settings优先级、Origin/session/crypto或timeout/断言。原staged/
+readback worktrees保留，在独立ci-fix worktree顺序提交，不改写旧head。
+
+actual Node bridge污染环境回归执行真实bridge（仅恢复临时transpile文件原dirname），
+注入production/invalid DB/wrong root/Origin/synthetic key，确认isolated metadata和
+真实ASGI bootstrap成功且未读patch；缺失fixture executable确认startup失败不暴露bridge。
+此检查不启动浏览器。既有actual Git/API/opaque→WebController七场景继续PASS。
+新head全部CI与desktop/phone截图仍须核验；不重跑旧失败head掩盖问题。真实host/key/
+pin/production仍NOT RUN。下方首个候选本地记录保留，不替代本节CI状态。
+
+
 ## 2026-10-04 A3 Changes-page staged reader 软件候选
 
 已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，
