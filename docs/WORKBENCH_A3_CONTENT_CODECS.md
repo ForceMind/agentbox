@@ -1,5 +1,11 @@
 # A3 independent content schema and pure codecs
 
+Current continuation (2026-10-04): the [independent encrypted single-read slice](WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)
+now composes these primitives in a synthetic in-memory Git→Noise→Web pipeline.
+The codec/reader-only descriptions below remain the scope of their original
+slices; production resolver/key/relay/UI and host qualification remain unopened.
+
+
 Status: software candidate on 2026-10-04, based on #139 merge
 `587fe8eabf7e5d5e4d3a561091ec00c3e9f40881`. This refines the
 [patch content contract](WORKBENCH_A3_PATCH_CONTENT_CONTRACT.md) after the

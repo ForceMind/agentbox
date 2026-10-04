@@ -1,12 +1,65 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T11:16:00Z"
-verified_by: "agentbox-content-codecs"
+verified_at_utc: "2026-10-04T12:04:00Z"
+verified_by: "agentbox-encrypted-single-read"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 A3 encrypted single-read（当前独立软件批次）
+
+显式 fetch/read-back main 为 `57cb8cd643ca0531b805459998d71cbe13369823`，
+tree `ef47c85676c36ce9bde730e7814d5628c5653fa3`，parents 为 `587fe8e` 与
+`9d4a973`。这是 [#140](https://github.com/ForceMind/agentbox/pull/140) 正常
+merge；exact-head 六套 CI SUCCESS（24 jobs SUCCESS、2 prescribed SKIPPED），
+post-main 六套首次 attempt SUCCESS（23 SUCCESS、push dependency-review 与
+两项历史 rc8 共 3 SKIPPED），无失败重跑/pending。完整证据已回读 PR body。
+原有 reader/selector/codecs worktrees 与 staged work 全部保留；本批从 exact main
+创建独立 `feature/a3-encrypted-single-read`。
+
+本批落实 [独立加密单次读取](../WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)：
+同一 held-view 的 sealed Runtime admission 保留 token 原始已验证 expiry；
+同一 selector owner 的 128 nonce ledger、共享 4 active limit；完整分页预检后
+新建独立 A3 NX session，使用独立 key/confirm/record domain、n=0 双向确认与
+n>=1 内部 counter；typed opaque port 与 Web 完整 END 验证相连。没有复用 WAW
+应用类/context/AWCE/CipherState，没有生产 key loading、resolver/relay route/UI。
+原下方“codec-only”仅是 #140 历史批次，不覆盖此新获批 software scope。
+
+actual synthetic Git→native ControlledProcessRunner 双观察→sealed handle→preflight
+→Python NX→opaque fixture relay→Web full bytes/hash 已运行，lost-page、tamper、
+visibility loss 均无 partial publication。fixture READY/session/pin/clock 是明确的
+测试输入，不等同生产 authentication；真实 host/device 仍 NOT RUN。
+
+### 本批验证（publication candidate，尚无新 exact-head CI）
+
+- 最终 focused Python：1034 passed，exit 0（其中新 crypto/session 53），含
+  A3/selector/reader/Git/Project safety 与既有 NX/WAW profile/context/AWCE 回归。
+- `pnpm --config.verify-deps-before-run=false test`：Web 1332 passed（新 crypto
+  39）、extension 6 passed；同一参数的 lint/format:check/typecheck/build 均
+  exit 0。使用原已安装且 lockfile 不变的 dependencies symlink；参数只关闭
+  pnpm 因新 worktree metadata 不同触发的自动重装，未修改依赖/阈值/测试。
+  默认命令初次因只读/缺失 home store 自动安装失败；重用原依赖后通过。
+  build 保留既有 >500 kB bundle warning，没有开放新生产 import。
+- 独立 `check-a3-crypto-vector.py` 与实际 `check-a3-crypto-interop.mjs`：exit 0；
+  Git fixture 是 native `ControlledProcessRunner`，不是仅 shim evidence。
+- canonical Ruff PASS；mypy PASS（365 source files）；canonical Black scope
+  single-process safe-mode library check PASS（378 files，非 Black CLI）；
+  source-boundary/secret-pattern/655 relative doc links/diff-check PASS。
+- 主实现自查与独立 source/delta security review 完成，无遗留 blocking finding；
+  reviewer 没有运行测试/CI。审查发现的 scheduled/backpressure publication guard、
+  ACK 5s 保留与 Python encrypted ERROR 互通已修复，并补 real failure tests。
+  最终额外封闭巨大 integer 的 raw parser error 回显，增加三项定长负例。
+  已验证 post-insertion uncertain write、blocked receive/send cancel、PAGE revoke
+  均关闭且同 nonce 新 channel 不可重开；handle close 阻止第二次 patch child。
+- 初次测试修正了误把 NX message1 当即时认证的预期、envelope overhead 算术、
+  Python test typing、跨 Python 调度 fixture 与无效测试文件名；没有放宽边界。
+
+以上是本批本地/审查 evidence，未把 #140 CI 算作本批 CI。已知本环境全量 Python 的 111 个失败与 baseline 复现记录保留
+在下方；不重复把相同 AF_UNIX/root/systemd/copied-Python 限制写成产品回归，
+也不放宽断言。必要 full/native matrix 仍由新 exact-head CI 验证。
+
 
 ## 2026-10-04 独立 A3 content schema/codecs（当前批次）
 

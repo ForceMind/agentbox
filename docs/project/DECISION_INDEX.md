@@ -1,5 +1,13 @@
 # Decision and Architecture Index
 
+- `WORKBENCH-A3-ENCRYPTED-SINGLE-READ`: 在已批准 S02 软件范围内落实
+  [专用 A3 session](../WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)：复用固定 NX
+  primitive、独立 confirmation/domain/record，保留原始 selector expiry、同一
+  held view、owner-lifetime 128 nonce ledger/4 slots、preflight-before-send 与
+  after-await/final-publication guards。仅 synthetic/in-memory composition，
+  fixture trust ports 不授予生产 READY/session/pin 或 host/relay/UI 权限。
+
+
 - `WORKBENCH-A3-CONTENT-CODECS-CANDIDATE`: 独立 A3 version/context/AAD 与四类
   canonical flat JSON 明文 codec；16 KiB 指完整 authenticated plaintext PAGE，
   包含 metadata/base64 开销。reader 256 KiB 是 extraction ceiling，不能承诺

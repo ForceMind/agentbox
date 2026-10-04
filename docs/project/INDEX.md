@@ -1,9 +1,9 @@
 # AgentBox Project Context Index
 
-- **当前优先级（2026-10-04）**：Owner 暂缓真实 host/device 验收，继续独立软件；
-  #139 Runtime-only selectors 已合并，exact-head/post-main CI 全绿。当前批次是
-  [A3 content schema/codecs](../WORKBENCH_A3_CONTENT_CODECS.md) 的纯 Python/Web
-  协议/向量，不是 encrypted transport/production resolver/UI。
+- **当前优先级（2026-10-04）**：#140 已正常合并，exact-head/post-main 六套
+  CI 全终态 SUCCESS。当前推进 [独立 encrypted single-read](../WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)
+  的 synthetic Git→fresh A3 Noise→opaque relay→Web 软件链；真实 host/device
+  验收继续 NOT RUN，生产 resolver/key/relay/UI 与 release 仍分开。
 
 - [Development handoff](DEVELOPMENT_HANDOFF.md)：2026-10-04 接续入口；
   PR #136 完整 fresh-install 已实现，documentation-inclusive CI 全绿；

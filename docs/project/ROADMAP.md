@@ -1,5 +1,13 @@
 # AgentBox Roadmap
 
+## 2026-10-04 A3 独立加密单次读取
+
+#140 exact-head/post-main 六套 CI 全 SUCCESS，main `57cb8cd`。本批将已有
+reader/selector/codecs 组合为 [inert encrypted single-read](../WORKBENCH_A3_ENCRYPTED_SINGLE_READ.md)：
+原始 expiry、owner nonce ledger、fresh NX、opaque-only 软件 relay 与 Web 完整
+验证。actual synthetic fixture 不等同 production authentication/relay/UI；后续
+生产接线和真实 host/client 资格仍需各自证据。下方阶段陈述保留历史。
+
 ## 2026-10-04 A3 独立协议软件候选
 
 #139 已合并到 `587fe8eabf7e5d5e4d3a561091ec00c3e9f40881`，exact-head 与
