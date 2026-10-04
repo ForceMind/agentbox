@@ -286,6 +286,64 @@ def test_existing_same_version_requires_committed_deferred_install_evidence(
     assert events == STEPS[1:]
 
 
+def test_started_activation_resumes_https_without_replaying_offline_phases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = _installer(tmp_path, monkeypatch, "installed_same_version")
+    artifact = tmp_path / "artifact.tar.gz"
+    candidate = SimpleNamespace(version=VERSION)
+    monkeypatch.setattr(lifecycle_module, "verify_artifact_digest", lambda *_args: None)
+    monkeypatch.setattr(installer, "_peek_artifact_manifest", lambda _artifact: candidate)
+    monkeypatch.setattr(lifecycle_module, "verify_release", lambda *_args, **_kwargs: candidate)
+    monkeypatch.setattr(
+        installer,
+        "_read_journal",
+        lambda: {
+            "schema_version": 3,
+            "status": "committed",
+            "version": VERSION,
+            "completed_steps": ["activation_deferred", "receipt_written"],
+        },
+    )
+    monkeypatch.setattr(installer, "_fresh_waw_activation_phase", lambda **_kwargs: "started")
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("offline fresh-setup phases must not replay after activation")
+
+    for name in (
+        "install_waw_dependencies",
+        "install_waw_vendors",
+        "prepare_waw_manifests",
+        "prepare_waw_policies",
+        "enroll_qualified_waw_vendors",
+    ):
+        monkeypatch.setattr(installer, name, forbidden)
+
+    calls: list[str] = []
+
+    def web(**_kwargs: object) -> dict[str, object]:
+        calls.append("https")
+        return {
+            "status": "started",
+            "services_started": True,
+            "runtime_restarted": False,
+        }
+
+    monkeypatch.setattr(installer, "setup_waw_web", web)
+    result = installer.setup_fresh_waw(
+        artifact=artifact,
+        expected_sha256=ARTIFACT_SHA,
+        origin=ORIGIN,
+        email=EMAIL,
+        agree_terms=True,
+        recover=True,
+    )
+
+    assert calls == ["https"]
+    assert result["resumed_activation_phase"] == "started"
+    assert result["services_started"] is True
+
+
 def test_fresh_setup_cli_contract() -> None:
     args = cli.create_parser().parse_args(
         [
