@@ -8,6 +8,57 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## 2026-10-04 fresh-install composition handoff
+
+PR #135 is MERGED. Its exact source head
+`becb2cb0a4b6e5cd81694c510eeec9427e5b9b69` completed Backend, Frontend,
+Security, Deployment, E2E and Release Candidate successfully; durable
+`main` is merge commit
+`769197ed9dda2873b0b066a073efb7319d0665c1`.
+
+Current work is Draft PR #136,
+`codex/r12-fresh-install-composition`, based on that main. The last
+code-only exact head before this handoff is
+`815adfcb60a72c7de48cdfcdc2007c338b7b03cd`, and all six workflows are
+terminal SUCCESS on that exact head:
+- Backend: SUCCESS, including native plus Python 3.11/3.12/3.13 quality matrices;
+- Frontend: SUCCESS;
+- Security: SUCCESS;
+- Deployment: SUCCESS;
+- E2E: SUCCESS;
+- Release Candidate: SUCCESS.
+
+#136 adds the fixed root-only `setup-fresh-waw` composition entry:
+`deferred install -> browser dependencies -> fixed vendors -> manifests ->
+policies -> qualified enrollment -> setup-waw-web/HTTPS`.
+
+The composition keeps the existing phase-specific atomic/recovery contracts
+instead of inventing a second transaction format. Fresh installs use
+`apply(..., defer_activation=True)`. An attested staged interruption requires
+explicit `--recover` and uses `resume-install(..., defer_activation=True)`.
+A same-version continuation is admitted only when the exact artifact still
+matches and the committed installer journal contains both
+`activation_deferred` and `receipt_written`; a normal already-running
+installation is rejected by this fresh-only entry.
+
+The final recovery correction is also present at code head 815adfcb...:
+if `activation.v1.json` already exists with a validated
+`preparing/configured/started` phase, the composition does not replay the
+offline dependency/vendor/manifest/policy/enrollment steps. It hands recovery
+directly back to the existing `setup-waw-web --recover` path, preventing a
+started WAW graph from being blocked by offline policy guards.
+
+This closes the software composition contract only. It does **not** yet prove
+one real public-host fresh install from the release artifact through ACME/HTTPS,
+real authenticated Claude and Codex interactive sessions, physical
+PC/Android/iOS input/resize/background/reconnect/exact Stop, service/host reboot,
+upgrade/rollback, or immutable release publication.
+
+This handoff documentation intentionally advances PR #136 after the fully green
+code head. The next developer must first read live PR #136 head and exact-head
+CI. Do not claim the new documentation-inclusive head is green merely from the
+815adfcb evidence.
+
 ## 2026-10-03 qualified vendor enrollment continuation
 
 PR #134 is MERGED at
