@@ -80,3 +80,19 @@ lint/format/typecheck/build、doc links 与安全边界检查通过。新 metada
 本机缺 Chromium 而终止；官方浏览器安装下载为无效ZIP，日志保留。这些不是
 浏览器通过证据。完整新 head 远端 CI 与实际 PNG 像素尚未产生；最终结果需
 exact commit/read-back 记录，本段不是软件 Ready 声明。
+
+
+### 首轮 exact-head CI 的失败记录
+
+首轮 head `70db127464cae286f33735c1aff2692b0f66a9b5` 的 Frontend、Security、
+Deployment、Release Candidate 通过。Backend 3.11/3.12 与 native 通过，3.13
+为5301 passed/1 failed/88 skipped：未改动的 native admission 测试在 READY
+前收到 PATCH_REVOKED EOF。受控延迟 CURRENT_REPLY 300ms 可使固定250ms
+currentness fail-closed 产生同一表象，但原 CI 未记录底层关闭原因，因此历史
+因果未证实，没有据此改 Runtime、预算、断言或单测 timeout，也未重跑旧头。
+
+[E2E 首轮](https://github.com/ForceMind/agentbox/actions/runs/37347713899)
+228 passed/4 failed/30 skipped；新概览4个状态场景通过，4个主流程均在焦点
+样式断言失败。鼠标登录后直接 programmatic focus 不保证 :focus-visible，
+新测试改为真实 Tab 到刷新按钮、确认 focus-visible 和前后样式差异再 Enter，
+不删除视觉/键盘断言、不通过额外CSS掩盖。完整新 exact-head CI/像素仍待验。

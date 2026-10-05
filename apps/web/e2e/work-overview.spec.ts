@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 
 import {
-  assertRc9Focus,
   assertRc9InteractiveTargets,
   assertRc9NoHorizontalOverflow,
 } from './rc9-assertions'
@@ -107,7 +106,45 @@ for (const locale of ['en', 'zh-CN'] as const) {
       await assertRc9NoHorizontalOverflow(page)
       await assertRc9InteractiveTargets(page)
       const refresh = overview.getByRole('button', { name: expected.refresh })
-      await assertRc9Focus(refresh)
+      // A pointer login leaves pointer modality active. Exercise actual Tab
+      // navigation, rather than assuming programmatic focus is :focus-visible.
+      const unfocused = await refresh.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return [
+          style.outlineStyle,
+          style.outlineWidth,
+          style.outlineColor,
+          style.boxShadow,
+        ]
+      })
+      const tabStops = await page
+        .locator('a[href], button, input, select, textarea, [tabindex="0"]')
+        .count()
+      for (let index = 0; index <= tabStops; index++) {
+        await page.keyboard.press('Tab')
+        if (
+          await refresh.evaluate(
+            (element) => document.activeElement === element,
+          )
+        )
+          break
+      }
+      await expect(refresh).toBeFocused()
+      expect(
+        await refresh.evaluate((element) => element.matches(':focus-visible')),
+      ).toBe(true)
+      const focused = await refresh.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return [
+          style.outlineStyle,
+          style.outlineWidth,
+          style.outlineColor,
+          style.boxShadow,
+        ]
+      })
+      expect(focused, 'keyboard focus must visibly change refresh').not.toEqual(
+        unfocused,
+      )
       await page.keyboard.press('Enter')
       await expect(refresh).toBeEnabled()
       await expect(active.getByText(jobId(2), { exact: true })).toBeVisible()
