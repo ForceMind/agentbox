@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import type { MutableRefObject } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   WorkspaceAttachmentTicketResponse,
@@ -457,6 +457,11 @@ function finish(
   fixture.dispose()
 }
 
+// Lifecycle fixtures use explicit scheduler clocks, not runner/GC pauses.
+// Decoder deadline rejection is covered separately in wawWire.test.ts.
+beforeEach(() => {
+  vi.spyOn(performance, 'now').mockReturnValue(0)
+})
 afterEach(() => vi.restoreAllMocks())
 
 describe('rc7 browser lifecycle composition', () => {

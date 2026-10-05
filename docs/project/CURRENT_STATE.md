@@ -1,12 +1,29 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T15:17:00Z"
-verified_by: "agentbox-changes-unified-diff"
+verified_at_utc: "2026-10-05T15:56:00Z"
+verified_by: "agentbox-rc7-lifecycle-clock"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-05 #145 已合并；main Frontend 单测时钟修正候选
+
+#145 最终 head `63da1b1539ed68186b249e905e8b14c568ce1673` 六套首次CI
+和独立六图像素均PASS。main `c93ed22a57b2667d8f6b13fdb3fd3720001e72f2`
+于15:40:24Z正常合并，parents/tree已显式核对，tree仍为
+`44630157273d4eea963d5738ed930eb257b7847e`。长补丁巨大留白已修正。
+
+exact-main五套workflow SUCCESS，但[Frontend](https://github.com/ForceMind/agentbox/actions/runs/37334720162)
+失败：既有 rc7 lifecycle socket/backpressure 用例 timeout5000ms，加一个
+PROTOCOL_INVALID unhandled rejection；1553 passed/1 failed。不能称main全绿。
+当前独立 `codex/rc7-lifecycle-test-clock` 只固定该测试的performance elapsed clock，
+沿用相邻协议单测的既定方式；产品5ms预算、测试timeout和全部断言不变。
+[诊断与限定修正](../WORKBENCH_RC7_TEST_CLOCK.md) 保留同条件8ms暂停红绿；
+真实CI无内部时钟数据，历史成因仍为有强支持的推断。待独立review、新head与
+新main六套终态，禁止重跑旧失败取绿或借旧head过关。未新增功能/部署权限。
+
 
 ## 2026-10-05 PR #145 首轮 CI 全绿，长补丁纵向布局收尾
 
