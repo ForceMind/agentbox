@@ -51,6 +51,7 @@ type Reply = {
   child_code?: string
   primary_code?: string
   cleanup_failed?: boolean
+  exit_code?: number
   result: unknown
 }
 
@@ -154,7 +155,7 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
         else
           item.reject(
             new Error(
-              `native fixture ${[reply.stage, reply.role, reply.phase, reply.child_code, reply.primary_code, reply.code, reply.cleanup_failed ? 'cleanup-failed' : undefined].filter(Boolean).join(':') || 'failed'}`,
+              `native fixture ${[reply.stage, reply.role, reply.phase, reply.child_code, reply.primary_code, reply.code, reply.cleanup_failed ? 'cleanup-failed' : undefined, typeof reply.exit_code === 'number' ? `exit-${reply.exit_code}` : undefined].filter(Boolean).join(':') || 'failed'}`,
             ),
           )
       } catch {
@@ -168,10 +169,13 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
       return Promise.reject(new Error('native fixture unavailable'))
     const id = ++next
     return new Promise<unknown>((resolveCall, rejectCall) => {
-      const timer = setTimeout(() => {
-        pending.delete(id)
-        rejectCall(new Error('native fixture control timed out'))
-      }, 15000)
+      const timer = setTimeout(
+        () => {
+          pending.delete(id)
+          rejectCall(new Error('native fixture control timed out'))
+        },
+        op === 'start' ? 45000 : 15000,
+      )
       pending.set(id, {
         resolve(value) {
           clearTimeout(timer)

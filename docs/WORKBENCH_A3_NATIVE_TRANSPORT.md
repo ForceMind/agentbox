@@ -328,3 +328,25 @@ observed child termination, preserves primary errors, and emits only fixed
 stage/role/type diagnostics. Partial setup ownership must survive setup failure.
 No production behavior, trust/crypto/expiry rule or assertion is relaxed. New
 exact-head CI and real screenshot read-back remain required.
+
+## Second exact-head CI, retained failure — 2026-10-05
+
+Head `2dd83b45be8cf18e76046c128b588ebe734352fe` again passed Security,
+Frontend, Deployment and Release Candidate. Backend 3.11/3.12/3.13 each reported
+5223 passed,88 skipped,2 failed. Twelve of14 new native tests passed, including
+actual separate-process Git-to-END reading. Two test-tool defects remained: a
+naive revoke timestamp instead of the database UTC6 transaction clock, and a
+client that did not answer the normal20-second RFC6455 PING. Corrections keep
+the production protocol, original expiry and absolute receive deadline unchanged.
+
+E2E reported152 passed,30 prescribed skipped,52 failed. The eight additional
+passes are pure Node cleanup tests, not formal-route browser qualification.
+Cleanup now succeeds and exposes the common primary process-start RuntimeError;
+its numeric-UID startup cause is still to be established by a bounded probe.
+Only fixed role/phase/type/exit diagnostics are permitted. If the original source
+is unreadable, a fixture-owned read-only copy is limited to explicit public
+tracked Python files in fixed package roots with exact byte digests; no checkout
+or system permissions are relaxed. Only the test start-control wait becomes
+45 seconds to contain at most four5-second source probes; production timeouts
+are unchanged. Existing setup primary-error preservation remains in place.
+Screenshots remain unavailable; new exact-head CI and pixel review are required.

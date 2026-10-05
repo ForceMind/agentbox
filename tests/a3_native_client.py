@@ -106,35 +106,81 @@ class NativeBrowser:
             ).encode()
         )
 
-    def exact(self, size: int) -> bytes:
+    def exact(self, size: int, *, deadline: float | None = None) -> bytes:
         result = bytearray()
         while len(result) < size:
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("test WebSocket receive expired")
+                self.socket.settimeout(remaining)
             raw = self.socket.recv(size - len(result))
             if not raw:
                 raise EOFError("native WebSocket closed")
             result.extend(raw)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError("test WebSocket receive expired")
         return bytes(result)
 
     def send(self, payload: bytes) -> None:
-        mask = secrets.token_bytes(4)
+        self._send_frame(2, payload)
+
+    def _send_frame(self, opcode: int, payload: bytes, *, deadline: float | None = None) -> None:
+        assert opcode in {2, 8, 10}
         size = len(payload)
-        header = bytes((0x82, 0x80 | size)) if size < 126 else b"\x82\xfe" + size.to_bytes(2, "big")
-        self.socket.sendall(
-            header + mask + bytes(value ^ mask[i % 4] for i, value in enumerate(payload))
+        assert size <= (24576 if opcode == 2 else 125)
+        mask = secrets.token_bytes(4)
+        header = (
+            bytes((0x80 | opcode, 0x80 | size))
+            if size < 126
+            else bytes((0x80 | opcode, 0xFE)) + size.to_bytes(2, "big")
         )
+        frame = header + mask + bytes(value ^ mask[i % 4] for i, value in enumerate(payload))
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("test WebSocket control expired")
+            self.socket.settimeout(remaining)
+        self.socket.sendall(frame)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError("test WebSocket control expired")
 
     def receive(self) -> bytes:
-        header = self.exact(2)
-        if header[0] == 0x88:
-            raise EOFError("native WebSocket close frame")
-        assert header[0] == 0x82 and header[1] < 128
-        size = header[1]
-        if size == 126:
-            size = int.from_bytes(self.exact(2), "big")
-        elif size == 127:
-            size = int.from_bytes(self.exact(8), "big")
-        assert size <= 24576
-        return self.exact(size)
+        # RFC6455 automatic controls are outside the A3 application transcript.
+        # Answer the server's normal 20-second PING without extending any A3 TTL.
+        deadline = time.monotonic() + 3
+        for _ in range(9):
+            header = self.exact(2, deadline=deadline)
+            assert header[0] in {0x82, 0x88, 0x89, 0x8A} and header[1] < 128
+            opcode, size = header[0] & 15, header[1]
+            if opcode != 2:
+                assert size <= 125
+            elif size == 126:
+                size = int.from_bytes(self.exact(2, deadline=deadline), "big")
+                assert size >= 126
+            elif size == 127:
+                size = int.from_bytes(self.exact(8, deadline=deadline), "big")
+                assert size >= 65536
+            assert size <= 24576
+            payload = self.exact(size, deadline=deadline)
+            if opcode == 2:
+                return payload
+            if opcode == 9:
+                self._send_frame(10, payload, deadline=deadline)
+            elif opcode == 8:
+                assert len(payload) != 1
+                if len(payload) >= 2:
+                    code = int.from_bytes(payload[:2], "big")
+                    assert (
+                        code
+                        in {1000, 1001, 1002, 1003, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014}
+                        or 3000 <= code <= 4999
+                    )
+                    payload[2:].decode("utf-8", errors="strict")
+                self._send_frame(8, payload, deadline=deadline)
+                raise EOFError("native WebSocket close frame")
+            # Bounded unsolicited PONG handling is permitted by RFC6455.
+        raise AssertionError("test WebSocket control flood")
 
     def current(self) -> None:
         challenge = secrets.token_bytes(16)

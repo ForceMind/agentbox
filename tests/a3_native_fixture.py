@@ -38,6 +38,35 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 _MAX_CONTROL = 64 * 1024
 
 
+_CHILD_BOOTSTRAP = r"""
+import json, os, stat, sys
+stage = "parent-fence"
+try:
+    import ctypes
+    parent = os.getppid()
+    if ctypes.CDLL(None).prctl(1, 15, 0, 0, 0) != 0 or parent == 1 or os.getppid() != parent:
+        raise RuntimeError()
+    stage = "source-access"
+    source, role = sys.argv[1:]
+    fd = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 131072:
+            raise ValueError()
+        program = stream.read(131073)
+    if len(program) > 131072:
+        raise ValueError()
+    stage = "source-exec"
+    sys.argv = [source, role]
+    exec(compile(program, source, "exec"), {"__name__": "__main__", "__file__": source})
+except SystemExit:
+    raise
+except BaseException as error:
+    print(json.dumps({"error": type(error).__name__, "phase": stage}), flush=True)
+    raise SystemExit(1) from None
+"""
+
+
 def _emit(value: object) -> None:
     print(json.dumps(value, sort_keys=True, separators=(",", ":")), flush=True)
 
@@ -55,12 +84,13 @@ def _read() -> dict[str, Any]:
 class FixtureChildError(RuntimeError):
     """Value-free child phase/type diagnostic, never exception values or wire data."""
 
-    def __init__(self, role: str, phase: str, code: object) -> None:
+    def __init__(self, role: str, phase: str, code: object, exit_code: object = None) -> None:
         allowed = {
             "AssertionError",
             "AttributeError",
             "BrokenPipeError",
             "ChildProcessError",
+            "ChildExited",
             "ConnectionError",
             "ContentError",
             "EOFError",
@@ -76,7 +106,23 @@ class FixtureChildError(RuntimeError):
             "ValueError",
         }
         self.role = role if role in {"api", "runtime"} else "child"
-        self.phase = phase if phase in {"spawn", "control"} else "control"
+        self.phase = (
+            phase
+            if phase
+            in {
+                "spawn",
+                "control",
+                "bootstrap-eof",
+                "parent-fence",
+                "source-access",
+                "source-exec",
+                "dependency-access",
+                "protocol",
+                "source-probe",
+            }
+            else "control"
+        )
+        self.exit_code = exit_code if type(exit_code) is int and -255 <= exit_code <= 255 else None
         self.code = code if type(code) is str and code in allowed else "ChildError"
         super().__init__(f"{self.role}:{self.phase}:{self.code}")
 
@@ -94,6 +140,8 @@ def fixture_error_diagnostic(error: BaseException) -> dict[str, object]:
         diagnostic["primary_code"] = type(primary).__name__
     if isinstance(primary, FixtureChildError):
         diagnostic.update(role=primary.role, phase=primary.phase, child_code=primary.code)
+        if primary.exit_code is not None:
+            diagnostic["exit_code"] = primary.exit_code
     return diagnostic
 
 
@@ -198,22 +246,42 @@ class FixtureDirectory:
             raise failure
 
 
+def _fixture_environment() -> dict[str, str]:
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"PATH", "PYTHONPATH", "PYTHONHOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+    }
+    environment.update(
+        {"HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    )
+    return environment
+
+
 class _Child:
-    def __init__(self, role: str, uid: int | None, gid: int | None) -> None:
-        environment = {
-            key: value
-            for key, value in os.environ.items()
-            if key in {"PATH", "PYTHONPATH", "PYTHONHOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment.update(
-            {"HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
-        )
+    def __init__(
+        self, role: str, uid: int | None, gid: int | None, *, source_root: Path | None = None
+    ) -> None:
+        environment = _fixture_environment()
+        checkout = source_root or REPOSITORY
+        if source_root is not None:
+            from a3_native_sources import PACKAGE_DIRS
+
+            environment["PYTHONPATH"] = os.pathsep.join(
+                str(source_root / Path(path).parent) for path in PACKAGE_DIRS
+            )
         self.role = role
         self._lock = threading.Lock()
         try:
             self.process = subprocess.Popen(
-                [sys.executable, str(Path(__file__).resolve()), role],
-                cwd=REPOSITORY,
+                [
+                    sys.executable,
+                    "-c",
+                    _CHILD_BOOTSTRAP,
+                    str(checkout / "tests/a3_native_fixture.py"),
+                    role,
+                ],
+                cwd=checkout,
                 env=environment,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -236,11 +304,25 @@ class _Child:
             if not select.select([self.process.stdout], [], [], timeout)[0]:
                 raise TimeoutError("fixture child control timed out")
             line = self.process.stdout.readline(_MAX_CONTROL + 1)
-            if not line or len(line) > _MAX_CONTROL:
-                raise RuntimeError("fixture child exited")
-            result = json.loads(line)
+            if not line:
+                try:
+                    exit_code = self.process.wait(timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    exit_code = None
+                raise FixtureChildError(self.role, "bootstrap-eof", "ChildExited", exit_code)
+            if len(line) > _MAX_CONTROL:
+                raise FixtureChildError(self.role, "protocol", "ValueError")
+            try:
+                result = json.loads(line)
+            except ValueError:
+                raise FixtureChildError(self.role, "protocol", "ValueError") from None
+            if type(result) is not dict:
+                raise FixtureChildError(self.role, "protocol", "TypeError")
             if "error" in result:
-                raise FixtureChildError(self.role, "control", result["error"])
+                phase = result.get("phase", "control")
+                raise FixtureChildError(
+                    self.role, phase if type(phase) is str else "control", result["error"]
+                )
             return result
 
     def close(self) -> None:
@@ -301,6 +383,12 @@ class A3NativeFixture:
             path.mkdir(mode=mode)
             if isolated:
                 os.chown(path, uid, gid)
+        source_root: Path | None = None
+        source_proof: dict[str, Any] = {"source_staged": False}
+        if isolated:
+            from a3_native_sources import prepare_sources
+
+            source_root, source_proof = prepare_sources(REPOSITORY, root, _fixture_environment())
         # Socket pathname stays below Linux's 108-byte sun_path limit.
         socket_path = root / "transport" / "a3.sock"
         with socket.socket() as probe:
@@ -309,9 +397,17 @@ class A3NativeFixture:
         self.api_origin = f"http://127.0.0.1:{port}"
         try:
             # Both process identities exist BEFORE any connected stream is created.
-            self.api = _Child("api", uid_api if isolated else None, gid_api if isolated else None)
+            self.api = _Child(
+                "api",
+                uid_api if isolated else None,
+                gid_api if isolated else None,
+                source_root=source_root,
+            )
             self.runtime = _Child(
-                "runtime", uid_runtime if isolated else None, gid_runtime if isolated else None
+                "runtime",
+                uid_runtime if isolated else None,
+                gid_runtime if isolated else None,
+                source_root=source_root,
             )
             runtime = self.runtime.call(
                 {
@@ -345,6 +441,7 @@ class A3NativeFixture:
                 "runtime_pid": self.runtime.process.pid,
                 "supervisor_pid": os.getpid(),
                 "isolated": isolated,
+                **source_proof,
                 **api,
             }
         except BaseException as primary:
@@ -621,6 +718,16 @@ async def _runtime(config: dict[str, Any]) -> None:
         authority.close()
 
 
+def _revoke_fixture_sessions(services: Any) -> None:
+    from agentbox_core.models import ControlPlaneSession
+    from sqlalchemy import select as db_select
+
+    with services.database.transaction() as session:
+        now = services.database.transaction_now(session)
+        for row in session.scalars(db_select(ControlPlaneSession)):
+            row.revoked_at = now
+
+
 async def _api(config: dict[str, Any]) -> None:
     import uvicorn
     from agentbox_api.a3_native_transport import A3NativeSource
@@ -801,12 +908,11 @@ async def _api(config: dict[str, Any]) -> None:
                 break
             if op == "peer":
                 peer.poison()
+            elif op == "revoke":
+                _revoke_fixture_sessions(services)
             else:
                 with services.database.transaction() as session:
-                    if op == "revoke":
-                        for row in session.scalars(db_select(ControlPlaneSession)):
-                            row.revoked_at = datetime.now(UTC).replace(tzinfo=None)
-                    elif op == "auth-epoch":
+                    if op == "auth-epoch":
                         for row in session.scalars(db_select(ControlPlaneSession)):
                             row.auth_epoch += 1
                     elif op == "project":

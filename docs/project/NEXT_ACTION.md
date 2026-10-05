@@ -1,5 +1,28 @@
 # Current Authorized Action
 
+## 2026-10-05 PR #144 第二轮 CI：12/14 native 用例通过
+
+测试修复 head `2dd83b45be8cf18e76046c128b588ebe734352fe`，tree
+`4af7f9d16753fc13e6695c530b8236b13f0e9782` 的六套 CI 均已终态：Security、
+Frontend、Deployment、Release Candidate SUCCESS；Backend、E2E FAILURE。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37293090283) 三个 Python
+版本各5223 passed/88 skipped/2 failed；新增14个 native 场景已通过12个，包括
+实际独立 Runtime/API、Git staged patch、crypto v2 与完整 END。剩余两项属于
+测试工具：revoke 写入 naive datetime 不符合 UTC6DateTime，及 test WebSocket
+client 未处理服务器正常20秒 PING。修复采用既有 transaction_now，并在原有绝对
+deadline 内严格处理有限 RFC6455 controls；不延长 selector expiry 或弱化断言。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37293090286) 为152 passed/
+30 prescribed skipped/52 failed。152包含旧144项和8项纯 Node cleanup 回归，
+不能当作新增 browser 通过。清理错误已修复，52项现暴露共同原始错误
+`process-start:RuntimeError`；数字 UID child 启动原因仍需有界 probe 证实。
+当前仅完善测试启动诊断和读取受限时的 fixture 自有只读源码副本，保留已修复
+的 setup primary error。仅测试 start 控制等待改为45秒，容纳最多四次各5秒
+的源码探针；未改变生产代码、UID 隔离、TLS/crypto 或产品 deadline。
+截图上传仍 SKIPPED；真实 Chromium formal-route desktop/phone 与像素资格仍待
+新 exact-head CI。PR #144 保持 Draft；前两轮失败均保留。
+
+
 ## 2026-10-05 PR #144 首轮 CI 与测试边界修复
 
 首个 head `d05068d7c067e8a1a08eb64edcd413e6e2f315c7`，tree

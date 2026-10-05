@@ -1,6 +1,6 @@
 # AgentBox 开发交接 — 2026-10-02
 
-## 2026-10-05 PR #143 已闭环；native A3 合同审查中
+## 2026-10-05 PR #143 已闭环；native A3 待 CI 资格
 
 PR [#143](https://github.com/ForceMind/agentbox/pull/143) 已正常合并。
 最终 head `ad9d199c3ca08661cfb8171e1a782060cc694534` 的六套 workflow
@@ -21,8 +21,9 @@ push 的 dependency-review 与两项历史 rc8）。[Backend](https://github.com
 [A3 native transport 合同](../WORKBENCH_A3_NATIVE_TRANSPORT.md)：正式 App factory、
 独立 A3 HTTPS bootstrap consumer、分离 API/Runtime 的 bounded metadata/opaque UDS。
 合同已独立审查冻结，源代码已实现并完成独立 source review；跨进程 currentness、
-最终 publication/END 与显示生命周期保持分层。新批次首次 exact-head CI 已运行但未通过；当前测试修复及完整失败证据见
-[Current state](CURRENT_STATE.md) 的 PR #144 首轮记录。
+最终 publication/END 与显示生命周期保持分层。新批次两轮 exact-head CI 尚未全通过；第二轮14个 native 场景通过12个，
+52个新增 browser 场景仍在 fixture setup 失败，未获像素资格。当前测试修复及
+完整失败证据见 [Current state](CURRENT_STATE.md) 的 PR #144 记录。
 无生产 key loader/pin enrollment、installer 开关、真实 host listener/账号或发布。
 未配置安装仍 unavailable；真实 host/physical client/CLI 验收仍 NOT RUN。
 

@@ -144,7 +144,7 @@ def test_failed_constructor_retains_live_owner_and_refuses_recursive_cleanup(
     retained: list[A3NativeFixture] = []
 
     class Child:
-        def __init__(self, *args: Any) -> None:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             self.process = SimpleNamespace(poll=lambda: None)
 
         def call(self, *args: Any, **kwargs: Any) -> Any:
@@ -275,3 +275,79 @@ def test_failed_cleanup_can_never_be_acknowledged_on_second_close(
         owner.close(fixture)
     assert repeated.value is first.value
     assert (root / "processes" / "runtime" / "synthetic.txt").is_file()
+
+
+def test_fixture_revoke_uses_real_utc6_transaction_time(initialized_services: Any) -> None:
+    from a3_native_fixture import _revoke_fixture_sessions
+    from agentbox_core.errors import InvalidSession
+    from agentbox_core.models import ControlPlaneSession
+
+    services = initialized_services
+    issued = services.auth.login(
+        username="maintainer",
+        password="a sufficiently long passphrase",
+        source_identifier="fixture",
+        request_id=None,
+    )
+    authenticated = services.sessions.authenticate(issued.token)
+    _revoke_fixture_sessions(services)
+    with pytest.raises(InvalidSession):
+        services.sessions.authenticate(issued.token)
+    with services.database.transaction() as session:
+        row = session.get(ControlPlaneSession, authenticated.session_id)
+        assert row and row.revoked_at is not None and row.revoked_at.tzinfo is not None
+
+
+def test_self_contained_bootstrap_reports_source_failure_without_raw_path(tmp_path: Path) -> None:
+    import json
+    import subprocess
+    import sys
+
+    from a3_native_fixture import _CHILD_BOOTSTRAP
+
+    missing = tmp_path / "do-not-reflect-source-canary.py"
+    result = subprocess.run(
+        [sys.executable, "-c", _CHILD_BOOTSTRAP, str(missing), "runtime"],
+        capture_output=True,
+        check=False,
+        timeout=5,
+    )
+    assert result.returncode == 1
+    assert json.loads(result.stdout) == {"error": "FileNotFoundError", "phase": "source-access"}
+    assert b"canary" not in result.stdout
+
+
+def test_self_contained_bootstrap_preserves_existing_child_protocol(tmp_path: Path) -> None:
+    import json
+    import subprocess
+    import sys
+
+    from a3_native_fixture import _CHILD_BOOTSTRAP
+
+    source = tmp_path / "source.py"
+    source.write_text('import json, sys\nprint(json.dumps({"role": sys.argv[1]}))\n')
+    result = subprocess.run(
+        [sys.executable, "-c", _CHILD_BOOTSTRAP, str(source), "api"],
+        capture_output=True,
+        check=False,
+        timeout=5,
+    )
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {"role": "api"}
+
+
+def test_bootstrap_eof_diagnostic_keeps_bounded_exit_code() -> None:
+    from a3_native_fixture import FixtureChildError, fixture_error_diagnostic
+
+    assert fixture_error_diagnostic(
+        FixtureChildError("runtime", "bootstrap-eof", "ChildExited", -15)
+    ) == {
+        "code": "FixtureChildError",
+        "role": "runtime",
+        "phase": "bootstrap-eof",
+        "child_code": "ChildExited",
+        "exit_code": -15,
+    }
+    assert "exit_code" not in fixture_error_diagnostic(
+        FixtureChildError("api", "bootstrap-eof", "ChildExited", "do not echo")
+    )
