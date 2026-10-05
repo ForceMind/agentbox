@@ -64,7 +64,7 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 52 ]]; then
+if [[ "$route_count" -ne 53 ]]; then
   printf 'Unexpected reviewed AgentBox API route count: %s\n' "$route_count" >&2
   exit 1
 fi
@@ -119,6 +119,9 @@ unexpected_mutations="$(printf '%s\n' "$mutation_routes" | grep --invert-match -
   '^(apps/api/src/agentbox_api/auth\.py:.*@router\.post\("/(login|logout|reauthenticate)"|apps/api/src/agentbox_api/codex\.py:.*@router\.post\("/(remote/start|remote/stop|pair-codes)"|apps/api/src/agentbox_api/claude\.py:.*@router\.post\("/sessions/\{project_id\}/(start|stop)"|apps/api/src/agentbox_api/projects\.py:.*@router\.post\(|apps/api/src/agentbox_api/favorites\.py:.*@router\.put\("/\{project_id\}"|apps/api/src/agentbox_api/navigation_labels\.py:.*(@router\.post\("("|/\{label_id\}/delete")|@router\.put\("(/\{label_id\}|/projects/\{project_id\}/\{label_id\})")|apps/api/src/agentbox_api/workspaces\.py:.*@(router|project_workspaces_router)\.post\()' || true)"
 unexpected_mutations="$(printf '%s\n' "$unexpected_mutations" | grep --invert-match --extended-regexp \
   '^apps/api/src/agentbox_api/navigation_labels\.py:[0-9]+:@router\.put\($' || true)"
+# One reviewed metadata-only POST; no blanket allowance for A3 content routes.
+unexpected_mutations="$(printf '%s\n' "$unexpected_mutations" | grep --invert-match --extended-regexp \
+  '^apps/api/src/agentbox_api/a3_observation\.py:[0-9]+:@router\.post\("/\{project_id\}/git/staged-observation"\)$' || true)"
 if [[ -n "$unexpected_mutations" ]]; then
   printf 'Unexpected Phase 7 mutation route found:\n%s\n' "$unexpected_mutations" >&2
   exit 1

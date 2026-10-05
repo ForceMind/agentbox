@@ -1,12 +1,118 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T12:50:00Z"
-verified_by: "agentbox-admission-lifetime-bridge"
+verified_at_utc: "2026-10-04T16:41:00Z"
+verified_by: "agentbox-changes-a3-reader"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-04 DOM 已通过，CJK 截图资格待补
+
+head `d0648eed7d14c5ae35ba6ca2df0e71f252b4171f` 的
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37217280128) SUCCESS：
+144 passed/30 prescribed skipped，包含全部28个新增desktop/phone场景，无本head重跑。
+取消+刷新同步已在实际浏览器通过。artifact `11308473073` ZIP SHA256
+`c59ab6ccc847bc4d762f721e004b2ba3185a7979d42d912763bc46ba5eb0fc76` 已下载核验。
+
+实际像素复读发现CI runner缺少中文glyph：两个viewport的中文控件/说明呈方框。
+DOM字符串断言与无overflow虽通过，仍不能称截图可读或完成视觉验收。仅为E2E
+Ubuntu runner安装官方`fonts-noto-cjk`并以`fc-match`核对CJK fallback，再跑新head
+全量CI与截图复读；不增加产品字体/framework依赖、不改UI/权限/crypto或放宽断言。
+本地不安装/执行浏览器；前两次失败和本head DOM成功事实均保留。待可读截图和
+新head全部checks终态后才能审阅merge，真实host/pin/production仍未开放。
+
+
+## 2026-10-04 第二轮 CI 与 metadata teardown 同步
+
+第二个head `aa811006bc347fd7c3e4a2e29d387e0fdeda9241` 的Backend/Frontend/
+Security/Deployment/Release Candidate均SUCCESS；[E2E第二轮](https://github.com/ForceMind/agentbox/actions/runs/37216455336)
+142 passed/30 prescribed skipped/2 failed。环境隔离修复已使新增26/28用例通过；仅
+两个viewport的cancel+delayed-END用例出现`A3 fixture bridge closed`，含原retry均失败。
+截图上传步骤因job失败SKIPPED，不能把生成的未回读图片当作已验收截图。
+
+取消用例最后点击metadata刷新，却未等GET/Git结束即关闭fixture stdin；peer取消
+未回复的metadata handler，Node child-exit拒绝pending route promise。独立逐行审查
+确认该race，并在真实Node bridge/Python/Git无浏览器对照复现：不等metadata就close
+返回同一bridge-closed错误，先await metadata再close则成功。CI是否完全闭合仍待新head。
+
+本次只增强该用例：点击前注册精确metadata GET的waitForResponse，验证200/body
+finished，再等success.txt行重新显示；保留原cancel、noPatch、selector observations=1
+和原有timeouts，随后才teardown。没有产品、crypto、权限、bridge或Settings修改。
+原两次失败history保留；新head仍须全量CI、desktop/phone全部用例及截图read-back。
+
+
+## 2026-10-04 首轮 CI 与 fixture environment 修复
+
+PR [#143](https://github.com/ForceMind/agentbox/pull/143) 首个 head
+`892dbd87f8ab1bf14016c2581e42bb47f3cdbf3e`，tree
+`4b950105e7709b68bb7bcc9e4720c6e7bc9f3193`，唯一parent为 `b7dd51d`。
+Backend（三Python版本/native）、Frontend、Security、Deployment、Release Candidate
+首轮均SUCCESS。[E2E 首轮](https://github.com/ForceMind/agentbox/actions/runs/37207300345)
+FAILURE：既有116 passed/30 prescribed skipped，新增28个desktop/phone场景均因fixture
+bridge启动失败而失败（含原配置retry），截图步骤SKIPPED，不能称浏览器验收通过。
+
+现有Settings故意让environment优先于显式构造：fixture子进程继承外层E2E的
+AGENTBOX_DATABASE_URL/data/root/Origin/secret，误接已初始化的共享测试DB，在ready
+之前抛AdminAlreadyInitialized。独立重建环境也观察到AUTH_ORIGIN_INVALID。
+仅在Node fixture child spawn时剥离AGENTBOX_*，使用既有临时DB/testOrigin/synthetic
+构造输入；不改产品Settings优先级、Origin/session/crypto或timeout/断言。原staged/
+readback worktrees保留，在独立ci-fix worktree顺序提交，不改写旧head。
+
+actual Node bridge污染环境回归执行真实bridge（仅恢复临时transpile文件原dirname），
+注入production/invalid DB/wrong root/Origin/synthetic key，确认isolated metadata和
+真实ASGI bootstrap成功且未读patch；缺失fixture executable确认startup失败不暴露bridge。
+此检查不启动浏览器。既有actual Git/API/opaque→WebController七场景继续PASS。
+新head全部CI与desktop/phone截图仍须核验；不重跑旧失败head掩盖问题。真实host/key/
+pin/production仍NOT RUN。下方首个候选本地记录保留，不替代本节CI状态。
+
+
+## 2026-10-04 A3 Changes-page staged reader 软件候选
+
+已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，
+tree `2cdfa72e7ca99b57312dadf156af1b74d82db15e`；#142 exact-head 六套
+workflow 均 SUCCESS。旧 staged/readback worktrees 全保留，新独立
+`feature/s02-changes-a3-reader` 接续 [Changes-page 软件合同](../WORKBENCH_A3_CHANGES_READER.md)。
+
+本批加入独立 staged-observation metadata route、purpose-specific A3 trust port、
+显式点击/完整 END 后 inert text 展示和 page-owned lifecycle。API 新边界仅用 typed
+metadata port，不导入/执行 Runtime；生产 source 默认缺失且拒绝注入，正式页面无
+A3 adapter/pin 时明确不可用。实际 Git→API route→existing admission→opaque relay→
+Web DOM 将由 isolated fixture 与新 exact-head CI Chromium 验证；此刻浏览器尚未运行，
+不称生产可用或真实 host PASS。
+无新 listener、WAW trust fallback、真实 key/pin enrollment、安装激活或发布。
+
+本地检查与独立 source review 已完成；新 exact-head CI、merge/read-back 尚未运行，
+不能使用 #142 的 CI 替代本候选证据。后续为候选审阅、Draft PR 与新 CI。
+下方旧批次边界保留为历史，不覆盖本合同已批准的 source-only 页面接线。
+
+
+### 本候选本地验证与明确未运行项
+
+- focused Python：606 passed，包含所有 A3/Git/Project/API/Noise 相关文件，exit 0。
+  初轮604 passed/1 fail为旧source-boundary尚禁止新增metadata文件导入API currentness；
+  只允许新route复用a3_admission，并新增无Runtime/subprocess断言；crypto/relay禁令不变。
+  新fixture的late-close、task首次调度前cancel及UTC revocation缺陷均修复并补回归。
+- Web final source：1394 passed / 65 files；extension 6 passed / 3 files。两者
+  lint、Prettier、typecheck/build exit 0；沿用lock-identical dependency symlink与现有工具，
+  无lockfile/阈值/timeout放宽。Web build保留既有 >500 kB bundle warning。
+- A3独立crypto vector、plaintext interop、既有 encrypted Git interop、WAW crypto
+  interop与新增actual API/Git/opaque→WebController 7场景均PASS，exit 0。
+  新互通包括success/binary/large/denied path/tamper/lost page/真实session撤销；Node
+  验证不等同DOM。Frontend使用现有dev dependency集为fixture提供httpx，无新增依赖。
+- canonical Ruff PASS；mypy PASS（374 source files）；canonical Black同scope的
+  single-process safe-mode library检查PASS（387 files，避开已知AF_UNIX CLI环境限制）。
+  source-boundary/secret-pattern/doc-links（675）/diff-check与生产Web fixture-marker、
+  extension bundle gate均PASS。新增POST采用exact route白名单与53条route计数。
+- 独立只读source review APPROVE，auth_epoch decimal string、actual-publication
+  guard、late open/crypto/END generation fence、fixture exact-handle cleanup均已复读。
+  reviewer未运行tests/CI/browser，不冒充独立运行证据。
+- 新CI desktop/phone 28个Changes DOM场景及synthetic-only截图：NOT RUN，待新head。
+  本地浏览器此前被拒，未运行/安装或另走browser路径。全量Python已知AF_UNIX/root
+  基线限制未反复重跑；新exact-head三版本CI负责完整matrix。
+
+
 
 ## 2026-10-04 A3 admission 与 authenticated lifetime bridge（当前软件候选）
 

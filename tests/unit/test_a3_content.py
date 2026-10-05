@@ -334,9 +334,15 @@ def test_no_production_composition_or_activation() -> None:
                 assert "a3_content_session" not in path.read_text()
                 if path.name != "waw_lifecycle.py":
                     assert "git_staged_selectors" not in path.read_text()
-            if path.name not in {"a3_admission.py", "a3_relay.py"}:
+            # The new default-off metadata route may reuse API currentness only.
+            # It still cannot import crypto/content/Runtime selectors or relay.
+            if path.name not in {"a3_admission.py", "a3_relay.py", "a3_observation.py"}:
                 assert "a3_admission" not in path.read_text()
+            if path.name not in {"a3_admission.py", "a3_relay.py"}:
                 assert "a3_relay" not in path.read_text()
+            if path.name == "a3_observation.py":
+                assert "agentbox_runtime" not in path.read_text()
+                assert "subprocess" not in path.read_text()
             if path.name not in {"a3_admission.py", "waw_lifecycle.py"}:
                 assert "replace_content_selector_owner" not in path.read_text()
     for path in (root / "apps/web/src").rglob("*"):

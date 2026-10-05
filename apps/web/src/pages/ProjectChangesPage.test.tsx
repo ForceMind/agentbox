@@ -85,3 +85,22 @@ describe('Project Changed Paths page', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 })
+
+// A3 uses an independently injected test-only port; the v1 metadata hook stays intact.
+describe('Changes deliberate staged content view', () => {
+  it('keeps default production composition clearly unavailable', () => {
+    renderPage()
+    expect(screen.getByTestId('a3-reader-status')).toHaveTextContent(
+      '需要独立 A3',
+    )
+    expect(
+      screen.getByRole('button', { name: '读取暂存补丁：zeta.ts' }),
+    ).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: /读取暂存补丁：src\/b/ }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /读取暂存补丁：src\/a/ }),
+    ).toBeNull()
+  })
+})

@@ -1,5 +1,25 @@
 # Decision and Architecture Index
 
+## 2026-10-04 A3 Changes-page staged reader 软件候选
+
+已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，
+tree `2cdfa72e7ca99b57312dadf156af1b74d82db15e`；#142 exact-head 六套
+workflow 均 SUCCESS。旧 staged/readback worktrees 全保留，新独立
+`feature/s02-changes-a3-reader` 接续 [Changes-page 软件合同](../WORKBENCH_A3_CHANGES_READER.md)。
+
+本批加入独立 staged-observation metadata route、purpose-specific A3 trust port、
+显式点击/完整 END 后 inert text 展示和 page-owned lifecycle。API 新边界仅用 typed
+metadata port，不导入/执行 Runtime；生产 source 默认缺失且拒绝注入，正式页面无
+A3 adapter/pin 时明确不可用。实际 Git→API route→existing admission→opaque relay→
+Web DOM 将由 isolated fixture 与新 exact-head CI Chromium 验证；此刻浏览器尚未运行，
+不称生产可用或真实 host PASS。
+无新 listener、WAW trust fallback、真实 key/pin enrollment、安装激活或发布。
+
+本地检查与独立 source review 已完成；新 exact-head CI、merge/read-back 尚未运行，
+不能使用 #142 的 CI 替代本候选证据。后续为候选审阅、Draft PR 与新 CI。
+下方旧批次边界保留为历史，不覆盖本合同已批准的 source-only 页面接线。
+
+
 ## 2026-10-04 A3 admission/lifetime software continuation
 
 #141 已正常合并为 `1c2befb9be47c8f7181accd67965e4187fcf06cf`，tree

@@ -231,6 +231,10 @@ class A3Role {
   get state(): A3State {
     return this.#state
   }
+  /** Read-only owner deadline, retained after END/close; never a renewed TTL. */
+  get effectiveDeadlineMs(): number {
+    return this.#expires
+  }
   toJSON(): { state: A3State } {
     return { state: this.#state }
   }
