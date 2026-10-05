@@ -1,5 +1,29 @@
 # Current Authorized Action
 
+## 2026-10-05 PR #144 第六轮 CI：guard 排程复现与最小去重候选
+
+head `07bc1b673992024d3d08f831c56903f3a897f036`，tree
+`f5b64d79209ea8df9aed85fd4941cdae111f6918` 的五套非 E2E workflow SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37308011282) 三版本各
+5261 passed/88 skipped，native14全通过。[E2E](https://github.com/ForceMind/agentbox/actions/runs/37308011439)
+为185 passed/30 prescribed skipped/27 failed。固定计数表明 READY、Git read、
+nonce burn 已完成；多数失败还已发 INIT/CONFIRM/READ、消费3–6条 opaque records
+并收到多次 fresh currentness reply，随后关闭。不是 bootstrap 未启动的旧问题。
+
+两个独立 event loop 的受控 socketpair 复现已确认 guard 排程成本：24KiB读取
+约500次CURRENT RPC；仅给各回复增加8ms时，LIVE在首PAGE阶段排队耗尽250ms；
+9/10ms时更早失败。同一 event loop 测试会掩盖该排程问题。
+
+经独立排序审查，当前只在两个产品文件去掉更早的重复检查：私有 wait 的就绪
+结果仍由 syscall caller 做最后完整fresh guard；公开readable接口保留返回前
+完整guard。serve wrapper依赖profile既有前后admitted.context复验，不再额外
+先查一次。所有actual-write、idle、partial、after-decode、peer/expiry fences
+及250ms/1s/原始TTL均不变，无缓存授权。相同8/10ms双loop复现现可到完整END；
+最终本地A3合集428 passed，Ruff/Black403/mypy390、独立crypto/interop和
+source review均PASS；新实际CI仍需完成，不能提前称本次E2E已修复。前六轮
+失败保留。
+
+
 ## 2026-10-05 PR #144 第五轮 CI：完整主例通过，仍有失败与不稳定结果
 
 诊断 head `e9bee683da60ebaceb5b2ee7a35e03b3bc315af3`，tree

@@ -395,3 +395,33 @@ unexpected attempt before fixture teardown. Existing bundle-lock double-thread
 DB tests exclude the bare-adapter overlap hypothesis on this native path; product
 code remains unchanged. Failure/flaky history is retained and qualification is
 still pending.
+
+## Sixth exact-head CI and ordering-preserving guard de-duplication — 2026-10-05
+
+Head `07bc1b673992024d3d08f831c56903f3a897f036` passed five non-E2E workflows;
+Backend remains5261 passed,88 skipped per version with all14 native cases. E2E
+reported185 passed,30 skipped,27 failed. Fixed observations place most failures
+after READY, INIT/CONFIRM/READ and3–6 consumed opaque records, rather than before
+bootstrap or metadata. They do not disclose ciphertext, plaintext or identifiers.
+
+A two-owner-loop socketpair probe reproduces command-queue expiry with healthy
+currentness replies delayed only8–10ms. About500 CURRENT RPCs are involved in a
+24KiB read; earlier same-loop tests masked command dispatch/completion queueing.
+The narrow reviewed correction removes only earlier redundant checks:
+
+- Private I/O waits keep their full pre-wait/idle check and <=50ms interval;
+  readiness returns to the operation's existing final full pre-syscall guard.
+  Each partial retry repeats that process. Public readable-only operations add
+  their own final full return guard. After-decode checks remain unchanged
+- The serve wrapper retains profile.check, whose before/after current callbacks
+  both call admitted.context and its fresh admission check, plus the final
+  handshake nanosecond deadline; its extra leading admission check is removed
+- RPC replies are not cached. Final peer/closed/deadline checks after remote I/O,
+  crypto checks,250ms command budgets,1s record budgets and original expiry remain
+
+The identical8/10ms two-loop probe now reaches complete END. This is a local
+regression result, not yet new exact-head browser qualification or pixel review.
+Final local A3 matrix:428 passed; Ruff, Black403, mypy390, independent crypto/
+interop and source review pass. The committed latency regression uses8ms for
+CI scheduling margin (old logic failed three times);10ms pressure evidence is
+retained separately, with three repeated8/10ms runs passing and no retries.

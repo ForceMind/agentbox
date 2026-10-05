@@ -86,7 +86,8 @@ async def serve_admitted_staged_read(
         handshake_pending = True
 
         def check() -> None:
-            admitted.check()
+            # profile.check already validates current=admitted.context before
+            # and after its operation. Each access performs fresh admission.
             assert profile is not None
             profile.check()
             if handshake_pending and time.monotonic_ns() >= handshake_deadline_ns:

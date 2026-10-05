@@ -835,3 +835,181 @@ async def test_bundle_rejects_distinct_fd_aliases_of_one_stream(
         owner.close()
         await owner.wait_closed()
         authority.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("condition", ["revoke", "expiry"])
+async def test_readiness_only_return_performs_final_full_fence(
+    monkeypatch: pytest.MonkeyPatch,
+    asynchronous: bool,
+    condition: str,
+) -> None:
+    sender, receiver = channel_pair()
+    live = True
+
+    def guard() -> None:
+        if not live:
+            raise ContentError("PATCH_REVOKED")
+
+    sender._socket.send(b"x")
+    deadline = deadline_after(0.1)
+    original_wait, original_await = receiver._wait, receiver._await
+
+    def after_ready() -> None:
+        nonlocal live
+        if condition == "revoke":
+            live = False
+        else:
+            # Let readiness succeed, then expire before it is exposed to caller.
+            time.sleep(max(0, (deadline - time.monotonic_ns()) / 1_000_000_000) + 0.01)
+
+    def waiting(write: bool, end: int, check: Any) -> None:
+        original_wait(write, end, check)
+        after_ready()
+
+    async def awaiting(write: bool, end: int, check: Any) -> None:
+        await original_await(write, end, check)
+        after_ready()
+
+    monkeypatch.setattr(receiver, "_wait", waiting)
+    monkeypatch.setattr(receiver, "_await", awaiting)
+    try:
+        with pytest.raises(
+            ContentError, match="PATCH_REVOKED" if condition == "revoke" else "PATCH_TIMEOUT"
+        ):
+            if asynchronous:
+                await receiver.await_readable(deadline, guard)
+            else:
+                receiver.wait_readable(deadline, guard)
+        assert receiver.closed and receiver.shutdown_complete
+    finally:
+        sender.close()
+        receiver.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("operation", ["send", "header", "body"])
+async def test_every_actual_syscall_rechecks_after_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+    asynchronous: bool,
+    operation: str,
+) -> None:
+    sender, receiver = channel_pair()
+    channel = sender if operation == "send" else receiver
+    live = True
+    syscalls = 0
+    waits = 0
+    original_socket = channel._socket
+    original_wait, original_await = channel._wait, channel._await
+
+    class CheckedSocket:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(original_socket, name)
+
+        def send(self, raw: Any) -> int:
+            nonlocal syscalls
+            assert live, "send syscall ran after queued revocation"
+            syscalls += 1
+            return original_socket.send(raw)
+
+        def recv(self, size: int) -> bytes:
+            nonlocal syscalls
+            assert live, "recv syscall ran after queued revocation"
+            syscalls += 1
+            return original_socket.recv(size)
+
+    def guard() -> None:
+        if not live:
+            raise ContentError("PATCH_REVOKED")
+
+    def after_ready() -> None:
+        nonlocal waits, live
+        waits += 1
+        if waits == (2 if operation == "body" else 1):
+            live = False
+
+    def waiting(write: bool, end: int, check: Any) -> None:
+        original_wait(write, end, check)
+        after_ready()
+
+    async def awaiting(write: bool, end: int, check: Any) -> None:
+        await original_await(write, end, check)
+        after_ready()
+
+    monkeypatch.setattr(channel, "_socket", CheckedSocket())
+    monkeypatch.setattr(channel, "_wait", waiting)
+    monkeypatch.setattr(channel, "_await", awaiting)
+    if operation != "send":
+        sender._socket.send(encode_frame(NativeKind.RECORD, 1, b"opaque"))
+    try:
+        with pytest.raises(ContentError, match="PATCH_REVOKED"):
+            if operation == "send":
+                if asynchronous:
+                    await channel.asend(
+                        NativeKind.RECORD, b"opaque", deadline_ns=deadline_after(1), guard=guard
+                    )
+                else:
+                    channel.send(
+                        NativeKind.RECORD, b"opaque", deadline_ns=deadline_after(1), guard=guard
+                    )
+            elif asynchronous:
+                await channel.areceive(
+                    frozenset({NativeKind.RECORD}), deadline_ns=deadline_after(1), guard=guard
+                )
+            else:
+                channel.receive(
+                    frozenset({NativeKind.RECORD}), deadline_ns=deadline_after(1), guard=guard
+                )
+        assert syscalls == (1 if operation == "body" else 0)
+        assert channel.closed and channel.shutdown_complete
+    finally:
+        sender.close()
+        receiver.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("partial_header", [False, True])
+async def test_idle_and_partial_read_revalidate_within_original_idle_tick(
+    asynchronous: bool,
+    partial_header: bool,
+) -> None:
+    sender, receiver = channel_pair()
+    live = True
+    checks = 0
+
+    def revoke() -> None:
+        nonlocal live
+        live = False
+
+    def guard() -> None:
+        nonlocal checks
+        checks += 1
+        if not live:
+            raise ContentError("PATCH_REVOKED")
+
+    if partial_header:
+        sender._socket.send(encode_frame(NativeKind.RECORD, 1, b"opaque")[:13])
+    timer = threading.Timer(0.02, revoke)
+    timer.start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(ContentError, match="PATCH_REVOKED"):
+            if asynchronous:
+                await receiver.areceive(
+                    frozenset({NativeKind.RECORD}), deadline_ns=deadline_after(1), guard=guard
+                )
+            else:
+                receiver.receive(
+                    frozenset({NativeKind.RECORD}), deadline_ns=deadline_after(1), guard=guard
+                )
+        assert checks >= 2
+        assert time.monotonic() - started < 0.2
+        assert receiver.closed and receiver.shutdown_complete
+    finally:
+        timer.cancel()
+        timer.join(timeout=1)
+        sender.close()
+        receiver.close()

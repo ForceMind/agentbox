@@ -125,7 +125,8 @@ class NativeChannel:
                 [self._socket],
                 min(remaining, 0.05),
             )
-            self._check(deadline_ns, guard)
+            # The owning send/receive checks immediately before its syscall.
+            # An idle iteration rechecks at the top before its next bounded wait.
             if exceptional:
                 raise ContentError("PATCH_REVOKED")
             if readable or writable:
@@ -135,6 +136,7 @@ class NativeChannel:
         self._enter(self._receive_lock)
         try:
             self._wait(False, deadline_ns, guard)
+            self._check(deadline_ns, guard)
         except BaseException:
             self.close()
             raise
@@ -166,7 +168,8 @@ class NativeChannel:
                     loop.remove_reader(fd)
                 if not future.done():
                     future.cancel()
-            self._check(deadline_ns, guard)
+            # The syscall owner performs the final full guard without an await
+            # before I/O; a timeout iteration rechecks at the top of this loop.
             if done:
                 return
 
@@ -174,6 +177,7 @@ class NativeChannel:
         self._enter(self._receive_lock)
         try:
             await self._await(False, deadline_ns, guard)
+            self._check(deadline_ns, guard)
         except BaseException:
             self.close()
             raise
