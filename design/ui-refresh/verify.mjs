@@ -125,6 +125,14 @@ try {
   await page.reload();
   for(const route of ['overview','workspace','changes','approval','onboarding']){
     await page.goto(`${url}#${route}`);
+    assert(!await page.locator('#toast').isVisible(),'A toast from another page survived navigation');
+    if(route==='approval'){
+      const allow=page.getByRole('button',{name:'仅允许这次',exact:true});
+      assert(await allow.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}));
+      await allow.click();
+      await page.getByRole('button',{name:'返回检查',exact:true}).click();
+      results.push({check:'mobile-approval-fixed-actions-and-cancel',pass:true});
+    }
     await page.screenshot({path:path.join(output,`phone-${route}.png`),fullPage:false});
     await page.screenshot({path:path.join(output,`phone-${route}-full.png`),fullPage:true});
     if(route==='workspace'){
