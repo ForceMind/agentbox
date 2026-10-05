@@ -11,7 +11,7 @@ from agentbox_core.errors import JobNotFound
 from agentbox_core.models import Job
 from agentbox_core.services import ControlPlaneServices
 from agentbox_protocol import JobData, JobListData, JobListResponse, JobResponse
-from fastapi import APIRouter, Cookie, Header, Request, Response
+from fastapi import APIRouter, Cookie, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from agentbox_api.auth import SESSION_COOKIE, _validate_origin, authenticate_request
@@ -58,12 +58,22 @@ async def list_jobs(
     request: Request,
     response: Response,
     agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    scope: Literal["mine"] | None = Query(default=None),
 ) -> JobListResponse:
-    authenticate_request(request, agentbox_session)
+    """Read the latest 100 Jobs, optionally restricted to the authenticated user.
+
+    The absent scope preserves the existing administrator-wide list. ``mine``
+    derives its requester from the current Session, never from caller-supplied
+    identity. The bounded response is a window, not a global or historical count.
+    """
+    authenticated = authenticate_request(request, agentbox_session)
+    jobs = _services(request).jobs.list(
+        requested_by=authenticated.user_id if scope == "mine" else None
+    )
     response.headers["Cache-Control"] = "no-store"
     return JobListResponse(
         request_id=str(request.state.request_id),
-        data=JobListData(jobs=[job_data(job) for job in _services(request).jobs.list()]),
+        data=JobListData(jobs=[job_data(job) for job in jobs]),
     )
 
 

@@ -148,6 +148,22 @@ class ProjectService:
                 query = query.where(Project.archived_at.is_(None))
             return tuple(session.scalars(query.order_by(Project.display_name.collate("NOCASE"))))
 
+    def list_recent(self) -> tuple[Project, ...]:
+        """Read at most six nonarchived catalog records by their stored update time.
+
+        Projects retain the existing single-admin shared catalog visibility. This
+        metadata window neither reconciles Runtime workspaces nor records visits.
+        """
+        with self._database.transaction() as session:
+            return tuple(
+                session.scalars(
+                    select(Project)
+                    .where(Project.archived_at.is_(None), Project.state != "archived")
+                    .order_by(Project.updated_at.desc(), Project.id.desc())
+                    .limit(6)
+                )
+            )
+
     def get(self, project_id: str, *, ready: bool = False) -> Project:
         with self._database.transaction() as session:
             project = session.get(Project, project_id)

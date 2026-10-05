@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -44,6 +45,10 @@ function authContext(options: DashboardOptions): AuthContextValue {
       environment: 'test' as const,
     } as const)
   const get = vi.fn((path: string) => {
+    if (path === '/api/v1/jobs?scope=mine')
+      return Promise.resolve({ data: { jobs: [] } })
+    if (path === '/api/v1/projects/recent')
+      return Promise.resolve({ data: { projects: [] } })
     const result =
       path === '/healthz' ? health : path === '/readyz' ? readiness : meta
     return result instanceof Error
@@ -68,7 +73,9 @@ function authContext(options: DashboardOptions): AuthContextValue {
 function renderDashboard(locale: Locale, options: DashboardOptions = {}) {
   render(
     <AuthContext.Provider value={authContext(options)}>
-      <DashboardPage locale={locale} />
+      <MemoryRouter>
+        <DashboardPage locale={locale} />
+      </MemoryRouter>
     </AuthContext.Provider>,
   )
 }

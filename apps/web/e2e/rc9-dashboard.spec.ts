@@ -42,6 +42,24 @@ async function fulfillJson(route: Route, status: number, body: object) {
 }
 
 async function installDashboardRoutes(page: Page, healthGate: Promise<void>) {
+  await page.route('**/api/v1/jobs?scope=mine', (route) =>
+    route.fulfill({
+      json: {
+        api_version: 'v1',
+        request_id: 'req_overview_empty',
+        data: { jobs: [] },
+      },
+    }),
+  )
+  await page.route('**/api/v1/projects/recent', (route) =>
+    route.fulfill({
+      json: {
+        api_version: 'v1',
+        request_id: 'req_overview_empty',
+        data: { projects: [] },
+      },
+    }),
+  )
   await page.route('**/api/v1/auth/me', (route) =>
     fulfillJson(route, 200, {
       api_version: 'v1',

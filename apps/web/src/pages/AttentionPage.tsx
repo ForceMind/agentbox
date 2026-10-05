@@ -59,7 +59,7 @@ export function AttentionPage({
       pending = controller
       setState({ phase: 'loading', jobs: [], observedAt: null })
       void api
-        .get<JobListResponse>('/api/v1/jobs', {
+        .get<JobListResponse>('/api/v1/jobs?scope=mine', {
           signal: controller.signal,
           timeoutMs: 15_000,
           validate: parseJobListResponse,

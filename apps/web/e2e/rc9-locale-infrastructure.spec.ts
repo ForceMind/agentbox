@@ -46,6 +46,24 @@ test('creates exactly four isolated rc9 browser documents and fences synthetic s
       const firstLogin = createRc9RouteHold()
       try {
         const page = await context.newPage()
+        await page.route('**/api/v1/jobs?scope=mine', (route) =>
+          route.fulfill({
+            json: {
+              api_version: 'v1',
+              request_id: 'req_overview_empty',
+              data: { jobs: [] },
+            },
+          }),
+        )
+        await page.route('**/api/v1/projects/recent', (route) =>
+          route.fulfill({
+            json: {
+              api_version: 'v1',
+              request_id: 'req_overview_empty',
+              data: { projects: [] },
+            },
+          }),
+        )
         await page.route('**/api/v1/auth/me', async (route) => {
           await route.fulfill({
             status: 401,

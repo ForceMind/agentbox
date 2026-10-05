@@ -1,0 +1,107 @@
+.work-overview {
+  margin-bottom: 2rem;
+}
+.overview-heading {
+  margin-top: 0;
+  align-items: start;
+  gap: 1rem;
+}
+.overview-heading p,
+.overview-scope,
+.overview-received {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+.overview-heading p {
+  margin: 0.5rem 0 0;
+}
+.overview-heading button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.overview-card {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.overview-card-heading,
+.overview-row-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.overview-card h3,
+.overview-card h4 {
+  margin: 0;
+}
+.overview-card h3 {
+  font-size: 1rem;
+}
+.overview-card h4 {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.overview-count {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.overview-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+.overview-list li {
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+.overview-list p {
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.overview-link {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-height: 44px;
+  max-width: 100%;
+  font-size: 0.875rem;
+}
+.overview-link bdi {
+  overflow-wrap: anywhere;
+}
+.overview-footer {
+  font-weight: 600;
+}
+.overview-feedback {
+  margin: 1rem 0;
+  line-height: 1.7;
+}
+.overview-received {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+}
+.overview-received time {
+  display: block;
+}
+@media (max-width: 1100px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .overview-heading {
+    flex-direction: column;
+  }
+}

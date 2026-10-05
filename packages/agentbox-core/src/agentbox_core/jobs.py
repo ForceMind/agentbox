@@ -103,9 +103,15 @@ class JobService:
         with self._database.transaction() as session:
             return session.scalar(select(Job).where(Job.idempotency_key_digest == digest))
 
-    def list(self, *, limit: int = 100) -> tuple[Job, ...]:
+    def list(self, *, limit: int = 100, requested_by: str | None = None) -> tuple[Job, ...]:
+        """Read a recent window, filtering the requester before applying the bound."""
         with self._database.transaction() as session:
-            return tuple(session.scalars(select(Job).order_by(Job.created_at.desc()).limit(limit)))
+            query = select(Job)
+            if requested_by is not None:
+                query = query.where(Job.requested_by == requested_by)
+            return tuple(
+                session.scalars(query.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit))
+            )
 
     def get(self, job_id: str) -> Job | None:
         with self._database.transaction() as session:
