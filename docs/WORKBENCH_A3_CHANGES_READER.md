@@ -1,5 +1,15 @@
 # A3 Changes-page staged reader software composition
 
+
+## 2026-10-05 presentation successor
+
+Native App software closure is now recorded in
+[the native contract](WORKBENCH_A3_NATIVE_TRANSPORT.md). The bounded
+[unified diff presentation](WORKBENCH_CHANGES_UNIFIED_DIFF.md) candidate replaces
+only the completed plain-text view, with full original-text fallback. All reader
+ownership, authority and lifecycle rules below remain unchanged. Earlier pending
+native statements describe their original commit-time snapshot, not current CI.
+
 ## 2026-10-05 verified closure and successor boundary
 
 PR #143 is merged as `61a5efce6ab43754a2acdb313d5e21ee83f64c52`; final

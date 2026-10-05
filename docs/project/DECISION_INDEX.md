@@ -1,5 +1,12 @@
 # Decision and Architecture Index
 
+
+- `WORKBENCH-S02-UNIFIED-DIFF-2026-10-05`：既有 completed owner 上的有界
+  单文件 unified presentation；严格 range/count/EOF 与整体 raw fallback，
+  头部/坐标不建立 source authority。父任务在实施前批准
+  [合同](../WORKBENCH_CHANGES_UNIFIED_DIFF.md)；不改 A3/Runtime 权限，
+  默认未配置与真实 host/release gate 保留。
+
 ## 2026-10-04 A3 Changes-page staged reader 软件候选
 
 已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，

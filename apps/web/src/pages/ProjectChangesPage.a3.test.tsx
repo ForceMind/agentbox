@@ -100,6 +100,79 @@ async function setup(options: Parameters<typeof createA3TestFixture>[0] = {}) {
   return { fixture, rendered, tree, read, complete }
 }
 describe('A3 page lifecycle and inert React rendering', () => {
+  const unifiedSource =
+    'diff --git a/success.txt b/success.txt\nindex 1111111..2222222 100644\n--- a/success.txt\n+++ b/success.txt\n@@ -1 +1 @@\n-old\r\n+<svg onload=alert(1)>新 🌍\r\n'
+  it.each([
+    'clear',
+    'refresh',
+    'freeze',
+    'pagehide',
+    'offline',
+    'visibilitychange',
+    'trust',
+    'expiry',
+    'route',
+    'session',
+  ])(
+    'destroys the active unified model and raw controls on %s without replay',
+    async (event) => {
+      const { complete, fixture, rendered, tree } = await setup({
+        patch: unifiedSource,
+      })
+      await complete()
+      expect(screen.getByTestId('unified-diff-table')).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '原文' }))
+      expect(screen.getByTestId('a3-complete-patch').textContent).toBe(
+        unifiedSource,
+      )
+      fireEvent.click(screen.getByRole('button', { name: '统一视图' }))
+      expect(fixture.deps.observe).toHaveBeenCalledTimes(1)
+      if (event === 'clear')
+        fireEvent.click(screen.getByRole('button', { name: '清除内容' }))
+      else if (event === 'refresh')
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+      else if (event === 'route') fireEvent.click(screen.getByRole('link'))
+      else if (event === 'trust') act(() => fixture.invalidate())
+      else if (event === 'expiry') {
+        act(() => fixture.now(31_001))
+        await waitFor(() =>
+          expect(screen.queryByTestId('a3-complete-patch')).toBeNull(),
+        )
+      } else if (event === 'session')
+        rendered.rerender(
+          tree({
+            ...authValue,
+            auth: { ...auth, session: { ...auth.session, id: 'ses_next' } },
+          }),
+        )
+      else {
+        if (event === 'visibilitychange')
+          vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+        act(() =>
+          (event === 'freeze' || event === 'visibilitychange'
+            ? document
+            : window
+          ).dispatchEvent(new Event(event)),
+        )
+      }
+      expect(screen.queryByTestId('a3-complete-patch')).toBeNull()
+      expect(screen.queryByTestId('unified-diff-table')).toBeNull()
+      expect(screen.queryByRole('button', { name: '原文' })).toBeNull()
+      expect(document.body.textContent).not.toContain('onload')
+      expect(fixture.deps.observe).toHaveBeenCalledTimes(1)
+    },
+  )
+  it('starts a fresh completed owner with default unified/wrap preferences after clear', async () => {
+    const { complete, fixture } = await setup({ patch: unifiedSource })
+    await complete()
+    fireEvent.click(screen.getByRole('button', { name: '原文' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '换行显示' }))
+    fireEvent.click(screen.getByRole('button', { name: '清除内容' }))
+    await complete()
+    expect(screen.getByTestId('unified-diff-table')).toBeVisible()
+    expect(screen.getByRole('checkbox', { name: '换行显示' })).toBeChecked()
+    expect(fixture.deps.observe).toHaveBeenCalledTimes(2)
+  })
   it('reads only after deliberate native-button activation and renders dangerous source as inert text', async () => {
     const { fixture, complete } = await setup()
     const button = screen.getByRole('button', {

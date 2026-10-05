@@ -493,6 +493,75 @@ def _no_host(*args: Any, **kwargs: Any) -> Any:
     raise AssertionError("native A3 fixture must not activate host resources")
 
 
+def _populate_patch_project(project: Path) -> None:
+    """Create real staged Git changes; only synthetic fixture bytes are committed."""
+    project.mkdir(parents=True)
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(project),
+                "-c",
+                "core.autocrlf=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                *arguments,
+            ],
+            check=True,
+            capture_output=True,
+            env=_fixture_environment(),
+        )
+
+    git("init", "-q", "--template=")
+    for name, raw in {
+        "modify.txt": "上下文 α\nold value\n尾部 Ω\n".encode(),
+        "delete.txt": "removed first\n删除第二行 🌍\n".encode(),
+        "multiple-hunks.txt": "".join(
+            f"context {number:02d}\n" for number in range(1, 31)
+        ).encode(),
+        "crlf.txt": b"CRLF context\r\nold CRLF\r\nCRLF tail\r\n",
+        "no-final-newline.txt": b"line one\nold tail",
+    }.items():
+        (project / name).write_bytes(raw)
+    git("add", "--", ".")
+    # Identity is limited to this synthetic commit command, never global config.
+    git(
+        "-c",
+        "user.name=AgentBox synthetic fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "--no-gpg-sign",
+        "-qm",
+        "Synthetic native diff baseline",
+    )
+    lines = [f"context {number:02d}\n" for number in range(1, 31)]
+    lines[1] = "first changed 🌍\n"
+    lines[28] = "last changed 中文\n"
+    for name, raw in {
+        "success.txt": (
+            "A3 native complete diff\n<img src=x onerror=window.a3Executed=true>\n"
+            '<a href="https://example.invalid/a3">inert link</a>\n'
+            "<script>window.a3Executed=true</script>\n" + ("x" * 6000 + "\n") * 4 + "🌍\n"
+        ).encode(),
+        "modify.txt": "上下文 α\nnew value 🌍\n尾部 Ω\n".encode(),
+        "multiple-hunks.txt": "".join(lines).encode(),
+        "crlf.txt": b"CRLF context\r\nnew CRLF\r\nCRLF tail\r\n",
+        "no-final-newline.txt": "line one\n新尾 🌍".encode(),
+        "long-line.txt": ("long-line raw fallback\n" + "L" * 9000 + "\n完整末尾 🌍\n").encode(),
+        "binary.bin": b"synthetic\0binary\n",
+        "large.txt": b"L" * 210000 + b"\n",
+        ".env": b"synthetic denied path only\n",
+    }.items():
+        (project / name).write_bytes(raw)
+    (project / "delete.txt").unlink()
+    git("add", "--", ".")
+    (project / "success.txt").write_text("unstaged-exclusion-canary\n")
+    (project / "unstaged-only.txt").write_text("untracked fixture only\n")
+
+
 async def _runtime(config: dict[str, Any]) -> None:
     # No Runtime authority, patch reader or key imports occur in the API child.
     from agentbox_protocol.a3_crypto import A3Runtime
@@ -537,22 +606,7 @@ async def _runtime(config: dict[str, Any]) -> None:
     root = Path(config["root"])
     projects = root / "projects"
     project = projects / "formal-project"
-    project.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(project)], check=True, capture_output=True)
-    for name, raw in {
-        "success.txt": (
-            "A3 native complete diff\n<img src=x onerror=window.a3Executed=true>\n"
-            + "x" * 24000
-            + "\n🌍\n"
-        ).encode(),
-        "binary.bin": b"synthetic\0binary\n",
-        "large.txt": b"L" * 210000 + b"\n",
-        ".env": b"synthetic denied path only\n",
-    }.items():
-        (project / name).write_bytes(raw)
-    subprocess.run(["git", "-C", str(project), "add", "--", "."], check=True, capture_output=True)
-    (project / "success.txt").write_text("unstaged-exclusion-canary\n")
-    (project / "unstaged-only.txt").write_text("untracked fixture only\n")
+    _populate_patch_project(project)
     metadata = parse_git_change_page(
         subprocess.run(
             ["git", "-C", str(project), "status", "--porcelain=v2", "-z"],
