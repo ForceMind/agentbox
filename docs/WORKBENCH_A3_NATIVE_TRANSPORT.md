@@ -378,3 +378,20 @@ browser transport frontier. A test-only passive observer adds fixed bounded
 frame/owner counts on failure, without wire bytes, identifiers, secret fields or
 exception values. No timeout or assertion is relaxed, and this is diagnostic
 evidence only. Actual complete read and Chinese screenshot review remain pending.
+
+## Fifth exact-head CI, complete primary flows pass but failures remain — 2026-10-05
+
+Diagnostic head `e9bee683da60ebaceb5b2ee7a35e03b3bc315af3` passed five workflows;
+Backend remains5261 passed,88 skipped per Python version, including all14 native
+cases. E2E reported205 passed,30 skipped,2 failed,5 flaky. Both desktop/phone
+primary flows reached actual Git-to-END/DOM, but a diagnostics-only change is not
+a demonstrated repair. Rotation's desktop read prerequisite and mobile tampered
+END status still fail; five other cases passed only on retry. Screenshot upload
+was skipped. The new8 counter checks are pure Node logic, not browser evidence.
+
+The primary-flow-only observer emitted nothing because those cases succeeded.
+Its unchanged fixed numeric schema now runs in best-effort afterEach for each
+unexpected attempt before fixture teardown. Existing bundle-lock double-thread
+DB tests exclude the bare-adapter overlap hypothesis on this native path; product
+code remains unchanged. Failure/flaky history is retained and qualification is
+still pending.

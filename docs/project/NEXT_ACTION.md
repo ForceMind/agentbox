@@ -1,5 +1,26 @@
 # Current Authorized Action
 
+## 2026-10-05 PR #144 第五轮 CI：完整主例通过，仍有失败与不稳定结果
+
+诊断 head `e9bee683da60ebaceb5b2ee7a35e03b3bc315af3`，tree
+`6192d162bc71978143c05becf4e00d5ed3861339` 的五套非 E2E workflow SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37304874938) 三版本仍为
+5261 passed/88 skipped，全部14项 native 场景通过。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37304874934) 为205 passed/
+30 prescribed skipped/2 failed/5 flaky。desktop/phone正常主例均已走完实际
+Git→独立 API/Runtime→完整 END→DOM；但仅诊断变动不能称作修复。desktop
+bootstrap rotation 的前置 patch 未出现、phone tampered-END 状态仍失败，另5项
+需重试才通过；该 head 仍不具备合并或截图资格。8项新 counter runner 只是纯
+Node 测试，不计作 browser 验收。
+
+由于首个主例这次成功，首例专用诊断未输出。当前仅将原固定计数移到本 spec
+的 unexpected-attempt afterEach，保持已有 schema、原错误、timeout 与 cleanup。
+既有 bundle RLock 的真实数据库双线程对照还排除了裸 adapter 的重叠观察假设；
+未据此修改产品。继续依据实际失败计数定位，不重跑旧 head 碰绿，不放宽断言。
+前五轮失败与 flaky 事实保留；PR #144 仍 Draft。
+
+
 ## 2026-10-05 PR #144 第四轮 CI：真实 browser 已启动，读取尚未完成
 
 head `5cc923d97334dcb6702d3e6020d18c39fa610a47`，tree

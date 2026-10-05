@@ -21,9 +21,9 @@ push 的 dependency-review 与两项历史 rc8）。[Backend](https://github.com
 [A3 native transport 合同](../WORKBENCH_A3_NATIVE_TRANSPORT.md)：正式 App factory、
 独立 A3 HTTPS bootstrap consumer、分离 API/Runtime 的 bounded metadata/opaque UDS。
 合同已独立审查冻结，源代码已实现并完成独立 source review；跨进程 currentness、
-最终 publication/END 与显示生命周期保持分层。新批次第四轮已通过五套 workflow；三个 Python 版本均通过全部14个 native
-场景。真实 browser 已启动，新增52项通过22项拒绝/边界状态，正常读取相关
-30项尚未通过，未获像素资格。当前有界诊断及
+最终 publication/END 与显示生命周期保持分层。新批次第五轮已通过五套 workflow；三个 Python 版本均通过全部14个 native
+场景。desktop/phone完整读取主例已通过，但E2E仍2 failed/5 flaky，未获合并
+或像素资格。当前仅将已有有界诊断覆盖其他非预期失败；完整
 完整失败证据见 [Current state](CURRENT_STATE.md) 的 PR #144 记录。
 无生产 key loader/pin enrollment、installer 开关、真实 host listener/账号或发布。
 未配置安装仍 unavailable；真实 host/physical client/CLI 验收仍 NOT RUN。

@@ -19,6 +19,27 @@ const test = base.extend<{ native: Fixture }>({
 })
 test.use({ screenshot: 'off', trace: 'off', video: 'off' })
 test.setTimeout(60_000)
+test.afterEach(async ({ native }, testInfo) => {
+  if (
+    testInfo.status === testInfo.expectedStatus ||
+    testInfo.status === 'skipped'
+  )
+    return
+  // Playwright runs afterEach before test-scoped fixture teardown. Read status
+  // only; the runner keeps the original body error and retries independently.
+  try {
+    const counters = native.socketCounters.snapshot()
+    let fixture = a3FixtureStatusNumbers(undefined)
+    try {
+      fixture = a3FixtureStatusNumbers(await native.call('runtime-status'))
+    } catch {
+      // Missing diagnostics are -1, never exception values or guessed counts.
+    }
+    console.info('A3_NATIVE_COUNTS ' + JSON.stringify({ counters, fixture }))
+  } catch {
+    // Diagnostic work must not add an error or prevent the original teardown.
+  }
+})
 const projectId = `prj_${'a'.repeat(32)}`
 type Status = {
   active: number
@@ -74,23 +95,7 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
   expect((await status(native)).diff_count).toBe(0)
   await button(native).focus()
   await button(native).press('Enter')
-  try {
-    await expect(patch(native)).toContainText('A3 native complete diff')
-  } catch (error) {
-    try {
-      const counters = native.socketCounters.snapshot()
-      let fixture = a3FixtureStatusNumbers(undefined)
-      try {
-        fixture = a3FixtureStatusNumbers(await native.call('runtime-status'))
-      } catch {
-        // Missing diagnostics are -1, never exception values or guessed counts.
-      }
-      console.info('A3_NATIVE_COUNTS ' + JSON.stringify({ counters, fixture }))
-    } catch {
-      // Even a diagnostic-output failure cannot replace the original assertion.
-    }
-    throw error
-  }
+  await expect(patch(native)).toContainText('A3 native complete diff')
   await expect(patch(native)).toContainText(
     '<img src=x onerror=window.a3Executed=true>',
   )
