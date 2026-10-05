@@ -54,7 +54,7 @@ function renderAttention(
       path: string,
       options: { validate: (value: unknown) => unknown },
     ) => {
-      expect(path).toBe('/api/v1/jobs')
+      expect(path).toBe('/api/v1/jobs?scope=mine')
       const result = fetchJobs(++calls)
       if (result instanceof Error) throw result
       return options.validate(result)

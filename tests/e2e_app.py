@@ -36,6 +36,7 @@ from agentbox_runtime import (
     RuntimeOperationError,
     WorkspaceState,
 )
+from work_overview_fixture import seed_work_overview
 
 
 class E2ECodexRuntime:
@@ -264,6 +265,8 @@ services = build_services(
 initialized, _existing_username = services.admin.status()
 if not initialized:
     services.admin.initialize(username, password, request_id="req_e2e_bootstrap")
+
+seed_work_overview(services)
 
 app = create_app(
     settings,

@@ -14,6 +14,7 @@ from agentbox_core.projects import (
     validate_repository_url,
 )
 from agentbox_core.services import AuthenticatedSession, ControlPlaneServices
+from agentbox_core.utc import aware_utc
 from agentbox_protocol import (
     BranchRequest,
     DraftPullRequestRequest,
@@ -251,6 +252,38 @@ async def list_projects(
                     claude_state=session_states.get(project.relative_path),
                 )
                 for project, git in zip(projects, git_states, strict=True)
+            ]
+        ),
+    )
+
+
+@router.get("/recent", response_model=ProjectListResponse)
+async def list_recent_projects(
+    request: Request,
+    response: Response,
+    agentbox_session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+) -> ProjectListResponse:
+    """Read six recently updated catalog records without Runtime observations.
+
+    This is stored Control Plane metadata, not recently visited projects or an
+    activity/full-catalog count. Git, GitHub and Claude observations remain null.
+    """
+    authenticate_request(request, agentbox_session)
+    projects = _services(request).projects.list_recent()
+    response.headers["Cache-Control"] = "no-store"
+    return ProjectListResponse(
+        request_id=str(request.state.request_id),
+        data=ProjectListData(
+            projects=[
+                project_data(project).model_copy(
+                    update={
+                        # Clock persists naive UTC for SQLite portability. Preserve
+                        # that instant instead of implying the browser's local zone.
+                        "created_at": aware_utc(project.created_at),
+                        "updated_at": aware_utc(project.updated_at),
+                    }
+                )
+                for project in projects
             ]
         ),
     )

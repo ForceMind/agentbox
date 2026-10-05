@@ -3,6 +3,18 @@
 All notable AgentBox changes are recorded here. The project follows semantic
 versioning for release display and PEP 440 for the Python package.
 
+## [0.3.0rc31] - Unreleased
+
+- Add the Dashboard work overview: current-user recent Job attention/active
+  windows and recently updated, non-archived Project metadata with existing links.
+- Read fixed-size authenticated metadata windows without Runtime fan-out or
+  content access. Label window counts and metadata timestamps honestly.
+- Clear stale snapshots on hidden/offline/page lifecycle and auth changes;
+  distinguish loading, empty, error and permission states in zh-CN and English.
+- Preserve service health/readiness, Project and Attention entry points.
+- Source contract and verification: `docs/WORKBENCH_WORK_OVERVIEW.md` and
+  `docs/releases/0.3.0rc31.md`. No production activation or release publication.
+
 ## [0.3.0rc30] - Unreleased
 
 - Pin brace-expansion 1.x/5.x tool dependencies to 1.1.21/5.0.12 to close

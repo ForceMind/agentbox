@@ -64,8 +64,15 @@ route_lines="$({
     '@(application|router)\.(get|post|put|patch|delete)\(' apps/api/src || true
 })"
 route_count="$(printf '%s\n' "$route_lines" | sed '/^$/d' | wc -l)"
-if [[ "$route_count" -ne 53 ]]; then
+if [[ "$route_count" -ne 54 ]]; then
   printf 'Unexpected reviewed AgentBox API route count: %s\n' "$route_count" >&2
+  exit 1
+fi
+# One additional fixed metadata-only Project GET, with the existing Job route.
+if ! grep --fixed-strings --quiet \
+  '@router.get("/recent", response_model=ProjectListResponse)' \
+  apps/api/src/agentbox_api/projects.py; then
+  printf 'Fixed authenticated recent Project metadata route is missing.\n' >&2
   exit 1
 fi
 for label_route in \

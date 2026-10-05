@@ -11,16 +11,16 @@ import socket
 import struct
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from agentbox_core import a3_native_io as io
-from agentbox_core.a3_native_io import NativeChannel, deadline_after
+from agentbox_core.a3_native_io import NATIVE_IO_DEADLINE, NativeChannel, deadline_after
 from agentbox_core.services import ControlPlaneServices
 from agentbox_protocol.a3_admission import A3CurrentAdmission
-from agentbox_protocol.a3_content import ContentError, context_digest, encode_message
+from agentbox_protocol.a3_content import ERROR_CODES, ContentError, context_digest, encode_message
 from agentbox_protocol.a3_crypto import A3Browser
 from agentbox_protocol.a3_transport import (
     NativeKind,
@@ -39,6 +39,12 @@ from test_a3_admission import KEY, PIN, runtime
 FACTS = A3CurrentAdmission(
     "prj_" + "a" * 32, "project", "1", "1", "b" * 64, "wri_" + "c" * 32, "1", "1", b"s" * 32, 1
 )
+
+CurrentnessBuckets = tuple[
+    Literal["none", "active", "expired"],
+    Literal["expired", "lt50ms", "50to200ms", "ge200ms"],
+    Literal["lt50ms", "50to200ms", "200to250ms", "ge250ms"],
+]
 
 
 def raw_frame(kind: NativeKind, body: bytes, *, sequence: int = 1) -> bytes:
@@ -334,6 +340,112 @@ class Client:
         }
         self.bundle = owner.reserve().accept(*(pair[1] for pair in sockets))
         self.thread: threading.Thread | None = None
+        self.currentness_failures: (
+            list[tuple[str, str, int, int, CurrentnessBuckets | None]] | None
+        ) = None
+        self._currentness_failure_lock = threading.Lock()
+        self.currentness_calls = 0
+
+    def diagnose_currentness_failures(self) -> None:
+        """Opt-in, failure-only fixture evidence; never change the native outcome."""
+        self.currentness_failures = []
+        # The guard-budget companion wraps the same real reservation on another loop.
+        bundle = cast(Any, getattr(self.bundle, "actual", self.bundle))
+        current = bundle.current
+
+        def diagnosed_current() -> A3CurrentAdmission:
+            self.currentness_calls = min(self.currentness_calls + 1, 65535)
+            try:
+                return cast(A3CurrentAdmission, current())
+            except Exception as error:
+                with contextlib.suppress(Exception):
+                    self.record_currentness_failure("runtime-currentness", error)
+                raise
+
+        bundle.current = diagnosed_current
+
+        def diagnosed_io(
+            phase: Literal["runtime-send", "runtime-receive"], operation: Callable[..., Any]
+        ) -> Callable[..., Any]:
+            def call(*args: Any, **kwargs: Any) -> Any:
+                entry: tuple[int, int | None] | None = None
+                with contextlib.suppress(Exception):
+                    entry = time.monotonic_ns(), NATIVE_IO_DEADLINE.get()
+                try:
+                    return operation(*args, **kwargs)
+                except Exception as error:
+                    with contextlib.suppress(Exception):
+                        buckets = (
+                            None
+                            if entry is None
+                            else self.currentness_io_buckets(
+                                entry[0], kwargs["deadline_ns"], entry[1], time.monotonic_ns()
+                            )
+                        )
+                        self.record_currentness_failure(phase, error, buckets)
+                    raise
+
+            return call
+
+        channel = bundle._channels["currentness"]
+        channel.send = diagnosed_io("runtime-send", channel.send)
+        channel.receive = diagnosed_io("runtime-receive", channel.receive)
+
+    @staticmethod
+    def currentness_io_buckets(
+        started: int, deadline: int, inherited: int | None, finished: int
+    ) -> CurrentnessBuckets:
+        inherited_kind: Literal["none", "active", "expired"] = (
+            "none" if inherited is None else "expired" if inherited <= started else "active"
+        )
+        remaining, elapsed = deadline - started, finished - started
+        budget: Literal["expired", "lt50ms", "50to200ms", "ge200ms"]
+        if remaining <= 0:
+            budget = "expired"
+        elif remaining < 50_000_000:
+            budget = "lt50ms"
+        elif remaining < 200_000_000:
+            budget = "50to200ms"
+        else:
+            budget = "ge200ms"
+        duration: Literal["lt50ms", "50to200ms", "200to250ms", "ge250ms"]
+        if elapsed < 50_000_000:
+            duration = "lt50ms"
+        elif elapsed < 200_000_000:
+            duration = "50to200ms"
+        elif elapsed < 250_000_000:
+            duration = "200to250ms"
+        else:
+            duration = "ge250ms"
+        return inherited_kind, budget, duration
+
+    def record_currentness_failure(
+        self,
+        phase: Literal["runtime-currentness", "fixture-checker", "runtime-send", "runtime-receive"],
+        error: Exception,
+        buckets: CurrentnessBuckets | None = None,
+    ) -> None:
+        failures = self.currentness_failures
+        if failures is None:
+            return
+        reason = "unexpected-error"
+        if type(error) is ContentError and len(error.args) == 1:
+            code = error.args[0]
+            if type(code) is str and code in ERROR_CODES:
+                reason = code
+        elif type(error) is AssertionError:
+            reason = "assertion-error"
+        elif isinstance(error, OSError):
+            reason = "os-error"
+        with self._currentness_failure_lock:
+            if len(failures) < 4:
+                failures.append(
+                    (phase, reason, min(self.calls, 65535), self.currentness_calls, buckets)
+                )
+
+    def add_currentness_failure_note(self, error: Exception) -> None:
+        with contextlib.suppress(Exception):
+            error.add_note(f"Native fixture currentness failures: {self.currentness_failures!r}")
 
     async def start(self, *, mixed: bool = False) -> None:
         digest = facts_digest(self.facts)
@@ -368,7 +480,9 @@ class Client:
                     {**data, "current": self.live},
                     deadline_ns=deadline_after(0.25),
                 )
-        except Exception:
+        except Exception as error:
+            with contextlib.suppress(Exception):
+                self.record_currentness_failure("fixture-checker", error)
             channel.close()
 
     async def rpc(
@@ -387,6 +501,89 @@ class Client:
         if self.thread is not None:
             self.thread.join(timeout=1)
             assert not self.thread.is_alive()
+
+
+def test_fixture_currentness_diagnostics_are_bounded_and_value_free() -> None:
+    client = Client.__new__(Client)
+    client.calls, client.currentness_calls = 70000, 65535
+    client.currentness_failures = []
+    client._currentness_failure_lock = threading.Lock()
+    for error in (
+        ContentError("PATCH_TIMEOUT"),
+        ContentError("secret-canary-not-a-fixed-code"),
+        AssertionError("secret-canary-assertion"),
+        OSError("secret-canary-path"),
+        RuntimeError("secret-canary-discarded"),
+    ):
+        client.record_currentness_failure("fixture-checker", error)
+    assert client.currentness_failures == [
+        ("fixture-checker", "PATCH_TIMEOUT", 65535, 65535, None),
+        ("fixture-checker", "unexpected-error", 65535, 65535, None),
+        ("fixture-checker", "assertion-error", 65535, 65535, None),
+        ("fixture-checker", "os-error", 65535, 65535, None),
+    ]
+    original = ContentError("PATCH_REVOKED")
+    client.add_currentness_failure_note(original)
+    assert "secret-canary" not in repr(original.__notes__)
+
+
+def test_fixture_currentness_budget_bucket_boundaries() -> None:
+    for value, budget, elapsed in (
+        (-1, "expired", "lt50ms"),
+        (0, "expired", "lt50ms"),
+        (1, "lt50ms", "lt50ms"),
+        (49_999_999, "lt50ms", "lt50ms"),
+        (50_000_000, "50to200ms", "50to200ms"),
+        (199_999_999, "50to200ms", "50to200ms"),
+        (200_000_000, "ge200ms", "200to250ms"),
+        (249_999_999, "ge200ms", "200to250ms"),
+        (250_000_000, "ge200ms", "ge250ms"),
+    ):
+        assert Client.currentness_io_buckets(0, value, None, value) == ("none", budget, elapsed)
+    for inherited, expected in ((-1, "expired"), (0, "expired"), (1, "active")):
+        assert Client.currentness_io_buckets(0, 250_000_000, inherited, 1)[0] == expected
+
+
+def test_fixture_diagnostic_failure_preserves_original_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = ContentError("PATCH_TIMEOUT")
+
+    class Channel:
+        def send(self, **_kwargs: object) -> None:
+            raise original
+
+        receive = send
+
+    class Bundle:
+        def __init__(self) -> None:
+            self._channels = {"currentness": Channel()}
+
+        def current(self) -> A3CurrentAdmission:
+            raise original
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError("diagnostic failure must not replace the original")
+
+    client = Client.__new__(Client)
+    client.calls, client.currentness_calls = 7, 0
+    client.bundle = cast(Any, Bundle())
+    client.diagnose_currentness_failures()
+    monkeypatch.setattr(client, "record_currentness_failure", broken)
+    monkeypatch.setattr(original, "add_note", broken)
+    with pytest.raises(ContentError) as raised:
+        try:
+            client.bundle.current()
+        except ContentError as error:
+            client.add_currentness_failure_note(error)
+            raise
+    assert raised.value is original
+    assert client.currentness_calls == 1
+    channel = cast(Any, client.bundle._channels["currentness"])
+    for operation in (channel.send, channel.receive):
+        with pytest.raises(ContentError) as raised:
+            operation(deadline_ns=deadline_after(0.25))
+        assert raised.value is original
 
 
 @pytest.mark.anyio
@@ -449,6 +646,7 @@ async def test_native_records_hold_admission_through_publication_complete_and_re
         )
         await observer.close()
         client = Client(owner, facts)
+        client.diagnose_currentness_failures()
         await client.start()
         await client.rpc(
             NativeKind.OPEN,
@@ -456,7 +654,11 @@ async def test_native_records_hold_admission_through_publication_complete_and_re
             NativeKind.OWNED,
         )
         opaque = client.channels["opaque"]
-        await opaque.areceive(frozenset({NativeKind.READY}), deadline_ns=deadline_after(5))
+        try:
+            await opaque.areceive(frozenset({NativeKind.READY}), deadline_ns=deadline_after(5))
+        except ContentError as error:
+            client.add_currentness_failure_note(error)
+            raise
         assert owner.selectors._active == 1
         live = {"observation_sequence": 0, "challenge": "7" * 32}
         assert await client.rpc(NativeKind.LIVE, live, NativeKind.LIVE_REPLY) == live

@@ -211,6 +211,24 @@ async function installAuthenticatedShellRoutes(
   health: 'ok' | 'unavailable' = 'ok',
   readiness: 'ready' | 'not_ready' = 'ready',
 ) {
+  await page.route('**/api/v1/jobs?scope=mine', (route) =>
+    route.fulfill({
+      json: {
+        api_version: 'v1',
+        request_id: 'req_overview_empty',
+        data: { jobs: [] },
+      },
+    }),
+  )
+  await page.route('**/api/v1/projects/recent', (route) =>
+    route.fulfill({
+      json: {
+        api_version: 'v1',
+        request_id: 'req_overview_empty',
+        data: { projects: [] },
+      },
+    }),
+  )
   await page.route('**/api/v1/auth/me', (route) =>
     fulfillJson(route, 200, envelope(authData, 'req_rc9_manifest_auth')),
   )

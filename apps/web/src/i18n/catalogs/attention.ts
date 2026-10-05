@@ -25,7 +25,7 @@ export const attentionCatalog = defineCatalogShard<AttentionMessageParameters>(
       'attention.title': () => 'Needs attention',
       'attention.eyebrow': () => 'Recent operations',
       'attention.description': () =>
-        'Operations needing a decision or recovery among the 100 most recent Jobs.',
+        'Operations needing a decision or recovery among your 100 most recently created Jobs.',
       'attention.refresh': () => 'Refresh',
       'attention.loading': () => 'Checking recent operations…',
       'attention.stale': () =>
@@ -42,7 +42,8 @@ export const attentionCatalog = defineCatalogShard<AttentionMessageParameters>(
     'zh-CN': {
       'attention.title': () => '待处理',
       'attention.eyebrow': () => '最近操作',
-      'attention.description': () => '最近 100 项作业中需要决策或恢复的操作。',
+      'attention.description': () =>
+        '你最近创建的 100 项作业中需要决策或恢复的操作。',
       'attention.refresh': () => '刷新',
       'attention.loading': () => '正在检查最近操作…',
       'attention.stale': () => '状态已过期。返回此页面后会重新检查。',

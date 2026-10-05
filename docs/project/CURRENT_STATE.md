@@ -1,12 +1,108 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T15:56:00Z"
-verified_by: "agentbox-rc7-lifecycle-clock"
+verified_at_utc: "2026-10-05T18:43:00Z"
+verified_by: "agentbox-work-overview"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+
+## 2026-10-05 native3.13 真实超时已采到；继续限定 I/O 阶段诊断
+
+head `227531b86e715c340ad6f7f01e775fe256317383` / tree
+`5117dff8f42b6a8d84d45ee7e9bfccaac734e6d2` 五套通过、Backend仍仅3.13失败。
+失败note现在真实记录runtime-currentness/PATCH_TIMEOUT、checker24次/
+current25次，继而fixture-checker/PATCH_REVOKED；5303 passed/1failed/88skip。
+这证明该次currentness超时，不证明第25帧已发出，也不确定GIL/GC/调度原因。
+
+官方隔离CPython3.13.15的目标、109项近邻与412项A3原序前缀均通过；目标
+本地第25次无继承deadline，selector尚约30s，但这不是原CI的预算读数。
+本候选只扩展失败测试的opt-in send/receive阶段与固定inherited/budget/elapsed
+bucket，原参数、异常、调用次序、全部budget/assertions保持不变。无GC hook、
+主动collect、产品日志或CI修改。人工send/receive停顿都仍失败并能分类；
+精确3.13.15 native+guard70项通过。该补丁只补证据，仍不称根因修复。
+新完整head CI尚待采证，PR147仍Draft，main/生产未动；全部旧失败保留。
+
+## 2026-10-05 工作概览浏览器/像素通过；native3.13 CI 关闭原因诊断
+
+[PR #147](https://github.com/ForceMind/agentbox/pull/147) 保持 Draft，main仍为
+`a1cab129f18ede5b982b6ab53d037c51771b4dea`。当前已推 head
+`09e3142b145e30d60c9342f2100d6c80682824be` / tree
+`806123f6fdd11d4ced2b5e4f542eed9a0573e194` 的 Frontend、Security、Deployment、
+Release Candidate、E2E 五套成功。[实际 E2E](https://github.com/ForceMind/agentbox/actions/runs/37350114064)
+232 passed/30 prescribed skipped/0 failed/0 flaky（含8项新概览正式App/API
+桌面手机双语言、既有64项native；232中16项仍为pureNode）。6张概览原PNG
+实际打开且独立功能像素PASS，artifact11363160449 ZIP摘要
+`7398c39a542659861914df6f1fcae9c9f250c2544dee08ceed4cdba5aa9c058c`。
+这不是对整体美观的认可；新的全量UI设计另线讨论，本卡不加布局/功能。
+
+两轮 Backend 都仅Python3.13在未改动的 native READY测试遇到PATCH_REVOKED；
+3.11/3.12与native job通过。历史原因未知；受控300ms CURRENT_REPLY延迟
+能复现250ms fail-closed表象，但不是原CI因果证明。本地3.13.5原序前缀受
+AF_UNIX平台阻碍，不能替代CI3.13.15。没有改产品预算/断言或重跑旧头。
+本候选仅为该测试加入显式opt-in、最多4条固定phase/reason及封顶计数的
+failure-only诊断，并保留原异常；不记录正文/凭据/路径，不称为修复。
+新增诊断安全测试后3.12/3.13.5各69项通过，完整新head CI仍待采证。
+详见[有界合同与失败记录](../WORKBENCH_WORK_OVERVIEW.md)。
+
+尚未Ready/merge，主干与生产均未改动；无生产key/pin、host/账号或发布。
+下方pending/失败均保留为当时快照，不能覆盖本节较新的实际结果。
+
+## 2026-10-05 A2 / WEV-2 工作概览候选
+
+当前独立 branch `codex/a2-work-overview-20261005` 从已闭环 main
+`a1cab129f18ede5b982b6ab53d037c51771b4dea` / tree
+`26f245acde25737aa9c8ef47e408ad9c56a8006a` 接续原计划。
+[有界工作概览合同](../WORKBENCH_WORK_OVERVIEW.md) 已冻结：Dashboard
+优先显示当前 user 最近100条 Job 的待处理/排队/运行中窗口与最近6个 Project
+元数据；计数明确有界，项目时间仅表示真实 updated_at。复用已有认证与目录
+权限，不调用 Runtime/reconcile、Git status 或文件正文。失效快照清除，
+loading/empty/error/permission/stale 分开；原健康与就绪入口保留。
+
+七文件 #145/#146 闭环快照修正在 exact base 校验后随本批应用，原失败保留。
+本候选 source/tests/translations/docs 同批；版本同步 rc31，不发布 tag/Release。
+完整新 head 六套 CI、正式 App 桌面手机截图与独立像素、正常 merge 和 main
+六套仍待完成，不借旧 CI 宣称本卡通过。完成此卡后停止，只给 Files 下一卡；
+WS08 split 属最终范围但不是本卡，不称 A2/S02 整体完成。
+无生产 key/pin、真实 host/账号、安装激活、release/deploy。
+
+
+## 2026-10-05 #145 / #146 已闭环：统一视图与主干质量复核通过
+
+#145 已交付正式 Changes 页有界统一diff（hunk、旧/新补丁坐标、增删文本、
+完整原文fallback、键盘与手机wrap）。最终feature head
+`63da1b1539ed68186b249e905e8b14c568ce1673` 六套首次CI与独立六图pixel
+PASS；首轮巨大留白的失败证据保留，最终滚动区域定位修正已验。
+
+#145 merge `c93ed22a57b2667d8f6b13fdb3fd3720001e72f2` 的旧rc7 lifecycle
+单测导致Frontend失败，其余五套通过。后继test-only #146 不改产品5ms预算、
+测试timeout、断言或UI；历史成因仍为强支持推断，原失败未抹除。最终head
+`1c4d5c30d62531eebb219e1afea82a11059175bb` 六套首次workflow全SUCCESS。
+
+#146 于2026-10-05T16:21:56Z正常合并。最新main
+`a1cab129f18ede5b982b6ab53d037c51771b4dea`，parents为上述c93ed22与
+1c4d5c3；tree `26f245acde25737aa9c8ef47e408ad9c56a8006a` 与head完全一致。
+新exact-main六套首次workflow均SUCCESS（23成功/3预期skip）：
+[Frontend](https://github.com/ForceMind/agentbox/actions/runs/37340266309)
+1554 Web+6 extension、原rc7三项110ms通过；
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37340266512)
+三版本各5284 passed/88 skipped与14项native process；
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37340266503)
+224 passed/30 prescribed skipped/0failed/0flaky，包括64项formal native
+桌面/手机，224还含16项pureNode检查。
+
+main artifact11359310257 ZIP摘要已实际校验为
+`818a8d6b7441f77a8aa6580f2dd65658975b411c28a29a3c56b93733ba746ba4`。
+未声称重复main图像素审查：production UI/native fixture/E2E与已独立pixel-PASS
+的63da1b1未改。最终feature图artifact11355935840摘要为
+`73d1faf08c60a7b1e973a32c562801eab98b16e2a64d2fe888aa62f029347186`。
+
+本有界卡到此停止，下一功能仅建议、未启动；不称整个S02/WS08完成。
+默认未配置仍unavailable；无生产key/pin、host/installer激活、真实账号或发布。
+下方所有pending与失败描述是当时快照，不覆盖本节最新闭环事实。
+
 
 ## 2026-10-05 #145 已合并；main Frontend 单测时钟修正候选
 

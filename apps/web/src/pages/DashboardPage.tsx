@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { OpaqueUserValue, TechnicalValue } from '../components/i18n'
+import { WorkOverview } from '../features/overview/WorkOverview'
 import { useAuth } from '../features/auth/AuthContext'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { currentLocale, formatDate, technicalValue, type Locale } from '../i18n'
@@ -141,6 +142,8 @@ export function DashboardPage({ locale }: { locale?: Locale }) {
         eyebrow={message('dashboard.eyebrow')}
         title={message('dashboard.title')}
       />
+
+      <WorkOverview locale={selectedLocale} />
 
       <section
         className="metric-grid"

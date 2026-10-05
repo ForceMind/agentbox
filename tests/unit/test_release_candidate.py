@@ -175,8 +175,8 @@ def _release_candidate(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 def test_version_metadata_uses_the_core_source_and_npm_rc_form() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert verify_version_consistency(root) == "0.3.0rc30"
-    assert npm_version("0.3.0rc30") == "0.3.0-rc.30"
+    assert verify_version_consistency(root) == "0.3.0rc31"
+    assert npm_version("0.3.0rc31") == "0.3.0-rc.31"
 
 
 def test_r10_inert_assets_and_native_source_are_explicit_release_inputs() -> None:
@@ -534,6 +534,7 @@ def _successful_gate_results(candidate_version: str) -> dict[str, str]:
         "0.3.0rc24",
         "0.3.0rc29",
         "0.3.0rc30",
+        "0.3.0rc31",
     ],
 )
 def test_release_gate_cli_accepts_exact_version_contract(candidate_version: str) -> None:

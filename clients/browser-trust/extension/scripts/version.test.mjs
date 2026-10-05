@@ -17,17 +17,17 @@ describe("MV3 package version", () => {
       await readFile(resolve(root, "manifest.inert.json"), "utf8"),
     );
 
-    expect(packageMetadata.version).toBe("0.3.0-rc.30");
-    expect(manifestVersionForPackage(packageMetadata.version)).toBe("0.3.0.30");
+    expect(packageMetadata.version).toBe("0.3.0-rc.31");
+    expect(manifestVersionForPackage(packageMetadata.version)).toBe("0.3.0.31");
     expect(
       packagedManifest(inertManifest, packageMetadata.version).version,
-    ).toBe("0.3.0.30");
+    ).toBe("0.3.0.31");
   });
 
   it("rejects package and manifest versions that cannot produce the fixed MV3 identity", () => {
     expect(() => manifestVersionForPackage("0.3.0")).toThrow("must use");
     expect(() =>
-      packagedManifest({ version: "0.3.0.13" }, "0.3.0-rc.30"),
+      packagedManifest({ version: "0.3.0.13" }, "0.3.0-rc.31"),
     ).toThrow("does not match");
   });
 });
