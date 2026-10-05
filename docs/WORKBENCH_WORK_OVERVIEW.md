@@ -118,3 +118,20 @@ native被skip；require_escalated复验另有平台bwrap挂载错误，未绕过
 人工延迟实验仍为原READY EOF失败，附带PATCH_TIMEOUT/5/5诊断；两项新
 安全回归与原native/guard共69项在3.12和3.13.5均通过。新真实CI采证尚待完成，
 不得将这份可观测性补丁称为根因修复。
+
+
+## 2026-10-05 native3.13 真实超时已采到；继续限定 I/O 阶段诊断
+
+head `227531b86e715c340ad6f7f01e775fe256317383` / tree
+`5117dff8f42b6a8d84d45ee7e9bfccaac734e6d2` 五套通过、Backend仍仅3.13失败。
+失败note现在真实记录runtime-currentness/PATCH_TIMEOUT、checker24次/
+current25次，继而fixture-checker/PATCH_REVOKED；5303 passed/1failed/88skip。
+这证明该次currentness超时，不证明第25帧已发出，也不确定GIL/GC/调度原因。
+
+官方隔离CPython3.13.15的目标、109项近邻与412项A3原序前缀均通过；目标
+本地第25次无继承deadline，selector尚约30s，但这不是原CI的预算读数。
+本候选只扩展失败测试的opt-in send/receive阶段与固定inherited/budget/elapsed
+bucket，原参数、异常、调用次序、全部budget/assertions保持不变。无GC hook、
+主动collect、产品日志或CI修改。人工send/receive停顿都仍失败并能分类；
+精确3.13.15 native+guard70项通过。该补丁只补证据，仍不称根因修复。
+新完整head CI尚待采证，PR147仍Draft，main/生产未动；全部旧失败保留。
