@@ -11,6 +11,7 @@ import {
   flattenPathTree,
 } from '../features/changes/diffTree'
 import { useGitChanges } from '../features/changes/useGitChanges'
+import { VerifiedPatchView } from '../features/changes/VerifiedPatchView'
 import { visibleGitPath } from '../features/changes/visibleGitPath'
 import { useA3ChangesReader } from '../features/content/useA3ChangesReader'
 import type { A3ChangesDependencies } from '../features/content/a3ChangesTrust'
@@ -289,14 +290,7 @@ export function ProjectChangesPage({
               {new Date(reader.state.completedAtMs!).toLocaleString('zh-CN')}
               （非仓库观察时间）
             </p>
-            <pre
-              className="changes-patch"
-              tabIndex={0}
-              aria-label="完整暂存补丁"
-              data-testid="a3-complete-patch"
-            >
-              {reader.state.text}
-            </pre>
+            <VerifiedPatchView text={reader.state.text} />
           </>
         )}
       </section>

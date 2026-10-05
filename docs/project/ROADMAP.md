@@ -1,5 +1,87 @@
 # AgentBox Roadmap
 
+## 2026-10-05 PR #145 首轮 CI 全绿，长补丁纵向布局收尾
+
+head `a49230f574c8b71394b20c1a102015ad3b61b9ec`、tree
+`64ede3e2adae935fc5b6e7305e6f054c100b6125` 的六套首次 workflow 均
+SUCCESS；[Backend](https://github.com/ForceMind/agentbox/actions/runs/37328655732)
+三版本各5284 passed/88 skipped，14项真实 native process 通过；
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37328655879) 为
+224 passed/30 prescribed skipped/0 failed/0 flaky，包含64项正式 native
+桌面/手机场景。224中16项仍是纯Node checks，不全称浏览器用例。
+
+实际打开并独立复核全部6张 PNG 后，长内容主截图出现巨大页尾留白：desktop
+1280×7427，phone1073×65772；两张 multiple-hunks 图正常。首轮 pixel verdict
+为 FAIL，PR仍Draft且未合并。CSS 的 absolute 辅助标签缺少定位祖先与现象
+一致；本候选仅为滚动区域添加 position:relative、给说明文字增加焦点框间距，
+并补页面 scrollHeight 相对 reader 卡片底部的有界断言。现有横滚/键盘/生命周期
+断言不放宽。原因推断与新图通过仍须由新 exact-head CI/像素结果验证。
+
+首轮 artifact11353574147 ZIP SHA256 为
+`b8b7523f33d6d49933f571ae7c5d399f9f65cc100470117932416da0a4a18980`；
+旧图与失败事实保留。不得用首轮全绿替代修正候选、新图或 exact-main 资格。
+下节初始候选的 pending 描述是当时快照；本批权限/生产/host/发布边界不变。
+
+
+## 2026-10-05 S02 / WS08 统一 diff 视图软件候选
+
+从已闭环 #144 的 main `3e313b36b7cfc7c1de1c54cc20164ae223fcd122`
+（tree `d2fa9213b40db3a5f2b9236646da7fdc50c39645`）新建
+`codex/s02-changes-unified-diff`。实际 fetch、open PR 与 exact-main 六套
+SUCCESS 已复核；旧 worktree/历史不改写。本批先冻结
+[有界统一 diff 合同](../WORKBENCH_CHANGES_UNIFIED_DIFF.md)，再实现正式
+Changes 页的 hunk、旧/新行号、增删文本、统一/完整原文切换及默认换行。
+
+只消费既有 completed owner 的完整 END 已验证文本；不新增 reader、网络、
+预取、缓存、存储、复制/导出或权限。取消、刷新、route/hide/auth/trust/offline、
+原始 expiry 等旧 fence 一并卸载模型。头部和坐标只是补丁声明，不生成源身份。
+256 KiB / 4,000行 / 64 hunks / 单行8,192 UTF-16 units 是独立显示上限，
+越界或未知/畸形/binary/metadata-only 输入整体显示完整原文，不截断；CRLF、
+Unicode、EOF marker 均保留。原文不由 parsed model 重建。
+
+独立 source review 发现的 `/dev/null` 一侧虚构 unchanged gap 已修正并加
+真实 Git mutation 回归。focused Web 88项与 Git fixture 8项复核 PASS；
+新增 native fixture 与原 fixture unit 合计33 passed。旧52项 native browser
+保留，新增12项，当前列表共64项。实际 browser/桌面手机 PNG、新 exact-head
+六套 CI、normal expected-head merge 和 exact-main 六套均尚待运行/核验；
+不借用 #144 的证据宣称本候选通过。下节记录旧批次真实闭环，历史失败仍保留。
+
+默认未配置仍 unavailable；未进行生产 key/pin、host listener/installer 激活、
+真实账号、physical client/CLI、release/deploy。此卡只关闭可见统一视图增量，
+不称 S02/WS08 整体完成，也不自动启动下一功能。
+
+
+## 2026-10-05 PR #144 已闭环：正式 App native A3 与真实 CI 像素通过
+
+最终 head `ec89d73c64ed6b5b87371d9a72209e79ccc36760` 六套首次 workflow 均
+SUCCESS（24 jobs SUCCESS、2项历史 rc8 SKIPPED）；独立 source/doc 与实际
+四张中文 desktop/phone PNG 像素复核 PASS。下方较早的 pending/失败叙述保留
+为历史，不能继续作为当前状态。
+
+PR [#144](https://github.com/ForceMind/agentbox/pull/144) 已于
+2026-10-05T13:59:54Z 正常合并。main read-back 为
+`3e313b36b7cfc7c1de1c54cc20164ae223fcd122`，parents 为
+`61a5efce6ab43754a2acdb313d5e21ee83f64c52` 与上述 head；tree
+`d2fa9213b40db3a5f2b9236646da7fdc50c39645` 与已验 head 完全一致。
+
+exact-main 六套首次 workflow 均 SUCCESS（23 jobs SUCCESS、3 SKIPPED：push
+的 dependency-review 与两项历史 rc8）。[Backend](https://github.com/ForceMind/agentbox/actions/runs/37321159493)
+三版本各5276 passed/88 skipped，全部14项 native 通过；
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37321159428) 为212 passed/
+30 prescribed skipped/0 failed/0 flaky，包括新增52项正式 App native 场景。
+212中有16项纯 Node cleanup/counter checks，不能全称浏览器测试。
+
+最终 head artifact11349880911 ZIP SHA256 已核验为
+`f41b7b4346bf32acf763153e1269cbfc2b33adb861560deb157370af99c8e723`；
+四张原始 PNG 均已打开，固定导航置顶、phone 刷新单行、中文无缺字，完整验证
+状态与 inert text/focus 清晰。完整24KiB与未执行性由 E2E 断言证明，截图仅呈现
+可滚动区域。同 tree 的 main artifact11350222710 摘要亦已核验为
+`0cd6b83f513096b1dd3826a6c068f09d2ebed401acdb246051203bdc88f263db`，
+但未重复做 main 图像素审查。
+
+这是 CI 跨进程软件闭环。默认未配置仍 unavailable；生产 key/pin enrollment、
+installer/listener 激活、真实 host/physical client/CLI、账号或发布仍未执行。
+后续只可按实际已批准计划进入独立下一批，不把更多 fixture/helper 数量当产品进展。
 ## 2026-10-04 A3 Changes-page staged reader 软件候选
 
 已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，

@@ -24,6 +24,7 @@ export async function createA3TestFixture(
     dropPage?: boolean
     errorCode?: string
     lifetime?: number
+    patch?: string
   } = {},
 ) {
   const keys = await generateX25519KeyPair()
@@ -126,7 +127,9 @@ export async function createA3TestFixture(
                 ]
               : await preparePages(
                   context,
-                  new Uint8Array(new TextEncoder().encode(a3DangerousPatch)),
+                  new Uint8Array(
+                    new TextEncoder().encode(options.patch ?? a3DangerousPatch),
+                  ),
                   '1791111111111',
                 )
             for (const page of pages)

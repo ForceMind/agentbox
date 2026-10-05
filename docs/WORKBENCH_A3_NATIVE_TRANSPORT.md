@@ -2,8 +2,10 @@
 
 Status: accepted bounded software contract, 2026-10-05. Independent contract
 review and parent software-design approval precede implementation; implementation
-source review and exact-head cross-process/browser CI have passed at f67b93d;
-final visual correction and merge read-back remain pending. Baseline #143 merge
+source review, final ec89d73 cross-process/browser CI and actual pixel review
+have passed. PR #144 merged as 3e313b3 with the same tree; all six exact-main
+workflows passed. Historical pending/failure records below remain historical.
+Baseline #143 merge
 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`, tree
 `ec1ca86988ea4e84e7aa1d818e5d85a4b967cf08`.
 
@@ -447,3 +449,30 @@ refresh button wraps. The final visual-only correction prevents button wrapping
 and explicitly restores/asserts top scroll before capture. Its own exact-head CI
 and actual PNG review are still required before normal merge/main read-back.
 No security contract, timeout, fixture isolation or content assertion is relaxed.
+
+## Final head, pixels and main closure — 2026-10-05
+
+Final head `ec89d73c64ed6b5b87371d9a72209e79ccc36760` passed all six first-attempt
+workflows (24 successful jobs, two historical rc8 skips), independent source/doc
+review and actual review of all four desktop/phone PNGs. Fixed navigation starts
+at the top and mobile refresh stays on one line. Chinese glyphs, verified status,
+inert HTML literal and keyboard focus are readable without obvious overlap or
+page overflow. Full24KiB completeness/non-execution comes from E2E assertions,
+not from the screenshot's scrollable patch viewport.
+
+PR #144 merged normally as `3e313b36b7cfc7c1de1c54cc20164ae223fcd122`, parents
+`61a5efce6ab43754a2acdb313d5e21ee83f64c52` and the final head. Main tree
+`d2fa9213b40db3a5f2b9236646da7fdc50c39645` equals the reviewed head. All six
+first-attempt main workflows passed (23 successful jobs, three skips: push-only
+dependency-review and two historical rc8). Backend reports5276 passed,88 skipped
+per version and all14 native cases passing. E2E reports212 passed,30 prescribed
+skipped,0 failed,0 flaky;52 new formal native cases pass, and16 of212 are pure
+Node checks. Earlier failure history remains intact.
+
+Final-head artifact11349880911 ZIP SHA256 is
+`f41b7b4346bf32acf763153e1269cbfc2b33adb861560deb157370af99c8e723`.
+Same-tree main artifact11350222710 digest was also verified as
+`0cd6b83f513096b1dd3826a6c068f09d2ebed401acdb246051203bdc88f263db`,
+without claiming another main-image pixel review. Production trust enrollment,
+installer/listener activation and real-host/client/account/release evidence remain
+outside this completed software scope.

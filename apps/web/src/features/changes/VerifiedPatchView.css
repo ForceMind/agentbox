@@ -1,0 +1,148 @@
+.verified-patch-view {
+  min-width: 0;
+}
+
+.diff-view-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.diff-view-controls button,
+.diff-view-controls label {
+  min-height: 2.75rem;
+}
+
+.diff-view-controls button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.diff-view-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.diff-view-controls :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.diff-view-note {
+  margin: 0.5rem 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.diff-region {
+  /* Keep offscreen assistive labels inside this bounded scroll owner. */
+  position: relative;
+  padding: 0;
+  white-space: normal;
+}
+
+.diff-headers {
+  margin: 0;
+  padding: 0.8rem;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+
+.unified-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: inherit;
+}
+
+.unified-diff-table caption {
+  text-align: start;
+  padding: 0.4rem 0.6rem;
+  color: var(--muted);
+}
+
+.diff-number-column {
+  width: 4.2rem;
+}
+
+.unified-diff-table th,
+.unified-diff-table td {
+  padding: 0.1rem 0.4rem;
+  vertical-align: top;
+  border: 0;
+}
+
+.unified-diff-table thead th {
+  color: var(--muted);
+  text-align: start;
+  border-block: 1px solid var(--border);
+}
+
+.diff-line-number {
+  text-align: end;
+  color: var(--muted);
+  user-select: none;
+  overflow-wrap: anywhere;
+}
+
+.diff-line-text,
+.diff-hunk th {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+.diff-hunk th {
+  color: var(--accent);
+  border-block: 1px solid var(--border);
+  padding-block: 0.45rem;
+}
+
+.unified-diff-table [data-kind='added'] {
+  background: color-mix(in srgb, #34a853 12%, transparent);
+}
+
+.unified-diff-table [data-kind='deleted'] {
+  background: color-mix(in srgb, #ea4335 12%, transparent);
+}
+
+.unified-diff-table [data-kind='marker'] {
+  color: var(--muted);
+}
+
+.changes-patch.diff-no-wrap,
+.diff-no-wrap .diff-line-text,
+.diff-no-wrap .diff-hunk th,
+.diff-no-wrap .diff-headers {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.diff-no-wrap .unified-diff-table {
+  table-layout: auto;
+}
+
+@media (max-width: 600px) {
+  .diff-number-column {
+    width: 3rem;
+  }
+}
+
+.diff-kind-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
