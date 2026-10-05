@@ -351,3 +351,128 @@ def test_bootstrap_eof_diagnostic_keeps_bounded_exit_code() -> None:
     assert "exit_code" not in fixture_error_diagnostic(
         FixtureChildError("api", "bootstrap-eof", "ChildExited", "do not echo")
     )
+
+
+def _isolated_import_environment() -> dict[str, str]:
+    from a3_native_fixture import REPOSITORY, _fixture_environment
+    from a3_native_sources import PACKAGE_DIRS
+
+    environment = _fixture_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(REPOSITORY / Path(path).parent) for path in PACKAGE_DIRS] + [str(REPOSITORY / "tests")]
+    )
+    return environment
+
+
+def test_unconfigured_main_import_reproduces_private_child_read_only_failure(
+    tmp_path: Path,
+) -> None:
+    import json
+    import subprocess
+    import sys
+
+    if os.geteuid() == 0:
+        pytest.skip("read-only directory reproduction requires an unprivileged caller")
+    checkout = tmp_path / "readonly-checkout"
+    checkout.mkdir(mode=0o555)
+    script = """
+import json, traceback
+try:
+    import agentbox_api.main
+except PermissionError as error:
+    frames = traceback.extract_tb(error.__traceback__)
+    prepared = any(frame.name == "_prepare_parent_directory" for frame in frames)
+    print(json.dumps({"denied": True, "database_prepare": prepared}))
+else:
+    raise AssertionError("unconfigured import unexpectedly wrote to a read-only cwd")
+"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=checkout,
+            env=_isolated_import_environment(),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        assert json.loads(result.stdout) == {"denied": True, "database_prepare": True}
+        assert not (checkout / ".agentbox-dev").exists()
+    finally:
+        checkout.chmod(0o755)
+
+
+def test_api_import_configuration_precedes_default_app_and_excludes_outer_harness(
+    tmp_path: Path,
+) -> None:
+    import json
+    import subprocess
+    import sys
+
+    checkout = tmp_path / "readonly-checkout"
+    checkout.mkdir()
+    development = checkout / ".agentbox-dev"
+    development.mkdir()
+    (development / "config.toml").write_text("not valid TOML; this must never be read")
+    before = (development / "config.toml").read_bytes()
+    checkout.chmod(0o555)
+    private = tmp_path / "api-owned"
+    private.mkdir(mode=0o700)
+    outer = tmp_path / "outer-harness"
+    outer.mkdir()
+    poison = outer / "config.toml"
+    poison.write_text("not valid outer TOML; this must never be read")
+    environment = _isolated_import_environment()
+    environment.update(
+        {
+            "AGENTBOX_ENV": "production",
+            "AGENTBOX_DATA_DIR": str(outer),
+            "AGENTBOX_DATABASE_URL": f"sqlite+pysqlite:///{outer}/wrong.db",
+            "AGENTBOX_PROJECT_ROOT": str(outer / "wrong-projects"),
+            "AGENTBOX_TOML_FILE": str(poison),
+            "AGENTBOX_SECRET_KEY": "outer-harness-secret-must-not-be-adopted",
+            "AGENTBOX_STATIC_DIR": str(outer / "wrong-static"),
+            "aGeNtBoX_StAtIc_DiR": str(outer / "mixed-case-static"),
+            "AGENTBOX_E2E_USERNAME": "outer-harness-identity",
+        }
+    )
+    script = """
+import json, os, sys
+from pathlib import Path
+from a3_native_fixture import _configure_api_import_environment, SYNTHETIC_SECRET
+root = Path(sys.argv[1])
+_configure_api_import_environment({
+    "root": str(root), "origin": "https://127.0.0.1:44321",
+    "api_origin": "http://127.0.0.1:43210",
+})
+import agentbox_api.main as main
+settings = main._installed_settings
+assert settings.env.value == "test"
+assert settings.data_dir == root and settings.project_root == root / "empty-projects"
+assert settings.database_url == f"sqlite+pysqlite:///{root}/fixture.db"
+assert settings.runtime_socket == root / "unavailable-runtime.sock"
+assert settings.secret_key.get_secret_value() == SYNTHETIC_SECRET
+assert settings.static_dir is None and "AGENTBOX_E2E_USERNAME" not in os.environ
+assert "aGeNtBoX_StAtIc_DiR" not in os.environ
+assert os.environ["AGENTBOX_TOML_FILE"] == str(root / "fixture-import.toml")
+assert settings.allowed_origins == ("https://127.0.0.1:44321", "http://127.0.0.1:43210")
+main.app.state.services.database.close()
+print(json.dumps({"imported": True, "private_test_config": True}))
+"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(private)],
+            cwd=checkout,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        assert json.loads(result.stdout) == {"imported": True, "private_test_config": True}
+        assert sorted(path.name for path in outer.iterdir()) == ["config.toml"]
+        assert sorted(path.name for path in development.iterdir()) == ["config.toml"]
+        assert (development / "config.toml").read_bytes() == before
+        assert (private / "fixture-import.toml").read_bytes() == b""
+    finally:
+        checkout.chmod(0o755)

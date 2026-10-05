@@ -1,5 +1,25 @@
 # Current Authorized Action
 
+## 2026-10-05 PR #144 第三轮 CI：native 全通过，隔离 API 初始化待修
+
+head `33d34817f60931af8ad6ab637faac60864ded1a5`，tree
+`2195b026d6dd2b596b207d2dce729f6856da69af` 的 Backend、Frontend、Security、
+Deployment、Release Candidate 五套 SUCCESS。[Backend](https://github.com/ForceMind/agentbox/actions/runs/37297380826)
+的 Python3.11/3.12/3.13 各5259 passed/88 skipped；三个版本均通过全部14项新增
+真实 native separate-process 场景，包括完整 Git→END、revoke 与原始 expiry。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37297380712) 仍为152 passed/
+30 prescribed skipped/52 failed；新增浏览器场景共同错误已缩小为 API child
+初始化中的 `PermissionError`，尚未获得 browser 或像素资格。fixture 在自身
+TEST配置之前导入 `agentbox_api.main`；该模块 import-time 的默认 app 会访问
+checkout 的 development data 目录。修复只将 child 的已有 synthetic TEST 配置
+提前绑定到其私有临时目录，不放宽 checkout/UID 权限或更改产品 main。
+
+本 head 本地 A3 unit matrix411 passed；Ruff、Black402、mypy389、Web1480+6及
+五门 PASS，独立 source review PASS。前三轮失败保留；当前 PR 仍 Draft，新的
+exact-head 全部 CI 和真实中文 desktop/phone pixels 仍是退出条件。
+
+
 ## 2026-10-05 PR #144 第二轮 CI：12/14 native 用例通过
 
 测试修复 head `2dd83b45be8cf18e76046c128b588ebe734352fe`，tree

@@ -34,6 +34,7 @@ BUILD_ID = "d" * 64
 PIN = "8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f"
 USERNAME = "native-fixture"
 PASSWORD = "published synthetic native fixture password"
+SYNTHETIC_SECRET = "published-synthetic-test-only-secret-00000000"
 REPOSITORY = Path(__file__).resolve().parents[1]
 _MAX_CONTROL = 64 * 1024
 
@@ -728,7 +729,36 @@ def _revoke_fixture_sessions(services: Any) -> None:
             row.revoked_at = now
 
 
+def _configure_api_import_environment(config: dict[str, Any]) -> None:
+    """Bind even main.py's import-time default app to this API child's TEST root."""
+    root = Path(config["root"])
+    if not root.is_absolute() or not root.is_dir():
+        raise ValueError("fixture API root must already exist")
+    toml = root / "fixture-import.toml"
+    # This fresh per-child file prevents local checkout TOML or an outer harness
+    # from supplying a default setting before the explicit factory is invoked.
+    with toml.open("x", encoding="ascii"):
+        pass
+    for name in tuple(os.environ):
+        if name.upper().startswith("AGENTBOX_"):
+            del os.environ[name]
+    os.environ.update(
+        {
+            "AGENTBOX_ENV": "test",
+            "AGENTBOX_DATA_DIR": str(root),
+            "AGENTBOX_DATABASE_URL": f"sqlite+pysqlite:///{root}/fixture.db",
+            "AGENTBOX_PROJECT_ROOT": str(root / "empty-projects"),
+            "AGENTBOX_RUNTIME_SOCKET": str(root / "unavailable-runtime.sock"),
+            "AGENTBOX_TOML_FILE": str(toml),
+            "AGENTBOX_SECRET_KEY": SYNTHETIC_SECRET,
+            "AGENTBOX_ALLOWED_ORIGINS": json.dumps([config["origin"], config["api_origin"]]),
+        }
+    )
+
+
 async def _api(config: dict[str, Any]) -> None:
+    _configure_api_import_environment(config)
+
     import uvicorn
     from agentbox_api.a3_native_transport import A3NativeSource
     from agentbox_api.main import create_app
@@ -751,7 +781,7 @@ async def _api(config: dict[str, Any]) -> None:
         env=Environment.TEST,
         data_dir=root,
         database_url=f"sqlite+pysqlite:///{root}/fixture.db",
-        secret_key=SecretStr("published-synthetic-test-only-secret-00000000"),
+        secret_key=SecretStr(SYNTHETIC_SECRET),
         project_root=root / "empty-projects",
         allowed_origins=(config["origin"], config["api_origin"]),
     )

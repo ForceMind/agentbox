@@ -350,3 +350,15 @@ or system permissions are relaxed. Only the test start-control wait becomes
 45 seconds to contain at most four5-second source probes; production timeouts
 are unchanged. Existing setup primary-error preservation remains in place.
 Screenshots remain unavailable; new exact-head CI and pixel review are required.
+
+## Third exact-head CI, native passed; browser setup still failing — 2026-10-05
+
+Head `33d34817f60931af8ad6ab637faac60864ded1a5` passed five workflows including
+Backend. Python3.11/3.12/3.13 each reported5259 passed,88 skipped, with all14 new
+real native separate-process cases passing. E2E remained152 passed,30 skipped,
+52 failed. The bounded diagnostic now identifies API child initialization
+PermissionError, before browser qualification. The fixture imports the API main
+module before its explicit TEST configuration; that module constructs a default
+app at import and can touch checkout development data. The narrow fix configures
+the existing child-owned TEST paths before that import, preserving UID isolation
+and product behavior. No actual browser or screenshot success is inferred.
