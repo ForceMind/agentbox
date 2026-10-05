@@ -1,5 +1,17 @@
 # A3 Changes-page staged reader software composition
 
+## 2026-10-05 verified closure and successor boundary
+
+PR #143 is merged as `61a5efce6ab43754a2acdb313d5e21ee83f64c52`; final
+head `ad9d199c3ca08661cfb8171e1a782060cc694534` and exact-main each have six
+terminal successful workflows. Their tree is identical
+(`ec1ca86988ea4e84e7aa1d818e5d85a4b967cf08`). Final-head CJK desktop/phone
+pixels were reviewed. Earlier failures below remain historical evidence.
+The [native successor contract](WORKBENCH_A3_NATIVE_TRANSPORT.md) is frozen
+and its default-off software implementation is a new candidate. It still needs
+its own exact-head/native/browser evidence; no production pin or host activation
+follows from the earlier closure. The original candidate description below is historical.
+
 Status: source candidate, 2026-10-04; base #142 merge
 `b7dd51d3288022f12604656515aafe7e11a00d3e`, tree
 `2cdfa72e7ca99b57312dadf156af1b74d82db15e`. The contract was approved before

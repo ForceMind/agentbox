@@ -1,8 +1,8 @@
-"""Single admitted staged read through an opaque in-memory transport port.
+"""Single admitted staged read through a bounded opaque transport port.
 
-Inert software seam: no host/socket/API composition or production key acquisition.
+No socket/API composition or production key acquisition occurs in this module.
 The same selector owner holds the snapshot, active slot and burned nonce through
-completion. Port sends have no retry/ACK/resume: uncertainty closes permanently.
+completion. Port uncertainty closes permanently; there is no retry or resume.
 """
 
 from __future__ import annotations
@@ -41,12 +41,18 @@ async def serve_admitted_staged_read(
     port: OpaqueContentPort,
     *,
     observed_at_ms: Callable[[], str] = lambda: str(time.time_ns() // 1_000_000),
+    on_ready: Callable[[Callable[[], None]], Awaitable[None]] | None = None,
+    on_complete: Callable[[Callable[[], None]], Awaitable[None]] | None = None,
+    close_port: bool = True,
 ) -> None:
     """Read/preflight first; then one fresh handshake and one encrypted response.
 
     Only an owner-issued admitted handle is accepted. The external composition
     must authenticate READY/session/pin sources; test resolvers are not that proof.
     The original expiry never resets at handshake or a new channel instance.
+    Native composition may install READY/COMPLETE callbacks; COMPLETE retains
+    this same handle until its callback ends. With close_port=False the trusted
+    caller must close it in finally after any bounded fixed-error disposition.
     """
     if type(admitted) is not AdmittedStagedRead:
         raise TypeError("sealed Runtime admission is required")
@@ -80,7 +86,8 @@ async def serve_admitted_staged_read(
         handshake_pending = True
 
         def check() -> None:
-            admitted.check()
+            # profile.check already validates current=admitted.context before
+            # and after its operation. Each access performs fresh admission.
             assert profile is not None
             profile.check()
             if handshake_pending and time.monotonic_ns() >= handshake_deadline_ns:
@@ -123,6 +130,8 @@ async def serve_admitted_staged_read(
             await wait(lambda: port.send(raw, check))
             check()
 
+        if on_ready is not None:
+            await wait(lambda: on_ready(check))
         initial = await wait(port.receive)
         await send(profile.receive_init(initial))
         confirmation = await wait(port.receive)
@@ -137,8 +146,11 @@ async def serve_admitted_staged_read(
             encrypted = profile.encrypt_record(page)
             await send(encrypted)
             check()
+        if on_complete is not None:
+            await wait(lambda: on_complete(check))
     finally:
         admitted.close()
         if profile is not None:
             profile.close()
-        port.close()
+        if close_port:
+            port.close()

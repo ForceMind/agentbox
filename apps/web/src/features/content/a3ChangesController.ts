@@ -9,12 +9,17 @@ import {
   type ContentContext,
 } from './a3Content'
 import { A3Browser, HANDSHAKE_TIMEOUT_MS, MAX_ENVELOPE_BYTES } from './a3Crypto'
-import { parseA3Observation, sameA3Binding } from './a3ChangesDto'
+import {
+  parseA3Observation,
+  sameA3Binding,
+  type A3Binding,
+} from './a3ChangesDto'
 import {
   readA3Trust,
+  a3TrustHost,
   type A3ChangesChannel,
   type A3ChangesDependencies,
-  type A3ChangesTrust,
+  type A3TrustSnapshot,
 } from './a3ChangesTrust'
 
 export type A3ChangesStatus =
@@ -65,7 +70,8 @@ export class A3ChangesController {
   #unsubscribeClose?: () => void
   #unsubscribeTrust?: () => void
   #timer?: ReturnType<typeof setTimeout>
-  #trust?: A3ChangesTrust
+  #trust?: A3TrustSnapshot
+  #binding?: A3Binding
   #context?: ContentContext
   #deadline = 0
   #handshakeDeadline = 0
@@ -81,10 +87,11 @@ export class A3ChangesController {
   get available(): boolean {
     if (!this.dependencies) return false
     try {
-      return (
-        readA3Trust(this.dependencies.trust).binding.project_id ===
-        this.projectId
-      )
+      const trust = readA3Trust(this.dependencies.trust)
+      if ('binding' in trust) return trust.binding.project_id === this.projectId
+      if (!this.dependencies.admission) return false
+      this.dependencies.admission.check(null)
+      return /^prj_[0-9a-f]{32}$/.test(this.projectId)
     } catch {
       return false
     }
@@ -118,6 +125,7 @@ export class A3ChangesController {
     this.#channel = undefined
     this.#unsubscribeClose = undefined
     this.#trust = undefined
+    this.#binding = undefined
     this.#context = undefined
     if (this.#timer !== undefined) clearTimeout(this.#timer)
     this.#timer = undefined
@@ -161,12 +169,27 @@ export class A3ChangesController {
     const deps = this.dependencies!
     const current = readA3Trust(deps.trust)
     const bound = this.#trust!
+    const host = a3TrustHost(bound),
+      currentHost = a3TrustHost(current)
     if (
-      !sameA3Binding(bound.binding, current.binding) ||
       !equal(bound.pin32, current.pin32) ||
-      current.binding.project_id !== this.projectId
+      host.runtime_host_installation_id !==
+        currentHost.runtime_host_installation_id ||
+      host.runtime_host_installation_revision !==
+        currentHost.runtime_host_installation_revision ||
+      'binding' in bound !== 'binding' in current
     )
       fail('PATCH_REVOKED')
+    if (
+      'binding' in bound &&
+      'binding' in current &&
+      (!sameA3Binding(bound.binding, current.binding) ||
+        current.binding.project_id !== this.projectId)
+    )
+      fail('PATCH_REVOKED')
+    if ('host' in current && !deps.admission) fail('PATCH_REVOKED')
+    deps.admission?.check(this.#binding ?? null)
+    this.#channel?.check?.()
     const now = deps.nowMs()
     if (
       !Number.isSafeInteger(now) ||
@@ -213,7 +236,7 @@ export class A3ChangesController {
   }
   async #receive(token: number): Promise<Uint8Array> {
     this.#guard(token)
-    const raw = await this.#channel!.receive()
+    const raw = await this.#channel!.receive(() => this.#guard(token))
     this.#guard(token)
     if (
       !(raw instanceof Uint8Array) ||
@@ -256,8 +279,19 @@ export class A3ChangesController {
         await deps.observe(this.projectId, abort.signal),
       )
       this.#guard(token)
-      if (!sameA3Binding(observed.binding, this.#trust.binding))
+      const host = a3TrustHost(this.#trust)
+      if (
+        observed.binding.project_id !== this.projectId ||
+        observed.binding.runtime_host_installation_id !==
+          host.runtime_host_installation_id ||
+        observed.binding.runtime_host_installation_revision !==
+          host.runtime_host_installation_revision ||
+        ('binding' in this.#trust &&
+          !sameA3Binding(observed.binding, this.#trust.binding))
+      )
         fail('PATCH_STALE')
+      this.#binding = observed.binding
+      this.#guard(token)
       if (!observed.entries.length) {
         this.clear('empty')
         return
@@ -318,6 +352,7 @@ export class A3ChangesController {
       await this.#send(token, await role.start())
       const confirm = await role.acceptAttest(await this.#receive(token))
       this.#deadline = Math.min(this.#deadline, role.effectiveDeadlineMs)
+      channel.tightenDeadline?.(this.#deadline)
       this.#guard(token)
       this.#schedule(token)
       await this.#send(token, confirm)
@@ -357,10 +392,12 @@ export class A3ChangesController {
               completedAtMs: Date.now(),
             }),
           )
-          this.#unsubscribeClose?.()
-          this.#unsubscribeClose = undefined
-          this.#channel = undefined
-          channel.close()
+          if (!deps.retainCompletedChannel) {
+            this.#unsubscribeClose?.()
+            this.#unsubscribeClose = undefined
+            this.#channel = undefined
+            channel.close()
+          }
           // Keep the ORIGINAL authenticated deadline and trust/lifecycle watch.
           this.#schedule(token)
           return

@@ -42,6 +42,8 @@ from agentbox_api.waw_input_budget import (
 )
 
 NATIVE_SCOPE_KEY = "agentbox.waw.native.v1"
+A3_NATIVE_SCOPE_KEY = "agentbox.a3.native.v1"
+_A3_PATH = re.compile(rb"/api/v1/projects/prj_[a-f0-9]{32}/git/staged-stream")
 _PATH = re.compile(rb"/api/v1/workspaces/aws_[a-f0-9]{32}/stream")
 _MAX_BUFFER = 65550
 _MAX_MESSAGE = 65536
@@ -179,6 +181,8 @@ class WAWWebSocketProtocol(asyncio.Protocol):
         self.peer_address: tuple[str, int] | None = None
         self.tls = False
         self._publication_guard: Callable[[bytes], None] | None = None
+        self._a3 = False
+        self._subprotocol = b"agentbox-waw-v1"
         self._http = h11.Connection(h11.SERVER, max_incomplete_event_size=8192)
         self._headers_size = 0
         self._key = b""
@@ -337,9 +341,13 @@ class WAWWebSocketProtocol(asyncio.Protocol):
         if (
             event.method != b"GET"
             or event.http_version != b"1.1"
-            or _PATH.fullmatch(event.target) is None
+            or (_PATH.fullmatch(event.target) is None and _A3_PATH.fullmatch(event.target) is None)
         ):
             raise NativeWebSocketError()
+        self._a3 = _A3_PATH.fullmatch(event.target) is not None
+        self._subprotocol = b"agentbox-a3-content-v2" if self._a3 else b"agentbox-waw-v1"
+        if self._a3:
+            self.message_limit = 8192
         headers = list(event.headers)
         names: dict[bytes, bytes] = {}
         for name, value in headers:
@@ -359,7 +367,7 @@ class WAWWebSocketProtocol(asyncio.Protocol):
             or b"host" not in names
             or b"content-length" in names
             or b"transfer-encoding" in names
-            or names.get(b"sec-websocket-protocol") != b"agentbox-waw-v1"
+            or names.get(b"sec-websocket-protocol") != self._subprotocol
             or len(key) != 24
         ):
             raise NativeWebSocketError()
@@ -384,9 +392,9 @@ class WAWWebSocketProtocol(asyncio.Protocol):
             "raw_path": event.target,
             "query_string": b"",
             "headers": headers,
-            "subprotocols": ["agentbox-waw-v1"],
+            "subprotocols": [self._subprotocol.decode("ascii")],
             "state": self._state.copy(),
-            "extensions": {NATIVE_SCOPE_KEY: self},
+            "extensions": {A3_NATIVE_SCOPE_KEY if self._a3 else NATIVE_SCOPE_KEY: self},
         }
         self._queue.append({"type": "websocket.connect"})
         self._readable.set()
@@ -480,10 +488,9 @@ class WAWWebSocketProtocol(asyncio.Protocol):
                                 # but no browser bytes may continue afterward.
                                 self.abort(4429)
                                 raise
-                        if (
-                            self._queued_bytes + len(self._message) > 65536
-                            or len(self._queue) >= 64
-                        ):
+                        if self._queued_bytes + len(self._message) > (
+                            24704 if self._a3 else 65536
+                        ) or len(self._queue) >= (3 if self._a3 else 64):
                             raise NativeWebSocketError(4429)
                         self._charge_partial(_BYTES_BASE + len(self._message))
                         body = bytes(self._message)
@@ -579,7 +586,7 @@ class WAWWebSocketProtocol(asyncio.Protocol):
     def _write(self, raw: bytes) -> None:
         if self.transport is None or self._lost:
             raise NativeWebSocketError()
-        if self.transport.get_write_buffer_size() + len(raw) > 65550:
+        if self.transport.get_write_buffer_size() + len(raw) > (24590 if self._a3 else 65550):
             raise NativeWebSocketError(1013)
         self.transport.write(raw)
 
@@ -654,7 +661,7 @@ class WAWWebSocketProtocol(asyncio.Protocol):
         if not self._accepted:
             if (
                 kind != "websocket.accept"
-                or message.get("subprotocol") != "agentbox-waw-v1"
+                or message.get("subprotocol") != self._subprotocol.decode("ascii")
                 or message.get("headers")
             ):
                 raise NativeWebSocketError()
@@ -665,7 +672,9 @@ class WAWWebSocketProtocol(asyncio.Protocol):
                 b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
                 b"Connection: Upgrade\r\nSec-WebSocket-Accept: "
                 + accept
-                + b"\r\nSec-WebSocket-Protocol: agentbox-waw-v1\r\nCache-Control: no-store\r\n\r\n"
+                + b"\r\nSec-WebSocket-Protocol: "
+                + self._subprotocol
+                + b"\r\nCache-Control: no-store\r\n\r\n"
             )
             self._accepted = True
             self._key = b""

@@ -412,3 +412,56 @@ def test_authenticated_lifetime_changes_final_hash_and_confirmation() -> None:
     assert frames1[0] == frames2[0]
     assert frames1[1:] != frames2[1:]
     assert runtime1._hash != runtime2._hash
+
+
+@pytest.mark.parametrize("domain_separated", [False, True])
+def test_selector_commitment_domain_is_required_before_runtime_attestation(
+    domain_separated: bool,
+) -> None:
+    """A bare selector hash is a different admission, even with a valid INIT."""
+    import hashlib
+
+    from agentbox_protocol.a3_content import selector_commitment, validate_context
+
+    selection = "a" * 156
+    expected = hashlib.sha256(
+        b"agentbox-a3-content/selector/v1\0" + selection.encode("ascii")
+    ).hexdigest()
+    assert selector_commitment(selection) == expected
+    admitted_context = validate_context({**C, "selector_commitment": expected})
+    client_context = validate_context(
+        {
+            **admitted_context,
+            "selector_commitment": (
+                expected
+                if domain_separated
+                else hashlib.sha256(selection.encode("ascii")).hexdigest()
+            ),
+        }
+    )
+    browser = A3Browser(
+        client_context,
+        expected_pin=lambda: VECTOR["runtime_fingerprint"],
+        clock_ms=lambda: 0,
+        current=lambda: client_context,
+        deadline_ms=30000,
+    )
+    runtime = A3Runtime(
+        admitted_context,
+        bytes.fromhex(VECTOR["resp_static"]),
+        original_expiry_ns=30_000_000_000,
+        clock_ns=lambda: 0,
+        clock_ms=lambda: 0,
+        current=lambda: admitted_context,
+        deadline_ms=30000,
+    )
+    try:
+        if domain_separated:
+            ready(browser, runtime)
+        else:
+            with pytest.raises(ContentError):
+                runtime.receive_init(browser.start())
+            assert not runtime.crypto_ready
+    finally:
+        browser.close()
+        runtime.close()

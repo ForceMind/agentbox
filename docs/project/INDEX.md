@@ -1,5 +1,47 @@
 # AgentBox Project Context Index
 
+## 2026-10-05 PR #143 已闭环；native A3 六套 CI 全绿、像素收尾
+
+PR [#143](https://github.com/ForceMind/agentbox/pull/143) 已正常合并。
+最终 head `ad9d199c3ca08661cfb8171e1a782060cc694534` 的六套 workflow
+均 SUCCESS（24 jobs SUCCESS、2 项历史 rc8 SKIPPED）；main 显式 fetch/read-back
+为 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`，tree
+`ec1ca86988ea4e84e7aa1d818e5d85a4b967cf08` 与 head 完全一致。
+parents 为 `b7dd51d3288022f12604656515aafe7e11a00d3e` 和上述 head。
+
+exact-main 六套首次 workflow 均 terminal SUCCESS（23 jobs SUCCESS、3 SKIPPED：
+push 的 dependency-review 与两项历史 rc8）。[Backend](https://github.com/ForceMind/agentbox/actions/runs/37267834425)
+三个 Python 版本各 5119 passed/88 skipped；[E2E](https://github.com/ForceMind/agentbox/actions/runs/37267834421)
+144 passed/30 prescribed skipped，包括新增28个desktop/phone场景。
+最终 head 已补齐 CJK 字体并完成实际截图复核；同 tree 的 main 截图 artifact 已核验
+摘要，但没有重复进行像素复核。下方旧 CI 失败、teardown race 与缺字事实作为历史
+保留，不能再将旧 head 的待补状态当作当前未完成门槛。
+
+当前独立 branch `codex/a3-native-changes` 从该 main 接续
+[A3 native transport 合同](../WORKBENCH_A3_NATIVE_TRANSPORT.md)：正式 App factory、
+独立 A3 HTTPS bootstrap consumer、分离 API/Runtime 的 bounded metadata/opaque UDS。
+合同已独立审查冻结，源代码已实现并完成独立 source review；跨进程 currentness、
+最终 publication/END 与显示生命周期保持分层。第七轮 head
+`f67b93dfa0678ee0f04ea187a91d9a8cddb35c07` 六套 CI 首次全绿；Backend 三版本各
+5276 passed/88 skipped，14项真实 native 全通过；E2E212 passed/30 prescribed
+skipped/0 failed/0 flaky，新增52项正式 App desktop/phone 全通过（212还包括
+16项纯 Node checks）。[Current state](CURRENT_STATE.md) 保留六轮失败、真实
+原因与双 loop 同条件 red/green，不用已排除的裸 adapter 竞态假设解释 CI。
+
+原始 artifact 摘要已核验并打开四张 PNG，发现 full-page 截图滚动位置及 phone
+刷新按钮换行问题；仅进行小幅视觉/截图收尾，最终候选的 exact-head CI 与像素
+复核尚待完成。PR #144 仍 Draft，main 仍为上述 #143 merge。通过后按正常
+Ready/merge、parents/tree read-back 与 exact-main 六套 CI 闭环。
+无生产 key loader/pin enrollment、installer 开关、真实 host listener/账号或发布。
+未配置安装仍 unavailable；真实 host/physical client/CLI 验收仍 NOT RUN。
+
+本地最终 A3 matrix428 passed，Web1480 tests 与 extension6 tests、正常质量门禁、
+独立 crypto/interop 与 source review PASS。此 executor 的 AF_UNIX 创建限制与
+旧全量 pytest 因共享 /tmp ENOSPC 终止仍是失败历史，不能改记本地全量 PASS；
+真实 numeric-UID、UDS、HTTPS 与浏览器资格来自上述 CI，不来自本地跳过项。
+
+
+
 ## 2026-10-04 A3 Changes-page staged reader 软件候选
 
 已显式 fetch/read-back 核对 #142 merge `b7dd51d3288022f12604656515aafe7e11a00d3e`，

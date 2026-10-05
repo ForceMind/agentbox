@@ -320,7 +320,7 @@ def test_no_aad_kind_coercion() -> None:
             application_aad(CONTEXT, "8" * 64, kind, 0)  # type: ignore[arg-type]
 
 
-def test_no_production_composition_or_activation() -> None:
+def test_default_off_native_composition_preserves_content_authorities() -> None:
     root = Path(__file__).parents[2]
     for directory in ["apps/api", "apps/worker", "packages/agentbox-runtime"]:
         for path in (root / directory).rglob("*.py"):
@@ -328,23 +328,51 @@ def test_no_production_composition_or_activation() -> None:
                 "a3_content_session.py",
                 "git_staged_selectors.py",
                 "a3_admission.py",
+                "a3_native_transport.py",
+                "a3_native_relay.py",
             }:
                 assert "a3_content" not in path.read_text()
                 assert "a3_crypto" not in path.read_text()
                 assert "a3_content_session" not in path.read_text()
                 if path.name != "waw_lifecycle.py":
                     assert "git_staged_selectors" not in path.read_text()
-            # The new default-off metadata route may reuse API currentness only.
-            # It still cannot import crypto/content/Runtime selectors or relay.
-            if path.name not in {"a3_admission.py", "a3_relay.py", "a3_observation.py"}:
+            # Exact default-off A3 native adapters may reuse currentness/error
+            # types; only Runtime owns selectors/crypto/key operations.
+            if path.name not in {
+                "a3_admission.py",
+                "a3_relay.py",
+                "a3_observation.py",
+                "a3_native_transport.py",
+                "a3_native_relay.py",
+            }:
                 assert "a3_admission" not in path.read_text()
             if path.name not in {"a3_admission.py", "a3_relay.py"}:
                 assert "a3_relay" not in path.read_text()
             if path.name == "a3_observation.py":
                 assert "agentbox_runtime" not in path.read_text()
                 assert "subprocess" not in path.read_text()
-            if path.name not in {"a3_admission.py", "waw_lifecycle.py"}:
+            if path.name not in {"a3_admission.py", "waw_lifecycle.py", "a3_native_transport.py"}:
                 assert "replace_content_selector_owner" not in path.read_text()
+    for name in ("a3_native_transport.py", "a3_native_relay.py", "a3_observation.py"):
+        source = (root / "apps/api/src/agentbox_api" / name).read_text()
+        for forbidden in (
+            "agentbox_runtime",
+            "a3_crypto",
+            "A3Runtime",
+            "prepare_pages",
+            "decode_message",
+            "git_staged_selectors",
+            "private_bytes",
+            "subprocess",
+        ):
+            assert forbidden not in source
+    main = (root / "apps/api/src/agentbox_api/main.py").read_text()
+    assert "a3_native_source: A3NativeSource | None = None" in main
+    assert "app = create_app(_installed_settings)" in main
+    assert "if native_a3_handler is None:" in main
+    for directory in ("installer/src", "helper/src", "apps/worker/src"):
+        for path in (root / directory).rglob("*.py"):
+            assert "a3_native" not in path.read_text()
     for path in (root / "apps/web/src").rglob("*"):
         if path.suffix not in {".ts", ".tsx"} or "content" in path.parts:
             continue

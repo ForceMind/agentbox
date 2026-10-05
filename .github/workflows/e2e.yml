@@ -31,7 +31,7 @@ jobs:
       - name: Install Chinese glyphs for actual rendering evidence
         run: |
           sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk
+          sudo apt-get install -y fonts-noto-cjk libnss3-tools
           fc-match -f '%{family}\n' 'sans-serif:lang=zh-cn' | grep --fixed-strings 'Noto Sans CJK'
       - run: pnpm --filter @agentbox/web exec playwright install chromium
       - run: pnpm e2e
@@ -40,6 +40,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: a3-changes-rendering
-          path: apps/web/test-results/a3-changes-*.png
+          path: |
+            apps/web/test-results/a3-changes-*.png
+            apps/web/test-results/a3-native-changes-*.png
           if-no-files-found: error
           retention-days: 7

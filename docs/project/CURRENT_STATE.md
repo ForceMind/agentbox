@@ -1,12 +1,209 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-04T16:41:00Z"
-verified_by: "agentbox-changes-a3-reader"
+verified_at_utc: "2026-10-05T13:36:00Z"
+verified_by: "agentbox-a3-native-changes"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-05 PR #144 第七轮：六套 CI 首次全绿，像素收尾
+
+head `f67b93dfa0678ee0f04ea187a91d9a8cddb35c07`，tree
+`dc5a7665ab2e97c8ac5126bc9941a5922be27af0` 的 Security、Frontend、Backend、
+Deployment、Release Candidate、E2E 六套首次 workflow 均 SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37315024413) 三版本各
+5276 passed/88 skipped，14项真实 separate-process native 场景全通过。
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37315024259) 为212 passed/
+30 prescribed skipped/0 failed/0 flaky；新增52项正式 App desktop/phone native
+场景全通过。212含16项纯 Node cleanup/counter 测试，不能全称浏览器测试。
+
+该结果验证最小 guard 排序修正后的真实链；受控双 loop 同条件旧逻辑8ms三次
+失败、新逻辑8/10ms三次通过的 red/green 证据仍保留。没有延长产品 deadline、
+原始 selector expiry 或缓存正向授权，也未靠旧 head 重跑取绿。
+
+artifact `11347219368` 的 ZIP SHA256 已核验为
+`15b68f796cd93320a0459a218179a9a3709b47b215cc0fb221d9f6bf90a93fac`。
+四张原始 PNG 已打开：中文、完整补丁与 inert text 清楚，页面无水平溢出；
+full-page 截图却保留键盘聚焦后的滚动位置，使固定导航出现在图中部，且 phone
+刷新按钮沿用旧页面的换行问题。当前仅修复按钮不换行、截图前回到顶部并断言
+位置；最后候选仍需自己的六套 CI 与实际 PNG 复核，不提前记像素 PASS。
+
+PR #144 仍 Draft；main 仍为 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`。
+通过最终像素复核后正常 Ready/merge，read-back parents/tree，再等 exact-main
+六套 CI。下方六轮失败及本地环境限制全部保留。软件资格不包含生产 key/pin、
+installer/listener 激活、真实 host/physical client/CLI 或发布。
+
+## 2026-10-05 PR #144 第六轮 CI：guard 排程复现与最小去重候选
+
+head `07bc1b673992024d3d08f831c56903f3a897f036`，tree
+`f5b64d79209ea8df9aed85fd4941cdae111f6918` 的五套非 E2E workflow SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37308011282) 三版本各
+5261 passed/88 skipped，native14全通过。[E2E](https://github.com/ForceMind/agentbox/actions/runs/37308011439)
+为185 passed/30 prescribed skipped/27 failed。固定计数表明 READY、Git read、
+nonce burn 已完成；多数失败还已发 INIT/CONFIRM/READ、消费3–6条 opaque records
+并收到多次 fresh currentness reply，随后关闭。不是 bootstrap 未启动的旧问题。
+
+两个独立 event loop 的受控 socketpair 复现已确认 guard 排程成本：24KiB读取
+约500次CURRENT RPC；仅给各回复增加8ms时，LIVE在首PAGE阶段排队耗尽250ms；
+9/10ms时更早失败。同一 event loop 测试会掩盖该排程问题。
+
+经独立排序审查，当前只在两个产品文件去掉更早的重复检查：私有 wait 的就绪
+结果仍由 syscall caller 做最后完整fresh guard；公开readable接口保留返回前
+完整guard。serve wrapper依赖profile既有前后admitted.context复验，不再额外
+先查一次。所有actual-write、idle、partial、after-decode、peer/expiry fences
+及250ms/1s/原始TTL均不变，无缓存授权。相同8/10ms双loop复现现可到完整END；
+最终本地A3合集428 passed，Ruff/Black403/mypy390、独立crypto/interop和
+source review均PASS；新实际CI仍需完成，不能提前称本次E2E已修复。前六轮
+失败保留。
+
+
+## 2026-10-05 PR #144 第五轮 CI：完整主例通过，仍有失败与不稳定结果
+
+诊断 head `e9bee683da60ebaceb5b2ee7a35e03b3bc315af3`，tree
+`6192d162bc71978143c05becf4e00d5ed3861339` 的五套非 E2E workflow SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37304874938) 三版本仍为
+5261 passed/88 skipped，全部14项 native 场景通过。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37304874934) 为205 passed/
+30 prescribed skipped/2 failed/5 flaky。desktop/phone正常主例均已走完实际
+Git→独立 API/Runtime→完整 END→DOM；但仅诊断变动不能称作修复。desktop
+bootstrap rotation 的前置 patch 未出现、phone tampered-END 状态仍失败，另5项
+需重试才通过；该 head 仍不具备合并或截图资格。8项新 counter runner 只是纯
+Node 测试，不计作 browser 验收。
+
+由于首个主例这次成功，首例专用诊断未输出。当前仅将原固定计数移到本 spec
+的 unexpected-attempt afterEach，保持已有 schema、原错误、timeout 与 cleanup。
+既有 bundle RLock 的真实数据库双线程对照还排除了裸 adapter 的重叠观察假设；
+未据此修改产品。继续依据实际失败计数定位，不重跑旧 head 碰绿，不放宽断言。
+前五轮失败与 flaky 事实保留；PR #144 仍 Draft。
+
+
+## 2026-10-05 PR #144 第四轮 CI：真实 browser 已启动，读取尚未完成
+
+head `5cc923d97334dcb6702d3e6020d18c39fa610a47`，tree
+`27575e3408cd1d6c4ebcc58abed628c999b0fe9c` 的五套非 E2E workflow SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37300295937) 三个 Python
+版本各5261 passed/88 skipped，全部14项 native separate-process 场景继续通过。
+API import 配置修复已使真实数字 UID、HTTPS 与正式 App 浏览器流程启动。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37300295948) 为174 passed/
+30 prescribed skipped/30 failed。新增52项通过22项（独立 bootstrap 拒绝与
+binary/oversize/sensitive 状态）；其余30项共同依赖的正常读取未到完整 patch/END，
+后续显示撤销前置条件因此未满足。正常内容与像素资格仍未通过，不能把22项
+拒绝场景成功改称完整 reader 成功。
+
+完整真实 WebCrypto/controller/native factory 的本地网络 stub 在递增时钟和
+5/25/75/125ms 单 writer/ACK/heartbeat 排程下均完成 END；Runtime socketpair
+交错 LIVE/publication 也通过。这些阴性复现不能替代实际 transport 证据。当前
+仅添加失败时的固定有界帧/owner计数，定位真实链首个失败；不记录正文、context、
+nonce、selector、key 或异常原文，不放宽 deadline/断言。诊断不是修复声明。
+前四轮失败保留；PR #144 继续 Draft，真实完整读取与截图核验仍待完成。
+
+
+## 2026-10-05 PR #144 第三轮 CI：native 全通过，隔离 API 初始化待修
+
+head `33d34817f60931af8ad6ab637faac60864ded1a5`，tree
+`2195b026d6dd2b596b207d2dce729f6856da69af` 的 Backend、Frontend、Security、
+Deployment、Release Candidate 五套 SUCCESS。[Backend](https://github.com/ForceMind/agentbox/actions/runs/37297380826)
+的 Python3.11/3.12/3.13 各5259 passed/88 skipped；三个版本均通过全部14项新增
+真实 native separate-process 场景，包括完整 Git→END、revoke 与原始 expiry。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37297380712) 仍为152 passed/
+30 prescribed skipped/52 failed；新增浏览器场景共同错误已缩小为 API child
+初始化中的 `PermissionError`，尚未获得 browser 或像素资格。fixture 在自身
+TEST配置之前导入 `agentbox_api.main`；该模块 import-time 的默认 app 会访问
+checkout 的 development data 目录。修复只将 child 的已有 synthetic TEST 配置
+提前绑定到其私有临时目录，不放宽 checkout/UID 权限或更改产品 main。
+
+本 head 本地 A3 unit matrix411 passed；Ruff、Black402、mypy389、Web1480+6及
+五门 PASS，独立 source review PASS。前三轮失败保留；当前 PR 仍 Draft，新的
+exact-head 全部 CI 和真实中文 desktop/phone pixels 仍是退出条件。
+
+
+## 2026-10-05 PR #144 第二轮 CI：12/14 native 用例通过
+
+测试修复 head `2dd83b45be8cf18e76046c128b588ebe734352fe`，tree
+`4af7f9d16753fc13e6695c530b8236b13f0e9782` 的六套 CI 均已终态：Security、
+Frontend、Deployment、Release Candidate SUCCESS；Backend、E2E FAILURE。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37293090283) 三个 Python
+版本各5223 passed/88 skipped/2 failed；新增14个 native 场景已通过12个，包括
+实际独立 Runtime/API、Git staged patch、crypto v2 与完整 END。剩余两项属于
+测试工具：revoke 写入 naive datetime 不符合 UTC6DateTime，及 test WebSocket
+client 未处理服务器正常20秒 PING。修复采用既有 transaction_now，并在原有绝对
+deadline 内严格处理有限 RFC6455 controls；不延长 selector expiry 或弱化断言。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37293090286) 为152 passed/
+30 prescribed skipped/52 failed。152包含旧144项和8项纯 Node cleanup 回归，
+不能当作新增 browser 通过。清理错误已修复，52项现暴露共同原始错误
+`process-start:RuntimeError`；数字 UID child 启动原因仍需有界 probe 证实。
+当前仅完善测试启动诊断和读取受限时的 fixture 自有只读源码副本，保留已修复
+的 setup primary error。仅测试 start 控制等待改为45秒，容纳最多四次各5秒
+的源码探针；未改变生产代码、UID 隔离、TLS/crypto 或产品 deadline。
+截图上传仍 SKIPPED；真实 Chromium formal-route desktop/phone 与像素资格仍待
+新 exact-head CI。PR #144 保持 Draft；前两轮失败均保留。
+
+
+## 2026-10-05 PR #144 首轮 CI 与测试边界修复
+
+首个 head `d05068d7c067e8a1a08eb64edcd413e6e2f315c7`，tree
+`bbf9e1cdaa98339b35c55e2f7b811e1933c6e6ff`，已发布为 Draft
+[#144](https://github.com/ForceMind/agentbox/pull/144)。Security、Frontend、Deployment、
+Release Candidate 首轮 SUCCESS。Backend 三个 Python 版本各5193 passed/88 skipped/
+11 failed；[Backend](https://github.com/ForceMind/agentbox/actions/runs/37288879743)
+的11项新增完整读取均在 INIT 后等待 ATTEST 时 EOF。测试客户端错误使用裸
+SHA256(selector)，遗漏协议既有 domain 前缀；Runtime 正确拒绝错 context。
+修复仅调用正式 selector_commitment helper，并补完整握手/裸 hash 拒绝对照。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37288879748) 首轮144 passed/
+30 prescribed skipped/52 failed；新增52个 formal-route desktop/phone场景都被
+fixture 清理 numeric-UID/root-owned 临时目录的 EACCES 覆盖，原始 setup/test
+错误不可见，不能推断那些场景已通过。截图上传 SKIPPED，仍无本候选像素资格。
+修复仅在 CI supervisor 持有的目录描述符范围清理自己的临时子树，先确认 child
+退出，再确认 cleanup；Node保留原始错误和独立 cleanup 失败，并只记录固定
+stage/role/type。独立审查还要求 setup 中途失败时保留 partial child custody。
+
+上述首轮失败保留；没有放宽 Runtime/crypto/UID/TLS/原始 expiry、超时或断言，
+没有重跑旧 head 冒充修复。新候选仍须全量 exact-head CI、真实跨进程/browser/
+权限及截图证据，之后才能按正常流程审阅合并。
+
+
+## 2026-10-05 PR #143 已闭环；native A3 合同审查中
+
+PR [#143](https://github.com/ForceMind/agentbox/pull/143) 已正常合并。
+最终 head `ad9d199c3ca08661cfb8171e1a782060cc694534` 的六套 workflow
+均 SUCCESS（24 jobs SUCCESS、2 项历史 rc8 SKIPPED）；main 显式 fetch/read-back
+为 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`，tree
+`ec1ca86988ea4e84e7aa1d818e5d85a4b967cf08` 与 head 完全一致。
+parents 为 `b7dd51d3288022f12604656515aafe7e11a00d3e` 和上述 head。
+
+exact-main 六套首次 workflow 均 terminal SUCCESS（23 jobs SUCCESS、3 SKIPPED：
+push 的 dependency-review 与两项历史 rc8）。[Backend](https://github.com/ForceMind/agentbox/actions/runs/37267834425)
+三个 Python 版本各 5119 passed/88 skipped；[E2E](https://github.com/ForceMind/agentbox/actions/runs/37267834421)
+144 passed/30 prescribed skipped，包括新增28个desktop/phone场景。
+最终 head 已补齐 CJK 字体并完成实际截图复核；同 tree 的 main 截图 artifact 已核验
+摘要，但没有重复进行像素复核。下方旧 CI 失败、teardown race 与缺字事实作为历史
+保留，不能再将旧 head 的待补状态当作当前未完成门槛。
+
+当前独立 branch `codex/a3-native-changes` 从该 main 接续
+[A3 native transport 合同](../WORKBENCH_A3_NATIVE_TRANSPORT.md)：正式 App factory、
+独立 A3 HTTPS bootstrap consumer、分离 API/Runtime 的 bounded metadata/opaque UDS。
+合同已独立审查冻结，源代码已实现并完成独立 source review；跨进程 currentness、
+最终 publication/END 与显示生命周期保持分层。新批次尚未运行 exact-head CI。
+无生产 key loader/pin enrollment、installer 开关、真实 host listener/账号或发布。
+未配置安装仍 unavailable；真实 host/physical client/CLI 验收仍 NOT RUN。
+
+本候选本地 evidence：受影响 Python matrix 294 passed；Web 全量1480 tests 与
+extension6 tests、lint/format/typecheck/build PASS，最后恢复文案20项回归 PASS。
+独立 A3 crypto vector、codec/crypto/Changes interop 与 bridge isolation PASS。
+新增14个 separate-process native tests 因此 executor 禁止 AF_UNIX 创建而 SKIPPED，
+同一临时测试通过 sandbox escalation 后仍受限；CI 遇此限制必须 FAIL。新增52个
+正式 App desktop/phone browser cases 仅 collect，实际浏览器/像素尚未运行。
+全量本地 pytest 曾出现 UDS/host 限制，并因共享 /tmp ENOSPC 在约40%处异常终止，
+exit1，不能记 PASS。空间恢复后使用 workspace TMPDIR 重跑受影响 matrix；旧全量
+失败记录保留，新 exact-head 六套 CI、实际权限/UDS/browser pixels 仍是退出条件。
+
 
 ## 2026-10-04 DOM 已通过，CJK 截图资格待补
 

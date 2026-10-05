@@ -25,6 +25,7 @@ import { ProjectChangesPage } from './pages/ProjectChangesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { useWorkspaceController } from './features/workspace/useWorkspaceController'
+import { useNativeA3Changes } from './features/content/useNativeA3Changes'
 import { currentLocale, formatMessage } from './i18n'
 
 function WorkspaceRoute() {
@@ -49,6 +50,12 @@ function WorkspaceScreen(props: {
 }) {
   const model = useWorkspaceController(props)
   return <WorkspacePage model={model} />
+}
+
+function ProjectChangesRoute() {
+  const { projectId } = useParams<{ projectId: string }>()
+  const dependencies = useNativeA3Changes(projectId)
+  return <ProjectChangesPage a3Dependencies={dependencies} />
 }
 
 function RootRedirect() {
@@ -96,7 +103,7 @@ export function App() {
                 path="/projects/:projectId"
               />
               <Route
-                element={<ProjectChangesPage />}
+                element={<ProjectChangesRoute />}
                 path="/projects/:projectId/changes"
               />
               <Route element={<DoctorPage />} path="/doctor" />
