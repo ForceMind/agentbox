@@ -81,6 +81,13 @@ test('native Git → authenticated bootstrap → actual crypto → inert complet
     expect(overflow).toBe(false)
     // Explicit synthetic Changes-only screenshots; global screenshots/traces stay off.
     await mkdir(resolve('test-results'), { recursive: true })
+    await page.evaluate(() =>
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' }),
+    )
+    await expect
+      .poll(() => page.evaluate(() => [window.scrollX, window.scrollY]))
+      .toEqual([0, 0])
+    await expect(patch).toBeFocused()
     await page.screenshot({
       path: resolve('test-results', `a3-changes-${testInfo.project.name}.png`),
       fullPage: true,

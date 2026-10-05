@@ -1,12 +1,39 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T12:56:00Z"
+verified_at_utc: "2026-10-05T13:36:00Z"
 verified_by: "agentbox-a3-native-changes"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-05 PR #144 第七轮：六套 CI 首次全绿，像素收尾
+
+head `f67b93dfa0678ee0f04ea187a91d9a8cddb35c07`，tree
+`dc5a7665ab2e97c8ac5126bc9941a5922be27af0` 的 Security、Frontend、Backend、
+Deployment、Release Candidate、E2E 六套首次 workflow 均 SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37315024413) 三版本各
+5276 passed/88 skipped，14项真实 separate-process native 场景全通过。
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37315024259) 为212 passed/
+30 prescribed skipped/0 failed/0 flaky；新增52项正式 App desktop/phone native
+场景全通过。212含16项纯 Node cleanup/counter 测试，不能全称浏览器测试。
+
+该结果验证最小 guard 排序修正后的真实链；受控双 loop 同条件旧逻辑8ms三次
+失败、新逻辑8/10ms三次通过的 red/green 证据仍保留。没有延长产品 deadline、
+原始 selector expiry 或缓存正向授权，也未靠旧 head 重跑取绿。
+
+artifact `11347219368` 的 ZIP SHA256 已核验为
+`15b68f796cd93320a0459a218179a9a3709b47b215cc0fb221d9f6bf90a93fac`。
+四张原始 PNG 已打开：中文、完整补丁与 inert text 清楚，页面无水平溢出；
+full-page 截图却保留键盘聚焦后的滚动位置，使固定导航出现在图中部，且 phone
+刷新按钮沿用旧页面的换行问题。当前仅修复按钮不换行、截图前回到顶部并断言
+位置；最后候选仍需自己的六套 CI 与实际 PNG 复核，不提前记像素 PASS。
+
+PR #144 仍 Draft；main 仍为 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`。
+通过最终像素复核后正常 Ready/merge，read-back parents/tree，再等 exact-main
+六套 CI。下方六轮失败及本地环境限制全部保留。软件资格不包含生产 key/pin、
+installer/listener 激活、真实 host/physical client/CLI 或发布。
 
 ## 2026-10-05 PR #144 第六轮 CI：guard 排程复现与最小去重候选
 

@@ -1,6 +1,6 @@
 # AgentBox 开发交接 — 2026-10-02
 
-## 2026-10-05 PR #143 已闭环；native A3 待 CI 资格
+## 2026-10-05 PR #143 已闭环；native A3 六套 CI 全绿、像素收尾
 
 PR [#143](https://github.com/ForceMind/agentbox/pull/143) 已正常合并。
 最终 head `ad9d199c3ca08661cfb8171e1a782060cc694534` 的六套 workflow
@@ -21,22 +21,25 @@ push 的 dependency-review 与两项历史 rc8）。[Backend](https://github.com
 [A3 native transport 合同](../WORKBENCH_A3_NATIVE_TRANSPORT.md)：正式 App factory、
 独立 A3 HTTPS bootstrap consumer、分离 API/Runtime 的 bounded metadata/opaque UDS。
 合同已独立审查冻结，源代码已实现并完成独立 source review；跨进程 currentness、
-最终 publication/END 与显示生命周期保持分层。新批次第六轮五套非E2E workflow通过；三个Python版本仍通过全部14个native
-场景，E2E仍27 failed。双loop已复现重复guard使250ms command排队超时，
-当前经审查的最小去重保留最后fresh fences与全部期限；新CI/像素资格待验证。完整
-完整失败证据见 [Current state](CURRENT_STATE.md) 的 PR #144 记录。
+最终 publication/END 与显示生命周期保持分层。第七轮 head
+`f67b93dfa0678ee0f04ea187a91d9a8cddb35c07` 六套 CI 首次全绿；Backend 三版本各
+5276 passed/88 skipped，14项真实 native 全通过；E2E212 passed/30 prescribed
+skipped/0 failed/0 flaky，新增52项正式 App desktop/phone 全通过（212还包括
+16项纯 Node checks）。[Current state](CURRENT_STATE.md) 保留六轮失败、真实
+原因与双 loop 同条件 red/green，不用已排除的裸 adapter 竞态假设解释 CI。
+
+原始 artifact 摘要已核验并打开四张 PNG，发现 full-page 截图滚动位置及 phone
+刷新按钮换行问题；仅进行小幅视觉/截图收尾，最终候选的 exact-head CI 与像素
+复核尚待完成。PR #144 仍 Draft，main 仍为上述 #143 merge。通过后按正常
+Ready/merge、parents/tree read-back 与 exact-main 六套 CI 闭环。
 无生产 key loader/pin enrollment、installer 开关、真实 host listener/账号或发布。
 未配置安装仍 unavailable；真实 host/physical client/CLI 验收仍 NOT RUN。
 
-本候选本地 evidence：受影响 Python matrix 294 passed；Web 全量1480 tests 与
-extension6 tests、lint/format/typecheck/build PASS，最后恢复文案20项回归 PASS。
-独立 A3 crypto vector、codec/crypto/Changes interop 与 bridge isolation PASS。
-新增14个 separate-process native tests 因此 executor 禁止 AF_UNIX 创建而 SKIPPED，
-同一临时测试通过 sandbox escalation 后仍受限；CI 遇此限制必须 FAIL。新增52个
-正式 App desktop/phone browser cases 仅 collect，实际浏览器/像素尚未运行。
-全量本地 pytest 曾出现 UDS/host 限制，并因共享 /tmp ENOSPC 在约40%处异常终止，
-exit1，不能记 PASS。空间恢复后使用 workspace TMPDIR 重跑受影响 matrix；旧全量
-失败记录保留，新 exact-head 六套 CI、实际权限/UDS/browser pixels 仍是退出条件。
+本地最终 A3 matrix428 passed，Web1480 tests 与 extension6 tests、正常质量门禁、
+独立 crypto/interop 与 source review PASS。此 executor 的 AF_UNIX 创建限制与
+旧全量 pytest 因共享 /tmp ENOSPC 终止仍是失败历史，不能改记本地全量 PASS；
+真实 numeric-UID、UDS、HTTPS 与浏览器资格来自上述 CI，不来自本地跳过项。
+
 
 
 ## 2026-10-04 continuation verification

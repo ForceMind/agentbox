@@ -123,6 +123,13 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
   await patch(native).focus()
   await expect(patch(native)).toBeFocused()
   await mkdir(resolve('test-results'), { recursive: true })
+  await native.page.evaluate(() =>
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' }),
+  )
+  await expect
+    .poll(() => native.page.evaluate(() => [window.scrollX, window.scrollY]))
+    .toEqual([0, 0])
+  await expect(patch(native)).toBeFocused()
   await native.page.screenshot({
     path: resolve(
       'test-results',

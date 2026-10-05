@@ -2,7 +2,8 @@
 
 Status: accepted bounded software contract, 2026-10-05. Independent contract
 review and parent software-design approval precede implementation; implementation
-evidence is still pending. Baseline #143 merge
+source review and exact-head cross-process/browser CI have passed at f67b93d;
+final visual correction and merge read-back remain pending. Baseline #143 merge
 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`, tree
 `ec1ca86988ea4e84e7aa1d818e5d85a4b967cf08`.
 
@@ -425,3 +426,24 @@ Final local A3 matrix:428 passed; Ruff, Black403, mypy390, independent crypto/
 interop and source review pass. The committed latency regression uses8ms for
 CI scheduling margin (old logic failed three times);10ms pressure evidence is
 retained separately, with three repeated8/10ms runs passing and no retries.
+
+## Seventh exact-head CI passed; screenshot finishing — 2026-10-05
+
+Head `f67b93dfa0678ee0f04ea187a91d9a8cddb35c07`, tree
+`dc5a7665ab2e97c8ac5126bc9941a5922be27af0`, passed all six workflows on their
+first runs. Backend3.11/3.12/3.13 each reported5276 passed,88 skipped, including
+all14 actual native tests. E2E37315024259 reported212 passed,30 prescribed
+skipped,0 failed,0 flaky; all52 formal App native desktop/phone cases passed.
+Sixteen of212 passes are pure Node cleanup/counter tests, not browser cases.
+This confirms the real chain after the narrow ordering correction; the earlier
+failures and same-condition old-red/new-green latency evidence remain above.
+
+Artifact11347219368 ZIP SHA256 is
+`15b68f796cd93320a0459a218179a9a3709b47b215cc0fb221d9f6bf90a93fac`.
+All four original PNGs were opened. Chinese glyphs and complete inert patch text
+are readable without page-level horizontal overflow, but focused content left
+fixed navigation midway through full-page captures, and the preexisting mobile
+refresh button wraps. The final visual-only correction prevents button wrapping
+and explicitly restores/asserts top scroll before capture. Its own exact-head CI
+and actual PNG review are still required before normal merge/main read-back.
+No security contract, timeout, fixture isolation or content assertion is relaxed.
