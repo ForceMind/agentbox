@@ -20,6 +20,10 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});
   page.on('pageerror', e=>errors.push(e.message));
   page.on('request', req=>requests.push(req.url()));
+  for (const route of ['overview','workspace']) {
+    await page.goto(`${url}#${route}`);
+    await page.screenshot({path:path.join(output,`desktop-${route}.png`),fullPage:true});
+  }
   const routes = ['overview','attention','projects','project','workspace','changes','files','artifacts','approval','agents','settings','onboarding','system','map'];
   for(const width of [1440,1024,768,390,360]) {
     await page.setViewportSize({width,height:width<800?844:1000});
