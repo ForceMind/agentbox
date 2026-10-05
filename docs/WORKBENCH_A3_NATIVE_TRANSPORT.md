@@ -311,3 +311,20 @@ process tests are explicitly skipped locally because AF_UNIX creation remains
 denied even after authorized escalation; that condition fails in CI. Fifty-two
 new formal-route browser cases were collected, not executed locally. Exact-head
 CI, real isolated native/static permissions and browser pixels remain pending.
+
+## First exact-head CI, retained failure — 2026-10-05
+
+PR #144 head `d05068d7c067e8a1a08eb64edcd413e6e2f315c7` passed Security,
+Frontend, Deployment and Release Candidate. Backend 3.11/3.12/3.13 each reported
+5193 passed,88 skipped,11 failed. Its test-only client omitted SELECTOR_DOMAIN
+when computing the commitment; Runtime correctly refused the mismatched INIT.
+The fix uses the unchanged protocol helper and adds positive/negative regression.
+
+E2E reported144 passed,30 prescribed skipped,52 failed. All new formal-route
+errors were masked by a numeric-UID/root-owned fixture-directory cleanup EACCES;
+this does not establish that preceding browser work passed. Screenshot upload
+was skipped. The test harness fixes exact-owner/retained-dirfd cleanup after
+observed child termination, preserves primary errors, and emits only fixed
+stage/role/type diagnostics. Partial setup ownership must survive setup failure.
+No production behavior, trust/crypto/expiry rule or assertion is relaxed. New
+exact-head CI and real screenshot read-back remain required.

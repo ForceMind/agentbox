@@ -1,5 +1,29 @@
 # Current Authorized Action
 
+## 2026-10-05 PR #144 首轮 CI 与测试边界修复
+
+首个 head `d05068d7c067e8a1a08eb64edcd413e6e2f315c7`，tree
+`bbf9e1cdaa98339b35c55e2f7b811e1933c6e6ff`，已发布为 Draft
+[#144](https://github.com/ForceMind/agentbox/pull/144)。Security、Frontend、Deployment、
+Release Candidate 首轮 SUCCESS。Backend 三个 Python 版本各5193 passed/88 skipped/
+11 failed；[Backend](https://github.com/ForceMind/agentbox/actions/runs/37288879743)
+的11项新增完整读取均在 INIT 后等待 ATTEST 时 EOF。测试客户端错误使用裸
+SHA256(selector)，遗漏协议既有 domain 前缀；Runtime 正确拒绝错 context。
+修复仅调用正式 selector_commitment helper，并补完整握手/裸 hash 拒绝对照。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37288879748) 首轮144 passed/
+30 prescribed skipped/52 failed；新增52个 formal-route desktop/phone场景都被
+fixture 清理 numeric-UID/root-owned 临时目录的 EACCES 覆盖，原始 setup/test
+错误不可见，不能推断那些场景已通过。截图上传 SKIPPED，仍无本候选像素资格。
+修复仅在 CI supervisor 持有的目录描述符范围清理自己的临时子树，先确认 child
+退出，再确认 cleanup；Node保留原始错误和独立 cleanup 失败，并只记录固定
+stage/role/type。独立审查还要求 setup 中途失败时保留 partial child custody。
+
+上述首轮失败保留；没有放宽 Runtime/crypto/UID/TLS/原始 expiry、超时或断言，
+没有重跑旧 head 冒充修复。新候选仍须全量 exact-head CI、真实跨进程/browser/
+权限及截图证据，之后才能按正常流程审阅合并。
+
+
 ## 2026-10-05 PR #143 已闭环；native A3 合同审查中
 
 PR [#143](https://github.com/ForceMind/agentbox/pull/143) 已正常合并。

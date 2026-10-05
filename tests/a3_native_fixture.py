@@ -13,8 +13,10 @@ import contextlib
 import json
 import os
 import select
+import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -50,6 +52,152 @@ def _read() -> dict[str, Any]:
     return value
 
 
+class FixtureChildError(RuntimeError):
+    """Value-free child phase/type diagnostic, never exception values or wire data."""
+
+    def __init__(self, role: str, phase: str, code: object) -> None:
+        allowed = {
+            "AssertionError",
+            "AttributeError",
+            "BrokenPipeError",
+            "ChildProcessError",
+            "ConnectionError",
+            "ContentError",
+            "EOFError",
+            "FileNotFoundError",
+            "ImportError",
+            "KeyError",
+            "ModuleNotFoundError",
+            "OSError",
+            "PermissionError",
+            "RuntimeError",
+            "TimeoutError",
+            "TypeError",
+            "ValueError",
+        }
+        self.role = role if role in {"api", "runtime"} else "child"
+        self.phase = phase if phase in {"spawn", "control"} else "control"
+        self.code = code if type(code) is str and code in allowed else "ChildError"
+        super().__init__(f"{self.role}:{self.phase}:{self.code}")
+
+
+def fixture_error_diagnostic(error: BaseException) -> dict[str, object]:
+    """Keep a grouped setup failure's primary type without exposing values."""
+    diagnostic: dict[str, object] = {"code": type(error).__name__}
+    primary = error
+    for _ in range(8):
+        if not isinstance(primary, BaseExceptionGroup):
+            break
+        diagnostic["cleanup_failed"] = True
+        primary = primary.exceptions[0]
+    if primary is not error:
+        diagnostic["primary_code"] = type(primary).__name__
+    if isinstance(primary, FixtureChildError):
+        diagnostic.update(role=primary.role, phase=primary.phase, child_code=primary.code)
+    return diagnostic
+
+
+class FixtureDirectory:
+    """Supervisor-owned cleanup capability for one existing test directory.
+
+    The only recursive target is its fixed ``processes`` child. Retained directory
+    descriptors and shutil's fd-relative symlink-safe removal prevent a changed
+    pathname or child symlink from expanding this already authorized cleanup.
+    Node continues to own browser/static artifacts and removes those afterwards.
+    """
+
+    def __init__(self, root: Path, static: Path) -> None:
+        if not root.is_absolute() or root.resolve(strict=True) != root:
+            raise ValueError("fixture directory must be an exact absolute path")
+        if not root.name.startswith("a3n-") or static != root / "static":
+            raise ValueError("fixture directory scope mismatch")
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise RuntimeError("fd-relative fixture cleanup unavailable")
+        self._fds: list[int] = []
+        self._closed = False
+        self._failure: BaseException | None = None
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+        try:
+            self._root = os.open(root, flags | os.O_DIRECTORY)
+            self._fds.append(self._root)
+            self._static = os.open("static", flags | os.O_DIRECTORY, dir_fd=self._root)
+            self._fds.append(self._static)
+            self._index = os.open("index.html", flags | os.O_NONBLOCK, dir_fd=self._static)
+            self._fds.append(self._index)
+            self._index_owner = os.fstat(self._index)
+            if not stat.S_ISREG(self._index_owner.st_mode) or self._index_owner.st_nlink != 1:
+                raise ValueError("fixture index must be a unique regular file")
+            self._owner = os.fstat(self._static)
+        except BaseException:
+            self._release()
+            raise
+
+    def isolate_static(self) -> None:
+        if os.geteuid() != 0:
+            raise PermissionError("CI isolation root missing")
+        os.fchown(self._index, 0, 0)
+        os.fchown(self._static, 0, 0)
+
+    def _release(self) -> None:
+        descriptors, self._fds = self._fds, []
+        failures: list[Exception] = []
+        for fd in reversed(descriptors):
+            try:
+                os.close(fd)
+            except Exception as error:
+                failures.append(error)
+        self._closed = True
+        if failures:
+            raise ExceptionGroup("fixture descriptor retirement failed", failures)
+
+    def close(self, fixture: A3NativeFixture | None) -> None:
+        if self._closed:
+            if self._failure is not None:
+                raise self._failure
+            return
+        errors: list[Exception] = []
+        failure: BaseException | None = None
+        try:
+            if fixture is not None:
+                try:
+                    fixture.close()
+                except Exception as error:
+                    errors.append(error)
+                if any(
+                    child and child.process.poll() is None
+                    for child in (fixture.api, fixture.runtime)
+                ):
+                    raise RuntimeError("fixture children still live; filesystem cleanup refused")
+            try:
+                shutil.rmtree("processes", dir_fd=self._root)
+            except FileNotFoundError:
+                pass
+            except Exception as error:
+                errors.append(error)
+            try:
+                if os.geteuid() == 0:
+                    os.fchown(self._index, self._index_owner.st_uid, self._index_owner.st_gid)
+                    os.fchown(self._static, self._owner.st_uid, self._owner.st_gid)
+                os.fchmod(self._static, 0o755)
+            except Exception as error:
+                errors.append(error)
+            if errors:
+                raise ExceptionGroup("fixture supervisor cleanup failed", errors)
+        except BaseException as error:
+            failure = error
+        try:
+            self._release()
+        except BaseException as error:
+            failure = (
+                error
+                if failure is None
+                else BaseExceptionGroup("fixture cleanup and retirement failed", [failure, error])
+            )
+        self._failure = failure
+        if failure is not None:
+            raise failure
+
+
 class _Child:
     def __init__(self, role: str, uid: int | None, gid: int | None) -> None:
         environment = {
@@ -60,18 +208,22 @@ class _Child:
         environment.update(
             {"HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
         )
-        self.process = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), role],
-            cwd=REPOSITORY,
-            env=environment,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            user=uid,
-            group=gid,
-            extra_groups=[] if uid is not None else None,
-        )
+        self.role = role
         self._lock = threading.Lock()
+        try:
+            self.process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), role],
+                cwd=REPOSITORY,
+                env=environment,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                user=uid,
+                group=gid,
+                extra_groups=[] if uid is not None else None,
+            )
+        except OSError as error:
+            raise FixtureChildError(role, "spawn", type(error).__name__) from None
 
     def call(self, value: dict[str, Any], timeout: float = 10) -> Any:
         with self._lock:
@@ -88,7 +240,7 @@ class _Child:
                 raise RuntimeError("fixture child exited")
             result = json.loads(line)
             if "error" in result:
-                raise RuntimeError("fixture child failed: " + result["error"])
+                raise FixtureChildError(self.role, "control", result["error"])
             return result
 
     def close(self) -> None:
@@ -119,7 +271,13 @@ class A3NativeFixture:
     """Supervisor only; never imported into either product API or Runtime."""
 
     def __init__(
-        self, root: Path, *, origin: str, static_root: Path, isolated: bool = False
+        self,
+        root: Path,
+        *,
+        origin: str,
+        static_root: Path,
+        isolated: bool = False,
+        retain: Callable[[A3NativeFixture], None] | None = None,
     ) -> None:
         if isolated and os.geteuid() != 0:
             raise PermissionError("numeric UID isolation requires the CI root supervisor")
@@ -128,6 +286,10 @@ class A3NativeFixture:
         self.root, self.isolated = root, isolated
         self.api: _Child | None = None
         self.runtime: _Child | None = None
+        # The supervisor retains this exact owner BEFORE any child is spawned.
+        # A raising constructor must not hide a partially initialized live child.
+        if retain is not None:
+            retain(self)
         uid_api, uid_runtime = (61131, 61132) if isolated else (os.getuid(), os.getuid())
         gid_api, gid_runtime = (61131, 61132) if isolated else (os.getgid(), os.getgid())
         for name, uid, gid, mode in (
@@ -185,8 +347,13 @@ class A3NativeFixture:
                 "isolated": isolated,
                 **api,
             }
-        except BaseException:
-            self.close()
+        except BaseException as primary:
+            try:
+                self.close()
+            except BaseException as cleanup:
+                raise BaseExceptionGroup(
+                    "fixture setup and cleanup failed", [primary, cleanup]
+                ) from None
             raise
 
     def call(self, op: str, payload: dict[str, Any] | None = None) -> Any:

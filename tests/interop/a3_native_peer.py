@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from a3_native_fixture import A3NativeFixture  # noqa: E402
+from a3_native_fixture import (  # noqa: E402
+    A3NativeFixture,
+    FixtureDirectory,
+    fixture_error_diagnostic,
+)
 
 
 def emit(value: object) -> None:
@@ -19,16 +22,24 @@ def emit(value: object) -> None:
 
 def main() -> None:
     fixture: A3NativeFixture | None = None
-    static: Path | None = None
-    owner: tuple[int, int] | None = None
+    directory: FixtureDirectory | None = None
+
+    def retain(owner: A3NativeFixture) -> None:
+        nonlocal fixture
+        fixture = owner
+
     try:
         for line in sys.stdin.buffer:
             if len(line) > 65536:
                 raise ValueError("fixture request exceeded limit")
             request: dict[str, Any] = json.loads(line)
             op = request["op"]
+            stage = "control"
             try:
                 if op == "start":
+                    stage = "static-directory"
+                    if directory is not None:
+                        raise ValueError("fixture may only start once")
                     import ipaddress
 
                     from cryptography import x509
@@ -38,13 +49,11 @@ def main() -> None:
 
                     root = Path(request["root"])
                     static = Path(request["static_root"])
-                    owner = (static.stat().st_uid, static.stat().st_gid)
+                    directory = FixtureDirectory(root, static)
                     isolated = request["isolated"]
                     if isolated:
-                        if os.geteuid() != 0:
-                            raise PermissionError("CI isolation root missing")
-                        for path in (static / "index.html", static):
-                            os.chown(path, 0, 0)
+                        directory.isolate_static()
+                    stage = "certificate"
                     now = datetime.now(UTC)
                     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
                     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "A3 CI loopback")])
@@ -66,11 +75,13 @@ def main() -> None:
                     )
                     # Disposable HTTPS TEST key is confined to supervisor/static server.
                     # It is unrelated to the A3 key and never enters API/Runtime.
+                    stage = "process-start"
                     fixture = A3NativeFixture(
                         root / "processes",
                         origin=request["origin"],
                         static_root=static,
                         isolated=isolated,
+                        retain=retain,
                     )
                     result: Any = {
                         "api_origin": fixture.api_origin,
@@ -85,10 +96,15 @@ def main() -> None:
                         ).decode(),
                     }
                 elif op == "close":
-                    if fixture:
+                    stage = "supervisor-cleanup"
+                    if directory:
+                        directory.close(fixture)
+                    elif fixture:
                         fixture.close()
-                        fixture = None
-                    emit({"id": request["id"], "ok": True, "result": {}})
+                    fixture = None
+                    # Acknowledge only after child exit and privileged filesystem
+                    # cleanup have both completed; Node never deletes UID-owned data.
+                    emit({"id": request["id"], "ok": True, "result": {"cleaned": True}})
                     break
                 else:
                     if fixture is None:
@@ -97,14 +113,13 @@ def main() -> None:
                 emit({"id": request["id"], "ok": True, "result": result})
             except Exception as error:
                 # Fixed type only; never exception values, raw records or credentials.
-                emit({"id": request["id"], "ok": False, "code": type(error).__name__})
+                diagnostic = fixture_error_diagnostic(error)
+                emit({"id": request["id"], "ok": False, "stage": stage, **diagnostic})
     finally:
-        if fixture:
+        if directory:
+            directory.close(fixture)
+        elif fixture:
             fixture.close()
-        if static and owner and os.geteuid() == 0:
-            for path in (static / "index.html", static):
-                os.chown(path, *owner)
-            static.chmod(0o755)
 
 
 if __name__ == "__main__":

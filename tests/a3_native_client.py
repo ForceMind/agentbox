@@ -13,7 +13,12 @@ from urllib.parse import urlsplit
 
 import httpx
 from a3_native_fixture import PASSWORD, PIN, PROJECT_ID, USERNAME, A3NativeFixture
-from agentbox_protocol.a3_content import context_digest, encode_message, validate_context
+from agentbox_protocol.a3_content import (
+    context_digest,
+    encode_message,
+    selector_commitment,
+    validate_context,
+)
 from agentbox_protocol.a3_crypto import A3Browser
 
 
@@ -57,7 +62,7 @@ class NativeBrowser:
                 **facts,
                 "protocol_id": "agentbox-a3-content/v1",
                 "protocol_version": 1,
-                "selector_commitment": hashlib.sha256(self.selection.encode("ascii")).hexdigest(),
+                "selector_commitment": selector_commitment(self.selection),
                 "side": "staged",
                 "request_nonce": self.nonce,
             }

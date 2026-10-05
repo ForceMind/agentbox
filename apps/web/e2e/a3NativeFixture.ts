@@ -17,6 +17,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, type BrowserContext, type TestInfo } from '@playwright/test'
 
+import { preserveFixtureFailure, runFixtureCleanup } from './a3FixtureCleanup'
+
 const root = resolve(import.meta.dirname, '../../..')
 const bootstrapPath = '/.well-known/agentbox/a3-bootstrap.v1.json'
 const build = 'd'.repeat(64)
@@ -39,7 +41,18 @@ type Started = {
   tls_key: string
   proof: Record<string, unknown>
 }
-type Reply = { id: number; ok: boolean; code?: string; result: unknown }
+type Reply = {
+  id: number
+  ok: boolean
+  code?: string
+  stage?: string
+  role?: string
+  phase?: string
+  child_code?: string
+  primary_code?: string
+  cleanup_failed?: boolean
+  result: unknown
+}
 
 export async function startA3NativeFixture(testInfo: TestInfo) {
   const temporary = await mkdtemp(join(tmpdir(), 'a3n-'))
@@ -106,14 +119,21 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
   let next = 0
   let buffered = ''
   let exited = false
+  let controlClosed = false
   const rejectAll = () => {
-    exited = true
+    controlClosed = true
     for (const item of Array.from(pending.values()))
       item.reject(new Error('native fixture exited'))
     pending.clear()
   }
   child.on('error', rejectAll)
-  child.on('exit', rejectAll)
+  child.on('exit', () => {
+    exited = true
+  })
+  // Drain stdout before rejecting pending controls: the final cleanup ACK may
+  // already be in the pipe when the process exit notification arrives.
+  child.on('close', rejectAll)
+  child.stdin.on('error', rejectAll)
   child.stdout.on('data', (chunk: Buffer) => {
     buffered += chunk.toString('utf8')
     if (buffered.length > 65536) {
@@ -131,7 +151,12 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
         if (!item) throw new Error('unknown fixture response')
         pending.delete(reply.id)
         if (reply.ok) item.resolve(reply.result)
-        else item.reject(new Error(`native fixture ${reply.code ?? 'failed'}`))
+        else
+          item.reject(
+            new Error(
+              `native fixture ${[reply.stage, reply.role, reply.phase, reply.child_code, reply.primary_code, reply.code, reply.cleanup_failed ? 'cleanup-failed' : undefined].filter(Boolean).join(':') || 'failed'}`,
+            ),
+          )
       } catch {
         child.kill()
         rejectAll()
@@ -139,7 +164,7 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
     }
   })
   const call = (op: string, payload: Record<string, unknown> = {}) => {
-    if (exited || pending.size >= 4)
+    if (controlClosed || exited || pending.size >= 4)
       return Promise.reject(new Error('native fixture unavailable'))
     const id = ++next
     return new Promise<unknown>((resolveCall, rejectCall) => {
@@ -163,29 +188,51 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
   let context: BrowserContext | undefined
   let server: ReturnType<typeof createServer> | undefined
   const sockets = new Set<import('node:stream').Duplex>()
-  const close = async () => {
-    let cleanupError: unknown
-    await context?.close()
-    for (const socket of Array.from(sockets)) socket.destroy()
-    if (server)
-      await new Promise<void>((resolveClose) =>
-        server!.close(() => resolveClose()),
-      )
-    await call('close').catch((error: unknown) => {
-      cleanupError = error
-    })
-    child.stdin.end()
-    if (!exited)
-      await Promise.race([
-        once(child, 'exit'),
-        new Promise<void>((done) => setTimeout(done, 3000)),
-      ])
-    if (!exited) child.kill()
-    await chmod(staticRoot, 0o755).catch(() => undefined)
-    await rm(temporary, { recursive: true, force: true })
-    if (cleanupError) throw cleanupError
+  let closing: Promise<void> | undefined
+  const close = () => {
+    if (closing) return closing
+    let supervisorClean = false
+    closing = runFixtureCleanup([
+      async () => {
+        await context?.close()
+      },
+      async () => {
+        for (const socket of Array.from(sockets)) socket.destroy()
+        if (server)
+          await new Promise<void>((resolveClose) =>
+            server!.close(() => resolveClose()),
+          )
+      },
+      async () => {
+        const result = (await call('close')) as { cleaned?: boolean }
+        if (result.cleaned !== true)
+          throw new Error('supervisor cleanup was not confirmed')
+        supervisorClean = true
+      },
+      async () => {
+        child.stdin.end()
+        if (!exited)
+          await Promise.race([
+            once(child, 'exit'),
+            new Promise<void>((done) => setTimeout(done, 3000)),
+          ])
+        if (!exited) {
+          child.kill()
+          throw new Error(
+            'native fixture supervisor did not exit after cleanup',
+          )
+        }
+      },
+      async () => {
+        // The privileged owner removed its fixed processes subtree already.
+        // Do not attempt unprivileged recursive cleanup after an unconfirmed ACK.
+        if (supervisorClean)
+          await rm(temporary, { recursive: true, force: true })
+      },
+    ])
+    return closing
   }
-  try {
+  return preserveFixtureFailure(async () => {
     const started = (await call('start', {
       root: temporary,
       static_root: staticRoot,
@@ -383,8 +430,5 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
         mode = value
       },
     }
-  } catch (error) {
-    await close()
-    throw error
-  }
+  }, close)
 }
