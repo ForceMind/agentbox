@@ -13,14 +13,14 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from agentbox_core import a3_native_io as io
 from agentbox_core.a3_native_io import NativeChannel, deadline_after
 from agentbox_core.services import ControlPlaneServices
 from agentbox_protocol.a3_admission import A3CurrentAdmission
-from agentbox_protocol.a3_content import ContentError, context_digest, encode_message
+from agentbox_protocol.a3_content import ERROR_CODES, ContentError, context_digest, encode_message
 from agentbox_protocol.a3_crypto import A3Browser
 from agentbox_protocol.a3_transport import (
     NativeKind,
@@ -334,6 +334,47 @@ class Client:
         }
         self.bundle = owner.reserve().accept(*(pair[1] for pair in sockets))
         self.thread: threading.Thread | None = None
+        self.currentness_failures: list[tuple[str, str, int, int]] | None = None
+        self.currentness_calls = 0
+
+    def diagnose_currentness_failures(self) -> None:
+        """Opt-in, failure-only fixture evidence; never change the native outcome."""
+        self.currentness_failures = []
+        # The guard-budget companion wraps the same real reservation on another loop.
+        bundle = cast(Any, getattr(self.bundle, "actual", self.bundle))
+        current = bundle.current
+
+        def diagnosed_current() -> A3CurrentAdmission:
+            self.currentness_calls = min(self.currentness_calls + 1, 65535)
+            try:
+                return cast(A3CurrentAdmission, current())
+            except Exception as error:
+                with contextlib.suppress(Exception):
+                    self.record_currentness_failure("runtime-currentness", error)
+                raise
+
+        bundle.current = diagnosed_current
+
+    def record_currentness_failure(
+        self, phase: Literal["runtime-currentness", "fixture-checker"], error: Exception
+    ) -> None:
+        failures = self.currentness_failures
+        if failures is None or len(failures) >= 4:
+            return
+        reason = "unexpected-error"
+        if type(error) is ContentError and len(error.args) == 1:
+            code = error.args[0]
+            if type(code) is str and code in ERROR_CODES:
+                reason = code
+        elif type(error) is AssertionError:
+            reason = "assertion-error"
+        elif isinstance(error, OSError):
+            reason = "os-error"
+        failures.append((phase, reason, min(self.calls, 65535), self.currentness_calls))
+
+    def add_currentness_failure_note(self, error: Exception) -> None:
+        with contextlib.suppress(Exception):
+            error.add_note(f"Native fixture currentness failures: {self.currentness_failures!r}")
 
     async def start(self, *, mixed: bool = False) -> None:
         digest = facts_digest(self.facts)
@@ -368,7 +409,9 @@ class Client:
                     {**data, "current": self.live},
                     deadline_ns=deadline_after(0.25),
                 )
-        except Exception:
+        except Exception as error:
+            with contextlib.suppress(Exception):
+                self.record_currentness_failure("fixture-checker", error)
             channel.close()
 
     async def rpc(
@@ -387,6 +430,57 @@ class Client:
         if self.thread is not None:
             self.thread.join(timeout=1)
             assert not self.thread.is_alive()
+
+
+def test_fixture_currentness_diagnostics_are_bounded_and_value_free() -> None:
+    client = Client.__new__(Client)
+    client.calls, client.currentness_calls = 70000, 65535
+    client.currentness_failures = []
+    for error in (
+        ContentError("PATCH_TIMEOUT"),
+        ContentError("secret-canary-not-a-fixed-code"),
+        AssertionError("secret-canary-assertion"),
+        OSError("secret-canary-path"),
+        RuntimeError("secret-canary-discarded"),
+    ):
+        client.record_currentness_failure("fixture-checker", error)
+    assert client.currentness_failures == [
+        ("fixture-checker", "PATCH_TIMEOUT", 65535, 65535),
+        ("fixture-checker", "unexpected-error", 65535, 65535),
+        ("fixture-checker", "assertion-error", 65535, 65535),
+        ("fixture-checker", "os-error", 65535, 65535),
+    ]
+    original = ContentError("PATCH_REVOKED")
+    client.add_currentness_failure_note(original)
+    assert "secret-canary" not in repr(original.__notes__)
+
+
+def test_fixture_diagnostic_failure_preserves_original_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = ContentError("PATCH_TIMEOUT")
+
+    class Bundle:
+        def current(self) -> A3CurrentAdmission:
+            raise original
+
+    def broken(*_args: object) -> None:
+        raise RuntimeError("diagnostic failure must not replace the original")
+
+    client = Client.__new__(Client)
+    client.calls, client.currentness_calls = 7, 0
+    client.bundle = cast(Any, Bundle())
+    client.diagnose_currentness_failures()
+    monkeypatch.setattr(client, "record_currentness_failure", broken)
+    monkeypatch.setattr(original, "add_note", broken)
+    with pytest.raises(ContentError) as raised:
+        try:
+            client.bundle.current()
+        except ContentError as error:
+            client.add_currentness_failure_note(error)
+            raise
+    assert raised.value is original
+    assert client.currentness_calls == 1
 
 
 @pytest.mark.anyio
@@ -449,6 +543,7 @@ async def test_native_records_hold_admission_through_publication_complete_and_re
         )
         await observer.close()
         client = Client(owner, facts)
+        client.diagnose_currentness_failures()
         await client.start()
         await client.rpc(
             NativeKind.OPEN,
@@ -456,7 +551,11 @@ async def test_native_records_hold_admission_through_publication_complete_and_re
             NativeKind.OWNED,
         )
         opaque = client.channels["opaque"]
-        await opaque.areceive(frozenset({NativeKind.READY}), deadline_ns=deadline_after(5))
+        try:
+            await opaque.areceive(frozenset({NativeKind.READY}), deadline_ns=deadline_after(5))
+        except ContentError as error:
+            client.add_currentness_failure_note(error)
+            raise
         assert owner.selectors._active == 1
         live = {"observation_sequence": 0, "challenge": "7" * 32}
         assert await client.rpc(NativeKind.LIVE, live, NativeKind.LIVE_REPLY) == live

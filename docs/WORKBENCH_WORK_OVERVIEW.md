@@ -96,3 +96,25 @@ currentness fail-closed 产生同一表象，但原 CI 未记录底层关闭原�
 样式断言失败。鼠标登录后直接 programmatic focus 不保证 :focus-visible，
 新测试改为真实 Tab 到刷新按钮、确认 focus-visible 和前后样式差异再 Enter，
 不删除视觉/键盘断言、不通过额外CSS掩盖。完整新 exact-head CI/像素仍待验。
+
+
+### 第二轮实际结果与有界诊断候选
+
+head `09e3142b145e30d60c9342f2100d6c80682824be` 的五套workflow通过，
+正式App/API桌面手机E2E为232 passed/30 prescribed skipped/0failed/0flaky，
+8项新概览用例全部通过。六张新PNG已实际打开并独立功能像素PASS；ZIP
+artifact11363160449摘要为
+`7398c39a542659861914df6f1fcae9c9f250c2544dee08ceed4cdba5aa9c058c`。
+手机长页、中文标题偏右与密集ID属新整体设计的改造对象，不把功能像素PASS
+当作美观认可。本卡不再增加UI功能或布局选择。
+
+Backend第二轮仍仅3.13同一READY用例失败；原日志保留。实际本地3.13.5
+目标和native66项通过，完整原序前缀677项通过但3项socket权限失败/相关
+native被skip；require_escalated复验另有平台bwrap挂载错误，未绕过。
+因此本地不能视作等价CI3.13.15。此次仅在原测试driver中加入显式opt-in
+诊断：固定runtime-currentness/fixture-checker phase，固定A3 error code
+或固定unknown分类，最多4条、两个计数封顶65535。仅失败时给原异常加note；
+诊断自身失败不替换原异常。产品、操作顺序、250ms/1s/5s预算和原断言不变。
+人工延迟实验仍为原READY EOF失败，附带PATCH_TIMEOUT/5/5诊断；两项新
+安全回归与原native/guard共69项在3.12和3.13.5均通过。新真实CI采证尚待完成，
+不得将这份可观测性补丁称为根因修复。

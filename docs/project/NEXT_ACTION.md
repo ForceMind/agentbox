@@ -1,6 +1,31 @@
 # Current Authorized Action
 
 
+## 2026-10-05 工作概览浏览器/像素通过；native3.13 CI 关闭原因诊断
+
+[PR #147](https://github.com/ForceMind/agentbox/pull/147) 保持 Draft，main仍为
+`a1cab129f18ede5b982b6ab53d037c51771b4dea`。当前已推 head
+`09e3142b145e30d60c9342f2100d6c80682824be` / tree
+`806123f6fdd11d4ced2b5e4f542eed9a0573e194` 的 Frontend、Security、Deployment、
+Release Candidate、E2E 五套成功。[实际 E2E](https://github.com/ForceMind/agentbox/actions/runs/37350114064)
+232 passed/30 prescribed skipped/0 failed/0 flaky（含8项新概览正式App/API
+桌面手机双语言、既有64项native；232中16项仍为pureNode）。6张概览原PNG
+实际打开且独立功能像素PASS，artifact11363160449 ZIP摘要
+`7398c39a542659861914df6f1fcae9c9f250c2544dee08ceed4cdba5aa9c058c`。
+这不是对整体美观的认可；新的全量UI设计另线讨论，本卡不加布局/功能。
+
+两轮 Backend 都仅Python3.13在未改动的 native READY测试遇到PATCH_REVOKED；
+3.11/3.12与native job通过。历史原因未知；受控300ms CURRENT_REPLY延迟
+能复现250ms fail-closed表象，但不是原CI因果证明。本地3.13.5原序前缀受
+AF_UNIX平台阻碍，不能替代CI3.13.15。没有改产品预算/断言或重跑旧头。
+本候选仅为该测试加入显式opt-in、最多4条固定phase/reason及封顶计数的
+failure-only诊断，并保留原异常；不记录正文/凭据/路径，不称为修复。
+新增诊断安全测试后3.12/3.13.5各69项通过，完整新head CI仍待采证。
+详见[有界合同与失败记录](../WORKBENCH_WORK_OVERVIEW.md)。
+
+尚未Ready/merge，主干与生产均未改动；无生产key/pin、host/账号或发布。
+下方pending/失败均保留为当时快照，不能覆盖本节较新的实际结果。
+
 ## 2026-10-05 A2 / WEV-2 工作概览候选
 
 当前独立 branch `codex/a2-work-overview-20261005` 从已闭环 main
