@@ -63,6 +63,31 @@ try {
   await page.getByLabel('发送示例消息').click();
   assert.equal(await page.locator('.message.user').last().locator('img').count(),0);
   results.push({check:'long-input-inert-text',pass:true});
+  await page.getByLabel('补充下一步要求（仅设计演示）').fill('保留未发送草稿');
+  await page.getByRole('button',{name:'文件',exact:true}).click();
+  assert.equal(await page.getByLabel('补充下一步要求（仅设计演示）').inputValue(),'保留未发送草稿');
+  assert((await page.locator('.message.user').last().innerText()).includes('<img src=x onerror=alert(1)>'));
+  await page.getByRole('button',{name:'切换浅色',exact:true}).click();
+  assert.equal(await page.getByLabel('补充下一步要求（仅设计演示）').inputValue(),'保留未发送草稿');
+  results.push({check:'draft-and-message-preserved-on-pane-and-theme',pass:true});
+  await page.getByLabel('切换示例数据状态').selectOption('stale');
+  assert.equal(await page.locator('.diff').count(),0);
+  assert(await page.getByLabel('发送示例消息').isDisabled());
+  assert.equal(await page.getByLabel('补充下一步要求（仅设计演示）').inputValue(),'');
+  assert.equal(await page.locator('.message').count(),0);
+  results.push({check:'workspace-stale-clears-content-draft-and-actions',pass:true});
+  await page.goto(`${url}#approval`);
+  await page.getByLabel('切换示例数据状态').selectOption('stale');
+  assert.equal(await page.getByRole('button',{name:'仅允许这次',exact:true}).count(),0);
+  results.push({check:'approval-stale-removes-decision-controls',pass:true});
+  for(const route of ['projects','project','attention']){
+    await page.goto(`${url}#${route}`);
+    await page.getByLabel('切换示例数据状态').selectOption('permission');
+    assert.equal(await page.locator('#project-search').count(),0);
+    assert.equal(await page.locator('.badge.green').count(),0);
+    assert.equal(await page.locator('.count').count(),0);
+    results.push({check:'nonready-removes-stale-metadata-and-search',route,pass:true});
+  }
   await page.goto(`${url}#projects`);
   await page.getByRole('textbox',{name:'搜索项目',exact:true}).fill('not-present');
   assert.equal(await page.locator('[data-project-name]:visible').count(),0);
@@ -92,19 +117,26 @@ try {
   await page.reload();
   for(const route of ['overview','workspace','changes','approval','onboarding']){
     await page.goto(`${url}#${route}`);
-    await page.screenshot({path:path.join(output,`phone-${route}.png`),fullPage:true});
+    await page.screenshot({path:path.join(output,`phone-${route}.png`),fullPage:false});
+    await page.screenshot({path:path.join(output,`phone-${route}-full.png`),fullPage:true});
     if(route==='workspace'){
       await page.getByRole('button',{name:'查看变化 / 文件',exact:true}).click();
       assert(await page.locator('.inspection').isVisible());
       assert(!await page.locator('.conversation').isVisible());
-      await page.screenshot({path:path.join(output,'phone-workspace-inspection.png'),fullPage:true});
+      await page.screenshot({path:path.join(output,'phone-workspace-inspection.png'),fullPage:false});
       await page.getByRole('button',{name:'返回对话',exact:true}).click();
       assert(await page.locator('.conversation').isVisible());
       results.push({check:'mobile-pane-switch',pass:true});
       await page.getByLabel('补充下一步要求（仅设计演示）').focus();
       await page.setViewportSize({width:390,height:500});
-      assert(await page.getByLabel('发送示例消息').isVisible());
-      await page.screenshot({path:path.join(output,'phone-keyboard-viewport.png'),fullPage:true});
+      await page.getByLabel('补充下一步要求（仅设计演示）').fill('窄高视口发送测试');
+      const send = page.getByLabel('发送示例消息');
+      const hit = await send.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))});
+      assert(hit,'Composer send button is covered in reduced mobile viewport');
+      await send.click();
+      assert((await page.locator('.message.user').last().innerText()).includes('窄高视口发送测试'));
+      assert(await send.isVisible());
+      await page.screenshot({path:path.join(output,'phone-keyboard-viewport.png'),fullPage:false});
       await page.setViewportSize({width:390,height:844});
       results.push({check:'reduced-mobile-viewport-composer',pass:true,note:'Viewport simulation, not a real software keyboard'});
     }
@@ -115,6 +147,12 @@ try {
   assert(!await page.locator('.main').evaluate(el=>el.inert));
   assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('aria-label')),'打开导航');
   results.push({check:'mobile-drawer-escape-and-focus',pass:true});
+  await page.goto(`${url}#overview`);
+  await page.getByRole('button',{name:'打开导航',exact:true}).click();
+  await page.locator('.sidebar.open a[href="#overview"]').first().click();
+  assert.equal(await page.locator('.sidebar.open').count(),0);
+  assert(!await page.locator('.main').evaluate(el=>el.inert));
+  results.push({check:'mobile-current-route-closes-drawer',pass:true});
   assert.equal(errors.length,0,JSON.stringify(errors));
   assert(requests.every(u=>u.startsWith(url)),'Unexpected external request');
   const report={prototype:true,baseline:'a1cab129f18ede5b982b6ab53d037c51771b4dea',checks:results.length,results,errors,externalRequests:requests.filter(u=>!u.startsWith(url)),notes:['No production app or backend exercised','No real host, credentials, API, CLI or authority claims','Screenshots use synthetic design content','Chinese-only prototype; English adaptation remains a migration requirement']};
