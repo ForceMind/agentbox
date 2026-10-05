@@ -42,6 +42,9 @@ try {
   }
   await page.goto(`${url}#workspace`);
   await page.getByRole('button',{name:'切换深色',exact:true}).click();
+  assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).color),'rgb(238, 238, 231)');
+  assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(32, 35, 32)');
+  results.push({check:'dark-theme-inherited-text-and-page-background',pass:true});
   await page.screenshot({path:path.join(output,'desktop-workspace-dark.png'),fullPage:true});
   await page.getByRole('button',{name:'停止',exact:true}).click();
   assert(await page.locator('dialog').evaluate(el=>el.open));
