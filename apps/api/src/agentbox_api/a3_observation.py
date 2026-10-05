@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Annotated, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Annotated, Literal, Protocol, cast
 
 from agentbox_core.errors import RuntimeGatewayError
 from agentbox_core.services import ControlPlaneServices
@@ -20,6 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agentbox_api.a3_admission import A3SessionCurrentness
 from agentbox_api.auth import SESSION_COOKIE, _validate_origin, authenticate_request
+
+if TYPE_CHECKING:
+    from agentbox_api.a3_native_transport import A3NativeSource
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 _PROJECT = re.compile(r"prj_[0-9a-f]{32}\Z")
@@ -94,15 +97,21 @@ async def observe_staged(
     if _PROJECT.fullmatch(project_id) is None or request.query_params or await request.body():
         raise unavailable("PATCH_PROTOCOL_INVALID")
     source = cast(A3ObservationSource | None, request.app.state.a3_observation_source)
-    if source is None:
+    native = cast("A3NativeSource | None", request.app.state.a3_native_source)
+    if source is None and native is None:
         raise unavailable()
-    current = A3SessionCurrentness(services, authenticated, runtime_epoch=source.runtime_epoch)
+    epoch = native.runtime_epoch if native is not None else source.runtime_epoch  # type: ignore[union-attr]
+    current = A3SessionCurrentness(services, authenticated, runtime_epoch=epoch)
     try:
         facts = current.current(project_id, current.session_scope)
         if facts is None:
             raise unavailable("PATCH_REVOKED")
         try:
-            metadata = await source.observe(facts)
+            metadata = (
+                await native.observe_current(facts, current)
+                if native is not None
+                else await source.observe(facts)  # type: ignore[union-attr]
+            )
         except Exception:
             # A broken port never reflects exception text or metadata.
             raise unavailable() from None

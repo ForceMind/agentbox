@@ -8,24 +8,25 @@ import { AuthContext } from '../auth/AuthContext'
 import { A3ChangesController } from './a3ChangesController'
 import type { A3ChangesDependencies } from './a3ChangesTrust'
 
-/** Production callers deliberately omit dependencies until a separately reviewed
- * A3 adapter AND independent A3 purpose pin are available. */
+/** Formal callers construct independent static trust plus native admission.
+ * Unconfigured pages and historical synthetic tests keep their separate paths. */
 export function useA3ChangesReader(
   projectId: string | undefined,
   dependencies?: A3ChangesDependencies,
 ) {
   const auth = useContext(AuthContext)
   const sessionId = auth?.auth?.session.id
+  const csrfToken = auth?.auth?.csrf_token
   const authenticated = auth?.status === 'authenticated' && Boolean(sessionId)
   const controller = useMemo(
     () =>
       new A3ChangesController(
         projectId ?? '',
-        authenticated && sessionId ? dependencies : undefined,
+        authenticated && sessionId && csrfToken ? dependencies : undefined,
       ),
     // Session identity is only a local fence; it never enters A3 context/transport.
-    // Auth epoch is independently checked and synchronously invalidated by trust.
-    [projectId, dependencies, authenticated, sessionId],
+    // Native auth epoch is independently checked by the live admitted channel.
+    [projectId, dependencies, authenticated, sessionId, csrfToken],
   )
   const state = useSyncExternalStore(
     controller.subscribe,

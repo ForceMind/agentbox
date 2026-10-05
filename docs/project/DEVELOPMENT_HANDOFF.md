@@ -1,5 +1,41 @@
 # AgentBox 开发交接 — 2026-10-02
 
+## 2026-10-05 PR #143 已闭环；native A3 合同审查中
+
+PR [#143](https://github.com/ForceMind/agentbox/pull/143) 已正常合并。
+最终 head `ad9d199c3ca08661cfb8171e1a782060cc694534` 的六套 workflow
+均 SUCCESS（24 jobs SUCCESS、2 项历史 rc8 SKIPPED）；main 显式 fetch/read-back
+为 `61a5efce6ab43754a2acdb313d5e21ee83f64c52`，tree
+`ec1ca86988ea4e84e7aa1d818e5d85a4b967cf08` 与 head 完全一致。
+parents 为 `b7dd51d3288022f12604656515aafe7e11a00d3e` 和上述 head。
+
+exact-main 六套首次 workflow 均 terminal SUCCESS（23 jobs SUCCESS、3 SKIPPED：
+push 的 dependency-review 与两项历史 rc8）。[Backend](https://github.com/ForceMind/agentbox/actions/runs/37267834425)
+三个 Python 版本各 5119 passed/88 skipped；[E2E](https://github.com/ForceMind/agentbox/actions/runs/37267834421)
+144 passed/30 prescribed skipped，包括新增28个desktop/phone场景。
+最终 head 已补齐 CJK 字体并完成实际截图复核；同 tree 的 main 截图 artifact 已核验
+摘要，但没有重复进行像素复核。下方旧 CI 失败、teardown race 与缺字事实作为历史
+保留，不能再将旧 head 的待补状态当作当前未完成门槛。
+
+当前独立 branch `codex/a3-native-changes` 从该 main 接续
+[A3 native transport 合同](../WORKBENCH_A3_NATIVE_TRANSPORT.md)：正式 App factory、
+独立 A3 HTTPS bootstrap consumer、分离 API/Runtime 的 bounded metadata/opaque UDS。
+合同已独立审查冻结，源代码已实现并完成独立 source review；跨进程 currentness、
+最终 publication/END 与显示生命周期保持分层。新批次尚未运行 exact-head CI。
+无生产 key loader/pin enrollment、installer 开关、真实 host listener/账号或发布。
+未配置安装仍 unavailable；真实 host/physical client/CLI 验收仍 NOT RUN。
+
+本候选本地 evidence：受影响 Python matrix 294 passed；Web 全量1480 tests 与
+extension6 tests、lint/format/typecheck/build PASS，最后恢复文案20项回归 PASS。
+独立 A3 crypto vector、codec/crypto/Changes interop 与 bridge isolation PASS。
+新增14个 separate-process native tests 因此 executor 禁止 AF_UNIX 创建而 SKIPPED，
+同一临时测试通过 sandbox escalation 后仍受限；CI 遇此限制必须 FAIL。新增52个
+正式 App desktop/phone browser cases 仅 collect，实际浏览器/像素尚未运行。
+全量本地 pytest 曾出现 UDS/host 限制，并因共享 /tmp ENOSPC 在约40%处异常终止，
+exit1，不能记 PASS。空间恢复后使用 workspace TMPDIR 重跑受影响 matrix；旧全量
+失败记录保留，新 exact-head 六套 CI、实际权限/UDS/browser pixels 仍是退出条件。
+
+
 ## 2026-10-04 continuation verification
 
 The Owner resumed AgentBox development in the current session. PR #136 head

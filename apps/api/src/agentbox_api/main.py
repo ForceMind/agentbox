@@ -37,6 +37,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
+from agentbox_api.a3_native_relay import A3NativeRelay
+from agentbox_api.a3_native_transport import A3NativeSource
 from agentbox_api.a3_observation import A3ObservationSource
 from agentbox_api.a3_observation import router as a3_observation_router
 from agentbox_api.auth import BoundedLoginExecutor
@@ -133,11 +135,16 @@ def create_app(
     waw_attachment_authority: AttachmentAuthority | None = None,
     waw_stream_handler: object | None = None,
     a3_observation_source: A3ObservationSource | None = None,
+    a3_native_source: A3NativeSource | None = None,
 ) -> FastAPI:
     """Build the API without applying schema migrations or system changes."""
     actual_settings = settings or Settings()
     if a3_observation_source is not None and actual_settings.env is not Environment.TEST:
         raise ValueError("A3 observation source is TEST-only; production remains unavailable")
+    if a3_native_source is not None and (
+        type(a3_native_source) is not A3NativeSource or a3_observation_source is not None
+    ):
+        raise TypeError("A3 requires one exact native composition")
     legacy_waw_components = (
         waw_bind_coordinator,
         waw_authorization_policy,
@@ -183,6 +190,8 @@ def create_app(
         raise ValueError("filesystem-v2 WAW requires production or a test-only owner")
     owns_services = services is None
     actual_services = services or build_services(actual_settings)
+    if a3_native_source is not None and a3_native_source.services is not actual_services:
+        raise ValueError("A3 must use this exact API service owner")
 
     def close_owned_services_after_factory_failure() -> BaseException | None:
         if not owns_services:
@@ -239,6 +248,11 @@ def create_app(
                 yield
             finally:
                 shutdown_failure: BaseException | None = None
+                if a3_native_source is not None:
+                    try:
+                        await a3_native_source.close()
+                    except BaseException as exc:
+                        shutdown_failure = exc
                 if actual_waw_application is not None:
                     try:
                         await actual_waw_application.close()
@@ -379,6 +393,10 @@ def create_app(
             return MetaResponse(version=__version__, environment=actual_settings.env.value)
 
         application.state.a3_observation_source = a3_observation_source
+        application.state.a3_native_source = a3_native_source
+        native_a3_handler = (
+            A3NativeRelay(a3_native_source, actual_settings) if a3_native_source else None
+        )
         application.include_router(a3_observation_router)
         application.include_router(auth_router)
         application.include_router(codex_router)
@@ -416,6 +434,14 @@ def create_app(
                 await websocket.close(code=1013)
                 return
             await handler(websocket)
+
+        @application.websocket("/api/v1/projects/{project_id}/git/staged-stream")
+        async def a3_stream(websocket: WebSocket, project_id: str) -> None:
+            del project_id
+            if native_a3_handler is None:
+                await websocket.close(code=1013)
+                return
+            await native_a3_handler(websocket)
 
         static_root = actual_settings.static_dir
         if static_root is not None:
