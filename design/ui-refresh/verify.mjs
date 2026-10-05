@@ -61,9 +61,9 @@ try {
   assert.equal(await page.locator('.message.user').last().locator('img').count(),0);
   results.push({check:'long-input-inert-text',pass:true});
   await page.goto(`${url}#projects`);
-  await page.getByLabel('搜索项目').fill('not-present');
+  await page.getByRole('textbox',{name:'搜索项目',exact:true}).fill('not-present');
   assert.equal(await page.locator('[data-project-name]:visible').count(),0);
-  await page.getByLabel('搜索项目').fill('AgentBox');
+  await page.getByRole('textbox',{name:'搜索项目',exact:true}).fill('AgentBox');
   assert.equal(await page.locator('[data-project-name]:visible').count(),1);
   results.push({check:'project-search',pass:true});
   await page.getByRole('button',{name:'添加项目',exact:true}).click();
@@ -85,6 +85,8 @@ try {
   assert.equal(await page.locator('.code-row').count(),18);
   results.push({check:'unified-raw-roundtrip',pass:true});
   await page.setViewportSize({width:390,height:844});
+  await page.goto(`${url}#overview`);
+  await page.reload();
   for(const route of ['overview','workspace','changes','approval','onboarding']){
     await page.goto(`${url}#${route}`);
     await page.screenshot({path:path.join(output,`phone-${route}.png`),fullPage:true});

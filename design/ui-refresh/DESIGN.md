@@ -47,7 +47,7 @@
 - 布局：桌面 212px 导航 + 灵活主体；常规内容 38px 内边距；工作台独立滚动并保留 composer；800px 以下单列、四项底部导航
 - 层级：页面 32px / 工作台 23px；区块17px；正文12–13px；元数据10–12px。正式实施继续验证用户字体缩放并提高需要持续阅读的最小字号
 - 字体：系统 sans + CJK fallback；技术标识/代码单独 monospace；不请求远程字体
-- 颜色：浅色 `#f6f5f1` / `#fffefa` / `#252825`；强调 `#d77836`；深色 `#202320` / `#272b27` / `#eeeee7`；提示用文本与图形而非仅颜色
+- 颜色：浅色 `#f6f5f1` / `#fffefa` / `#252825`；强调 `#a95020`；深色 `#202320` / `#272b27` / `#eeeee7`；提示用文本与图形而非仅颜色
 - 间距：4/8/12/16/20/24/32/40；面板12px、按钮7px、标签4px圆角；边框承担层次，避免大量投影
 - 组件：固定页面 shell、工作标签、panel/list-row、status badge、context heading、empty/error/loading、受控 disclosure、native dialog、command search、composer、文件树、统一 diff、approval scope
 - 输入：所有主操作可键盘访问；focus-visible 3px；modal Escape/取消/焦点返回；手机 drawer 约束焦点；窄屏主要触摸目标44px
