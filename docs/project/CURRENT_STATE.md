@@ -1,12 +1,34 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T10:51:00Z"
+verified_at_utc: "2026-10-05T11:34:00Z"
 verified_by: "agentbox-a3-native-changes"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-05 PR #144 第四轮 CI：真实 browser 已启动，读取尚未完成
+
+head `5cc923d97334dcb6702d3e6020d18c39fa610a47`，tree
+`27575e3408cd1d6c4ebcc58abed628c999b0fe9c` 的五套非 E2E workflow SUCCESS。
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/37300295937) 三个 Python
+版本各5261 passed/88 skipped，全部14项 native separate-process 场景继续通过。
+API import 配置修复已使真实数字 UID、HTTPS 与正式 App 浏览器流程启动。
+
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37300295948) 为174 passed/
+30 prescribed skipped/30 failed。新增52项通过22项（独立 bootstrap 拒绝与
+binary/oversize/sensitive 状态）；其余30项共同依赖的正常读取未到完整 patch/END，
+后续显示撤销前置条件因此未满足。正常内容与像素资格仍未通过，不能把22项
+拒绝场景成功改称完整 reader 成功。
+
+完整真实 WebCrypto/controller/native factory 的本地网络 stub 在递增时钟和
+5/25/75/125ms 单 writer/ACK/heartbeat 排程下均完成 END；Runtime socketpair
+交错 LIVE/publication 也通过。这些阴性复现不能替代实际 transport 证据。当前
+仅添加失败时的固定有界帧/owner计数，定位真实链首个失败；不记录正文、context、
+nonce、selector、key 或异常原文，不放宽 deadline/断言。诊断不是修复声明。
+前四轮失败保留；PR #144 继续 Draft，真实完整读取与截图核验仍待完成。
+
 
 ## 2026-10-05 PR #144 第三轮 CI：native 全通过，隔离 API 初始化待修
 

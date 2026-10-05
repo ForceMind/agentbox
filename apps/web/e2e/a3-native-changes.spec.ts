@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { expect, test as base } from '@playwright/test'
 import { startA3NativeFixture, type StaticMode } from './a3NativeFixture'
+import { a3FixtureStatusNumbers } from './a3NativeCounters'
 
 type Fixture = Awaited<ReturnType<typeof startA3NativeFixture>>
 const test = base.extend<{ native: Fixture }>({
@@ -73,7 +74,23 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
   expect((await status(native)).diff_count).toBe(0)
   await button(native).focus()
   await button(native).press('Enter')
-  await expect(patch(native)).toContainText('A3 native complete diff')
+  try {
+    await expect(patch(native)).toContainText('A3 native complete diff')
+  } catch (error) {
+    try {
+      const counters = native.socketCounters.snapshot()
+      let fixture = a3FixtureStatusNumbers(undefined)
+      try {
+        fixture = a3FixtureStatusNumbers(await native.call('runtime-status'))
+      } catch {
+        // Missing diagnostics are -1, never exception values or guessed counts.
+      }
+      console.info('A3_NATIVE_COUNTS ' + JSON.stringify({ counters, fixture }))
+    } catch {
+      // Even a diagnostic-output failure cannot replace the original assertion.
+    }
+    throw error
+  }
   await expect(patch(native)).toContainText(
     '<img src=x onerror=window.a3Executed=true>',
   )

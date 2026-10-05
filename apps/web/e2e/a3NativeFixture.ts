@@ -18,6 +18,7 @@ import { join, resolve } from 'node:path'
 import { chromium, type BrowserContext, type TestInfo } from '@playwright/test'
 
 import { preserveFixtureFailure, runFixtureCleanup } from './a3FixtureCleanup'
+import { A3NativeCounters } from './a3NativeCounters'
 
 const root = resolve(import.meta.dirname, '../../..')
 const bootstrapPath = '/.well-known/agentbox/a3-bootstrap.v1.json'
@@ -422,12 +423,36 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
       },
     )
     const page = context.pages()[0] ?? (await context.newPage())
+    const socketCounters = new A3NativeCounters()
+    const socketURL = `${origin.replace('https:', 'wss:')}/api/v1/projects/prj_${'a'.repeat(32)}/git/staged-stream`
+    page.on('websocket', (socket) => {
+      if (socket.url() !== socketURL) return
+      socketCounters.event('sockets_created')
+      let opened = false
+      const frame = (
+        direction: 'sent' | 'received',
+        payload: string | Buffer,
+      ) => {
+        // Playwright's websocket event means creation, not a completed upgrade.
+        // The first actual frame is our observational evidence of opening.
+        if (!opened) {
+          opened = true
+          socketCounters.event('sockets_opened')
+        }
+        socketCounters.frame(direction, payload)
+      }
+      socket.on('framesent', ({ payload }) => frame('sent', payload))
+      socket.on('framereceived', ({ payload }) => frame('received', payload))
+      socket.on('close', () => socketCounters.event('sockets_closed'))
+      socket.on('socketerror', () => socketCounters.event('socket_errors'))
+    })
     return {
       page,
       context,
       origin,
       call,
       counts,
+      socketCounters,
       proof: started.proof,
       close,
       setStaticMode(value: StaticMode) {

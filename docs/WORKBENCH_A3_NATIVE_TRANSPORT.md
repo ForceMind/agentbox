@@ -362,3 +362,19 @@ module before its explicit TEST configuration; that module constructs a default
 app at import and can touch checkout development data. The narrow fix configures
 the existing child-owned TEST paths before that import, preserving UID isolation
 and product behavior. No actual browser or screenshot success is inferred.
+
+## Fourth exact-head CI, actual browser runs; complete read still failing — 2026-10-05
+
+Head `5cc923d97334dcb6702d3e6020d18c39fa610a47` passed five non-E2E workflows.
+All three Python versions reported5261 passed,88 skipped; all14 native cases
+passed. Numeric-UID/HTTPS/formal App browser startup now succeeds. E2E reported
+174 passed,30 skipped,30 failed:22 of52 new cases pass bootstrap rejection and
+unavailable-content states, while normal complete reads do not reach END/DOM.
+Their dependent completed-display tests therefore cannot qualify.
+
+Real WebCrypto/controller with a single-writer network stub and interleaved
+Runtime socketpair LIVE/publication both pass; neither establishes the actual
+browser transport frontier. A test-only passive observer adds fixed bounded
+frame/owner counts on failure, without wire bytes, identifiers, secret fields or
+exception values. No timeout or assertion is relaxed, and this is diagnostic
+evidence only. Actual complete read and Chinese screenshot review remain pending.
