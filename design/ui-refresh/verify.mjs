@@ -76,6 +76,14 @@ try {
   assert.equal(await page.getByLabel('补充下一步要求（仅设计演示）').inputValue(),'');
   assert.equal(await page.locator('.message').count(),0);
   results.push({check:'workspace-stale-clears-content-draft-and-actions',pass:true});
+  await page.getByLabel('切换示例数据状态').selectOption('ready');
+  await page.getByLabel('补充下一步要求（仅设计演示）').fill('停止后不能恢复的草稿');
+  await page.getByRole('button',{name:'停止',exact:true}).click();
+  await page.getByRole('button',{name:'演示停止',exact:true}).click();
+  assert.equal(await page.getByLabel('补充下一步要求（仅设计演示）').inputValue(),'');
+  await page.getByLabel('切换示例数据状态').selectOption('ready');
+  assert.equal(await page.getByLabel('补充下一步要求（仅设计演示）').inputValue(),'');
+  results.push({check:'stop-demo-invalidates-draft-without-resurrection',pass:true});
   await page.goto(`${url}#approval`);
   await page.getByLabel('切换示例数据状态').selectOption('stale');
   assert.equal(await page.getByRole('button',{name:'仅允许这次',exact:true}).count(),0);
