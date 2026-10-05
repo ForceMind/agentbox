@@ -104,3 +104,31 @@ this software increment. No next feature starts as part of this card.
 Publication, six exact-head workflows, actual PNG review, merge/read-back and
 six exact-main workflows remain pending at commit time. Their results belong in
 PR evidence and the next ordinary snapshot; no perpetual docs-only CI loop.
+
+
+## First CI: successful tests, failed long-content pixels
+
+Head `a49230f574c8b71394b20c1a102015ad3b61b9ec` / tree
+`64ede3e2adae935fc5b6e7305e6f054c100b6125` has six first-attempt successful
+workflows; Backend each Python version reports 5284 passed / 88 skipped, with
+14 native process tests. E2E reports 224 passed / 30 prescribed skipped, no
+failures or flakes, including 64 formal native desktop/phone cases. Six PNGs
+were opened independently, and the pixel verdict is FAIL: the native main
+screenshots are 1280×7427 and 1073×65772, with huge blank tails beyond the card.
+The bounded internal scroll area cannot justify that page overflow.
+
+The absolute assistive labels have no positioned scroll ancestor, consistent
+with their wrapped-line static positions escaping to the root. This correction
+establishes the region as their containing block and adds a small note margin
+for focus-outline clearance. Browser assertions now bound document scrollHeight
+against the reader-card bottom plus normal page padding, across raw/unified,
+wrap, keyboard and screenshot paths. Read limits, source text, lifecycle and
+all previous assertions remain unchanged. New CI and actual pixels must verify
+the correction; old successful tests alone are insufficient. No merge occurred.
+
+First artifact 11353574147 ZIP SHA256:
+`b8b7523f33d6d49933f571ae7c5d399f9f65cc100470117932416da0a4a18980`.
+Failed desktop PNG SHA256:
+`07893476e09ffe497857ea0ef682255c2b2ef75dee7d2901beb831f01f84b5ff`;
+failed phone PNG SHA256:
+`fd485783aacb757a3624e8ab461271eda96c4c89ff5befa0d8781920b6b6ed7b`.

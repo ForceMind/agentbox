@@ -33,11 +33,14 @@
 }
 
 .diff-view-note {
+  margin: 0.5rem 0 0.65rem;
   color: var(--muted);
   font-size: 0.85rem;
 }
 
 .diff-region {
+  /* Keep offscreen assistive labels inside this bounded scroll owner. */
+  position: relative;
   padding: 0;
   white-space: normal;
 }

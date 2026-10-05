@@ -1,5 +1,28 @@
 # AgentBox Roadmap
 
+## 2026-10-05 PR #145 首轮 CI 全绿，长补丁纵向布局收尾
+
+head `a49230f574c8b71394b20c1a102015ad3b61b9ec`、tree
+`64ede3e2adae935fc5b6e7305e6f054c100b6125` 的六套首次 workflow 均
+SUCCESS；[Backend](https://github.com/ForceMind/agentbox/actions/runs/37328655732)
+三版本各5284 passed/88 skipped，14项真实 native process 通过；
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37328655879) 为
+224 passed/30 prescribed skipped/0 failed/0 flaky，包含64项正式 native
+桌面/手机场景。224中16项仍是纯Node checks，不全称浏览器用例。
+
+实际打开并独立复核全部6张 PNG 后，长内容主截图出现巨大页尾留白：desktop
+1280×7427，phone1073×65772；两张 multiple-hunks 图正常。首轮 pixel verdict
+为 FAIL，PR仍Draft且未合并。CSS 的 absolute 辅助标签缺少定位祖先与现象
+一致；本候选仅为滚动区域添加 position:relative、给说明文字增加焦点框间距，
+并补页面 scrollHeight 相对 reader 卡片底部的有界断言。现有横滚/键盘/生命周期
+断言不放宽。原因推断与新图通过仍须由新 exact-head CI/像素结果验证。
+
+首轮 artifact11353574147 ZIP SHA256 为
+`b8b7523f33d6d49933f571ae7c5d399f9f65cc100470117932416da0a4a18980`；
+旧图与失败事实保留。不得用首轮全绿替代修正候选、新图或 exact-main 资格。
+下节初始候选的 pending 描述是当时快照；本批权限/生产/host/发布边界不变。
+
+
 ## 2026-10-05 S02 / WS08 统一 diff 视图软件候选
 
 从已闭环 #144 的 main `3e313b36b7cfc7c1de1c54cc20164ae223fcd122`

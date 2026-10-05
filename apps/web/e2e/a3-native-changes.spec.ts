@@ -141,11 +141,28 @@ async function expectUnifiedRows(
   expect(rows).toEqual(expected)
 }
 async function expectNoPageOverflow(fixture: Fixture) {
+  const geometry = await fixture.page
+    .locator('#a3-changes-reader')
+    .evaluate((reader) => ({
+      pageWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      pageHeight: document.documentElement.scrollHeight,
+      // The reader is the last content section. Reserve bounded outer padding,
+      // never the full height of source rows inside its scrollable viewport.
+      maximumPageHeight: Math.max(
+        window.innerHeight,
+        reader.getBoundingClientRect().bottom + window.scrollY + 128,
+      ),
+    }))
+  expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1)
+  expect(geometry.pageHeight).toBeLessThanOrEqual(geometry.maximumPageHeight)
+}
+async function expectRegionalVerticalScroll(fixture: Fixture) {
   expect(
-    await fixture.page.evaluate(
-      () => document.documentElement.scrollWidth > window.innerWidth + 1,
+    await patch(fixture).evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
     ),
-  ).toBe(false)
+  ).toBe(true)
 }
 
 test('formal App login → independent HTTPS trust → separate native Runtime → complete inert Chinese Changes', async ({
@@ -196,6 +213,7 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
   })
   await expect(wrap).toBeChecked()
   await expectNoPageOverflow(native)
+  await expectRegionalVerticalScroll(native)
   const beforeViewSwitch = await status(native)
   // Original source is exact and complete, not table line numbers or a clipped preview.
   for (let iteration = 0; iteration < 3; iteration += 1) {
@@ -213,12 +231,14 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
       addedPatch('success.txt', successSource),
     )
     expect((await patch(native).textContent())!.length).toBeGreaterThan(24_000)
+    await expectNoPageOverflow(native)
     if (iteration === 0) {
       await viewButton(native, '统一视图').focus()
       await expect(viewButton(native, '统一视图')).toBeFocused()
       await viewButton(native, '统一视图').press('Space')
     } else await viewButton(native, '统一视图').click()
     await expect(unified(native)).toBeVisible()
+    await expectNoPageOverflow(native)
   }
   await wrap.focus()
   await expect(wrap).toBeFocused()
@@ -241,6 +261,7 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
   await wrap.press('Space')
   await expect(wrap).toBeChecked()
   await expectNoPageOverflow(native)
+  await expectRegionalVerticalScroll(native)
   expect(
     await patch(native).evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -267,6 +288,7 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
     .poll(() => native.page.evaluate(() => [window.scrollX, window.scrollY]))
     .toEqual([0, 0])
   await expect(patch(native)).toBeFocused()
+  await expectNoPageOverflow(native)
   await native.page.screenshot({
     path: resolve(
       'test-results',
@@ -405,8 +427,10 @@ for (const sample of structuredCases) {
     const beforeSwitch = await status(native)
     await viewButton(native, '原文').click()
     expect(await patch(native).textContent()).toBe(expected)
+    await expectNoPageOverflow(native)
     await viewButton(native, '统一视图').click()
     await expectUnifiedRows(native, sample.rows)
+    await expectNoPageOverflow(native)
     expect((await status(native)).diff_count).toBe(beforeSwitch.diff_count)
     expect(native.counts.observations).toBe(1)
     expect(native.counts.websockets).toBe(1)
@@ -424,6 +448,7 @@ for (const sample of structuredCases) {
         )
         .toEqual([0, 0])
       await expect(patch(native)).toBeFocused()
+      await expectNoPageOverflow(native)
       await native.page.screenshot({
         path: resolve(
           'test-results',
