@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pytest
+from a3_currentness_diagnostics import CurrentnessTiming
 from agentbox_core import a3_native_io as io
 from agentbox_core.a3_native_io import NATIVE_IO_DEADLINE, NativeChannel, deadline_after
 from agentbox_core.services import ControlPlaneServices
@@ -345,9 +346,17 @@ class Client:
         ) = None
         self._currentness_failure_lock = threading.Lock()
         self.currentness_calls = 0
+        self.currentness_timing: CurrentnessTiming | None = None
 
     def diagnose_currentness_failures(self) -> None:
         """Opt-in, failure-only fixture evidence; never change the native outcome."""
+        previous = getattr(self, "currentness_timing", None)
+        if previous is not None:
+            with contextlib.suppress(BaseException):
+                previous.start()
+            return
+        timing = CurrentnessTiming()
+        self.currentness_timing = timing
         self.currentness_failures = []
         # The guard-budget companion wraps the same real reservation on another loop.
         bundle = cast(Any, getattr(self.bundle, "actual", self.bundle))
@@ -358,7 +367,7 @@ class Client:
             try:
                 return cast(A3CurrentAdmission, current())
             except Exception as error:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(BaseException):
                     self.record_currentness_failure("runtime-currentness", error)
                 raise
 
@@ -369,12 +378,12 @@ class Client:
         ) -> Callable[..., Any]:
             def call(*args: Any, **kwargs: Any) -> Any:
                 entry: tuple[int, int | None] | None = None
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(BaseException):
                     entry = time.monotonic_ns(), NATIVE_IO_DEADLINE.get()
                 try:
                     return operation(*args, **kwargs)
                 except Exception as error:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(BaseException):
                         buckets = (
                             None
                             if entry is None
@@ -388,8 +397,22 @@ class Client:
             return call
 
         channel = bundle._channels["currentness"]
-        channel.send = diagnosed_io("runtime-send", channel.send)
-        channel.receive = diagnosed_io("runtime-receive", channel.receive)
+        channel.send = diagnosed_io("runtime-send", timing.measure("runtime-send", channel.send))
+        channel.receive = diagnosed_io(
+            "runtime-receive", timing.measure("runtime-receive", channel.receive)
+        )
+        checker = cast(Any, self.channels["currentness"])
+        checker.wait_readable = timing.measure("checker-wait", checker.wait_readable)
+        checker.receive = timing.measure("checker-receive", checker.receive)
+        checker.send = timing.measure("checker-send", checker.send)
+        with contextlib.suppress(BaseException):
+            timing.start()
+
+    def stop_currentness_diagnostics(self) -> None:
+        timing = getattr(self, "currentness_timing", None)
+        if timing is not None:
+            with contextlib.suppress(BaseException):
+                timing.close()
 
     @staticmethod
     def currentness_io_buckets(
@@ -444,10 +467,25 @@ class Client:
                 )
 
     def add_currentness_failure_note(self, error: Exception) -> None:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(BaseException):
             error.add_note(f"Native fixture currentness failures: {self.currentness_failures!r}")
+        with contextlib.suppress(BaseException):
+            timing = getattr(self, "currentness_timing", None)
+            if timing is not None:
+                error.add_note(
+                    f"Native fixture timing gc_observation_available={timing.available!r} "
+                    "(phase, wall, thread_cpu, process_cpu, "
+                    f"gc_overlap, generation_mask, truncated): {timing.failures!r}"
+                )
 
     async def start(self, *, mixed: bool = False) -> None:
+        try:
+            await self._start(mixed=mixed)
+        except BaseException:
+            self.stop_currentness_diagnostics()
+            raise
+
+    async def _start(self, *, mixed: bool = False) -> None:
         digest = facts_digest(self.facts)
         for role, channel in self.channels.items():
             await channel.asend(
@@ -481,7 +519,7 @@ class Client:
                     deadline_ns=deadline_after(0.25),
                 )
         except Exception as error:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 self.record_currentness_failure("fixture-checker", error)
             channel.close()
 
@@ -494,6 +532,12 @@ class Client:
         return cast(dict[str, object], frame.payload)
 
     async def close(self) -> None:
+        try:
+            await self._close()
+        finally:
+            self.stop_currentness_diagnostics()
+
+    async def _close(self) -> None:
         for channel in self.channels.values():
             channel.close()
         self.bundle.close()
@@ -544,8 +588,13 @@ def test_fixture_currentness_budget_bucket_boundaries() -> None:
         assert Client.currentness_io_buckets(0, 250_000_000, inherited, 1)[0] == expected
 
 
+@pytest.mark.parametrize(
+    "diagnostic_error_type", [RuntimeError, asyncio.CancelledError, KeyboardInterrupt, SystemExit]
+)
 def test_fixture_diagnostic_failure_preserves_original_exception(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    diagnostic_error_type: type[BaseException],
 ) -> None:
     original = ContentError("PATCH_TIMEOUT")
 
@@ -554,6 +603,7 @@ def test_fixture_diagnostic_failure_preserves_original_exception(
             raise original
 
         receive = send
+        wait_readable = send
 
     class Bundle:
         def __init__(self) -> None:
@@ -563,12 +613,15 @@ def test_fixture_diagnostic_failure_preserves_original_exception(
             raise original
 
     def broken(*_args: object) -> None:
-        raise RuntimeError("diagnostic failure must not replace the original")
+        raise diagnostic_error_type("diagnostic failure must not replace the original")
 
     client = Client.__new__(Client)
     client.calls, client.currentness_calls = 7, 0
     client.bundle = cast(Any, Bundle())
+    client.channels = cast(Any, {"currentness": Channel()})
     client.diagnose_currentness_failures()
+    # This codec-only fixture has no bundle lifecycle; close its diagnostic hook.
+    request.addfinalizer(client.stop_currentness_diagnostics)
     monkeypatch.setattr(client, "record_currentness_failure", broken)
     monkeypatch.setattr(original, "add_note", broken)
     with pytest.raises(ContentError) as raised:

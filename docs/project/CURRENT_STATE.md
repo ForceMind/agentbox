@@ -1,12 +1,42 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T18:43:00Z"
-verified_by: "agentbox-work-overview"
+verified_at_utc: "2026-10-06T14:24:00Z"
+verified_by: "agentbox-a3-currentness-diagnosis"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 独立 A3 currentness 时序诊断候选
+
+独立复审已关闭诊断BaseException隔离P2：同条件7失败→7通过，68项无socket
+安全回归再次独立通过，无新增P0/P1/P2。真实native/3.13.15采证仍待新head CI，
+不能认定原currentness根因已修复。
+
+
+显式 fetch main 确认为 `a586eaec27984e0632187048cc1b82e7e29552d1`，
+独立 branch `diag/native-currentness-20261006` 从此接续，与 UI Draft PR148
+分开。三次Python3.13.15日志均证明 runtime receive 在至少200ms剩余预算下
+耗尽至少250ms，checker也超时；现有证据不足以归因GC/GIL/调度。
+
+[有界诊断合同](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md) 增加固定checker
+阶段、wall/thread CPU/process CPU buckets与最多8条GC span overlap，
+最多4条失败记录。GC观测不更改收集策略，按identity清理callback；epoch与
+revision fence使关闭/重启/半更新观察明确unknown/truncated。产品、真实native
+测试、收发顺序、全部时限与断言保持，历史失败不抹除。
+
+首次独立审查发现仅隔离Exception可能让诊断自身BaseException改变native结果
+或遗留callback，新增同条件7项回归先7 failed、修正后7 passed。扩大诊断自身
+隔离/清理后，真实operation的CancelledError/KeyboardInterrupt/SystemExit仍
+原对象传播；这是诊断P2的red/green，不是currentness超时的产品修复证据。
+
+本地Python3.12.14无socket安全回归68 passed/66 deselected；全量Ruff、395文件
+mypy、3个改动Python文件逐一Black check及Python3.13.5 py_compile通过。
+Black多文件diff进程池仍受AF_UNIX限制，改用单文件检查；没有绕过权限。
+本地完整native/全量pytest未运行，3.13.5语法检查不是3.13.15运行证据。
+独立复审、新诊断头CI、根因与真实同条件red/green仍待完成，未发布/合并。
+下方旧PR147 Draft与pending文字保留为历史，不覆盖已fetch到的main基线。
 
 
 ## 2026-10-05 native3.13 真实超时已采到；继续限定 I/O 阶段诊断
