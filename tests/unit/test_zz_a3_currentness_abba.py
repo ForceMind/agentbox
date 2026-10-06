@@ -112,13 +112,13 @@ def test_fixed_cases_pins_and_workflow_boundaries(runner: ModuleType) -> None:
     assert workflow["on"] == {"pull_request": {"types": ["labeled"]}}
     assert workflow["permissions"] == {"contents": "read"}
     job = workflow["jobs"]["compare"]
-    assert job["runs-on"] == "ubuntu-24.04" and job["timeout-minutes"] == "35"
+    assert job["runs-on"] == "ubuntu-24.04" and job["timeout-minutes"] == "40"
     comparison = next(
         step
         for step in job["steps"]
         if step.get("run") == "python harness/scripts/a3-currentness-abba.py"
     )
-    assert comparison["timeout-minutes"] == "32"
+    assert comparison["timeout-minutes"] == "37"
     for guard in (
         "number == 149",
         "github.head_ref == 'diag/native-currentness-20261006'",
@@ -290,6 +290,73 @@ def test_invalid_wheelhouse_is_rejected(runner: ModuleType, tmp_path: Path, chan
         (folder / "alias.whl").symlink_to(path)
     with pytest.raises(runner.DiagnosticError):
         runner.seal_wheels(folder, {"sample": "9" if change == "version" else "1.2.3"})
+
+
+def test_wheel_metadata_ignores_nested_vendored_distribution(
+    runner: ModuleType, tmp_path: Path
+) -> None:
+    folder = tmp_path / "wheels"
+    folder.mkdir()
+    path = wheel(folder, "sample", "1.2.3")
+    with zipfile.ZipFile(path, "a") as archive:
+        archive.writestr("sample/_vendor/other-9.dist-info/METADATA", "Name: other\nVersion: 9\n")
+    try:
+        hashes, packages = runner.seal_wheels(folder, {"sample": "1.2.3"})
+        assert packages == {"sample": hashes[path.name]}
+        runner.verify_wheels(folder, hashes)
+    finally:
+        folder.chmod(0o755)
+        path.chmod(0o644)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    ["duplicate_metadata", "second_metadata_root", "second_root", "only_nested", "backslash"],
+)
+def test_wheel_metadata_rejects_missing_duplicate_or_ambiguous_roots(
+    runner: ModuleType, tmp_path: Path, shape: str
+) -> None:
+    folder = tmp_path / "wheels"
+    folder.mkdir()
+    path = folder / "sample-1.2.3-py3-none-any.whl"
+    root = "sample-1.2.3.dist-info/METADATA"
+    data = "Name: sample\nVersion: 1.2.3\n"
+    with zipfile.ZipFile(path, "w") as archive:
+        if shape not in {"only_nested", "backslash"}:
+            archive.writestr(root, data)
+        if shape == "duplicate_metadata":
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                archive.writestr(root, data)
+        elif shape == "second_metadata_root":
+            archive.writestr("other-9.dist-info/METADATA", "Name: other\nVersion: 9\n")
+        elif shape == "second_root":
+            archive.writestr("other-9.dist-info/WHEEL", "Wheel-Version: 1.0\n")
+        elif shape == "only_nested":
+            archive.writestr("sample/_vendor/" + root, data)
+        else:
+            archive.writestr("sample\\_vendor-1.dist-info/METADATA", data)
+    with pytest.raises(runner.DiagnosticError, match="invalid_wheel_metadata"):
+        runner.seal_wheels(folder, {"sample": "1.2.3"})
+
+
+@pytest.mark.parametrize("size", [131072, 131073])
+def test_root_metadata_size_cap_is_unchanged(runner: ModuleType, tmp_path: Path, size: int) -> None:
+    folder = tmp_path / "wheels"
+    folder.mkdir()
+    path = folder / "sample-1.2.3-py3-none-any.whl"
+    header = b"Name: sample\nVersion: 1.2.3\n\n"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("sample-1.2.3.dist-info/METADATA", header + b"x" * (size - len(header)))
+    try:
+        if size == 131072:
+            hashes, _packages = runner.seal_wheels(folder, {"sample": "1.2.3"})
+            runner.verify_wheels(folder, hashes)
+        else:
+            with pytest.raises(runner.DiagnosticError, match="invalid_wheel_metadata"):
+                runner.seal_wheels(folder, {"sample": "1.2.3"})
+    finally:
+        folder.chmod(0o755)
+        path.chmod(0o644)
 
 
 @pytest.mark.parametrize(

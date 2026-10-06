@@ -190,8 +190,15 @@ def seal_wheels(folder: Path, expected: dict[str, str]) -> tuple[dict[str, str],
         if path.is_symlink() or not path.is_file() or path.suffix != ".whl":
             raise DiagnosticError("unexpected_wheelhouse_entry")
         with zipfile.ZipFile(path) as wheel:
-            names = [n for n in wheel.namelist() if n.endswith(".dist-info/METADATA")]
-            if len(names) != 1 or wheel.getinfo(names[0]).file_size > 131072:
+            # Vendored nested dist-info is package data, not this wheel's metadata.
+            entries = wheel.namelist()
+            roots = {
+                name.partition("/")[0]
+                for name in entries
+                if "/" in name and name.partition("/")[0].endswith(".dist-info")
+            }
+            names = [name for name in entries if re.fullmatch(r"[^/\\]+\.dist-info/METADATA", name)]
+            if len(roots) != 1 or len(names) != 1 or wheel.getinfo(names[0]).file_size > 131072:
                 raise DiagnosticError("invalid_wheel_metadata")
             metadata = BytesParser().parsebytes(wheel.read(names[0]))
         name, version = canonical_name(str(metadata.get("Name", ""))), str(

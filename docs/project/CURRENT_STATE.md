@@ -1,12 +1,35 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T16:17:00Z"
+verified_at_utc: "2026-10-06T16:42:00Z"
 verified_by: "agentbox-a3-currentness-diagnosis"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 ABBA首次prepare失败；官方wheel实物修正候选
+
+已触发的e1b631fd32099d3baf2835ef9922c5f387d4cf78 / tree14a48cbb02e2046418d82f292cfc6a65eca33bb0
+在run37494932672/job112376929532的prepare阶段报invalid_wheel_metadata，exit2；
+74个wheel下载成功，0 case venv、0 native/ABBA测量。原artifact/hash与失败保留，
+不把它计作任一条件结果，也不rerun旧头。
+
+真实官方setuptools84含1个root加12个vendor METADATA，旧suffix-only collector
+同bytes RED；仅root-level选择修正后，同两wheel和全74wheel seal/verify GREEN。
+多root、重复/缺失root及131072 cap拒绝边界保留；pins、四条件及产品预算不变。
+全部74官方PyPI SHA/size核对一致，最大root110178 bytes，无需扩大cap。
+
+两套独立Python3.13.5 package-only已实过离线hash安装、editable、pip check、
+实际75包、2个pytest11入口及9个module来源，源码/wheel摘要未变。该环境无
+ensurepip，本地bootstrap路径与CI不同；不是3.13.15、native或ABBA资格证据。
+详见[准备失败与官方实物证据](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md)。
+
+新真实3.13.15默认suite用时492.02s，4倍已达32m48.08s。因此经审议只将本轮
+外层step37min/job40min，预计约4.20min准备余量及3min外层余量；仍可能超时，
+不保证完成。四次、pytest/native预算及命令不变，修正复审后仅对新head单次触发。
+当前54项编排与原68项共122 passed；独立复审已核验真实74wheel/PyPI摘要、
+metadata边界、37/40及文档合同，无新增P0/P1/P2。5文件已冻结，未commit/push/改标签。
 
 ## 2026-10-06 固定ABBA诊断实现候选，尚未触发
 

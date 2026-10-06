@@ -203,8 +203,9 @@ wheel摘要证明本轮四次使用同一下载内容，不是原CI wheel字节�
 
 真实执行命令保持python -m pytest -o faulthandler_timeout=120，只有B加上述
 ignore。原250ms/1s/5s/30s、断言、GC策略、hash seed及真实I/O均不改变。
-预期四次pytest约21–25分钟，加准备约25–30分钟。诊断step外层32分钟、整个
-job35分钟，为always artifact上传预留时间；这只是采证外层上限，不是native
+最初21–25分钟pytest估计已被后续492.02s实测更新。当前诊断step外层37分钟、
+整个job40分钟，依据与余量见下节；为always artifact上传预留时间。这只是采证
+外层上限，不是native
 或单测预算。每阶段summary立即落盘，保留四份原始pytest/预检日志、版本、
 module来源和wheel摘要；不dump环境变量、凭据或进程命令行。
 
@@ -245,3 +246,69 @@ red/green，不是native currentness根因或修复证据。
 独立复审已重跑114项及原5个真实PID探针，并核验256字节oracle、非PID拒绝、
 静态PID1歧义、真实collection顺序及四文件摘要。P2闭合，无新增P0/P1/P2；
 最终文档亦经回读。源码保持复审摘要不变，进入普通提交与一次真实标签触发。
+
+
+## 2026-10-06 首次真实ABBA准备失败与root METADATA修正
+
+首次标签触发head `e1b631fd32099d3baf2835ef9922c5f387d4cf78`，tree
+`14a48cbb02e2046418d82f292cfc6a65eca33bb0` 的
+[run37494932672/job112376929532](https://github.com/ForceMind/agentbox/actions/runs/37494932672/job/112376929532)
+在prepare阶段因invalid_wheel_metadata返回exit2。74个wheel下载成功，但尚未
+建立任何case venv，未执行任何native或ABBA测量，summary.results为空。这不是
+A/B任一条件通过或失败。原artifact11426309681 ZIP SHA256为
+`0a835821eac74c57b3efd43ec95125de8abcd733485ee11c6767619958cc8548`，
+原失败与日志保留，不rerun旧头取绿。
+
+### 真实官方wheel证据与最小修正
+
+实际取得并校验了官方PyPI相同文件名的74个wheel，所有SHA256与size均与各自
+官方PyPI JSON一致。旧collector把任意层级的.dist-info/METADATA当作发行包
+元数据；实际[setuptools84.0.0](https://pypi.org/pypi/setuptools/84.0.0/json)包含
+1个root METADATA（6581 bytes）以及setuptools/_vendor下12个nested METADATA，
+所以会被旧逻辑误拒。[pip26.2.1](https://pypi.org/pypi/pip/26.2.1/json)只有1个root
+METADATA（4617 bytes）。两份实际wheel的SHA256分别为：
+
+- setuptools：51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670
+- pip：71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e
+
+用原版本seal_wheels读取上述同一批官方bytes，实际RED为invalid_wheel_metadata
+exit1；仅修正root-level选择后，同两wheel及全部74wheel的seal/verify均GREEN
+exit0。读取不再把vendored METADATA当成第二个发行包，但仍拒绝多root、重复
+root METADATA、缺失root、非规范分隔和超限root。131072 size cap、pins、hash
+核验、只读封存、四条件、Runtime与单测预算均不变。54项编排测试包含新增8项
+结构/边界回归，并保留131072接受、131073拒绝的明确断言。
+
+74份实际wheel都恰有一个root；最大root为pydantic2.13.5的110178 bytes，
+只有setuptools有nested METADATA，没有发现需要扩大cap的同类问题。文件名
+与失败CI下载清单全部相同，但原CI在失败前没有产出wheel hashes，因此不声称
+历史CI下载bytes与本地逐字一致。这是已复现并修正的collector缺陷；native
+currentness根因仍未证明。
+
+### 本地package-only验证与限度
+
+A/B两份隔离Python3.13.5 fresh venv已实际完成74包require-hashes/no-index/
+no-deps离线安装、固定setuptools84无build isolation的editable安装、pip check、
+完整75包map、两个pytest11 entry points和9个module实际来源核验，均exit0。
+74个wheel摘要和A/B原始源码文件安装前后未变。A使用冻结commit a586eae；
+B使用本地mirror6999014，其tree严格等于冻结238a35a，不冒称本地已读到外部
+404daae commit对象。
+
+本机3.13.5没有ensurepip，因此本地package-only先用--without-pip建venv、再由
+已验pip26.2.1通过--python目标venv bootstrap，之后使用各venv自身pip。这不是
+正式CI的python -m venv路径，也没有改正式probe的3.13.15要求。没有运行pytest
+collection、AF_UNIX/native用例或四轮ABBA；本地package-only不替代CI3.13.15资格。
+
+### 更新后的外层采证限额
+
+后继真实默认Backend job112376311244在Python3.13.15报告5504 collected、
+5416 passed/88 skipped，pytest实际492.02s。四次按此估算为1968.08s，即
+32m48.08s，尚未包含准备，已超过原step32。故本轮仅把step改37min、job改40min：
+按该实测估算，脚本准备/编排余量约251.92s（4.20min），step之外checkout/setup/
+artifact约3min。原四次固定流程、pytest命令和全部产品/测试预算不变。
+
+首次CI时间戳显示wheel下载到失败约8.08s、artifact上传约1.20s。本地每套package
+准备按新log birth至最后mtime估计：安装11.89–12.69s、editable2.16–2.35s、
+pip check0.29–0.32s、imports1.66–1.79s；没有独立stopwatch，且不包括venv和
+collection，不能外推CI严格上界。官方74份JSON额外审计不在CI harness内。
+新外层余量是有依据的估计，仍可能超时，不保证完成；超时/缺证据仍记未完成。
+修正须独立复审、新head再单次触发，不在旧e1头rerun，也不追加实验轮次。

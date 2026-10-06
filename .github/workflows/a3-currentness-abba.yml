@@ -17,7 +17,7 @@ jobs:
       github.event.pull_request.base.ref == 'main' &&
       github.event.label.name == 'bug' && github.run_attempt == '1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -49,7 +49,7 @@ jobs:
           python-version: "3.13.15"
       - name: Run the single fixed ABBA comparison
         # Outer evidence bound only; reserve job time for always-uploaded partial logs.
-        timeout-minutes: 32
+        timeout-minutes: 37
         run: python harness/scripts/a3-currentness-abba.py
       - name: Retain diagnostic evidence on success or failure
         if: always()
