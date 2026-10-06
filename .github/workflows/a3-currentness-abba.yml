@@ -1,0 +1,61 @@
+name: A3 currentness ABBA diagnostic
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: >-
+      github.repository == 'ForceMind/agentbox' &&
+      github.event.pull_request.number == 149 &&
+      github.event.pull_request.head.repo.full_name == 'ForceMind/agentbox' &&
+      github.head_ref == 'diag/native-currentness-20261006' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.label.name == 'bug' && github.run_attempt == '1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: a586eaec27984e0632187048cc1b82e7e29552d1
+          path: a3-abba-cases/a1/source
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: 404daae0be4225b30a6e3e71ee239376bd5e6ca6
+          path: a3-abba-cases/b1/source
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: 404daae0be4225b30a6e3e71ee239376bd5e6ca6
+          path: a3-abba-cases/b2/source
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: a586eaec27984e0632187048cc1b82e7e29552d1
+          path: a3-abba-cases/a2/source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13.15"
+      - name: Run the single fixed ABBA comparison
+        # Outer evidence bound only; reserve job time for always-uploaded partial logs.
+        timeout-minutes: 37
+        run: python harness/scripts/a3-currentness-abba.py
+      - name: Retain diagnostic evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: a3-currentness-abba-${{ github.run_id }}
+          path: a3-abba-artifacts/
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,12 +1,156 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T18:43:00Z"
-verified_by: "agentbox-work-overview"
+verified_at_utc: "2026-10-06T17:37:00Z"
+verified_by: "agentbox-a3-currentness-diagnosis"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 固定ABBA四轮完成；main复现，根因未闭合
+
+head `7cc9d971db92a3b809e9c02b467351483f30c8b0` / tree
+`fc95b8bdaa0b26e3615885f6d74c3065cd259361` 的
+[run37498497962/job112389102587](https://github.com/ForceMind/agentbox/actions/runs/37498497962/job/112389102587)
+attempt1已完整终态。summary.stage为complete、interpretation为
+inconclusive_failures_retained；harness exit1来自A2真实失败，无外层超时。
+诊断step约33m25s，job约33m41s，39文件artifact11429444729成功上传；ZIP
+SHA256已实际复核为
+`b5d8e8b3684aefde995a8741524565b4ceb8670a413699c144a260cb94e0e4fb`。
+
+A1/A2冻结main `a586eaec27984e0632187048cc1b82e7e29552d1` / tree
+`e5d9309dca123f17f9ff9ee48df0765c332ea451`；B1/B2冻结
+`404daae0be4225b30a6e3e71ee239376bd5e6ca6` / tree
+`238a35a0629e3307560d3a57371e9f2410e3f047`，仅诊断B条件ignore尾部65项模块。
+同一image20260927.320.1、实际Python3.13.15，四份独立源码/venv的75包、2插件、
+9模块及原5393 collection均吻合，目标第763项；13个既有动态PID字段之外同序。
+源码SHA/tree、tracked洁净与wheel核验均通过，证据边界和原始日志见
+[四轮完整记录](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md#2026-10-06-固定四轮完成与结果判读)。
+四份pip安装日志均保留venv预置pip26.2.1，实际安装73个sealed wheel；75包版本
+全集已核验，但不能以pip wheel摘要证明预置pip安装字节。collection是预检
+逐node同序证据，实际测量仅文件级进度；source/status仅保留最后核验快照。
+
+- A1：5305 passed / 88 skipped，487.96s，无失败note
+- B1：5305 passed / 88 skipped，473.11s，无失败note
+- B2：5305 passed / 88 skipped，448.83s，无失败note
+- A2：5304 passed / 1 failed / 88 skipped，452.60s；原native READY目标失败，
+  checker/currentness23/24，fixture-checker PATCH_TIMEOUT，runtime-receive
+  none/ge200ms/ge250ms，继而PATCH_REVOKED EOF
+
+冻结A首末结果不同，证明本轮仍有运行间变化；在新受控75包条件下main能够
+重现旧表象。预定两个A失败/两个B通过的模式未出现；B两次未复现不能证明
+observer因果或修复效果。A2无新CPU/GC观察器，B无失败note，仍不能归因GC、
+GIL、调度或checker内部具体阶段。产品根因与真实产品red/green尚未闭合。
+
+固定四轮采样已停止，不追加采样或再次标签触发；本次只更新两份诊断文档，
+生产、harness、tests、workflow和全部预算不改。B原5393诊断不称完整资格，
+默认六套CI仍完整保留65项安全回归与编排单测。独立对照审查已确认上述事实和
+保证缺口，最终记录进入发布；新head普通六套CI以PR实时回读为准。UI PR148与
+缓存修复PR150保持独立。下方待采证、准备失败
+和旧外层预算是当时快照，保留历史，不覆盖本节实际结果。
+
+## 2026-10-06 ABBA首次prepare失败；官方wheel实物修正候选
+
+已触发的e1b631fd32099d3baf2835ef9922c5f387d4cf78 / tree14a48cbb02e2046418d82f292cfc6a65eca33bb0
+在run37494932672/job112376929532的prepare阶段报invalid_wheel_metadata，exit2；
+74个wheel下载成功，0 case venv、0 native/ABBA测量。原artifact/hash与失败保留，
+不把它计作任一条件结果，也不rerun旧头。
+
+真实官方setuptools84含1个root加12个vendor METADATA，旧suffix-only collector
+同bytes RED；仅root-level选择修正后，同两wheel和全74wheel seal/verify GREEN。
+多root、重复/缺失root及131072 cap拒绝边界保留；pins、四条件及产品预算不变。
+全部74官方PyPI SHA/size核对一致，最大root110178 bytes，无需扩大cap。
+
+两套独立Python3.13.5 package-only已实过离线hash安装、editable、pip check、
+实际75包、2个pytest11入口及9个module来源，源码/wheel摘要未变。该环境无
+ensurepip，本地bootstrap路径与CI不同；不是3.13.15、native或ABBA资格证据。
+详见[准备失败与官方实物证据](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md)。
+
+新真实3.13.15默认suite用时492.02s，4倍已达32m48.08s。因此经审议只将本轮
+外层step37min/job40min，预计约4.20min准备余量及3min外层余量；仍可能超时，
+不保证完成。四次、pytest/native预算及命令不变，修正复审后仅对新head单次触发。
+当前54项编排与原68项共122 passed；独立复审已核验真实74wheel/PyPI摘要、
+metadata边界、37/40及文档合同，无新增P0/P1/P2。5文件已冻结，未commit/push/改标签。
+
+## 2026-10-06 固定ABBA诊断实现候选，尚未触发
+
+尾置404daae0be4225b30a6e3e71ee239376bd5e6ca6的真实3.13.15再次5370 passed/
+88 skipped、5458项完整执行，仍无新failure note，只能记未复现。当前独立
+[ABBA合同](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md)冻结A=a586eae、B=404daae，
+单runner固定A1/B1/B2/A2；B仅在对照中ignore尾部65项，各条件原5393项及目标
+第763项不变。默认资格CI保留全部原测试和新增orchestration测试。
+
+新workflow只允许PR149、精确同仓库branch、bug labeled事件和首次attempt，
+沿用已审action pins与contents:read。四份checkout/venv/package/plugin/module/
+collection预检完成才执行，源码和wheelhouse前后核验；无真实host、凭据、
+GC策略、产品或单测预算变更。step32min/job35min为外层采证限额并留artifact
+上传时间，取消/超时/不完整证据绝不记绿色；四次终态后不自动追加。
+
+74个外部pins来自pip install日志可见版本，fresh venv另含editable agentbox，
+实查共75包并固定setuptools84无build isolation。原job没有完整freeze与临时
+PEP517版本证据，因此不能推断原global site-packages相同；新条件全绿也仅
+表示本轮未复现。Release Candidate缓存修复保持旁支，不混入本候选。
+
+独立审查发现bytes ID逆解P2，真实pytest编码的5个问题PID先5 failed，最终
+固定完整payload前向匹配后5 passed；中间prefix-only方案的2失败亦保留。
+不改Popen或执行命令。新normalizer复核
+实际A/B5393清单同序、目标763。此red/green仅属于编排，不是native根因证据。
+本地46项orchestration测试与原68项共114 passed，模拟仅限编排；全量Ruff、
+mypy397、Black410、action pins56、doc links/source-boundary/secret-pattern及
+Python3.13.5语法检查通过。独立复审再次重跑114项及原5个真实PID探针，核验
+256字节oracle、非PID拒绝、静态PID1歧义与manifest，确认P2闭合，无新增P0/P1/P2。
+源码进入普通提交与一次标签触发采证；实际head/运行以PR实时回读为准。
+此刻尚未运行真实ABBA、wheel下载/75包安装；这些本地检查不代表采证成功。
+
+## 2026-10-06 PR149首轮Backend通过；新增诊断测试尾置候选
+
+PR149 head `86b1281803c4563572e6e9337198d8c5fd3980ef` / tree
+`f6a1bc128e064f9aadd47956efd2c6a0a72a88f0` 的Backend run37480210068全部
+通过，Python3.13.15为5370 passed/88 skipped。没有新的失败note，只能记
+未复现，不证明修复。UI PR148及其旧失败记录不变；下方pending段落保留历史。
+
+本轮[有界测试尾置对照](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md)仅将新增
+65项移到原5393项后，默认CI仍完整执行5458项。实际collect-only证明目标
+恢复第763项，新增项位于5394–5458；5380个原ID相同，另外13个仅为既有
+runtime_pid/listen_pid动态字段，具体ordinal与参数差异已逐项核验。
+observer实现、Client与真实native目标、预算、依赖和workflow均未改。
+collection导入次序和observer扰动仍是限制，不能把这当作严格GC因果实验。
+本地68项相关安全回归、全量Ruff、395文件mypy、两文件Black、716 doc links、
+source-boundary和Python3.13.5语法检查通过；本地未重跑完整native。
+本轮独立复审重跑68项、重新collect并逐项核对13个PID差异、62项原observer
+测试AST及候选tree，无新增P0/P1/P2。候选代码已冻结，进入普通提交与新exact-head
+首次CI采证；实际远端head及CI以PR回读为准，不合并或盲目重试。
+
+## 2026-10-06 独立 A3 currentness 时序诊断候选
+
+独立复审已关闭诊断BaseException隔离P2：同条件7失败→7通过，68项无socket
+安全回归再次独立通过，无新增P0/P1/P2。真实native/3.13.15采证仍待新head CI，
+不能认定原currentness根因已修复。
+
+
+显式 fetch main 确认为 `a586eaec27984e0632187048cc1b82e7e29552d1`，
+独立 branch `diag/native-currentness-20261006` 从此接续，与 UI Draft PR148
+分开。三次Python3.13.15日志均证明 runtime receive 在至少200ms剩余预算下
+耗尽至少250ms，checker也超时；现有证据不足以归因GC/GIL/调度。
+
+[有界诊断合同](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md) 增加固定checker
+阶段、wall/thread CPU/process CPU buckets与最多8条GC span overlap，
+最多4条失败记录。GC观测不更改收集策略，按identity清理callback；epoch与
+revision fence使关闭/重启/半更新观察明确unknown/truncated。产品、真实native
+测试、收发顺序、全部时限与断言保持，历史失败不抹除。
+
+首次独立审查发现仅隔离Exception可能让诊断自身BaseException改变native结果
+或遗留callback，新增同条件7项回归先7 failed、修正后7 passed。扩大诊断自身
+隔离/清理后，真实operation的CancelledError/KeyboardInterrupt/SystemExit仍
+原对象传播；这是诊断P2的red/green，不是currentness超时的产品修复证据。
+
+本地Python3.12.14无socket安全回归68 passed/66 deselected；全量Ruff、395文件
+mypy、3个改动Python文件逐一Black check及Python3.13.5 py_compile通过。
+Black多文件diff进程池仍受AF_UNIX限制，改用单文件检查；没有绕过权限。
+本地完整native/全量pytest未运行，3.13.5语法检查不是3.13.15运行证据。
+独立复审、新诊断头CI、根因与真实同条件red/green仍待完成，未发布/合并。
+下方旧PR147 Draft与pending文字保留为历史，不覆盖已fetch到的main基线。
 
 
 ## 2026-10-05 native3.13 真实超时已采到；继续限定 I/O 阶段诊断
