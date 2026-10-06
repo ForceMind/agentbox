@@ -1,12 +1,27 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T18:43:00Z"
-verified_by: "agentbox-work-overview"
+verified_at_utc: "2026-10-06T12:13:00Z"
+verified_by: "agentbox-ui-shell"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 UI 首批实施与 PR147 live 状态校正
+
+GitHub live main 已是 `a586eaec27984e0632187048cc1b82e7e29552d1`，
+PR147 已合并，exact-main 六套 workflow success（23 checks success / 3 prescribed
+skipped）。下方 PR147 Draft/pending/失败文字保留为历史，不覆盖此结果。
+
+Owner 要求完整 UI 重设计并授权正常开发自主继续；当前有限批次为
+[共享 shell、工作概览与项目导航](../WORKBENCH_UI_SHELL_REFRESH.md)。
+沿用原批准计划，仅重新呈现已存在功能；暖白/墨色/琥珀为可回退实施假设，
+不是宣称 Owner 已认可品牌。首个 shell head `e3628a257dbb92ed8419676618fbf0f8e703989f`
+已发布回读，页面迁移与1583 Web/6 extension/17 API本地测试通过；
+真实浏览器受本地启动限制，等待新 exact-head 六套 CI 与截图。Draft PR 交付，
+此批不 merge/release/deploy，不改变 Runtime/A3/认证/Secret 或真实 host 门禁。
+
 
 
 ## 2026-10-05 native3.13 真实超时已采到；继续限定 I/O 阶段诊断

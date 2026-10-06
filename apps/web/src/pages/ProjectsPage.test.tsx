@@ -144,6 +144,7 @@ describe('ProjectsPage localized safety boundary', () => {
       </MemoryRouter>,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: '新建 Project' }))
     const name = screen.getByLabelText('Project 名称')
     fireEvent.change(name, { target: { value: '   ' } })
     fireEvent.click(screen.getByRole('button', { name: '创建 Project' }))
@@ -156,6 +157,150 @@ describe('ProjectsPage localized safety boundary', () => {
     expect(create).toHaveBeenCalledWith('新项目')
     expect(screen.getByRole('button', { name: '正在创建…' })).toBeDisabled()
     await act(async () => finishCreate?.())
+  })
+
+  it('starts with the project collection and opens only the selected form', () => {
+    const data = model()
+    useProjectsMock.mockReturnValue(data)
+    render(
+      <MemoryRouter>
+        <ProjectsPage locale="en" />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('region', { name: 'Projects' })).toBeVisible()
+    expect(
+      screen.queryByLabelText('Project name', { exact: true }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Repository URL')).not.toBeInTheDocument()
+    const createTrigger = screen.getByRole('button', { name: 'New Project' })
+    const cloneTrigger = screen.getByRole('button', {
+      name: 'Clone Repository',
+    })
+    expect(createTrigger).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(createTrigger)
+    const name = screen.getByLabelText('Project name', { exact: true })
+    expect(name).toHaveFocus()
+    fireEvent.change(name, { target: { value: 'Unsubmitted draft' } })
+    fireEvent.click(cloneTrigger)
+    expect(
+      screen.queryByLabelText('Project name', { exact: true }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Repository URL')).toHaveFocus()
+    expect(createTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(cloneTrigger).toHaveAttribute('aria-expanded', 'true')
+    expect(data.create).not.toHaveBeenCalled()
+    expect(data.clone).not.toHaveBeenCalled()
+  })
+
+  it.each(['create', 'clone'] as const)(
+    'clears %s drafts on Escape and restores the entry focus',
+    (mode) => {
+      const data = model()
+      useProjectsMock.mockReturnValue(data)
+      render(
+        <MemoryRouter>
+          <ProjectsPage locale="en" />
+        </MemoryRouter>,
+      )
+      const trigger = screen.getByRole('button', {
+        name: mode === 'create' ? 'New Project' : 'Clone Repository',
+      })
+      fireEvent.click(trigger)
+      const input = screen.getByLabelText(
+        mode === 'create' ? 'Project name' : 'Repository URL',
+        { exact: true },
+      )
+      fireEvent.change(input, { target: { value: 'Draft' } })
+      if (mode === 'clone')
+        fireEvent.change(screen.getByLabelText('Project name (optional)'), {
+          target: { value: 'Draft name' },
+        })
+      fireEvent.keyDown(input, { key: 'Escape' })
+      expect(trigger).toHaveFocus()
+      expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(trigger)
+      expect(
+        screen.getByLabelText(
+          mode === 'create' ? 'Project name' : 'Repository URL',
+          { exact: true },
+        ),
+      ).toHaveValue('')
+      if (mode === 'clone')
+        expect(screen.getByLabelText('Project name (optional)')).toHaveValue('')
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(trigger).toHaveFocus()
+      expect(data.create).not.toHaveBeenCalled()
+      expect(data.clone).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not cancel or resubmit a requested operation when dismissal is attempted', async () => {
+    let finish!: () => void
+    const create = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    useProjectsMock.mockReturnValue(
+      model({ create, job: { id: 'job_existing', status: 'running' } }),
+    )
+    render(
+      <MemoryRouter>
+        <ProjectsPage locale="en" />
+      </MemoryRouter>,
+    )
+    const trigger = screen.getByRole('button', { name: 'New Project' })
+    fireEvent.click(trigger)
+    const input = screen.getByLabelText('Project name', { exact: true })
+    fireEvent.change(input, { target: { value: 'New workspace' } })
+    const form = input.closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(input).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Clone Repository' }),
+    ).toBeDisabled()
+    fireEvent.keyDown(form, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await act(async () => finish())
+    expect(input).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(trigger).toHaveFocus()
+    expect(screen.getByText('job_existing')).toBeVisible()
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps clone validation and clears both clone fields after the existing request resolves', async () => {
+    const clone = vi.fn(async () => undefined)
+    useProjectsMock.mockReturnValue(model({ clone }))
+    render(
+      <MemoryRouter>
+        <ProjectsPage locale="zh-CN" />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '克隆仓库' }))
+    fireEvent.click(screen.getByRole('button', { name: '克隆' }))
+    expect(screen.getByText('请输入仓库 URL。')).toBeVisible()
+    expect(clone).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('仓库 URL'), {
+      target: { value: ' https://github.com/owner/repo ' },
+    })
+    fireEvent.change(screen.getByLabelText('Project 名称（可选）'), {
+      target: { value: ' My project ' },
+    })
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: '克隆' })),
+    )
+    expect(clone).toHaveBeenCalledWith(
+      'https://github.com/owner/repo',
+      'My project',
+    )
+    expect(screen.getByLabelText('仓库 URL')).toHaveValue('')
+    expect(screen.getByLabelText('Project 名称（可选）')).toHaveValue('')
   })
 
   it('covers localized loading and empty states', () => {

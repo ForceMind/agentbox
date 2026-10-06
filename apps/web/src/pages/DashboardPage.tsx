@@ -1,5 +1,13 @@
-import { Activity, Bot, Boxes, Sparkles } from 'lucide-react'
+import {
+  Activity,
+  ArrowUpRight,
+  Bot,
+  Boxes,
+  ChevronDown,
+  Sparkles,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
@@ -20,6 +28,8 @@ import {
   parseReadinessResponse,
   ReadinessResponse,
 } from '../lib/contracts'
+
+import './DashboardPage.css'
 
 type DashboardMessageKey = keyof DashboardMessageParameters
 type DashboardSummary = 'checking' | 'healthy' | 'degraded' | 'unavailable'
@@ -137,7 +147,12 @@ export function DashboardPage({ locale }: { locale?: Locale }) {
   return (
     <>
       <PageHeader
-        action={<StatusBadge tone={summaryTone}>{summaryMessage}</StatusBadge>}
+        action={
+          <Link className="secondary-button" to="/projects">
+            {message('dashboard.allProjects')}
+            <ArrowUpRight aria-hidden="true" size={16} />
+          </Link>
+        }
         description={message('dashboard.description')}
         eyebrow={message('dashboard.eyebrow')}
         title={message('dashboard.title')}
@@ -145,130 +160,160 @@ export function DashboardPage({ locale }: { locale?: Locale }) {
 
       <WorkOverview locale={selectedLocale} />
 
-      <section
-        className="metric-grid"
-        aria-label={message('dashboard.statusAria')}
-      >
-        <article className="metric-card">
-          <Activity aria-hidden="true" />
-          <span>{message('dashboard.controlPlane')}</span>
-          <strong>{healthMessage}</strong>
-          <StatusBadge tone={data.health ? 'good' : 'warning'}>
-            {healthMessage}
-          </StatusBadge>
-        </article>
-        <article className="metric-card">
-          <Activity aria-hidden="true" />
-          <span>{message('dashboard.readiness')}</span>
-          <strong>{readinessMessage}</strong>
-          <StatusBadge tone={ready ? 'good' : 'warning'}>
-            {readinessMessage}
-          </StatusBadge>
-        </article>
-        <article className="metric-card">
-          <Boxes aria-hidden="true" />
-          <span>{message('dashboard.agentboxVersion')}</span>
-          <strong>
-            {version ? (
-              <TechnicalValue value={version} />
-            ) : (
-              message('dashboard.unavailable')
-            )}
-          </strong>
-          <small>
-            {message('dashboard.apiVersion')}{' '}
-            {apiVersion ? (
-              <TechnicalValue value={apiVersion} />
-            ) : (
-              message('dashboard.unavailable')
-            )}
-          </small>
-        </article>
-        <article className="metric-card">
-          <Bot aria-hidden="true" />
-          <span>{message('dashboard.administrator')}</span>
-          <strong>
-            {auth ? (
-              <OpaqueUserValue value={auth.user.username} />
-            ) : (
-              message('dashboard.unavailable')
-            )}
-          </strong>
-          <small>
-            {message('dashboard.sessionExpires')}{' '}
-            {sessionExpiry ?? message('dashboard.unavailable')}
-          </small>
-        </article>
-      </section>
-
-      <section className="section-heading">
-        <div>
-          <p className="eyebrow">
-            {message('dashboard.currentCapabilitiesEyebrow')}
+      <details className="dashboard-system">
+        <summary aria-label={message('dashboard.systemDetails')}>
+          <span className="dashboard-system-label">
+            <Activity aria-hidden="true" size={18} />
+            {message('dashboard.systemDetails')}
+          </span>
+          <span className="dashboard-system-state">
+            <span>{message('dashboard.controlPlane')}</span>
+            <StatusBadge tone={summaryTone}>{summaryMessage}</StatusBadge>
+            <ChevronDown
+              aria-hidden="true"
+              className="dashboard-disclosure-icon"
+              size={16}
+            />
+          </span>
+        </summary>
+        <div className="dashboard-system-body">
+          <p className="dashboard-system-description">
+            {message('dashboard.systemDescription')}
           </p>
-          <h2>{message('dashboard.currentCapabilitiesTitle')}</h2>
-        </div>
-        <StatusBadge>
-          {message('dashboard.currentCapabilitiesStatus')}
-        </StatusBadge>
-      </section>
-      <section className="planned-grid">
-        {[
-          {
-            icon: Bot,
-            title: message('dashboard.codexTitle'),
-            copy: message('dashboard.codexDescription'),
-          },
-          {
-            icon: Sparkles,
-            title: message('dashboard.claudeTitle'),
-            copy: message('dashboard.claudeDescription'),
-          },
-          {
-            icon: Boxes,
-            title: message('dashboard.projectsTitle'),
-            copy: message('dashboard.projectsDescription'),
-          },
-        ].map(({ icon: Icon, title, copy }) => (
-          <article className="planned-card" key={title}>
-            <Icon aria-hidden="true" size={21} />
+          <section
+            className="metric-grid"
+            aria-label={message('dashboard.statusAria')}
+          >
+            <article className="metric-card">
+              <Activity aria-hidden="true" />
+              <span>{message('dashboard.controlPlane')}</span>
+              <strong>{healthMessage}</strong>
+              <StatusBadge tone={data.health ? 'good' : 'warning'}>
+                {healthMessage}
+              </StatusBadge>
+            </article>
+            <article className="metric-card">
+              <Activity aria-hidden="true" />
+              <span>{message('dashboard.readiness')}</span>
+              <strong>{readinessMessage}</strong>
+              <StatusBadge tone={ready ? 'good' : 'warning'}>
+                {readinessMessage}
+              </StatusBadge>
+            </article>
+            <article className="metric-card">
+              <Boxes aria-hidden="true" />
+              <span>{message('dashboard.agentboxVersion')}</span>
+              <strong>
+                {version ? (
+                  <TechnicalValue value={version} />
+                ) : (
+                  message('dashboard.unavailable')
+                )}
+              </strong>
+              <small>
+                {message('dashboard.apiVersion')}{' '}
+                {apiVersion ? (
+                  <TechnicalValue value={apiVersion} />
+                ) : (
+                  message('dashboard.unavailable')
+                )}
+              </small>
+            </article>
+            <article className="metric-card">
+              <Bot aria-hidden="true" />
+              <span>{message('dashboard.administrator')}</span>
+              <strong>
+                {auth ? (
+                  <OpaqueUserValue value={auth.user.username} />
+                ) : (
+                  message('dashboard.unavailable')
+                )}
+              </strong>
+              <small>
+                {message('dashboard.sessionExpires')}{' '}
+                {sessionExpiry ?? message('dashboard.unavailable')}
+              </small>
+            </article>
+          </section>
+
+          <section className="section-heading">
+            <div>
+              <p className="eyebrow">
+                {message('dashboard.currentCapabilitiesEyebrow')}
+              </p>
+              <h2>{message('dashboard.currentCapabilitiesTitle')}</h2>
+            </div>
             <StatusBadge>
               {message('dashboard.currentCapabilitiesStatus')}
             </StatusBadge>
-            <h2>{title}</h2>
-            <p>{copy}</p>
-          </article>
-        ))}
-      </section>
+          </section>
+          <section className="planned-grid">
+            {[
+              {
+                icon: Bot,
+                to: '/codex',
+                title: message('dashboard.codexTitle'),
+                copy: message('dashboard.codexDescription'),
+              },
+              {
+                icon: Sparkles,
+                to: '/claude',
+                title: message('dashboard.claudeTitle'),
+                copy: message('dashboard.claudeDescription'),
+              },
+              {
+                icon: Boxes,
+                to: '/projects',
+                title: message('dashboard.projectsTitle'),
+                copy: message('dashboard.projectsDescription'),
+              },
+            ].map(({ icon: Icon, title, copy, to }) => (
+              <article className="planned-card" key={title}>
+                <Icon aria-hidden="true" size={21} />
+                <StatusBadge>
+                  {message('dashboard.currentCapabilitiesStatus')}
+                </StatusBadge>
+                <h3>
+                  <Link to={to}>
+                    {title}
+                    <ArrowUpRight aria-hidden="true" size={16} />
+                  </Link>
+                </h3>
+                <p>{copy}</p>
+              </article>
+            ))}
+          </section>
 
-      <section className="detail-strip">
-        <div>
-          <span>{message('dashboard.environment')}</span>
-          <strong>
-            {environment ? (
-              <TechnicalValue value={environment} />
-            ) : (
-              message('dashboard.unavailable')
-            )}
-          </strong>
+          <section className="detail-strip">
+            <div>
+              <span>{message('dashboard.environment')}</span>
+              <strong>
+                {environment ? (
+                  <TechnicalValue value={environment} />
+                ) : (
+                  message('dashboard.unavailable')
+                )}
+              </strong>
+            </div>
+            <div>
+              <span>{message('dashboard.database')}</span>
+              <strong>
+                {data.readiness?.checks.database
+                  ? message('dashboard.ready')
+                  : message('dashboard.notReady')}
+              </strong>
+            </div>
+            <div>
+              <span>{message('dashboard.migrations')}</span>
+              <strong>
+                {data.readiness?.checks.migrations
+                  ? message('dashboard.ready')
+                  : message('dashboard.notReady')}
+              </strong>
+            </div>
+          </section>
         </div>
-        <div>
-          <span>{message('dashboard.database')}</span>
-          <strong>
-            {data.readiness?.checks.database
-              ? message('dashboard.ready')
-              : message('dashboard.notReady')}
-          </strong>
-        </div>
-        <div>
-          <span>{message('dashboard.migrations')}</span>
-          <strong>
-            {data.readiness?.checks.migrations
-              ? message('dashboard.ready')
-              : message('dashboard.notReady')}
-          </strong>
-        </div>
-      </section>
+      </details>
     </>
   )
 }

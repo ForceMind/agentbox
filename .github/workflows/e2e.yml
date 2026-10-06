@@ -44,5 +44,6 @@ jobs:
             apps/web/test-results/a3-changes-*.png
             apps/web/test-results/a3-native-changes-*.png
             apps/web/test-results/work-overview-*.png
+            apps/web/test-results/ui-shell-*.png
           if-no-files-found: error
           retention-days: 7

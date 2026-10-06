@@ -17,7 +17,7 @@
   --surface: #fffefa;
   --surface-raised: #eeede7;
   --border: #deded5;
-  --border-strong: #b6b8ac;
+  --border-strong: #7c8475;
   --text: #252825;
   --muted: #61665d;
   --accent: #9a471d;
@@ -38,7 +38,7 @@
     --surface: #272b27;
     --surface-raised: #30352f;
     --border: #40473e;
-    --border-strong: #65705f;
+    --border-strong: #7c8874;
     --text: #eeeee7;
     --muted: #b0b7a9;
     --accent: #e6aa71;
@@ -598,6 +598,9 @@ button:disabled {
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
+.page-header > * {
+  min-width: 0;
+}
 .page-header h1 {
   margin: 0;
   font-size: clamp(1.75rem, 3vw, 2.25rem);
@@ -637,6 +640,10 @@ button:disabled {
 }
 
 @media (max-width: 639px) {
+  .page-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
   .runtime-card-heading .status-badge {
     min-width: 0;
     max-width: 50%;

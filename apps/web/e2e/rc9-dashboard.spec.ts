@@ -21,6 +21,7 @@ const copy = {
     healthy: 'Healthy',
     unavailable: 'Unavailable',
     capabilities: 'Current capabilities',
+    systemDetails: 'System & capabilities',
   },
   'zh-CN': {
     title: '概览',
@@ -28,6 +29,7 @@ const copy = {
     healthy: '正常',
     unavailable: '暂不可用',
     capabilities: '当前能力',
+    systemDetails: '系统状态与能力',
   },
 } as const
 
@@ -115,6 +117,7 @@ test('covers Dashboard loading, healthy, and unavailable states in the rc9 matri
         await page.goto('/dashboard')
         await assertRc9DocumentLocale(page, locale.expectedLocale)
         await assertRc9Title(page, new RegExp(`${expected.title} · AgentBox`))
+        await page.getByLabel(expected.systemDetails, { exact: true }).click()
         await expect(
           page
             .locator('.metric-card:visible')
@@ -146,6 +149,7 @@ test('covers Dashboard loading, healthy, and unavailable states in the rc9 matri
           }),
         )
         await page.reload()
+        await page.getByLabel(expected.systemDetails, { exact: true }).click()
         await expect(
           page
             .locator('.metric-card:visible')

@@ -119,20 +119,26 @@ async function installSharedRoutes(page: Page) {
 
 const localeCopy = {
   en: {
+    newProject: 'New Project',
+    cloneRepository: 'Clone Repository',
     name: 'Project name',
     nameValidation: 'Enter a Project name.',
     clone: 'Clone',
     cloning: 'Cloning…',
+    cancel: 'Cancel',
     branch: 'Branch',
     push: 'Push',
     startClaude: 'Start Claude',
     startingClaude: 'Starting…',
   },
   'zh-CN': {
+    newProject: '新建 Project',
+    cloneRepository: '克隆仓库',
     name: 'Project 名称',
     nameValidation: '请输入 Project 名称。',
     clone: '克隆',
     cloning: '正在克隆…',
+    cancel: '取消',
     branch: '分支',
     push: 'Push',
     startClaude: '启动 Claude',
@@ -190,6 +196,9 @@ test('covers localized Projects states without retaining server prose', async ({
           }),
         )
 
+        await page
+          .getByRole('button', { name: expected.newProject, exact: true })
+          .click()
         const nameInput = page.getByLabel(expected.name, { exact: true })
         await nameInput.fill('   ')
         await page
@@ -201,6 +210,9 @@ test('covers localized Projects states without retaining server prose', async ({
         await expect(nameInput).toHaveAttribute('aria-invalid', 'true')
 
         await page
+          .getByRole('button', { name: expected.cloneRepository, exact: true })
+          .click()
+        await page
           .getByLabel(/Repository URL|仓库 URL/)
           .fill('https://github.com/owner/repo.git')
         const cloneButton = page.getByRole('button', {
@@ -211,6 +223,12 @@ test('covers localized Projects states without retaining server prose', async ({
         await cloneHold.waitUntilHeld()
         await expect(
           page.getByRole('button', { name: expected.cloning }),
+        ).toBeDisabled()
+        await expect(
+          page.getByRole('button', { name: expected.cancel, exact: true }),
+        ).toBeDisabled()
+        await expect(
+          page.getByRole('button', { name: expected.newProject, exact: true }),
         ).toBeDisabled()
         cloneHold.release()
 

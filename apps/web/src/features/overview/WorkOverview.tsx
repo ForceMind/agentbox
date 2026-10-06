@@ -1,4 +1,10 @@
-import { RefreshCw } from 'lucide-react'
+import {
+  ArrowRight,
+  CircleAlert,
+  Folder,
+  Layers3,
+  RefreshCw,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -168,33 +174,35 @@ export function WorkOverview({ locale }: { locale: Locale }) {
           {message('dashboard.refreshWork')}
         </button>
       </div>
-      <p className="overview-scope">
-        {message('dashboard.jobsScope')} {message('dashboard.visibleLimit')}
-      </p>
       <div className="overview-grid">
         {(
           [
             {
               id: 'attention',
+              icon: CircleAlert,
               title: 'dashboard.attention',
               empty: 'dashboard.emptyAttention',
               rows: attention,
             },
             {
               id: 'active',
+              icon: Layers3,
               title: 'dashboard.active',
               empty: 'dashboard.emptyActive',
               rows: active,
             },
           ] as const
-        ).map(({ id, title, empty, rows }) => (
+        ).map(({ id, icon: Icon, title, empty, rows }) => (
           <section
-            className="runtime-card overview-card"
+            className={`overview-card overview-card-${id}`}
             aria-labelledby={`overview-${id}`}
             key={id}
           >
             <div className="overview-card-heading">
-              <h3 id={`overview-${id}`}>{message(title)}</h3>
+              <h3 id={`overview-${id}`}>
+                <Icon aria-hidden="true" size={18} />
+                {message(title)}
+              </h3>
               {jobs.phase === 'ready' && (
                 <span
                   className="overview-count"
@@ -221,61 +229,67 @@ export function WorkOverview({ locale }: { locale: Locale }) {
             {id === 'attention' && (
               <Link className="overview-link overview-footer" to="/attention">
                 {message('dashboard.allAttention')}
+                <ArrowRight aria-hidden="true" size={15} />
               </Link>
             )}
           </section>
         ))}
-        <section
-          className="runtime-card overview-card"
-          aria-labelledby="overview-projects"
-        >
-          <div className="overview-card-heading">
-            <h3 id="overview-projects">
-              {message('dashboard.recentProjects')}
-            </h3>
-          </div>
-          <p className="overview-scope">{message('dashboard.projectsScope')}</p>
-          <ResourceFeedback resource={projects} message={message} />
-          {projects.phase === 'ready' &&
-            (projects.data.data.projects.length ? (
-              <ol className="overview-list">
-                {projects.data.data.projects.map((project) => (
-                  <li key={project.id}>
-                    <h4>
-                      <Link
-                        className="overview-link"
-                        to={`/projects/${project.id}`}
-                      >
-                        <OpaqueUserValue value={project.display_name} />
-                      </Link>
-                    </h4>
-                    <p>
-                      {message('dashboard.metadataUpdated')}{' '}
-                      <time dateTime={project.updated_at}>
-                        {formatDate(locale, new Date(project.updated_at), {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        })}
-                      </time>
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="overview-feedback" role="status">
-                {message('dashboard.emptyProjects')}
-              </p>
-            ))}
-          <ReceivedAt
-            date={projects.receivedAt}
-            locale={locale}
-            message={message}
-          />
+      </div>
+      <p className="overview-scope overview-job-scope">
+        {message('dashboard.jobsScope')} {message('dashboard.visibleLimit')}
+      </p>
+      <section
+        className="overview-card overview-projects"
+        aria-labelledby="overview-projects"
+      >
+        <div className="overview-card-heading">
+          <h3 id="overview-projects">
+            <Folder aria-hidden="true" size={18} />
+            {message('dashboard.recentProjects')}
+          </h3>
           <Link className="overview-link overview-footer" to="/projects">
             {message('dashboard.allProjects')}
+            <ArrowRight aria-hidden="true" size={15} />
           </Link>
-        </section>
-      </div>
+        </div>
+        <p className="overview-scope">{message('dashboard.projectsScope')}</p>
+        <ResourceFeedback resource={projects} message={message} />
+        {projects.phase === 'ready' &&
+          (projects.data.data.projects.length ? (
+            <ol className="overview-list overview-project-list">
+              {projects.data.data.projects.map((project) => (
+                <li key={project.id}>
+                  <h4>
+                    <Link
+                      className="overview-link"
+                      to={`/projects/${project.id}`}
+                    >
+                      <OpaqueUserValue value={project.display_name} />
+                    </Link>
+                  </h4>
+                  <p>
+                    {message('dashboard.metadataUpdated')}{' '}
+                    <time dateTime={project.updated_at}>
+                      {formatDate(locale, new Date(project.updated_at), {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </time>
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="overview-feedback" role="status">
+              {message('dashboard.emptyProjects')}
+            </p>
+          ))}
+        <ReceivedAt
+          date={projects.receivedAt}
+          locale={locale}
+          message={message}
+        />
+      </section>
     </section>
   )
 }

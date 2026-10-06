@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -71,13 +71,15 @@ function authContext(options: DashboardOptions): AuthContextValue {
 }
 
 function renderDashboard(locale: Locale, options: DashboardOptions = {}) {
+  const context = authContext(options)
   render(
-    <AuthContext.Provider value={authContext(options)}>
+    <AuthContext.Provider value={context}>
       <MemoryRouter>
         <DashboardPage locale={locale} />
       </MemoryRouter>
     </AuthContext.Provider>,
   )
+  return context
 }
 
 describe('DashboardPage rc9 localization and rendering boundaries', () => {
@@ -93,6 +95,15 @@ describe('DashboardPage rc9 localization and rendering boundaries', () => {
       await waitFor(() =>
         expect(screen.getAllByText(healthy).length).toBeGreaterThan(0),
       )
+      const summary = screen.getByLabelText(
+        locale === 'en' ? 'System & capabilities' : '系统状态与能力',
+      )
+      expect(summary.closest('details')).not.toHaveAttribute('open')
+      expect(
+        screen.getByRole('heading', { name: capabilities }),
+      ).not.toBeVisible()
+      fireEvent.click(summary)
+      expect(summary.closest('details')).toHaveAttribute('open')
       expect(screen.getByRole('heading', { name: capabilities })).toBeVisible()
       expect(
         screen.queryByText(/Remote daemon and pairing controls arrive/i),
@@ -105,6 +116,36 @@ describe('DashboardPage rc9 localization and rendering boundaries', () => {
       expect(username).toHaveAttribute('translate', 'no')
     },
   )
+
+  it('puts work before collapsed diagnostics and opens existing management routes without more reads', async () => {
+    const context = renderDashboard('en')
+    const work = screen.getByRole('region', { name: 'Your work' })
+    const summary = screen.getByLabelText('System & capabilities')
+    expect(
+      work.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    await waitFor(() =>
+      expect(screen.getAllByText('Healthy').length).toBeGreaterThan(0),
+    )
+    expect(context.api.get).toHaveBeenCalledTimes(5)
+    fireEvent.click(summary)
+    expect(
+      screen.getByRole('region', { name: 'Control plane status' }),
+    ).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Codex' })).toHaveAttribute(
+      'href',
+      '/codex',
+    )
+    expect(screen.getByRole('link', { name: 'Claude' })).toHaveAttribute(
+      'href',
+      '/claude',
+    )
+    fireEvent.click(summary)
+    expect(
+      screen.getByRole('region', { name: 'Control plane status' }),
+    ).not.toBeVisible()
+    expect(context.api.get).toHaveBeenCalledTimes(5)
+  })
 
   it('reports degraded and unavailable service states without rendering unsafe metadata', async () => {
     const canary = 'SERVER-PROSE-CANARY-DASHBOARD-🚫'

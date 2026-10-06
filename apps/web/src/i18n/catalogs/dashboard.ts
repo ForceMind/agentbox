@@ -2,6 +2,8 @@ import { defineCatalogShard } from './types'
 import type { NoMessageParameters } from './types'
 
 export interface DashboardMessageParameters {
+  readonly 'dashboard.systemDetails': NoMessageParameters
+  readonly 'dashboard.systemDescription': NoMessageParameters
   readonly 'dashboard.jobId': NoMessageParameters
   readonly 'dashboard.unknown': NoMessageParameters
   readonly 'dashboard.noProjectLink': NoMessageParameters
@@ -64,6 +66,9 @@ export const dashboardCatalog = defineCatalogShard<DashboardMessageParameters>(
   'dashboard',
   {
     en: {
+      'dashboard.systemDetails': () => 'System & capabilities',
+      'dashboard.systemDescription': () =>
+        'Control-plane health and available management workflows. Workspace connection and Agent readiness are checked separately.',
       'dashboard.workTitle': () => 'Your work',
       'dashboard.workDescription': () =>
         'A read-only snapshot of your operations and the managed project catalog.',
@@ -136,6 +141,9 @@ export const dashboardCatalog = defineCatalogShard<DashboardMessageParameters>(
       'dashboard.migrations': () => 'Migrations',
     },
     'zh-CN': {
+      'dashboard.systemDetails': () => '系统状态与能力',
+      'dashboard.systemDescription': () =>
+        '查看控制平面健康状态和已有管理入口。工作台连接与 Agent 就绪条件分别检查。',
       'dashboard.workTitle': () => '工作概览',
       'dashboard.workDescription': () => '只读查看你的操作记录与受管项目。',
       'dashboard.refreshWork': () => '刷新工作概览',
