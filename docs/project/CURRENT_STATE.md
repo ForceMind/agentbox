@@ -1,12 +1,54 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T16:42:00Z"
+verified_at_utc: "2026-10-06T17:37:00Z"
 verified_by: "agentbox-a3-currentness-diagnosis"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 固定ABBA四轮完成；main复现，根因未闭合
+
+head `7cc9d971db92a3b809e9c02b467351483f30c8b0` / tree
+`fc95b8bdaa0b26e3615885f6d74c3065cd259361` 的
+[run37498497962/job112389102587](https://github.com/ForceMind/agentbox/actions/runs/37498497962/job/112389102587)
+attempt1已完整终态。summary.stage为complete、interpretation为
+inconclusive_failures_retained；harness exit1来自A2真实失败，无外层超时。
+诊断step约33m25s，job约33m41s，39文件artifact11429444729成功上传；ZIP
+SHA256已实际复核为
+`b5d8e8b3684aefde995a8741524565b4ceb8670a413699c144a260cb94e0e4fb`。
+
+A1/A2冻结main `a586eaec27984e0632187048cc1b82e7e29552d1` / tree
+`e5d9309dca123f17f9ff9ee48df0765c332ea451`；B1/B2冻结
+`404daae0be4225b30a6e3e71ee239376bd5e6ca6` / tree
+`238a35a0629e3307560d3a57371e9f2410e3f047`，仅诊断B条件ignore尾部65项模块。
+同一image20260927.320.1、实际Python3.13.15，四份独立源码/venv的75包、2插件、
+9模块及原5393 collection均吻合，目标第763项；13个既有动态PID字段之外同序。
+源码SHA/tree、tracked洁净与wheel核验均通过，证据边界和原始日志见
+[四轮完整记录](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md#2026-10-06-固定四轮完成与结果判读)。
+四份pip安装日志均保留venv预置pip26.2.1，实际安装73个sealed wheel；75包版本
+全集已核验，但不能以pip wheel摘要证明预置pip安装字节。collection是预检
+逐node同序证据，实际测量仅文件级进度；source/status仅保留最后核验快照。
+
+- A1：5305 passed / 88 skipped，487.96s，无失败note
+- B1：5305 passed / 88 skipped，473.11s，无失败note
+- B2：5305 passed / 88 skipped，448.83s，无失败note
+- A2：5304 passed / 1 failed / 88 skipped，452.60s；原native READY目标失败，
+  checker/currentness23/24，fixture-checker PATCH_TIMEOUT，runtime-receive
+  none/ge200ms/ge250ms，继而PATCH_REVOKED EOF
+
+冻结A首末结果不同，证明本轮仍有运行间变化；在新受控75包条件下main能够
+重现旧表象。预定两个A失败/两个B通过的模式未出现；B两次未复现不能证明
+observer因果或修复效果。A2无新CPU/GC观察器，B无失败note，仍不能归因GC、
+GIL、调度或checker内部具体阶段。产品根因与真实产品red/green尚未闭合。
+
+固定四轮采样已停止，不追加采样或再次标签触发；本次只更新两份诊断文档，
+生产、harness、tests、workflow和全部预算不改。B原5393诊断不称完整资格，
+默认六套CI仍完整保留65项安全回归与编排单测。独立对照审查已确认上述事实和
+保证缺口，最终记录进入发布；新head普通六套CI以PR实时回读为准。UI PR148与
+缓存修复PR150保持独立。下方待采证、准备失败
+和旧外层预算是当时快照，保留历史，不覆盖本节实际结果。
 
 ## 2026-10-06 ABBA首次prepare失败；官方wheel实物修正候选
 

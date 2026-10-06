@@ -1,5 +1,9 @@
 # A3 currentness 失败时序诊断
 
+最新结果见末节“固定四轮完成与结果判读”：A1/B1/B2通过，A2基线重现原超时；
+采样已停止，native产品根因仍未闭合。下方候选、待采证与准备失败记录保留为
+当时快照，不覆盖末节实际终态。
+
 ## 范围与已有证据
 
 本节描述最初observer补丁；末节ABBA候选另增独立诊断workflow，原有六套不改。
@@ -193,11 +197,13 @@ setuptools84.0.0；每个venv另加对应源码的editable agentbox0.3.0rc31，�
 预检运行在独立的python -B进程，不向真正pytest进程添加事件插件或预载模块。
 
 外部wheel只下载一次，核验包名/版本、记录每个实际wheel的SHA256后只读封存。
-四个venv仅从该wheelhouse用require-hashes/no-index/no-deps离线安装。editable
+四个venv用require-hashes/no-index/no-deps从该wheelhouse离线安装所需依赖；
+已满足版本的包可保留，末节记录实际预置pip的字节验证边界。editable
 构建明确no-build-isolation，使用固定setuptools84；不添加没有原日志版本依据
 的wheel包。此模式固定了本轮构建环境，却不等价于原CI未公开的临时PEP517
 环境。原global site-packages可能还有未显示的预装包；75包集合是新受控条件。
-wheel摘要证明本轮四次使用同一下载内容，不是原CI wheel字节相同的证明。
+wheel摘要证明四次安装所引用的wheelhouse内容一致，不是原CI wheel字节相同
+或全部已安装包均由这些wheel重新安装的证明。
 
 ### 有界成本、证据与判读
 
@@ -312,3 +318,99 @@ pip check0.29–0.32s、imports1.66–1.79s；没有独立stopwatch，且不包�
 collection，不能外推CI严格上界。官方74份JSON额外审计不在CI harness内。
 新外层余量是有依据的估计，仍可能超时，不保证完成；超时/缺证据仍记未完成。
 修正须独立复审、新head再单次触发，不在旧e1头rerun，也不追加实验轮次。
+
+## 2026-10-06 固定四轮完成与结果判读
+
+### 精确来源、原始证据与实际成本
+
+已审root METADATA修正发布为head
+`7cc9d971db92a3b809e9c02b467351483f30c8b0` / tree
+`fc95b8bdaa0b26e3615885f6d74c3065cd259361`。新头一次标签事件触发的
+[run37498497962/job112389102587](https://github.com/ForceMind/agentbox/actions/runs/37498497962/job/112389102587)
+为attempt1，已完整执行A1、B1、B2、A2。summary.stage为complete，interpretation为
+inconclusive_failures_retained；harness exit1来自A2真实测试失败，没有外层超时，
+也不是准备失败或被取消。此前e1的prepare失败仍保留，不计入这四轮。
+
+[artifact11429444729](https://github.com/ForceMind/agentbox/actions/runs/37498497962/artifacts/11429444729)
+ZIP SHA256实际复核为
+`b5d8e8b3684aefde995a8741524565b4ceb8670a413699c144a260cb94e0e4fb`。
+39份解包文件逐字节等于ZIP内容，包含四份pytest、collection、imports、package/
+editable/pip-check/source/tracked-status日志，以及summary和wheel摘要。summary
+SHA256为`021cd33d3786d75c8e839c2aa3a5e3dfe9802da53d331862681b9020d433b6a0`。
+
+本轮实际条件如下，A/B不是发布新功能后的可变分支：
+
+- A1/A2均为main冻结源码a586eaec27984e0632187048cc1b82e7e29552d1，tree
+  e5d9309dca123f17f9ff9ee48df0765c332ea451，原5393项完整执行
+- B1/B2均为404daae0be4225b30a6e3e71ee239376bd5e6ca6，tree
+  238a35a0629e3307560d3a57371e9f2410e3f047；仅本诊断条件ignore尾部65项模块，
+  执行原5393项，不称完整资格
+- 同一ubuntu-24.04 runner，image20260927.320.1，四套全新checkout、venv和
+  pytest进程；四份imports与pytest均明确Python3.13.15、pytest9.1.1
+- requirements SHA256为
+  1112958277d13d476a6a04449c055c7ef81d82ed3caac57aee3d94ee08071e23。
+  四份imports实测75包集合一致，等于冻结74包加editable agentbox0.3.0rc31；
+  pip26.2.1、setuptools84.0.0及两个pytest11入口anyio/platformdirs均吻合。
+  四份pip check均为No broken requirements found，9个module来源/摘要符合冻结源码
+- 四份原始collection均为5393项，目标均为第763项；只归一化原9个runtime_pid
+  payload字段和4个listen_pid字符串字段，其余node ID及顺序相同。这是独立
+  collect-only预检的逐项证据；实际测量日志确认5393 collected并保留文件级
+  进度，没有第二次逐node执行顺序的完整追踪
+- 四份source日志均为对应SHA/tree，最后一次tracked-status均为空。CI日志保留
+  全部预检、各轮前后source核验步骤，complete表明相应wheel摘要核验也已通过。
+  source/status同名日志会覆盖，因此artifact只保留最后一次结果。74项wheel
+  摘要与此前官方PyPI核验的实物逐项一致；artifact不含CI wheel实物、venv或
+  完整checkout，不能据此声称独立重验了CI现场的全部字节，也不把本轮摘要
+  反推为历史旧job的wheel字节
+
+四份dependencies日志均写pip26.2.1为Requirement already satisfied：实际从
+sealed wheelhouse安装73个包，pip由fresh venv预置。最终75包map及pip版本已
+严格核验，但manifest中的pip wheel摘要不证明预置pip的安装字节；不得称74包
+全部由sealed wheels重新安装。这个限制保留在结果中，不修改harness重采。
+
+四轮pytest报告耗时合计1862.50s（31m02.50s）；Actions记录诊断step从16:47:53Z
+至17:21:18Z，约33m25s，含准备、进程启动和编排。job从16:47:43Z至17:21:24Z，
+约33m41s，artifact上传成功。37min/40min外层限制本轮足够，不能外推为后续
+完成保证；原产品与pytest内部预算均保持。
+
+### 四份实际结果
+
+| 条件 | 实际结果 | pytest耗时 | currentness失败note |
+| --- | --- | --- | --- |
+| A1 | 5305 passed / 88 skipped，exit0 | 487.96s | 无 |
+| B1 | 5305 passed / 88 skipped，exit0 | 473.11s | 无 |
+| B2 | 5305 passed / 88 skipped，exit0 | 448.83s | 无 |
+| A2 | 5304 passed / 1 failed / 88 skipped，exit1 | 452.60s | 原目标失败，见下文 |
+
+四份日志均有5393 collected及相同88项规定skip。A2唯一失败是
+test_native_records_hold_admission_through_publication_complete_and_revoke，
+在等待READY时收到PATCH_REVOKED EOF。原note记录fixture-checker PATCH_TIMEOUT，
+checker/currentness为23/24；runtime-receive PATCH_TIMEOUT的bucket为
+none/ge200ms/ge250ms，runtime-currentness亦为PATCH_TIMEOUT。summary中两行
+note来自同一异常在traceback和short summary的重复呈现，不计为两个失败。
+
+### 可得结论、限制与停止
+
+事实：在固定75包fresh venv、完整原5393顺序和真实Python3.13.15下，冻结main
+仍能出现与旧失败相同的currentness超时/READY EOF表象；同一A条件首轮通过、
+末轮失败。此次出现不需要UI PR148改动、新增65项observer安全测试的导入/执行，
+或B的新CPU/GC观察器。本轮表象在fresh venv/固定setuptools构建条件中出现，
+原global/PEP517环境差异仍限制历史归因，不能据此证明几次失败具有同一根因。
+
+结论不足：预定“两个A目标失败、两个B通过”的模式未出现。两个B通过只能记本轮
+两次未复现，不能把1/2对0/2解释为observer因果或修复效果。顺序固定且每条件
+仅两次，宿主负载、调度、缓存和时间变化仍未受控；全suite耗时不提供目标250ms
+窗口的CPU或GC归因。B仍包含helper导入、fixture接线与采样扰动，本轮没有第三个
+完整tail条件，不能单独估计新增65项collection或执行的影响。
+
+A2只有main原有reason/count/budget note，无法进一步区分checker wait/receive/
+send；B未失败，所以没有新的失败phase/CPU/GC note。缺少note不是“没有GC”
+或“没有调度停顿”的证据。native根因、observer影响和同条件产品red/green均
+未闭合，不调整250ms或其他产品/测试预算，不据此实施产品修复。
+
+固定四轮采样已停止；不追加轮次、不重跑旧head，也不通过新文档head再次触发
+ABBA。默认六套资格CI继续保留完整测试，包括65项安全回归和编排单测；本次
+诊断结果不能替代它们。UI PR148、Release Candidate缓存PR150继续独立处理。
+本轮收尾只更新本文和CURRENT_STATE。独立对照审查已核验ZIP、官方job日志、
+四份原始结果、源码与环境证据及上述保证缺口，最终记录进入发布并查看新head
+普通六套CI；不把诊断完成等同于产品根因修复或发布资格。
