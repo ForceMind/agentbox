@@ -10,3 +10,8 @@ overrides:
   "brace-expansion@^5.0.0": 5.0.12
   nanoid: 3.3.18
   js-yaml: 4.3.2
+  # Tinypool 2 retains Vitest 3's pool API; dropping Node 18 fits our Node >=22.
+  # Fix GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr on supported Node >=22.
+  "tinypool@<2.1.2": 2.1.2
+  # GHSA-68fv-2mgg-jv7q: reject unsafe indexed source-map offsets.
+  "source-map-js@>=1.0.0 <1.2.2": 1.2.2

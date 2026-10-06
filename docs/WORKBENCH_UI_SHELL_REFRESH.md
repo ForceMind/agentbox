@@ -83,3 +83,28 @@ A2 或 S02 全部完成。后续按原计划继续迁移，本文不添加新的
 - 新 spec 为44 entries：20 responsive组合只由 desktop project 执行，mobile重复
   20条为 prescribed skip，另4条 interruption；不把这些 route-fixture 测试称为
   真实 Runtime/host 或端到端 API 权限证据。原正式 App/API overview E2E 保留
+
+### 首轮 CI 与最小开发依赖修复
+
+首轮 head `5d546fc2b0f712b266d3fc72e0743d3a4f742541` 的 Frontend、Backend、
+Deployment、Release Candidate 通过；Security 的 frontend-audit 报告新上游
+开发链漏洞，原失败保留：[Security run](https://github.com/ForceMind/agentbox/actions/runs/37462746670)。
+E2E 此记录时仍在运行，不称截图或浏览器通过。
+
+只在 `pnpm-workspace.yaml` / `pnpm-lock.yaml` 对受影响版本加精确 override：
+`tinypool` 1.1.1→2.1.2 与 `source-map-js` 1.2.1→1.2.2，其余锁定版本不变。
+官方依据：[tinypool 2.1.2 advisory](https://github.com/advisories/GHSA-85c8-ppgw-ccpr)、
+[source-map-js advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q)；
+[tinypool 2.0 breaking change](https://github.com/tinylibs/tinypool/releases/tag/v2.0.0)
+仅移除 Node18，仓库要求 Node≥22。发布包类型对照显示 Vitest3.2.7 使用的
+run/destroy/recycleWorkers/cancelPendingTasks/workerId 接口保留；实际验证仍必需。
+
+项目声明的 pnpm11.20.0 frozen install 与 `audit --audit-level high` exit0，
+0 high/critical，保留原有2 moderate，不称零漏洞。新依赖串行完整测试为
+1583 Web + 6 extension，通过；默认forks隔离2项、threads17项及双端build
+通过。生产license inventory实际核对8包未漂移，两个补丁均为开发链。
+
+首轮新依赖 full Web 与 build 并行时，既有 exactStop 用例出现
+PROTOCOL_INVALID/5000ms timeout（1582 passed / 1 failed），日志保留。
+随后隔离与串行通过不抹除失败；根因未定，不归因为调度或新 pool，也不改
+产品预算、测试断言/timeout或审计门槛。新 exact-head CI 仍是必要证据。
