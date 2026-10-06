@@ -1,12 +1,44 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-05T18:43:00Z"
-verified_by: "agentbox-work-overview"
+verified_at_utc: "2026-10-06T15:41:00Z"
+verified_by: "agentbox-artifact-cache-contract"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 artifact-import 的 runner pip cache 合同修正候选
+
+远端 `main` 通过 `git ls-remote origin refs/heads/main` 核验为
+`a586eaec27984e0632187048cc1b82e7e29552d1`；本候选从该 SHA 独立建立
+`fix/rc-artifact-cache-contract-20261006`。下方较旧的 main/PR 状态保留为历史，
+不覆盖本次 live read-back；UI 与 native currentness 诊断分支保持分离。
+
+PR #149 head `404daae0be4225b30a6e3e71ee239376bd5e6ca6` 的
+[Release Candidate job](https://github.com/ForceMind/agentbox/actions/runs/37484879444/job/112344036936)
+明确记录 CPython 3.12.15 cache miss、9 个 isolated package modules 的
+artifact provenance 成功，随后 Post setup-python 因 `/home/runner/.cache/pip`
+不存在而失败。`rehearse-waw-artifact.py` 使用独立临时 HOME、`--without-pip`
+venv、manifest-hashed bootstrap 与 no-index wheelhouse 安装，不负责生成
+runner HOME 的缓存。该记录只证明此 CI cache 配置问题，与 currentness 根因无关。
+
+候选只移除 `rc8-artifact-import` 的 setup-python `cache: pip` 输入，并加入
+独立 YAML 合同回归。全 YAML 结构比较确认其余 jobs、action pins、Python
+matrix、native/synthetic/provenance 命令和 release-gate 均完全不变；不创建
+空缓存、不依赖重跑 cache hit，不放宽真实 artifact 或安全门禁。
+
+同一新增测试在原 YAML 上 1 failed（exit 1），仅应用该配置变化后 1 passed
+（exit 0）。本地 Python 3.12.14 的 release-candidate、artifact rehearsal、
+rc8 contract/workflow 四模块共 120 passed；Ruff、mypy（393 source files）、
+改动 Python 文件 Black、49 个 action pins、doc links、secret-pattern、
+source-boundary 与 diff-check 均通过。此 red/green 是配置合同回归，fixture
+rehearsal 不替代新 head 的真实 GitHub runner/发布包/native/synthetic CI。
+
+非作者复审已逐文件检查，独立重跑上述120项通过，确认模块从候选源码加载；
+重做全YAML结构差异和49项action pin检查均通过，无P0/P1/P2。
+候选进入普通提交与独立Draft PR，新exact-head CI尚待采证，未重跑旧失败。
+没有产品修复、依赖变更、merge、host/账号/凭据操作、release 或 deploy。
 
 
 ## 2026-10-05 native3.13 真实超时已采到；继续限定 I/O 阶段诊断

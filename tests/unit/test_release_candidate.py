@@ -425,6 +425,21 @@ def test_release_packaging_compatibility_lock_and_gate_are_fail_closed() -> None
     assert 'AGENTBOX_RC8_REQUIRE_LOOPBACK: "1"' in workflow
 
 
+def test_release_artifact_import_does_not_cache_runner_pip() -> None:
+    root = Path(__file__).resolve().parents[2]
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/release-candidate.yml").read_text(encoding="utf-8")
+    )
+    setup_steps = [
+        step
+        for step in workflow["jobs"]["rc8-artifact-import"]["steps"]
+        if step.get("uses", "").startswith("actions/setup-python@")
+    ]
+    assert len(setup_steps) == 1
+    # Artifact installs use a temporary HOME/venv; a cold runner has no pip cache to save.
+    assert setup_steps[0]["with"] == {"python-version": "${{ matrix.python-version }}"}
+
+
 def test_release_gate_workflow_has_exact_dependencies_conditions_and_result_mapping() -> None:
     root = Path(__file__).resolve().parents[2]
     workflow = yaml.safe_load(
