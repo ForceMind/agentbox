@@ -979,6 +979,11 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
+  await page.getByLabel('System & capabilities', { exact: true }).click()
+  await expect(page.locator('details.dashboard-system')).toHaveAttribute(
+    'open',
+    '',
+  )
   await expect(page.getByText('0.3.0rc31', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()

@@ -28,6 +28,7 @@ import {
 } from '../features/workbench/workTabs'
 import { currentLocale, formatMessage, type Locale } from '../i18n'
 import { CommandCenter } from './CommandCenter'
+import { containDialogTab } from './dialogFocus'
 import { WorkbenchTabs } from './WorkbenchTabs'
 
 const navigation = [
@@ -371,6 +372,7 @@ export function AppShell({
           aria-modal="true"
           className="mobile-drawer"
           id="mobile-navigation"
+          onKeyDown={containDialogTab}
           onCancel={(event) => {
             event.preventDefault()
             closeNavigation()

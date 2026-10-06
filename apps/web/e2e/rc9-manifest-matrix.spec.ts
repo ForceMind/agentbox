@@ -403,7 +403,9 @@ test('covers Shell mobile drawer, failed logout, and unavailable health in the r
           await menu.click()
           await expect(menu).toHaveAttribute('aria-expanded', 'true')
           await expect(
-            page.getByRole('button', { name: copy.closeNavigation }),
+            page
+              .locator('#mobile-navigation')
+              .getByRole('button', { name: copy.closeNavigation, exact: true }),
           ).toBeVisible()
           await expect(page.locator('#mobile-navigation')).toBeVisible()
         }

@@ -108,3 +108,21 @@ run/destroy/recycleWorkers/cancelPendingTasks/workerId 接口保留；实际验�
 PROTOCOL_INVALID/5000ms timeout（1582 passed / 1 failed），日志保留。
 随后隔离与串行通过不抹除失败；根因未定，不归因为调度或新 pool，也不改
 产品预算、测试断言/timeout或审计门槛。新 exact-head CI 仍是必要证据。
+
+### 首轮真实浏览器失败与修正
+
+[E2E run](https://github.com/ForceMind/agentbox/actions/runs/37462746684) 已终态失败：
+232 passed / 24 failed / 50 prescribed skipped。20个新 responsive组合在原生
+modal 的 Shift+Tab 边界断言失败；其余为2个登录版本位于新折叠区、1个旧drawer
+关闭按钮定位歧义、1个紧凑克隆按钮仅32px宽。没有用已有单测或截图替代这些失败。
+
+修正保留全部原断言：drawer 与 CommandCenter 共用显式 Tab 边界循环，native
+showModal 继续负责 inert/top-layer；过滤隐藏/disabled/negative-tabindex控件，
+不拦截 Escape 或浏览器修饰快捷键。primary-button 增加44px最小宽度与水平内距。
+两个旧 E2E 流程真实展开系统区，关闭导航精确定位 dialog 内的按钮。
+新增2项 Tab helper单测，与现有shell/command共16项通过；本地完整1585 Web +
+6 extension通过，lint/format/typecheck与build复验。真实新head仍需再验。
+
+首轮失败没有成功上传图片，不声明实际像素审查。后续失败只额外保留
+ui-shell 合成 route fixture 自行截图的 PNG；仍禁用自动截图/trace/video，不上传
+一般失败上下文、登录页、真实账号/凭据或终端输出。该保留步骤不改变测试通过条件。

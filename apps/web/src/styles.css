@@ -354,6 +354,8 @@ a {
   font-weight: 700;
 }
 .primary-button {
+  min-width: 2.75rem;
+  padding: 0.65rem 0.9rem;
   border: 0;
   background: var(--accent);
   color: var(--accent-ink);
