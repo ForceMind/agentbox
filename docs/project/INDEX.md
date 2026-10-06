@@ -1,5 +1,23 @@
 # AgentBox Project Context Index
 
+## 2026-10-06 PR148 UI 候选质量回归快照（13:07 UTC）
+
+[Draft PR148](https://github.com/ForceMind/agentbox/pull/148) 已交付共享外壳、
+概览与项目导航候选；main仍为 `a586eaec27984e0632187048cc1b82e7e29552d1`。
+已发布head `76612192ad1f2def8fdcd771856321a37b0a957f` 的Backend/Frontend/
+Security/Deployment/Release Candidate五套通过；E2E252pass/2failed/2flaky/
+50 prescribed skip，后继正在修测试的实际DOM导航等待并完善已截图发现的CSS。
+
+审计补丁仅更新开发链tinypool2.1.2/source-map-js1.2.2，0high/critical，保留
+2moderate；不降低门槛。44张真实合成图已下载校验，独立12图检查与主实施者
+像素检查完成，具体失败、修正、测试与原始边界见
+[交付记录](../WORKBENCH_UI_SHELL_REFRESH.md)。本节是指定时间快照，后继
+exact-head与最终CI以PR148 live记录为准，不宣称本快照已全部通过。
+
+本有界批次不merge/release/deploy；不改Runtime/A3/认证/Secret、文件读取权限
+或真实host准入。既有完整能力计划继续有效，本批不另开路线图或审美等待门槛。
+
+
 ## 2026-10-06 UI 首批实施与 PR147 live 状态校正
 
 GitHub live main 已是 `a586eaec27984e0632187048cc1b82e7e29552d1`，

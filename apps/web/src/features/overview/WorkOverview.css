@@ -1,7 +1,7 @@
 .work-overview {
   margin-bottom: 2rem;
 }
-.overview-heading {
+.work-overview .overview-heading {
   margin-top: 0;
   align-items: start;
   gap: 1rem;
@@ -175,7 +175,7 @@
   }
 }
 @media (max-width: 600px) {
-  .overview-heading {
+  .work-overview .overview-heading {
     flex-direction: column;
   }
   .overview-project-list {

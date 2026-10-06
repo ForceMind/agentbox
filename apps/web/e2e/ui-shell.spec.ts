@@ -172,12 +172,18 @@ async function assertNativeFocusTrap(page: Page, dialog: Locator) {
   ).toBe(true)
 }
 
-async function capture(page: Page, name: string) {
+async function assertPageHeading(page: Page, name: string) {
+  await expect(
+    page.getByRole('heading', { name, level: 1, exact: true }),
+  ).toBeVisible()
+}
+
+async function capture(page: Page, name: string, fullPage = true) {
   await mkdir('test-results', { recursive: true })
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({
     path: join('test-results', `ui-shell-${name}.png`),
-    fullPage: true,
+    fullPage,
   })
 }
 
@@ -244,6 +250,33 @@ for (const locale of ['zh-CN', 'en'] as const) {
           await assertRc9NoHorizontalOverflow(page)
           await assertRc9InteractiveTargets(page)
           await page.getByLabel(expected.system, { exact: true }).click()
+          await page.evaluate(() => window.scrollTo(0, 0))
+          if (mobile) {
+            const overviewLeft = await page
+              .locator('.work-overview')
+              .evaluate((element) => element.getBoundingClientRect().left)
+            const headingLeft = await page
+              .locator('#work-overview-title')
+              .evaluate((element) => element.getBoundingClientRect().left)
+            expect(
+              Math.abs(headingLeft - overviewLeft),
+              'mobile overview title must align with the section left edge',
+            ).toBeLessThanOrEqual(1)
+          } else {
+            const logout = page.locator(
+              '.desktop-sidebar .sidebar-footer button',
+            )
+            await expect(logout).toBeVisible()
+            const bounds = await logout.boundingBox()
+            expect(bounds).not.toBeNull()
+            expect(bounds!.width).toBeGreaterThanOrEqual(44)
+            expect(bounds!.height).toBeGreaterThanOrEqual(44)
+            expect(bounds!.y).toBeGreaterThanOrEqual(0)
+            expect(
+              bounds!.y + bounds!.height,
+              'desktop logout must remain fully visible in the 900px viewport',
+            ).toBeLessThanOrEqual(900)
+          }
           await capture(page, `${locale}-${width}-${colorScheme}-dashboard`)
 
           if (mobile) {
@@ -268,6 +301,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
               await capture(
                 page,
                 `${locale}-${width}-${colorScheme}-navigation`,
+                false,
               )
             await page.keyboard.press('Escape')
             await expect(drawer).toHaveCount(0)
@@ -284,15 +318,20 @@ for (const locale of ['zh-CN', 'en'] as const) {
               .getByRole('link', { name: expected.logs, exact: true })
               .click()
             await expect(page).toHaveURL(/\/logs$/)
+            await assertPageHeading(page, expected.logs)
             await expect(drawer).toHaveCount(0)
             await trigger.click()
             await page.goBack()
             await expect(page).toHaveURL(/\/dashboard(?:#main-content)?$/)
+            await assertPageHeading(page, expected.dashboard)
             await expect(drawer).toHaveCount(0)
             await page.goForward()
             await expect(page).toHaveURL(/\/logs$/)
+            await assertPageHeading(page, expected.logs)
             await expect(drawer).toHaveCount(0)
             await page.goBack()
+            await expect(page).toHaveURL(/\/dashboard(?:#main-content)?$/)
+            await assertPageHeading(page, expected.dashboard)
             await trigger.click()
             await page.setViewportSize({ width: 1024, height: 900 })
             await expect(drawer).toHaveCount(0)
@@ -343,6 +382,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
             .getByRole('option', { name: expected.projects, exact: true })
             .click()
           await expect(page).toHaveURL(/\/projects$/)
+          await assertPageHeading(page, 'Projects')
           await expect(command).toHaveCount(0)
           await expect(
             page.getByRole('heading', { name: project.display_name }),
@@ -350,9 +390,11 @@ for (const locale of ['zh-CN', 'en'] as const) {
           await commandTrigger.click()
           await page.goBack()
           await expect(page).toHaveURL(/\/dashboard(?:#main-content)?$/)
+          await assertPageHeading(page, expected.dashboard)
           await expect(command).toHaveCount(0)
           await page.goForward()
           await expect(page).toHaveURL(/\/projects$/)
+          await assertPageHeading(page, 'Projects')
           await expect(command).toHaveCount(0)
 
           const create = page.getByRole('button', {
@@ -369,6 +411,18 @@ for (const locale of ['zh-CN', 'en'] as const) {
           })
           await expect(name).toHaveCount(0)
           await expect(repository).toHaveCount(0)
+          const createBounds = await create.boundingBox()
+          const iconBounds = await create.locator('svg').boundingBox()
+          expect(createBounds).not.toBeNull()
+          expect(iconBounds).not.toBeNull()
+          expect(
+            Math.abs(
+              iconBounds!.y +
+                iconBounds!.height / 2 -
+                (createBounds!.y + createBounds!.height / 2),
+            ),
+            'New Project icon and label must remain on the same button row',
+          ).toBeLessThanOrEqual(2)
           await capture(page, `${locale}-${width}-${colorScheme}-projects`)
           await create.click()
           await expect(name).toBeFocused()
@@ -410,8 +464,14 @@ for (const locale of ['zh-CN', 'en'] as const) {
             .getByRole('option', { name: expected.logs, exact: true })
             .click()
           await expect(page).toHaveURL(/\/logs$/)
+          // URL changes can precede React Router's destination commit. Prove
+          // Projects really unmounted before exercising a history return.
+          await assertPageHeading(page, expected.logs)
+          await expect(name).toHaveCount(0)
+          await expect(command).toHaveCount(0)
           await page.goBack()
           await expect(page).toHaveURL(/\/projects$/)
+          await assertPageHeading(page, 'Projects')
           await expect(name).toHaveCount(0)
           await create.click()
           await expect(name).toHaveValue('')
@@ -500,6 +560,8 @@ for (const locale of ['zh-CN', 'en'] as const) {
       await expect(page.getByText('Obsolete command result')).toHaveCount(0)
       await expect(command).toHaveCount(0)
       await page.goBack()
+      await expect(page).toHaveURL(/\/dashboard$/)
+      await assertPageHeading(page, expected.dashboard)
       await expect(page.getByText(jobId, { exact: true })).toBeVisible()
       await expect(command).toHaveCount(0)
       expect(requests.mutations).toEqual([])

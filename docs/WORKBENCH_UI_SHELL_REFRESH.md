@@ -126,3 +126,36 @@ showModal 继续负责 inert/top-layer；过滤隐藏/disabled/negative-tabindex
 首轮失败没有成功上传图片，不声明实际像素审查。后续失败只额外保留
 ui-shell 合成 route fixture 自行截图的 PNG；仍禁用自动截图/trace/video，不上传
 一般失败上下文、登录页、真实账号/凭据或终端输出。该保留步骤不改变测试通过条件。
+
+### 第二轮浏览器与实际像素
+
+head `76612192ad1f2def8fdcd771856321a37b0a957f` 的五套非E2E workflow全部通过，
+[第二轮E2E](https://github.com/ForceMind/agentbox/actions/runs/37465293259) 为
+252 passed / 2 failed / 2 flaky / 50 prescribed skipped；四次问题均在新测试
+仅等待 `/logs` URL就立即Back后，期待Projects草稿消失的断言。原24个失败类中的
+Tab循环、44px按钮与旧disclosure适配已通过，但不将2 flaky算作稳定通过。
+
+隔离真实BrowserRouter/StrictMode的双语create/clone四项probe记录：
+`navigate('/logs')` 返回时URL已改，旧input仍在且Logs标题未commit；等待Logs
+标题后旧表单卸载，实际history Back后重新打开草稿为空、无mutation。该观测
+证明URL不能替代DOM完成，不独自证明原CI因果。E2E现在在离开、Back/Forward
+前确认实际目标标题和旧表单/overlay消失，保留回程input=0及全部零mutation断言，
+无sleep、预算放宽或产品状态补丁；四项路由不变量回归纳入正式单测。
+
+本次真实44张合成PNG从artifact11415596773下载并验证ZIP sha256：
+`fe3a713d7f29937dabd2a4cc249b0c78e506d6df552c859be133354ce3c74916`。
+独立检查12张覆盖两语言、两主题和五宽度，主实施者另实际打开5张；未见缺字、
+横向裁切或内容重叠，但发现并修正三项呈现问题：手机概览标题受旧global selector
+影响右对齐、New Project的Plus图标独占一行、900px高桌面侧栏退出按钮部分裁切。
+修复仅提高overview selector精度、限定新建按钮inline-flex、压缩桌面导航空白，
+保留44px目标。增加对应像素几何断言；导航截图仅截viewport，完整页面仍fullPage。
+
+这些图片属于7661219，不冒充后继CSS候选截图。后继完整六套CI、实际截图与
+最终像素复核仍需完成；全部失败/环境限制保留。
+
+后继CSS/路由回归本地完整默认并发测试为1588 passed/1 failed：未改的
+`wawExactStop.rc7` 在connect阶段报PROTOCOL_INVALID；与之前偶发失败同一表象，
+根因未定，不能归因为本次CSS或pool。未改产品、预算或断言；随后用
+`vitest run --maxWorkers=1` 检查完整suite在串行条件下的结果，仍需新exact-head
+默认CI验证，不以串行结果冒充默认并发稳定性。4项持久Router回归已通过，
+所有新增导航断言保持严格。

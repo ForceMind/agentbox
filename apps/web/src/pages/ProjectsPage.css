@@ -213,3 +213,10 @@
     margin-bottom: 0;
   }
 }
+
+.projects-page-actions > .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
