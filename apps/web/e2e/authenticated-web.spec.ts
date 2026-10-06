@@ -191,6 +191,7 @@ test('shows formal Projects and queues safe create operations', async ({
   await navigate(page, 'Projects', '/projects')
   await expect(page.getByRole('heading', { name: 'project-a' })).toBeVisible()
   const workspaceName = `E2E Workspace ${testInfo.project.name}`
+  await page.getByRole('button', { name: 'New Project', exact: true }).click()
   await page.getByLabel('Project name', { exact: true }).fill(workspaceName)
   const request = page.waitForRequest(
     (value) =>
@@ -383,6 +384,9 @@ test('tracks successful and failed clone Jobs without fake percentages', async (
     }
   })
   await navigate(page, 'Projects', '/projects')
+  await page
+    .getByRole('button', { name: 'Clone Repository', exact: true })
+    .click()
   await page
     .getByLabel('Repository URL')
     .fill('https://github.com/owner/repo.git')
@@ -975,6 +979,11 @@ test('logs in, survives refresh, and keeps authenticated users away from login',
   page,
 }) => {
   await login(page)
+  await page.getByLabel('System & capabilities', { exact: true }).click()
+  await expect(page.locator('details.dashboard-system')).toHaveAttribute(
+    'open',
+    '',
+  )
   await expect(page.getByText('0.3.0rc31', { exact: true })).toBeVisible()
   await expect(page.getByText('API v1', { exact: true })).toBeVisible()
   await page.reload()

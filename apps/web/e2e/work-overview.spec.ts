@@ -25,6 +25,7 @@ const copy = {
     permission: 'You do not have access',
     loading: 'Loading work metadata',
     health: 'Control plane status',
+    systemDetails: 'System & capabilities',
     attentionLink: 'Review needs attention',
   },
   'zh-CN': {
@@ -42,6 +43,7 @@ const copy = {
     permission: '你无权查看此快照',
     loading: '正在加载工作元数据',
     health: '控制平面状态',
+    systemDetails: '系统状态与能力',
     attentionLink: '查看待处理',
   },
 } as const
@@ -100,9 +102,22 @@ for (const locale of ['en', 'zh-CN'] as const) {
         projects.locator('time[datetime="2026-10-05T08:03:00Z"]'),
       ).toHaveCount(1)
       await expect(overview).not.toContainText('OVERVIEW-PRIVATE')
+      const systemDetails = page.getByLabel(expected.systemDetails, {
+        exact: true,
+      })
+      await expect(page.locator('.dashboard-system')).not.toHaveAttribute(
+        'open',
+        '',
+      )
+      await systemDetails.click()
       await expect(
         page.getByRole('region', { name: expected.health }),
       ).toBeVisible()
+      await systemDetails.click()
+      await expect(page.locator('.dashboard-system')).not.toHaveAttribute(
+        'open',
+        '',
+      )
       await assertRc9NoHorizontalOverflow(page)
       await assertRc9InteractiveTargets(page)
       const refresh = overview.getByRole('button', { name: expected.refresh })

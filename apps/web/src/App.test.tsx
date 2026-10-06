@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from './App'
@@ -356,7 +362,11 @@ describe('AgentBox authenticated Web foundation', () => {
     vi.stubGlobal('fetch', vi.fn(authenticatedFetch))
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('link', { name: 'Codex' }))
+    fireEvent.click(
+      within(
+        await screen.findByRole('navigation', { name: 'Primary navigation' }),
+      ).getByRole('link', { name: 'Codex' }),
+    )
     expect(
       await screen.findByRole('heading', { name: 'Codex' }),
     ).toBeInTheDocument()

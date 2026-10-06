@@ -1,0 +1,105 @@
+.dashboard-system {
+  margin-top: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.dashboard-system > summary {
+  display: flex;
+  min-height: 4.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  list-style: none;
+  cursor: pointer;
+}
+
+.dashboard-system > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard-system-label,
+.dashboard-system-state {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.dashboard-system-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.dashboard-system-label > svg,
+.dashboard-system-state {
+  color: var(--muted);
+}
+
+.dashboard-system-state {
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.dashboard-system[open] .dashboard-disclosure-icon {
+  transform: rotate(180deg);
+}
+
+.dashboard-system-body {
+  padding: 0 1.25rem 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.dashboard-system-description {
+  margin: 1.25rem 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+.dashboard-system .metric-card {
+  min-height: 9rem;
+  border-radius: 0.65rem;
+  background: var(--bg);
+}
+
+.dashboard-system .section-heading {
+  margin-top: 1.75rem;
+}
+
+.dashboard-system .planned-card {
+  border-radius: 0.65rem;
+}
+
+.dashboard-system .planned-card h3 {
+  margin: 0.5rem 0;
+  font-size: 1rem;
+}
+
+.dashboard-system .planned-card h3 a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.dashboard-system .planned-card > svg {
+  margin-bottom: 0;
+}
+
+@media (max-width: 600px) {
+  .dashboard-system > summary {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .dashboard-system-state {
+    width: 100%;
+  }
+
+  .dashboard-disclosure-icon {
+    margin-inline-start: auto;
+  }
+}

@@ -15,6 +15,7 @@ import {
   type CommandResult,
 } from './commandCenterResults'
 import { useCommandWorkspaceLabels } from './useCommandWorkspaceLabels'
+import { containDialogTab } from './dialogFocus'
 
 import './CommandCenter.css'
 
@@ -111,6 +112,7 @@ export function CommandCenter({
       aria-label={formatMessage(locale, 'shell.commandCenter', {})}
       aria-modal="true"
       className="command-center-dialog"
+      onKeyDown={containDialogTab}
       onCancel={(event) => {
         event.preventDefault()
         if (!labels.pending) onClose()

@@ -57,6 +57,7 @@ const COPY: Record<
     closeNavigation: string
     projects: string
     projectName: string
+    newProject: string
     createProject: string
     creatingProject: string
     emptyProjects: string
@@ -77,6 +78,7 @@ const COPY: Record<
     closeNavigation: 'Close navigation',
     projects: 'Projects',
     projectName: 'Project name',
+    newProject: 'New Project',
     createProject: 'Create Project',
     creatingProject: 'Creating…',
     emptyProjects: 'No Projects yet',
@@ -96,6 +98,7 @@ const COPY: Record<
     closeNavigation: '关闭导航',
     projects: 'Projects',
     projectName: 'Project 名称',
+    newProject: '新建 Project',
     createProject: '创建 Project',
     creatingProject: '正在创建…',
     emptyProjects: '还没有 Project',
@@ -350,7 +353,7 @@ test('M06 covers Dashboard degraded when readiness is not ready', async ({
         await page.goto('/dashboard')
         await assertRc9DocumentLocale(page, locale.expectedLocale)
         await expect(
-          page.locator('.page-header > .status-badge'),
+          page.locator('.dashboard-system > summary .status-badge'),
         ).toContainText(locale.expectedLocale === 'zh-CN' ? '降级' : 'Degraded')
         await assertRc9NoHorizontalOverflow(page)
         await assertRc9InteractiveTargets(page)
@@ -400,7 +403,9 @@ test('covers Shell mobile drawer, failed logout, and unavailable health in the r
           await menu.click()
           await expect(menu).toHaveAttribute('aria-expanded', 'true')
           await expect(
-            page.getByRole('button', { name: copy.closeNavigation }),
+            page
+              .locator('#mobile-navigation')
+              .getByRole('button', { name: copy.closeNavigation, exact: true }),
           ).toBeVisible()
           await expect(page.locator('#mobile-navigation')).toBeVisible()
         }
@@ -564,6 +569,9 @@ test('covers empty Projects plus create pending, success, and error in the rc9 m
           page.getByRole('heading', { name: copy.emptyProjects }),
         ).toBeVisible()
 
+        await page
+          .getByRole('button', { name: copy.newProject, exact: true })
+          .click()
         const projectName = page.getByLabel(copy.projectName, { exact: true })
         const create = page
           .locator('form')

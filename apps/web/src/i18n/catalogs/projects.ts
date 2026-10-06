@@ -2,6 +2,8 @@ import { defineCatalogShard } from './types'
 import type { NoMessageParameters } from './types'
 
 export interface ProjectsMessageParameters {
+  readonly 'projects.cancel': NoMessageParameters
+  readonly 'projects.creationBoundary': NoMessageParameters
   readonly 'projects.title': NoMessageParameters
   readonly 'projects.eyebrow': NoMessageParameters
   readonly 'projects.description': NoMessageParameters
@@ -83,10 +85,13 @@ export const projectsCatalog = defineCatalogShard<ProjectsMessageParameters>(
   'projects',
   {
     en: {
+      'projects.cancel': () => 'Cancel',
+      'projects.creationBoundary': () =>
+        'Projects stay under the configured Project Root. Arbitrary filesystem paths are not accepted.',
       'projects.title': () => 'Projects',
       'projects.eyebrow': () => 'Workspaces',
       'projects.description': () =>
-        'Managed workspaces under the configured Project Root—never arbitrary filesystem paths.',
+        'Choose a project to continue, or start with a new workspace or repository.',
       'projects.refresh': () => 'Refresh',
       'projects.operationTitle': () => 'Workspace operation',
       'projects.jobLabel': () => 'Job',
@@ -167,10 +172,13 @@ export const projectsCatalog = defineCatalogShard<ProjectsMessageParameters>(
       'projects.claudeUnknown': () => 'Unknown',
     },
     'zh-CN': {
+      'projects.cancel': () => '取消',
+      'projects.creationBoundary': () =>
+        '项目位于已配置的 Project Root 下，不接受任意文件系统路径。',
       'projects.title': () => 'Projects',
       'projects.eyebrow': () => '工作区',
       'projects.description': () =>
-        '管理已配置 Project Root 下的工作区，不接受任意文件系统路径。',
+        '选择项目继续工作，或从新工作区、已有仓库开始。',
       'projects.refresh': () => '刷新',
       'projects.operationTitle': () => '工作区操作',
       'projects.jobLabel': () => 'Job',

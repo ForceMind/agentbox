@@ -101,6 +101,7 @@
 
 .command-center-trigger kbd {
   margin-left: auto;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 0.72rem;
 }
@@ -121,4 +122,9 @@
     margin-top: 12px;
     padding: 14px;
   }
+}
+
+.command-center-trigger > span {
+  min-width: 0;
+  font-size: 0.8125rem;
 }
