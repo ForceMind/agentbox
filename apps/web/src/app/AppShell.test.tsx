@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { Link, MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -303,5 +303,86 @@ describe('AppShell', () => {
     )
     expect(await screen.findByText('Projects content')).toBeVisible()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes on a queued desktop transition even after the live media value changed back', async () => {
+    let change!: (event: MediaQueryListEvent) => void
+    const media = {
+      matches: false,
+      addEventListener: vi.fn((_name: string, listener: typeof change) => {
+        change = listener
+      }),
+      removeEventListener: vi.fn(),
+    }
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => media),
+    )
+    const view = render(
+      <AuthContext.Provider value={authContext(vi.fn(async () => undefined))}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route element={<AppShell locale="en" />}>
+              <Route path="*" element={<p>Content</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    try {
+      expect(
+        await screen.findByLabelText('Control plane: Healthy'),
+      ).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      // The event was generated at the desktop width; the current width has
+      // already returned to mobile before delivery. Do not read media.matches.
+      act(() => change({ matches: true } as MediaQueryListEvent))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(
+        screen.getByRole('button', { name: 'Open navigation' }),
+      ).toHaveAttribute('aria-expanded', 'false')
+      act(() => change({ matches: false } as MediaQueryListEvent))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(media.removeEventListener).toHaveBeenCalledWith('change', change)
+    } finally {
+      view.unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('closes if desktop sizing was already reached before the menu subscribed', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    )
+    const view = render(
+      <AuthContext.Provider value={authContext(vi.fn(async () => undefined))}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route element={<AppShell locale="en" />}>
+              <Route path="*" element={<p>Content</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    try {
+      expect(
+        await screen.findByLabelText('Control plane: Healthy'),
+      ).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(
+        screen.getByRole('button', { name: 'Open navigation' }),
+      ).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      view.unmount()
+      vi.unstubAllGlobals()
+    }
   })
 })

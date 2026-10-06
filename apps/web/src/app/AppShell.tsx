@@ -181,10 +181,12 @@ export function AppShell({
       if (document.hidden) close()
     }
     const media = window.matchMedia?.('(min-width: 900px)')
-    const resize = () => {
-      if (media?.matches) close()
+    const resize = (event: MediaQueryListEvent) => {
+      // Use this transition's value: a newer resize may already change media.matches.
+      if (event.matches) close()
     }
     media?.addEventListener('change', resize)
+    if (media?.matches) close()
     window.addEventListener('pagehide', close)
     window.addEventListener('offline', close)
     document.addEventListener('visibilitychange', visibility)

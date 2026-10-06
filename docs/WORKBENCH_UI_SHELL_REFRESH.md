@@ -171,3 +171,33 @@ beforeEach固定performance.now=0、afterEach恢复全部spy。controller仍使�
 上述test-only隔离后，最终默认并发 `pnpm test` 为1589 Web + 6 extension
 全部通过（包括exactStop、wawWire及lifecycle）；lint/format/typecheck/build均
 exit0。这些结果不抹除先前失败，新的远端默认CI和像素仍必须独立通过。
+
+### 第三轮资格与快速断点切换
+
+head `acf5491a76e5011b3a0768a896eed753510eb1c0` 的E2E workflow成功，但为
+255 passed / 1 flaky / 50 prescribed skipped，不称稳定全通过。唯一flaky在
+360px zh-CN由手机→桌面→手机后，菜单trigger仍为展开。原生focus、触控宽度、
+真实页面卸载/Back与三个几何断言均已运行，图片的三项版式问题实际复查已修正。
+
+源码检查发现两处竞态：media change回调读取即时 `media.matches` 会错过排队
+的旧desktop transition；测试的role locator在desktop CSS隐藏时即返回0，不能
+证明menu DOM卸载。后继改读不可变的event.matches，并在订阅时检查initial
+matches；新增两项unit覆盖“live已回mobile但event为desktop”与“订阅前已desktop”。
+E2E先确认打开，再验证真实 `#mobile-navigation` DOM=0与expanded=false后回手机，
+保持不复活断言。无sleep、timeout或重试策略变更。
+
+acf5491 的Backend首次仅3.13旧native currentness用例失败：runtime-receive
+PATCH_TIMEOUT，23/24，initial budget ge200ms、elapsed ge250ms；5304passed/
+1failed/88skip，3.11/3.12/native通过。同Python源在前两头通过，本批未改Python。
+保留[原run](https://github.com/ForceMind/agentbox/actions/runs/37469554499)，仅对
+失败job112289152799请求一次同头复验；不把复验成功称根因修复、不降低250ms预算。
+新head仍需独立六套资格。
+
+acf5491 artifact11416189253含56张合成PNG，ZIP sha256
+`3c2cd112548f12ba1cccf3060bb7fb0ba021ea668b5d7e64b60a37a41231f4ed`已下载校验；
+主实施者实际复查手机中文浅色概览、桌面中文深色项目、手机深色导航三张，
+确认左对齐、同排Plus、完整退出入口/抽屉焦点环。不是后继head截图替代证据。
+
+断点修正后的本地默认完整suite：1591 Web + 6 extension通过，lint/format/
+typecheck/build与diff-check均exit0；9项shell单测含两项media竞态回归。最后
+资格仍由新exact-head六套CI与实际浏览器决定，先前flaky/失败均未删除或忽略。

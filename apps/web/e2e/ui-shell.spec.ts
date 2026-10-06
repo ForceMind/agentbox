@@ -333,8 +333,13 @@ for (const locale of ['zh-CN', 'en'] as const) {
             await expect(page).toHaveURL(/\/dashboard(?:#main-content)?$/)
             await assertPageHeading(page, expected.dashboard)
             await trigger.click()
+            await expect(drawer).toBeVisible()
+            await expect(trigger).toHaveAttribute('aria-expanded', 'true')
             await page.setViewportSize({ width: 1024, height: 900 })
-            await expect(drawer).toHaveCount(0)
+            // Role locators exclude CSS-hidden dialogs. Require real unmount
+            // and closed state before switching back to the mobile layout.
+            await expect(page.locator('#mobile-navigation')).toHaveCount(0)
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false')
             await page.setViewportSize({ width, height: 900 })
             await expect(trigger).toHaveAccessibleName(expected.open)
           } else {
