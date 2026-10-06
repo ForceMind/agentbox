@@ -1,12 +1,42 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T15:06:00Z"
+verified_at_utc: "2026-10-06T16:17:00Z"
 verified_by: "agentbox-a3-currentness-diagnosis"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 固定ABBA诊断实现候选，尚未触发
+
+尾置404daae0be4225b30a6e3e71ee239376bd5e6ca6的真实3.13.15再次5370 passed/
+88 skipped、5458项完整执行，仍无新failure note，只能记未复现。当前独立
+[ABBA合同](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md)冻结A=a586eae、B=404daae，
+单runner固定A1/B1/B2/A2；B仅在对照中ignore尾部65项，各条件原5393项及目标
+第763项不变。默认资格CI保留全部原测试和新增orchestration测试。
+
+新workflow只允许PR149、精确同仓库branch、bug labeled事件和首次attempt，
+沿用已审action pins与contents:read。四份checkout/venv/package/plugin/module/
+collection预检完成才执行，源码和wheelhouse前后核验；无真实host、凭据、
+GC策略、产品或单测预算变更。step32min/job35min为外层采证限额并留artifact
+上传时间，取消/超时/不完整证据绝不记绿色；四次终态后不自动追加。
+
+74个外部pins来自pip install日志可见版本，fresh venv另含editable agentbox，
+实查共75包并固定setuptools84无build isolation。原job没有完整freeze与临时
+PEP517版本证据，因此不能推断原global site-packages相同；新条件全绿也仅
+表示本轮未复现。Release Candidate缓存修复保持旁支，不混入本候选。
+
+独立审查发现bytes ID逆解P2，真实pytest编码的5个问题PID先5 failed，最终
+固定完整payload前向匹配后5 passed；中间prefix-only方案的2失败亦保留。
+不改Popen或执行命令。新normalizer复核
+实际A/B5393清单同序、目标763。此red/green仅属于编排，不是native根因证据。
+本地46项orchestration测试与原68项共114 passed，模拟仅限编排；全量Ruff、
+mypy397、Black410、action pins56、doc links/source-boundary/secret-pattern及
+Python3.13.5语法检查通过。独立复审再次重跑114项及原5个真实PID探针，核验
+256字节oracle、非PID拒绝、静态PID1歧义与manifest，确认P2闭合，无新增P0/P1/P2。
+源码进入普通提交与一次标签触发采证；实际head/运行以PR实时回读为准。
+此刻尚未运行真实ABBA、wheel下载/75包安装；这些本地检查不代表采证成功。
 
 ## 2026-10-06 PR149首轮Backend通过；新增诊断测试尾置候选
 

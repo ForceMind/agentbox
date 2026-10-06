@@ -2,6 +2,8 @@
 
 ## 范围与已有证据
 
+本节描述最初observer补丁；末节ABBA候选另增独立诊断workflow，原有六套不改。
+
 本候选从 main `a586eaec27984e0632187048cc1b82e7e29552d1` 独立分支接续，
 与 UI Draft PR148 分开。仅增加测试可观测性，不修复或重新定义产品时限。
 原失败用例继续使用真实 socketpair、admission、Git、crypto 和 publication
@@ -107,9 +109,11 @@ tree `f6a1bc128e064f9aadd47956efd2c6a0a72a88f0` 的
 为5370 passed/88 skipped，收集5458项，未产生新的失败phase/CPU/GC note。
 这是未复现，不能认定诊断修复了真实currentness超时；UI旧头三次失败保留。
 
-该通过job与旧失败job112299168102的Python3.13.15、pytest9.1.1、完整已安装
-依赖版本清单、ubuntu-24.04 image20260927.320.1及setup-python cache key一致。
-这些相同并不证明宿主负载或GC/堆状态相同。新增实际是65项：新observer模块
+该通过job与旧失败job112299168102的Python3.13.15、pytest9.1.1、pip install
+日志列出的版本清单、ubuntu-24.04 image20260927.320.1及setup-python cache
+key一致。没有pip freeze --all证据，不能推断原global site-packages完整相同；
+临时PEP517构建环境版本亦未单独输出。这些相同也不证明宿主负载或GC/堆状态
+相同。新增实际是65项：新observer模块
 62项，加既有fixture新增3个BaseException参数；68是新旧诊断安全测试合计。
 
 本轮只把新增65项执行位置移到旧suite之后。observer文件更名为
@@ -147,3 +151,97 @@ observer实现、Client、真实native目标、预算、依赖及CI workflow不�
 仍使用已审观察实现。仅运行新exact-head首次CI；失败则采固定phase/CPU/GC，
 通过仍记未复现，不预设根因、不自动盲目rerun取绿。此轮不增加CI job，亦不
 修改UI PR148或main；后续若仍缺证据，再单独设计同时期baseline对照。
+
+## 2026-10-06 固定ABBA同时期对照候选
+
+尾置后的head `404daae0be4225b30a6e3e71ee239376bd5e6ca6` / tree
+`238a35a0629e3307560d3a57371e9f2410e3f047` 的
+[Python3.13.15 job112342237328](https://github.com/ForceMind/agentbox/actions/runs/37484879498/job/112342237328)
+再次5370 passed/88 skipped，5458项完整收集且新模块在末尾，未产生新的失败
+note。此次pytest耗时309.50s，首轮约365s；不能认为同镜像即代表同负载。
+以下是新受控采证条件，不是产品修复，也不是再次重跑同头取绿。
+
+### 固定条件与一次触发
+
+- A：冻结main基线a586eaec27984e0632187048cc1b82e7e29552d1，tree
+  e5d9309dca123f17f9ff9ee48df0765c332ea451，完整原5393项
+- B：冻结404daae0be4225b30a6e3e71ee239376bd5e6ca6，tree
+  238a35a0629e3307560d3a57371e9f2410e3f047；仅此诊断条件用--ignore排除
+  tests/unit/test_zz_a3_currentness_diagnostics.py，仍运行完整原5393项
+- 顺序固定A1、B1、B2、A2，单个ubuntu-24.04 runner，无参数扩展、循环重试或
+  动态增轮。B是诊断旧suite，绝不称完整资格；默认CI仍保留65项安全测试及
+  新增orchestration单测，现有六套workflow不改
+- 新workflow仅接受PR149、同仓库精确branch diag/native-currentness-20261006、
+  main base、bug labeled事件及run_attempt1。普通push、schedule、workflow_dispatch
+  均不触发本实验，不使用pull_request_target，不添加写权限或host操作
+- 只读已核验bug标签存在、PR149当前labels为空；不做加删探针。复审并
+  发布后为真实采证添加一次标签；实际触发失败须如实报告，不假设能
+  新建label。actions沿用仓库已审SHA，contents:read，checkout不持久保存凭据
+
+### 隔离与预检
+
+四次各自新checkout、新venv、新pytest进程。固定Python3.13.15并实查版本、
+Linux/x86_64与ImageVersion20260927.320.1；不把matrix的3.13标签当作patch固定。
+四套源码SHA/tree、tracked洁净状态、venv前缀、模块实际来源及5393收集序列
+全部预检成功后才开始测量；每次前后再次核验源码和wheelhouse。只允许原有
+13个PID字段归一化，目标必须为第763项，其他node/参数/顺序变化均使实验无效。
+
+requirements文件冻结job112342237328安装日志可见的74个外部包，包括pip26.2.1、
+setuptools84.0.0；每个venv另加对应源码的editable agentbox0.3.0rc31，并严格
+核验实际集合恰为75包。pytest11 entry points固定为anyio和platformdirs，不允许
+额外PYTEST_PLUGINS/ADDOPTS、禁用autoload或host-gate配置。源码/import与collection
+预检运行在独立的python -B进程，不向真正pytest进程添加事件插件或预载模块。
+
+外部wheel只下载一次，核验包名/版本、记录每个实际wheel的SHA256后只读封存。
+四个venv仅从该wheelhouse用require-hashes/no-index/no-deps离线安装。editable
+构建明确no-build-isolation，使用固定setuptools84；不添加没有原日志版本依据
+的wheel包。此模式固定了本轮构建环境，却不等价于原CI未公开的临时PEP517
+环境。原global site-packages可能还有未显示的预装包；75包集合是新受控条件。
+wheel摘要证明本轮四次使用同一下载内容，不是原CI wheel字节相同的证明。
+
+### 有界成本、证据与判读
+
+真实执行命令保持python -m pytest -o faulthandler_timeout=120，只有B加上述
+ignore。原250ms/1s/5s/30s、断言、GC策略、hash seed及真实I/O均不改变。
+预期四次pytest约21–25分钟，加准备约25–30分钟。诊断step外层32分钟、整个
+job35分钟，为always artifact上传预留时间；这只是采证外层上限，不是native
+或单测预算。每阶段summary立即落盘，保留四份原始pytest/预检日志、版本、
+module来源和wheel摘要；不dump环境变量、凭据或进程命令行。
+
+- 四次全通过：只报告本轮未复现，不能声称修复
+- 两个A目标失败、两个B全部通过：只支持observer相关性，不能证明GC因果
+- B目标失败：读取固定phase/CPU/GC证据再分析，不根据wall overlap直接归因
+- 其他交错/非目标失败：保留全部结果，结论不足
+- 版本/源码/collection/skip数量不符、准备失败、取消或外层超时：实验无效或
+  未完成，不计绿色。有效测试失败不会提前跳过后续固定条件，也不会追加重试
+- 四次终态后停止；失败返回非零，不用continue-on-error把实验包装成通过。
+  外层超时会保留已落盘的未完成状态并尝试上传；平台终止/上传故障仍可能缺
+  artifact，不能把缺证据当成功
+
+此次只比较原基线与最小observer的旧suite。helper导入、原fixture使用observer
+及观察本身都是B处理的一部分；这是新受控比较，不是严格证明历史GC根因。
+Release Candidate的setup-python缓存问题保持独立，不混入本候选。
+
+### ABBA编排审查修正与本地验证
+
+独立审查发现P2：pytest9.1.1的bytes ID保留字面反斜杠，不能以unicode_escape
+逆解。使用真实_pytest.compat.ascii_escaped与原160字节auth payload的PID92、
+4700、23604、23662、23672五项先全部失败；中间prefix-only方案仍有2项把静态
+PID1误计为动态。最终修正先从4个固定activation字符串参数校验唯一PID，再对
+冻结原11个完整auth payload前向编码并逐字匹配，仅归一化9个动态PID，所有
+非PID字段均精确核验。没有逆解bytes、改Popen或增加预检进程。
+
+同条件五项最终全部通过，且全部256字节的前向编码与真实pytest oracle一致；
+PID不一致、auth/activation不匹配、非PID字段漂移均拒绝。实际原main与404头
+收集日志用新normalizer再次证明5393项完全同序、目标第763项。这是编排P2的
+red/green，不是native currentness根因或修复证据。
+
+本地46项编排/合同测试与原68项合计114 passed，仅模拟orchestration，不mock
+真实native。全量Ruff、mypy397、顺序单文件Black410项（修正的两文件再次验）、
+56个action pins、doc links、source-boundary、secret-pattern与Python3.13.5
+语法检查通过。真实ABBA、wheel下载/75包安装与3.13.15执行尚未运行；当前
+只提交可独立复审的源码、固定约束、workflow和文档，不提前宣称真实采证成功。
+
+独立复审已重跑114项及原5个真实PID探针，并核验256字节oracle、非PID拒绝、
+静态PID1歧义、真实collection顺序及四文件摘要。P2闭合，无新增P0/P1/P2；
+最终文档亦经回读。源码保持复审摘要不变，进入普通提交与一次真实标签触发。
