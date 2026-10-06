@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BrowserTerminalAttachment } from './browserTerminalRenderer'
 import {
@@ -330,7 +330,12 @@ function request(test: ReturnType<typeof fixture>) {
   }
 }
 
-afterEach(() => undefined)
+// Stop lifecycle fixtures use their explicit scheduler clock, not runner pauses.
+// Decoder deadline rejection remains independently covered in wawWire.test.ts.
+beforeEach(() => {
+  vi.spyOn(performance, 'now').mockReturnValue(0)
+})
+afterEach(() => vi.restoreAllMocks())
 
 describe('rc7 exact Stop failure injection', () => {
   it('does not send Stop before positive detach proof and late detach cannot revive after pagehide', async () => {

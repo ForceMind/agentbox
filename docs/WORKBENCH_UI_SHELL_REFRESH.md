@@ -159,3 +159,15 @@ Tab循环、44px按钮与旧disclosure适配已通过，但不将2 flaky算作�
 `vitest run --maxWorkers=1` 检查完整suite在串行条件下的结果，仍需新exact-head
 默认CI验证，不以串行结果冒充默认并发稳定性。4项持久Router回归已通过，
 所有新增导航断言保持严格。
+
+串行完整1589 Web + 6 extension与双端build随后exit0；不替代默认并发证据。
+独立源码复核后，exactStop fixture沿用已合并PR146的file-local测试时钟隔离：
+beforeEach固定performance.now=0、afterEach恢复全部spy。controller仍使用
+原WAWRc7FakeClock，原detach/Stop/pagehide动作顺序、安全断言与timeout不变；
+产品wire VALIDATION_MS仍为5，wawWire.test.ts保留明确0→6ms必须拒绝的负向测试。
+这是去除不属于exactStop生命周期目标的decoder壁钟非确定性，不宣称证明原失败
+根因，不把产品校验或deadline放宽；新默认全测和exact-head CI仍待采证。
+
+上述test-only隔离后，最终默认并发 `pnpm test` 为1589 Web + 6 extension
+全部通过（包括exactStop、wawWire及lifecycle）；lint/format/typecheck/build均
+exit0。这些结果不抹除先前失败，新的远端默认CI和像素仍必须独立通过。
