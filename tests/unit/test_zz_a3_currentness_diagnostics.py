@@ -1,4 +1,4 @@
-"""Safety tests for observation helpers; the native lifecycle test stays real."""
+"""Observer safety tests run after the original suite; native coverage stays real."""
 
 from __future__ import annotations
 
@@ -10,6 +10,21 @@ from typing import Any, cast
 import a3_currentness_diagnostics as diagnosis
 import pytest
 from a3_currentness_diagnostics import CurrentnessTiming, duration_bucket
+
+
+@pytest.mark.parametrize("error_type", [asyncio.CancelledError, KeyboardInterrupt, SystemExit])
+def test_fixture_diagnostic_baseexception_preserves_original_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    error_type: type[BaseException],
+) -> None:
+    from test_a3_native_transport import (
+        test_fixture_diagnostic_failure_preserves_original_exception,
+    )
+
+    test_fixture_diagnostic_failure_preserves_original_exception(
+        monkeypatch, request, diagnostic_error_type=error_type
+    )
 
 
 @pytest.fixture

@@ -588,13 +588,10 @@ def test_fixture_currentness_budget_bucket_boundaries() -> None:
         assert Client.currentness_io_buckets(0, 250_000_000, inherited, 1)[0] == expected
 
 
-@pytest.mark.parametrize(
-    "diagnostic_error_type", [RuntimeError, asyncio.CancelledError, KeyboardInterrupt, SystemExit]
-)
 def test_fixture_diagnostic_failure_preserves_original_exception(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
-    diagnostic_error_type: type[BaseException],
+    diagnostic_error_type: type[BaseException] = RuntimeError,
 ) -> None:
     original = ContentError("PATCH_TIMEOUT")
 

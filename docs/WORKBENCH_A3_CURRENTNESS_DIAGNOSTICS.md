@@ -97,3 +97,53 @@ epoch/revision边界、固定输出与有界空间。没有新增P0/P1/P2。源�
 本候选发布为独立Draft PR，等待精确head的真实Python3.13.15 CI采证。
 前端dependency修复位于UI PR148；此分支仍采用main基线锁定依赖，各套CI结果
 分别报告，不借旧通过记录或诊断绿色结果宣称完整合并/发布资格。
+
+## 2026-10-06 首轮真实Backend通过与测试尾置对照
+
+独立Draft PR149首轮head `86b1281803c4563572e6e9337198d8c5fd3980ef`，
+tree `f6a1bc128e064f9aadd47956efd2c6a0a72a88f0` 的
+[Backend run37480210068](https://github.com/ForceMind/agentbox/actions/runs/37480210068)
+全部通过。[Python3.13.15 job112326041707](https://github.com/ForceMind/agentbox/actions/runs/37480210068/job/112326041707)
+为5370 passed/88 skipped，收集5458项，未产生新的失败phase/CPU/GC note。
+这是未复现，不能认定诊断修复了真实currentness超时；UI旧头三次失败保留。
+
+该通过job与旧失败job112299168102的Python3.13.15、pytest9.1.1、完整已安装
+依赖版本清单、ubuntu-24.04 image20260927.320.1及setup-python cache key一致。
+这些相同并不证明宿主负载或GC/堆状态相同。新增实际是65项：新observer模块
+62项，加既有fixture新增3个BaseException参数；68是新旧诊断安全测试合计。
+
+本轮只把新增65项执行位置移到旧suite之后。observer文件更名为
+`tests/unit/test_zz_a3_currentness_diagnostics.py`；既有fixture恢复单个
+RuntimeError默认检查与原test ID，其余3个参数在尾部复用完全相同的检查。
+observer实现、Client、真实native目标、预算、依赖及CI workflow不变；不skip、
+删除用例或修改GC策略，默认资格CI仍执行全部5458项。
+
+实际collect-only对照main `a586eaec27984e0632187048cc1b82e7e29552d1`：
+
+- 原5393项仍按原顺序位于1–5393；新增65项全部位于5394–5458
+- 真实native目标由第828项恢复到main的第763项
+- 5380个原node ID逐字一致；另外13个只含已有动态PID差异，已检查其余参数
+  完全一致，且两份相关测试源码与main字节一致
+- native的第293–301项是test_auth_probe_rejects_malformed_or_wrong_parent_record
+  的9个动态runtime_pid参数，差异仅payload bytes8..11
+- unit的第2381–2384项是test_activation_metadata_must_be_exact的4个
+  listen_pid参数，差异仅PID值；不以简单删除所有参数ID的方式掩盖差异
+
+本地收集使用Python3.12.14/pytest9.1.1，main以独立归档和显式source roots
+读取，不是Python3.13.15运行证据。新head真实CI仍须确认5458项完整执行。
+原目标及Client的AST均不变，observer SHA256保持
+`47056c3a70a1cabc4708e454736e807a6f1dd4de7013e75c4cbca6675f93ce6c`。
+本轮本地相关68项无socket回归通过；全量Ruff、395文件mypy、两个改动测试文件
+逐一Black check、716项doc links、source-boundary及Python3.13.5语法检查通过。
+完整native与Python3.13.15执行未在本地复验，独立审查和新head CI仍待完成。
+
+后续独立复审已重跑68项无socket回归，重新收集main与候选，逐项核验上述
+13个PID字段和原62项observer测试AST，并重建相同候选tree；无新增P0/P1/P2。
+代码内容未因复审改变，仅补充此证据与状态。新head的Python3.13.15真实CI
+仍须采证；本地Python3.12.14验证不替代它。
+
+这是一轮有意改变新增测试安排的诊断对照，不能称严格只改变堆状态的实验：
+尾置同时改变collection模块导入次序，observer自身仍有时序扰动，既有fixture
+仍使用已审观察实现。仅运行新exact-head首次CI；失败则采固定phase/CPU/GC，
+通过仍记未复现，不预设根因、不自动盲目rerun取绿。此轮不增加CI job，亦不
+修改UI PR148或main；后续若仍缺证据，再单独设计同时期baseline对照。

@@ -1,12 +1,31 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T14:24:00Z"
+verified_at_utc: "2026-10-06T15:06:00Z"
 verified_by: "agentbox-a3-currentness-diagnosis"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 PR149首轮Backend通过；新增诊断测试尾置候选
+
+PR149 head `86b1281803c4563572e6e9337198d8c5fd3980ef` / tree
+`f6a1bc128e064f9aadd47956efd2c6a0a72a88f0` 的Backend run37480210068全部
+通过，Python3.13.15为5370 passed/88 skipped。没有新的失败note，只能记
+未复现，不证明修复。UI PR148及其旧失败记录不变；下方pending段落保留历史。
+
+本轮[有界测试尾置对照](../WORKBENCH_A3_CURRENTNESS_DIAGNOSTICS.md)仅将新增
+65项移到原5393项后，默认CI仍完整执行5458项。实际collect-only证明目标
+恢复第763项，新增项位于5394–5458；5380个原ID相同，另外13个仅为既有
+runtime_pid/listen_pid动态字段，具体ordinal与参数差异已逐项核验。
+observer实现、Client与真实native目标、预算、依赖和workflow均未改。
+collection导入次序和observer扰动仍是限制，不能把这当作严格GC因果实验。
+本地68项相关安全回归、全量Ruff、395文件mypy、两文件Black、716 doc links、
+source-boundary和Python3.13.5语法检查通过；本地未重跑完整native。
+本轮独立复审重跑68项、重新collect并逐项核对13个PID差异、62项原observer
+测试AST及候选tree，无新增P0/P1/P2。候选代码已冻结，进入普通提交与新exact-head
+首次CI采证；实际远端head及CI以PR回读为准，不合并或盲目重试。
 
 ## 2026-10-06 独立 A3 currentness 时序诊断候选
 
