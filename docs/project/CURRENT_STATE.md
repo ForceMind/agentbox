@@ -1,12 +1,50 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T17:59:00Z"
-verified_by: "agentbox-ui-shell"
+verified_at_utc: "2026-10-06T19:08:00Z"
+verified_by: "agentbox-a3-currentness-trace"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 PR148已合并；main原currentness失败点分类候选
+
+当前main `2b5449ee2832e7173aadf8d54ffa312b13025723` / tree
+`ad659b0f2b429f5d529783e24e32db44fcdc1755` 是PR148正常merge，parents为
+a586eaec27984e0632187048cc1b82e7e29552d1与5999e7cba2e976c13ff0ad39d0809b907f19f5b1。
+exact-main Frontend、Security、Deployment、Release Candidate、E2E均通过；
+[Backend run37511667916/job112434107183](https://github.com/ForceMind/agentbox/actions/runs/37511667916/job/112434107183)
+实际Python3.13.15为5394 collected、5305 passed / 1 failed / 88 skipped。
+原READY目标仍是checker/runtime PATCH_TIMEOUT23/24、none/ge200ms/ge250ms，
+继而PATCH_REVOKED EOF。新main失败保留，不rerun取绿，不称UI合并修复了时序问题。
+
+独立branch diag/native-currentness-trace-20261006仅增加
+[失败点分类合同](../WORKBENCH_A3_CURRENTNESS_TRACE.md)：最多8个traceback节点，
+按真实code identity、完整调用链及精确调用/raise行匹配idle readiness、receive
+wait检查、pre-recv检查、post-decode检查；其余unknown。只在原checker失败
+record后调用，不新增成功路径时钟/hook；不读locals/body/IDs/path/raw trace，
+不保存frame/traceback。只有post-decode证明完整frame已解码，不能归因GC或调度。
+
+新增classifier/site note自身BaseException独立隔离，原operation取消仍按原对象
+传播。旧record、timed wrapper、旧note的异常策略与原record/close次序全部保留，
+不顺带修复其既有限制。checker晚于Runtime关闭时可能只得到unknown；import/
+collection仍可能扰动，不能承诺必能采到分类或零观察影响。
+
+fresh main/candidate实际收集5394→5435，目标保持763，原5394序列仅13个已核验
+动态PID字段不同；41新项全部尾置5395–5435。五条真实调用路径的缺分类占位
+5 failed→新分类5 passed仅证明分类器；两本地版本3.12.14/3.13.5各44项安全
+回归通过，66项native未运行。Ruff、mypy395、逐一Black408、50 action pins、
+726文档链接、secret/source-boundary/diff通过。独立复审双版本各44项、fresh
+collection/13PID、原AST、源码摘要/tree及workflow唯一变化通过，两docs已回读，
+无新增P0/P1/P2；真实3.13.15候选尚未执行。
+
+backend.yml仅将quality matrix的3.13固定为3.13.15，其余版本/native、pins、
+权限、命令与预算保留；没有引入PR149的observer/ABBA/wheel harness。复审后
+只计划一次新exact-head完整资格，未复现/unknown/不完整均不自动重测；新UI
+暂不推进，native产品根因仍未闭合。唯一hosted结果只记PR说明，不为结果再改
+已测head或另提交文档。本候选未commit/push/PR；下方旧Draft、
+未合并和旧main文字是历史快照，不覆盖本节live结果。
 
 ## 2026-10-06 实际UI后继候选合入最小CI缓存修复
 
