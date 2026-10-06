@@ -2,6 +2,11 @@ import { defineCatalogShard } from './types'
 import type { NoMessageParameters } from './types'
 
 export interface ShellMessageParameters {
+  readonly 'shell.workstation': NoMessageParameters
+  readonly 'shell.skipToContent': NoMessageParameters
+  readonly 'shell.manageGroup': NoMessageParameters
+  readonly 'shell.agentsGroup': NoMessageParameters
+  readonly 'shell.workGroup': NoMessageParameters
   readonly 'shell.dashboard': NoMessageParameters
   readonly 'shell.attention': NoMessageParameters
   readonly 'shell.codex': NoMessageParameters
@@ -53,6 +58,11 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
   'shell',
   {
     en: {
+      'shell.workstation': () => 'Your AI workstation',
+      'shell.skipToContent': () => 'Skip to content',
+      'shell.manageGroup': () => 'Manage',
+      'shell.agentsGroup': () => 'Agents',
+      'shell.workGroup': () => 'Work',
       'shell.dashboard': () => 'Dashboard',
       'shell.attention': () => 'Needs attention',
       'shell.codex': () => 'Codex',
@@ -107,6 +117,11 @@ export const shellCatalog = defineCatalogShard<ShellMessageParameters>(
         'The label change could not be confirmed. Review the reloaded labels before trying again.',
     },
     'zh-CN': {
+      'shell.workstation': () => 'AI 开发工作站',
+      'shell.skipToContent': () => '跳到主要内容',
+      'shell.manageGroup': () => '管理',
+      'shell.agentsGroup': () => 'Agent 管理',
+      'shell.workGroup': () => '工作',
       'shell.dashboard': () => '概览',
       'shell.attention': () => '待处理',
       'shell.codex': () => 'Codex',

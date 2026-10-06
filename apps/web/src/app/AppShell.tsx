@@ -2,13 +2,13 @@ import {
   Activity,
   Bell,
   Bot,
+  Box,
   Boxes,
   FileText,
   Gauge,
   Menu,
   Search,
   Settings,
-  ShieldCheck,
   Sparkles,
   Terminal,
   X,
@@ -78,6 +78,15 @@ const navigation = [
   },
 ] as const
 
+const navigationGroups = [
+  {
+    title: 'shell.workGroup',
+    paths: ['/dashboard', '/attention', '/projects', '/workspace'],
+  },
+  { title: 'shell.agentsGroup', paths: ['/claude', '/codex'] },
+  { title: 'shell.manageGroup', paths: ['/doctor', '/logs', '/settings'] },
+] as const
+
 const APP_VERSION = packageMetadata.version
 
 function Navigation({
@@ -92,16 +101,29 @@ function Navigation({
       className="primary-nav"
       aria-label={formatMessage(locale, 'shell.primaryNavigation', {})}
     >
-      {navigation.map(({ label, path, icon: Icon }) => (
-        <NavLink
-          className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-          key={path}
-          onClick={onNavigate}
-          to={path}
-        >
-          <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
-          <span>{label(locale)}</span>
-        </NavLink>
+      {navigationGroups.map((group) => (
+        <div className="nav-group" key={group.title}>
+          <p className="nav-group-title">
+            {formatMessage(locale, group.title, {})}
+          </p>
+          {group.paths.map((path) => {
+            const item = navigation.find((entry) => entry.path === path)!
+            const Icon = item.icon
+            return (
+              <NavLink
+                className={({ isActive }) =>
+                  `nav-link${isActive ? ' active' : ''}`
+                }
+                key={path}
+                onClick={onNavigate}
+                to={path}
+              >
+                <Icon aria-hidden="true" size={19} strokeWidth={1.7} />
+                <span>{item.label(locale)}</span>
+              </NavLink>
+            )
+          })}
+        </div>
       ))}
     </nav>
   )
@@ -128,6 +150,8 @@ export function AppShell({
     workTabState.sessionId === sessionId ? workTabState.tabs : []
   const [menuOpen, setMenuOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+  const menuDialog = useRef<HTMLDialogElement>(null)
+  const menuButton = useRef<HTMLButtonElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const commandActions = useMemo(
     () =>
@@ -140,9 +164,45 @@ export function AppShell({
   const [logoutPending, setLogoutPending] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
 
-  useEffect(() => setMenuOpen(false), [location.pathname])
+  useEffect(() => setMenuOpen(false), [location.key, sessionId])
   useEffect(() => setCommandOpen(false), [sessionId])
   useEffect(() => setCommandOpen(false), [location.key])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const dialog = menuDialog.current
+    if (!dialog) return
+    if (typeof dialog.showModal === 'function') dialog.showModal()
+    else dialog.setAttribute('open', '')
+    dialog.querySelector<HTMLButtonElement>('button')?.focus()
+    const close = () => setMenuOpen(false)
+    const visibility = () => {
+      if (document.hidden) close()
+    }
+    const media = window.matchMedia?.('(min-width: 900px)')
+    const resize = () => {
+      if (media?.matches) close()
+    }
+    media?.addEventListener('change', resize)
+    window.addEventListener('pagehide', close)
+    window.addEventListener('offline', close)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      if (typeof dialog.close === 'function' && dialog.open) dialog.close()
+      else dialog.removeAttribute('open')
+      media?.removeEventListener('change', resize)
+      window.removeEventListener('pagehide', close)
+      window.removeEventListener('offline', close)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [menuOpen])
+
+  function closeNavigation() {
+    const dialog = menuDialog.current
+    if (dialog?.open && typeof dialog.close === 'function') dialog.close()
+    setMenuOpen(false)
+    menuButton.current?.focus()
+  }
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
@@ -158,6 +218,7 @@ export function AppShell({
       }
       event.preventDefault()
       if (commandOpen) return
+      if (menuOpen) closeNavigation()
       previousFocus.current =
         document.activeElement instanceof HTMLElement
           ? document.activeElement
@@ -166,9 +227,10 @@ export function AppShell({
     }
     window.addEventListener('keydown', shortcut)
     return () => window.removeEventListener('keydown', shortcut)
-  }, [commandOpen])
+  }, [commandOpen, menuOpen])
 
   function openCommandCenter() {
+    if (menuOpen) closeNavigation()
     previousFocus.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -214,14 +276,17 @@ export function AppShell({
 
   return (
     <div className="app-frame">
+      <a className="skip-link" href="#main-content">
+        {formatMessage(locale, 'shell.skipToContent', {})}
+      </a>
       <aside className="desktop-sidebar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">
-            <ShieldCheck size={21} />
+            <Box size={21} />
           </div>
           <div>
             <strong>{formatMessage(locale, 'app.name', {})}</strong>
-            <span>{formatMessage(locale, 'shell.controlPlane', {})}</span>
+            <span>{formatMessage(locale, 'shell.workstation', {})}</span>
           </div>
         </div>
         <button
@@ -269,7 +334,7 @@ export function AppShell({
       <header className="mobile-header">
         <div className="brand-lockup compact">
           <div className="brand-mark" aria-hidden="true">
-            <ShieldCheck size={19} />
+            <Box size={19} />
           </div>
           <strong>{formatMessage(locale, 'app.name', {})}</strong>
         </div>
@@ -283,6 +348,7 @@ export function AppShell({
             <Search aria-hidden="true" />
           </button>
           <button
+            ref={menuButton}
             aria-controls="mobile-navigation"
             aria-expanded={menuOpen}
             aria-label={
@@ -300,7 +366,28 @@ export function AppShell({
       </header>
 
       {menuOpen && (
-        <div className="mobile-drawer" id="mobile-navigation">
+        <dialog
+          aria-label={formatMessage(locale, 'shell.primaryNavigation', {})}
+          aria-modal="true"
+          className="mobile-drawer"
+          id="mobile-navigation"
+          onCancel={(event) => {
+            event.preventDefault()
+            closeNavigation()
+          }}
+          ref={menuDialog}
+        >
+          <div className="mobile-drawer-heading">
+            <strong>{formatMessage(locale, 'app.name', {})}</strong>
+            <button
+              aria-label={formatMessage(locale, 'shell.closeNavigation', {})}
+              className="icon-button"
+              onClick={closeNavigation}
+              type="button"
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
           <div className="mobile-drawer-meta">
             <ControlPlanePulse locale={locale} />
             {auth ? (
@@ -331,10 +418,10 @@ export function AppShell({
               {formatMessage(locale, 'shell.logoutFailed', {})}
             </p>
           )}
-        </div>
+        </dialog>
       )}
 
-      <main className="app-content">
+      <main className="app-content" id="main-content" tabIndex={-1}>
         <WorkbenchTabs
           activeKey={routeTab?.key ?? null}
           locale={locale}

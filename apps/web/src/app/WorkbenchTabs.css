@@ -27,7 +27,7 @@
 
 .work-tabs li.active {
   border-color: var(--accent);
-  background: #18221f;
+  background: var(--accent-soft);
 }
 
 .work-tabs a {

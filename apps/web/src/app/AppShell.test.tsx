@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { Link, MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -202,5 +202,106 @@ describe('AppShell', () => {
     expect(
       await screen.findByRole('link', { name: /Changed paths ·/ }),
     ).toBeVisible()
+  })
+
+  it('groups real navigation and offers a keyboard skip target', async () => {
+    render(
+      <AuthContext.Provider value={authContext(vi.fn(async () => undefined))}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route element={<AppShell locale="en" />}>
+              <Route path="*" element={<p>Content</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    const navigation = screen.getByRole('navigation', {
+      name: 'Primary navigation',
+    })
+    expect(
+      within(navigation)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href')),
+    ).toEqual([
+      '/dashboard',
+      '/attention',
+      '/projects',
+      '/workspace',
+      '/claude',
+      '/codex',
+      '/doctor',
+      '/logs',
+      '/settings',
+    ])
+    expect(within(navigation).getByText('Agents')).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: 'Skip to content' }),
+    ).toHaveAttribute('href', '#main-content')
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+    expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1')
+    expect(await screen.findByLabelText('Control plane: Healthy')).toBeVisible()
+  })
+
+  it('cancels mobile navigation without changing the route and returns focus', async () => {
+    render(
+      <AuthContext.Provider value={authContext(vi.fn(async () => undefined))}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route element={<AppShell locale="en" />}>
+              <Route path="*" element={<p>Dashboard content</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Open navigation' })
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Primary navigation' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(
+      within(dialog).getByRole('button', { name: 'Close navigation' }),
+    ).toHaveFocus()
+    fireEvent(dialog, new Event('cancel', { bubbles: false, cancelable: true }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(trigger).toHaveFocus()
+    expect(screen.getByText('Dashboard content')).toBeVisible()
+    expect(await screen.findByLabelText('Control plane: Healthy')).toBeVisible()
+    fireEvent.click(trigger)
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Close navigation',
+      }),
+    )
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('dismisses navigation on offline and newer route changes without reopening', async () => {
+    render(
+      <AuthContext.Provider value={authContext(vi.fn(async () => undefined))}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route element={<AppShell locale="en" />}>
+              <Route path="/dashboard" element={<p>Dashboard content</p>} />
+              <Route path="/projects" element={<p>Projects content</p>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    fireEvent(window, new Event('offline'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent(window, new Event('online'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('link', {
+        name: 'Projects',
+      }),
+    )
+    expect(await screen.findByText('Projects content')).toBeVisible()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
