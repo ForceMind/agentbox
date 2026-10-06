@@ -201,3 +201,43 @@ acf5491 artifact11416189253含56张合成PNG，ZIP sha256
 断点修正后的本地默认完整suite：1591 Web + 6 extension通过，lint/format/
 typecheck/build与diff-check均exit0；9项shell单测含两项media竞态回归。最后
 资格仍由新exact-head六套CI与实际浏览器决定，先前flaky/失败均未删除或忽略。
+
+
+### 实际UI后继：整合独立CI缓存修复
+
+原UI head ed24554ca7c7c8a1858c43c2739f30346684144f 的
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37472453042)为256 passed /
+50 prescribed skipped / 0 failed / 0 flaky；包含16项Node检查。真实artifact
+11417583106的56张合成PNG（44张新UI）ZIP SHA256为
+`b37d77c5aa390fbe1ce71cca5a4feacd0ced1801fc39e154588822d364d91ae8`，已下载
+核对并实际检查6张。Frontend/Security/Deployment/Release Candidate均通过；
+Backend3.13仍失败，不能宣布当时具备合并资格。
+
+独立[PR150](https://github.com/ForceMind/agentbox/pull/150)在head
+5cb87f35169864a9bc85f603d4274814152f9dab修复了另一个真实CI配置问题：
+artifact在临时HOME/venv离线安装，不生成runner HOME的pip cache；原job在
+真实provenance成功后因post-cache目录不存在失败。只移除该job的cache:pip，
+不造空目录、不放宽门禁，配置合同同条件1 failed→1 passed，独立120项复验及
+真实三Python artifact imports/release-gate通过。hosted patch版本差异保留。
+
+本UI后继只复制已审workflow和release合同测试两份代码；两文件原本与main
+相同，改后与PR150代码相同。另追加本文及本UI状态记录，不覆盖旁支历史，
+不合入PR149的观察器、ABBA或诊断测试。UI源码、原1591 Web/6 extension测试、
+既有安全override/lock、认证/A3/currentness与所有预算不改。
+
+独立PR149的真实固定四轮已在main复现间歇currentness失败，产品根因仍未闭合；
+本次CI配置修复和任何后继绿色不能冒称其修复。接下来独立复审这次有限移植、
+执行完整本地门禁、新UI exact-head六套CI，并下载检查该head的新PNG。旧图不
+冒充新head截图；暖白/墨色/琥珀仍只是可回退实施选择。两个PR历史继续保留，
+PR150不在实际UI合并接受前标为superseded。无merge/release/deploy或真实凭据/host操作。
+
+本轮有限移植已独立复审：两份代码与PR150本地/远端blob精确一致，YAML语义
+只移除该job缓存输入，原测试AST和全部其他门禁不变，无P0/P1/P2。独立focused
+合同/packaging/gate三项通过，并用同合同读入旧YAML确认预期拒绝。
+
+后继本地默认完整pnpm test为1591 Web + 6 extension通过；lint、format:check、
+typecheck、双端build全部exit0。pnpm audit --audit-level high为0 high/critical、
+2 moderate。release/artifact/rc8四模块120 passed，overview API17 passed；Ruff、
+mypy393、改动Python Black、50 action pins、723 relative doc links、secret-pattern/
+source-boundary/diff-check通过。UI源码、apps/clients/packages与lock/overrides
+均相对原UI head字节不变。新exact-head六套CI及其实际PNG尚待运行和审查。

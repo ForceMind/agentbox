@@ -1,12 +1,38 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T13:07:00Z"
+verified_at_utc: "2026-10-06T17:59:00Z"
 verified_by: "agentbox-ui-shell"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-06 实际UI后继候选合入最小CI缓存修复
+
+远端main仍为a586eaec27984e0632187048cc1b82e7e29552d1；UI PR148原head
+ed24554ca7c7c8a1858c43c2739f30346684144f的E2E已稳定256 passed、50规定skip、
+0 failed/0 flaky，其中包含16项Node检查，不把全部称为浏览器页。Frontend、
+Security、Deployment、Release Candidate通过；Backend仅既有3.13 currentness
+失败。原head真实PNG已实际检查，不能替代本后继head的新截图。
+
+本后继只移入独立PR150/5cb87f35169864a9bc85f603d4274814152f9dab的两个代码
+文件补丁：去掉rc8-artifact-import无用runner pip cache，并加精确YAML合同测试。
+这两份文件在原UI与main逐字相同，移植后与已审PR150代码逐字相同；没有用
+PR150的CURRENT_STATE覆盖本UI历史。原UI的tinypool2.1.2/source-map-js1.2.2
+审计修复保留，无新依赖变化、产品/预算/UI源码或权限变化。
+
+PR149诊断没有合入UI。其固定四轮在main上得到A1通过/A2失败，B两轮通过，
+仍不能归因或称为产品修复；currentness保持未闭合。PR150真实RC验证通过，
+但其main基线审计仍失败。本UI后继将以自己的完整本地检查、新exact-head六套
+CI和新真实截图资格为准，不借旁支通过替代；即使后继全绿也不宣称时序问题修复。
+
+本次实际UI/cache移植独立复审已通过，代码/远端blob/YAML语义与原测试AST均
+核验，无P0/P1/P2。本地1591 Web+6 extension、120 release、17 overview API、
+完整前端门禁及Python静态/边界检查通过；audit为0 high/critical、2 moderate。
+后继exact-head六套CI与新PNG仍待审查。两个PR历史保留，PR150不预先标为
+superseded或关闭。没有merge/release/deploy、真实host/账号/凭据或安全设置操作。下方
+较旧时间快照保留为历史，新head和结果以PR148实时回读为准。
 
 ## 2026-10-06 PR148 UI 候选质量回归快照（13:07 UTC）
 
