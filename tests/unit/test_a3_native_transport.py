@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pytest
+from a3_currentness_trace import CHECKER_TIMEOUT_SITES, classify_checker_timeout
 from agentbox_core import a3_native_io as io
 from agentbox_core.a3_native_io import NATIVE_IO_DEADLINE, NativeChannel, deadline_after
 from agentbox_core.services import ControlPlaneServices
@@ -446,6 +447,11 @@ class Client:
     def add_currentness_failure_note(self, error: Exception) -> None:
         with contextlib.suppress(Exception):
             error.add_note(f"Native fixture currentness failures: {self.currentness_failures!r}")
+        with contextlib.suppress(BaseException):
+            site = getattr(self, "currentness_checker_site", "unknown")
+            if type(site) is not str or site not in CHECKER_TIMEOUT_SITES:
+                site = "unknown"
+            error.add_note(f"Native fixture checker timeout site: {site}")
 
     async def start(self, *, mixed: bool = False) -> None:
         digest = facts_digest(self.facts)
@@ -483,6 +489,9 @@ class Client:
         except Exception as error:
             with contextlib.suppress(Exception):
                 self.record_currentness_failure("fixture-checker", error)
+            with contextlib.suppress(BaseException):
+                if self.currentness_failures is not None:
+                    self.currentness_checker_site = classify_checker_timeout(error, _CHECKER_CODE)
             channel.close()
 
     async def rpc(
@@ -501,6 +510,9 @@ class Client:
         if self.thread is not None:
             self.thread.join(timeout=1)
             assert not self.thread.is_alive()
+
+
+_CHECKER_CODE = Client.checker.__code__
 
 
 def test_fixture_currentness_diagnostics_are_bounded_and_value_free() -> None:
