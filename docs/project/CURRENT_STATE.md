@@ -24,7 +24,7 @@ Session/10 秒 timeout 不变；404 只有原状态对应 Link。新增 26 项�
 完整 1971 Web+6 extension、lint/typecheck/format/build 通过；独立 source CLEAR。
 旧 404 E2E 只更新标题文字期望，无产品 RED。
 
-首个组合 head `0042964b5b6e552e9d344be2670e3ac867c69d77` 已正常合入 99ae3d6；
+首个组合 head `0042964b5b6e552e9d344be2670e3ac867c69d77` 已正常吸收 main 99ae3d6；
 初始九份规划文档逐字一致，四键 YAML 有效。16:10 时五套 CI success、E2E 仍在运行。
 新 browser 静态 132 注册，预计 84 执行/48 自管理矩阵重复 skip，计划 60 PNG；
 所有截图只在输入清空后采集，旧敏感套件 capture-off 不变。
@@ -37,6 +37,12 @@ logout、离线/隐藏恢复与 sensitive currentness 回归；仅补 Attention/
 该收口完成后只称 U2 既有页面软件闭环，U1 新 Kebui 原型仍待；真实 host/device、
 双 CLI、trust/Secret、恢复与 release/deploy 继续分别取证。下方旧快照完整保留。
 
+
+16:22 更新：0042964 的 E2E37648558752/job112885601067 首轮终态为
+642 passed / 270 skipped / 8 failed，五套其余 workflow 成功。失败均为新 entry spec
+finally 错用严格 release（未 held 或已 release）；仅改用既有 dispose 做 cleanup，
+显式 release 保留并等待 held。产品/预算/断言/skip 不变，不重跑失败头取绿。
+后继组合 head 含跨页标题与该 test-only 修正，仍需完整自身资格；未提前称图像通过。
 
 ## 2026-10-07 PR160 闭环与 Kebui 计划合并协调（15:20 UTC）
 

@@ -126,3 +126,15 @@ head 的 browser/60 图/六套与 post-main 才能关闭该记录，不另起纯
 
 一次后续 npm exec 查询 registry 返回 HTTP403，已停止该网络路径；最终定向检查与
 build 使用原已安装 pnpm 的本地入口，均 exit 0。未尝试绕过网络或 local browser 限制。
+
+## 16:22 UTC 首轮浏览器失败与严格 hold 清理更正
+
+16:22 更新：0042964 的 E2E37648558752/job112885601067 首轮终态为
+642 passed / 270 skipped / 8 failed，五套其余 workflow 成功。失败均为新 entry spec
+finally 错用严格 release（未 held 或已 release）；仅改用既有 dispose 做 cleanup，
+显式 release 保留并等待 held。产品/预算/断言/skip 不变，不重跑失败头取绿。
+后继组合 head 含跨页标题与该 test-only 修正，仍需完整自身资格；未提前称图像通过。
+
+原 helper 的 release 明确拒绝未到达或重复释放，dispose 才是幂等清理。
+三个 finally 改 dispose，两处正常显式 release 前 waitUntilHeld；不修改共享 helper。
+实际最终 browser/pixel 仍待，新本地 type/lint/format 与 132 静态注册保持。
