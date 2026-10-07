@@ -56,7 +56,10 @@ type Reply = {
   result: unknown
 }
 
-export async function startA3NativeFixture(testInfo: TestInfo) {
+export async function startA3NativeFixture(
+  testInfo: TestInfo,
+  locale: 'zh-CN' | 'en' = 'zh-CN',
+) {
   const temporary = await mkdtemp(join(tmpdir(), 'a3n-'))
   // Numeric API/Runtime UIDs need traversal, never directory write access.
   await chmod(temporary, 0o755)
@@ -414,7 +417,7 @@ export async function startA3NativeFixture(testInfo: TestInfo) {
         hasTouch: testInfo.project.use.hasTouch,
         deviceScaleFactor: testInfo.project.use.deviceScaleFactor,
         userAgent: testInfo.project.use.userAgent,
-        locale: 'zh-CN',
+        locale,
         env: {
           ...process.env,
           HOME: home,
