@@ -87,17 +87,44 @@ export function CodexPage() {
   const title = copy(locale, 'codex.title')
   usePageTitle(title)
   const codex = useCodex()
-  const [confirmPair, setConfirmPair] = useState(false)
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>(
-    'idle',
-  )
+  const [confirmation, setConfirmation] = useState<{
+    owner: typeof codex.isCurrent
+  } | null>(null)
+  const confirmationRef = useRef(confirmation)
+  confirmationRef.current = confirmation
+  const confirmPair = confirmation?.owner === codex.isCurrent
+  const [copyFeedback, setCopyFeedback] = useState<{
+    owner: typeof codex.isCurrent
+    pair: typeof codex.pair
+    status: 'copied' | 'error'
+  } | null>(null)
+  const latestCodex = useRef(codex)
+  latestCodex.current = codex
+  const copyRequestRef = useRef<object | null>(null)
+  const copyState =
+    copyFeedback?.owner === codex.isCurrent && copyFeedback.pair === codex.pair
+      ? copyFeedback.status
+      : 'idle'
   const pairTriggerRef = useRef<HTMLButtonElement>(null)
   const generateButtonRef = useRef<HTMLButtonElement>(null)
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
   const pairRevealRef = useRef<HTMLDivElement>(null)
   const actionErrorRef = useRef<HTMLElement>(null)
   const restorePairTriggerRef = useRef(true)
-  const pairGenerationRequestedRef = useRef(false)
+  const pairGenerationRequestedRef = useRef<typeof codex.isCurrent | null>(null)
+
+  useEffect(() => {
+    setConfirmation(null)
+    return () => {
+      copyRequestRef.current = null
+      pairGenerationRequestedRef.current = null
+    }
+  }, [codex.isCurrent])
+
+  useEffect(() => {
+    // Release the old sensitive Pair reference on Hide, TTL or owner change.
+    setCopyFeedback(null)
+  }, [codex.isCurrent, codex.pair])
 
   useEffect(() => {
     if (!confirmPair) return
@@ -109,42 +136,75 @@ export function CodexPage() {
   }, [confirmPair])
 
   useEffect(() => {
-    if (!pairGenerationRequestedRef.current) return
+    if (pairGenerationRequestedRef.current !== codex.isCurrent) return
     if (codex.pair) {
-      pairGenerationRequestedRef.current = false
+      pairGenerationRequestedRef.current = null
       pairRevealRef.current?.focus()
     } else if (codex.actionError) {
-      pairGenerationRequestedRef.current = false
+      pairGenerationRequestedRef.current = null
       actionErrorRef.current?.focus()
     }
-  }, [codex.actionError, codex.pair])
+  }, [codex.actionError, codex.pair, codex.isCurrent])
 
   async function copyPairCode() {
-    if (!codex.pair) return
-    setCopyState('idle')
+    if (
+      !codex.isCurrent() ||
+      !codex.pair ||
+      latestCodex.current.pair !== codex.pair
+    )
+      return
+    const request = {}
+    copyRequestRef.current = request
+    setCopyFeedback(null)
+    const owns = () =>
+      codex.isCurrent() &&
+      latestCodex.current.pair === codex.pair &&
+      copyRequestRef.current === request
     try {
       await navigator.clipboard.writeText(codex.pair.pair_code)
-      setCopyState('copied')
+      if (owns())
+        setCopyFeedback({
+          owner: codex.isCurrent,
+          pair: codex.pair,
+          status: 'copied',
+        })
     } catch {
-      setCopyState('error')
+      if (owns())
+        setCopyFeedback({
+          owner: codex.isCurrent,
+          pair: codex.pair,
+          status: 'error',
+        })
     }
   }
 
   async function confirmGenerate() {
+    if (
+      !codex.isCurrent() ||
+      !confirmPair ||
+      confirmationRef.current !== confirmation
+    )
+      return
     restorePairTriggerRef.current = false
-    pairGenerationRequestedRef.current = true
-    setConfirmPair(false)
-    setCopyState('idle')
+    pairGenerationRequestedRef.current = codex.isCurrent
+    confirmationRef.current = null
+    setConfirmation(null)
+    setCopyFeedback(null)
     await codex.generatePairCode()
   }
 
   function openPairConfirmation() {
+    if (!codex.isCurrent()) return
     restorePairTriggerRef.current = true
-    setConfirmPair(true)
+    const next = { owner: codex.isCurrent }
+    confirmationRef.current = next
+    setConfirmation(next)
   }
 
   function closePairConfirmation() {
-    setConfirmPair(false)
+    if (!codex.isCurrent() || confirmationRef.current !== confirmation) return
+    confirmationRef.current = null
+    setConfirmation(null)
   }
 
   function handlePairDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -171,7 +231,9 @@ export function CodexPage() {
   }
 
   function clearPair() {
-    setCopyState('idle')
+    if (!codex.isCurrent() || latestCodex.current.pair !== codex.pair) return
+    copyRequestRef.current = null
+    setCopyFeedback(null)
     codex.clearPair()
   }
 

@@ -33,6 +33,7 @@ function model(): ReturnType<typeof useClaude> {
       },
     },
     hideOutput: vi.fn(),
+    isCurrent: () => true,
     outputs: {},
     pending: [],
     refresh: vi.fn(async () => undefined),

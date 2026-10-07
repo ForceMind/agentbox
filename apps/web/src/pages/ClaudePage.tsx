@@ -6,7 +6,7 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
@@ -54,16 +54,62 @@ function stateTone(state: ClaudeSessionView['state']) {
 
 export function ClaudePage({ locale = currentLocale() }: { locale?: Locale }) {
   const claude = useClaude()
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copyFeedback, setCopyFeedback] = useState<{
+    owner: typeof claude.isCurrent
+    session: ClaudeSessionView
+  } | null>(null)
+  const copied =
+    copyFeedback?.owner === claude.isCurrent &&
+    claude.view.status === 'loaded' &&
+    claude.view.data.sessions.includes(copyFeedback.session)
+      ? copyFeedback.session.project_id
+      : null
+  const latestClaude = useRef(claude)
+  latestClaude.current = claude
+  const copyRequest = useRef<object | null>(null)
+  const copyTimer = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    setCopyFeedback(null)
+    return () => {
+      copyRequest.current = null
+      window.clearTimeout(copyTimer.current)
+    }
+  }, [claude.isCurrent])
   const catalog = claudeCatalog.catalogs[locale]
   const message = (key: ClaudeMessageKey) => catalog[key]({})
   usePageTitle(message('claude.title'))
 
   async function copyAttach(session: ClaudeSessionView) {
-    if (session.attach_command === null) return
-    await navigator.clipboard.writeText(session.attach_command)
-    setCopied(session.project_id)
-    window.setTimeout(() => setCopied(null), 1500)
+    if (
+      !claude.isCurrent() ||
+      session.attach_command === null ||
+      latestClaude.current.view.status !== 'loaded' ||
+      !latestClaude.current.view.data.sessions.includes(session)
+    )
+      return
+    const request = {}
+    copyRequest.current = request
+    window.clearTimeout(copyTimer.current)
+    setCopyFeedback(null)
+    const owns = () =>
+      claude.isCurrent() &&
+      copyRequest.current === request &&
+      latestClaude.current.view.status === 'loaded' &&
+      latestClaude.current.view.data.sessions.includes(session)
+    try {
+      await navigator.clipboard.writeText(session.attach_command)
+      if (!owns()) return
+      setCopyFeedback({
+        owner: claude.isCurrent,
+        session,
+      })
+      copyTimer.current = window.setTimeout(() => {
+        if (claude.isCurrent() && copyRequest.current === request)
+          setCopyFeedback(null)
+      }, 1500)
+    } catch {
+      if (owns()) setCopyFeedback(null)
+    }
   }
 
   return (

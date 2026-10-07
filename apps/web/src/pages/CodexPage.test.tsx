@@ -38,9 +38,12 @@ function loadedView(diagnostics: unknown[] = []) {
   }
 }
 
+const currentOwner = () => true
+
 function model(overrides: Record<string, unknown> = {}) {
   return {
     actionError: null,
+    isCurrent: currentOwner,
     clearPair: vi.fn(),
     generatePairCode: vi.fn(() => Promise.resolve()),
     pair: null,

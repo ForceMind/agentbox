@@ -461,305 +461,429 @@ const CLAUDE_STATUS_TIMEOUT_MS = 45_000
 const CLAUDE_MUTATION_TIMEOUT_MS = 45_000
 
 export function useClaude() {
-  const { api, auth } = useAuth()
-  const [view, setView] = useState<ClaudeViewState>({ status: 'loading' })
-  const [pending, setPending] = useState<readonly ClaudePendingOperation[]>([])
-  const [refreshing, setRefreshing] = useState(false)
-  const [actionErrors, setActionErrors] = useState<
-    Readonly<Record<string, ClaudeApiErrorView>>
-  >({})
-  const [outputs, setOutputs] = useState<Record<string, ClaudeRevealedOutput>>(
-    {},
+  const { api, auth, status } = useAuth()
+  const userId = auth?.user.id
+  const sessionId = auth?.session.id
+  const csrfToken = auth?.csrf_token
+  const owner = useMemo(
+    () => ({ api, userId, sessionId, csrfToken, status }),
+    [api, userId, sessionId, csrfToken, status],
   )
-  const revision = useRef(0)
-  const viewRef = useRef<ClaudeViewState>(view)
-  const loadedRef = useRef<LoadedClaude | null>(null)
-  const pendingRef = useRef(new Map<number, ProjectOperationToken>())
-  const refreshRef = useRef(new Set<number>())
-  const latestRefreshRevisionRef = useRef(0)
-  const latestMutationRevisionRef = useRef(0)
-  const latestActionRevisionRef = useRef(new Map<string, number>())
-  const sessionOverridesRef = useRef(
-    new Map<
+  const currentOwner = useRef(owner)
+  currentOwner.current = owner
+  type State = {
+    view: ClaudeViewState
+    pending: readonly ClaudePendingOperation[]
+    refreshing: boolean
+    actionErrors: Readonly<Record<string, ClaudeApiErrorView>>
+    outputs: Record<string, ClaudeRevealedOutput>
+  }
+  const [state, setState] = useState<State & { owner: typeof owner }>({
+    owner,
+    view: { status: 'loading' },
+    pending: [],
+    refreshing: false,
+    actionErrors: {},
+    outputs: {},
+  })
+  const control = useRef<{
+    owner: typeof owner
+    refresh: () => Promise<void>
+    sessionAction: (
+      projectId: string,
+      operation: 'start' | 'stop',
+    ) => Promise<void>
+    revealOutput: (projectId: string) => Promise<void>
+    hideOutput: (projectId: string) => void
+  } | null>(null)
+
+  useEffect(() => {
+    let disposed = false
+    const requests = new Set<AbortController>()
+    const authenticated =
+      owner.status === 'authenticated' &&
+      Boolean(owner.userId && owner.sessionId)
+    function owns() {
+      return !disposed && authenticated && currentOwner.current === owner
+    }
+    function update<K extends keyof State>(
+      key: K,
+      value: State[K] | ((current: State[K]) => State[K]),
+    ) {
+      if (!owns()) return
+      setState((current) => {
+        if (!owns() || current.owner !== owner) return current
+        return {
+          ...current,
+          [key]: typeof value === 'function' ? value(current[key]) : value,
+        }
+      })
+    }
+    const setView = (value: State['view']) => update('view', value)
+    const setPending = (value: State['pending']) => update('pending', value)
+    const setRefreshing = (value: boolean) => update('refreshing', value)
+    const setActionErrors = (
+      value:
+        | State['actionErrors']
+        | ((current: State['actionErrors']) => State['actionErrors']),
+    ) => update('actionErrors', value)
+    const setOutputs = (
+      value:
+        State['outputs'] | ((current: State['outputs']) => State['outputs']),
+    ) => update('outputs', value)
+    let revision = 0
+    let viewRef: ClaudeViewState = { status: 'loading' }
+    let loadedRef: LoadedClaude | null = null
+    const pendingRef = new Map<number, ProjectOperationToken>()
+    const refreshRef = new Set<number>()
+    let latestRefreshRevisionRef = 0
+    let latestMutationRevisionRef = 0
+    const latestActionRevisionRef = new Map<string, number>()
+    const sessionOverridesRef = new Map<
       string,
       Readonly<{ revision: number; session: ClaudeSessionView }>
-    >(),
-  )
-
-  function nextRevision() {
-    revision.current += 1
-    return revision.current
-  }
-
-  function commitView(next: ClaudeViewState) {
-    viewRef.current = next
-    if (next.status === 'loaded') loadedRef.current = next.data
-    setView(next)
-  }
-
-  function beginProjectOperation(
-    projectId: string,
-    operation: 'start' | 'stop' | 'output',
-  ): ProjectOperationToken | null {
-    for (const token of pendingRef.current.values()) {
-      if (token.projectId === projectId) return null
+    >()
+    function nextRevision() {
+      revision += 1
+      return revision
     }
-    const token = Object.freeze({
-      revision: nextRevision(),
-      operation,
-      kind:
-        operation === 'output' ? ('output' as const) : ('mutation' as const),
-      projectId,
-    })
-    pendingRef.current.set(token.revision, token)
-    latestActionRevisionRef.current.set(projectId, token.revision)
-    if (token.kind === 'mutation') {
-      latestMutationRevisionRef.current = token.revision
+
+    function commitView(next: ClaudeViewState) {
+      viewRef = next
+      if (next.status === 'loaded') loadedRef = next.data
+      setView(next)
     }
-    setPending(
-      Array.from(pendingRef.current.values(), (entry) =>
-        Object.freeze({
-          operation: entry.operation,
-          projectId: entry.projectId,
-        }),
-      ),
-    )
-    return token
-  }
 
-  function endProjectOperation(token: ProjectOperationToken) {
-    if (!pendingRef.current.delete(token.revision)) return
-    setPending(
-      Array.from(pendingRef.current.values(), (entry) =>
-        Object.freeze({
-          operation: entry.operation,
-          projectId: entry.projectId,
-        }),
-      ),
-    )
-  }
+    function beginProjectOperation(
+      projectId: string,
+      operation: 'start' | 'stop' | 'output',
+    ): ProjectOperationToken | null {
+      for (const token of pendingRef.values()) {
+        if (token.projectId === projectId) return null
+      }
+      const token = Object.freeze({
+        revision: nextRevision(),
+        operation,
+        kind:
+          operation === 'output' ? ('output' as const) : ('mutation' as const),
+        projectId,
+      })
+      pendingRef.set(token.revision, token)
+      latestActionRevisionRef.set(projectId, token.revision)
+      if (token.kind === 'mutation') {
+        latestMutationRevisionRef = token.revision
+      }
+      setPending(
+        Array.from(pendingRef.values(), (entry) =>
+          Object.freeze({
+            operation: entry.operation,
+            projectId: entry.projectId,
+          }),
+        ),
+      )
+      return token
+    }
 
-  function clearActionError(projectId: string) {
-    setActionErrors((current) => {
-      if (!(projectId in current)) return current
-      const next = { ...current }
-      delete next[projectId]
-      return Object.freeze(next)
-    })
-  }
+    function endProjectOperation(token: ProjectOperationToken) {
+      if (!pendingRef.delete(token.revision)) return
+      setPending(
+        Array.from(pendingRef.values(), (entry) =>
+          Object.freeze({
+            operation: entry.operation,
+            projectId: entry.projectId,
+          }),
+        ),
+      )
+    }
 
-  function setActionError(
-    token: ProjectOperationToken,
-    error: ClaudeApiErrorView,
-  ) {
-    if (
-      latestActionRevisionRef.current.get(token.projectId) !== token.revision
+    function clearActionError(projectId: string) {
+      setActionErrors((current) => {
+        if (!(projectId in current)) return current
+        const next = { ...current }
+        delete next[projectId]
+        return Object.freeze(next)
+      })
+    }
+
+    function setActionError(
+      token: ProjectOperationToken,
+      error: ClaudeApiErrorView,
     ) {
-      return
-    }
-    setActionErrors((current) =>
-      Object.freeze({ ...current, [token.projectId]: error }),
-    )
-  }
-
-  function endRefresh(token: RefreshToken) {
-    if (!refreshRef.current.delete(token.revision)) return
-    setRefreshing(refreshRef.current.size > 0)
-  }
-
-  function mergeRefreshSessions(
-    sessions: readonly ClaudeSessionView[],
-    token: RefreshToken,
-  ): readonly ClaudeSessionView[] {
-    const merged = new Map(
-      sessions.map((session) => [session.project_id, session] as const),
-    )
-    for (const [projectId, override] of sessionOverridesRef.current) {
-      if (
-        override.revision > token.revision ||
-        token.pendingMutationProjects.has(projectId)
-      ) {
-        merged.set(projectId, override.session)
+      if (latestActionRevisionRef.get(token.projectId) !== token.revision) {
+        return
       }
+      setActionErrors((current) =>
+        Object.freeze({ ...current, [token.projectId]: error }),
+      )
     }
-    return Object.freeze(Array.from(merged.values()))
-  }
 
-  function applySessionOverride(
-    projectId: string,
-    operationRevision: number,
-    session: ClaudeSessionView,
-  ) {
-    sessionOverridesRef.current.set(
-      projectId,
-      Object.freeze({ revision: operationRevision, session }),
-    )
-    const current = loadedRef.current
-    if (current === null) return
-    const sessions = current.sessions.some(
-      (candidate) => candidate.project_id === projectId,
-    )
-      ? current.sessions.map((candidate) =>
-          candidate.project_id === projectId ? session : candidate,
-        )
-      : [...current.sessions, session]
-    commitView({
-      status: 'loaded',
-      data: Object.freeze({
-        ...current,
-        sessions: Object.freeze(sessions),
-      }),
-    })
-  }
+    function endRefresh(token: RefreshToken) {
+      if (!refreshRef.delete(token.revision)) return
+      setRefreshing(refreshRef.size > 0)
+    }
 
-  const refresh = useCallback(async () => {
-    revision.current += 1
-    const refreshRevision = revision.current
-    const pendingMutationProjects = new Set<string>()
-    for (const pendingToken of pendingRef.current.values()) {
-      if (pendingToken.kind === 'mutation') {
-        pendingMutationProjects.add(pendingToken.projectId)
+    function mergeRefreshSessions(
+      sessions: readonly ClaudeSessionView[],
+      token: RefreshToken,
+    ): readonly ClaudeSessionView[] {
+      const merged = new Map(
+        sessions.map((session) => [session.project_id, session] as const),
+      )
+      for (const [projectId, override] of sessionOverridesRef) {
+        if (
+          override.revision > token.revision ||
+          token.pendingMutationProjects.has(projectId)
+        ) {
+          merged.set(projectId, override.session)
+        }
       }
+      return Object.freeze(Array.from(merged.values()))
     }
-    const token: RefreshToken = Object.freeze({
-      revision: refreshRevision,
-      pendingMutationProjects,
-    })
-    latestRefreshRevisionRef.current = refreshRevision
-    refreshRef.current.add(refreshRevision)
-    setRefreshing(true)
-    setActionErrors({})
-    setOutputs({})
-    if (viewRef.current.status !== 'loaded') {
-      commitView({ status: 'loading' })
-    }
-    try {
-      const [status, sessions] = await Promise.all([
-        api.get<ClaudeStatusResponse>('/api/v1/claude', {
-          timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
-          validate: parseClaudeStatusResponse,
-        }),
-        api.get<ClaudeSessionListResponse>('/api/v1/claude/sessions', {
-          timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
-          validate: parseClaudeSessionListResponse,
-        }),
-      ])
-      if (latestRefreshRevisionRef.current !== token.revision) return
+
+    function applySessionOverride(
+      projectId: string,
+      operationRevision: number,
+      session: ClaudeSessionView,
+    ) {
+      sessionOverridesRef.set(
+        projectId,
+        Object.freeze({ revision: operationRevision, session }),
+      )
+      const current = loadedRef
+      if (current === null) return
+      const sessions = current.sessions.some(
+        (candidate) => candidate.project_id === projectId,
+      )
+        ? current.sessions.map((candidate) =>
+            candidate.project_id === projectId ? session : candidate,
+          )
+        : [...current.sessions, session]
       commitView({
         status: 'loaded',
         data: Object.freeze({
-          status: statusView(status.data),
-          sessions: mergeRefreshSessions(
-            sessions.data.sessions.map(sessionView),
-            token,
-          ),
+          ...current,
+          sessions: Object.freeze(sessions),
         }),
       })
-    } catch (error) {
-      if (latestRefreshRevisionRef.current !== token.revision) return
-      const mutationOverlapped =
-        token.pendingMutationProjects.size > 0 ||
-        latestMutationRevisionRef.current > token.revision
-      if (mutationOverlapped && loadedRef.current !== null) {
-        commitView({ status: 'loaded', data: loadedRef.current })
-      } else {
+    }
+
+    async function refresh() {
+      if (!owns()) return
+      const request = new AbortController()
+      requests.add(request)
+      revision += 1
+      const refreshRevision = revision
+      const pendingMutationProjects = new Set<string>()
+      for (const pendingToken of pendingRef.values()) {
+        if (pendingToken.kind === 'mutation') {
+          pendingMutationProjects.add(pendingToken.projectId)
+        }
+      }
+      const token: RefreshToken = Object.freeze({
+        revision: refreshRevision,
+        pendingMutationProjects,
+      })
+      latestRefreshRevisionRef = refreshRevision
+      refreshRef.add(refreshRevision)
+      setRefreshing(true)
+      setActionErrors({})
+      setOutputs({})
+      if (viewRef.status !== 'loaded') {
+        commitView({ status: 'loading' })
+      }
+      try {
+        const [status, sessions] = await Promise.all([
+          owner.api.get<ClaudeStatusResponse>('/api/v1/claude', {
+            signal: request.signal,
+            timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+            validate: parseClaudeStatusResponse,
+          }),
+          owner.api.get<ClaudeSessionListResponse>('/api/v1/claude/sessions', {
+            signal: request.signal,
+            timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+            validate: parseClaudeSessionListResponse,
+          }),
+        ])
+        if (
+          !owns() ||
+          request.signal.aborted ||
+          latestRefreshRevisionRef !== token.revision
+        )
+          return
         commitView({
-          status: 'error',
-          error: safeError(error, 'CLAUDE_RUNTIME_UNAVAILABLE'),
+          status: 'loaded',
+          data: Object.freeze({
+            status: statusView(status.data),
+            sessions: mergeRefreshSessions(
+              sessions.data.sessions.map(sessionView),
+              token,
+            ),
+          }),
         })
+      } catch (error) {
+        if (
+          !owns() ||
+          request.signal.aborted ||
+          latestRefreshRevisionRef !== token.revision
+        )
+          return
+        const mutationOverlapped =
+          token.pendingMutationProjects.size > 0 ||
+          latestMutationRevisionRef > token.revision
+        if (mutationOverlapped && loadedRef !== null) {
+          commitView({ status: 'loaded', data: loadedRef })
+        } else {
+          commitView({
+            status: 'error',
+            error: safeError(error, 'CLAUDE_RUNTIME_UNAVAILABLE'),
+          })
+        }
+      } finally {
+        // Promise.all may settle before its sibling read; close both requests.
+        request.abort()
+        requests.delete(request)
+        if (owns()) endRefresh(token)
       }
-    } finally {
-      endRefresh(token)
     }
-  }, [api])
 
-  useEffect(() => {
+    async function sessionAction(
+      projectId: string,
+      operation: 'start' | 'stop',
+    ) {
+      if (!owns() || !owner.csrfToken) return
+      const token = beginProjectOperation(projectId, operation)
+      if (token === null) return
+      const request = new AbortController()
+      requests.add(request)
+      clearActionError(projectId)
+      setOutputs((current) => {
+        const next = { ...current }
+        delete next[projectId]
+        return next
+      })
+      try {
+        const response = await owner.api.post<ClaudeSessionActionResponse>(
+          `/api/v1/claude/sessions/${encodeURIComponent(projectId)}/${operation}`,
+          {
+            csrfToken: owner.csrfToken,
+            signal: request.signal,
+            timeoutMs: CLAUDE_MUTATION_TIMEOUT_MS,
+            validate: parseClaudeSessionActionResponse,
+          },
+        )
+        if (!owns() || request.signal.aborted) return
+        if (response.data.session.project_id !== projectId) {
+          setActionError(token, { code: 'CLAUDE_ACTION_FAILED' })
+          return
+        }
+        applySessionOverride(
+          projectId,
+          token.revision,
+          sessionView(response.data.session),
+        )
+      } catch (error) {
+        if (!owns() || request.signal.aborted) return
+        setActionError(token, safeError(error, 'CLAUDE_ACTION_FAILED'))
+      } finally {
+        requests.delete(request)
+        if (owns()) endProjectOperation(token)
+      }
+    }
+
+    async function revealOutput(projectId: string) {
+      if (!owns()) return
+      const token = beginProjectOperation(projectId, 'output')
+      if (token === null) return
+      const request = new AbortController()
+      requests.add(request)
+      clearActionError(projectId)
+      try {
+        const response = await owner.api.get<ClaudeSessionOutputResponse>(
+          `/api/v1/claude/sessions/${encodeURIComponent(projectId)}/output`,
+          {
+            signal: request.signal,
+            timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+            validate: parseClaudeSessionOutputResponse,
+          },
+        )
+        if (!owns() || request.signal.aborted) return
+        if (response.data.project_id !== projectId) {
+          setActionError(token, { code: 'CLAUDE_ACTION_FAILED' })
+          return
+        }
+        if (latestRefreshRevisionRef > token.revision) return
+        setOutputs((current) => ({
+          ...current,
+          [projectId]: Object.freeze({
+            output: response.data.output,
+            truncated: response.data.truncated,
+          }),
+        }))
+      } catch (error) {
+        if (!owns() || request.signal.aborted) return
+        setActionError(token, safeError(error, 'CLAUDE_ACTION_FAILED'))
+      } finally {
+        requests.delete(request)
+        if (owns()) endProjectOperation(token)
+      }
+    }
+
+    function hideOutput(projectId: string) {
+      if (!owns()) return
+      setOutputs((current) => {
+        const next = { ...current }
+        delete next[projectId]
+        return next
+      })
+    }
+    setState({
+      owner,
+      view: { status: 'loading' },
+      pending: [],
+      refreshing: false,
+      actionErrors: {},
+      outputs: {},
+    })
+    const controls = { owner, refresh, sessionAction, revealOutput, hideOutput }
+    control.current = controls
     void refresh()
-  }, [refresh])
+    return () => {
+      disposed = true
+      // This cancels browser requests, not already submitted Runtime actions.
+      for (const request of requests) request.abort()
+      requests.clear()
+      if (control.current === controls) control.current = null
+    }
+  }, [owner])
 
+  const isCurrent = useCallback(
+    () => currentOwner.current === owner && control.current?.owner === owner,
+    [owner],
+  )
+  const refresh = useCallback(async () => {
+    if (isCurrent()) await control.current?.refresh()
+  }, [isCurrent])
   async function sessionAction(projectId: string, operation: 'start' | 'stop') {
-    if (!auth) return
-    const token = beginProjectOperation(projectId, operation)
-    if (token === null) return
-    clearActionError(projectId)
-    setOutputs((current) => {
-      const next = { ...current }
-      delete next[projectId]
-      return next
-    })
-    try {
-      const response = await api.post<ClaudeSessionActionResponse>(
-        `/api/v1/claude/sessions/${encodeURIComponent(projectId)}/${operation}`,
-        {
-          csrfToken: auth.csrf_token,
-          timeoutMs: CLAUDE_MUTATION_TIMEOUT_MS,
-          validate: parseClaudeSessionActionResponse,
-        },
-      )
-      if (response.data.session.project_id !== projectId) {
-        setActionError(token, { code: 'CLAUDE_ACTION_FAILED' })
-        return
-      }
-      applySessionOverride(
-        projectId,
-        token.revision,
-        sessionView(response.data.session),
-      )
-    } catch (error) {
-      setActionError(token, safeError(error, 'CLAUDE_ACTION_FAILED'))
-    } finally {
-      endProjectOperation(token)
-    }
+    if (isCurrent()) await control.current?.sessionAction(projectId, operation)
   }
-
   async function revealOutput(projectId: string) {
-    const token = beginProjectOperation(projectId, 'output')
-    if (token === null) return
-    clearActionError(projectId)
-    try {
-      const response = await api.get<ClaudeSessionOutputResponse>(
-        `/api/v1/claude/sessions/${encodeURIComponent(projectId)}/output`,
-        {
-          timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
-          validate: parseClaudeSessionOutputResponse,
-        },
-      )
-      if (response.data.project_id !== projectId) {
-        setActionError(token, { code: 'CLAUDE_ACTION_FAILED' })
-        return
-      }
-      if (latestRefreshRevisionRef.current > token.revision) return
-      setOutputs((current) => ({
-        ...current,
-        [projectId]: Object.freeze({
-          output: response.data.output,
-          truncated: response.data.truncated,
-        }),
-      }))
-    } catch (error) {
-      setActionError(token, safeError(error, 'CLAUDE_ACTION_FAILED'))
-    } finally {
-      endProjectOperation(token)
-    }
+    if (isCurrent()) await control.current?.revealOutput(projectId)
   }
-
   function hideOutput(projectId: string) {
-    setOutputs((current) => {
-      const next = { ...current }
-      delete next[projectId]
-      return next
-    })
+    if (isCurrent()) control.current?.hideOutput(projectId)
   }
-
+  // Mask old data on the first replacement render, before effects can reset it.
+  const owned = state.owner === owner && owner.status === 'authenticated'
   return {
-    actionErrors,
+    actionErrors: owned ? state.actionErrors : {},
     hideOutput,
-    outputs,
-    pending,
-    refreshing,
+    isCurrent,
+    outputs: owned ? state.outputs : {},
+    pending: owned ? state.pending : [],
+    refreshing: owned && state.refreshing,
     refresh,
     revealOutput,
     sessionAction,
-    view,
+    view: owned ? state.view : ({ status: 'loading' } as const),
   }
 }
