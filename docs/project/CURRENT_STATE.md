@@ -1,12 +1,40 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-06T17:59:00Z"
-verified_by: "agentbox-ui-shell"
+verified_at_utc: "2026-10-07T00:59:00Z"
+verified_by: "agentbox-currentness-final-deadline"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-07 currentness最终接受时限：test-only RED候选
+
+当前main为PR148 merge `2b5449ee2832e7173aadf8d54ffa312b13025723` / tree
+`ad659b0f2b429f5d529783e24e32db44fcdc1755`。其Backend3.13.15原23/24 READY
+超时仍保留；PR151唯一真实3.13.15资格通过且未取得失败分类，不能称根因修复。
+PR149/151冻结，新UI尚未推进，下方较早UI未合并/main快照保留为历史。
+
+新独立branch fix/a3-currentness-final-deadline-20261007先增加一个
+[真实UDS最终deadline回归](../WORKBENCH_A3_CURRENTNESS_FINAL_DEADLINE.md)，生产代码
+尚未修改。源码发现Runtime.current在真实receive(D)与payload校验后，再做最终
+peer proof便直接返回facts；若该proof跨D，缺少最后250ms时限检查。它不同于旧
+receive超时，也不与重复pidfd检查的可用性优化合并。
+
+测试只转调原native_owner/Client/receive/current/peer proof：及时reply返回后，
+仅在最后显式proof处一次实际sleep跨过原D，再执行真实proof。旧实现必须留下
+明确晚返回facts见证；早期超时或未完成注入不算所需RED。修正后要求内部
+PATCH_TIMEOUT、外部无METADATA，以及主动测试清理前自动close、slot/channel/
+current lock释放；wire EOF/PATCH_REVOKED允许。
+
+本地不再尝试受限AF_UNIX，不以mock native伪造红绿。当前只是test-only候选，
+真实RED/GREEN均未取得；原fixture、生产、workflow/matrix/pins/权限/预算保持。
+实际独立收集5394→5395，原序/旧目标763保持，新项位于最后5395；13个PID字段
+前向精确核验，其余5381个原ID相同，模块来源无旧树混入。Ruff、mypy394、新文件
+Black、727文档链接及安全/diff检查通过；原3项无socket安全回归通过，新回归
+本地NOT RUN。独立回归审查仍待完成。
+先完成独立回归审查与本地非native检查，再发布一次原Backend完整测试取得真实
+RED；确认后才用不变测试加入最小最终D条件并做完整资格。未commit/push/触发CI。
 
 ## 2026-10-06 实际UI后继候选合入最小CI缓存修复
 
