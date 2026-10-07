@@ -5,6 +5,19 @@ export interface ProjectMessageParameters {
   readonly 'project.title': NoMessageParameters
   readonly 'project.backToProjects': NoMessageParameters
   readonly 'project.loading': NoMessageParameters
+  readonly 'project.refresh': NoMessageParameters
+  readonly 'project.stale': NoMessageParameters
+  readonly 'project.forbidden': NoMessageParameters
+  readonly 'project.manageBranches': NoMessageParameters
+  readonly 'project.prepareDraftPr': NoMessageParameters
+  readonly 'project.cancel': NoMessageParameters
+  readonly 'project.cancelHint': NoMessageParameters
+  readonly 'project.gitDetails': NoMessageParameters
+  readonly 'project.prDetails': NoMessageParameters
+  readonly 'project.projectDetails': NoMessageParameters
+  readonly 'project.projectId': NoMessageParameters
+  readonly 'project.context': NoMessageParameters
+  readonly 'project.workspaceReadiness': NoMessageParameters
   readonly 'project.unavailableTitle': NoMessageParameters
   readonly 'project.eyebrow': NoMessageParameters
   readonly 'project.description': NoMessageParameters
@@ -158,10 +171,27 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.title': () => 'Project',
       'project.backToProjects': () => 'Projects',
       'project.loading': () => 'Loading Project…',
+      'project.refresh': () => 'Refresh Project',
+      'project.stale': () =>
+        'Project status is out of date. It will refresh when this page is active and online.',
+      'project.forbidden': () =>
+        'You do not have permission to view this Project.',
+      'project.manageBranches': () => 'Manage branches',
+      'project.prepareDraftPr': () => 'Prepare Draft PR',
+      'project.cancel': () => 'Cancel',
+      'project.cancelHint': () =>
+        'Closing clears this form. An operation already submitted continues as a Job.',
+      'project.gitDetails': () => 'Git details',
+      'project.prDetails': () => 'Pull request details',
+      'project.projectDetails': () => 'Project details',
+      'project.projectId': () => 'Project ID',
+      'project.context': () => 'Project context',
+      'project.workspaceReadiness': () =>
+        'Project readiness and the Agent connection are checked separately when you open the workspace.',
       'project.unavailableTitle': () => 'Project unavailable',
-      'project.eyebrow': () => 'Project Workspace',
+      'project.eyebrow': () => 'Project overview',
       'project.description': () =>
-        'Git operations are typed, serialized, and executed without a shell.',
+        'Open your workspace, review changes, or manage this Project.',
       'project.workspace': () => 'Workspace',
       'project.slug': () => 'Slug',
       'project.source': () => 'Source',
@@ -318,10 +348,25 @@ export const projectCatalog = defineCatalogShard<ProjectMessageParameters>(
       'project.title': () => 'Project',
       'project.backToProjects': () => 'Projects',
       'project.loading': () => '正在加载 Project…',
+      'project.refresh': () => '刷新项目',
+      'project.stale': () =>
+        'Project 状态已过期。页面恢复可见且联网后会重新检查。',
+      'project.forbidden': () => '你没有查看此 Project 的权限。',
+      'project.manageBranches': () => '管理分支',
+      'project.prepareDraftPr': () => '准备 Draft PR',
+      'project.cancel': () => '取消',
+      'project.cancelHint': () =>
+        '关闭会清空此表单。已经提交的操作仍以作业继续执行。',
+      'project.gitDetails': () => 'Git 详情',
+      'project.prDetails': () => 'Pull request 详情',
+      'project.projectDetails': () => '项目详情',
+      'project.projectId': () => 'Project ID',
+      'project.context': () => '项目信息',
+      'project.workspaceReadiness': () =>
+        '项目就绪与 Agent 连接分别检查，打开工作台后可查看连接条件。',
       'project.unavailableTitle': () => 'Project 不可用',
-      'project.eyebrow': () => 'Project 工作区',
-      'project.description': () =>
-        'Git 操作采用固定类型并按顺序执行，不会启动 shell。',
+      'project.eyebrow': () => '项目概览',
+      'project.description': () => '打开工作台、查看代码变化，或管理当前项目。',
       'project.workspace': () => '工作区',
       'project.slug': () => 'Slug',
       'project.source': () => '来源',

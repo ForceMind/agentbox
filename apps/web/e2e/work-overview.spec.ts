@@ -179,6 +179,18 @@ for (const locale of ['en', 'zh-CN'] as const) {
       })
       await overview.getByRole('link', { name: expected.attentionLink }).click()
       await expect(page).toHaveURL(/\/attention$/)
+      await expect(
+        page.getByRole('heading', {
+          name: expected.attention,
+          level: 1,
+          exact: true,
+        }),
+      ).toBeVisible()
+      await page
+        .locator('.attention-item')
+        .filter({ hasText: jobId(1) })
+        .locator('summary')
+        .click()
       await expect(page.getByText(jobId(1), { exact: true })).toBeVisible()
       await page.goBack()
       await expect(

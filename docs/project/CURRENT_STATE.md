@@ -1,12 +1,33 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-07T02:00:00Z"
-verified_by: "agentbox-currentness-final-deadline"
+verified_at_utc: "2026-10-07T03:15:00Z"
+verified_by: "agentbox-ui-project-detail-attention"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-07 Project 详情与待处理 UI 候选（03:15 UTC）
+
+live main 已核对为 `9f2721ed6dc9c5e6ac41c162463f29674004ad12`，tree
+`fc152423899fcc9b313c269b45022a1ed425e98d`。PR148 UI 首批、PR152 最终接受时限
+修正均已正常合并；exact-main 六套 workflow 成功，23 checks success / 3 prescribed
+skipped，E2E256 passed / 50 prescribed skipped。main Backend 实际3.13.16；同树
+PR152 head 的真实 RED→GREEN 实际3.13.15，不把版本变化称为旧 READY 根因修复。
+PR150 代码经 PR148 合入，后已关闭为 incorporated，未宣称单独 merged。
+
+本次继续同一已批准 UI 版本的[Project 详情与待处理](../WORKBENCH_UI_PROJECT_DETAIL_REFRESH.md)，
+不另开功能路线图或发布。仅迁移既有功能，补齐 Project/adminSession 所有权、
+草稿与晚到响应隔离、Cancel/Escape/Back/Forward、离线与隐藏恢复。独立 hooks
+73项、页面及 Labels 39项回归通过；三项已复现 Job readback/poll 问题已修并复审
+CLEAR。最终全量本地 test/lint/typecheck/format/build/audit 与边界检查通过；
+Draft PR、新 exact-head 六套 CI 和真实截图审查仍待完成。
+
+候选从上述 main 新建 feature branch；合格后依既定 feature → CI → merge →
+exact read-back 接续。无 API/Runtime/A3/Secret/权限/pin/预算变更，无真实账号、host
+激活、release 或部署。原 READY23/24 间歇问题仍独立开放，PR149/151 保持冻结；
+下方旧 main、未合并、等待 GREEN 和“不 merge”文字均为当时历史快照。
 
 ## 2026-10-07 PR152真实RED成立；最终deadline最小修正待GREEN
 

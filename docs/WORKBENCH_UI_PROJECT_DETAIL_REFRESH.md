@@ -1,0 +1,97 @@
+# A2 UI 接续：Project 详情与待处理
+
+## 范围与基线
+
+本批继续同一已批准 UI 重设计版本，接续
+[共享外壳、概览与项目导航](WORKBENCH_UI_SHELL_REFRESH.md)，沿用
+[整合计划](project/WORKBENCH_INTEGRATION_PLAN.md) 与
+[完整交付计划](project/FULL_CAPABILITY_DELIVERY_PLAN.md)。分批提交和 PR 是实现与
+验证单位，不代表每批发布一个新版本；不改 package version、tag、Release 或部署。
+
+远端基线 main 为 `9f2721ed6dc9c5e6ac41c162463f29674004ad12`，tree
+`fc152423899fcc9b313c269b45022a1ed425e98d`。该 exact-main 六套 workflow 成功，
+23 checks success / 3 prescribed skipped，E2E256 passed / 50 prescribed skipped。
+PR152 的最终接受时限修正有三相同 Python patch 版本的真实 RED→GREEN；旧 READY
+23/24 间歇超时根因仍未证明。本 UI 批不更改该诊断或任何 Runtime/Python 预算。
+
+只迁移现有 `/projects/:projectId` 与 `/attention`，采用已落地的暖白/墨色/琥珀
+tokens、系统浅深色与双语言。固定设计稿是可修改提案，颜色仍是可回退实施选择，
+不以可选审美反馈暂停开发，也不把设计稿中规划中的能力变成可点击的虚假入口。
+
+## Project 详情
+
+- 优先显示真实 Project 摘要、READY 时的 Workspace 入口与既有 Changes 入口。
+  Git、GitHub PR、标签、最近 Job 与 Project 绑定 Claude Session 仍是原领域。
+- 原 Pull/Push、创建/切换分支、Draft PR 与 Claude start/stop 行为保持；分支和
+  Draft PR 表单按需展开，Cancel/Escape 清草稿并返回触发器。关闭表单不是取消
+  服务器已接受的操作，Job 状态仍按现有 API 读取。
+- 草稿和展开状态归属于 administrator user/session + Project。两个数据 hooks
+  留在稳定外层，只有草稿展示层按身份重建，避免重挂载丢失 pagehide/freeze fence。
+- useProject/useClaudeProject 只修本页直接数据路径：owner、request generation、
+  operation token、同步防重及 response identity 校验；旧 scope/GET/POST/poll/
+  finally 不得覆盖新 scope 或解除其 pending。既有列表和全局 Claude manager 不改。
+- hide/offline/pagehide/freeze 清除旧观察；独立恢复事件不能提前解除另一屏障。
+  返回只 GET/readback，绝不自动重放 mutation。Project POST 不确定结果的显式
+  重试继续使用既有 idempotency key 合同，不创建第二个 Job 队列或 Runtime owner。
+- 已知运行中 Job 的 transient error、身份异常或 metadata 读取失败不等于 Job
+  完成。显式 Refresh Project 必须只读同一已知 Job 恢复，再更新 Project/branches；
+  terminal POST 也需 metadata readback。保留原 Job 与当前 Project 身份的区别。
+- 显式 readback 的 request revision 永久废弃旧在途 poll。真实回归已先观察到
+  同一 React batch 内 succeeded 被迟到 queued 覆盖，再验证修正后保持新结果；
+  不仅依赖 loading 期间的短暂屏障或 effect cleanup 时机。
+
+## 待处理
+
+Attention 直接复用已验证的 useOverviewResource，仍只读取
+`/api/v1/jobs?scope=mine` 的当前账户最近100项窗口，筛选 needs_attention。
+loading、empty、error、forbidden、stale 独立显示；失效时不保留条目、计数、时间
+或动作许可。真实 reason code 与 received-at 保留，Job ID 等技术字段按需展开；
+只对有效正式 Project ID 提供链接。不渲染 result/error summary，不编造影响、
+修复建议、审批、重试或 Agent 进度。
+
+## 边界
+
+[ADR0009](adr/0009-workbench-identity-and-content-boundary.md) 的 Project、Workspace、
+administrator Session、Claude Session、Job、AgentType、ProviderDefinition 保持
+独立。Project READY、进程 running、浏览器 connected 不合并成一个状态。导航、
+Back/Forward、关闭页面不隐式 Start/Connect/Stop；legacy Claude Stop 不是 WAW
+exact Stop。本批不新增 API、route、数据库、Files、聊天、审批、Provider 配置、
+任意 shell/path 权限或自动补丁正文读取。Workspace/Changes 只回归现有导航。
+
+## 验证与交付
+
+需要真实 hook 与 ApiClient/AuthContext/MemoryRouter 回归，包括 A→B→A、管理员
+Session 原地替换、迟到响应、旧 finally、重复提交、已知 Job readback、取消/Escape
+与焦点、Back/Forward、隐藏/离线/pagehide/freeze 的交错恢复。原本只 mock hook
+的页面展示测试继续保留，但不拿它们替代生命周期证明。
+
+浏览器使用正常 App/API 流程并保留旧断言；新增严格隔离的合成 metadata fixture。
+ready 页面截图覆盖 zh-CN/English × 360/390/768/1024/1440 × light/dark，两页40张；
+另有代表性状态图。640 CSS px 重排只作为 desktop 200% zoom-equivalent，不冒称
+执行了浏览器真实缩放。检查键盘、44px 目标、长 inert 名称、溢出与 reduced motion。
+
+截图仅允许 `ui-detail-*.png` 的合成页面，自动截图/trace/video 继续关闭；不保留
+登录字段、真实账号、凭据、Pair Code、终端输出或 Secret。新 head 的真实 CI PNG
+必须下载校验并实际打开审查，不能以静态 source/list/type 检查声称浏览器通过。
+
+交付遵循 feature branch → 全量适用本地检查/独立审查 → Draft PR → exact-head
+六套终态 → 正常 merge/read-back。当前仍为候选开发，真实浏览器、最终像素与
+新 head 完整资格尚未取得；不声明完整 UI/A2/S02 已全部完成，不执行发布或部署。
+
+## 2026-10-07 本地候选与独立复核
+
+最终冻结的 hooks 回归73/73（Project29、ClaudeProject33、既有Claude11）通过，
+独立页面与 Labels 39项通过。独立源码审查分别覆盖 hooks 与页面/E2E/截图边界，
+均无未关闭 P0/P1/P2。已知 Job 恢复、terminal POST readback 与同 batch 迟到
+poll 覆盖新 readback 的问题均先有失败回归再修正；既有列表 useProjects 与全局
+useClaude manager 主体逐字未改。
+
+本地 Node24.19.0 / 锁定 pnpm11.20.0（CI仍用既有Node22）执行 pnpm test、lint、
+typecheck、format:check、build 与 audit --audit-level high 均 exit0；审计保留
+2 moderate / 0 high / 0 critical，未改 lock 或预算。构建保留既有大 bundle 警告，
+不靠放宽门槛消除。workflow action pins、secret-pattern、source-boundary、
+735 relative docs links 和 git diff --check 均 exit0。
+
+Playwright --list 共370项；新 spec64项中42项执行/22项规定 skip，计划新增62张
+合成截图（两页40 ready +22状态），尚未运行真实浏览器。后续结果与确切远端 head
+写入 PR，必须以该 head 的 CI 和原 PNG 像素实查为准，不能借用基线9f的成功。
