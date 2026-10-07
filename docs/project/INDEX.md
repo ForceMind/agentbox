@@ -1,5 +1,33 @@
 # AgentBox Project Context Index
 
+## 2026-10-07 Changes闭环，Agent管理UI候选（11:51 UTC）
+
+[PR157](https://github.com/ForceMind/agentbox/pull/157)已正常合并为main
+`38bd0b86d20050b7f0df734b14a29d8e1b706ded`，tree
+`bc85ddcf4cf5bb4b677ce61c25de367276647056`与合格f214相同。六套exact-main首轮
+成功，23success/3规定skip；Backend实际3.11.17/3.12.15/3.13.15各5375/88，Frontend
+1800+6，E2E395/115无failed/flaky/retry。独立source/官方CI/main回读CLEAR；指定
+48图覆盖为42metadata同字节验证继承+6新A3实际审查，不冒称210图全部审过。
+主干与head同树，未重复下载main图。旧READY间歇问题仍开放，无release/deploy。
+
+同一UI版本接续[Codex/Claude管理页合同](../WORKBENCH_UI_AGENT_MANAGEMENT_REFRESH.md)，
+从该合格main新建feat/ui-agent-management-20261007。仅现有管理页呈现、typed双语、
+必要回归和不请求Pair/output的合成metadata图；Agent/Provider/Login/Remote/Pairing/
+WAW身份继续分域。先以真实App合成HTTP最小验证session原地替换与迟到Pair/output，
+若RED先保存证据和独立小修卡，不能把不同hook实现直接称bug或自动扩权限。
+[Draft PR158](https://github.com/ForceMind/agentbox/pull/158)已先保存15fd的4项真实RED，
+独立复现与官方Frontend4fail/1800pass吻合；独立b9修复使原RED逐字GREEN，78项
+owner回归/source CLEAR，不改useClaudeProject/API/AuthProvider/权限/预算。
+两个页面视觉另立提交，pre-return/guard/handler保持。完整候选本地1900 Web+6
+extension及lint/typecheck/format/build通过，两个页面86项呈现回归保留原8项。
+新browser静态110注册（69执行/41规定重复skip）、68metadata图和独立capture-off
+scope场景；CSS嵌套列与fixture origin守卫的源审发现已修并独立CLEAR。最终UI
+exact-head六套、真实browser/原PNG与main仍待，保持Draft，不借b9六绿冒称本批合格。
+本批后仍有Doctor/Logs/Settings/Login/NotFound五页与跨页收尾，见
+[同一版本清单](RELEASE_ITERATION_PLAN.md)。版本仍rc31，无真实账号/凭据/host操作。
+下方旧pending为当时快照，live Git/GitHub优先。
+
+
 ## 2026-10-07 Workspace闭环，Changes呈现候选（09:51 UTC）
 
 [PR156](https://github.com/ForceMind/agentbox/pull/156)已正常合并为main

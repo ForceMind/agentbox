@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
 import { technicalValue } from '../../i18n'
@@ -110,103 +110,217 @@ export function projectCodexStatusResponse(
 }
 
 export function useCodex() {
-  const { api, auth } = useAuth()
-  const [view, setView] = useState<CodexViewState>({ status: 'loading' })
-  const [pending, setPending] = useState<'start' | 'stop' | 'pair' | null>(null)
-  const [pair, setPair] = useState<CodexPairView | null>(null)
-  const [actionError, setActionError] = useState<CodexDisplayError | null>(null)
-
-  const refresh = useCallback(async () => {
-    setView({ status: 'loading' })
-    try {
-      const response = await api.get<CodexStatusResponse>(
-        '/api/v1/codex/status',
-        {
-          timeoutMs: CODEX_STATUS_TIMEOUT_MS,
-          validate: parseCodexStatusResponse,
-        },
-      )
-      setView({
-        status: 'loaded',
-        response: projectCodexStatusResponse(response),
-      })
-    } catch (error) {
-      setView({
-        status: 'error',
-        error: projectCodexError(error, 'CODEX_STATUS_UNAVAILABLE'),
-      })
-    }
-  }, [api])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  useEffect(() => {
-    if (!pair) return
-    const timer = window.setTimeout(() => setPair(null), 90_000)
-    return () => window.clearTimeout(timer)
-  }, [pair])
-
-  async function remoteAction(operation: 'start' | 'stop') {
-    if (!auth) return
-    setPending(operation)
-    setActionError(null)
-    try {
-      await api.post<CodexRemoteActionResponse>(
-        `/api/v1/codex/remote/${operation}`,
-        {
-          csrfToken: auth.csrf_token,
-          timeoutMs: CODEX_MUTATION_TIMEOUT_MS,
-          validate: parseCodexRemoteActionResponse,
-        },
-      )
-      await refresh()
-    } catch (error) {
-      setActionError(projectCodexError(error, 'CODEX_ACTION_FAILED'))
-    } finally {
-      setPending(null)
-    }
+  const { api, auth, status } = useAuth()
+  const userId = auth?.user.id
+  const sessionId = auth?.session.id
+  const csrfToken = auth?.csrf_token
+  const owner = useMemo(
+    () => ({ api, userId, sessionId, csrfToken, status }),
+    [api, userId, sessionId, csrfToken, status],
+  )
+  const currentOwner = useRef(owner)
+  currentOwner.current = owner
+  type State = {
+    view: CodexViewState
+    pending: 'start' | 'stop' | 'pair' | null
+    pair: CodexPairView | null
+    actionError: CodexDisplayError | null
   }
+  const [state, setState] = useState<State & { owner: typeof owner }>({
+    owner,
+    view: { status: 'loading' },
+    pending: null,
+    pair: null,
+    actionError: null,
+  })
+  const control = useRef<{
+    owner: typeof owner
+    refresh: () => Promise<void>
+    remoteAction: (operation: 'start' | 'stop') => Promise<void>
+    generatePairCode: () => Promise<void>
+    clearPair: () => void
+  } | null>(null)
 
-  async function generatePairCode() {
-    if (!auth) return
-    setPending('pair')
-    setActionError(null)
-    setPair(null)
-    try {
-      const response = await api.post<CodexPairResponse>(
-        '/api/v1/codex/pair-codes',
-        {
-          csrfToken: auth.csrf_token,
-          timeoutMs: CODEX_MUTATION_TIMEOUT_MS,
-          validate: parseCodexPairResponse,
-        },
+  useEffect(() => {
+    let disposed = false
+    let mutation: AbortController | null = null
+    let pairTimer: number | undefined
+    const requests = new Set<AbortController>()
+    const authenticated =
+      owner.status === 'authenticated' &&
+      Boolean(owner.userId && owner.sessionId)
+    function owns() {
+      return !disposed && authenticated && currentOwner.current === owner
+    }
+    function commit(next: Partial<State>) {
+      if (!owns()) return
+      setState((current) =>
+        owns() && current.owner === owner ? { ...current, ...next } : current,
       )
-      const pair = projectCodexPair(response.data)
-      if (pair === null) {
-        setActionError({
-          code: 'CODEX_PAIR_OUTPUT_UNRECOGNIZED',
-          requestId: response.request_id,
+    }
+    function clearPair() {
+      if (!owns()) return
+      window.clearTimeout(pairTimer)
+      pairTimer = undefined
+      commit({ pair: null })
+    }
+    async function refresh() {
+      if (!owns()) return
+      const request = new AbortController()
+      requests.add(request)
+      commit({ view: { status: 'loading' } })
+      try {
+        const response = await owner.api.get<CodexStatusResponse>(
+          '/api/v1/codex/status',
+          {
+            signal: request.signal,
+            timeoutMs: CODEX_STATUS_TIMEOUT_MS,
+            validate: parseCodexStatusResponse,
+          },
+        )
+        if (!owns() || request.signal.aborted) return
+        commit({
+          view: {
+            status: 'loaded',
+            response: projectCodexStatusResponse(response),
+          },
         })
-        return
+      } catch (error) {
+        if (!owns() || request.signal.aborted) return
+        commit({
+          view: {
+            status: 'error',
+            error: projectCodexError(error, 'CODEX_STATUS_UNAVAILABLE'),
+          },
+        })
+      } finally {
+        requests.delete(request)
       }
-      setPair(pair)
-    } catch (error) {
-      setActionError(projectCodexError(error, 'CODEX_PAIR_FAILED'))
-    } finally {
-      setPending(null)
     }
-  }
+    async function remoteAction(operation: 'start' | 'stop') {
+      if (!owns() || mutation !== null || !owner.csrfToken) return
+      const request = new AbortController()
+      mutation = request
+      requests.add(request)
+      commit({ pending: operation, actionError: null })
+      try {
+        await owner.api.post<CodexRemoteActionResponse>(
+          `/api/v1/codex/remote/${operation}`,
+          {
+            signal: request.signal,
+            csrfToken: owner.csrfToken,
+            timeoutMs: CODEX_MUTATION_TIMEOUT_MS,
+            validate: parseCodexRemoteActionResponse,
+          },
+        )
+        if (!owns() || request.signal.aborted) return
+        await refresh()
+      } catch (error) {
+        if (!owns() || request.signal.aborted) return
+        commit({ actionError: projectCodexError(error, 'CODEX_ACTION_FAILED') })
+      } finally {
+        requests.delete(request)
+        if (owns() && mutation === request) {
+          mutation = null
+          commit({ pending: null })
+        }
+      }
+    }
+    async function generatePairCode() {
+      if (!owns() || mutation !== null || !owner.csrfToken) return
+      const request = new AbortController()
+      mutation = request
+      requests.add(request)
+      clearPair()
+      commit({ pending: 'pair', actionError: null })
+      try {
+        const response = await owner.api.post<CodexPairResponse>(
+          '/api/v1/codex/pair-codes',
+          {
+            signal: request.signal,
+            csrfToken: owner.csrfToken,
+            timeoutMs: CODEX_MUTATION_TIMEOUT_MS,
+            validate: parseCodexPairResponse,
+          },
+        )
+        if (!owns() || request.signal.aborted) return
+        const pair = projectCodexPair(response.data)
+        if (pair === null) {
+          commit({
+            actionError: {
+              code: 'CODEX_PAIR_OUTPUT_UNRECOGNIZED',
+              requestId: response.request_id,
+            },
+          })
+          return
+        }
+        commit({ pair })
+        // A display lifetime only; this does not assert vendor code expiry.
+        pairTimer = window.setTimeout(clearPair, 90_000)
+      } catch (error) {
+        if (!owns() || request.signal.aborted) return
+        commit({ actionError: projectCodexError(error, 'CODEX_PAIR_FAILED') })
+      } finally {
+        requests.delete(request)
+        if (owns() && mutation === request) {
+          mutation = null
+          commit({ pending: null })
+        }
+      }
+    }
+    setState({
+      owner,
+      view: { status: 'loading' },
+      pending: null,
+      pair: null,
+      actionError: null,
+    })
+    const controls = {
+      owner,
+      refresh,
+      remoteAction,
+      generatePairCode,
+      clearPair,
+    }
+    control.current = controls
+    void refresh()
+    return () => {
+      disposed = true
+      window.clearTimeout(pairTimer)
+      // Cancel browser work; an already submitted Runtime action may still run.
+      for (const request of requests) request.abort()
+      requests.clear()
+      if (control.current === controls) control.current = null
+    }
+  }, [owner])
 
+  const isCurrent = useCallback(
+    () => currentOwner.current === owner && control.current?.owner === owner,
+    [owner],
+  )
+  const refresh = useCallback(async () => {
+    if (isCurrent()) await control.current?.refresh()
+  }, [isCurrent])
+  async function remoteAction(operation: 'start' | 'stop') {
+    if (isCurrent()) await control.current?.remoteAction(operation)
+  }
+  async function generatePairCode() {
+    if (isCurrent()) await control.current?.generatePairCode()
+  }
+  function clearPair() {
+    if (isCurrent()) control.current?.clearPair()
+  }
+  // Do not expose an old owner's state even before effect cleanup/setup runs.
+  const owned = state.owner === owner && owner.status === 'authenticated'
   return {
-    actionError,
-    clearPair: () => setPair(null),
+    actionError: owned ? state.actionError : null,
+    clearPair,
     generatePairCode,
-    pair,
-    pending,
+    isCurrent,
+    pair: owned ? state.pair : null,
+    pending: owned ? state.pending : null,
     refresh,
     remoteAction,
-    view,
+    view: owned ? state.view : ({ status: 'loading' } as const),
   }
 }

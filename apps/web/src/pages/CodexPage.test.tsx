@@ -1,7 +1,26 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { formatMessage, localizeApiError, type Locale } from '../i18n'
+import {
+  codexCatalog,
+  type CodexMessageParameters,
+} from '../i18n/catalogs/codex'
+import type { CodexStatusData } from '../lib/contracts'
 
 const useCodexMock = vi.hoisted(() => vi.fn())
+const currentLocaleMock = vi.hoisted(() => vi.fn((): Locale => 'en'))
+
+vi.mock('../i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../i18n')>()),
+  currentLocale: currentLocaleMock,
+}))
 
 vi.mock('../features/codex/useCodex', () => ({
   useCodex: useCodexMock,
@@ -38,9 +57,12 @@ function loadedView(diagnostics: unknown[] = []) {
   }
 }
 
+const currentOwner = () => true
+
 function model(overrides: Record<string, unknown> = {}) {
   return {
     actionError: null,
+    isCurrent: currentOwner,
     clearPair: vi.fn(),
     generatePairCode: vi.fn(() => Promise.resolve()),
     pair: null,
@@ -239,3 +261,403 @@ describe('CodexPage localized safety boundary', () => {
     await waitFor(() => expect(error).toHaveFocus())
   })
 })
+
+function statusView(overrides: Partial<CodexStatusData> = {}) {
+  const view = loadedView()
+  return {
+    ...view,
+    response: {
+      ...view.response,
+      data: { ...view.response.data, ...overrides },
+    },
+  }
+}
+
+describe.each(['zh-CN', 'en'] as const)(
+  'CodexPage management presentation in %s',
+  (locale) => {
+    const message = (key: keyof CodexMessageParameters) =>
+      codexCatalog.catalogs[locale][key]({})
+    const button = (key: keyof CodexMessageParameters) =>
+      screen.getByRole('button', { name: message(key) })
+
+    beforeEach(() => {
+      useCodexMock.mockReset()
+      currentLocaleMock.mockReturnValue(locale)
+    })
+
+    afterEach(() => currentLocaleMock.mockReturnValue('en'))
+
+    it.each(['loading', 'error'] as const)(
+      'distinguishes %s from loaded controls and an empty diagnostic result',
+      (status) => {
+        const current = model({
+          view:
+            status === 'loading'
+              ? { status }
+              : {
+                  status,
+                  error: {
+                    code: 'CODEX_STATUS_UNAVAILABLE',
+                    requestId: 'req_status_unavailable',
+                    message: 'UNTRUSTED-CODEX-STATUS-PROSE',
+                  },
+                },
+        })
+        useCodexMock.mockReturnValue(current)
+        render(<CodexPage />)
+
+        expect(
+          screen.getByRole('heading', {
+            name: message('codex.title'),
+            level: 1,
+          }),
+        ).toBeVisible()
+        if (status === 'loading') {
+          expect(screen.getByRole('status')).toHaveTextContent(
+            message('codex.loading'),
+          )
+          expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        } else {
+          expect(screen.getByRole('alert')).toHaveTextContent(
+            localizeApiError(locale, 'CODEX_STATUS_UNAVAILABLE'),
+          )
+          expect(
+            screen.getByRole('heading', {
+              name: message('codex.statusUnavailableTitle'),
+            }),
+          ).toBeVisible()
+        }
+        expect(
+          screen.queryByRole('button', {
+            name: message('codex.pairNewDevice'),
+          }),
+        ).not.toBeInTheDocument()
+        expect(
+          screen.queryByRole('button', { name: message('codex.startRemote') }),
+        ).not.toBeInTheDocument()
+        expect(
+          screen.queryByText(message('codex.diagnosticsEmpty')),
+        ).not.toBeInTheDocument()
+        expect(document.body.textContent).not.toContain(
+          'UNTRUSTED-CODEX-STATUS-PROSE',
+        )
+        expect(current.generatePairCode).not.toHaveBeenCalled()
+        expect(current.remoteAction).not.toHaveBeenCalled()
+      },
+    )
+
+    it('keeps unknown installation, authentication, capability and Remote observations distinct', () => {
+      useCodexMock.mockReturnValue(
+        model({
+          view: statusView({
+            version: null,
+            selected_executable: null,
+            installation_type: 'unknown',
+            authentication: 'unknown',
+            remote_state: 'unknown',
+            remote_confidence: 'unknown',
+            capabilities: {
+              remote_control: 'unknown',
+              start: 'unknown',
+              stop: 'unknown',
+              pair: 'unknown',
+              status: 'unknown',
+            },
+          }),
+        }),
+      )
+      render(<CodexPage />)
+
+      for (const label of [
+        'codex.versionLabel',
+        'codex.installationTypeLabel',
+        'codex.authenticationLabel',
+      ] as const) {
+        expect(
+          screen.getByText(message(label), { selector: 'dt' })
+            .nextElementSibling,
+        ).toHaveTextContent(message('codex.capabilityUnknown'))
+      }
+      expect(screen.getByText(message('codex.unavailable'))).toBeVisible()
+      expect(screen.queryByText(message('codex.remoteRunning'))).toBeNull()
+      expect(screen.getByText(message('codex.diagnosticsEmpty'))).toBeVisible()
+      expect(button('codex.startRemote')).toBeDisabled()
+      expect(button('codex.stopRemote')).toBeDisabled()
+      expect(button('codex.pairNewDevice')).toBeDisabled()
+      expect(document.querySelector('.pair-secret')).toBeNull()
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('shows an unavailable installation without presenting Remote as running', () => {
+      useCodexMock.mockReturnValue(
+        model({
+          view: statusView({
+            installed: false,
+            version: null,
+            selected_executable: null,
+            remote_state: 'unknown',
+            remote_confidence: 'unknown',
+            capabilities: {
+              remote_control: 'unsupported',
+              start: 'unsupported',
+              stop: 'unsupported',
+              pair: 'unsupported',
+              status: 'unsupported',
+            },
+          }),
+        }),
+      )
+      render(<CodexPage />)
+
+      expect(screen.getByText(message('codex.installedNo'))).toBeVisible()
+      expect(screen.getByText(message('codex.unavailable'))).toBeVisible()
+      expect(screen.queryByText(message('codex.remoteRunning'))).toBeNull()
+      expect(button('codex.startRemote')).toBeDisabled()
+      expect(button('codex.stopRemote')).toBeDisabled()
+      expect(button('codex.pairNewDevice')).toBeDisabled()
+    })
+
+    it.each([
+      ['reported', 'codex.confidenceReported'],
+      ['observed', 'codex.confidenceObserved'],
+      ['inferred', 'codex.confidenceInferred'],
+      ['unknown', 'codex.confidenceUnknown'],
+    ] as const)(
+      'keeps the %s source visible without upgrading an unknown Remote state',
+      (confidence, confidenceKey) => {
+        useCodexMock.mockReturnValue(
+          model({
+            view: statusView({
+              remote_state: 'unknown',
+              remote_confidence: confidence,
+            }),
+          }),
+        )
+        render(<CodexPage />)
+
+        const source = screen.getByText(message('codex.confidenceLabel'), {
+          selector: 'dt',
+        }).nextElementSibling as HTMLElement
+        expect(source).toHaveTextContent(message(confidenceKey))
+        expect(source).toBeVisible()
+        const protocolValue = within(source).getByText(confidence)
+        expect(protocolValue).toHaveAttribute('lang', 'en')
+        expect(protocolValue).toHaveAttribute('dir', 'ltr')
+        expect(protocolValue).toHaveAttribute('translate', 'no')
+        expect(
+          screen.getByText(message('codex.observedStateLabel'), {
+            selector: 'dt',
+          }).nextElementSibling,
+        ).toHaveTextContent(message('codex.remoteUnknown'))
+        expect(screen.queryByText(message('codex.remoteRunning'))).toBeNull()
+      },
+    )
+
+    it('keeps conflicts, critical findings and action errors visible outside disclosures', () => {
+      useCodexMock.mockReturnValue(
+        model({
+          actionError: {
+            code: 'AUTH_RECENT_REQUIRED',
+            requestId: 'req_recent',
+          },
+          view: statusView({
+            installation_type: 'conflict',
+            conflict_detected: true,
+            diagnostics: [
+              {
+                code: 'CODEX_REMOTE_UNSUPPORTED',
+                severity: 'critical',
+                summary: 'UNTRUSTED-CONFLICT-SUMMARY',
+                remediation: 'UNTRUSTED-CONFLICT-REMEDIATION',
+              },
+            ],
+          }),
+        }),
+      )
+      render(<CodexPage />)
+
+      for (const outcome of [
+        screen.getByText(message('codex.installationConflict')),
+        screen.getByText(message('codex.severityCritical')),
+        screen.getByText(localizeApiError(locale, 'CODEX_REMOTE_UNSUPPORTED')),
+        screen.getByRole('alert'),
+      ]) {
+        expect(outcome).toBeVisible()
+        expect(outcome.closest('details')).toBeNull()
+      }
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        localizeApiError(locale, 'AUTH_RECENT_REQUIRED'),
+      )
+      expect(screen.queryByText(message('codex.diagnosticsEmpty'))).toBeNull()
+      expect(document.body.textContent).not.toContain('UNTRUSTED-CONFLICT')
+    })
+
+    it.each([
+      ['running', false, true],
+      ['stopped', true, false],
+      ['broken', true, true],
+      ['unknown', true, true],
+    ] as const)(
+      'preserves lifecycle guards for the %s Remote state',
+      (remoteState, canStart, canStop) => {
+        const current = model({
+          view: statusView({ remote_state: remoteState }),
+        })
+        useCodexMock.mockReturnValue(current)
+        render(<CodexPage />)
+
+        const start = button('codex.startRemote')
+        const stop = button('codex.stopRemote')
+        expect(start).toHaveProperty('disabled', !canStart)
+        expect(stop).toHaveProperty('disabled', !canStop)
+        fireEvent.click(start)
+        fireEvent.click(stop)
+        expect(current.remoteAction.mock.calls).toEqual([
+          ...(canStart ? [['start']] : []),
+          ...(canStop ? [['stop']] : []),
+        ])
+        expect(current.generatePairCode).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each(['supported', 'unsupported', 'unknown'] as const)(
+      'preserves per-action capability guards when the capability is %s',
+      (capability) => {
+        const current = model({
+          view: statusView({
+            remote_state: 'unknown',
+            capabilities: {
+              remote_control: 'unknown',
+              start: capability,
+              stop: capability,
+              pair: capability,
+              status: 'unsupported',
+            },
+          }),
+        })
+        useCodexMock.mockReturnValue(current)
+        render(<CodexPage />)
+
+        for (const key of [
+          'codex.startRemote',
+          'codex.stopRemote',
+          'codex.pairNewDevice',
+        ] as const) {
+          expect(button(key)).toHaveProperty(
+            'disabled',
+            capability !== 'supported',
+          )
+        }
+        expect(current.generatePairCode).not.toHaveBeenCalled()
+        expect(current.remoteAction).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each(['authenticated', 'unauthenticated', 'unknown'] as const)(
+      'preserves the existing Pair authentication guard for %s',
+      (authentication) => {
+        const current = model({ view: statusView({ authentication }) })
+        useCodexMock.mockReturnValue(current)
+        render(<CodexPage />)
+
+        expect(button('codex.pairNewDevice')).toHaveProperty(
+          'disabled',
+          authentication === 'unauthenticated',
+        )
+        fireEvent.click(button('codex.pairNewDevice'))
+        if (authentication === 'unauthenticated') {
+          expect(screen.queryByRole('dialog')).toBeNull()
+        } else {
+          expect(
+            screen.getByRole('dialog', { name: message('codex.confirmTitle') }),
+          ).toBeVisible()
+        }
+        expect(current.generatePairCode).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each(['start', 'stop', 'pair'] as const)(
+      'disables every mutation and refresh while %s is pending',
+      (pending) => {
+        const current = model({
+          pending,
+          view: statusView({ remote_state: 'unknown' }),
+        })
+        useCodexMock.mockReturnValue(current)
+        render(<CodexPage />)
+
+        const controls = [
+          button(
+            pending === 'start' ? 'codex.startingRemote' : 'codex.startRemote',
+          ),
+          button(
+            pending === 'stop' ? 'codex.stoppingRemote' : 'codex.stopRemote',
+          ),
+          button(
+            pending === 'pair' ? 'codex.generatingPair' : 'codex.pairNewDevice',
+          ),
+          button('codex.refreshStatusLabel'),
+        ]
+        for (const control of controls) {
+          expect(control).toBeDisabled()
+          fireEvent.click(control)
+        }
+        expect(current.remoteAction).not.toHaveBeenCalled()
+        expect(current.refresh).not.toHaveBeenCalled()
+        expect(current.generatePairCode).not.toHaveBeenCalled()
+        expect(screen.queryByRole('dialog')).toBeNull()
+      },
+    )
+
+    it('requires explicit Generate after an accessible, cancelable Pair confirmation', async () => {
+      const current = model()
+      useCodexMock.mockReturnValue(current)
+      render(<CodexPage />)
+      const trigger = button('codex.pairNewDevice')
+      expect(document.querySelector('.pair-secret')).toBeNull()
+      expect(screen.queryByText(message('codex.pairSecretLabel'))).toBeNull()
+      expect(current.generatePairCode).not.toHaveBeenCalled()
+
+      for (const dismissal of ['Escape', 'Cancel'] as const) {
+        fireEvent.click(trigger)
+        const dialog = screen.getByRole('dialog', {
+          name: message('codex.confirmTitle'),
+        })
+        const generate = within(dialog).getByRole('button', {
+          name: message('codex.generateCode'),
+        })
+        const cancel = within(dialog).getByRole('button', {
+          name: formatMessage(locale, 'common.cancel', {}),
+        })
+        expect(dialog).toHaveAttribute('aria-modal', 'true')
+        expect(dialog).toHaveTextContent(message('codex.confirmDescription'))
+        expect(trigger.closest('[inert]')).toHaveAttribute(
+          'aria-hidden',
+          'true',
+        )
+        expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+        expect(document.querySelector('.pair-secret')).toBeNull()
+        await waitFor(() => expect(generate).toHaveFocus())
+        fireEvent.keyDown(generate, { key: 'Tab', shiftKey: true })
+        expect(cancel).toHaveFocus()
+        fireEvent.keyDown(cancel, { key: 'Tab' })
+        expect(generate).toHaveFocus()
+        if (dismissal === 'Escape') fireEvent.keyDown(dialog, { key: 'Escape' })
+        else fireEvent.click(cancel)
+        expect(screen.queryByRole('dialog')).toBeNull()
+        expect(document.querySelector('[inert]')).toBeNull()
+        await waitFor(() => expect(trigger).toHaveFocus())
+        expect(current.generatePairCode).not.toHaveBeenCalled()
+      }
+
+      fireEvent.click(trigger)
+      fireEvent.click(button('codex.generateCode'))
+      await waitFor(() =>
+        expect(current.generatePairCode).toHaveBeenCalledTimes(1),
+      )
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(document.querySelector('.pair-secret')).toBeNull()
+    })
+  },
+)

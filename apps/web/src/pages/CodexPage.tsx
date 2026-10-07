@@ -1,4 +1,13 @@
-import { AlertTriangle, Bot, Clipboard, EyeOff, RefreshCw } from 'lucide-react'
+import {
+  AlertTriangle,
+  Bot,
+  Clipboard,
+  EyeOff,
+  KeyRound,
+  ListChecks,
+  Radio,
+  RefreshCw,
+} from 'lucide-react'
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
@@ -24,6 +33,7 @@ import type {
   CodexStatusData,
   RemoteState,
 } from '../lib/contracts'
+import './AgentManagementPage.css'
 
 type CodexMessageKey = Extract<ParameterFreeMessageKey, `codex.${string}`>
 
@@ -87,17 +97,44 @@ export function CodexPage() {
   const title = copy(locale, 'codex.title')
   usePageTitle(title)
   const codex = useCodex()
-  const [confirmPair, setConfirmPair] = useState(false)
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>(
-    'idle',
-  )
+  const [confirmation, setConfirmation] = useState<{
+    owner: typeof codex.isCurrent
+  } | null>(null)
+  const confirmationRef = useRef(confirmation)
+  confirmationRef.current = confirmation
+  const confirmPair = confirmation?.owner === codex.isCurrent
+  const [copyFeedback, setCopyFeedback] = useState<{
+    owner: typeof codex.isCurrent
+    pair: typeof codex.pair
+    status: 'copied' | 'error'
+  } | null>(null)
+  const latestCodex = useRef(codex)
+  latestCodex.current = codex
+  const copyRequestRef = useRef<object | null>(null)
+  const copyState =
+    copyFeedback?.owner === codex.isCurrent && copyFeedback.pair === codex.pair
+      ? copyFeedback.status
+      : 'idle'
   const pairTriggerRef = useRef<HTMLButtonElement>(null)
   const generateButtonRef = useRef<HTMLButtonElement>(null)
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
   const pairRevealRef = useRef<HTMLDivElement>(null)
   const actionErrorRef = useRef<HTMLElement>(null)
   const restorePairTriggerRef = useRef(true)
-  const pairGenerationRequestedRef = useRef(false)
+  const pairGenerationRequestedRef = useRef<typeof codex.isCurrent | null>(null)
+
+  useEffect(() => {
+    setConfirmation(null)
+    return () => {
+      copyRequestRef.current = null
+      pairGenerationRequestedRef.current = null
+    }
+  }, [codex.isCurrent])
+
+  useEffect(() => {
+    // Release the old sensitive Pair reference on Hide, TTL or owner change.
+    setCopyFeedback(null)
+  }, [codex.isCurrent, codex.pair])
 
   useEffect(() => {
     if (!confirmPair) return
@@ -109,42 +146,75 @@ export function CodexPage() {
   }, [confirmPair])
 
   useEffect(() => {
-    if (!pairGenerationRequestedRef.current) return
+    if (pairGenerationRequestedRef.current !== codex.isCurrent) return
     if (codex.pair) {
-      pairGenerationRequestedRef.current = false
+      pairGenerationRequestedRef.current = null
       pairRevealRef.current?.focus()
     } else if (codex.actionError) {
-      pairGenerationRequestedRef.current = false
+      pairGenerationRequestedRef.current = null
       actionErrorRef.current?.focus()
     }
-  }, [codex.actionError, codex.pair])
+  }, [codex.actionError, codex.pair, codex.isCurrent])
 
   async function copyPairCode() {
-    if (!codex.pair) return
-    setCopyState('idle')
+    if (
+      !codex.isCurrent() ||
+      !codex.pair ||
+      latestCodex.current.pair !== codex.pair
+    )
+      return
+    const request = {}
+    copyRequestRef.current = request
+    setCopyFeedback(null)
+    const owns = () =>
+      codex.isCurrent() &&
+      latestCodex.current.pair === codex.pair &&
+      copyRequestRef.current === request
     try {
       await navigator.clipboard.writeText(codex.pair.pair_code)
-      setCopyState('copied')
+      if (owns())
+        setCopyFeedback({
+          owner: codex.isCurrent,
+          pair: codex.pair,
+          status: 'copied',
+        })
     } catch {
-      setCopyState('error')
+      if (owns())
+        setCopyFeedback({
+          owner: codex.isCurrent,
+          pair: codex.pair,
+          status: 'error',
+        })
     }
   }
 
   async function confirmGenerate() {
+    if (
+      !codex.isCurrent() ||
+      !confirmPair ||
+      confirmationRef.current !== confirmation
+    )
+      return
     restorePairTriggerRef.current = false
-    pairGenerationRequestedRef.current = true
-    setConfirmPair(false)
-    setCopyState('idle')
+    pairGenerationRequestedRef.current = codex.isCurrent
+    confirmationRef.current = null
+    setConfirmation(null)
+    setCopyFeedback(null)
     await codex.generatePairCode()
   }
 
   function openPairConfirmation() {
+    if (!codex.isCurrent()) return
     restorePairTriggerRef.current = true
-    setConfirmPair(true)
+    const next = { owner: codex.isCurrent }
+    confirmationRef.current = next
+    setConfirmation(next)
   }
 
   function closePairConfirmation() {
-    setConfirmPair(false)
+    if (!codex.isCurrent() || confirmationRef.current !== confirmation) return
+    confirmationRef.current = null
+    setConfirmation(null)
   }
 
   function handlePairDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -171,7 +241,9 @@ export function CodexPage() {
   }
 
   function clearPair() {
-    setCopyState('idle')
+    if (!codex.isCurrent() || latestCodex.current.pair !== codex.pair) return
+    copyRequestRef.current = null
+    setCopyFeedback(null)
     codex.clearPair()
   }
 
@@ -191,16 +263,20 @@ export function CodexPage() {
     <>
       <div
         aria-hidden={confirmPair ? true : undefined}
+        className="agent-management-page codex-page"
         inert={confirmPair ? true : undefined}
       >
         <PageHeader
           action={
             status ? (
-              <StatusBadge
-                tone={status.remote_state === 'running' ? 'good' : 'muted'}
-              >
-                {copy(locale, REMOTE_COPY[status.remote_state])}
-              </StatusBadge>
+              <div className="agent-header-state">
+                <span>{copy(locale, 'codex.remoteEyebrow')}</span>
+                <StatusBadge
+                  tone={status.remote_state === 'running' ? 'good' : 'muted'}
+                >
+                  {copy(locale, REMOTE_COPY[status.remote_state])}
+                </StatusBadge>
+              </div>
             ) : undefined
           }
           description={copy(locale, 'codex.description')}
@@ -231,21 +307,28 @@ export function CodexPage() {
         {status && (
           <div className="codex-layout">
             <section
-              className="runtime-card"
+              className="runtime-card codex-installation-card"
               aria-labelledby="codex-installation"
             >
               <div className="runtime-card-heading">
-                <div>
-                  <p className="eyebrow">
-                    {copy(locale, 'codex.installationEyebrow')}
-                  </p>
-                  <h2 id="codex-installation">
-                    {copy(locale, 'codex.installationTitle')}
-                  </h2>
+                <div className="agent-section-heading">
+                  <span className="agent-section-icon">
+                    <Bot size={21} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="eyebrow">
+                      {copy(locale, 'codex.installationEyebrow')}
+                    </p>
+                    <h2 id="codex-installation">
+                      {copy(locale, 'codex.installationTitle')}
+                    </h2>
+                  </div>
                 </div>
-                <Bot aria-hidden="true" />
               </div>
-              <dl className="runtime-details">
+              <p className="agent-section-description">
+                {copy(locale, 'codex.installationDescription')}
+              </p>
+              <dl className="runtime-details agent-installation-details">
                 <div>
                   <dt>{copy(locale, 'codex.installedLabel')}</dt>
                   <dd>
@@ -282,7 +365,7 @@ export function CodexPage() {
                     {copy(locale, AUTHENTICATION_COPY[status.authentication])}
                   </dd>
                 </div>
-                <div>
+                <div className="agent-executable-detail">
                   <dt>{copy(locale, 'codex.executableLabel')}</dt>
                   <dd className="path-value">
                     {status.selected_executable ? (
@@ -298,39 +381,63 @@ export function CodexPage() {
               </dl>
             </section>
 
-            <section className="runtime-card" aria-labelledby="remote-control">
+            <section
+              className="runtime-card codex-remote-card"
+              aria-labelledby="remote-control"
+            >
               <div className="runtime-card-heading">
-                <div>
-                  <p className="eyebrow">
-                    {copy(locale, 'codex.remoteEyebrow')}
-                  </p>
-                  <h2 id="remote-control">
-                    {copy(locale, 'codex.remoteTitle')}
-                  </h2>
+                <div className="agent-section-heading">
+                  <span className="agent-section-icon">
+                    <Radio size={21} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="eyebrow">
+                      {copy(locale, 'codex.remoteEyebrow')}
+                    </p>
+                    <h2 id="remote-control">
+                      {copy(locale, 'codex.remoteTitle')}
+                    </h2>
+                  </div>
                 </div>
-                <StatusBadge
-                  tone={
-                    status.capabilities.remote_control === 'supported'
-                      ? 'good'
-                      : 'warning'
-                  }
-                >
-                  {copy(
-                    locale,
-                    CAPABILITY_COPY[status.capabilities.remote_control],
-                  )}
-                </StatusBadge>
               </div>
-              <p className="runtime-copy">
-                {copy(locale, 'codex.observedStateLabel')}:{' '}
-                <strong>
-                  {copy(locale, REMOTE_COPY[status.remote_state])}
-                </strong>{' '}
-                <span>
-                  ({copy(locale, 'codex.confidenceLabel')}:{' '}
-                  {copy(locale, CONFIDENCE_COPY[status.remote_confidence])})
-                </span>
+              <p className="agent-section-description">
+                {copy(locale, 'codex.remoteDescription')}
               </p>
+              <dl className="runtime-details agent-remote-details">
+                <div>
+                  <dt>{copy(locale, 'codex.remoteCapabilityLabel')}</dt>
+                  <dd>
+                    <StatusBadge
+                      tone={
+                        status.capabilities.remote_control === 'supported'
+                          ? 'good'
+                          : 'warning'
+                      }
+                    >
+                      {copy(
+                        locale,
+                        CAPABILITY_COPY[status.capabilities.remote_control],
+                      )}
+                    </StatusBadge>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy(locale, 'codex.observedStateLabel')}</dt>
+                  <dd>{copy(locale, REMOTE_COPY[status.remote_state])}</dd>
+                </div>
+                <div>
+                  <dt>{copy(locale, 'codex.confidenceLabel')}</dt>
+                  <dd>
+                    {copy(locale, CONFIDENCE_COPY[status.remote_confidence])}
+                    <span className="agent-source-value">
+                      <SafeTechnicalValue
+                        fallback={copy(locale, 'codex.capabilityUnknown')}
+                        value={status.remote_confidence}
+                      />
+                    </span>
+                  </dd>
+                </div>
+              </dl>
               <div className="action-row">
                 <button
                   className="primary-button action-button"
@@ -360,12 +467,13 @@ export function CodexPage() {
                 </button>
                 <button
                   aria-label={copy(locale, 'codex.refreshStatusLabel')}
-                  className="icon-button"
+                  className="secondary-button action-button agent-refresh-button"
                   disabled={codex.pending !== null}
                   onClick={() => void codex.refresh()}
                   type="button"
                 >
-                  <RefreshCw size={18} />
+                  <RefreshCw size={17} aria-hidden="true" />
+                  {copy(locale, 'codex.refreshStatusLabel')}
                 </button>
               </div>
             </section>
@@ -375,9 +483,16 @@ export function CodexPage() {
               aria-labelledby="pair-device"
             >
               <div className="runtime-card-heading">
-                <div>
-                  <p className="eyebrow">{copy(locale, 'codex.pairEyebrow')}</p>
-                  <h2 id="pair-device">{copy(locale, 'codex.pairTitle')}</h2>
+                <div className="agent-section-heading">
+                  <span className="agent-section-icon">
+                    <KeyRound size={21} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="eyebrow">
+                      {copy(locale, 'codex.pairEyebrow')}
+                    </p>
+                    <h2 id="pair-device">{copy(locale, 'codex.pairTitle')}</h2>
+                  </div>
                 </div>
                 <StatusBadge tone="warning">
                   {copy(locale, 'codex.sensitive')}
@@ -454,17 +569,22 @@ export function CodexPage() {
               aria-labelledby="diagnostics"
             >
               <div className="runtime-card-heading">
-                <div>
-                  <p className="eyebrow">
-                    {copy(locale, 'codex.diagnosticsEyebrow')}
-                  </p>
-                  <h2 id="diagnostics">
-                    {copy(locale, 'codex.diagnosticsTitle')}
-                  </h2>
+                <div className="agent-section-heading">
+                  <span className="agent-section-icon">
+                    <ListChecks size={21} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="eyebrow">
+                      {copy(locale, 'codex.diagnosticsEyebrow')}
+                    </p>
+                    <h2 id="diagnostics">
+                      {copy(locale, 'codex.diagnosticsTitle')}
+                    </h2>
+                  </div>
                 </div>
               </div>
               {status.diagnostics.length === 0 ? (
-                <p className="runtime-copy">
+                <p className="runtime-copy agent-empty-diagnostics">
                   {copy(locale, 'codex.diagnosticsEmpty')}
                 </p>
               ) : (
@@ -516,14 +636,17 @@ export function CodexPage() {
       </div>
 
       {confirmPair && (
-        <div className="modal-backdrop" role="presentation">
+        <div className="modal-backdrop codex-pair-backdrop" role="presentation">
           <section
             aria-labelledby="pair-confirm-title"
             aria-modal="true"
-            className="modal"
+            className="modal codex-pair-dialog"
             onKeyDown={handlePairDialogKeyDown}
             role="dialog"
           >
+            <span className="agent-section-icon">
+              <KeyRound size={23} aria-hidden="true" />
+            </span>
             <p className="eyebrow">{copy(locale, 'codex.confirmEyebrow')}</p>
             <h2 id="pair-confirm-title">
               {copy(locale, 'codex.confirmTitle')}
