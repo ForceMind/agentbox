@@ -1,12 +1,36 @@
 ---
-
 schema_version: 1
-verified_at_utc: "2026-10-07T14:22:00Z"
-verified_by: "agentbox-ui-admin-pages"
+verified_at_utc: "2026-10-07T15:20:00Z"
+verified_by: "agentbox-kebui-main-integration"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-07 PR160 闭环与 Kebui 计划合并协调（15:20 UTC）
+
+[PR160](https://github.com/ForceMind/agentbox/pull/160) 已于 14:55:47 UTC 正常合并为
+main `d9ab2f695b175d4779471a8e152f8950e95cd321`；tree
+`0992054062f780523a8b53e1588a40bb139a3977` 与合格 head
+`a02d9ae1f1cb043fbdd90afbab4dd22960f2a1c8` 一致。六套 exact-main workflow
+均 completed/success，含 [Backend](https://github.com/ForceMind/agentbox/actions/runs/37640824200)、
+[Frontend](https://github.com/ForceMind/agentbox/actions/runs/37640823875) 与
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37640823989)。该批原生 dialog
+断言更正、独立端口 RED→GREEN 及 80 张 metadata 图资格记录由其交付证据保留；
+本次文档协调不冒称重新执行像素审查，也不将历史 READY 间歇问题写成已修复。
+
+[PR159](https://github.com/ForceMind/agentbox/pull/159) 的文档修正 head
+`af09af8b9affa13ea69e7474c529c9badecb1482` 六套已成功。现正常 merge-forward
+上述合格 main，保留两个父提交及双方全部状态正文；CURRENT_STATE 仍是四键 YAML。
+此前“保持 Draft 交回协调”是上一批停止点；本次已接续既定合并协调，组合 head
+须重新通过适用检查、独立审查及六套 CI，随后正常 Ready/merge 并验证新 exact-main。
+当前记录不提前宣称组合 head 或未来 main 已合格，不使用旧头六绿替代新证据。
+
+U2 的 Doctor/Settings/Logs 呈现已合并；Logs 功能仍未实现、Settings 仍仅六项
+只读事实。接下来只有 Login、NotFound/404 与跨页一致性收尾，不重复已有页面。
+U1 的新 Kebui 参考板/tokens/高保真及三条可点击原型仍未交付；U3 继续受 K2/K3、
+S03/WEV 合同约束。无 Chat、Files 或权限扩展，版本仍 rc31，无 release/deploy。
+下方 14:22/14:14 及更早的 pending/Draft/失败记录均为历史快照，完整保留。
 
 ## 2026-10-07 Agent管理闭环，管理摘要浏览器更正（14:22 UTC）
 
@@ -45,6 +69,44 @@ helper；test-only修正已独立CLEAR，原产品不变。80张原图已实际�
 之后仍有Login、NotFound及跨页面收尾，不以本批代替整个版本完成。
 无新账号、凭据/grant、host激活、release/deploy；旧pending均为历史快照。
 
+
+## 2026-10-07 Kebui 计划修正与并发 UI 交付快照（14:14 UTC）
+
+本批仅修正文档结构和可执行计划。[PR159](https://github.com/ForceMind/agentbox/pull/159)
+修正基线为 `1e67f3d7dffe2f408a0d451ef70c033f3bba27a0`；该精确 head 的
+Backend、Frontend、Security、Deployment、E2E、Release Candidate 已全部
+completed/success。后继修正文档的 head 需独立检查，不能继承此六绿。
+
+live main 为 `cf710d59cd6c47d7a240c0ce25d7f006d51e374a`，PR158 已合并；
+下方“Agent 管理候选/待合并”保留为历史，不再作为当前待办。
+[PR160](https://github.com/ForceMind/agentbox/pull/160) 正在完成 Doctor、Settings、
+Logs 的既有呈现收尾；本次核对 head `2c4bf6033a803c07c0554b2cb8f1e1b19280a31b`
+仍 OPEN / Draft，五套 workflow 成功，[E2E 首轮失败](https://github.com/ForceMind/agentbox/actions/runs/37630576342)。
+不得标记该批或完整 UI 已完成；后继修正按新 head 重新取证，随后才接 Login、404 与跨页收尾。
+
+[U0–U5 计划](KEBUI_UI_DELIVERY_PLAN.md) 明确：U1 新 Kebui 参考板、tokens、
+高保真稿和三条可点击原型仍待交付；U2 为上述当前 rc31 页面闭环；U3 的 K2/K3
+须先满足 S03/WEV 合同；U4 为交接/路由/持久工作；U5 为后续人与 Agent 协作。
+本次没有新增设计资产、Chat、Files、权限或产品代码，版本仍 rc31。
+
+CURRENT_STATE 的旧 Kebui 段落已从 YAML 区移到下方正文；原历史正文逐字保留。
+本批只更新 PR159，保持 Draft；与 PR160 共享的 CURRENT_STATE、INDEX、NEXT_ACTION
+必须在后续合并时保留双方记录，不能用较旧整文件覆盖。无 merge/release/deploy。
+
+## 2026-10-07 Kebui 品牌与产品方向文档分支
+
+本任务从 live `main`（PR158 已合并为
+`cf710d59cd6c47d7a240c0ce25d7f006d51e374a`）建立纯文档分支
+`docs/kebui-brand-plan-20261007`。本分支不修改产品代码或运行行为。
+
+Owner 选定 **Kebui（科布）** 作为战略用户品牌方向，并要求形成完整品牌说明与
+产品演进计划。已新增 `KEBUI_BRAND.md` 与 `KEBUI_PRODUCT_PLAN.md`，并在
+INDEX、CHARTER、ROADMAP 建立入口。过渡架构为 Kebui 用户产品层 +
+AgentBox Runtime 执行层；是否进一步重命名 Runtime/repository 仍需后续独立决策。
+
+`kebui.com` / `qebui.com` 仅记录为规划时查询可注册，Owner 尚未在本任务中
+确认购买，因此仓库不宣称域名已拥有。当前 rc31 UI/release 有界计划继续有效，
+本品牌方向不自动扩大当前产品权限或发布范围。
 
 ## 2026-10-07 Changes闭环，Agent管理UI候选（11:51 UTC）
 

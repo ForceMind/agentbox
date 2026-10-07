@@ -1,5 +1,30 @@
 # Current Authorized Action
 
+## 2026-10-07 PR160 闭环与 Kebui 计划合并协调（15:20 UTC）
+
+[PR160](https://github.com/ForceMind/agentbox/pull/160) 已于 14:55:47 UTC 正常合并为
+main `d9ab2f695b175d4779471a8e152f8950e95cd321`；tree
+`0992054062f780523a8b53e1588a40bb139a3977` 与合格 head
+`a02d9ae1f1cb043fbdd90afbab4dd22960f2a1c8` 一致。六套 exact-main workflow
+均 completed/success，含 [Backend](https://github.com/ForceMind/agentbox/actions/runs/37640824200)、
+[Frontend](https://github.com/ForceMind/agentbox/actions/runs/37640823875) 与
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37640823989)。该批原生 dialog
+断言更正、独立端口 RED→GREEN 及 80 张 metadata 图资格记录由其交付证据保留；
+本次文档协调不冒称重新执行像素审查，也不将历史 READY 间歇问题写成已修复。
+
+[PR159](https://github.com/ForceMind/agentbox/pull/159) 的文档修正 head
+`af09af8b9affa13ea69e7474c529c9badecb1482` 六套已成功。现正常 merge-forward
+上述合格 main，保留两个父提交及双方全部状态正文；CURRENT_STATE 仍是四键 YAML。
+此前“保持 Draft 交回协调”是上一批停止点；本次已接续既定合并协调，组合 head
+须重新通过适用检查、独立审查及六套 CI，随后正常 Ready/merge 并验证新 exact-main。
+当前记录不提前宣称组合 head 或未来 main 已合格，不使用旧头六绿替代新证据。
+
+U2 的 Doctor/Settings/Logs 呈现已合并；Logs 功能仍未实现、Settings 仍仅六项
+只读事实。接下来只有 Login、NotFound/404 与跨页一致性收尾，不重复已有页面。
+U1 的新 Kebui 参考板/tokens/高保真及三条可点击原型仍未交付；U3 继续受 K2/K3、
+S03/WEV 合同约束。无 Chat、Files 或权限扩展，版本仍 rc31，无 release/deploy。
+下方 14:22/14:14 及更早的 pending/Draft/失败记录均为历史快照，完整保留。
+
 ## 2026-10-07 Agent管理闭环，管理摘要浏览器更正（14:22 UTC）
 
 [PR158](https://github.com/ForceMind/agentbox/pull/158)已于12:47:59 UTC正常合并为
@@ -37,6 +62,32 @@ helper；test-only修正已独立CLEAR，原产品不变。80张原图已实际�
 之后仍有Login、NotFound及跨页面收尾，不以本批代替整个版本完成。
 无新账号、凭据/grant、host激活、release/deploy；旧pending均为历史快照。
 
+
+## 2026-10-07 Kebui 战略方向不替换当前交付行动
+
+Owner 已批准形成 Kebui（科布）品牌与长期产品方向文档，详见
+[KEBUI_BRAND.md](KEBUI_BRAND.md) 与
+[KEBUI_PRODUCT_PLAN.md](KEBUI_PRODUCT_PLAN.md)、[UI 设计](KEBUI_UI_DESIGN.md)与
+[U0–U5 交付计划](KEBUI_UI_DELIVERY_PLAN.md)。
+
+2026-10-07 14:14 UTC 的可执行顺序：
+
+1. PR159 完成 YAML/完整历史/链接与计划一致性检查，提交后验证新 exact-head 六套 CI；
+   保持 Draft，交回合并协调，不在这次文档修正中自行 merge/release/deploy。
+2. U2 继续 PR160 Doctor/Settings/Logs 的验证与收尾，保留其首轮 E2E 失败事实；
+   该候选合格后，再接 Login、NotFound/404 与跨页一致性。PR158 已合并，不重复迁移。
+3. U0 补齐参考取证缺项，U1 可独立准备合成参考板、tokens、高保真和三条可点击流程；
+   这些均仍待交付，不以计划文本代替可打开产物，不阻塞当前 U2。
+4. U3 的 K2/K3 在当前交付顺序及 S03/WEV 结构化、内容、审批合同满足后另立有界实施卡；
+   本批不启动 Chat/Task、Files、自动路由、持久记忆或协作功能。
+
+PR159/PR160 的 CURRENT_STATE、INDEX、NEXT_ACTION 有共享编辑面；后合并者基于
+live main 正常 merge-forward，逐段保留双方记录并重验文档及新 head CI，不覆盖旧整文件。
+
+这是战略产品轨道，不替换当前 rc31 UI/release 的既定有界交付顺序。完成本纯文档
+分支后，继续按 live Git/GitHub 重新核对当前页面收尾、CI 与 release 计划。Kebui
+conversation、自动 agent routing、协作空间和任何内部重命名均按产品计划分阶段
+另立合同实施，不作为本次文档任务的直接开发范围。
 
 ## 2026-10-07 Changes闭环，Agent管理UI候选（11:51 UTC）
 
