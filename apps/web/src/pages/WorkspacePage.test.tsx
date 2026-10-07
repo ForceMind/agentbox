@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import {
   afterAll,
   beforeAll,
@@ -174,6 +174,175 @@ describe('WorkspacePage', () => {
     expect(
       screen.getByRole('heading', { name: 'Interactive workspace' }),
     ).toBeInTheDocument()
+    const projectSelect = screen.getByRole('combobox', {
+      name: 'Formal READY Project',
+    })
+    if (_name === 'loading') {
+      expect(projectSelect).toBeDisabled()
+      expect(projectSelect).toHaveDisplayValue('Loading Projects…')
+    } else if (_name === 'empty') {
+      expect(projectSelect).toBeDisabled()
+      expect(projectSelect).toHaveDisplayValue('No READY Projects')
+    } else if (_name === 'unregistered') {
+      expect(
+        screen.getByText(
+          'This AgentType is not registered and cannot start a workspace.',
+        ),
+      ).toBeVisible()
+      expect(
+        screen.getByRole('button', { name: 'Start workspace' }),
+      ).toBeDisabled()
+    } else {
+      expect(
+        screen.getByText(
+          'The Project list is temporarily unavailable. Refresh and try again.',
+        ),
+      ).toBeVisible()
+      expect(screen.getByText('CONTROL_PLANE_UNAVAILABLE')).toBeVisible()
+      expect(
+        screen.getByText('Workspace information is temporarily unavailable.'),
+      ).toBeVisible()
+    }
+  })
+
+  it('shows workspace lookup progress separately from Project loading', () => {
+    render(<WorkspacePage model={model({ lookup: 'loading' })} />)
+    expect(screen.getByText('Loading workspace information…')).toBeVisible()
+    expect(
+      screen.getByRole('combobox', { name: 'Formal READY Project' }),
+    ).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'Connect terminal' }),
+    ).toBeDisabled()
+  })
+
+  it('keeps the terminal nodes and uncontrolled input through rerenders and metadata disclosure changes', () => {
+    const m = model({
+      canInput: true,
+      runtimeView: loadedRuntime(Date.parse('2026-10-07T08:00:00Z')),
+    })
+    const { container, rerender, unmount } = render(<WorkspacePage model={m} />)
+    const viewport = container.querySelector('.workspace-terminal-frame')!
+    const surface = screen.getByRole('log', { name: 'Controlled terminal' })
+    const input = screen.getByRole('textbox', { name: 'Send input' })
+    const rendererChild = document.createElement('span')
+    surface.append(rendererChild)
+    fireEvent.change(input, { target: { value: 'unsubmitted input' } })
+
+    const summary = screen.getByText('Runtime metadata', {
+      selector: 'summary',
+    })
+    const details = summary.closest('details')!
+    expect(details).not.toHaveAttribute('open')
+    fireEvent.click(summary)
+    expect(details).toHaveAttribute('open')
+    expect(screen.getByText('Process status')).toBeVisible()
+
+    rerender(<WorkspacePage model={{ ...m, notice: 'START_CONFIRMED' }} />)
+    fireEvent.click(summary)
+    expect(details).not.toHaveAttribute('open')
+    fireEvent(window, new Event('resize'))
+    currentLocaleMock.mockReturnValue('zh-CN')
+    rerender(<WorkspacePage model={{ ...m, pending: 'start' }} />)
+    rerender(
+      <WorkspacePage
+        model={{ ...m, runtimeView: { status: 'stale', receivedAt: null } }}
+      />,
+    )
+    expect(screen.queryByText('Runtime 元数据')).not.toBeInTheDocument()
+
+    expect(
+      container.querySelectorAll('.workspace-terminal-frame'),
+    ).toHaveLength(1)
+    expect(
+      container.querySelectorAll('.workspace-terminal-surface'),
+    ).toHaveLength(1)
+    expect(container.querySelector('.workspace-terminal-frame')).toBe(viewport)
+    expect(screen.getByRole('log', { name: '受控终端' })).toBe(surface)
+    expect(surface.firstChild).toBe(rendererChild)
+    expect(screen.getByRole('textbox', { name: '发送输入' })).toBe(input)
+    expect(input).toHaveValue('unsubmitted input')
+    expect(m.setTerminalViewport).toHaveBeenCalledExactlyOnceWith(viewport)
+    expect(m.setTerminalSurface).toHaveBeenCalledExactlyOnceWith(surface)
+    expect(m.setTerminalInputClearer).toHaveBeenCalledTimes(1)
+
+    unmount()
+    expect(m.setTerminalViewport).toHaveBeenCalledTimes(2)
+    expect(m.setTerminalSurface).toHaveBeenCalledTimes(2)
+    // React 19's development ref cleanup may append internal undefined arguments.
+    expect(vi.mocked(m.setTerminalViewport).mock.calls.at(-1)?.[0]).toBeNull()
+    expect(vi.mocked(m.setTerminalSurface).mock.calls.at(-1)?.[0]).toBeNull()
+    expect(m.setTerminalInputClearer).toHaveBeenLastCalledWith(null)
+  })
+
+  const guardedActions = [
+    ['canStart', 'Start workspace', 'start'],
+    ['canStop', 'Stop workspace', 'requestStop'],
+    ['canConnect', 'Connect terminal', 'connect'],
+    ['canReconnect', 'Reconnect', 'reconnect'],
+    ['canDetach', 'Disconnect', 'detach'],
+    ['canInput', 'Send input', 'sendInput'],
+  ] as const
+  const pendingActions = [
+    null,
+    'start',
+    'connect',
+    'reconnect',
+    'detach',
+    'stop',
+  ] as const
+
+  it.each(
+    guardedActions.flatMap(([permission, label, callback]) =>
+      [false, true].flatMap((allowed) =>
+        pendingActions.map((pending) => ({
+          permission,
+          label,
+          callback,
+          allowed,
+          pending,
+        })),
+      ),
+    ),
+  )(
+    'guards $label with $permission=$allowed and pending=$pending',
+    ({ permission, label, callback, allowed, pending }) => {
+      const m = model({ [permission]: allowed, pending })
+      render(<WorkspacePage model={m} />)
+      const button = screen.getByRole('button', { name: label })
+      const enabled = allowed && pending === null
+      if (enabled) expect(button).toBeEnabled()
+      else expect(button).toBeDisabled()
+      if (permission === 'canInput') {
+        const input = screen.getByRole('textbox', { name: label })
+        if (enabled) expect(input).toBeEnabled()
+        else expect(input).toBeDisabled()
+        fireEvent.change(input, { target: { value: 'bounded input' } })
+        // A direct submit must obey the same guard as the disabled controls.
+        fireEvent.submit(input.closest('form')!)
+        if (enabled) expect(m.sendInput).toHaveBeenCalledWith('bounded input\r')
+      } else {
+        fireEvent.click(button)
+      }
+      expect(m[callback]).toHaveBeenCalledTimes(enabled ? 1 : 0)
+    },
+  )
+
+  it('keeps a long Project name as inert isolated text in the selector and context', () => {
+    const displayName = '<img src=x onerror=alert(1)> 中文 مشروع '.repeat(12)
+    const { container } = render(
+      <WorkspacePage
+        model={model({ projects: [{ ...project, displayName }] })}
+      />,
+    )
+    expect(container.querySelector('img')).toBeNull()
+    const value = container.querySelector('.workspace-current-selection bdi')!
+    expect(value.textContent).toBe(displayName)
+    expect(value).toHaveAttribute('dir', 'auto')
+    expect(value).toHaveAttribute('translate', 'no')
+    expect(
+      screen.getByRole('option', { name: displayName.trim() }),
+    ).toHaveValue(project.id)
   })
 
   it('applies Start enabled rule and pending disables it', async () => {
@@ -313,6 +482,94 @@ describe('WorkspacePage', () => {
       screen.getByRole('button', { name: 'Connect terminal' }),
     ).toBeDisabled()
     expect(m.connect).not.toHaveBeenCalled()
+    expect(
+      screen.getByText(
+        'The managed browser trust provider is unavailable, so no terminal ticket was requested.',
+      ),
+    ).toBeVisible()
+    expect(screen.getByText('ATTACHMENT_UNAVAILABLE')).toBeVisible()
+    expect(
+      screen.getByText(
+        'Terminal content is not stored in browser storage or offered as a history download.',
+      ),
+    ).toBeVisible()
+  })
+
+  it('keeps identity and reconciliation evidence visible with Runtime details closed', () => {
+    const runtimeView = loadedRuntime(Date.parse('2026-10-07T08:00:00Z'))
+    if (runtimeView.status !== 'loaded')
+      throw new Error('Expected loaded fixture')
+    runtimeView.response.data.reconciliation_state = 'reconciliation_required'
+    render(<WorkspacePage model={model({ runtimeView })} />)
+    expect(
+      screen.getByText('Runtime metadata').closest('details'),
+    ).not.toHaveAttribute('open')
+    expect(
+      screen.getByText('aws_0123456789abcdef0123456789abcdef'),
+    ).toBeVisible()
+    expect(screen.getByText('reconciliation_required')).toBeVisible()
+  })
+
+  it.each<WorkspacePageModel['runtimeView']>([
+    { status: 'idle' },
+    { status: 'loading' },
+    { status: 'stale', receivedAt: null },
+    { status: 'revalidating', receivedAt: null },
+    { status: 'error', error: { code: 'WAW_STATUS_UNAVAILABLE' } },
+  ])(
+    'omits empty Runtime details when the snapshot is $status',
+    (runtimeView) => {
+      render(<WorkspacePage model={model({ runtimeView })} />)
+      expect(screen.queryByText('Runtime metadata')).not.toBeInTheDocument()
+      expect(screen.getByText('Trust provider unavailable')).toBeVisible()
+      expect(
+        screen.getByRole('log', { name: 'Controlled terminal' }),
+      ).toBeInTheDocument()
+    },
+  )
+
+  it('shows bounded redraw and input outcomes without hiding the sensitive-output notice', () => {
+    const m = model()
+    const { rerender } = render(
+      <WorkspacePage
+        model={{
+          ...m,
+          attachment: { ...m.attachment, freshRedrawTruncated: true },
+        }}
+      />,
+    )
+    expect(
+      screen.getByText(
+        'The initial terminal redraw was bounded. Refreshing the terminal starts a new bounded redraw.',
+      ),
+    ).toBeVisible()
+    for (const state of [
+      'local_uncertain',
+      'write_uncertain',
+      'rejected',
+    ] as const) {
+      rerender(
+        <WorkspacePage
+          model={{
+            ...m,
+            attachment: {
+              ...m.attachment,
+              lastInputOutcome: { state, reasonCode: 'INPUT_WRITE_UNCERTAIN' },
+            },
+          }}
+        />,
+      )
+      expect(
+        screen.getByText('Input delivery is uncertain and will not be resent.'),
+      ).toBeVisible()
+      expect(screen.getByText('INPUT_WRITE_UNCERTAIN')).toBeVisible()
+      expect(
+        screen.getByText(
+          'Terminal content is not stored in browser storage or offered as a history download.',
+        ),
+      ).toBeVisible()
+    }
+    expect(m.sendInput).not.toHaveBeenCalled()
   })
 
   it('localizes bounded input outcome metadata without rendering input plaintext', () => {
@@ -399,6 +656,7 @@ describe('WorkspacePage', () => {
       />,
     )
     expect(container.querySelector('time')).toBeNull()
+    expect(screen.queryByText('Runtime metadata')).not.toBeInTheDocument()
     expect(
       screen.getByText(
         'The previous Runtime snapshot is no longer current. Workspace actions are paused.',
@@ -426,6 +684,7 @@ describe('WorkspacePage', () => {
       ),
     ).toBeVisible()
     expect(screen.queryByText('Status received')).not.toBeInTheDocument()
+    expect(screen.queryByText('Runtime metadata')).not.toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Refresh workspace status' }),
     ).toBeDisabled()
@@ -475,6 +734,57 @@ describe('WorkspacePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm stop' }))
     expect(m.confirmStop).toHaveBeenCalledTimes(1)
   })
+
+  it.each(['start', 'connect', 'reconnect', 'detach', 'stop'] as const)(
+    'prevents Stop dismissal and repeated confirmation while %s is pending',
+    (pending) => {
+      const stopTarget = {
+        workspaceId: 'aws_abcdef0123456789abcdef0123456789',
+        generation: '19',
+      }
+      const m = model({ stopTarget })
+      const { rerender } = render(<WorkspacePage model={m} />)
+      const dialog = screen.getByRole('dialog', {
+        name: 'Confirm workspace stop',
+      })
+      // The confirmation target comes from the captured exact target, not the record.
+      expect(dialog).toHaveTextContent(stopTarget.workspaceId)
+      expect(dialog).toHaveTextContent('Generation: 19')
+      expect(dialog).not.toHaveTextContent(m.workspaceId!)
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: 'Confirm stop' }),
+      )
+      expect(m.confirmStop).toHaveBeenCalledTimes(1)
+
+      rerender(<WorkspacePage model={{ ...m, pending }} />)
+      const cancel = within(dialog).getByRole('button', { name: 'Cancel' })
+      const confirm = within(dialog).getByRole('button', {
+        name: 'Confirm stop',
+      })
+      expect(cancel).toBeDisabled()
+      expect(confirm).toBeDisabled()
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
+      fireEvent.click(cancel)
+      const escape = new Event('cancel', { cancelable: true })
+      fireEvent(dialog, escape)
+      expect(escape.defaultPrevented).toBe(true)
+      expect(dialog).toHaveAttribute('open')
+      expect(m.confirmStop).toHaveBeenCalledTimes(1)
+      expect(m.cancelStop).not.toHaveBeenCalled()
+
+      rerender(<WorkspacePage model={m} />)
+      const idleEscape = new Event('cancel', { cancelable: true })
+      fireEvent(dialog, idleEscape)
+      expect(idleEscape.defaultPrevented).toBe(true)
+      expect(m.cancelStop).toHaveBeenCalledTimes(1)
+      rerender(<WorkspacePage model={{ ...m, stopTarget: null }} />)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(confirm).toBeDisabled()
+      fireEvent.click(confirm)
+      expect(m.confirmStop).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('renders Chinese copy only for the zh-CN locale', () => {
     currentLocaleMock.mockReturnValue('zh-CN')

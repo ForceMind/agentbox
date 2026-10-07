@@ -77,3 +77,24 @@ controller、route、typed ports、terminal metrics/ANSI classes与输入/Stop�
 原18项页面单测通过、Web TypeScript通过、Prettier解析通过，作为可恢复源码快照
 先正常提交。新增禁用/稳定DOM/Stop回归与实际App/API浏览器用例仍在实现，尚无
 本批真实浏览器/原PNG或新exact-head CI通过声明。后续正常追加提交，不改写历史。
+
+## 08:14 UTC 页面回归与浏览器候选
+
+原18项页面断言保留，新增canX/pending矩阵、Stop pending的Cancel/Escape、
+稳定viewport/surface/clearer及非loaded状态等回归，页面105项、相关5文件153项
+通过。TypeScript、targeted ESLint、Prettier与diff检查通过；新增测试首轮的一项
+React19 ref额外undefined参数假设错误已修正，不是产品RED→GREEN。空Runtime
+disclosure在没有loaded metadata时省略；仅Workspace范围把标签checkbox的实际
+hit area做到44px，保留原事件/checked/disabled及forced-colors原生呈现。
+
+新ui-workspace浏览器候选静态收集66项，预期45执行/21规定skip；计划42张PNG，
+20 ready矩阵、20双语手机状态样本、2中文展示。仅固定API白名单/合成metadata，
+实际App路由与controllers，未注入native或managed-provider替身；capture要求
+固定Workspace路径、空surface/input、无password与server-prose，两个artifact
+allowlist只追加ui-workspace前缀。TypeScript首轮test.use reducedMotion类型错误
+已按既有contextOptions修正并复测。此刻仍未运行实际浏览器或取得像素资格。
+
+独立审查提出一个尚未证实的既有controller重入风险：同一task内重复确认Stop，
+第二次fence可能中断第一项pending请求。将先以现有controller fixture做最小
+test-only验证；尚未修改controller，不放宽新浏览器断言。若成立，必须给出
+源代码依据、真实RED与有界修复卡片，再处理该部分；普通布局与证据准备继续。

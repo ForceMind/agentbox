@@ -411,12 +411,12 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
               <TechnicalValue value={metadata.reconciliation_state} />
             </p>
           )}
-          <details className="workspace-metadata">
-            <summary>
-              {copy(locale, 'workspace.runtimeMetadata')}
-              <ChevronDown aria-hidden="true" size={16} />
-            </summary>
-            {metadata && (
+          {metadata && (
+            <details className="workspace-metadata">
+              <summary>
+                {copy(locale, 'workspace.runtimeMetadata')}
+                <ChevronDown aria-hidden="true" size={16} />
+              </summary>
               <dl
                 className="runtime-details"
                 aria-label={copy(locale, 'workspace.runtimeMetadata')}
@@ -440,8 +440,8 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
                   </dd>
                 </div>
               </dl>
-            )}
-          </details>
+            </details>
+          )}
           {model.runtimeView.status === 'stale' && (
             <p className="interaction-notice" role="status">
               {copy(locale, 'workspace.statusStale')}
