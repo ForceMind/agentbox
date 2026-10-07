@@ -169,6 +169,12 @@ function envelope(data: unknown) {
   return { api_version: 'v1', request_id: 'req_ui_workspace_synthetic', data }
 }
 
+// Workspace metadata and Runtime status use the unversioned Workspace wire
+// contract; auth, Project and label responses use the versioned API envelope.
+function workspaceEnvelope(data: unknown) {
+  return { request_id: 'req_ui_workspace_synthetic', data }
+}
+
 function failure(code: string) {
   return {
     request_id: 'req_ui_workspace_synthetic',
@@ -272,14 +278,14 @@ async function fixtures(page: Page, representative = false) {
     }
     for (const id of [PROJECT_A, PROJECT_B]) {
       const lifecycle = id === PROJECT_A ? state.lifecycleA : 'RUNNING'
-      responses[`/api/v1/workspaces/${workspace(id).id}`] = envelope(
+      responses[`/api/v1/workspaces/${workspace(id).id}`] = workspaceEnvelope(
         workspace(id, lifecycle),
       )
-      responses[statusPath(id)] = envelope(
+      responses[statusPath(id)] = workspaceEnvelope(
         runtime(id, lifecycle, state.mode === 'disabled'),
       )
       for (const agent of ['claude', 'codex']) {
-        responses[listPath(id, agent)] = envelope({
+        responses[listPath(id, agent)] = workspaceEnvelope({
           workspaces:
             agent === 'claude' || state.mode === 'unregistered'
               ? []

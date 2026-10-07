@@ -135,3 +135,21 @@ TypeScript、targeted ESLint、Prettier、diff-check与RED字节比较通过。�
 Git blobs为facd1052c6b009c941647431cb151cdd9387c80a与
 c6ae68c455a5aa4d6c601ad8716103fddf479580，独立source/回归复审CLEAR。
 实际浏览器、42张原PNG、完整本地质量及新exact-head六套尚待，不宣称已最终合格。
+
+## 08:55 UTC 首轮浏览器fixture错误与修正
+
+旧RED头2267ed3的E2E37593624069/job112700802141首次工作流结果为299旧项通过、
+45新增项失败、94规定skip。公共阻断是测试误把api_version加到Workspace
+list/detail包装；生产workspaceMetadata decoder严格只接受request_id/data，
+API工作区response models亦如此。产品正确拒绝错fixture，尚未进入完整新页面
+ready矩阵；该错误与已经修复的Stop重入不同，不能靠放宽产品decoder或timeout解决。
+
+只在新spec增加精确两key的workspaceEnvelope，用于Workspace list/detail/status；
+auth/projects/labels仍沿原versioned envelope。原断言/holds/未知请求拒绝/截图
+隐私门禁均未变。直接提取实际fixture响应交给既有production decoder验证，旧
+包装8次拒绝、修正后27次接受；TypeScript/lint/format/collection66及diff检查通过。
+
+失败artifact11471005523共118 PNG，仅4张新loading/empty诊断图；没有ready
+截图。ZIP SHA256为4355474b2bbc87dae0130b2cb8751c90f0b6a2dbfe184c9c5800b4734a467dcb，
+SHA/CRC/路径验证通过。新f675头虽五套成功，仍用了同一错误fixture，其E2E
+正在执行且不计通过；修正将正常追加提交，保留旧失败，不手动重跑旧头。
