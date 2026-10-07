@@ -154,3 +154,35 @@ getByRole exact option，已删除无效参数（字符串name本身精确匹配
 产品RED或权限断言弱化。source/owner修复/fixture独立审查均CLEAR，原4RED和
 ownership18文件hash保持。b9修复头六套首轮通过，但本次最终UI头/真实新browser/
 68张原PNG/main资格尚待，不能借旧CI或源审查声称本批最终合格。
+
+## 12:17 UTC 实际浏览器失败与最小测试修正
+
+完整候选81e33db9373c7f3b911bb753ce397635a75dfc18的五套CI首轮成功；Backend
+实际3.11.16/3.12.14/3.13.16各5375passed/88skipped，native3.13.16为109/1、
+pinned1/33及sanitized60/1；Frontend1900+6。正式E2E37617402586/job112778964183
+为458passed/156skipped/6failed，未合格、未合并、不重跑该失败头。
+
+失败源码确定为两处新测试错误：中文正式catalog为“安装冲突”而非“冲突”；
+AppShell在Session A→B时会关闭mobile drawer，旧测试却在关闭后等待抽屉里的
+logout alert。只修两份新spec：精确中文值，及等待真实B-CSRF logout重试500后
+通过实际导航按钮重新打开、验证完整失败提示、关闭。保留owner/CSRF/late reply/
+无重放/敏感请求次数等所有断言，capture-off与产品源码不变，绝不加skip或预算。
+新头仍需独立审查和实际六套CI，静态collection保持110注册。
+
+早期1d2头E2E37615307106/job112772115065为394passed/115skipped/1failed：
+中文Codex确认时背景事实badge确实溢出。11:51记录的scope CSS单列修正解决
+这项生产布局问题；81e33中全部既有浏览器测试通过，不将旧失败抹去。
+
+81e33的artifact11480484421为47,009,489bytes，SHA256
+dd32caef4cf987d6417281152f57d06080601354166485972f18dca470212d4c；官方文件
+materialization后验证digest/ZIP CRC/安全PNG路径。包含264PNG，其中66张本批
+metadata图（计划68，中文conflict和后续unauth未执行到），无Pair/output内容。
+四张正常中文desktop浅色/mobile深色已实际检查，完整66图独立逐张像素审查已完成；
+当前预览不能被当成失败候选已通过的资格，最终新头仍须重新取得完整68图。
+
+独立像素审查进一步发现Claude英文极长Project名称会在768/1024/1440把Session
+状态挤成2–3行字母；正常名preview不受影响。另立最小页面CSS修正，仅将状态组
+设max-width:100%与flex-shrink:0，完整Project名称仍正常换行、不截断。新增真实
+DOM文字行几何检查，覆盖既有全部矩阵，不靠CSS snapshot。该问题涉及12张长名矩阵，其他54张（含4preview）通过；
+两spec修正及最小CSS/几何回归独立source review CLEAR。修后实际像素仍待新
+CI，不用未跑浏览器的静态检查冒称修正已验证。
