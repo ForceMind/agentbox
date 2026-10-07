@@ -26,8 +26,9 @@ Provider配置或 Runtime 能力，也不修改版本、发布或部署。
 
 ## 保留的行为与权限
 
-- `WorkspaceRoute`、`useWorkspaceController`、attachment/controller、typed ports、
-  加密、parser、scheduler、trust与后端本批保持原样。只有真实功能对应的现有按钮。
+- `WorkspaceRoute`、attachment/controller、typed ports、加密、parser、scheduler、
+  trust与后端本批保持原样；useWorkspaceController仅接受下方已复现且独立审查的
+  exact Stop内部同步owner修正，公开model与全部授权合同不变。只有真实功能对应的现有按钮。
   若迁移暴露必须改变业务或安全合同的问题，先提交独立有界卡片审查。
 - lifecycle metadata、Runtime状态与 browser attachment admission分别显示；
   `RUNNING`不等于`CONNECTED`。操作仍由原 canStart/canStop/canConnect/
@@ -113,3 +114,24 @@ diff-check均exit0。测试先settle held transport再断言，没有遗留未�
 会中断第一项操作，不是布局新增缺陷，也没有证据表明发送了重复Stop。
 已提出同步、scope-bound single-flight owner的最小修复卡片，产品修正尚未开始。
 保留真实RED与原全部断言；本候选因此未合格，不能merge或宣称浏览器通过。
+
+## 08:31 UTC 有界exact Stop修复与独立GREEN
+
+独立审查重现同一RED，首次官方Frontend37593624151/job112700802282亦准确为
+1 failed/1760 passed，唯一失败即保存的重复Stop case。原RED测试全文与断言
+逐字不变。修复另立提交：同步confirmation reference保证当前确认身份；同步
+operation owner在任何清理/fence/await前挡住重复调用，沿用原epoch/auth/attachment/
+observation currentness，finally只允许同一owner释放。旧Confirm/Cancel不能
+重放已取消或失败的确认，也不能清掉新target；pending Cancel/Escape语义不变。
+
+原canStop、精确目标、fingerprint、Detach(ATTACH_PTY_CLOSED) proof、Stop receipt
+及全部时限保留，没有direct Stop fallback、权限增加或自动重试。新增回归证明
+旧Session finally不解锁新操作、失败仅fresh explicit confirmation可重试、
+selection/route-unmount/offline/pagehide仍真实abort；attached Stop重复调用
+只委托一次，缺失detachConfirmed仍拒绝且不发HTTP Stop。
+
+最终controller35项，独立五个相关pure frontend文件共193 passed/exit0；
+TypeScript、targeted ESLint、Prettier、diff-check与RED字节比较通过。最终源/test
+Git blobs为facd1052c6b009c941647431cb151cdd9387c80a与
+c6ae68c455a5aa4d6c601ad8716103fddf479580，独立source/回归复审CLEAR。
+实际浏览器、42张原PNG、完整本地质量及新exact-head六套尚待，不宣称已最终合格。
