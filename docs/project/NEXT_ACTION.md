@@ -1,5 +1,29 @@
 # Current Authorized Action
 
+## 2026-10-07 Workspace呈现迁移与exact Stop所有权（08:33 UTC）
+
+[PR153](https://github.com/ForceMind/agentbox/pull/153)已正常合并为main
+`0fdeb6475487d8a2456dfcc7b04262562a8c27ac`，tree
+`f3e65bf12c0846d70b5dc9d1a6cb507c719f0f8e`。六套exact-main首轮成功，23success/
+3规定skip；Backend实际3.11.16/3.12.14/3.13.16各5375/88，E2E299/73，无failed/
+flaky。同树f06头实际3.13.15成功另记，旧READY间歇问题仍开放，未宣称根因修复。
+
+接续原A2同一UI版本的[Workspace外壳合同](../WORKBENCH_UI_WORKSPACE_REFRESH.md)，
+[Draft PR156](https://github.com/ForceMind/agentbox/pull/156)已保存页面、CSS、
+双语catalog、105项页面测试和合成App/API浏览器候选；计划42PNG、静态收集66项。
+原route/model、terminal refs/metrics/ANSI、input/currentness/Detach proof与后端不改。
+
+新增最小回归确证旧confirmStop同task重复会abort第一请求：只1POST但旧target/
+pending清空。RED head2267ed3已保存，官方Frontend1failed/1760passed。后继修复
+单独提交，同步绑定exact confirmation与当前scope的owner，原RED逐字转GREEN；
+旧scope finally、失败后显式重试、取消/身份/离线撤销及attached proof边界均有
+回归，独立193项通过与source CLEAR。没有新增业务能力、安全权限、时限放宽、
+自动重放或Runtime修改；这不涉及历史READY成因。
+
+当前候选仍待完整本地检查、实际浏览器/原PNG、exact-head六套与正常merge/main
+回读；不能把基线或focused结果当作本批资格。保持Draft，不部署、发布、接触真实
+账号或激活host。下方旧段落为当时快照，live Git/GitHub优先。
+
 ## 2026-10-07 分进程发布覆盖合格，接续本批UI（07:13 UTC）
 
 [PR155](https://github.com/ForceMind/agentbox/pull/155)已正常合并为main
