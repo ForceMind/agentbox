@@ -87,7 +87,7 @@ export function useWorkspaceController(options: {
   })
   const [notice, setNotice] = useState<WorkspaceNotice | null>(null)
   const [actionError, setActionError] = useState<ScopedActionError | null>(null)
-  const [confirmation, setConfirmation] = useState<
+  const [confirmation, setConfirmationState] = useState<
     | (WorkspaceStopTarget & {
         key: string
         observationToken: number
@@ -95,6 +95,12 @@ export function useWorkspaceController(options: {
       })
     | null
   >(null)
+  const confirmationRef = useRef(confirmation)
+  const setConfirmation = useCallback((next: typeof confirmation) => {
+    confirmationRef.current = next
+    setConfirmationState(next)
+  }, [])
+  const stopOperation = useRef<{ isCurrent: () => boolean } | null>(null)
   const requestSequence = useRef(0)
   const selectionEpoch = useRef(0)
   const attachmentFence = useRef<() => void>(() => undefined)
@@ -138,7 +144,7 @@ export function useWorkspaceController(options: {
       mounted.current = false
       invalidate()
     }
-  }, [authScope, invalidate])
+  }, [authScope, invalidate, setConfirmation])
 
   const select = useCallback(
     (projectId: string, agentType: WorkspaceAgent) => {
@@ -151,7 +157,7 @@ export function useWorkspaceController(options: {
       setNotice(null)
       setActionError(null)
     },
-    [invalidate],
+    [invalidate, setConfirmation],
   )
 
   useEffect(() => {
@@ -286,7 +292,7 @@ export function useWorkspaceController(options: {
     setConfirmation(null)
     setNotice(null)
     setActionError(null)
-  }, [])
+  }, [setConfirmation])
   const status = useWorkspaceStatus(
     row?.id,
     `${reload}:${row?.revision ?? ''}`,
@@ -447,6 +453,7 @@ export function useWorkspaceController(options: {
     }
   }
   function requestStop() {
+    if (stopOperation.current?.isCurrent()) return
     const observationToken = status.observationToken
     if (
       observationToken === null ||
@@ -464,8 +471,10 @@ export function useWorkspaceController(options: {
     })
   }
   async function confirmStop() {
+    // Own the confirmation synchronously, before a duplicate can fence its lease.
+    if (stopOperation.current?.isCurrent()) return
+    if (!confirmation || confirmationRef.current !== confirmation) return
     if (
-      !confirmation ||
       confirmation.key !== key ||
       !row ||
       !canStop ||
@@ -486,6 +495,16 @@ export function useWorkspaceController(options: {
     const epoch = selectionEpoch.current
     const scope = authScope
     const attachmentKey = attachment.identity?.key ?? null
+    const operation = {
+      isCurrent: () =>
+        actionStillCurrent(
+          epoch,
+          scope,
+          attachmentKey,
+          target.observationToken,
+        ),
+    }
+    stopOperation.current = operation
     setActionError(null)
     try {
       const attached = attachment.view.attached
@@ -541,6 +560,8 @@ export function useWorkspaceController(options: {
         setConfirmation(null)
         setScopedActionError(failure(error))
       }
+    } finally {
+      if (stopOperation.current === operation) stopOperation.current = null
     }
   }
   async function refresh() {
@@ -683,7 +704,9 @@ export function useWorkspaceController(options: {
     refresh,
     start,
     requestStop,
-    cancelStop: () => setConfirmation(null),
+    cancelStop: () => {
+      if (confirmationRef.current === confirmation) setConfirmation(null)
+    },
     confirmStop,
     setTerminalSurface: attachment.setSurface,
     setTerminalViewport: attachment.setViewport,

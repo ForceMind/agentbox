@@ -1,4 +1,11 @@
-import { AlertTriangle, MonitorUp, RefreshCw, ShieldAlert } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  MonitorUp,
+  RefreshCw,
+  ShieldAlert,
+  Terminal,
+} from 'lucide-react'
 import {
   useEffect,
   useLayoutEffect,
@@ -192,7 +199,7 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
   }
 
   return (
-    <>
+    <div className="workspace-page">
       <PageHeader
         eyebrow={copy(locale, 'workspace.eyebrow')}
         title={copy(locale, 'workspace.title')}
@@ -202,7 +209,10 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
         className="runtime-card workspace-selection-card"
         aria-labelledby="workspace-selection"
       >
-        <div className="runtime-card-heading">
+        <div className="runtime-card-heading workspace-selection-heading">
+          <span className="workspace-section-icon">
+            <MonitorUp aria-hidden="true" size={22} />
+          </span>
           <div>
             <p className="eyebrow">
               {copy(locale, 'workspace.selectionEyebrow')}
@@ -211,7 +221,6 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
               {copy(locale, 'workspace.selectionTitle')}
             </h2>
           </div>
-          <MonitorUp aria-hidden="true" />
         </div>
         <div className="project-forms">
           <label>
@@ -323,292 +332,320 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
           </p>
         )}
       </section>
-      {selectedProject && !model.projectError && (
-        <WorkspaceLabelsPanel
-          projectId={selectedProject.id}
-          agentType={model.agentType}
-          locale={locale}
-        />
-      )}
-      <section className="runtime-card" aria-labelledby="workspace-status">
-        <div className="runtime-card-heading">
-          <div>
-            <p className="eyebrow">
-              {copy(locale, 'workspace.lifecycleEyebrow')}
-            </p>
-            <h2 id="workspace-status">
-              {copy(locale, 'workspace.statusTitle')}
-            </h2>
+      <div className="workspace-workbench">
+        <section
+          className="runtime-card workspace-status-card"
+          aria-labelledby="workspace-status"
+        >
+          <div className="runtime-card-heading">
+            <div>
+              <p className="eyebrow">
+                {copy(locale, 'workspace.lifecycleEyebrow')}
+              </p>
+              <h2 id="workspace-status">
+                {copy(locale, 'workspace.statusTitle')}
+              </h2>
+            </div>
+            <button
+              aria-label={copy(locale, 'workspace.refresh')}
+              className="icon-button"
+              disabled={
+                model.runtimeView.status === 'loading' ||
+                model.runtimeView.status === 'revalidating'
+              }
+              onClick={() => void model.refresh()}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={18} />
+            </button>
           </div>
-          <StatusBadge
-            tone={model.lifecycleState === 'RUNNING' ? 'good' : 'warning'}
-          >
-            {lifecycleCopy(locale, model.lifecycleState)}
-          </StatusBadge>
-        </div>
-        <p className="workspace-state-line">
-          {lifecycleCode ? (
-            <TechnicalValue value={lifecycleCode} />
-          ) : (
-            <span>{copy(locale, 'workspace.unloaded')}</span>
-          )}
-          {model.workspaceId && <TechnicalValue value={model.workspaceId} />}
-          {model.generation && (
-            <span>
-              {copy(locale, 'workspace.generation')}{' '}
-              <TechnicalValue value={model.generation} />
-            </span>
-          )}
-        </p>
-        {metadata && (
-          <dl
-            className="runtime-details"
-            aria-label={copy(locale, 'workspace.runtimeMetadata')}
-          >
-            <div>
-              <dt>{copy(locale, 'workspace.runtimeStatus')}</dt>
-              <dd>
-                <TechnicalValue value={metadata.state} />
-              </dd>
-            </div>
-            <div>
-              <dt>{copy(locale, 'workspace.processStatus')}</dt>
-              <dd>
-                <TechnicalValue value={metadata.process_state} />
-              </dd>
-            </div>
-            <div>
-              <dt>{copy(locale, 'workspace.generation')}</dt>
-              <dd>
-                <TechnicalValue value={metadata.generation} />
-              </dd>
-            </div>
-            <div>
-              <dt>{copy(locale, 'workspace.reconciliationStatus')}</dt>
-              <dd>
-                <TechnicalValue value={metadata.reconciliation_state} />
-              </dd>
-            </div>
-          </dl>
-        )}
-        {model.runtimeView.status === 'stale' && (
-          <p className="interaction-notice" role="status">
-            {copy(locale, 'workspace.statusStale')}
-          </p>
-        )}
-        {model.runtimeView.status === 'revalidating' && (
-          <p className="loading-panel" role="status">
-            {copy(locale, 'workspace.statusRevalidating')}
-          </p>
-        )}
-        {statusReceivedAt && (
+          <div className="workspace-lifecycle-summary">
+            <StatusBadge
+              tone={
+                model.lifecycleState === 'RUNNING'
+                  ? 'good'
+                  : model.lifecycleState
+                    ? 'warning'
+                    : 'muted'
+              }
+            >
+              {lifecycleCopy(locale, model.lifecycleState)}
+            </StatusBadge>
+            <p>{copy(locale, 'workspace.statusDescription')}</p>
+          </div>
+          <div className="action-row workspace-lifecycle-actions">
+            <button
+              className="primary-button"
+              disabled={!model.canStart || busy}
+              onClick={() => void model.start()}
+              type="button"
+            >
+              {copy(locale, 'workspace.start')}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={!model.canStop || busy}
+              onClick={model.requestStop}
+              type="button"
+            >
+              {copy(locale, 'workspace.stop')}
+            </button>
+          </div>
           <p className="workspace-state-line">
-            <span>{copy(locale, 'workspace.lastReceived')}</span>
-            <time dateTime={statusReceivedAt.toISOString()}>
-              {new Intl.DateTimeFormat(locale, {
-                dateStyle: 'medium',
-                timeStyle: 'medium',
-              }).format(statusReceivedAt)}
-            </time>
-          </p>
-        )}
-        <button
-          aria-label={copy(locale, 'workspace.refresh')}
-          className="icon-button"
-          disabled={
-            model.runtimeView.status === 'loading' ||
-            model.runtimeView.status === 'revalidating'
-          }
-          onClick={() => void model.refresh()}
-          type="button"
-        >
-          <RefreshCw aria-hidden="true" size={18} />
-        </button>
-        {model.notice && (
-          <p className="workspace-notice" role="status">
-            {copy(locale, NOTICE_COPY[model.notice])}
-          </p>
-        )}
-        {model.error && model.lookup !== 'error' && (
-          <p className="error-panel" role="alert">
-            <LocalizedApiError
-              error={model.error}
-              locale={locale}
-              role="presentation"
-            />
-          </p>
-        )}
-        {model.runtimeView.status === 'error' && (
-          <p className="error-panel" role="alert">
-            <LocalizedApiError
-              error={model.runtimeView.error}
-              locale={locale}
-              role="presentation"
-            />
-          </p>
-        )}
-      </section>
-      <section className="runtime-card" aria-labelledby="workspace-terminal">
-        <div className="runtime-card-heading">
-          <div>
-            <p className="eyebrow">
-              {copy(locale, 'workspace.terminalEyebrow')}
-            </p>
-            <h2 id="workspace-terminal">
-              {copy(locale, 'workspace.terminalTitle')}
-            </h2>
-          </div>
-          <StatusBadge tone={attachmentTone}>
-            {attachmentStatusCopy}
-          </StatusBadge>
-        </div>
-        <p className="workspace-connection-state" role="status">
-          {copy(locale, 'workspace.connectionStatus')}
-          {copy(locale, 'workspace.technicalSeparator')}
-          {attachmentStatusCopy}
-          {model.attachment.reason && (
-            <>
-              {' '}
-              <TechnicalValue value={model.attachment.reason} />
-            </>
-          )}
-        </p>
-        <div
-          className="workspace-terminal-frame"
-          ref={model.setTerminalViewport}
-        >
-          <div
-            aria-label={copy(locale, 'workspace.terminalTitle')}
-            aria-live="off"
-            className="workspace-terminal-surface"
-            ref={model.setTerminalSurface}
-            role="log"
-          />
-          {attachmentStatus !== 'CONNECTED' && (
-            <p className="workspace-terminal-placeholder">
-              {attachmentStatus === 'UNAVAILABLE'
-                ? copy(locale, 'workspace.providerUnavailable')
-                : copy(locale, 'workspace.terminalPlaceholder')}
-            </p>
-          )}
-        </div>
-        {model.attachment.freshRedrawTruncated && (
-          <p className="interaction-notice" role="status">
-            {copy(locale, 'workspace.redrawTruncated')}
-          </p>
-        )}
-        <p className="sensitive-output workspace-sensitive-warning">
-          <ShieldAlert aria-hidden="true" />
-          {copy(locale, 'workspace.storageWarning')}
-        </p>
-        <div className="action-row">
-          <button
-            className="primary-button"
-            disabled={!model.canStart || busy}
-            onClick={() => void model.start()}
-            type="button"
-          >
-            {copy(locale, 'workspace.start')}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={!model.canStop || busy}
-            onClick={model.requestStop}
-            type="button"
-          >
-            {copy(locale, 'workspace.stop')}
-          </button>
-        </div>
-        <div className="action-row">
-          <button
-            className="secondary-button"
-            disabled={!model.canConnect || busy}
-            onClick={() => void model.connect()}
-            type="button"
-          >
-            {copy(locale, 'workspace.connect')}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={!model.canReconnect || busy}
-            onClick={() => void model.reconnect()}
-            type="button"
-          >
-            {copy(locale, 'workspace.reconnect')}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={!model.canDetach || busy}
-            onClick={() => void model.detach()}
-            type="button"
-          >
-            {copy(locale, 'workspace.detach')}
-          </button>
-        </div>
-        <form className="workspace-terminal-input" onSubmit={submitInput}>
-          <input
-            aria-label={copy(locale, 'workspace.sendInput')}
-            autoComplete="off"
-            disabled={!model.canInput || busy}
-            onCompositionEnd={() => {
-              composingTerminalInput.current = false
-            }}
-            onCompositionStart={() => {
-              composingTerminalInput.current = true
-            }}
-            onKeyDown={(event) => {
-              if (
-                event.key === 'Enter' &&
-                (composingTerminalInput.current ||
-                  event.nativeEvent.isComposing)
-              ) {
-                event.preventDefault()
-              }
-            }}
-            onPaste={(event) => {
-              const value = event.clipboardData.getData('text')
-              if (/\r|\n/.test(value)) {
-                event.preventDefault()
-                setInputNotice(copy(locale, 'workspace.inputPasteRejected'))
-              }
-            }}
-            placeholder={copy(locale, 'workspace.inputPlaceholder')}
-            ref={terminalInput}
-            spellCheck={false}
-            type="text"
-          />
-          <button
-            className="secondary-button"
-            disabled={!model.canInput || busy}
-            type="submit"
-          >
-            {copy(locale, 'workspace.sendInput')}
-          </button>
-        </form>
-        {inputNotice && (
-          <p className="interaction-notice" role="status">
-            {inputNotice}
-          </p>
-        )}
-        {model.attachment.input !== null && (
-          <p className="workspace-connection-state" role="status">
-            {copy(locale, 'workspace.inputSending')}
-          </p>
-        )}
-        {settledInputNotice && (
-          <p className="interaction-notice" role="status">
-            {settledInputNotice}{' '}
-            {model.attachment.lastInputOutcome?.reasonCode && (
-              <TechnicalValue
-                value={model.attachment.lastInputOutcome.reasonCode}
-              />
+            {lifecycleCode ? (
+              <TechnicalValue value={lifecycleCode} />
+            ) : (
+              <span>{copy(locale, 'workspace.unloaded')}</span>
+            )}
+            {model.workspaceId && <TechnicalValue value={model.workspaceId} />}
+            {model.generation && (
+              <span>
+                {copy(locale, 'workspace.generation')}{' '}
+                <TechnicalValue value={model.generation} />
+              </span>
             )}
           </p>
+          {metadata && (
+            <p className="workspace-state-line workspace-reconciliation">
+              <span>{copy(locale, 'workspace.reconciliationStatus')}</span>
+              <TechnicalValue value={metadata.reconciliation_state} />
+            </p>
+          )}
+          {metadata && (
+            <details className="workspace-metadata">
+              <summary>
+                {copy(locale, 'workspace.runtimeMetadata')}
+                <ChevronDown aria-hidden="true" size={16} />
+              </summary>
+              <dl
+                className="runtime-details"
+                aria-label={copy(locale, 'workspace.runtimeMetadata')}
+              >
+                <div>
+                  <dt>{copy(locale, 'workspace.runtimeStatus')}</dt>
+                  <dd>
+                    <TechnicalValue value={metadata.state} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy(locale, 'workspace.processStatus')}</dt>
+                  <dd>
+                    <TechnicalValue value={metadata.process_state} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy(locale, 'workspace.generation')}</dt>
+                  <dd>
+                    <TechnicalValue value={metadata.generation} />
+                  </dd>
+                </div>
+              </dl>
+            </details>
+          )}
+          {model.runtimeView.status === 'stale' && (
+            <p className="interaction-notice" role="status">
+              {copy(locale, 'workspace.statusStale')}
+            </p>
+          )}
+          {model.runtimeView.status === 'revalidating' && (
+            <p className="loading-panel" role="status">
+              {copy(locale, 'workspace.statusRevalidating')}
+            </p>
+          )}
+          {statusReceivedAt && (
+            <p className="workspace-state-line workspace-status-received">
+              <span>{copy(locale, 'workspace.lastReceived')}</span>
+              <time dateTime={statusReceivedAt.toISOString()}>
+                {new Intl.DateTimeFormat(locale, {
+                  dateStyle: 'medium',
+                  timeStyle: 'medium',
+                }).format(statusReceivedAt)}
+              </time>
+            </p>
+          )}
+          {model.notice && (
+            <p className="workspace-notice" role="status">
+              {copy(locale, NOTICE_COPY[model.notice])}
+            </p>
+          )}
+          {model.error && model.lookup !== 'error' && (
+            <p className="error-panel" role="alert">
+              <LocalizedApiError
+                error={model.error}
+                locale={locale}
+                role="presentation"
+              />
+            </p>
+          )}
+          {model.runtimeView.status === 'error' && (
+            <p className="error-panel" role="alert">
+              <LocalizedApiError
+                error={model.runtimeView.error}
+                locale={locale}
+                role="presentation"
+              />
+            </p>
+          )}
+        </section>
+        <section
+          className="runtime-card workspace-terminal-card"
+          aria-labelledby="workspace-terminal"
+        >
+          <div className="runtime-card-heading">
+            <div>
+              <p className="eyebrow">
+                {copy(locale, 'workspace.terminalEyebrow')}
+              </p>
+              <h2 id="workspace-terminal">
+                {copy(locale, 'workspace.terminalTitle')}
+              </h2>
+            </div>
+            <StatusBadge tone={attachmentTone}>
+              {attachmentStatusCopy}
+            </StatusBadge>
+          </div>
+          <p className="workspace-connection-state" role="status">
+            {copy(locale, 'workspace.connectionStatus')}
+            {copy(locale, 'workspace.technicalSeparator')}
+            {attachmentStatusCopy}
+            {model.attachment.reason && (
+              <>
+                {' '}
+                <TechnicalValue value={model.attachment.reason} />
+              </>
+            )}
+          </p>
+          <div className="action-row workspace-terminal-actions">
+            <button
+              className="secondary-button"
+              disabled={!model.canConnect || busy}
+              onClick={() => void model.connect()}
+              type="button"
+            >
+              {copy(locale, 'workspace.connect')}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={!model.canReconnect || busy}
+              onClick={() => void model.reconnect()}
+              type="button"
+            >
+              {copy(locale, 'workspace.reconnect')}
+            </button>
+            <button
+              className="secondary-button"
+              disabled={!model.canDetach || busy}
+              onClick={() => void model.detach()}
+              type="button"
+            >
+              {copy(locale, 'workspace.detach')}
+            </button>
+          </div>
+          <div
+            className="workspace-terminal-frame"
+            ref={model.setTerminalViewport}
+          >
+            <div
+              aria-label={copy(locale, 'workspace.terminalTitle')}
+              aria-live="off"
+              className="workspace-terminal-surface"
+              ref={model.setTerminalSurface}
+              role="log"
+            />
+            {attachmentStatus !== 'CONNECTED' && (
+              <p className="workspace-terminal-placeholder">
+                <Terminal aria-hidden="true" size={28} />
+                <span>
+                  {attachmentStatus === 'UNAVAILABLE'
+                    ? copy(locale, 'workspace.providerUnavailable')
+                    : copy(locale, 'workspace.terminalPlaceholder')}
+                </span>
+              </p>
+            )}
+          </div>
+          {model.attachment.freshRedrawTruncated && (
+            <p className="interaction-notice" role="status">
+              {copy(locale, 'workspace.redrawTruncated')}
+            </p>
+          )}
+          <form className="workspace-terminal-input" onSubmit={submitInput}>
+            <input
+              aria-label={copy(locale, 'workspace.sendInput')}
+              autoComplete="off"
+              disabled={!model.canInput || busy}
+              onCompositionEnd={() => {
+                composingTerminalInput.current = false
+              }}
+              onCompositionStart={() => {
+                composingTerminalInput.current = true
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  (composingTerminalInput.current ||
+                    event.nativeEvent.isComposing)
+                ) {
+                  event.preventDefault()
+                }
+              }}
+              onPaste={(event) => {
+                const value = event.clipboardData.getData('text')
+                if (/\r|\n/.test(value)) {
+                  event.preventDefault()
+                  setInputNotice(copy(locale, 'workspace.inputPasteRejected'))
+                }
+              }}
+              placeholder={copy(locale, 'workspace.inputPlaceholder')}
+              ref={terminalInput}
+              spellCheck={false}
+              type="text"
+            />
+            <button
+              className="secondary-button"
+              disabled={!model.canInput || busy}
+              type="submit"
+            >
+              {copy(locale, 'workspace.sendInput')}
+            </button>
+          </form>
+          {inputNotice && (
+            <p className="interaction-notice" role="status">
+              {inputNotice}
+            </p>
+          )}
+          {model.attachment.input !== null && (
+            <p className="workspace-connection-state" role="status">
+              {copy(locale, 'workspace.inputSending')}
+            </p>
+          )}
+          {settledInputNotice && (
+            <p className="interaction-notice" role="status">
+              {settledInputNotice}{' '}
+              {model.attachment.lastInputOutcome?.reasonCode && (
+                <TechnicalValue
+                  value={model.attachment.lastInputOutcome.reasonCode}
+                />
+              )}
+            </p>
+          )}
+          <p className="workspace-connection-state">
+            {copy(locale, 'workspace.viewportResize')}
+          </p>
+          <p className="sensitive-output workspace-sensitive-warning">
+            <ShieldAlert aria-hidden="true" />
+            <span>{copy(locale, 'workspace.storageWarning')}</span>
+          </p>
+        </section>
+        {selectedProject && !model.projectError && (
+          <div className="workspace-labels">
+            <WorkspaceLabelsPanel
+              projectId={selectedProject.id}
+              agentType={model.agentType}
+              locale={locale}
+            />
+          </div>
         )}
-        <p className="workspace-connection-state">
-          {copy(locale, 'workspace.viewportResize')}
-        </p>
-      </section>
+      </div>
       <dialog
         aria-describedby="stop-description"
         aria-labelledby="stop-title"
@@ -622,12 +659,15 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
         }}
       >
         <div className="runtime-card">
+          <span className="workspace-stop-icon">
+            <AlertTriangle aria-hidden="true" size={24} />
+          </span>
           <h2 id="stop-title">{copy(locale, 'workspace.confirmTitle')}</h2>
           <p id="stop-description">
             {copy(locale, 'workspace.confirmDescription')}
           </p>
           {model.stopTarget && (
-            <p>
+            <p className="workspace-stop-target">
               {copy(locale, 'workspace.workspaceId')}
               {copy(locale, 'workspace.technicalSeparator')}
               <TechnicalValue value={model.stopTarget.workspaceId} />
@@ -660,6 +700,6 @@ export function WorkspacePage({ model }: { model: WorkspacePageModel }) {
           </div>
         </div>
       </dialog>
-    </>
+    </div>
   )
 }

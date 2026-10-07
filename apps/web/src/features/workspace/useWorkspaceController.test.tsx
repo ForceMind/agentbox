@@ -176,6 +176,39 @@ function fixture(initial = 'STARTING') {
   return { rows, fetcher }
 }
 
+function holdStopRequests(
+  fetcher: ReturnType<typeof fixture>['fetcher'],
+  { settleOnAbort = true } = {},
+) {
+  const original = fetcher.getMockImplementation()!
+  const requests: {
+    signal: AbortSignal
+    respond: (response: Response) => void
+    complete: () => Promise<void>
+  }[] = []
+  fetcher.mockImplementation((input, init) => {
+    if (!input.toString().endsWith('/stop')) return original(input, init)
+    const signal = init?.signal
+    if (!signal) throw new Error('The exact Stop must carry an AbortSignal')
+    return new Promise<Response>((resolve, reject) => {
+      requests.push({
+        signal,
+        respond: resolve,
+        complete: async () => resolve(await original(input, init)),
+      })
+      if (settleOnAbort) {
+        signal.addEventListener(
+          'abort',
+          () =>
+            reject(new DOMException('Synthetic fetch aborted', 'AbortError')),
+          { once: true },
+        )
+      }
+    })
+  })
+  return requests
+}
+
 function attachmentSnapshot(
   overrides: Partial<WAWBrowserControllerSnapshot> = {},
 ): WAWBrowserControllerSnapshot {
@@ -610,6 +643,378 @@ describe('Workspace metadata controller', () => {
       ),
     ).toBe(false)
   })
+
+  it('preserves the first exact Stop while confirmation is invoked twice before React commits', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const original = fetcher.getMockImplementation()!
+    const stopSignals: AbortSignal[] = []
+    let releaseResponse!: (response: Response) => void
+    fetcher.mockImplementation((input, init) => {
+      if (!input.toString().endsWith('/stop')) return original(input, init)
+      const signal = init?.signal
+      if (!signal) throw new Error('The exact Stop must carry an AbortSignal')
+      stopSignals.push(signal)
+      return new Promise<Response>((resolve, reject) => {
+        releaseResponse = resolve
+        signal.addEventListener(
+          'abort',
+          () =>
+            reject(new DOMException('Synthetic fetch aborted', 'AbortError')),
+          { once: true },
+        )
+      })
+    })
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const confirm = result.current.confirmStop
+    let stopping!: Promise<void>
+    await act(async () => {
+      // Both invocations use the same committed handler, before pending renders.
+      stopping = confirm()
+      await confirm()
+    })
+    const beforeReceipt = {
+      stopRequests: fetcher.mock.calls.filter(([url]) =>
+        url.toString().endsWith('/stop'),
+      ).length,
+      firstSignalAborted: stopSignals[0]?.aborted,
+      target: result.current.stopTarget
+        ? {
+            workspaceId: result.current.stopTarget.workspaceId,
+            generation: result.current.stopTarget.generation,
+          }
+        : null,
+      pending: result.current.pending,
+      errorCode: result.current.error?.code ?? null,
+    }
+    // Always settle the held transport before asserting, including the RED case.
+    await act(async () => {
+      releaseResponse(
+        await original(`/api/v1/workspaces/${workspaceId}/stop`, {
+          method: 'POST',
+          body: JSON.stringify({ generation: '7' }),
+        }),
+      )
+      await stopping
+    })
+    expect(beforeReceipt).toEqual({
+      stopRequests: 1,
+      firstSignalAborted: false,
+      target: { workspaceId, generation: '7' },
+      pending: 'stop',
+      errorCode: null,
+    })
+    expect(result.current.notice).toBe('STOP_CONFIRMED')
+  })
+
+  it('preserves the pending exact target across repeated request and confirm events after React commits', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const requests = holdStopRequests(fetcher)
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const target = result.current.stopTarget
+    const requestAgain = result.current.requestStop
+    let stopping!: Promise<void>
+    act(() => {
+      stopping = result.current.confirmStop()
+    })
+    await waitFor(() => expect(result.current.pending).toBe('stop'))
+    await act(async () => {
+      requestAgain()
+      await result.current.confirmStop()
+    })
+    const beforeReceipt = {
+      requests: requests.length,
+      aborted: requests[0].signal.aborted,
+      target: result.current.stopTarget,
+      pending: result.current.pending,
+      error: result.current.error,
+    }
+    await act(async () => {
+      await requests[0].complete()
+      await stopping
+    })
+    expect(beforeReceipt).toEqual({
+      requests: 1,
+      aborted: false,
+      target,
+      pending: 'stop',
+      error: null,
+    })
+    expect(beforeReceipt.target).toBe(target)
+    expect(result.current.notice).toBe('STOP_CONFIRMED')
+  })
+
+  it.each([true, false])(
+    'owns repeated attached Stop confirmation while requiring Detach proof (%s)',
+    async (detachConfirmed) => {
+      const { fetcher } = fixture('RUNNING')
+      const seam = attachmentSeam()
+      const stop = vi.mocked(seam.controller.stop)
+      const originalStop = stop.getMockImplementation()!
+      let complete!: () => Promise<void>
+      stop.mockImplementation(
+        (request) =>
+          new Promise<WAWBrowserStopOutcome>((resolve) => {
+            complete = async () => {
+              const outcome = await originalStop(request)
+              resolve({
+                ...outcome,
+                detachConfirmed,
+                detach: detachConfirmed ? outcome.detach : null,
+              })
+            }
+          }),
+      )
+      const { result } = renderHook(
+        () =>
+          useWorkspaceController({
+            projectId,
+            agentType: 'codex',
+            attachmentDependencies: seam.dependencies,
+          }),
+        { wrapper },
+      )
+      await waitFor(() => expect(result.current.canStop).toBe(true))
+      act(() => {
+        result.current.setTerminalViewport(document.createElement('div'))
+        result.current.setTerminalSurface(document.createElement('div'))
+      })
+      await waitFor(() => expect(result.current.canConnect).toBe(true))
+      await act(async () => result.current.connect())
+      act(() => result.current.requestStop())
+      const target = result.current.stopTarget
+      const confirm = result.current.confirmStop
+      let stopping!: Promise<void>
+      await act(async () => {
+        stopping = confirm()
+        await confirm()
+      })
+      await act(async () => result.current.confirmStop())
+      const beforeReceipt = {
+        calls: stop.mock.calls.length,
+        aborted: stop.mock.calls[0][0].context.signal.aborted,
+        target: result.current.stopTarget,
+        error: result.current.error,
+      }
+      await act(async () => {
+        await complete()
+        await stopping
+      })
+      expect(beforeReceipt).toEqual({
+        calls: 1,
+        aborted: false,
+        target,
+        error: null,
+      })
+      expect(result.current.stopTarget).toBeNull()
+      expect(result.current.notice).toBe(
+        detachConfirmed ? 'STOP_CONFIRMED' : null,
+      )
+      expect(result.current.error?.code ?? null).toBe(
+        detachConfirmed ? null : 'DETACH_FAILED',
+      )
+      expect(
+        fetcher.mock.calls.some(([, init]) => init?.method === 'POST'),
+      ).toBe(false)
+    },
+  )
+
+  it('rejects a cancelled confirmation before React commits without clearing a fresh target', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const cancelledConfirm = result.current.confirmStop
+    const cancelledDismiss = result.current.cancelStop
+    await act(async () => {
+      result.current.cancelStop()
+      await cancelledConfirm()
+    })
+    expect(result.current.stopTarget).toBeNull()
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+
+    act(() => result.current.requestStop())
+    const freshTarget = result.current.stopTarget
+    await act(async () => {
+      cancelledDismiss()
+      await cancelledConfirm()
+    })
+    expect(result.current.stopTarget).toBe(freshTarget)
+    expect(result.current.error).toBeNull()
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+      false,
+    )
+  })
+
+  it('releases a rejected Stop only for a fresh explicit confirmation and preserves its error against stale handlers', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const requests = holdStopRequests(fetcher)
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const rejectedConfirm = result.current.confirmStop
+    let rejectedStop!: Promise<void>
+    act(() => {
+      rejectedStop = rejectedConfirm()
+    })
+    await act(async () => {
+      requests[0].respond(json({ error: { code: 'WAW_ACTION_FAILED' } }, 503))
+      await rejectedStop
+    })
+    expect(result.current.pending).toBeNull()
+    expect(result.current.stopTarget).toBeNull()
+    expect(result.current.error?.code).toBe('WAW_ACTION_FAILED')
+    await act(async () => rejectedConfirm())
+    expect(requests).toHaveLength(1)
+    expect(result.current.error?.code).toBe('WAW_ACTION_FAILED')
+
+    act(() => result.current.requestStop())
+    const freshTarget = result.current.stopTarget
+    await act(async () => rejectedConfirm())
+    expect(result.current.stopTarget).toBe(freshTarget)
+    expect(result.current.error?.code).toBe('WAW_ACTION_FAILED')
+    expect(requests).toHaveLength(1)
+    let retrying!: Promise<void>
+    act(() => {
+      retrying = result.current.confirmStop()
+    })
+    await act(async () => {
+      await requests[1].complete()
+      await retrying
+    })
+    expect(requests).toHaveLength(2)
+    expect(result.current.notice).toBe('STOP_CONFIRMED')
+    expect(result.current.error).toBeNull()
+  })
+
+  it('keeps a new Session Stop owned when the old scope finishes late', async () => {
+    const { fetcher } = fixture('RUNNING')
+    // Ignore abort completion so the old finally runs while a new owner is active.
+    const requests = holdStopRequests(fetcher, { settleOnAbort: false })
+    let currentAuth = auth
+    function sessionWrapper({ children }: { children: ReactNode }) {
+      return (
+        <AuthContext.Provider
+          value={{
+            api: client,
+            auth: currentAuth,
+            status: 'authenticated',
+            login: async () => undefined,
+            logout: async () => undefined,
+            refresh: async () => currentAuth,
+          }}
+        >
+          {children}
+        </AuthContext.Provider>
+      )
+    }
+    const { result, rerender } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper: sessionWrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const oldConfirm = result.current.confirmStop
+    let oldStop!: Promise<void>
+    act(() => {
+      oldStop = oldConfirm()
+    })
+    currentAuth = {
+      ...auth,
+      session: { ...auth.session, id: 'ses_new' },
+      csrf_token: 'csrf-new-fixture',
+    }
+    rerender()
+    expect(requests[0].signal.aborted).toBe(true)
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const freshTarget = result.current.stopTarget
+    const freshConfirm = result.current.confirmStop
+    let freshStop!: Promise<void>
+    act(() => {
+      freshStop = freshConfirm()
+    })
+    await act(async () => {
+      await requests[0].complete()
+      await oldStop
+      await oldConfirm()
+      await freshConfirm()
+    })
+    const beforeReceipt = {
+      requests: requests.length,
+      aborted: requests[1].signal.aborted,
+      target: result.current.stopTarget,
+      pending: result.current.pending,
+      notice: result.current.notice,
+      error: result.current.error,
+    }
+    await act(async () => {
+      await requests[1].complete()
+      await freshStop
+    })
+    expect(beforeReceipt).toEqual({
+      requests: 2,
+      aborted: false,
+      target: freshTarget,
+      pending: 'stop',
+      notice: null,
+      error: null,
+    })
+    expect(beforeReceipt.target).toBe(freshTarget)
+    expect(result.current.notice).toBe('STOP_CONFIRMED')
+  })
+
+  it.each(['selection', 'route-unmount', 'offline', 'pagehide'] as const)(
+    'still aborts an owned Stop on %s revocation',
+    async (revocation) => {
+      const { fetcher } = fixture('RUNNING')
+      const requests = holdStopRequests(fetcher)
+      const { result, unmount } = renderHook(
+        () => useWorkspaceController({ projectId, agentType: 'codex' }),
+        { wrapper },
+      )
+      await waitFor(() => expect(result.current.canStop).toBe(true))
+      act(() => result.current.requestStop())
+      const confirm = result.current.confirmStop
+      let stopping!: Promise<void>
+      act(() => {
+        stopping = confirm()
+      })
+      await act(async () => {
+        if (revocation === 'selection')
+          result.current.selectProject(otherProject)
+        else if (revocation === 'route-unmount') unmount()
+        else window.dispatchEvent(new Event(revocation))
+        await stopping
+        await confirm()
+      })
+      expect(requests).toHaveLength(1)
+      expect(requests[0].signal.aborted).toBe(true)
+      if (revocation !== 'route-unmount') {
+        expect(result.current.stopTarget).toBeNull()
+        expect(result.current.notice).toBeNull()
+        expect(result.current.error).toBeNull()
+        expect(result.current.pending).toBeNull()
+      }
+    },
+  )
 
   it('revokes an old action notice permanently when the page observation is invalidated', async () => {
     fixture()
