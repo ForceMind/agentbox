@@ -1,7 +1,7 @@
 # Kebui Brand Direction
 
-Status: strategic product and brand direction  
-Date: 2026-10-07  
+Status: strategic product and brand direction\
+Date: 2026-10-07\
 Repository: `ForceMind/agentbox`
 
 ## 1. Decision
@@ -148,19 +148,19 @@ surface.
 
 Kebui should make four promises:
 
-1. **Conversation first**  
+1. **Conversation first**\
    The user communicates intent in natural language instead of manually
    navigating between agent consoles.
 
-2. **Agent neutral**  
+2. **Agent neutral**\
    Kebui must not be defined by one model vendor. Claude, Codex and future
    agents are interchangeable execution capabilities where contracts allow it.
 
-3. **Persistent work**  
+3. **Persistent work**\
    Work continues as tasks and sessions rather than disappearing with a single
    request/response.
 
-4. **User control**  
+4. **User control**\
    Open source, self-hostability, explicit permissions and typed execution
    boundaries are part of the product identity, not implementation trivia.
 

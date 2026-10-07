@@ -219,7 +219,7 @@ K5 才允许策略选择，并展示选中者、原因与覆盖入口。
 | 现有 Workspace | 连接、CLI、detach/reconnect、exact Stop | U2 呈现已合并；真实目标资格另验 |
 | Changes | 路径树、统一/原文、读取前/失效/过大/错误 | 已有能力的设计完善 |
 | Codex/Claude 管理 | 安装、登录、能力、Remote、Session 分域 | U2 / PR158 已合并；不外推真实账户资格 |
-| Doctor、Logs、Settings | 诊断层次、只读策略、规划日志的真实状态 | U2 / PR160 候选；Logs 读取未实现，Settings 不新增写入 |
+| Doctor、Logs、Settings | 诊断层次、只读策略、规划日志的真实状态 | U2 / PR160 已合并；Logs 读取未实现，Settings 不新增写入 |
 | 404/无权限/离线 | 返回路径、重试边界、无敏感残留 | 全局贯穿 |
 | 对话列表/空态 | 新建、项目归属、未读与待回复 | K2，结构化合同后 |
 | 对话工作台 | 上下文、输入、阶段、结果检查 | K2–K3 |

@@ -1,4 +1,4 @@
-import { Activity, Check, X } from 'lucide-react'
+import { Activity, Check, Info, ShieldCheck, X } from 'lucide-react'
 
 import { LocalizedApiError, TechnicalValue } from '../components/i18n'
 import { SafeTechnicalValue } from '../components/i18n/SafeTechnicalValue'
@@ -20,6 +20,8 @@ import type {
   CapabilityState,
   RemoteState,
 } from '../lib/contracts'
+
+import './AdminPages.css'
 
 type DoctorMessageKey = keyof DoctorMessageParameters
 type DoctorStaticMessageKey = Exclude<DoctorMessageKey, 'doctor.projectsCount'>
@@ -125,19 +127,22 @@ export function DoctorPage({ locale = currentLocale() }: { locale?: Locale }) {
   usePageTitle(message('doctor.title'))
 
   return (
-    <>
+    <div className="doctor-page">
       <PageHeader
         action={
           doctor.status === 'loaded' ? (
-            <StatusBadge
-              tone={
-                doctor.response.data.status === 'ready' ? 'good' : 'warning'
-              }
-            >
-              {doctor.response.data.status === 'ready'
-                ? message('doctor.ready')
-                : message('doctor.notReady')}
-            </StatusBadge>
+            <div className="admin-header-state">
+              <span>{message('doctor.controlPlaneLabel')}</span>
+              <StatusBadge
+                tone={
+                  doctor.response.data.status === 'ready' ? 'good' : 'warning'
+                }
+              >
+                {doctor.response.data.status === 'ready'
+                  ? message('doctor.ready')
+                  : message('doctor.notReady')}
+              </StatusBadge>
+            </div>
           ) : undefined
         }
         description={message('doctor.description')}
@@ -165,262 +170,304 @@ export function DoctorPage({ locale = currentLocale() }: { locale?: Locale }) {
       )}
       {doctor.status === 'loaded' && (
         <>
-          <section
-            className="check-list"
-            aria-label={message('doctor.checksAria')}
-          >
-            {Object.entries(doctor.response.data.checks).map(([key, value]) => (
-              <article key={key}>
-                <span
-                  className={value ? 'check-icon good' : 'check-icon bad'}
-                  aria-hidden="true"
+          <div className="doctor-foundation-grid">
+            <section
+              className="check-list"
+              aria-label={message('doctor.checksAria')}
+            >
+              <div className="admin-section-heading">
+                <span className="admin-section-icon" aria-hidden="true">
+                  <ShieldCheck size={21} strokeWidth={1.8} />
+                </span>
+                <div>
+                  <h2>{message('doctor.checksAria')}</h2>
+                  <p>{message('doctor.controlPlaneDescription')}</p>
+                </div>
+              </div>
+              {Object.entries(doctor.response.data.checks).map(
+                ([key, value]) => (
+                  <article key={key}>
+                    <span
+                      className={value ? 'check-icon good' : 'check-icon bad'}
+                      aria-hidden="true"
+                    >
+                      {value ? <Check size={17} /> : <X size={17} />}
+                    </span>
+                    <span>
+                      {message(
+                        CHECK_MESSAGE_KEYS[key as keyof DoctorData['checks']],
+                      )}
+                    </span>
+                    <StatusBadge tone={value ? 'good' : 'warning'}>
+                      {value
+                        ? message('doctor.ready')
+                        : message('doctor.notReady')}
+                    </StatusBadge>
+                  </article>
+                ),
+              )}
+            </section>
+            <aside
+              className="doctor-reading-note"
+              aria-labelledby="doctor-reading-title"
+            >
+              <span className="admin-section-icon" aria-hidden="true">
+                <Info size={21} strokeWidth={1.8} />
+              </span>
+              <h2 id="doctor-reading-title">
+                {message('doctor.readingTitle')}
+              </h2>
+              <p>{message('doctor.readingDescription')}</p>
+            </aside>
+          </div>
+          <div className="admin-group-heading">
+            <h2>{message('doctor.runtimeTitle')}</h2>
+            <p>{message('doctor.runtimeDescription')}</p>
+          </div>
+          <div className="doctor-runtime-grid">
+            <section
+              className="runtime-card doctor-runtime"
+              aria-labelledby="doctor-codex"
+            >
+              <div className="runtime-card-heading">
+                <div>
+                  <p className="eyebrow">
+                    {message('doctor.runtimeDiagnostic')}
+                  </p>
+                  <h2 id="doctor-codex">{message('doctor.codexTitle')}</h2>
+                </div>
+                <StatusBadge
+                  tone={
+                    doctor.response.data.codex.installed ? 'good' : 'warning'
+                  }
                 >
-                  {value ? <Check size={17} /> : <X size={17} />}
-                </span>
-                <span>
-                  {message(
-                    CHECK_MESSAGE_KEYS[key as keyof DoctorData['checks']],
-                  )}
-                </span>
-                <StatusBadge tone={value ? 'good' : 'warning'}>
-                  {value ? message('doctor.ready') : message('doctor.notReady')}
-                </StatusBadge>
-              </article>
-            ))}
-          </section>
-          <section
-            className="runtime-card doctor-runtime"
-            aria-labelledby="doctor-codex"
-          >
-            <div className="runtime-card-heading">
-              <div>
-                <p className="eyebrow">{message('doctor.runtimeDiagnostic')}</p>
-                <h2 id="doctor-codex">{message('doctor.codexTitle')}</h2>
-              </div>
-              <StatusBadge
-                tone={doctor.response.data.codex.installed ? 'good' : 'warning'}
-              >
-                {doctor.response.data.codex.installed === true
-                  ? message('doctor.installed')
-                  : doctor.response.data.codex.installed === false
-                    ? message('doctor.notInstalled')
-                    : message('doctor.unknown')}
-              </StatusBadge>
-            </div>
-            <dl className="runtime-details">
-              <div>
-                <dt>{message('doctor.version')}</dt>
-                <dd>
-                  <TechnicalOrUnknown
-                    unknown={message('doctor.unknown')}
-                    value={doctor.response.data.codex.version}
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.installation')}</dt>
-                <dd>
-                  <TechnicalValue
-                    value={doctor.response.data.codex.installation_type}
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.remoteCapability')}</dt>
-                <dd>
-                  {message(
-                    CAPABILITY_MESSAGE_KEYS[
-                      doctor.response.data.codex.remote_control
-                    ],
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.remoteState')}</dt>
-                <dd>
-                  {message(
-                    REMOTE_MESSAGE_KEYS[
-                      doctor.response.data.codex.remote_state
-                    ],
-                  )}
-                </dd>
-              </div>
-            </dl>
-            <DiagnosticFindings
-              findings={doctor.response.data.codex.findings}
-              locale={locale}
-            />
-          </section>
-          <section
-            className="runtime-card doctor-runtime"
-            aria-labelledby="doctor-claude"
-          >
-            <div className="runtime-card-heading">
-              <div>
-                <p className="eyebrow">{message('doctor.runtimeDiagnostic')}</p>
-                <h2 id="doctor-claude">{message('doctor.claudeTitle')}</h2>
-              </div>
-              <StatusBadge
-                tone={
-                  doctor.response.data.claude.installed &&
-                  doctor.response.data.claude.tmux_installed
-                    ? 'good'
-                    : 'warning'
-                }
-              >
-                {doctor.response.data.claude.installed === true &&
-                doctor.response.data.claude.tmux_installed === true
-                  ? message('doctor.available')
-                  : message('doctor.unknown')}
-              </StatusBadge>
-            </div>
-            <dl className="runtime-details">
-              <div>
-                <dt>{message('doctor.claudeVersion')}</dt>
-                <dd>
-                  <TechnicalOrUnknown
-                    unknown={message('doctor.unknown')}
-                    value={doctor.response.data.claude.version}
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.authentication')}</dt>
-                <dd>
-                  {message(
-                    AUTHENTICATION_MESSAGE_KEYS[
-                      doctor.response.data.claude.authentication
-                    ],
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.remoteCapability')}</dt>
-                <dd>
-                  {message(
-                    CAPABILITY_MESSAGE_KEYS[
-                      doctor.response.data.claude.remote_control
-                    ],
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.tmuxVersion')}</dt>
-                <dd>
-                  <TechnicalOrUnknown
-                    unknown={message('doctor.unknown')}
-                    value={doctor.response.data.claude.tmux_version}
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.managedSessions')}</dt>
-                <dd>
-                  {formatNumber(
-                    locale,
-                    doctor.response.data.claude.managed_sessions,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.unmanagedSessions')}</dt>
-                <dd>
-                  {formatNumber(
-                    locale,
-                    doctor.response.data.claude.unmanaged_sessions,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.workspaceWarnings')}</dt>
-                <dd>
-                  {formatNumber(
-                    locale,
-                    doctor.response.data.claude.workspace_interaction_warnings,
-                  )}
-                </dd>
-              </div>
-            </dl>
-            <DiagnosticFindings
-              findings={doctor.response.data.claude.findings}
-              locale={locale}
-            />
-          </section>
-          <section
-            className="runtime-card doctor-runtime"
-            aria-labelledby="doctor-projects"
-          >
-            <div className="runtime-card-heading">
-              <div>
-                <p className="eyebrow">
-                  {message('doctor.workspaceDiagnostic')}
-                </p>
-                <h2 id="doctor-projects">{message('doctor.projectsTitle')}</h2>
-              </div>
-              <StatusBadge
-                tone={
-                  doctor.response.data.projects.github_cli_installed
-                    ? 'good'
-                    : 'warning'
-                }
-              >
-                {catalog['doctor.projectsCount']({
-                  count: formatNumber(
-                    locale,
-                    doctor.response.data.projects.project_count,
-                  ),
-                })}
-              </StatusBadge>
-            </div>
-            <dl className="runtime-details">
-              <div>
-                <dt>{message('doctor.projectRoot')}</dt>
-                <dd>
-                  <SafeTechnicalValue
-                    fallback={message('doctor.unknown')}
-                    value={doctor.response.data.projects.project_root}
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.git')}</dt>
-                <dd>
-                  <TechnicalOrUnknown
-                    unknown={message('doctor.unknown')}
-                    value={doctor.response.data.projects.git_version}
-                  />
-                </dd>
-              </div>
-              <div>
-                <dt>{message('doctor.githubCli')}</dt>
-                <dd>
-                  {doctor.response.data.projects.github_cli_installed === true
+                  {doctor.response.data.codex.installed === true
                     ? message('doctor.installed')
-                    : doctor.response.data.projects.github_cli_installed ===
-                        false
+                    : doctor.response.data.codex.installed === false
                       ? message('doctor.notInstalled')
                       : message('doctor.unknown')}
-                </dd>
+                </StatusBadge>
               </div>
-              <div>
-                <dt>{message('doctor.githubAuthentication')}</dt>
-                <dd>
-                  {message(
-                    AUTHENTICATION_MESSAGE_KEYS[
-                      doctor.response.data.projects.github_authentication
-                    ],
-                  )}
-                </dd>
+              <dl className="runtime-details">
+                <div>
+                  <dt>{message('doctor.version')}</dt>
+                  <dd>
+                    <TechnicalOrUnknown
+                      unknown={message('doctor.unknown')}
+                      value={doctor.response.data.codex.version}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.installation')}</dt>
+                  <dd>
+                    <TechnicalValue
+                      value={doctor.response.data.codex.installation_type}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.remoteCapability')}</dt>
+                  <dd>
+                    {message(
+                      CAPABILITY_MESSAGE_KEYS[
+                        doctor.response.data.codex.remote_control
+                      ],
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.remoteState')}</dt>
+                  <dd>
+                    {message(
+                      REMOTE_MESSAGE_KEYS[
+                        doctor.response.data.codex.remote_state
+                      ],
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <DiagnosticFindings
+                findings={doctor.response.data.codex.findings}
+                locale={locale}
+              />
+            </section>
+            <section
+              className="runtime-card doctor-runtime"
+              aria-labelledby="doctor-claude"
+            >
+              <div className="runtime-card-heading">
+                <div>
+                  <p className="eyebrow">
+                    {message('doctor.runtimeDiagnostic')}
+                  </p>
+                  <h2 id="doctor-claude">{message('doctor.claudeTitle')}</h2>
+                </div>
+                <StatusBadge
+                  tone={
+                    doctor.response.data.claude.installed &&
+                    doctor.response.data.claude.tmux_installed
+                      ? 'good'
+                      : 'warning'
+                  }
+                >
+                  {doctor.response.data.claude.installed === true &&
+                  doctor.response.data.claude.tmux_installed === true
+                    ? message('doctor.available')
+                    : message('doctor.unknown')}
+                </StatusBadge>
               </div>
-            </dl>
-            <DiagnosticFindings
-              findings={doctor.response.data.projects.findings}
-              locale={locale}
-            />
-          </section>
+              <dl className="runtime-details">
+                <div>
+                  <dt>{message('doctor.claudeVersion')}</dt>
+                  <dd>
+                    <TechnicalOrUnknown
+                      unknown={message('doctor.unknown')}
+                      value={doctor.response.data.claude.version}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.authentication')}</dt>
+                  <dd>
+                    {message(
+                      AUTHENTICATION_MESSAGE_KEYS[
+                        doctor.response.data.claude.authentication
+                      ],
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.remoteCapability')}</dt>
+                  <dd>
+                    {message(
+                      CAPABILITY_MESSAGE_KEYS[
+                        doctor.response.data.claude.remote_control
+                      ],
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.tmuxVersion')}</dt>
+                  <dd>
+                    <TechnicalOrUnknown
+                      unknown={message('doctor.unknown')}
+                      value={doctor.response.data.claude.tmux_version}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.managedSessions')}</dt>
+                  <dd>
+                    {formatNumber(
+                      locale,
+                      doctor.response.data.claude.managed_sessions,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.unmanagedSessions')}</dt>
+                  <dd>
+                    {formatNumber(
+                      locale,
+                      doctor.response.data.claude.unmanaged_sessions,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.workspaceWarnings')}</dt>
+                  <dd>
+                    {formatNumber(
+                      locale,
+                      doctor.response.data.claude
+                        .workspace_interaction_warnings,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <DiagnosticFindings
+                findings={doctor.response.data.claude.findings}
+                locale={locale}
+              />
+            </section>
+            <section
+              className="runtime-card doctor-runtime doctor-projects-card"
+              aria-labelledby="doctor-projects"
+            >
+              <div className="runtime-card-heading">
+                <div>
+                  <p className="eyebrow">
+                    {message('doctor.workspaceDiagnostic')}
+                  </p>
+                  <h2 id="doctor-projects">
+                    {message('doctor.projectsTitle')}
+                  </h2>
+                </div>
+                <StatusBadge
+                  tone={
+                    doctor.response.data.projects.github_cli_installed
+                      ? 'good'
+                      : 'warning'
+                  }
+                >
+                  {catalog['doctor.projectsCount']({
+                    count: formatNumber(
+                      locale,
+                      doctor.response.data.projects.project_count,
+                    ),
+                  })}
+                </StatusBadge>
+              </div>
+              <dl className="runtime-details">
+                <div>
+                  <dt>{message('doctor.projectRoot')}</dt>
+                  <dd>
+                    <SafeTechnicalValue
+                      fallback={message('doctor.unknown')}
+                      value={doctor.response.data.projects.project_root}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.git')}</dt>
+                  <dd>
+                    <TechnicalOrUnknown
+                      unknown={message('doctor.unknown')}
+                      value={doctor.response.data.projects.git_version}
+                    />
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.githubCli')}</dt>
+                  <dd>
+                    {doctor.response.data.projects.github_cli_installed === true
+                      ? message('doctor.installed')
+                      : doctor.response.data.projects.github_cli_installed ===
+                          false
+                        ? message('doctor.notInstalled')
+                        : message('doctor.unknown')}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{message('doctor.githubAuthentication')}</dt>
+                  <dd>
+                    {message(
+                      AUTHENTICATION_MESSAGE_KEYS[
+                        doctor.response.data.projects.github_authentication
+                      ],
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <DiagnosticFindings
+                findings={doctor.response.data.projects.findings}
+                locale={locale}
+              />
+            </section>
+          </div>
           <p className="scope-note">{message('doctor.scopeNote')}</p>
         </>
       )}
-    </>
+    </div>
   )
 }

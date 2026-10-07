@@ -1,5 +1,68 @@
 # Current Authorized Action
 
+## 2026-10-07 PR160 闭环与 Kebui 计划合并协调（15:20 UTC）
+
+[PR160](https://github.com/ForceMind/agentbox/pull/160) 已于 14:55:47 UTC 正常合并为
+main `d9ab2f695b175d4779471a8e152f8950e95cd321`；tree
+`0992054062f780523a8b53e1588a40bb139a3977` 与合格 head
+`a02d9ae1f1cb043fbdd90afbab4dd22960f2a1c8` 一致。六套 exact-main workflow
+均 completed/success，含 [Backend](https://github.com/ForceMind/agentbox/actions/runs/37640824200)、
+[Frontend](https://github.com/ForceMind/agentbox/actions/runs/37640823875) 与
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/37640823989)。该批原生 dialog
+断言更正、独立端口 RED→GREEN 及 80 张 metadata 图资格记录由其交付证据保留；
+本次文档协调不冒称重新执行像素审查，也不将历史 READY 间歇问题写成已修复。
+
+[PR159](https://github.com/ForceMind/agentbox/pull/159) 的文档修正 head
+`af09af8b9affa13ea69e7474c529c9badecb1482` 六套已成功。现正常 merge-forward
+上述合格 main，保留两个父提交及双方全部状态正文；CURRENT_STATE 仍是四键 YAML。
+此前“保持 Draft 交回协调”是上一批停止点；本次已接续既定合并协调，组合 head
+须重新通过适用检查、独立审查及六套 CI，随后正常 Ready/merge 并验证新 exact-main。
+当前记录不提前宣称组合 head 或未来 main 已合格，不使用旧头六绿替代新证据。
+
+U2 的 Doctor/Settings/Logs 呈现已合并；Logs 功能仍未实现、Settings 仍仅六项
+只读事实。接下来只有 Login、NotFound/404 与跨页一致性收尾，不重复已有页面。
+U1 的新 Kebui 参考板/tokens/高保真及三条可点击原型仍未交付；U3 继续受 K2/K3、
+S03/WEV 合同约束。无 Chat、Files 或权限扩展，版本仍 rc31，无 release/deploy。
+下方 14:22/14:14 及更早的 pending/Draft/失败记录均为历史快照，完整保留。
+
+## 2026-10-07 Agent管理闭环，管理摘要浏览器更正（14:22 UTC）
+
+[PR158](https://github.com/ForceMind/agentbox/pull/158)已于12:47:59 UTC正常合并为
+main `cf710d59cd6c47d7a240c0ce25d7f006d51e374a`，tree
+`df1e0951109f9c35c658e0edcc9b82eccce0d688`与合格head e890完全相同，parents为
+38bd/e890。六套exact-head首轮成功、24success/2规定skip；六套exact-main首轮
+成功、23success/3规定skip。main Backend实际3.11.17/3.12.14/3.13.15各5375/88，
+native实际3.13.15为109/1、pinned1/33deselected、sanitized60/1；Frontend1900+6，
+E2E464passed/156skip、21preflight，无failed/flaky/retry。独立source/官方日志/
+main精确回读CLEAR，历史native READY间歇问题仍开放，不称根因修复。
+
+本批68张metadata图资格为54张逐字节继承已审原图+14张新/变化实际复查；真实长
+Project名压缩Claude状态的12图问题已修正并通过Range几何断言。四张正常中文
+preview保留原Library身份、无重复上传。最终head artifact11482507396含278PNG，
+不冒称全部278已审；main同树继承head图，未下载或冒称查看main重复截图。
+独立4项真实RED、bounded auth-owner修复、视觉和测试更正提交分别保留；
+[合同与失败记录](../WORKBENCH_UI_AGENT_MANAGEMENT_REFRESH.md)不抹去旧失败。
+
+按同一rc31 UI版本接续[Doctor/Logs/Settings只读呈现卡](../WORKBENCH_UI_ADMIN_REFRESH.md)。
+Doctor保留五项control-plane检查与现有安全Runtime摘要，ready不代表所有Agent
+已可运行；Settings仅原六项policy只读事实；Logs仍明确尚未实现/产品预览。
+不添加配置写入、日志读取/下载、刷新轮询、权限或Runtime能力。保持原useDoctor
+一次GET/90s/abort/投影、SafeTechnicalValue与身份边界，当前未证明需先修产品bug。
+[Draft PR160](https://github.com/ForceMind/agentbox/pull/160)已保存七产品文件与七个
+新test/helper文件，产品helpers/pre-return不变，独立source/单测源码审查CLEAR。
+41项新回归，定向86项与完整1941 Web+6 extension、全lint/typecheck/format/build
+通过。两个初始测试错误只漏计LoginPage的health GET，未发现产品RED。新browser
+静态168注册（102执行/66规定重复skip），计划80metadata图，实际8DTO变体经
+production decoder通过；只新增精确artifact前缀，保持capture-off与原安全边界。
+2c4正式E2E为564passed/222skip/2fail，仅新mobile用例把原生dialog误交显式role
+helper；test-only修正已独立CLEAR，原产品不变。80张原图已实际独立审查，另发现
+既有端口8080被分组为8,080；4项真实RED单独保存后仅该字段改TechnicalValue，
+原4项逐字GREEN、独立27项通过，其他数量/时长格式保持；修后完整1945 Web+6 extension通过。新head六套与
+22张Settings变化图及main资格仍待，不借失败头或旧图称本批合格。
+之后仍有Login、NotFound及跨页面收尾，不以本批代替整个版本完成。
+无新账号、凭据/grant、host激活、release/deploy；旧pending均为历史快照。
+
+
 ## 2026-10-07 Kebui 战略方向不替换当前交付行动
 
 Owner 已批准形成 Kebui（科布）品牌与长期产品方向文档，详见

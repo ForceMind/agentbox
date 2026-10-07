@@ -1,7 +1,7 @@
 # Kebui Product Evolution Plan
 
-Status: approved strategic direction; staged implementation required  
-Date: 2026-10-07  
+Status: approved strategic direction; staged implementation required\
+Date: 2026-10-07\
 Repository: `ForceMind/agentbox`
 
 ## 1. Goal
