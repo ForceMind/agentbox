@@ -1,5 +1,24 @@
 # AgentBox Project Context Index
 
+## 2026-10-07 Workspace闭环，接续Changes呈现（09:36 UTC）
+
+[PR156](https://github.com/ForceMind/agentbox/pull/156)已正常合并为main
+`5ca2f1d348e03796c317d9c7c66f2582f240490f`，tree
+`58679a774e6dfc8786a796091dcac33f330ae711`与合格头01af67相同。
+六套exact-main首轮成功，23success/3规定skip；Backend实际3.11.16/3.12.14/
+3.13.16各5375/88，Frontend1771+6，E2E344/94，无failed/flaky。独立source、
+exact Stop所有权、42/42新原图与官方main日志审查CLEAR。head实际3.13.15成功
+另记；旧READY间歇问题仍开放，未称根因修复。正常Stop修正保留单独RED/fix提交。
+
+同一UI版本继续[Changes呈现合同](../WORKBENCH_UI_CHANGES_REFRESH.md)，从该
+合格main新建feat/ui-changes-reader-20261007。仅现有路径树/staged reader的布局、
+typed双语文案与必要回归；A3读取/权限/owner/TTL/取消/预算不变，新截图只采合成
+metadata/unavailable，既有授权synthetic patch证据边界保留。当前合同/只读评估
+完成，源码/新CI/像素资格尚待。剩余既有页面集中列于
+[逐版本计划](RELEASE_ITERATION_PLAN.md)，不增加功能、不改版本、不发布/部署。
+下方旧pending/Draft均为当时快照，live Git/GitHub优先。
+
+
 ## 2026-10-07 Workspace呈现迁移与exact Stop所有权（08:33 UTC）
 
 [PR153](https://github.com/ForceMind/agentbox/pull/153)已正常合并为main

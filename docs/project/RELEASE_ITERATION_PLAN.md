@@ -1,5 +1,34 @@
 # AgentBox 逐版本交付计划
 
+## 2026-10-07 同一UI重设计版本的页面清单
+
+Owner要求从头完成既有AgentBox UI，并授权普通开发连续推进；本节把已批准的
+呈现迁移纳入当前版本，不以每个测试批次或PR另起产品版本。源码仍为
+0.3.0-rc.31。真实host/客户端/双CLI、Secret与release/deploy仍需各自证据与授权；
+软件页面合格不代表真实运行资格或首个可用版本已发行。
+
+以下范围逐项对应当前App正式路由，不把原型里的未来能力当作现有产品：
+
+| 既有页面/共享区域 | 当前UI状态与证据 |
+| --- | --- |
+| App shell、导航、主题、工作标签 | PR148已合并；既有身份与导航边界保留 |
+| Dashboard、Projects | PR148已合并并完成实际浏览器/像素资格 |
+| Project detail、Attention | PR153已合并；main0fdeb六套与同树head像素通过 |
+| Workspace与Workspace ID route | PR156已合并；main5ca2f1d六套、同树01af的42张新图通过 |
+| Project Changes、既有staged reader/unified view | 当前有界呈现迁移；双语与metadata/unavailable新矩阵，尚未合格 |
+| Codex、Claude管理页面 | 本批之后仍待各自既有功能呈现迁移，Agent/Provider/Login身份继续分域 |
+| Doctor、Logs、Settings | 本批之后仍待既有诊断/日志/设置呈现迁移，不扩展读取或配置权限 |
+| Login、NotFound/404 | 已继承共享tokens；独立页面呈现与双语/手机/键盘收尾仍待，不宣称专项重设计完成 |
+
+Changes之后尚有7个既有页面：Codex、Claude、Doctor、Logs、Settings、Login、
+NotFound。依此按相关用户流程组成有界批次；全部页面完成后做一次跨页面一致性、
+导航/Back/Session/离线与双语/手机收尾。每批源码、必要回归、独立审查、真实像素、
+exact-head与exact-main记录清楚，不自动开放新Files/聊天/能力，也不回到无界诊断。
+历史READY间歇问题作为开放availability限制保留。具体当前卡见
+[Changes呈现合同](../WORKBENCH_UI_CHANGES_REFRESH.md)；此前每批停止点是当时快照，
+不覆盖Owner随后批准的连续完整UI实施。
+
+
 ## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
 
 Owner 已明确暂缓真实目标测试、继续开发并要求列出后续计划。真实
