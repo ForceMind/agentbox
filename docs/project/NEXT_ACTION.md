@@ -4,7 +4,22 @@
 
 Owner 已批准形成 Kebui（科布）品牌与长期产品方向文档，详见
 [KEBUI_BRAND.md](KEBUI_BRAND.md) 与
-[KEBUI_PRODUCT_PLAN.md](KEBUI_PRODUCT_PLAN.md)。
+[KEBUI_PRODUCT_PLAN.md](KEBUI_PRODUCT_PLAN.md)、[UI 设计](KEBUI_UI_DESIGN.md)与
+[U0–U5 交付计划](KEBUI_UI_DELIVERY_PLAN.md)。
+
+2026-10-07 14:14 UTC 的可执行顺序：
+
+1. PR159 完成 YAML/完整历史/链接与计划一致性检查，提交后验证新 exact-head 六套 CI；
+   保持 Draft，交回合并协调，不在这次文档修正中自行 merge/release/deploy。
+2. U2 继续 PR160 Doctor/Settings/Logs 的验证与收尾，保留其首轮 E2E 失败事实；
+   该候选合格后，再接 Login、NotFound/404 与跨页一致性。PR158 已合并，不重复迁移。
+3. U0 补齐参考取证缺项，U1 可独立准备合成参考板、tokens、高保真和三条可点击流程；
+   这些均仍待交付，不以计划文本代替可打开产物，不阻塞当前 U2。
+4. U3 的 K2/K3 在当前交付顺序及 S03/WEV 结构化、内容、审批合同满足后另立有界实施卡；
+   本批不启动 Chat/Task、Files、自动路由、持久记忆或协作功能。
+
+PR159/PR160 的 CURRENT_STATE、INDEX、NEXT_ACTION 有共享编辑面；后合并者基于
+live main 正常 merge-forward，逐段保留双方记录并重验文档及新 head CI，不覆盖旧整文件。
 
 这是战略产品轨道，不替换当前 rc31 UI/release 的既定有界交付顺序。完成本纯文档
 分支后，继续按 live Git/GitHub 重新核对当前页面收尾、CI 与 release 计划。Kebui

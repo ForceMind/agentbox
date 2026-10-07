@@ -13,6 +13,14 @@ host 或发布边界。过渡结构为 **Kebui（用户产品） -> AgentBox Run
 
 - [Kebui 品牌规范](KEBUI_BRAND.md)
 - [Kebui 产品演进计划](KEBUI_PRODUCT_PLAN.md)
+- [Kebui UI 与交互设计](KEBUI_UI_DESIGN.md)
+- [Kebui UI 分阶段交付与验收](KEBUI_UI_DELIVERY_PLAN.md)
+
+2026-10-07 14:14 UTC 校正：main 已是 PR158 合并后的 `cf710d59`，Codex/Claude
+管理页不是待开发项。Doctor/Settings/Logs 由 [Draft PR160](https://github.com/ForceMind/agentbox/pull/160)
+接续，精确头 `2c4bf603` 五套成功、E2E 失败，尚未闭环；其后为 Login、404、跨页检查。
+这是 U2 当前 rc31 工作。U1 新 Kebui 高保真/可点击原型仍未交付；后继 CI 与状态
+以 [当前快照](CURRENT_STATE.md) 和各 PR live head 为准，下方旧候选记录仅为历史。
 
 `kebui.com` 与 `qebui.com` 在 2026-10-07 规划时被查询为可注册；在 Owner 明确
 确认购买前，仓库不得写成“已拥有”。

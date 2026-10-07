@@ -232,7 +232,16 @@ through the existing S03/WEV route before production wiring. Do not parse TUI
 strings into fabricated tool events, or equate Job/process completion with AI
 task success. Prototype future surfaces remain visibly synthetic.
 
-### Acceptance example
+### Evidence required to exit K2
+
+Record the accepted S03/WEV contract revision, supported Agent/operation matrix,
+Project/session/turn ownership and source of each visible status. Qualify message
+idempotency, stale/duplicate events, interruption, reconnect without replay,
+content admission and approval expiry. Link the exact implementation head,
+regressions and actual browser paths; synthetic U1 output alone cannot pass K2.
+Links to artifacts or Files remain unavailable until their own contracts qualify.
+
+### Illustrative acceptance example (future behavior, not implementation evidence)
 
 ```text
 User: @codex investigate the failing test.
@@ -290,6 +299,11 @@ Avoid a single ambiguous "running" state. Model at least:
 ### Acceptance
 
 A page refresh or reconnect does not lose the task's identity or final state.
+Prove request-to-task deduplication, authorized durable-state recovery and explicit
+unknown/interrupted outcomes. Retried reads must not replay a write or approval.
+K3 consumes qualified K2/S03 events; an existing Job or exited CLI is not a Task
+success signal. Record content-retention, cancellation and result-source evidence
+before enabling each surface in production.
 
 ## 9. Phase K4 — Agent handoff and review
 
@@ -593,6 +607,11 @@ Recommended order after the current bounded UI/release work:
 8. add durable personal workspace features;
 9. add collaborative human+agent rooms;
 10. decide final runtime/repository rename.
+
+Current production UI closure is U2, not a claim that the U1 Kebui redesign is
+already implemented. U4 covers K4 handoff, K5 routing and K6 persistent work in
+that dependency order; U5 covers K7 collaboration. Each capability keeps its
+existing S-stage prerequisites and separately qualified data/permission contract.
 
 The U0/U1 design stream may prepare reference boards and synthetic desktop/mobile
 prototypes before this rollout, without displacing current rc31 closure. It does
