@@ -9,6 +9,7 @@ import {
   assertRc9InteractiveTargets,
   assertRc9NoHorizontalOverflow,
   assertRc9TechnicalRendering,
+  assertRc9Title,
 } from './rc9-assertions'
 import { createRc9RouteHold, type Rc9RouteHold } from './rc9-fixtures'
 
@@ -289,7 +290,8 @@ async function loaded(
     page.locator(route === 'login' ? '.login-page' : '.not-found'),
   ).toBeVisible()
   await assertRc9DocumentLocale(page, locale)
-  await expect(page).toHaveTitle(
+  await assertRc9Title(
+    page,
     route === 'login' ? copy[locale].loginTitle : copy[locale].missingTitle,
   )
   await expect
@@ -642,16 +644,23 @@ for (const locale of ['zh-CN', 'en'] as const) {
           await expect(
             page.getByLabel(copy[locale].username, { exact: true }),
           ).toBeVisible()
+        const destinationTitle = authenticated
+          ? `${copy[locale].dashboard} · AgentBox`
+          : copy[locale].loginTitle
+        await assertRc9Title(page, destinationTitle)
         await page.goBack()
         await expect(page).toHaveURL(`${state.origin}${MISSING_PATH}`)
         await expect(page.getByRole('link')).toHaveAttribute(
           'href',
           authenticated ? '/dashboard' : '/login',
         )
+        await assertRc9Title(page, copy[locale].missingTitle)
         await page.goForward()
         await expect(page).toHaveURL(
           `${state.origin}${authenticated ? '/dashboard' : '/login'}`,
         )
+        await expect(page.locator('.not-found')).toHaveCount(0)
+        await assertRc9Title(page, destinationTitle)
         await boundaries(page, state)
       })
     }
