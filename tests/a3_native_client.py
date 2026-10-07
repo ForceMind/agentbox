@@ -122,8 +122,8 @@ class NativeBrowser:
             raise TimeoutError("test WebSocket receive expired")
         return bytes(result)
 
-    def send(self, payload: bytes) -> None:
-        self._send_frame(2, payload)
+    def send(self, payload: bytes, *, deadline: float | None = None) -> None:
+        self._send_frame(2, payload, deadline=deadline)
 
     def _send_frame(self, opcode: int, payload: bytes, *, deadline: float | None = None) -> None:
         assert opcode in {2, 8, 10}
@@ -145,10 +145,11 @@ class NativeBrowser:
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError("test WebSocket control expired")
 
-    def receive(self) -> bytes:
+    def receive(self, *, deadline: float | None = None) -> bytes:
         # RFC6455 automatic controls are outside the A3 application transcript.
         # Answer the server's normal 20-second PING without extending any A3 TTL.
-        deadline = time.monotonic() + 3
+        if deadline is None:
+            deadline = time.monotonic() + 3
         for _ in range(9):
             header = self.exact(2, deadline=deadline)
             assert header[0] in {0x82, 0x88, 0x89, 0x8A} and header[1] < 128
@@ -182,22 +183,26 @@ class NativeBrowser:
             # Bounded unsolicited PONG handling is permitted by RFC6455.
         raise AssertionError("test WebSocket control flood")
 
-    def current(self) -> None:
-        challenge = secrets.token_bytes(16)
+    def current(self, *, deadline: float | None = None, challenge: bytes | None = None) -> None:
+        challenge = secrets.token_bytes(16) if challenge is None else challenge
+        assert len(challenge) == 16
         suffix = self.challenge_sequence.to_bytes(4, "big") + challenge
-        self.send(b"A3CQ\x01" + suffix)
-        assert self.receive() == b"A3CR\x01" + suffix
+        self.send(b"A3CQ\x01" + suffix, deadline=deadline)
+        assert self.receive(deadline=deadline) == b"A3CR\x01" + suffix
         self.challenge_sequence += 1
 
-    def record(self, *, ack: bool = True) -> bytes:
-        raw = self.receive()
+    def record(self, *, ack: bool = True, deadline: float | None = None) -> bytes:
+        raw = self.receive(deadline=deadline)
         assert not raw.startswith((b"A3CR", b"A3RD", b"A3ER"))
         if ack:
-            self.ack(raw)
+            self.ack(raw, deadline=deadline)
         return raw
 
-    def ack(self, raw: bytes) -> None:
-        self.send(b"A3CA\x01" + self.ack_sequence.to_bytes(4, "big") + hashlib.sha256(raw).digest())
+    def ack(self, raw: bytes, *, deadline: float | None = None) -> None:
+        self.send(
+            b"A3CA\x01" + self.ack_sequence.to_bytes(4, "big") + hashlib.sha256(raw).digest(),
+            deadline=deadline,
+        )
         self.ack_sequence += 1
 
     def handshake(self) -> None:
