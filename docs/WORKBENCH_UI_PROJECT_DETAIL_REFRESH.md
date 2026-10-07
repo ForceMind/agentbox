@@ -119,3 +119,25 @@ CRC/path 校验通过。主实施者打开5张原图，独立 reviewer 检查42�
 状态2张及明确 focus2张，计划70张新 PNG。Playwright 共372项，新 spec66项中
 43执行/23规定 skip；新 head 实际 CI、修正后原像素与整体资格仍待完成。原失败记录
 和旧 READY 间歇根因边界均保留。
+
+## 05:30 UTC 当前UI真实结果与资格修正接续
+
+UI headb07ba662a8d98a9ce5c97d4c19ab8ebb57d00709的E2E37568112051首次299 passed /
+73 prescribed skipped /0 failed /0 flaky。artifact11459809303包含126 PNG，
+其中70新UI、56既有，ZIP SHA256
+`3cee5ca64d46319ae5304dc8b5853775e245c442ed406af7633eb20b22845765`与服务端相同，
+CRC和路径检查通过。错误面板重排、两个focus轮廓、768/1024英文Refresh图标及
+四张普通合成展示原图均实际打开复验；四图已保存并交付，不冒称生产上线。
+
+该头Backend实际3.13.15仍为原READY23/24 receive超时，none/ge200ms/ge250ms，
+5306 passed /1 failed /88 skipped；其余五套成功。保留该失败，不盲重跑、不merge
+红头，也不把后续源优化称为已经定位旧根因。
+
+[独立PR154](https://github.com/ForceMind/agentbox/pull/154)仅移除guard=None时相邻
+重复peer proof，保留exact250ms与所有授权/guard/syscall/final边界。真实18项
+RED→GREEN、独立源审查及head22043ceb六套均通过后，正常merge为main1ce060f，
+tree4d26fe53与合格头一致；main自己的六套仍待，不用head结果冒充main结果。
+
+此整合从远端b07出发正常merge-forward main1ce，保持两条PR历史；旧UI源码/
+E2E/workflow与b07逐字一致，移植的三个文件与main1ce逐字一致。只更新本记录与
+三个项目快照。实际整合头的完整CI/新原PNG资格仍待，不新增其他UI范围或发布。

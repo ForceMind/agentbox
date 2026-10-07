@@ -1,12 +1,34 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-07T03:15:00Z"
+verified_at_utc: "2026-10-07T05:30:00Z"
 verified_by: "agentbox-ui-project-detail-attention"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-07 Project详情UI接续peer-proof合格修正（05:30 UTC）
+
+main已正常合并[PR154](https://github.com/ForceMind/agentbox/pull/154)为
+`1ce060f57afde6f7369e815a969aeb03eab2b012`，tree
+`4d26fe53de38c96aa39732a9fcc020d9c96bdf8c`，与六套首轮成功的head22043ceb精确一致。
+18项真实native回归先确认重复成本RED，再以不变测试GREEN；GREEN实际
+3.11.16/3.12.15/3.13.15各5325 passed/88 skipped，其中3.13.15与18项RED同patch。
+E2E256 passed/50 prescribed skip，26 checks=24 success+2 prescribed skip。
+post-main六套正在执行，当前不称其通过；旧READY间歇根因仍独立开放。
+
+[UI PR153](https://github.com/ForceMind/agentbox/pull/153)原b07ba66的E2E299 passed/
+73 prescribed skip、70张新图已校验交付，Project错误卡片、键盘focus和Refresh
+图标修正经实际像素复查；该头Backend3.13.15原READY23/24失败保留，未合并。
+当前从b07正常merge-forward main1ce，保留两条历史；Web产品/测试/工作流逐字保持
+UI已审版本，接入的core两行、18项回归与合同逐字来自已合格PR154。
+
+下一步验证实际整合头的本地适用检查、独立移植审查、六套终态及全新截图；同时
+完成main1ce回读。仅两者资格完整后正常Ready/merge并验证最终main。当前不是
+完整UI版本收官，不新增页面/能力、release、部署或host激活；PR149/151保持冻结。
+详见[本批记录](../WORKBENCH_UI_PROJECT_DETAIL_REFRESH.md)与
+[peer-proof合同](../WORKBENCH_A3_PEER_PROOF_DEDUP.md)。下方旧状态均保留为当时快照。
 
 ## 2026-10-07 Project 详情与待处理 UI 候选（03:15 UTC）
 
