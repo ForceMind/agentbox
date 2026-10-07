@@ -75,3 +75,30 @@ capture前验证exact route、合成账号marker、无pair-secret/pane pre/输�
 正常merge及exact-main回读分别取证。当前合同与只读评估完成，最小repro尚在做；
 尚无新UI、浏览器或本批CI合格声明。此批之后同一UI版本仍有Doctor、Logs、
 Settings、Login、NotFound五页与跨页收尾，不以本批或内部PR代替整个版本完成。
+
+## 11:04 UTC 独立真实RED与有界修复卡
+
+[Draft PR158](https://github.com/ForceMind/agentbox/pull/158)的test-only RED head
+15fd489cceedf6342c867e53b9bc727f482341b8，tree7b1be952d45fe3ca92624a26094ac19ce437cbcc，
+生产七文件相对main38bd逐字不变。新App.agentManagementScope.test.tsx共4项：
+Codex Pair与Claude pane output各shown/pending。测试只替换HTTP响应，运行真实
+App/AuthProvider/route/API client/product hooks；A-CSRF logout403→真实auth/me安装
+同admin的Session B→B-CSRF logout500，route仍authenticated。请求顺序、身份边界、
+仅一次敏感请求及无隐式重放均已通过，4项只在旧内容应不再出现的DOM断言失败。
+
+作者与独立审查者各自实际运行得到4 failed/exit1；官方Frontend37611857222/
+job112760720426也精确为4 failed/1800 passed，唯一失败就是保存的4项RED。
+测试Git blob ac43445c5078dec8f74b444601c63f3a67cba36d、SHA256
+5dea0491c1a5e0bba3d5a1d1fbda80bbc9c4b4cf9b84a3ab9f444d02a33a8148保持冻结。
+
+已有授权内的修复卡限useCodex、global useClaude及必要的Codex/Claude页面局部
+确认/clipboard反馈：为当前api/auth status/user/session/CSRF绑定opaque owner，
+render即遮蔽旧owner状态；入口、await后、finally、TTL与clipboard回执验证owner/
+request身份。取消旧pending本地观察，不能声称撤回已提交Runtime动作；旧callback
+不发新请求、不清新owner、不重放。保留同Project dedup/revision/override、能力
+条件、90秒展示期限和所有request预算。useClaudeProject/AuthProvider/API/Runtime/
+credential/grant均不变；共享ApiClient既有全局401 fail-closed恢复不是本卡新增的
+management owner隔离保证，不冒称整个auth recovery已经重做。
+
+修复与视觉迁移分别提交。当前修复仍在实现/独立回归审查，尚不称最终GREEN、
+新UI或本批完整资格；不得合并RED头或以原基线检查替代候选证据。
