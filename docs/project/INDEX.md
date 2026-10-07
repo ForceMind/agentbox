@@ -1,5 +1,22 @@
 # AgentBox Project Context Index
 
+## 2026-10-07 Kebui 品牌与长期产品方向
+
+Owner 选定 **Kebui（科布）** 作为面向用户的战略品牌方向，产品官方品牌读音暂定
+**KEH-boo**，中文名为 **科布**。品牌灵感来自 Qebui/北风意象，但不宣称复原
+古埃及精确发音。主传播语为 **One conversation. Every agent. / 一次对话，调动所有 Agent。**
+
+本次只形成长期品牌和产品演进文档，不打断当前 rc31 UI/release 有界工作，不立即
+重命名 repository/package/service/API/DB 标识，也不改变 Runtime、Secret、权限、
+host 或发布边界。过渡结构为 **Kebui（用户产品） -> AgentBox Runtime（执行引擎）**，
+后续是否完整迁移 Runtime 名称需单独 ADR。
+
+- [Kebui 品牌规范](KEBUI_BRAND.md)
+- [Kebui 产品演进计划](KEBUI_PRODUCT_PLAN.md)
+
+`kebui.com` 与 `qebui.com` 在 2026-10-07 规划时被查询为可注册；在 Owner 明确
+确认购买前，仓库不得写成“已拥有”。
+
 ## 2026-10-07 Changes闭环，Agent管理UI候选（11:51 UTC）
 
 [PR157](https://github.com/ForceMind/agentbox/pull/157)已正常合并为main
