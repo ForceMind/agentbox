@@ -63,3 +63,16 @@ wrapper转调原syscall，无人工延时或时钟替换。body仅允许已完�
 AST解析、逐文件Ruff和Black通过；native尚未运行，唯一预期RED是已完成proof数2而
 目标1，不是自然READY超时。生产文件与main9f仍逐字一致；测试与合同完整复审及
 collection/type检查继续进行，按要求先将可审阅源码保存为WIP，不以备份声称通过。
+
+## 04:58 UTC 回归定位补强
+
+独立复核指出，pre-wait guard撤销可能被后续pre-syscall首proof拦住，不能单独证明
+post-guard fence。因此仅追加2项直接_check(revoking_guard)的authority/channel
+撤销，要求同一fence立即拒绝，不允许之后I/O或后台close补救；原16项逐字保留。
+最终18项源设计复审CLEAR，无未关闭P0/P1/P2；这不是native执行或完整CI通过。
+测试SHA256为5778bd9d4ce5b4cafb660e30563db294bb0de48e6eca7fe7744d9fba12787038。
+
+生产提供者调用链已独立确认：Runtime bundle._check_peer遍历三WAWPeerLease；
+API RuntimePeerBorrow→BoundRuntimePeer唯一owner_current为只观测的_peer_is_current，
+poison分支固定False。并发proof→syscall窗口不提供全局线性化；删除相邻扫描不跨越
+新的等待边界。不能把这项限定推广到任意带副作用_current callback。

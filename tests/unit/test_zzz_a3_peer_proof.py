@@ -146,6 +146,31 @@ async def test_extra_guard_exception_preserves_error_and_restores_inherited_dead
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("revocation", ["authority", "channel"])
+async def test_extra_guard_revocation_is_rejected_by_the_same_fence(
+    native_peer_channel: NativePeerChannel, revocation: str
+) -> None:
+    rig = native_peer_channel
+    guard_returned = False
+
+    def guard() -> None:
+        nonlocal guard_returned
+        assert all(lease.current() for lease in rig.leases)
+        if revocation == "authority":
+            rig.authority.close()
+            assert all(not lease.current() for lease in rig.leases)
+        else:
+            rig.channel.close()
+        guard_returned = True
+
+    # No later pre-syscall check can hide a missing post-guard proof here.
+    # Even if the command thread closes the bundle, this exact fence must throw.
+    with pytest.raises(ContentError, match="PATCH_REVOKED"):
+        rig.channel._check(deadline_after(1), guard)
+    assert guard_returned
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("revocation", ["authority", "channel"])
 async def test_extra_guard_cannot_revoke_native_peer_and_allow_send(
