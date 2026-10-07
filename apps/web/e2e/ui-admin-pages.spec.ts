@@ -6,7 +6,6 @@ import {
   assertRc9CanaryAbsent,
   assertRc9DocumentLocale,
   assertRc9InteractiveTargets,
-  assertRc9ModalDialog,
   assertRc9NoHorizontalOverflow,
   assertRc9TechnicalRendering,
 } from './rc9-assertions'
@@ -826,7 +825,38 @@ for (const locale of ['zh-CN', 'en'] as const) {
           name: copy[locale].navigation,
           exact: true,
         })
-        await assertRc9ModalDialog(page, drawer)
+        // Native <dialog> supplies its role implicitly. Check the actual modal
+        // and keyboard behavior without requiring a redundant role attribute.
+        await expect(drawer).toBeVisible()
+        await expect(drawer).toHaveAccessibleName(copy[locale].navigation)
+        await expect(drawer).toHaveAttribute('aria-modal', 'true')
+        expect(
+          await drawer.evaluate(
+            (element) =>
+              element instanceof HTMLDialogElement &&
+              element.open &&
+              element.matches(':modal'),
+          ),
+        ).toBe(true)
+        const focusables = drawer.locator(
+          'button:enabled, a[href], input:enabled',
+        )
+        const first = focusables.first()
+        const last = focusables.last()
+        await expect(first).toBeFocused()
+        await page.keyboard.press('Shift+Tab')
+        await expect(last).toBeFocused()
+        await page.keyboard.press('Tab')
+        await expect(first).toBeFocused()
+        await page
+          .locator('#main-content')
+          .evaluate((element) => (element as HTMLElement).focus())
+        expect(
+          await drawer.evaluate((element) =>
+            element.contains(document.activeElement),
+          ),
+        ).toBe(true)
+        await assertRc9NoHorizontalOverflow(page)
         await page.keyboard.press('Escape')
         await expect(drawer).toHaveCount(0)
         await expect(menu).toBeFocused()
