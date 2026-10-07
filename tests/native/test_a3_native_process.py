@@ -59,10 +59,10 @@ def wait_for(
 ) -> dict[str, Any]:
     end = time.monotonic() + timeout if deadline is None else deadline
     while time.monotonic() < end:
-        result: dict[str, Any] = native.call("runtime-status", deadline=end)
-        if result[field] == value and time.monotonic() < end:
+        result: dict[str, Any] = native.call("runtime-status", deadline=deadline)
+        if result[field] == value and (deadline is None or time.monotonic() < end):
             return result
-        time.sleep(min(0.025, max(0, end - time.monotonic())))
+        time.sleep(0.025 if deadline is None else min(0.025, max(0, end - time.monotonic())))
     raise AssertionError(f"native fixture {field} did not settle")
 
 
@@ -80,6 +80,7 @@ def test_separate_process_publication_complete_retains_owner_until_session_revok
     browser: NativeBrowser | None = None
     try:
         assert native.proof["api_pid"] != native.proof["runtime_pid"]
+        assert native.proof["api_a3_runtime_imports"] == 0
         metadata = observe(client, csrf)
         browser = NativeBrowser(
             native, client, csrf, metadata, filename="modified.txt", nonce="6" * 64
@@ -124,7 +125,7 @@ def test_separate_process_publication_complete_retains_owner_until_session_revok
         after = native.call("runtime-status", deadline=time.monotonic() + 1)
         assert after["active"] == after["active_bundles"] == after["burned_nonces"] == 1
         api, runtime = evidence["api"], evidence["runtime"]
-        assert api["runtime_imports_absent"] is True
+        assert api["a3_runtime_imports_absent"] is True
         assert api["ready_received"] == api["live_received"] == api["live_matches"] == 1
         records = browser.ack_sequence
         assert records >= 4

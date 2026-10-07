@@ -76,9 +76,14 @@ class _PublicationWitness:
         self._failed = False
         self._lock = threading.Lock()
 
-    def add(self, field: str, *, matched: bool = True) -> None:
+    def add(self, field: str, *, matched: bool = True, sequence: object = None) -> None:
         with self._lock:
             if self._failed or field not in self._counts or matched is not True:
+                self._failed = True
+                return
+            if sequence is not None and (
+                type(sequence) is not int or sequence != self._counts[field] + 1
+            ):
                 self._failed = True
                 return
             if self._counts[field] >= self.LIMIT:
@@ -351,7 +356,10 @@ class _Child:
     def call(
         self, value: dict[str, Any], timeout: float = 10, *, deadline: float | None = None
     ) -> Any:
-        with self._lock:
+        lock_timeout = -1 if deadline is None else max(0, deadline - time.monotonic())
+        if not self._lock.acquire(timeout=lock_timeout):
+            raise TimeoutError("fixture child control timed out")
+        try:
             if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError("fixture child control timed out")
             assert self.process.stdin is not None and self.process.stdout is not None
@@ -364,27 +372,37 @@ class _Child:
                 timeout = min(timeout, deadline - time.monotonic())
                 if timeout <= 0:
                     raise TimeoutError("fixture child control timed out")
-            end = time.monotonic() + timeout
-            if deadline is not None:
-                end = min(end, deadline)
-            line = bytearray()
-            while not line.endswith(b"\n") and len(line) <= _MAX_CONTROL:
-                remaining = end - time.monotonic()
-                if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+            line: bytes | bytearray
+            if deadline is None:
+                # Preserve the legacy fixture control path unless opted in by a caller.
+                if not select.select([self.process.stdout], [], [], timeout)[0]:
                     raise TimeoutError("fixture child control timed out")
-                part = os.read(
-                    self.process.stdout.fileno(), min(4096, _MAX_CONTROL + 1 - len(line))
-                )
-                if not part:
-                    break
-                line.extend(part)
+                line = self.process.stdout.readline(_MAX_CONTROL + 1)
+            else:
+                end = min(time.monotonic() + timeout, deadline)
+                line = bytearray()
+                # One request is outstanding; consume only its bounded line.
+                # Readability of a partial line cannot renew the caller's budget.
+                while not line.endswith(b"\n") and len(line) <= _MAX_CONTROL:
+                    remaining = end - time.monotonic()
+                    if (
+                        remaining <= 0
+                        or not select.select([self.process.stdout], [], [], remaining)[0]
+                    ):
+                        raise TimeoutError("fixture child control timed out")
+                    part = os.read(
+                        self.process.stdout.fileno(), min(4096, _MAX_CONTROL + 1 - len(line))
+                    )
+                    if not part:
+                        break
+                    line.extend(part)
             if not line:
                 try:
                     exit_code = self.process.wait(timeout=0.1)
                 except subprocess.TimeoutExpired:
                     exit_code = None
                 raise FixtureChildError(self.role, "bootstrap-eof", "ChildExited", exit_code)
-            if len(line) > _MAX_CONTROL or not line.endswith(b"\n"):
+            if len(line) > _MAX_CONTROL or (deadline is not None and not line.endswith(b"\n")):
                 raise FixtureChildError(self.role, "protocol", "ValueError")
             try:
                 result = json.loads(line)
@@ -401,6 +419,8 @@ class _Child:
                     self.role, phase if type(phase) is str else "control", result["error"]
                 )
             return result
+        finally:
+            self._lock.release()
 
     def close(self) -> None:
         failure: RuntimeError | None = None
@@ -693,21 +713,20 @@ async def _runtime(config: dict[str, Any]) -> None:
         original_execute = A3NativeReservation._execute
 
         async def execute(
-            reservation: A3NativeReservation, frame: NativeFrame, deadline: int
+            self: A3NativeReservation, frame: NativeFrame, deadline: int
         ) -> tuple[NativeKind, dict[str, object]]:
             assert witness is not None
             if frame.kind is NativeKind.PUBLISH_CHECK:
                 witness.add("publish_checks")
                 # Same Runtime loop and original owner, before the real check.
-                witness.add("precheck_active", matched=reservation._owner.selectors._active == 1)
-            result = await original_execute(reservation, frame, deadline)
+                witness.add("precheck_active", matched=self._owner.selectors._active == 1)
+            result = await original_execute(self, frame, deadline)
             if frame.kind in {NativeKind.PUBLISH_CHECK, NativeKind.PUBLISHED}:
-                port = reservation._port
+                port = self._port
                 expected = (
                     NativeKind.CHECKED if frame.kind is NativeKind.PUBLISH_CHECK else NativeKind.ACK
                 )
                 field = "checked_matches" if expected is NativeKind.CHECKED else "ack_matches"
-                count = witness.snapshot()[field]
                 witness.add(
                     field,
                     matched=(
@@ -715,7 +734,11 @@ async def _runtime(config: dict[str, Any]) -> None:
                         and isinstance(frame.payload, dict)
                         and frame.payload == port.pending == result[1]
                         and result[0] is expected
-                        and frame.payload["record_sequence"] == count + 1
+                    ),
+                    sequence=(
+                        frame.payload.get("record_sequence")
+                        if isinstance(frame.payload, dict)
+                        else 0
                     ),
                 )
                 if frame.kind is NativeKind.PUBLISHED:
@@ -986,13 +1009,13 @@ async def _api(config: dict[str, Any]) -> None:
         original_request = A3NativeBundle.request
 
         async def areceive(
-            channel: NativeChannel,
+            self: NativeChannel,
             expected: frozenset[NativeKind],
             *,
             deadline_ns: int,
             guard: Callable[[], None] | None = None,
         ) -> NativeFrame:
-            frame = await original_areceive(channel, expected, deadline_ns=deadline_ns, guard=guard)
+            frame = await original_areceive(self, expected, deadline_ns=deadline_ns, guard=guard)
             assert witness is not None
             if frame.kind is NativeKind.READY:
                 witness.add("ready_received")
@@ -1005,13 +1028,13 @@ async def _api(config: dict[str, Any]) -> None:
             return frame
 
         def receive(
-            channel: NativeChannel,
+            self: NativeChannel,
             expected: frozenset[NativeKind],
             *,
             deadline_ns: int,
             guard: Callable[[], None] | None = None,
         ) -> NativeFrame:
-            frame = original_receive(channel, expected, deadline_ns=deadline_ns, guard=guard)
+            frame = original_receive(self, expected, deadline_ns=deadline_ns, guard=guard)
             assert witness is not None
             if frame.kind is NativeKind.CURRENT:
                 witness.add("current_received")
@@ -1022,56 +1045,51 @@ async def _api(config: dict[str, Any]) -> None:
             return frame
 
         def native_send(
-            channel: NativeChannel,
+            self: NativeChannel,
             kind: NativeKind,
             payload: dict[str, object] | bytes,
             *,
             deadline_ns: int,
             guard: Callable[[], None] | None = None,
         ) -> None:
-            original_send(channel, kind, payload, deadline_ns=deadline_ns, guard=guard)
+            original_send(self, kind, payload, deadline_ns=deadline_ns, guard=guard)
             if kind is NativeKind.CURRENT_REPLY:
                 assert witness is not None
                 witness.add("current_replied")
 
         def rpc(
-            bundle: A3NativeBundle,
+            self: A3NativeBundle,
             kind: NativeKind,
             payload: dict[str, object],
             expected: NativeKind,
         ) -> None:
             # The unmodified _rpc returns only after exact reply-payload equality,
             # including SHA/challenge and sequence, and its final authority check.
-            original_rpc(bundle, kind, payload, expected)
+            original_rpc(self, kind, payload, expected)
             assert witness is not None
             if kind is NativeKind.PUBLISH_CHECK:
                 witness.add(
                     "checked_matches",
-                    matched=(
-                        expected is NativeKind.CHECKED
-                        and payload["record_sequence"] == witness.snapshot()["checked_matches"] + 1
-                    ),
+                    matched=expected is NativeKind.CHECKED,
+                    sequence=payload["record_sequence"],
                 )
             elif kind is NativeKind.LIVE:
                 witness.add("live_matches", matched=expected is NativeKind.LIVE_REPLY)
 
         async def request(
-            bundle: A3NativeBundle,
+            self: A3NativeBundle,
             kind: NativeKind,
             payload: dict[str, object],
             expected: NativeKind,
             seconds: float,
         ) -> Any:
-            reply = await original_request(bundle, kind, payload, expected, seconds)
+            reply = await original_request(self, kind, payload, expected, seconds)
             if kind is NativeKind.PUBLISHED:
                 assert witness is not None
                 witness.add(
                     "ack_matches",
-                    matched=(
-                        expected is NativeKind.ACK
-                        and reply == payload
-                        and payload["record_sequence"] == witness.snapshot()["ack_matches"] + 1
-                    ),
+                    matched=expected is NativeKind.ACK and reply == payload,
+                    sequence=payload["record_sequence"],
                 )
             return reply
 
@@ -1245,8 +1263,8 @@ async def _api(config: dict[str, Any]) -> None:
                     {
                         **witness.snapshot(),
                         "open_bundles": len(source._bundles),
-                        "runtime_imports_absent": not any(
-                            name == "agentbox_runtime" or name.startswith("agentbox_runtime.")
+                        "a3_runtime_imports_absent": not any(
+                            name.startswith(("agentbox_runtime.a3_", "agentbox_runtime.git_staged"))
                             for name in sys.modules
                         ),
                     }
