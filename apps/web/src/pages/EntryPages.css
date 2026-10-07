@@ -279,7 +279,7 @@
   margin: 2.5rem 0 1rem;
   font-size: clamp(4rem, 14vw, 6rem);
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.25;
   letter-spacing: -0.06em;
 }
 
