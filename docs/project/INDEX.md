@@ -1,6 +1,6 @@
 # AgentBox Project Context Index
 
-## 2026-10-07 Agent管理闭环，管理摘要呈现卡（13:10 UTC）
+## 2026-10-07 Agent管理闭环，管理摘要呈现候选（13:38 UTC）
 
 [PR158](https://github.com/ForceMind/agentbox/pull/158)已于12:47:59 UTC正常合并为
 main `cf710d59cd6c47d7a240c0ce25d7f006d51e374a`，tree
@@ -23,8 +23,13 @@ Doctor保留五项control-plane检查与现有安全Runtime摘要，ready不代�
 已可运行；Settings仅原六项policy只读事实；Logs仍明确尚未实现/产品预览。
 不添加配置写入、日志读取/下载、刷新轮询、权限或Runtime能力。保持原useDoctor
 一次GET/90s/abort/投影、SafeTechnicalValue与身份边界，当前未证明需先修产品bug。
-计划typed双语、loading/error/unknown/long值、真实route Back/401迟到结果、五宽度
-两主题与metadata-only截图；source/测试/CI/实际像素尚未实施或合格。
+[Draft PR160](https://github.com/ForceMind/agentbox/pull/160)已保存七产品文件与七个
+新test/helper文件，产品helpers/pre-return不变，独立source/单测源码审查CLEAR。
+41项新回归，定向86项与完整1941 Web+6 extension、全lint/typecheck/format/build
+通过。两个初始测试错误只漏计LoginPage的health GET，未发现产品RED。新browser
+静态168注册（102执行/66规定重复skip），计划80metadata图，实际8DTO变体经
+production decoder通过；只新增精确artifact前缀，保持capture-off与原安全边界。
+最终exact-head六套、真实browser/全部80原图及main资格仍待，不借旧CI称本批合格。
 之后仍有Login、NotFound及跨页面收尾，不以本批代替整个版本完成。
 无新账号、凭据/grant、host激活、release/deploy；旧pending均为历史快照。
 

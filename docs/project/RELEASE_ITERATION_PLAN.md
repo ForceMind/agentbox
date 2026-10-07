@@ -17,7 +17,7 @@ Owner要求从头完成既有AgentBox UI，并授权普通开发连续推进；�
 | Workspace与Workspace ID route | PR156已合并；main5ca2f1d六套、同树01af的42张新图通过 |
 | Project Changes、既有staged reader/unified view | PR157已合并；main38bd六套与同树f214的指定48图覆盖通过 |
 | Codex、Claude管理页面 | PR158已合并；maincf710六套与同树e890的68张metadata图资格通过 |
-| Doctor、Logs、Settings | 当前只读呈现卡；Logs仍为尚未实现/产品预览，不新增读取或配置权限 |
+| Doctor、Logs、Settings | PR160呈现候选；Logs仍为尚未实现/产品预览，最终CI/像素待验 |
 | Login、NotFound/404 | 已继承共享tokens；独立页面呈现与双语/手机/键盘收尾仍待，不宣称专项重设计完成 |
 
 Codex/Claude已闭环；当前迁移Doctor、Logs、Settings，其后尚有Login、NotFound

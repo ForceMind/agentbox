@@ -61,3 +61,35 @@ trace/video/自动screenshot保持off，显式截图前检查route/account marke
 历史native READY间歇问题继续开放；软件CI不代替真实host资格。
 之后同一版本仍有Login、NotFound和跨页面一致性/导航/Session/离线收尾。
 
+
+## 13:38 UTC 完整呈现与回归候选
+
+[Draft PR160](https://github.com/ForceMind/agentbox/pull/160)已保存有界合同、七个产品
+文件和七个test/helper文件的独立提交。Doctor/Settings helper与pre-return控制体
+逐字保持，原状态/错误/技术值读取不变；独立source审查追踪共享CSS各断点与
+嵌套runtime-details、长值/header/badge，未见source blocker。Logs继续明确planned。
+
+新增41项：Doctor16、Settings16、Logs2、真实App5、useDoctor lifecycle2。
+独立source审查与作者11文件86项实际运行通过；覆盖原检查、六policy、三种时长、
+projection/finding过滤、Doctor→Settings→Back真实abort/旧HTTP、401卸载、90秒
+timeout和API替换后的迟到失败。原Doctor2/useDoctor3及相关旧测试逐字保留。
+首次两项test-only失败为漏计LoginPage自身health GET，已按实际合同补齐census，
+全部生命周期断言保持；未发现需修改产品的RED。
+
+本地完整1941 Web+6 extension及monorepo lint/typecheck/format/build通过；原有
+Vite大chunk与npm环境配置提示保留。新browser spec另跑定向tsc/lint/format及静态
+collection通过，168注册，预计102执行/66自管理矩阵重复skip。计划80metadata
+PNG：60双语言五宽度两主题stress、6正常中文preview、14phone状态。真实Tab/Enter、
+drawer Escape/焦点恢复、三路由Back/Forward与held Doctor跨路由用例保留。
+
+两个HTTP guard在任何fixturefulfill前拒绝foreign origin，仅原shell与doctor GET，
+拒绝WebSocket/意外mutation；截图前验证route/account marker、canary/敏感DOM/
+输入/storage/traffic，既有敏感suite与全局capture-off未改。workflow只增加两条
+精确ui-admin-pages前缀。首次跨node/app项目导入fixture触发TS6307，保留编译边界，
+改用短独立synthetic wire builder，不新增运行时源码加载或修改tsconfig。实际8个
+builder变体经production decoder通过，503fixture经真实ApiClient错误路径和fresh
+嵌套对象检查通过，不拿另一份手抄payload替代实际builder验证。
+
+新browser fixture/guard/文案/矩阵/几何断言与workflow边界已独立source review CLEAR。
+当前仅source/本地回归合格；正式新browser、全部80原图、最终exact-head六套、
+正常merge与exact-main仍待，不借35ba早期头或maincf710旧CI声称本批完成。
