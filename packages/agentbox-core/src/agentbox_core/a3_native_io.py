@@ -100,8 +100,8 @@ class NativeChannel:
                 self._socket.close()
 
     def _check(self, deadline_ns: int, guard: Guard | None) -> float:
-        self.check()
         if guard is not None:
+            self.check()
             inherited = NATIVE_IO_DEADLINE.get()
             token = NATIVE_IO_DEADLINE.set(
                 deadline_ns if inherited is None else min(deadline_ns, inherited)

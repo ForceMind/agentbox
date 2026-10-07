@@ -3,8 +3,8 @@
 ## 当前状态
 
 2026-10-07 从已验证 main `9f2721ed6dc9c5e6ac41c162463f29674004ad12` 创建独立
-`fix/native-peer-proof-dedup-20261007`。这是按 Owner 要求先保存的 WIP checkpoint，
-生产代码仍未修改。下方有后继test-only快照；不宣称CI、合并或READY根因修复。
+`fix/native-peer-proof-dedup-20261007`。初始 WIP checkpoint 仅保存合同；后继18项回归已取得真实成本RED，
+当前最小实现已应用，完整GREEN仍待验证。下方保留各阶段历史，不宣称已合并或READY根因修复。
 
 UI [PR153](https://github.com/ForceMind/agentbox/pull/153) 冻结在
 `b07ba662a8d98a9ce5c97d4c19ab8ebb57d00709`，E2E299 passed /73 prescribed skipped，
@@ -76,3 +76,24 @@ post-guard fence。因此仅追加2项直接_check(revoking_guard)的authority/c
 API RuntimePeerBorrow→BoundRuntimePeer唯一owner_current为只观测的_peer_is_current，
 poison分支固定False。并发proof→syscall窗口不提供全局线性化；删除相邻扫描不跨越
 新的等待边界。不能把这项限定推广到任意带副作用_current callback。
+
+## 05:08 UTC 真实RED已成立；最小实现待GREEN
+
+最终18项test-only head `73fce319a3fce325fec3c92e4de832fe1ecd653c` / tree
+`47e154af0eeb60261362db29cae5872f7095c12d` 的
+[Backend37574066527](https://github.com/ForceMind/agentbox/actions/runs/37574066527)
+实际3.11.17（job112638914728）、3.12.14（job112638914676）、3.13.15（job112638914586）均仅新成本项失败，
+其余17项新native安全回归通过，各5324 passed /1 failed /88 skipped。
+官方固定断言为duplicate-native-peer-proof: completed_proofs=2, leases=3；
+独立 reviewer 直接读取三份日志，确认checkout exact-head、F.................及
+唯一失败，native job成功。此前16项头1bf70828也在实际3.11.16/3.12.14/3.13.15
+取得同一唯一RED，各5322/1/88；历史完整保留，不混淆Python patch版本。
+
+据此仅移动 NativeChannel._check 的第一行 self.check() 到 guard 非空分支：
+删除1行、新增1行缩进，保留其他全部源码。18项测试SHA256不变，原fixture、Runtime
+最终proof/PR152 deadline、所有预算/权限/pins/工作流不变。这是消除连续重复
+proof的最小实现，完整native GREEN、新head六套资格和merge-readback仍待取得。
+
+本地用本树9个src明确设置PYTHONPATH并逐模块验证来源，避免共享venv旧editable
+指向历史checkout。RED候选full collect5413、Ruff、mypy395、逐文件Black、728相对
+文档链接均exit0。本地未执行受限AF_UNIX，不以静态检查代替真实native。
