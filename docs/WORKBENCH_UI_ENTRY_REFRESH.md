@@ -62,7 +62,9 @@ trace / video / 自动截图 off，新图使用单独精确前缀。每次显式
 
 新 fixture 在 fulfill 前验证 origin / method / path，只放行现有必要 GET 和明确隔离的
 synthetic login POST；拒绝意外 mutation、foreign origin、WebSocket。截图前检查当前 route、
-fixture marker、无 server prose / canary / sensitive DOM / 输入值 / 非预期 storage 或请求。
+fixture 来源（独立 context、精确 origin/path、受限请求和已完成 auth/me）、无 server prose /
+canary / sensitive DOM / 输入值 / 非预期 storage 或请求。匿名页没有账户 DOM marker，
+不注入或伪称该 marker；截图额外要求对应页根可见、AppShell 不存在。
 覆盖 zh-CN / English、light / dark、360 / 390 / 768 / 1024 / 1440，加 900 / 960 原登录
 断点。使用实际 DOM Range / 几何、Tab / Enter、error details、焦点和 44px targets；尊重
 forced colors 与 reduced motion。旧 900px 固定列宽仅为源码风险，尚未称实际 pixel bug。
@@ -76,3 +78,32 @@ exact-head 六套、正常 merge、exact-main 六套和实际 tree 分别取证�
 焦点 / Back / 刷新 / logout / 401 / offline 的收尾证据；复用已有 currentness 与敏感 suites。
 不新建测试平台、业务功能或安全权限，无 release / deploy / 真实 host 激活。
 
+## 15:51 UTC 源码与本地候选
+
+已分别提交合同、五个产品文件、三个新回归文件、404 数字行高微调及隔离 browser
+覆盖。Login helpers/pre-return/handleSubmit、输入/error JSX 与 baseline 逐字一致；
+404 原 status-dependent Link 不变。source review 与补充 capture/CSS review 独立 CLEAR。
+新 26 项为 Login presentation 8、NotFound 2、真实 App 16；作者连同旧 Login/App
+53 项通过，独立 35 项通过。没有产品 RED；实际键盘 Enter 仍待 browser，而非拿
+Vitest fireEvent 当原生键盘证据。request ID 72/73 字符、控制字符/markup/对象边界
+经实际 parser 测试；API timeout 仍 10 秒，429 没有倒计时或隐式重试。
+
+本地完整 1971 Web + 6 extension、monorepo lint/typecheck/format/build 与 784 相对
+doc links 均 exit 0。保留原 Vite 大 chunk 与 npm 环境配置提示，不修改依赖或 budgets。
+独立复核发现 404 巨字 line-height=1 可能与严格字体 Range 行框不兼容；只调整到
+1.25 并保留全部几何断言，尚未实际浏览器复现，不能称产品 RED 或已验证像素修复。
+
+新 ui-entry-pages spec 静态 132 注册，预计 84 执行 / 48 自管理矩阵重复 skip；
+计划 60 图为 48 空表单/404 双语主题宽度、6 清空输入后公开错误、4 health 状态、
+2 已认证 404。使用 production App / AuthProvider / API parser 与独立受限 HTTP；
+synthetic login 只在测试显式允许的次数内，body 原地校验、不保存或输出。
+首次源码自查修正 bdi selector、超长 request ID 与 missing path 广义 canary 误用；
+missing path 在 URL 合法存在，只要求页面不回显。原 password-bearing auth suites
+保持 capture-off；唯一旧 E2E 修改为 404 标题文字期望，原可见/语义断言不变。
+
+PR159 已于 15:45:37 UTC 正常合并为 main
+99ae3d67981e860ea4f6cabb8c6dd416b358a8d0，tree
+a8ac8ca6bc56357a79b4be3839187c294704b297，与合格组合头 69c5054 相同。
+九份 planning docs 已重新读取；main 六套仍由该批作者跟进，不能提前称合格。
+本批正常 merge-forward 保全其文档后再取得新 exact-head CI 与原图，不覆盖双方历史。
+此刻实际 browser / 60 图 / exact-head 六套 / main 资格尚待，没有创建或合并本批 PR。
