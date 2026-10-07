@@ -221,6 +221,7 @@
   line-height: 1.2;
   letter-spacing: -0.045em;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .entry-page .login-context-copy > p:last-child {

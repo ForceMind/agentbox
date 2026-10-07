@@ -138,3 +138,10 @@ finally 错用严格 release（未 held 或已 release）；仅改用既有 disp
 原 helper 的 release 明确拒绝未到达或重复释放，dispose 才是幂等清理。
 三个 finally 改 dispose，两处正常显式 release 前 waitUntilHeld；不修改共享 helper。
 实际最终 browser/pixel 仍待，新本地 type/lint/format 与 132 静态注册保持。
+
+16:25 实际读取首轮 artifact11496113779（64,203,697 bytes，SHA256
+5bbaf65208187875542e50942f1600a670a810b7de89e6dd79df6f89b10c54c5），CRC/PNG/
+路径校验通过，406 张中本批 60 张齐全，完整像素独立检查进行中。四张正常中文
+桌面/手机已实际自查，Login 桌面 context 标题把“开始”拆成单字尾行；仅对该 h2
+加入 text-wrap: balance，保留严格 Range 与布局断言。新 head 要重验变化图，旧图
+不冒充该样式的通过证据；未重复保存旧 Login 预览。
