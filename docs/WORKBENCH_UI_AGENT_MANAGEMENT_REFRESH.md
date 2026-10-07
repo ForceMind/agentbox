@@ -126,3 +126,31 @@ useClaudeProject段落逐字保持；共享ApiClient全局401边界、所有权�
 owner/pre-render/handler语义，保留immutable回归；新metadata图必须完全排除Pair/
 output请求与内容，另加capture-off真实App浏览器验证相同A/B session流程。完整
 本地质量、最终UI exact-head六套、实际PNG与main资格仍须重新取得。
+
+## 11:51 UTC 完整管理页UI候选与本地检查
+
+两个页面return JSX、作用域CSS及typed catalogs已另立视觉提交；相对修复48b42，
+两页pre-return component body逐字相同，独立AST复核Codex21/Claude11个callback/
+control/ref属性与各32个条件guards保持。原7+1页面测试正文保留，最终Codex53+
+Claude33共86项，通过双语/状态/准入/Project局部错误/长inert值及确认键盘回归。
+
+静态审查发现全局≥640px runtime-details子div仍强制min9rem双列，与新dl的2/3列
+窄格嵌套冲突。仅在新页面作用域设单列、小gap和顶部对齐，另补真实dt/dd四边
+containment、文字溢出与label→value顺序检查，覆盖所有40ready矩阵和4preview；
+不是CSS字符串snapshot。新fixture最初只记录外域未阻断，已改最后注册catch-all
+拒绝所有foreign origin、API handler再次检查；同源才fallback。两个source阻塞
+都已独立复审CLEAR，没有修改产品权限或预算。
+
+新两spec静态110 registrations（预期69执行/41自管理矩阵重复项目skip），计划
+68metadata-only PNG：40ready、24双语状态/确认、4正常中文preview。独立检查
+60份实际builder payload通过production DTO decoder，精确为48metadata+12scope。
+独立capture-off4场景跨两端验证真实App的shown/pending Pair/output与A/B auth切换、
+取消后的迟到server reply、B显式动作/Hide及无重放。不把route.fulfill完成冒称
+已取消fetch仍执行late finally；忽略abort的callback/finally由冻结18项单测证明。
+
+最终本地1900 Web+6 extension、全lint/typecheck/format/build、778 doc links、
+diff检查均exit0；保留既有Vite大chunk提示。新增测试曾误用3处Testing Library
+getByRole exact option，已删除无效参数（字符串name本身精确匹配）并复验；不是
+产品RED或权限断言弱化。source/owner修复/fixture独立审查均CLEAR，原4RED和
+ownership18文件hash保持。b9修复头六套首轮通过，但本次最终UI头/真实新browser/
+68张原PNG/main资格尚待，不能借旧CI或源审查声称本批最终合格。
