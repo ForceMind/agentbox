@@ -537,7 +537,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
             )
           await boundaries(page, state)
         } finally {
-          hold.release()
+          hold.dispose()
         }
       })
     }
@@ -565,6 +565,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await password.press('Enter')
         await page.keyboard.press('Tab')
         expect(state.loginCount).toBe(1)
+        await hold.waitUntilHeld()
         hold.release()
         await expect(page.getByRole('alert')).toContainText(
           copy[locale].invalid,
@@ -587,6 +588,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
               exact: true,
             }),
           ).toBeDisabled()
+          await retry.waitUntilHeld()
           retry.release()
           await expect(page.getByRole('alert')).toContainText(
             copy[locale].limited,
@@ -596,10 +598,10 @@ for (const locale of ['zh-CN', 'en'] as const) {
           await boundaries(page, state)
           expect(state.loginCount).toBe(2)
         } finally {
-          retry.release()
+          retry.dispose()
         }
       } finally {
-        hold.release()
+        hold.dispose()
       }
     })
 
