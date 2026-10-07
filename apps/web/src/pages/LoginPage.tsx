@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { ArrowRight, ShieldCheck } from 'lucide-react'
 
 import packageMetadata from '../../package.json'
 import { ControlPlanePulse } from '../components/ControlPlanePulse'
@@ -13,6 +13,7 @@ import {
   type Locale,
 } from '../i18n'
 import { ApiError } from '../lib/api'
+import './EntryPages.css'
 
 type LoginFailure = Readonly<{
   code: string
@@ -71,7 +72,7 @@ export function LoginPage({
   const requestId = technicalApiIdentifier(error?.requestId)
 
   return (
-    <main className="login-page">
+    <main className="entry-page login-page">
       <section className="login-panel" aria-labelledby="login-title">
         <div className="login-brand">
           <div className="brand-mark large" aria-hidden="true">
@@ -164,35 +165,43 @@ export function LoginPage({
             disabled={pending || !username.trim() || !password}
             type="submit"
           >
-            {pending
-              ? formatMessage(locale, 'auth.signingIn', {})
-              : formatMessage(locale, 'auth.signIn', {})}
+            <span>
+              {pending
+                ? formatMessage(locale, 'auth.signingIn', {})
+                : formatMessage(locale, 'auth.signIn', {})}
+            </span>
+            <ArrowRight aria-hidden="true" size={18} />
           </button>
         </form>
 
         <div className="login-footer">
-          <ControlPlanePulse locale={locale} />
-          <span>
+          <span className="login-access-note">
+            <ShieldCheck aria-hidden="true" size={16} />
             {formatMessage(locale, 'auth.localAdministratorOnly', {})}
           </span>
-          <small className="app-version">
-            {formatMessage(locale, 'auth.version', {})}{' '}
-            <code>
-              <TechnicalValue value={packageMetadata.version} />
-            </code>
-          </small>
+          <div className="login-system-status">
+            <ControlPlanePulse locale={locale} />
+            <small className="app-version">
+              {formatMessage(locale, 'auth.version', {})}{' '}
+              <code>
+                <TechnicalValue value={packageMetadata.version} />
+              </code>
+            </small>
+          </div>
         </div>
       </section>
       <aside
         className="login-context"
         aria-label={formatMessage(locale, 'auth.productContextLabel', {})}
       >
-        <p className="eyebrow">
-          {formatMessage(locale, 'auth.contextEyebrow', {})}
-        </p>
-        <h2>{formatMessage(locale, 'auth.contextHeading', {})}</h2>
-        <p>{formatMessage(locale, 'auth.contextDescription', {})}</p>
-        <ul>
+        <div className="login-context-copy">
+          <p className="eyebrow">
+            {formatMessage(locale, 'auth.contextEyebrow', {})}
+          </p>
+          <h2>{formatMessage(locale, 'auth.contextHeading', {})}</h2>
+          <p>{formatMessage(locale, 'auth.contextDescription', {})}</p>
+        </div>
+        <ul className="login-principles">
           <li>{formatMessage(locale, 'auth.loopbackAccess', {})}</li>
           <li>{formatMessage(locale, 'auth.serverSessions', {})}</li>
           <li>{formatMessage(locale, 'auth.noBrowserShell', {})}</li>
