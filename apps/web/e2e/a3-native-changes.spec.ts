@@ -6,11 +6,15 @@ import { startA3NativeFixture, type StaticMode } from './a3NativeFixture'
 import { a3FixtureStatusNumbers } from './a3NativeCounters'
 
 type Fixture = Awaited<ReturnType<typeof startA3NativeFixture>>
-const test = base.extend<{ native: Fixture }>({
-  native: async ({ browserName }, deliverFixture, testInfo) => {
+const test = base.extend<{
+  native: Fixture
+  nativeLocale: 'zh-CN' | 'en'
+}>({
+  nativeLocale: ['zh-CN', { option: true }],
+  native: async ({ browserName, nativeLocale }, deliverFixture, testInfo) => {
     if (browserName !== 'chromium')
       throw new Error('native A3 fixture requires CI Chromium')
-    const fixture = await startA3NativeFixture(testInfo)
+    const fixture = await startA3NativeFixture(testInfo, nativeLocale)
     try {
       await deliverFixture(fixture)
     } finally {
@@ -142,16 +146,16 @@ async function expectUnifiedRows(
 }
 async function expectNoPageOverflow(fixture: Fixture) {
   const geometry = await fixture.page
-    .locator('#a3-changes-reader')
-    .evaluate((reader) => ({
+    .locator('.changes-workbench')
+    .evaluate((workbench) => ({
       pageWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
       pageHeight: document.documentElement.scrollHeight,
-      // The reader is the last content section. Reserve bounded outer padding,
-      // never the full height of source rows inside its scrollable viewport.
+      // Both legitimate columns determine the page extent. Source rows inside
+      // the bounded reader must not escape this containing layout plus padding.
       maximumPageHeight: Math.max(
         window.innerHeight,
-        reader.getBoundingClientRect().bottom + window.scrollY + 128,
+        workbench.getBoundingClientRect().bottom + window.scrollY + 128,
       ),
     }))
   expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1)
@@ -304,6 +308,109 @@ test('formal App login → independent HTTPS trust → separate native Runtime �
   await expect(unified(native)).toBeVisible()
   expect(native.counts.observations).toBe(2)
   expect((await status(native)).burned_nonces).toBe(2)
+})
+
+test.describe('English staged reader presentation', () => {
+  test.use({ nativeLocale: 'en' })
+
+  test('formal App keeps exact native content and read ownership through English keyboard controls', async ({
+    native,
+  }) => {
+    const { page, origin } = native
+    await page.goto(`${origin}/login`)
+    await page.getByLabel('Username', { exact: true }).fill('native-fixture')
+    await page
+      .getByLabel('Password', { exact: true })
+      .fill('published synthetic native fixture password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page).toHaveURL(`${origin}/dashboard`)
+    await page.goto(`${origin}/projects/${projectId}/changes`)
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(
+      page.getByRole('heading', { name: 'Staged patch (read-only)' }),
+    ).toBeVisible()
+    const selected = page.getByRole('button', {
+      name: 'Read staged patch: success.txt',
+      exact: true,
+    })
+    await expect(selected).toBeEnabled()
+    await selected.focus()
+    await expect(selected).toBeFocused()
+    expect(native.counts.observations).toBe(0)
+    expect(native.counts.websockets).toBe(0)
+    await selected.press('Enter')
+    await expect(unified(native)).toBeVisible()
+    await expect(
+      page.getByRole('columnheader', { name: 'Old line' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('columnheader', { name: 'New line' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('columnheader', { name: 'Patch text' }),
+    ).toBeVisible()
+    await expect(page.locator('.changes-reader-time')).toContainText(
+      'not repository observation time',
+    )
+    await expect(patch(native)).toHaveAccessibleName(
+      'Complete staged patch: unified view',
+    )
+    await expect(patch(native)).not.toContainText('unstaged-exclusion-canary')
+    expect(await patch(native).locator('img,script,svg,a').count()).toBe(0)
+    await expectNoPageOverflow(native)
+    await expectRegionalVerticalScroll(native)
+    const before = await status(native)
+    const raw = page.getByRole('button', { name: 'Raw text', exact: true })
+    await raw.focus()
+    await raw.press('Enter')
+    await expect(raw).toHaveAttribute('aria-pressed', 'true')
+    await expect(unified(native)).toHaveCount(0)
+    expect(await patch(native).textContent()).toBe(
+      addedPatch('success.txt', successSource),
+    )
+    await expect(patch(native)).toHaveAccessibleName(
+      'Complete staged patch: raw text',
+    )
+    const wrap = page.getByRole('checkbox', { name: 'Wrap lines', exact: true })
+    await expect(wrap).toBeChecked()
+    await wrap.focus()
+    await wrap.press('Space')
+    await expect(wrap).not.toBeChecked()
+    await expectNoPageOverflow(native)
+    expect(
+      await patch(native).evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    ).toBe(true)
+    await wrap.press('Space')
+    await expect(wrap).toBeChecked()
+    const unifiedButton = page.getByRole('button', {
+      name: 'Unified view',
+      exact: true,
+    })
+    await unifiedButton.focus()
+    await unifiedButton.press('Space')
+    await expect(unified(native)).toBeVisible()
+    await expectNoPageOverflow(native)
+    const after = await status(native)
+    expect(after.diff_count).toBe(before.diff_count)
+    expect(after.burned_nonces).toBe(before.burned_nonces)
+    expect(native.counts.observations).toBe(1)
+    expect(native.counts.websockets).toBe(1)
+    expect(after.active).toBe(1)
+    const clear = page.getByRole('button', {
+      name: 'Clear content',
+      exact: true,
+    })
+    await clear.focus()
+    await clear.press('Enter')
+    await noPatch(native)
+    await expect.poll(async () => (await status(native)).active).toBe(0)
+    expect(native.counts.observations).toBe(1)
+    expect(native.counts.websockets).toBe(1)
+    // This English coverage uses the existing synthetic native fixture and DOM
+    // geometry only; it adds no screenshot, trace, video or content persistence.
+  })
 })
 
 const structuredCases: {

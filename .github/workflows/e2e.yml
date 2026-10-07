@@ -47,6 +47,7 @@ jobs:
             apps/web/test-results/ui-shell-*.png
             apps/web/test-results/ui-detail-*.png
             apps/web/test-results/ui-workspace-*.png
+            apps/web/test-results/ui-changes-*.png
           if-no-files-found: error
           retention-days: 7
       - name: Retain isolated synthetic shell screenshots on failure
@@ -58,5 +59,6 @@ jobs:
             apps/web/test-results/ui-shell-*.png
             apps/web/test-results/ui-detail-*.png
             apps/web/test-results/ui-workspace-*.png
+            apps/web/test-results/ui-changes-*.png
           if-no-files-found: warn
           retention-days: 7

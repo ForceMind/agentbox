@@ -112,8 +112,9 @@ describe('formal App Changes route constructs native dependencies', () => {
         )
     }
     render(<App />)
+    expect(document.documentElement.lang).toBe('en')
     const button = await screen.findByRole('button', {
-      name: '读取暂存补丁：success.txt',
+      name: 'Read staged patch: success.txt',
     })
     await waitFor(() => expect(button).toBeEnabled())
     expect(
@@ -130,7 +131,7 @@ describe('formal App Changes route constructs native dependencies', () => {
     fireEvent.click(button)
     await waitFor(() =>
       expect(screen.getByTestId('a3-reader-status')).toHaveTextContent(
-        '这是二进制文件',
+        'This is a binary file.',
       ),
     )
     expect(NativeTestSocket.instances).toHaveLength(1)
@@ -142,12 +143,13 @@ describe('formal App Changes route constructs native dependencies', () => {
     const { fetch } = await source()
     document.head.innerHTML = ''
     render(<App />)
+    expect(document.documentElement.lang).toBe('en')
     const button = await screen.findByRole('button', {
-      name: '读取暂存补丁：success.txt',
+      name: 'Read staged patch: success.txt',
     })
     expect(button).toBeDisabled()
     expect(screen.getByTestId('a3-reader-status')).toHaveTextContent(
-      '暂存内容暂不可用',
+      'Staged content is unavailable.',
     )
     expect(
       fetch.mock.calls.some(

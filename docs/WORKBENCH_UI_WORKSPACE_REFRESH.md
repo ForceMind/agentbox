@@ -153,3 +153,18 @@ auth/projects/labels仍沿原versioned envelope。原断言/holds/未知请求�
 截图。ZIP SHA256为4355474b2bbc87dae0130b2cb8751c90f0b6a2dbfe184c9c5800b4734a467dcb，
 SHA/CRC/路径验证通过。新f675头虽五套成功，仍用了同一错误fixture，其E2E
 正在执行且不计通过；修正将正常追加提交，保留旧失败，不手动重跑旧头。
+
+## 09:34 UTC 正常合并与exact-main闭环
+
+最终head01af67cac0df4f41dc5c77cc5c7555a81cb0b105六套首轮成功；Backend实际
+3.11.16/3.12.15/3.13.15各5375/88，Frontend1771+6，E2E344/94无failed/flaky。
+42/42新Workspace原PNG独立打开审查CLEAR；artifact11471652551的SHA256为
+6d53aafcc3afa95f75a1f6477293caf1bebb9d60306615e96deefb92254fe819，SHA/CRC/路径
+验证通过。图仅synthetic、未连接terminal，不证明真实trust/host admission。
+
+PR156正常merge为main5ca2f1d348e03796c317d9c7c66f2582f240490f，parents0fdeb+01af，
+tree58679a774e6dfc8786a796091dcac33f330ae711与合格头完全相同。exact-main六套首轮
+成功、23success/3规定skip；Backend实际3.11.16/3.12.14/3.13.16各5375/88，Frontend
+1771+6，E2E344/94无failed/flaky、auth preflight21。独立官方日志复核CLEAR，未rerun。
+本批闭环，完整UI版本尚未结束；同一版本接续[Changes呈现](WORKBENCH_UI_CHANGES_REFRESH.md)。
+历史READY问题仍开放，未发布/部署/激活host。旧RED与fixture错误历史全部保留。
