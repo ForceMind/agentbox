@@ -26,6 +26,11 @@
   font-size: 0.75rem;
 }
 
+.claude-page .agent-session-state {
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
 .agent-management-page .codex-layout,
 .agent-management-page .claude-runtime-grid,
 .agent-management-page .claude-session-grid {
