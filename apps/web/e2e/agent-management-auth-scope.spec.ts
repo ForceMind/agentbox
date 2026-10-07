@@ -234,24 +234,41 @@ async function explicitSensitiveAction(page: Page, agent: Agent) {
 
 async function replaceSessionThroughFailedLogout(page: Page) {
   const signOut = page.getByRole('button', { name: 'Sign out', exact: true })
-  if (!(await signOut.isVisible()))
+  const mobile = !(await signOut.isVisible())
+  if (mobile)
     await page
       .getByRole('button', { name: 'Open navigation', exact: true })
       .click()
+  const retry = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/auth/logout' &&
+      response.request().method() === 'POST' &&
+      response.request().headers()['x-csrf-token'] === B.csrf,
+  )
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
-  await expect(
-    page
-      .getByRole('alert')
-      .filter({ hasText: 'Logout could not be completed' })
-      .last(),
-  ).toBeVisible()
-  // Mobile logout lives in the real navigation dialog. Dismiss it so later
-  // assertions exercise visible page actions instead of bypassing inertness.
+  expect((await retry).status()).toBe(500)
   const drawer = page.locator('#mobile-navigation')
-  if (await drawer.isVisible())
+  if (mobile) {
+    // Installing session B closes the actual mobile drawer. Reopen it through
+    // its visible trigger to inspect the retained failed-logout feedback.
+    await expect(drawer).toHaveCount(0)
+    await page
+      .getByRole('button', { name: 'Open navigation', exact: true })
+      .click()
+  }
+  const feedback = (
+    mobile ? drawer : page.locator('.sidebar-footer')
+  ).getByRole('alert')
+  await expect(feedback).toHaveText('Logout could not be completed')
+  await expect(feedback).toBeVisible()
+  // Dismiss the real drawer so subsequent B actions remain ordinary visible
+  // interactions and never bypass the document's modal inertness.
+  if (mobile) {
     await drawer
       .getByRole('button', { name: 'Close navigation', exact: true })
       .click()
+    await expect(drawer).toHaveCount(0)
+  }
 }
 
 for (const agent of ['codex', 'claude'] as const) {

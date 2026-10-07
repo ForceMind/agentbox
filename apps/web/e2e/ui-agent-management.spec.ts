@@ -84,7 +84,7 @@ const copy = {
     cancel: '取消',
     unknown: '未知',
     unsupported: '不支持',
-    conflict: '冲突',
+    conflict: '安装冲突',
     unauthenticated: '未验证',
     running: '运行中',
     stopped: '已停止',
@@ -527,6 +527,69 @@ async function layout(page: Page, agent: Agent, width: number) {
       fact.value!.top,
       `fact ${index} value follows its label`,
     ).toBeGreaterThanOrEqual(fact.label!.bottom - 1)
+  }
+  if (agent === 'claude') {
+    // Long Project names must not squeeze the session state into glyph-sized
+    // lines. Inspect actual text fragments and geometry, not CSS declarations.
+    const headers = await page
+      .locator('.claude-session-card > .runtime-card-heading')
+      .evaluateAll((elements) =>
+        elements.map((header) => {
+          const title = header.querySelector('.agent-section-heading')
+          const heading = title?.querySelector('h2')
+          const group = header.querySelector('.agent-session-state')
+          const label = group?.querySelector(':scope > span:not(.status-badge)')
+          const badge = group?.querySelector('.status-badge')
+          if (!title || !heading || !group || !label || !badge)
+            throw new Error('Incomplete Claude Project header')
+          const inside = (child: DOMRect, parent: DOMRect) =>
+            child.left >= parent.left - 1 &&
+            child.right <= parent.right + 1 &&
+            child.top >= parent.top - 1 &&
+            child.bottom <= parent.bottom + 1
+          const headerBox = header.getBoundingClientRect()
+          const titleBox = title.getBoundingClientRect()
+          const groupBox = group.getBoundingClientRect()
+          const badgeBox = badge.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(badge)
+          const lines = Array.from(range.getClientRects()).filter(
+            (rect) => rect.width > 0 && rect.height > 0,
+          )
+          return {
+            text: badge.textContent?.trim(),
+            badgeLines: lines.length,
+            badgeTextFits: lines.every((line) => inside(line, badgeBox)),
+            groupFits: inside(groupBox, headerBox),
+            labelFits: inside(label.getBoundingClientRect(), groupBox),
+            badgeFits: inside(badgeBox, groupBox),
+            titleFits:
+              inside(titleBox, headerBox) &&
+              heading.scrollWidth <= heading.clientWidth + 1 &&
+              heading.scrollHeight <= heading.clientHeight + 1,
+            separate:
+              Math.min(titleBox.right, groupBox.right) -
+                Math.max(titleBox.left, groupBox.left) <=
+                1 ||
+              Math.min(titleBox.bottom, groupBox.bottom) -
+                Math.max(titleBox.top, groupBox.top) <=
+                1,
+          }
+        }),
+      )
+    expect(headers).toHaveLength(2)
+    for (const header of headers) {
+      expect(header.text).toBeTruthy()
+      expect(header).toMatchObject({
+        badgeLines: 1,
+        badgeTextFits: true,
+        groupFits: true,
+        labelFits: true,
+        badgeFits: true,
+        titleFits: true,
+        separate: true,
+      })
+    }
   }
   await assertRc9NoHorizontalOverflow(page)
 }
