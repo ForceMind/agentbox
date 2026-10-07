@@ -107,3 +107,22 @@ a8ac8ca6bc56357a79b4be3839187c294704b297，与合格组合头 69c5054 相同。
 九份 planning docs 已重新读取；main 六套仍由该批作者跟进，不能提前称合格。
 本批正常 merge-forward 保全其文档后再取得新 exact-head CI 与原图，不覆盖双方历史。
 此刻实际 browser / 60 图 / exact-head 六套 / main 资格尚待，没有创建或合并本批 PR。
+
+## 16:18 UTC 同一候选纳入跨页标题收口
+
+[Draft PR161](https://github.com/ForceMind/agentbox/pull/161) 已创建，初始组合 head
+0042964b5b6e552e9d344be2670e3ac867c69d77 的五套 workflow 已首轮 success，
+Frontend 官方日志确认 1971+6，E2E37648558752 仍在运行。该头不提前称全部合格。
+PR159 的 main99ae3d6 六套首轮成功并独立闭环，规划整合不再 pending。
+
+独立只读盘点发现跨页唯一需要补充的是 Attention/Changes 精确 document.title 与
+既有 history 后的 title；其余导航/modal/Session/offline/currentness 已有实际回归来源。
+本候选以单独 test-only 提交在五个既有 spec 加 21 行、移除 1 行等价 toHaveTitle：
+复用 assertRc9Title，不导入产品 catalog，保留 DOM/URL/lifetime 与全部原断言。
+五文件静态注册前后同为 502，忽略行号后 identities 完全一致；typecheck/lint/format
+均 exit 0。没有新增 fixture、case、skip、matrix、timeout 或截图，产品字节不变。
+[U2 验收映射](WORKBENCH_UI_U2_CLOSURE.md) 将这些既有证据逐项列明；最终组合
+head 的 browser/60 图/六套与 post-main 才能关闭该记录，不另起纯断言产品版本。
+
+一次后续 npm exec 查询 registry 返回 HTTP403，已停止该网络路径；最终定向检查与
+build 使用原已安装 pnpm 的本地入口，均 exit 0。未尝试绕过网络或 local browser 限制。

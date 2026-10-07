@@ -17,15 +17,16 @@ Owner要求从头完成既有AgentBox UI，并授权普通开发连续推进；�
 | Workspace与Workspace ID route | PR156已合并；main5ca2f1d六套、同树01af的42张新图通过 |
 | Project Changes、既有staged reader/unified view | PR157已合并；main38bd六套与同树f214的指定48图覆盖通过 |
 | Codex、Claude管理页面 | PR158已合并；maincf710六套与同树e890的68张metadata图资格通过 |
-| Doctor、Logs、Settings | PR160呈现候选；Logs仍为尚未实现/产品预览，最终CI/像素待验 |
-| Login、NotFound/404 | 已继承共享tokens；独立页面呈现与双语/手机/键盘收尾仍待，不宣称专项重设计完成 |
+| Doctor、Logs、Settings | PR160已合并；maind9ab六套与同树a02的80图资格通过；Logs仍为尚未实现/产品预览 |
+| Login、NotFound/404 | PR161呈现与26回归已保存，source/本地1971+6通过；实际browser/60图/最终head与main待资格化 |
 
-Codex/Claude已闭环；当前迁移Doctor、Logs、Settings，其后尚有Login、NotFound
-两个既有页面。依此按相关用户流程组成有界批次；全部页面完成后做一次跨页面一致性、
-导航/Back/Session/离线与双语/手机收尾。每批源码、必要回归、独立审查、真实像素、
+Codex/Claude与Doctor/Logs/Settings已闭环；当前PR161收尾Login、NotFound
+及[跨页验收](../WORKBENCH_UI_U2_CLOSURE.md)。复用原Session/离线/modal/双语/主题
+覆盖，仅补Attention/Changes及history精确标题；无新功能、矩阵或测试平台。每批源码、必要回归、独立审查、真实像素、
 exact-head与exact-main记录清楚，不自动开放新Files/聊天/能力，也不回到无界诊断。
 历史READY间歇问题作为开放availability限制保留。具体当前卡见
-[管理摘要呈现合同](../WORKBENCH_UI_ADMIN_REFRESH.md)；此前每批停止点是当时快照，
+[Login/404合同](../WORKBENCH_UI_ENTRY_REFRESH.md)；已合入PR159规划并保留U1/U2区别。
+此前每批停止点是当时快照，
 不覆盖Owner随后批准的连续完整UI实施。
 
 
