@@ -8,6 +8,7 @@ import {
   assertRc9InteractiveTargets,
   assertRc9NoHorizontalOverflow,
   assertRc9TechnicalRendering,
+  assertRc9Title,
 } from './rc9-assertions'
 import { createRc9RouteHold, type Rc9RouteHold } from './rc9-fixtures'
 
@@ -413,6 +414,7 @@ async function loaded(
   await expect(
     root.getByRole('heading', { level: 1, name: expected[route], exact: true }),
   ).toBeVisible()
+  await assertRc9Title(page, `${expected[route]} · AgentBox`)
   await assertRc9DocumentLocale(page, locale)
   await expect(
     root.locator('button, input, select, textarea, form, a[href]'),

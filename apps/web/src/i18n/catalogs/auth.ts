@@ -52,11 +52,10 @@ export const authCatalog = defineCatalogShard<AuthMessageParameters>('auth', {
     'auth.localAdministratorOnly': () => 'Local administrator access only',
     'auth.version': () => 'Version',
     'auth.productContextLabel': () => 'AgentBox product context',
-    'auth.contextEyebrow': () => 'One workstation. One calm control plane.',
-    'auth.contextHeading': () =>
-      'Keep AI development infrastructure within reach.',
+    'auth.contextEyebrow': () => 'Projects & workspaces',
+    'auth.contextHeading': () => 'Start with a Project.',
     'auth.contextDescription': () =>
-      'AgentBox is building a secure, remote management layer for a Linux AI development workstation. Runtime controls arrive in later phases.',
+      'Choose a Project in AgentBox, open its Workspace, and view session and work status.',
     'auth.loopbackAccess': () => 'Loopback-first access',
     'auth.serverSessions': () => 'Server-side sessions',
     'auth.noBrowserShell': () => 'No browser shell',
@@ -82,10 +81,10 @@ export const authCatalog = defineCatalogShard<AuthMessageParameters>('auth', {
     'auth.localAdministratorOnly': () => '仅限本地管理员访问',
     'auth.version': () => '版本',
     'auth.productContextLabel': () => 'AgentBox 产品简介',
-    'auth.contextEyebrow': () => '一台工作站，一个从容的控制平面。',
-    'auth.contextHeading': () => '随时掌控 AI 开发基础设施。',
+    'auth.contextEyebrow': () => '项目与工作空间',
+    'auth.contextHeading': () => '从一个 Project 开始。',
     'auth.contextDescription': () =>
-      'AgentBox 正在为 Linux AI 开发工作站构建安全的远程管理层。Runtime 控制能力将在后续阶段提供。',
+      '在 AgentBox 中选择 Project，进入对应的 Workspace，查看会话与工作状态。',
     'auth.loopbackAccess': () => '优先通过回环地址访问',
     'auth.serverSessions': () => '服务端会话',
     'auth.noBrowserShell': () => '浏览器不提供 shell',

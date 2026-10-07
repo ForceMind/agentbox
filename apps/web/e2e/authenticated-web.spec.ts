@@ -1402,7 +1402,7 @@ test('fits the viewport and keeps primary controls comfortably tappable', async 
 test('provides branded 404 and semantic page landmarks', async ({ page }) => {
   await page.goto('/this-route-does-not-exist')
   await expect(
-    page.getByRole('heading', { name: 'That route is not part of AgentBox.' }),
+    page.getByRole('heading', { name: 'We couldn’t find this page.' }),
   ).toBeVisible()
   await expect(page.getByRole('main')).toBeVisible()
   await expect(

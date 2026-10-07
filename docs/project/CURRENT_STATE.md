@@ -1,11 +1,48 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-07T15:20:00Z"
-verified_by: "agentbox-kebui-main-integration"
+verified_at_utc: "2026-10-07T16:12:00Z"
+verified_by: "agentbox-ui-entry-pages"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-07 Kebui 计划闭环，Login/404 与跨页候选（16:12 UTC）
+
+[PR159](https://github.com/ForceMind/agentbox/pull/159) 已于 15:45:37 UTC 正常合并为
+main `99ae3d67981e860ea4f6cabb8c6dd416b358a8d0`，tree
+`a8ac8ca6bc56357a79b4be3839187c294704b297` 与合格组合 head 69c5054 完全一致。
+六套 exact-main 首轮成功，23 success / 3 规定 skip；Frontend 1945+6，
+Backend 实际 3.11.17/3.12.15/3.13.15 各 5375/88，native 实际 3.13.16；
+E2E 566/222、21 preflight，无 failed/flaky/retry。独立终审 CLEAR。
+九份 planning docs 与双方历史保全；原 2 moderate 审计与 native READY 历史限制保留。
+
+[Draft PR161](https://github.com/ForceMind/agentbox/pull/161) 接续同一 rc31 版本的
+[Login/404 合同](../WORKBENCH_UI_ENTRY_REFRESH.md)，仅五个产品文件的呈现与
+typed 双语。Login helper/submit/input/error 逐字保留，AuthProvider/API/guards/
+Session/10 秒 timeout 不变；404 只有原状态对应 Link。新增 26 项实际回归，
+完整 1971 Web+6 extension、lint/typecheck/format/build 通过；独立 source CLEAR。
+旧 404 E2E 只更新标题文字期望，无产品 RED。
+
+首个组合 head `0042964b5b6e552e9d344be2670e3ac867c69d77` 已正常吸收 main 99ae3d6；
+初始九份规划文档逐字一致，四键 YAML 有效。16:10 时五套 CI success、E2E 仍在运行。
+新 browser 静态 132 注册，预计 84 执行/48 自管理矩阵重复 skip，计划 60 PNG；
+所有截图只在输入清空后采集，旧敏感套件 capture-off 不变。
+尚未取得新 browser/原图/最终 head 六套/main 资格，不借旧头或 main 结果称完成。
+
+[跨页验收映射](../WORKBENCH_UI_U2_CLOSURE.md) 复用现有导航、Session、401、
+logout、离线/隐藏恢复与 sensitive currentness 回归；仅补 Attention/Changes 以及
+已有 history 流程的精确 document.title，单独 test-only 提交并独立审查。
+不增加产品行为、新 fixture/框架/矩阵或截图数量，最终以包含这些断言的组合头资格化。
+该收口完成后只称 U2 既有页面软件闭环，U1 新 Kebui 原型仍待；真实 host/device、
+双 CLI、trust/Secret、恢复与 release/deploy 继续分别取证。下方旧快照完整保留。
+
+
+16:22 更新：0042964 的 E2E37648558752/job112885601067 首轮终态为
+642 passed / 270 skipped / 8 failed，五套其余 workflow 成功。失败均为新 entry spec
+finally 错用严格 release（未 held 或已 release）；仅改用既有 dispose 做 cleanup，
+显式 release 保留并等待 held。产品/预算/断言/skip 不变，不重跑失败头取绿。
+后继组合 head 含跨页标题与该 test-only 修正，仍需完整自身资格；未提前称图像通过。
 
 ## 2026-10-07 PR160 闭环与 Kebui 计划合并协调（15:20 UTC）
 
