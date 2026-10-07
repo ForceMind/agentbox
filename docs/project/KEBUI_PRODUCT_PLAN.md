@@ -119,6 +119,28 @@ process.
 No phase below authorizes real production deployment, paid third-party calls,
 new Secret authority or destructive host actions by itself.
 
+### 4.1 Reference-led UI design is a required delivery stream
+
+The Owner additionally requested better UI design using the previously supplied
+projects. The concrete design requirements are now in
+[KEBUI_UI_DESIGN.md](KEBUI_UI_DESIGN.md); the phase mapping and acceptance work
+are in [KEBUI_UI_DELIVERY_PLAN.md](KEBUI_UI_DELIVERY_PLAN.md).
+
+Cromma supplies the conversation/contact metaphor; Cindy supplies a unified
+user-facing identity and continuous workspace reference. The existing Paseo,
+HAPI, CloudCLI and Yep Anywhere reference set and AgentBox prototype are retained.
+Reference claims, screenshots, design proposals and implemented capabilities must
+remain distinct. The UI stream is not a second roadmap or a product rewrite.
+
+The target is a conversational front door with a serious workbench behind it:
+project-bound work, visible actual agents, explicit approvals, inspectable
+results, and understandable failure/recovery states on desktop and mobile.
+
+Before a new product surface is implemented, deliver visible design artifacts
+and a usable synthetic prototype, not only documentation. Current rc31 page
+closure continues independently; future Chat/Task capabilities do not appear as
+working production controls until their contracts and implementation exist.
+
 ## 5. Phase K0 — Brand freeze and asset reservation
 
 ### Purpose
@@ -157,6 +179,8 @@ AgentBox internals stable.
 - website/product shell wording;
 - application title/metadata plan;
 - `Kebui` product icon/logo direction;
+- reference board, visual tokens and desktop/mobile design artifacts as defined
+  by the U0/U1 design stream;
 - migration glossary:
   - Kebui = product;
   - AgentBox Runtime = execution engine during transition;
@@ -203,6 +227,10 @@ The conversation presents:
 K2 is **not** "browser sends arbitrary commands".
 
 Messages must map to explicit supported agent/session operations.
+Structured conversation, turn, content and approval contracts must be qualified
+through the existing S03/WEV route before production wiring. Do not parse TUI
+strings into fabricated tool events, or equate Job/process completion with AI
+task success. Prototype future surfaces remain visibly synthetic.
 
 ### Acceptance example
 
@@ -441,6 +469,12 @@ A separate ADR is required before Option B.
 
 ## 14. UI implications
 
+The concrete reference matrix, desktop/mobile layouts, component behavior,
+full-page inventory and design acceptance requirements are maintained in
+[KEBUI_UI_DESIGN.md](KEBUI_UI_DESIGN.md). See
+[KEBUI_UI_DELIVERY_PLAN.md](KEBUI_UI_DELIVERY_PLAN.md) for staged visual artifacts,
+interactive prototypes and implementation mapped to K0–K8 and S00–S14.
+
 The long-term navigation should increasingly prioritize user work over
 infrastructure nouns.
 
@@ -460,6 +494,7 @@ Advanced/system surfaces can include:
 - Diagnostics.
 
 Do not hide operational truth. Reduce the need to understand it.
+Do not claim a rebrand or a token/palette change alone completes the UI redesign.
 
 ## 15. Mobile direction
 
@@ -559,6 +594,10 @@ Recommended order after the current bounded UI/release work:
 9. add collaborative human+agent rooms;
 10. decide final runtime/repository rename.
 
+The U0/U1 design stream may prepare reference boards and synthetic desktop/mobile
+prototypes before this rollout, without displacing current rc31 closure. It does
+not authorize production wiring or early release of later capabilities.
+
 Do not jump directly to automatic multi-agent routing.
 
 ## 20. Immediate next actions
@@ -575,6 +614,10 @@ Brand/product planning actions:
 6. Prototype the chat control surface against synthetic/typed existing
    Project/agent contracts before changing runtime authority.
 7. Only then schedule implementation slices.
+
+The UI planning deliverable is now documented. Its next visible deliverables are
+reference-backed desktop/mobile designs and the synthetic interactive prototype
+specified in U1; they are not yet implemented by this documentation change.
 
 ## 21. Success criterion
 
