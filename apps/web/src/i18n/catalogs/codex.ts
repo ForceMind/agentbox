@@ -9,6 +9,7 @@ export interface CodexMessageParameters {
   readonly 'codex.statusUnavailableTitle': NoMessageParameters
   readonly 'codex.installationEyebrow': NoMessageParameters
   readonly 'codex.installationTitle': NoMessageParameters
+  readonly 'codex.installationDescription': NoMessageParameters
   readonly 'codex.installedLabel': NoMessageParameters
   readonly 'codex.installedYes': NoMessageParameters
   readonly 'codex.installedNo': NoMessageParameters
@@ -19,6 +20,8 @@ export interface CodexMessageParameters {
   readonly 'codex.unavailable': NoMessageParameters
   readonly 'codex.remoteEyebrow': NoMessageParameters
   readonly 'codex.remoteTitle': NoMessageParameters
+  readonly 'codex.remoteDescription': NoMessageParameters
+  readonly 'codex.remoteCapabilityLabel': NoMessageParameters
   readonly 'codex.observedStateLabel': NoMessageParameters
   readonly 'codex.confidenceLabel': NoMessageParameters
   readonly 'codex.startRemote': NoMessageParameters
@@ -79,11 +82,13 @@ export const codexCatalog = defineCatalogShard<CodexMessageParameters>(
       'codex.title': () => 'Codex',
       'codex.eyebrow': () => 'Runtime',
       'codex.description': () =>
-        'Capability-aware Codex standalone and Remote Control management.',
+        'Inspect Codex installation, authentication and Remote Control. Pair a device when needed.',
       'codex.loading': () => 'Detecting Codex safely…',
       'codex.statusUnavailableTitle': () => 'Codex status unavailable',
       'codex.installationEyebrow': () => 'Installation',
       'codex.installationTitle': () => 'Codex CLI',
+      'codex.installationDescription': () =>
+        'CLI installation and authentication on the Runtime host.',
       'codex.installedLabel': () => 'Installed',
       'codex.installedYes': () => 'Installed',
       'codex.installedNo': () => 'Not installed',
@@ -94,6 +99,9 @@ export const codexCatalog = defineCatalogShard<CodexMessageParameters>(
       'codex.unavailable': () => 'Unavailable',
       'codex.remoteEyebrow': () => 'Remote Control',
       'codex.remoteTitle': () => 'Lifecycle',
+      'codex.remoteDescription': () =>
+        'Remote capability, process state and confidence are separate signals.',
+      'codex.remoteCapabilityLabel': () => 'Remote capability',
       'codex.observedStateLabel': () => 'Observed state',
       'codex.confidenceLabel': () => 'confidence',
       'codex.startRemote': () => 'Start Remote',
@@ -153,11 +161,13 @@ export const codexCatalog = defineCatalogShard<CodexMessageParameters>(
       'codex.title': () => 'Codex',
       'codex.eyebrow': () => 'Runtime',
       'codex.description': () =>
-        '根据实际能力管理 Codex 独立安装和 Remote Control。',
+        '查看 Codex 安装、身份验证与 Remote Control 状态，并按需配对设备。',
       'codex.loading': () => '正在安全检测 Codex…',
       'codex.statusUnavailableTitle': () => '无法获取 Codex 状态',
       'codex.installationEyebrow': () => '安装',
       'codex.installationTitle': () => 'Codex CLI',
+      'codex.installationDescription': () =>
+        'Runtime 主机上的 CLI 安装与身份验证状态。',
       'codex.installedLabel': () => '安装状态',
       'codex.installedYes': () => '已安装',
       'codex.installedNo': () => '未安装',
@@ -168,6 +178,9 @@ export const codexCatalog = defineCatalogShard<CodexMessageParameters>(
       'codex.unavailable': () => '不可用',
       'codex.remoteEyebrow': () => 'Remote Control',
       'codex.remoteTitle': () => '生命周期',
+      'codex.remoteDescription': () =>
+        '分别查看 Remote 能力、进程状态与状态来源的可信度。',
+      'codex.remoteCapabilityLabel': () => 'Remote 能力',
       'codex.observedStateLabel': () => '实际状态',
       'codex.confidenceLabel': () => '可信度',
       'codex.startRemote': () => '启动 Remote',

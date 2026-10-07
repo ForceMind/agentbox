@@ -11,6 +11,7 @@ export interface ClaudeMessageParameters {
   readonly 'claude.installationAria': NoMessageParameters
   readonly 'claude.claudeCode': NoMessageParameters
   readonly 'claude.installation': NoMessageParameters
+  readonly 'claude.installationDescription': NoMessageParameters
   readonly 'claude.installed': NoMessageParameters
   readonly 'claude.yes': NoMessageParameters
   readonly 'claude.no': NoMessageParameters
@@ -20,12 +21,15 @@ export interface ClaudeMessageParameters {
   readonly 'claude.remoteCapability': NoMessageParameters
   readonly 'claude.persistence': NoMessageParameters
   readonly 'claude.tmux': NoMessageParameters
+  readonly 'claude.tmuxDescription': NoMessageParameters
   readonly 'claude.unavailable': NoMessageParameters
   readonly 'claude.managedSessions': NoMessageParameters
   readonly 'claude.unmanagedSessions': NoMessageParameters
   readonly 'claude.workspaceWarnings': NoMessageParameters
   readonly 'claude.projects': NoMessageParameters
   readonly 'claude.remoteSessions': NoMessageParameters
+  readonly 'claude.sessionsDescription': NoMessageParameters
+  readonly 'claude.sessionState': NoMessageParameters
   readonly 'claude.noConfiguredProjects': NoMessageParameters
   readonly 'claude.noConfiguredProjectsDescription': NoMessageParameters
   readonly 'claude.sessionsAria': NoMessageParameters
@@ -69,13 +73,15 @@ export const claudeCatalog = defineCatalogShard<ClaudeMessageParameters>(
       'claude.title': () => 'Claude',
       'claude.eyebrow': () => 'Runtime',
       'claude.description': () =>
-        "Project-scoped Claude Code Remote sessions persisted by the Runtime user's tmux server.",
+        'Manage project-owned Claude Code sessions and check tmux, Remote readiness and Workspace Trust.',
       'claude.refresh': () => 'Refresh',
       'claude.loading': () => 'Inspecting Claude and managed sessions…',
       'claude.statusUnavailable': () => 'Claude status unavailable',
       'claude.installationAria': () => 'Claude installation status',
       'claude.claudeCode': () => 'Claude Code',
       'claude.installation': () => 'Installation',
+      'claude.installationDescription': () =>
+        'CLI installation, authentication and Remote capability.',
       'claude.installed': () => 'Installed',
       'claude.yes': () => 'Yes',
       'claude.no': () => 'No',
@@ -85,12 +91,17 @@ export const claudeCatalog = defineCatalogShard<ClaudeMessageParameters>(
       'claude.remoteCapability': () => 'Remote capability',
       'claude.persistence': () => 'Persistence',
       'claude.tmux': () => 'tmux',
+      'claude.tmuxDescription': () =>
+        "Session persistence on the Runtime user's tmux server.",
       'claude.unavailable': () => 'Unavailable',
       'claude.managedSessions': () => 'Managed sessions',
       'claude.unmanagedSessions': () => 'Unmanaged sessions',
       'claude.workspaceWarnings': () => 'Workspace warnings',
       'claude.projects': () => 'Projects',
       'claude.remoteSessions': () => 'Remote sessions',
+      'claude.sessionsDescription': () =>
+        'Each card belongs to one configured Project. Check session state, Remote readiness and Workspace Trust separately.',
+      'claude.sessionState': () => 'Session state',
       'claude.noConfiguredProjects': () => 'No configured projects',
       'claude.noConfiguredProjectsDescription': () =>
         'Existing immediate directories under the configured Project root appear here.',
@@ -136,13 +147,15 @@ export const claudeCatalog = defineCatalogShard<ClaudeMessageParameters>(
       'claude.title': () => 'Claude',
       'claude.eyebrow': () => 'Runtime',
       'claude.description': () =>
-        '在 Project 范围内管理 Claude Code Remote 会话；会话由 Runtime 用户的 tmux server 持久化。',
+        '按 Project 管理 Claude Code 会话，查看 tmux、Remote 就绪状态与 Workspace Trust。',
       'claude.refresh': () => '刷新',
       'claude.loading': () => '正在检查 Claude 和托管会话…',
       'claude.statusUnavailable': () => 'Claude 状态暂不可用',
       'claude.installationAria': () => 'Claude 安装状态',
       'claude.claudeCode': () => 'Claude Code',
       'claude.installation': () => '安装',
+      'claude.installationDescription': () =>
+        'CLI 安装、身份验证与 Remote 能力。',
       'claude.installed': () => '已安装',
       'claude.yes': () => '是',
       'claude.no': () => '否',
@@ -152,12 +165,17 @@ export const claudeCatalog = defineCatalogShard<ClaudeMessageParameters>(
       'claude.remoteCapability': () => 'Remote 能力',
       'claude.persistence': () => '持久化',
       'claude.tmux': () => 'tmux',
+      'claude.tmuxDescription': () =>
+        '会话由 Runtime 用户的 tmux server 持久化。',
       'claude.unavailable': () => '不可用',
       'claude.managedSessions': () => '托管会话',
       'claude.unmanagedSessions': () => '非托管会话',
       'claude.workspaceWarnings': () => 'Workspace 警告',
       'claude.projects': () => 'Projects',
       'claude.remoteSessions': () => 'Remote 会话',
+      'claude.sessionsDescription': () =>
+        '每张卡片对应一个已配置的 Project；会话状态、Remote 就绪状态与 Workspace Trust 分别显示。',
+      'claude.sessionState': () => '会话状态',
       'claude.noConfiguredProjects': () => '没有已配置的 Project',
       'claude.noConfiguredProjectsDescription': () =>
         '已配置 Project 根目录下现有的直接子目录会显示在此处。',
