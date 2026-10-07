@@ -186,3 +186,26 @@ metadata图（计划68，中文conflict和后续unauth未执行到），无Pair/
 DOM文字行几何检查，覆盖既有全部矩阵，不靠CSS snapshot。该问题涉及12张长名矩阵，其他54张（含4preview）通过；
 两spec修正及最小CSS/几何回归独立source review CLEAR。修后实际像素仍待新
 CI，不用未跑浏览器的静态检查冒称修正已验证。
+
+## 13:09 UTC PR158 正常合并与主干资格闭环
+
+最终head e890289b1a8cb1666e7765f7978594c3b659b5e4六套首轮成功，24success/2规定skip；
+Frontend1900+6，Backend实际3.11.16/3.12.14/3.13.16各5375/88，native3.13.16通过；
+E2E37620564456/job112789470045为464passed/156skip、21preflight，无failed/flaky/retry。
+14张实际新/变化图独立逐张通过，54张与旧已审通过图逐字相同，全部68management
+图合格；不声称278图全审。artifact11482507396为51,753,287bytes，SHA256
+c2d94f3bfbfa9e7b2b4f17aaa6eb4d22fde39d900d88ff637f96a2c63f976cb3。
+
+PR158于12:47:59正常merge为main cf710d59cd6c47d7a240c0ce25d7f006d51e374a；
+tree df1e0951109f9c35c658e0edcc9b82eccce0d688与head相同，父提交38bd/e890。
+[main Backend](https://github.com/ForceMind/agentbox/actions/runs/37623627196)实际
+3.11.17/3.12.14/3.13.15各5375/88，native3.13.15为109/1、pinned1/33deselected、
+sanitized60/1；[Frontend](https://github.com/ForceMind/agentbox/actions/runs/37623627308)
+1900+6；[E2E](https://github.com/ForceMind/agentbox/actions/runs/37623627225)464/156、
+21preflight，无failed/flaky/retry。Security37623627248、Deployment37623627197、
+RC37623627202也首轮成功；共23success/3规定skip。独立main日志、source blob与
+exact-tree回读CLEAR。main同树继承head68图，未下载或检查main重复PNG。
+
+旧4项RED逐字GREEN及全部18ownership回归保留；useClaudeProject/AuthProvider/
+API/Runtime/权限/预算不变。历史native READY间歇问题继续开放，不把本轮3.13.15
+成功冒称根因修复。无release/deploy/host激活；接续同一版本的只读管理摘要呈现。

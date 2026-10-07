@@ -1,0 +1,419 @@
+.doctor-page,
+.settings-page,
+.logs-page {
+  min-width: 0;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .page-header {
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .page-description {
+  max-width: 46rem;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .status-badge {
+  max-width: 100%;
+  flex-shrink: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.doctor-page .admin-header-state {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .admin-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .admin-section-heading > div {
+  min-width: 0;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .admin-section-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .admin-section-heading h2,
+.doctor-page .doctor-reading-note h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+:is(.doctor-page, .settings-page, .logs-page) .admin-section-heading p,
+:is(.doctor-page, .logs-page) .admin-group-heading p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+:is(.doctor-page, .logs-page) .admin-group-heading {
+  margin: 2rem 0 1rem;
+}
+
+:is(.doctor-page, .logs-page) .admin-group-heading h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+.doctor-page .doctor-foundation-grid,
+.doctor-page .doctor-runtime-grid,
+.settings-page .settings-policy-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.doctor-page .check-list {
+  min-width: 0;
+  overflow: visible;
+}
+
+.doctor-page .check-list > .admin-section-heading {
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.doctor-page .check-list article {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  padding: 0.85rem 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.doctor-page .doctor-reading-note {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.4rem;
+  background: var(--surface-raised);
+}
+
+.doctor-page .doctor-reading-note h2 {
+  margin-top: 1rem;
+}
+
+.doctor-page .doctor-reading-note p {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+
+.doctor-page .runtime-card,
+.settings-page .settings-policy-card,
+.logs-page .planned-card {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.4rem;
+  background: var(--surface);
+}
+
+.doctor-page .runtime-card-heading {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.doctor-page .runtime-card-heading h2 {
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.doctor-page .runtime-card-heading .eyebrow {
+  margin: 0 0 0.2rem;
+  font-size: 0.65rem;
+}
+
+.doctor-page .runtime-card-heading .status-badge {
+  max-width: 100%;
+  justify-content: center;
+  text-align: start;
+}
+
+.doctor-page .runtime-details {
+  gap: 0 1.25rem;
+  margin-top: 1rem;
+}
+
+.doctor-page .runtime-details > div,
+.settings-page .settings-list > div {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  align-content: start;
+  gap: 0.35rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  padding: 0.85rem 0;
+}
+
+.doctor-page .runtime-details dt,
+.settings-page .settings-list dt {
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.doctor-page .runtime-details dd,
+.settings-page .settings-list dd {
+  min-width: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+:is(.doctor-page, .settings-page) bdi {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.doctor-page .diagnostic-list {
+  gap: 0.65rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.doctor-page .diagnostic-list li {
+  display: block;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.85rem;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.doctor-page .diagnostic-list bdi {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.settings-page .settings-list {
+  margin-top: 1.25rem;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-page .settings-list > div:last-child {
+  padding-bottom: 0;
+}
+
+:is(.doctor-page, .settings-page) .scope-note {
+  margin: 1.25rem 0 0;
+  border-left-color: var(--accent);
+  font-size: 0.8rem;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+:is(.doctor-page, .settings-page) .loading-panel,
+:is(.doctor-page, .settings-page) .error-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+:is(.doctor-page, .settings-page) .loading-panel {
+  background: var(--surface);
+}
+
+.doctor-page .error-panel > svg {
+  flex-shrink: 0;
+}
+
+.doctor-page .error-panel > div {
+  min-width: 0;
+}
+
+.logs-page .empty-state {
+  min-height: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  justify-items: start;
+  gap: 1.25rem;
+  border-color: var(--border);
+  padding: 2rem;
+  background: var(--surface-raised);
+  text-align: start;
+}
+
+.logs-page .empty-icon {
+  width: 3.75rem;
+  height: 3.75rem;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.logs-page .logs-preview-copy {
+  min-width: 0;
+}
+
+.logs-page .logs-preview-label,
+.logs-page .logs-capability-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.logs-page .logs-preview-label .eyebrow {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.logs-page .empty-state h2 {
+  margin: 0.85rem 0 0.6rem;
+  font-size: 1.45rem;
+  line-height: 1.4;
+  letter-spacing: -0.025em;
+}
+
+.logs-page .empty-state p {
+  max-width: 45rem;
+  font-size: 0.85rem;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.logs-page .planned-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+.logs-page .logs-capability-heading {
+  justify-content: space-between;
+}
+
+.logs-page .planned-card .status-badge {
+  float: none;
+}
+
+.logs-page .planned-card h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.logs-page .planned-card p {
+  font-size: 0.82rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 600px) {
+  .doctor-page .runtime-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .doctor-page .doctor-projects-card .runtime-details > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .doctor-page .doctor-runtime-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .doctor-page .doctor-projects-card {
+    grid-column: 1 / -1;
+  }
+
+  .settings-page .settings-policy-grid,
+  .logs-page .planned-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .doctor-page .doctor-foundation-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .doctor-page .check-list > .admin-section-heading,
+  .doctor-page .check-list article,
+  .doctor-page .doctor-reading-note,
+  .doctor-page .runtime-card,
+  .settings-page .settings-policy-card,
+  .logs-page .planned-card,
+  .logs-page .empty-state {
+    padding: 1rem;
+  }
+
+  .logs-page .empty-state {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (forced-colors: active) {
+  :is(.doctor-page, .settings-page, .logs-page) .admin-section-icon,
+  :is(.doctor-page, .settings-page, .logs-page) .status-badge,
+  .doctor-page .check-icon,
+  .logs-page .empty-icon {
+    border: 1px solid ButtonText;
+  }
+
+  .doctor-page .diagnostic-list li,
+  .doctor-page .doctor-reading-note,
+  .logs-page .empty-state {
+    border-color: CanvasText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.doctor-page, .settings-page, .logs-page) * {
+    animation: none;
+    transition: none;
+    scroll-behavior: auto;
+  }
+}

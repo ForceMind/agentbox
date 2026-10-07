@@ -15,6 +15,8 @@ export interface LogsMessageParameters {
   readonly 'logs.notImplemented': NoMessageParameters
   readonly 'logs.previewOnly': NoMessageParameters
   readonly 'logs.capabilitiesAria': NoMessageParameters
+  readonly 'logs.previewLabel': NoMessageParameters
+  readonly 'logs.capabilitiesTitle': NoMessageParameters
 }
 
 export const logsCatalog = defineCatalogShard<LogsMessageParameters>('logs', {
@@ -34,6 +36,8 @@ export const logsCatalog = defineCatalogShard<LogsMessageParameters>('logs', {
     'logs.previewOnly': () =>
       'This section is a product preview only. It does not invoke a runtime, system command, or host service.',
     'logs.capabilitiesAria': () => 'Planned Logs capabilities',
+    'logs.previewLabel': () => 'Product preview',
+    'logs.capabilitiesTitle': () => 'Planned sources',
   },
   'zh-CN': {
     'logs.title': () => '日志',
@@ -50,5 +54,7 @@ export const logsCatalog = defineCatalogShard<LogsMessageParameters>('logs', {
     'logs.previewOnly': () =>
       '此区域仅展示产品预览，不会调用 Runtime、系统命令或主机服务。',
     'logs.capabilitiesAria': () => '计划中的日志能力',
+    'logs.previewLabel': () => '产品预览',
+    'logs.capabilitiesTitle': () => '计划中的来源',
   },
 })

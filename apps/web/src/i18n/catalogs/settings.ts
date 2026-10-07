@@ -7,6 +7,9 @@ export interface SettingsMessageParameters {
   readonly 'settings.eyebrow': NoMessageParameters
   readonly 'settings.description': NoMessageParameters
   readonly 'settings.readOnly': NoMessageParameters
+  readonly 'settings.serviceTitle': NoMessageParameters
+  readonly 'settings.sessionTitle': NoMessageParameters
+  readonly 'settings.loginTitle': NoMessageParameters
   readonly 'settings.loading': NoMessageParameters
   readonly 'settings.environment': NoMessageParameters
   readonly 'settings.bindAddress': NoMessageParameters
@@ -34,6 +37,9 @@ export const settingsCatalog = defineCatalogShard<SettingsMessageParameters>(
       'settings.description': () =>
         'A safe summary of active control-plane policy.',
       'settings.readOnly': () => 'Read only',
+      'settings.serviceTitle': () => 'Service boundary',
+      'settings.sessionTitle': () => 'Session policy',
+      'settings.loginTitle': () => 'Login protection',
       'settings.loading': () => 'Loading safe settings…',
       'settings.environment': () => 'Environment',
       'settings.bindAddress': () => 'Bind address',
@@ -67,6 +73,9 @@ export const settingsCatalog = defineCatalogShard<SettingsMessageParameters>(
       'settings.eyebrow': () => '控制平面',
       'settings.description': () => '当前控制平面策略的安全摘要。',
       'settings.readOnly': () => '只读',
+      'settings.serviceTitle': () => '服务边界',
+      'settings.sessionTitle': () => '会话策略',
+      'settings.loginTitle': () => '登录保护',
       'settings.loading': () => '正在加载安全设置…',
       'settings.environment': () => '环境',
       'settings.bindAddress': () => '绑定地址',
