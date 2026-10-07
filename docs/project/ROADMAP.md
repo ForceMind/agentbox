@@ -1,5 +1,27 @@
 # AgentBox Roadmap
 
+## Kebui strategic product track
+
+Kebui is the long-term user-facing product direction above the existing
+AgentBox execution foundation. The current deployable/UI qualification roadmap
+continues unchanged; Kebui is **not** permission to skip current release gates
+or start an unbounded rewrite.
+
+The staged track is:
+
+1. brand/domain asset confirmation;
+2. product identity layer without internal mass rename;
+3. explicit-agent conversation shell;
+4. durable chat-to-task bridge;
+5. auditable multi-agent handoff/review;
+6. policy-based agent routing with user override;
+7. persistent personal workspace;
+8. later human+agent collaboration;
+9. separate ADR for any AgentBox Runtime -> Kebui Runtime rename.
+
+The authoritative detail is
+[KEBUI_PRODUCT_PLAN.md](KEBUI_PRODUCT_PLAN.md); brand language is in
+[KEBUI_BRAND.md](KEBUI_BRAND.md).
 
 ## 2026-10-05 工作概览浏览器/像素通过；native3.13 CI 关闭原因诊断
 
