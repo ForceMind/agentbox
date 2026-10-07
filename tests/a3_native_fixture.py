@@ -39,6 +39,28 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 _MAX_CONTROL = 64 * 1024
 
 
+def _publication_reply_pair(field: str, payload: object) -> tuple[int, str] | None:
+    """Retain only one fixed native reply's bounded sequence and hash/challenge."""
+    if field == "checked_matches":
+        sequence_key, value_key, minimum, size = "record_sequence", "record_sha256", 1, 64
+    elif field == "live_matches":
+        sequence_key, value_key, minimum, size = "observation_sequence", "challenge", 0, 32
+    else:
+        return None
+    if type(payload) is not dict or set(payload) != {sequence_key, value_key}:
+        return None
+    sequence, value = payload[sequence_key], payload[value_key]
+    if (
+        type(sequence) is not int
+        or not minimum <= sequence < 2**32
+        or type(value) is not str
+        or len(value) != size
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        return None
+    return sequence, value
+
+
 class _PublicationWitness:
     """Opt-in test evidence: fixed scalar counters, no event or payload export.
 
@@ -75,6 +97,37 @@ class _PublicationWitness:
         self._counts = dict.fromkeys(self.FIELDS[role], 0)
         self._failed = False
         self._lock = threading.Lock()
+        self._pending_reply: tuple[str, object, tuple[int, str]] | None = None
+
+    @contextlib.contextmanager
+    def reply_scope(self, field: str, channel: object, payload: object) -> Iterator[None]:
+        # Native _rpc is synchronous on the API event loop. The checker thread
+        # does not use this slot; it only counts CURRENT/CURRENT_REPLY frames.
+        pair = _publication_reply_pair(field, payload)
+        if pair is None or self._pending_reply is not None:
+            self.add(field, matched=False)
+        else:
+            self._pending_reply = field, channel, pair
+        try:
+            yield
+        finally:
+            # Never retain a request past the real _rpc, including its exceptions.
+            self._pending_reply = None
+
+    def received_reply(self, field: str, channel: object, payload: object) -> None:
+        pair = _publication_reply_pair(field, payload)
+        pending = self._pending_reply
+        self.add(
+            field,
+            matched=(
+                pair is not None
+                and pending is not None
+                and pending[0] == field
+                and pending[1] is channel
+                and pending[2] == pair
+            ),
+            sequence=None if pair is None else pair[0] + (field == "live_matches"),
+        )
 
     def add(self, field: str, *, matched: bool = True, sequence: object = None) -> None:
         with self._lock:
@@ -1040,8 +1093,10 @@ async def _api(config: dict[str, Any]) -> None:
                 witness.add("current_received")
             elif frame.kind is NativeKind.CHECKED:
                 witness.add("checked_received")
+                witness.received_reply("checked_matches", self, frame.payload)
             elif frame.kind is NativeKind.LIVE_REPLY:
                 witness.add("live_received")
+                witness.received_reply("live_matches", self, frame.payload)
             return frame
 
         def native_send(
@@ -1063,18 +1118,15 @@ async def _api(config: dict[str, Any]) -> None:
             payload: dict[str, object],
             expected: NativeKind,
         ) -> None:
-            # The unmodified _rpc returns only after exact reply-payload equality,
-            # including SHA/challenge and sequence, and its final authority check.
-            original_rpc(self, kind, payload, expected)
             assert witness is not None
-            if kind is NativeKind.PUBLISH_CHECK:
-                witness.add(
-                    "checked_matches",
-                    matched=expected is NativeKind.CHECKED,
-                    sequence=payload["record_sequence"],
-                )
-            elif kind is NativeKind.LIVE:
-                witness.add("live_matches", matched=expected is NativeKind.LIVE_REPLY)
+            if kind in {NativeKind.PUBLISH_CHECK, NativeKind.LIVE}:
+                field = "checked_matches" if kind is NativeKind.PUBLISH_CHECK else "live_matches"
+                with witness.reply_scope(field, self.command, payload):
+                    # receive() independently compares the actual native frame;
+                    # _rpc's None return is not a witness of reply equality.
+                    original_rpc(self, kind, payload, expected)
+            else:
+                original_rpc(self, kind, payload, expected)
 
         async def request(
             self: A3NativeBundle,

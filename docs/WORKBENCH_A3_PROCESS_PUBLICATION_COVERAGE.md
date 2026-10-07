@@ -92,3 +92,15 @@ guard-budget为34a771b2dcee96239718c2272e81ef2099bf4278f72f7c2756d7c22bccdf524e�
 
 06:34整库静态验证：Ruff通过，mypy396源文件通过，5446tests收集成功；47纯/client
 测试通过。以上不代替未执行的新process及原native执行。
+
+## 06:39 UTC 实际native reply独立匹配
+
+最后收紧API witness：在同步_rpc期间只保留一个channel引用与定长sequence/hash
+或challenge tuple，实际NativeChannel.receive成功返回CHECKED/LIVE_REPLY时独立
+比较reply family、exact channel和全部两scalar值；finally清空，不借_rpc的None
+返回推断成功。新增17项纯回归覆盖错序号、错hash/challenge、额外field、错channel/
+kind、bool冒充int、原异常保留、请求mutation、缺失/重入与有界存储。
+
+新增witness纯测试49项，加既有client15项，合计64 passed。逐文件Black/Ruff/mypy
+通过；原production和两个旧测试保持不变。source最终复审与新head真实CI仍须
+独立完成；这一修正不改变原250ms，也不代表原READY历史失败已解决。

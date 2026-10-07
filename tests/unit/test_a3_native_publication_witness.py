@@ -76,6 +76,106 @@ def test_sequence_matching_is_contiguous_and_default_fixture_is_off() -> None:
     assert inspect.signature(A3NativeFixture).parameters["publication_witnesses"].default is False
 
 
+@pytest.mark.parametrize(
+    "field,payload",
+    [
+        ("checked_matches", {"record_sequence": 1, "record_sha256": "a" * 64}),
+        ("live_matches", {"observation_sequence": 0, "challenge": "7" * 32}),
+    ],
+)
+def test_actual_reply_matches_scoped_request_without_export(
+    field: str,
+    payload: dict[str, object],
+) -> None:
+    witness, channel = _PublicationWitness("api"), object()
+    with witness.reply_scope(field, channel, payload):
+        assert witness.snapshot()[field] == 0  # Scope/None return alone is not receipt.
+        encoded = json.dumps(witness.snapshot())
+        assert all(value not in encoded for value in payload.values() if isinstance(value, str))
+        witness.received_reply(field, channel, payload.copy())
+        assert witness.snapshot()[field] == 1
+    assert witness._pending_reply is None
+
+
+@pytest.mark.parametrize("field", ["checked_matches", "live_matches"])
+@pytest.mark.parametrize("change", ["sequence", "value", "extra", "channel", "kind", "boolean"])
+def test_wrong_actual_native_reply_latches_failure(field: str, change: str) -> None:
+    checked = field == "checked_matches"
+    sequence_key = "record_sequence" if checked else "observation_sequence"
+    value_key = "record_sha256" if checked else "challenge"
+    payload: dict[str, object] = {
+        sequence_key: 1 if checked else 0,
+        value_key: "a" * (64 if checked else 32),
+    }
+    reply = payload.copy()
+    witness, channel = _PublicationWitness("api"), object()
+    if change == "sequence":
+        reply[sequence_key] = 2
+    elif change == "value":
+        reply[value_key] = "b" * (64 if checked else 32)
+    elif change == "extra":
+        reply["unapproved"] = "ciphertext-identity-canary"
+    elif change == "boolean":
+        reply[sequence_key] = bool(payload[sequence_key])
+    received_field = (
+        ("live_matches" if checked else "checked_matches") if change == "kind" else field
+    )
+    with witness.reply_scope(field, channel, payload):
+        witness.received_reply(received_field, object() if change == "channel" else channel, reply)
+        # A subsequent correct reply cannot erase an earlier mismatch.
+        witness.received_reply(field, channel, payload)
+    assert witness._pending_reply is None
+    with pytest.raises(RuntimeError, match="^fixture publication witness invalid$"):
+        witness.snapshot()
+
+
+def test_rpc_exception_preserves_identity_and_clears_native_reply_expectation() -> None:
+    witness, channel = _PublicationWitness("api"), object()
+    payload = {"record_sequence": 1, "record_sha256": "a" * 64}
+    original = ValueError("private exception-value-canary")
+    with (
+        pytest.raises(ValueError) as raised,
+        witness.reply_scope("checked_matches", channel, payload),
+    ):
+        raise original
+    assert raised.value is original
+    assert witness._pending_reply is None
+    assert witness.snapshot()["checked_matches"] == 0
+    witness.received_reply("checked_matches", channel, payload)
+    with pytest.raises(RuntimeError, match="^fixture publication witness invalid$"):
+        witness.snapshot()
+
+
+def test_reply_expectation_copies_fixed_scalars_and_rejects_unbounded_input() -> None:
+    witness, channel = _PublicationWitness("api"), object()
+    payload: dict[str, object] = {"record_sequence": 1, "record_sha256": "a" * 64}
+    with witness.reply_scope("checked_matches", channel, payload):
+        payload["record_sha256"] = "b" * 64
+        witness.received_reply(
+            "checked_matches", channel, {"record_sequence": 1, "record_sha256": "a" * 64}
+        )
+    assert witness.snapshot()["checked_matches"] == 1
+    payload["record_sha256"] = "large-payload-canary" * 8192
+    with witness.reply_scope("checked_matches", channel, payload):
+        assert witness._pending_reply is None
+    with pytest.raises(RuntimeError, match="^fixture publication witness invalid$"):
+        witness.snapshot()
+
+
+def test_reentrant_reply_scope_latches_but_does_not_stop_original_work() -> None:
+    witness, channel = _PublicationWitness("api"), object()
+    payload = {"record_sequence": 1, "record_sha256": "a" * 64}
+    progressed = False
+    with (
+        witness.reply_scope("checked_matches", channel, payload),
+        witness.reply_scope("checked_matches", channel, payload),
+    ):
+        progressed = True
+    assert progressed and witness._pending_reply is None
+    with pytest.raises(RuntimeError, match="^fixture publication witness invalid$"):
+        witness.snapshot()
+
+
 def control_child(monkeypatch: pytest.MonkeyPatch, response: bytes) -> tuple[_Child, list[float]]:
     """In-memory control transport; no descriptor or process is allocated."""
     child = _Child.__new__(_Child)
