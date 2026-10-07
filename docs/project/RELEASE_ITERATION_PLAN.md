@@ -16,16 +16,16 @@ Owner要求从头完成既有AgentBox UI，并授权普通开发连续推进；�
 | Project detail、Attention | PR153已合并；main0fdeb六套与同树head像素通过 |
 | Workspace与Workspace ID route | PR156已合并；main5ca2f1d六套、同树01af的42张新图通过 |
 | Project Changes、既有staged reader/unified view | PR157已合并；main38bd六套与同树f214的指定48图覆盖通过 |
-| Codex、Claude管理页面 | 当前有界呈现卡；先最小scope/session回归，不扩大Agent/Provider/Login权限 |
-| Doctor、Logs、Settings | 本批之后仍待既有诊断/日志/设置呈现迁移，不扩展读取或配置权限 |
+| Codex、Claude管理页面 | PR158已合并；maincf710六套与同树e890的68张metadata图资格通过 |
+| Doctor、Logs、Settings | 当前只读呈现卡；Logs仍为尚未实现/产品预览，不新增读取或配置权限 |
 | Login、NotFound/404 | 已继承共享tokens；独立页面呈现与双语/手机/键盘收尾仍待，不宣称专项重设计完成 |
 
-Changes已闭环；当前迁移Codex与Claude，其后尚有Doctor、Logs、Settings、Login、
-NotFound五个既有页面。依此按相关用户流程组成有界批次；全部页面完成后做一次跨页面一致性、
+Codex/Claude已闭环；当前迁移Doctor、Logs、Settings，其后尚有Login、NotFound
+两个既有页面。依此按相关用户流程组成有界批次；全部页面完成后做一次跨页面一致性、
 导航/Back/Session/离线与双语/手机收尾。每批源码、必要回归、独立审查、真实像素、
 exact-head与exact-main记录清楚，不自动开放新Files/聊天/能力，也不回到无界诊断。
 历史READY间歇问题作为开放availability限制保留。具体当前卡见
-[Agent管理呈现合同](../WORKBENCH_UI_AGENT_MANAGEMENT_REFRESH.md)；此前每批停止点是当时快照，
+[管理摘要呈现合同](../WORKBENCH_UI_ADMIN_REFRESH.md)；此前每批停止点是当时快照，
 不覆盖Owner随后批准的连续完整UI实施。
 
 

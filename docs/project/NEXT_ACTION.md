@@ -1,5 +1,34 @@
 # Current Authorized Action
 
+## 2026-10-07 Agent管理闭环，管理摘要呈现卡（13:10 UTC）
+
+[PR158](https://github.com/ForceMind/agentbox/pull/158)已于12:47:59 UTC正常合并为
+main `cf710d59cd6c47d7a240c0ce25d7f006d51e374a`，tree
+`df1e0951109f9c35c658e0edcc9b82eccce0d688`与合格head e890完全相同，parents为
+38bd/e890。六套exact-head首轮成功、24success/2规定skip；六套exact-main首轮
+成功、23success/3规定skip。main Backend实际3.11.17/3.12.14/3.13.15各5375/88，
+native实际3.13.15为109/1、pinned1/33deselected、sanitized60/1；Frontend1900+6，
+E2E464passed/156skip、21preflight，无failed/flaky/retry。独立source/官方日志/
+main精确回读CLEAR，历史native READY间歇问题仍开放，不称根因修复。
+
+本批68张metadata图资格为54张逐字节继承已审原图+14张新/变化实际复查；真实长
+Project名压缩Claude状态的12图问题已修正并通过Range几何断言。四张正常中文
+preview保留原Library身份、无重复上传。最终head artifact11482507396含278PNG，
+不冒称全部278已审；main同树继承head图，未下载或冒称查看main重复截图。
+独立4项真实RED、bounded auth-owner修复、视觉和测试更正提交分别保留；
+[合同与失败记录](../WORKBENCH_UI_AGENT_MANAGEMENT_REFRESH.md)不抹去旧失败。
+
+按同一rc31 UI版本接续[Doctor/Logs/Settings只读呈现卡](../WORKBENCH_UI_ADMIN_REFRESH.md)。
+Doctor保留五项control-plane检查与现有安全Runtime摘要，ready不代表所有Agent
+已可运行；Settings仅原六项policy只读事实；Logs仍明确尚未实现/产品预览。
+不添加配置写入、日志读取/下载、刷新轮询、权限或Runtime能力。保持原useDoctor
+一次GET/90s/abort/投影、SafeTechnicalValue与身份边界，当前未证明需先修产品bug。
+计划typed双语、loading/error/unknown/long值、真实route Back/401迟到结果、五宽度
+两主题与metadata-only截图；source/测试/CI/实际像素尚未实施或合格。
+之后仍有Login、NotFound及跨页面收尾，不以本批代替整个版本完成。
+无新账号、凭据/grant、host激活、release/deploy；旧pending均为历史快照。
+
+
 ## 2026-10-07 Changes闭环，Agent管理UI候选（11:51 UTC）
 
 [PR157](https://github.com/ForceMind/agentbox/pull/157)已正常合并为main
