@@ -96,7 +96,7 @@ describe.each(['en', 'zh-CN'] as const)(
           ),
       ).toEqual([
         'test',
-        '127.0.0.1: 8,080',
+        '127.0.0.1: 8080',
         text.hours,
         text.minutes,
         text.rate,
@@ -164,6 +164,7 @@ describe.each(['en', 'zh-CN'] as const)(
         expect(bind).toHaveTextContent(new RegExp(`^${text.unavailable}$`))
         expect(document.body.textContent).not.toContain(host)
         expect(bind).not.toHaveTextContent('8,080')
+        expect(bind).not.toHaveTextContent('8080')
         expect(screen.getAllByRole('term')).toHaveLength(6)
         expectReadOnly(container)
       },

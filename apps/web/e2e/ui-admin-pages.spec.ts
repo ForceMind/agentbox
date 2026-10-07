@@ -498,7 +498,7 @@ async function loaded(
       .filter({ has: page.getByText(expected.bindAddress, { exact: true }) })
       .locator('dd')
     await expect(bind).toHaveText(
-      mode === 'bind-unavailable' ? expected.unavailable : '127.0.0.1: 8,080',
+      mode === 'bind-unavailable' ? expected.unavailable : '127.0.0.1: 8080',
     )
     await expect(root).not.toContainText('/Projects/')
     await expect(root.locator('.runtime-card, .diagnostic-list')).toHaveCount(0)

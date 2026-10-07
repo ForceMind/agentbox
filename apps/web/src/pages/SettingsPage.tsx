@@ -97,10 +97,9 @@ export function SettingsPage({
                   ) : (
                     <>
                       <TechnicalValue value={bindHost} />:{' '}
-                      {formatNumber(
-                        locale,
-                        doctor.response.data.policy.bind_port,
-                      )}
+                      <TechnicalValue
+                        value={String(doctor.response.data.policy.bind_port)}
+                      />
                     </>
                   )}
                 </dd>
