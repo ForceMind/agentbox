@@ -65,3 +65,15 @@ loading/empty/unregistered/error/forbidden/stale/revalidating/disabled/dialog
 按小稳定提交、Draft PR、适用本地检查、独立source/像素审查、exact-head六套、
 正常merge与exact-main回读完成。本卡是普通呈现层迁移，不是新业务/安全合同。
 本页最初只记录范围；尚未实施或取得本批新测试/浏览器/CI资格。
+
+## 08:05 UTC 首份呈现源码checkpoint
+
+已完成页面/CSS/双语catalog首份呈现迁移，Project与Agent选择紧凑呈现，terminal
+为主区域，labels为侧栏，Runtime低优先技术字段进入原生details。Workspace ID、
+reconciliation_required、错误与provider不可用等原关键事实保持可见。原model、
+controller、route、typed ports、terminal metrics/ANSI classes与输入/Stop事件
+逻辑保持；没有新增业务能力。
+
+原18项页面单测通过、Web TypeScript通过、Prettier解析通过，作为可恢复源码快照
+先正常提交。新增禁用/稳定DOM/Stop回归与实际App/API浏览器用例仍在实现，尚无
+本批真实浏览器/原PNG或新exact-head CI通过声明。后续正常追加提交，不改写历史。

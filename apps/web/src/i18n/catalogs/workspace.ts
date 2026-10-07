@@ -29,6 +29,7 @@ export interface WorkspaceMessageParameters {
   readonly 'workspace.infoUnavailable': NoMessageParameters
   readonly 'workspace.lifecycleEyebrow': NoMessageParameters
   readonly 'workspace.statusTitle': NoMessageParameters
+  readonly 'workspace.statusDescription': NoMessageParameters
   readonly 'workspace.unloaded': NoMessageParameters
   readonly 'workspace.runtimeStatus': NoMessageParameters
   readonly 'workspace.processStatus': NoMessageParameters
@@ -134,6 +135,8 @@ export const workspaceCatalog = defineCatalogShard<WorkspaceMessageParameters>(
         'Workspace information is temporarily unavailable.',
       'workspace.lifecycleEyebrow': () => 'Lifecycle state',
       'workspace.statusTitle': () => 'Workspace record status',
+      'workspace.statusDescription': () =>
+        'Process state and browser terminal connection are tracked separately.',
       'workspace.unloaded': () => 'Not loaded',
       'workspace.runtimeStatus': () => 'Runtime status',
       'workspace.processStatus': () => 'Process status',
@@ -247,6 +250,7 @@ export const workspaceCatalog = defineCatalogShard<WorkspaceMessageParameters>(
       'workspace.infoUnavailable': () => '工作区信息暂不可用。',
       'workspace.lifecycleEyebrow': () => '生命周期状态',
       'workspace.statusTitle': () => '工作区记录状态',
+      'workspace.statusDescription': () => '进程状态与浏览器终端连接分别显示。',
       'workspace.unloaded': () => '未加载',
       'workspace.runtimeStatus': () => 'Runtime 状态',
       'workspace.processStatus': () => '进程状态',
