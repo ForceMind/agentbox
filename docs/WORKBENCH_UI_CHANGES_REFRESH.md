@@ -62,3 +62,27 @@ ready矩阵、异常/分页状态及两张正常名称展示图；固定route/AP
 小稳定源码提交、Draft PR、适用本地检查、独立source/像素审查、新exact-head六套、
 正常merge/read-back及exact-main六套分别记录。当前只完成合同和只读评估，尚未
 取得本卡实现、实际浏览器或CI资格；不能借用PR156结果。
+
+## 09:51 UTC 源码、回归与本地质量检查点
+
+产品五文件已实现：metadata/reader双区、typed双语、原生44px控件、dark/forced-colors。
+独立AST/source审查确认page pre-render owner/hooks/effects字节不变，page5个与view3个
+callback表达式逐一保持。完整正文仍只在原completed owner内挂载，无安全/能力变化。
+产品remote56efb6e与65项focused回归remotefb5321已分提交保存；原所有断言保持。
+
+新增metadata-only spec静态70注册（49执行/21规定重复skip）、42PNG；22份实际fixture
+response通过production closed decoder。既有native fixture仅可选browser locale，
+默认中文不变；新增一个英文DOM/geometry用例（双端共2），无capture。原12个native
+测试定义经AST逐一保留。双栏高度上界改为workbench正常流bottom+原128px，仍检测
+脱离定位容器的辅助标签造成页面巨大空白；内部滚动、width、timeouts/预算均保持。
+
+首轮全Web1798 passed/2 failed，失败仅旧App.a3Native测试在英文App中仍断言中文。
+修正四处精确文案并增加lang=en，原bootstrap/read/socket等安全断言不变；focused2
+转绿。独立审查另发现新spec中文folder全角冒号不匹配原产品ASCII冒号，已只修期望，
+保留exact locator。二者都是测试语言假设修正，不称产品RED→GREEN。
+
+最终本地1800 Web+6 extension、全lint/typecheck/format/build、768 doc links与diff-check
+均exit0；既有Vite大chunk提示保留。新spec/native差异独立source复审CLEAR。实际
+浏览器、42新图及新的exact-head六套仍待；没有本地native/browser执行或通过声明。
+[Draft PR157](https://github.com/ForceMind/agentbox/pull/157)按正常追加历史资格化，
+不重跑旧头、不把本地pure测试或旧PR156绿灯当作本批浏览器/权限证明。

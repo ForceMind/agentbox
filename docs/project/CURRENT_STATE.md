@@ -1,14 +1,14 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-07T09:36:00Z"
+verified_at_utc: "2026-10-07T09:51:00Z"
 verified_by: "agentbox-ui-changes-reader"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-10-07 Workspace闭环，接续Changes呈现（09:36 UTC）
+## 2026-10-07 Workspace闭环，Changes呈现候选（09:51 UTC）
 
 [PR156](https://github.com/ForceMind/agentbox/pull/156)已正常合并为main
 `5ca2f1d348e03796c317d9c7c66f2582f240490f`，tree
@@ -21,8 +21,13 @@ exact Stop所有权、42/42新原图与官方main日志审查CLEAR。head实际3
 同一UI版本继续[Changes呈现合同](../WORKBENCH_UI_CHANGES_REFRESH.md)，从该
 合格main新建feat/ui-changes-reader-20261007。仅现有路径树/staged reader的布局、
 typed双语文案与必要回归；A3读取/权限/owner/TTL/取消/预算不变，新截图只采合成
-metadata/unavailable，既有授权synthetic patch证据边界保留。当前合同/只读评估
-完成，源码/新CI/像素资格尚待。剩余既有页面集中列于
+metadata/unavailable，既有授权synthetic patch证据边界保留。
+[Draft PR157](https://github.com/ForceMind/agentbox/pull/157)已保存产品与回归，独立source
+审查CLEAR；1800 Web+6 extension、全lint/typecheck/format/build、768 doc links通过。
+首轮两个App测试旧语言期望与新spec folder标点已明确修正，原失败保留；非产品bug。
+新spec计划42metadata PNG，静态70注册（49执行/21规定skip），既有native再增双端
+英文DOM/geometry2项；实际浏览器、新exact-head六套与像素资格仍待，保持Draft。
+剩余既有页面集中列于
 [逐版本计划](RELEASE_ITERATION_PLAN.md)，不增加功能、不改版本、不发布/部署。
 下方旧pending/Draft均为当时快照，live Git/GitHub优先。
 
