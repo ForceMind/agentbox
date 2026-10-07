@@ -1,23 +1,34 @@
 import { useMemo, useState } from 'react'
-import { parseUnifiedDiff } from './unifiedDiff'
+import { formatMessage, type Locale } from '../../i18n'
+import { parseUnifiedDiff, type DiffRow } from './unifiedDiff'
 import './VerifiedPatchView.css'
 
 const KIND_LABEL = {
-  context: '上下文',
-  added: '增加',
-  deleted: '删除',
-  marker: '行尾说明',
-}
+  context: 'changes.patchContext',
+  added: 'changes.patchAdded',
+  deleted: 'changes.patchDeleted',
+  marker: 'changes.patchMarker',
+} as const satisfies Record<DiffRow['kind'], `changes.${string}`>
 
 // Mounted only beneath the existing completed owner. No independent content owner.
-export function VerifiedPatchView({ text }: { text: string }) {
+export function VerifiedPatchView({
+  text,
+  locale,
+}: {
+  text: string
+  locale: Locale
+}) {
   const parsed = useMemo(() => parseUnifiedDiff(text), [text])
   const [raw, setRaw] = useState(false)
   const [wrap, setWrap] = useState(true)
   const unified = parsed.kind === 'unified' && !raw
   return (
     <div className="verified-patch-view">
-      <div className="diff-view-controls" aria-label="补丁显示方式">
+      <div
+        className="diff-view-controls"
+        role="group"
+        aria-label={formatMessage(locale, 'changes.patchControls', {})}
+      >
         {parsed.kind === 'unified' && (
           <>
             <button
@@ -26,7 +37,7 @@ export function VerifiedPatchView({ text }: { text: string }) {
               aria-pressed={!raw}
               onClick={() => setRaw(false)}
             >
-              统一视图
+              {formatMessage(locale, 'changes.patchUnified', {})}
             </button>
             <button
               type="button"
@@ -34,7 +45,7 @@ export function VerifiedPatchView({ text }: { text: string }) {
               aria-pressed={raw}
               onClick={() => setRaw(true)}
             >
-              原文
+              {formatMessage(locale, 'changes.patchRaw', {})}
             </button>
           </>
         )}
@@ -44,22 +55,26 @@ export function VerifiedPatchView({ text }: { text: string }) {
             checked={wrap}
             onChange={(event) => setWrap(event.target.checked)}
           />
-          换行显示
+          {formatMessage(locale, 'changes.patchWrap', {})}
         </label>
       </div>
       <p className="diff-view-note">
-        {parsed.kind === 'raw'
-          ? parsed.reason === 'limit'
-            ? '超出统一视图的显示范围，已显示完整原文，未截断。'
-            : '此补丁格式不支持统一视图，已显示完整原文，未截断。'
-          : '行号仅为补丁声明的旧/新坐标；头部信息不证明仓库或源文件身份。'}
+        {formatMessage(
+          locale,
+          parsed.kind === 'raw'
+            ? parsed.reason === 'limit'
+              ? 'changes.patchLimitFallback'
+              : 'changes.patchFormatFallback'
+            : 'changes.patchCoordinates',
+          {},
+        )}
       </p>
       {unified ? (
         <div
           className={`changes-patch diff-region${wrap ? '' : ' diff-no-wrap'}`}
           tabIndex={0}
           role="region"
-          aria-label="完整暂存补丁：统一视图"
+          aria-label={formatMessage(locale, 'changes.patchUnifiedRegion', {})}
           data-testid="a3-complete-patch"
         >
           <pre className="diff-headers">{parsed.headers}</pre>
@@ -67,7 +82,9 @@ export function VerifiedPatchView({ text }: { text: string }) {
             className="unified-diff-table"
             data-testid="unified-diff-table"
           >
-            <caption>暂存补丁行：＋增加，−删除，空格为上下文</caption>
+            <caption>
+              {formatMessage(locale, 'changes.patchCaption', {})}
+            </caption>
             <colgroup>
               <col className="diff-number-column" />
               <col className="diff-number-column" />
@@ -75,9 +92,15 @@ export function VerifiedPatchView({ text }: { text: string }) {
             </colgroup>
             <thead>
               <tr>
-                <th scope="col">旧行</th>
-                <th scope="col">新行</th>
-                <th scope="col">补丁文本</th>
+                <th scope="col">
+                  {formatMessage(locale, 'changes.patchOldLine', {})}
+                </th>
+                <th scope="col">
+                  {formatMessage(locale, 'changes.patchNewLine', {})}
+                </th>
+                <th scope="col">
+                  {formatMessage(locale, 'changes.patchText', {})}
+                </th>
               </tr>
             </thead>
             {parsed.hunks.map((hunk, index) => (
@@ -103,7 +126,7 @@ export function VerifiedPatchView({ text }: { text: string }) {
                     </td>
                     <td className="diff-line-text">
                       <span className="diff-kind-label">
-                        {KIND_LABEL[row.kind]}：{' '}
+                        {formatMessage(locale, KIND_LABEL[row.kind], {})}
                       </span>
                       <span data-testid="diff-line-text">{row.text}</span>
                     </td>
@@ -117,7 +140,7 @@ export function VerifiedPatchView({ text }: { text: string }) {
         <pre
           className={`changes-patch${wrap ? '' : ' diff-no-wrap'}`}
           tabIndex={0}
-          aria-label="完整暂存补丁：原文"
+          aria-label={formatMessage(locale, 'changes.patchRawRegion', {})}
           data-testid="a3-complete-patch"
         >
           {text}
