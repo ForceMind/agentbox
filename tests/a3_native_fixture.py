@@ -39,6 +39,60 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 _MAX_CONTROL = 64 * 1024
 
 
+class _PublicationWitness:
+    """Opt-in test evidence: fixed scalar counters, no event or payload export.
+
+    Overflow or a failed invariant latches failure. Saturation must never let
+    equal counters stand in for complete coverage after observations were lost.
+    """
+
+    LIMIT = 65535
+    FIELDS = {
+        "runtime": (
+            "records_started",
+            "publish_checks",
+            "precheck_active",
+            "checked_matches",
+            "published",
+            "ack_matches",
+        ),
+        "api": (
+            "ready_received",
+            "records_received",
+            "complete_received",
+            "current_received",
+            "current_replied",
+            "checked_received",
+            "checked_matches",
+            "ack_received",
+            "ack_matches",
+            "live_received",
+            "live_matches",
+        ),
+    }
+
+    def __init__(self, role: str) -> None:
+        self._counts = dict.fromkeys(self.FIELDS[role], 0)
+        self._failed = False
+        self._lock = threading.Lock()
+
+    def add(self, field: str, *, matched: bool = True) -> None:
+        with self._lock:
+            if self._failed or field not in self._counts or matched is not True:
+                self._failed = True
+                return
+            if self._counts[field] >= self.LIMIT:
+                self._failed = True
+                return
+            self._counts[field] += 1
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            if self._failed:
+                raise RuntimeError("fixture publication witness invalid")
+            return dict(self._counts)
+
+
 _CHILD_BOOTSTRAP = r"""
 import json, os, stat, sys
 stage = "parent-fence"
@@ -294,24 +348,43 @@ class _Child:
         except OSError as error:
             raise FixtureChildError(role, "spawn", type(error).__name__) from None
 
-    def call(self, value: dict[str, Any], timeout: float = 10) -> Any:
+    def call(
+        self, value: dict[str, Any], timeout: float = 10, *, deadline: float | None = None
+    ) -> Any:
         with self._lock:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("fixture child control timed out")
             assert self.process.stdin is not None and self.process.stdout is not None
             raw = json.dumps(value).encode() + b"\n"
             if len(raw) > _MAX_CONTROL:
                 raise ValueError("fixture control exceeded limit")
             self.process.stdin.write(raw)
             self.process.stdin.flush()
-            if not select.select([self.process.stdout], [], [], timeout)[0]:
-                raise TimeoutError("fixture child control timed out")
-            line = self.process.stdout.readline(_MAX_CONTROL + 1)
+            if deadline is not None:
+                timeout = min(timeout, deadline - time.monotonic())
+                if timeout <= 0:
+                    raise TimeoutError("fixture child control timed out")
+            end = time.monotonic() + timeout
+            if deadline is not None:
+                end = min(end, deadline)
+            line = bytearray()
+            while not line.endswith(b"\n") and len(line) <= _MAX_CONTROL:
+                remaining = end - time.monotonic()
+                if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                    raise TimeoutError("fixture child control timed out")
+                part = os.read(
+                    self.process.stdout.fileno(), min(4096, _MAX_CONTROL + 1 - len(line))
+                )
+                if not part:
+                    break
+                line.extend(part)
             if not line:
                 try:
                     exit_code = self.process.wait(timeout=0.1)
                 except subprocess.TimeoutExpired:
                     exit_code = None
                 raise FixtureChildError(self.role, "bootstrap-eof", "ChildExited", exit_code)
-            if len(line) > _MAX_CONTROL:
+            if len(line) > _MAX_CONTROL or not line.endswith(b"\n"):
                 raise FixtureChildError(self.role, "protocol", "ValueError")
             try:
                 result = json.loads(line)
@@ -319,6 +392,9 @@ class _Child:
                 raise FixtureChildError(self.role, "protocol", "ValueError") from None
             if type(result) is not dict:
                 raise FixtureChildError(self.role, "protocol", "TypeError")
+            # A readable pipe or successful decode after expiry is not success.
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("fixture child control timed out")
             if "error" in result:
                 phase = result.get("phase", "control")
                 raise FixtureChildError(
@@ -361,12 +437,14 @@ class A3NativeFixture:
         static_root: Path,
         isolated: bool = False,
         retain: Callable[[A3NativeFixture], None] | None = None,
+        publication_witnesses: bool = False,
     ) -> None:
         if isolated and os.geteuid() != 0:
             raise PermissionError("numeric UID isolation requires the CI root supervisor")
         root.mkdir(parents=True, exist_ok=True)
         root.chmod(0o755)
         self.root, self.isolated = root, isolated
+        self.publication_witnesses = publication_witnesses
         self.api: _Child | None = None
         self.runtime: _Child | None = None
         # The supervisor retains this exact owner BEFORE any child is spawned.
@@ -418,6 +496,7 @@ class A3NativeFixture:
                     "api_pid": self.api.process.pid,
                     "api_uid": uid_api,
                     "api_gid": gid_api,
+                    "publication_witnesses": publication_witnesses,
                 }
             )
             api = self.api.call(
@@ -435,6 +514,7 @@ class A3NativeFixture:
                     "metadata": runtime["metadata"],
                     "static_root": str(static_root),
                     "isolated": isolated,
+                    "publication_witnesses": publication_witnesses,
                 }
             )
             self.proof = {
@@ -454,17 +534,31 @@ class A3NativeFixture:
                 ) from None
             raise
 
-    def call(self, op: str, payload: dict[str, Any] | None = None) -> Any:
+    def call(
+        self, op: str, payload: dict[str, Any] | None = None, *, deadline: float | None = None
+    ) -> Any:
         value = {"op": op, **(payload or {})}
         if op == "runtime-status":
             assert self.runtime
-            return self.runtime.call({"op": "status"})
+            return self.runtime.call({"op": "status"}, deadline=deadline)
         if op == "status":
             assert self.runtime and self.api
-            return {**self.runtime.call(value), **self.api.call(value), **self.proof}
+            return {
+                **self.runtime.call(value, deadline=deadline),
+                **self.api.call(value, deadline=deadline),
+                **self.proof,
+            }
+        if op == "publication-status":
+            if not self.publication_witnesses:
+                raise ValueError("fixture publication witnesses disabled")
+            assert self.runtime and self.api
+            return {
+                "runtime": self.runtime.call(value, deadline=deadline),
+                "api": self.api.call(value, deadline=deadline),
+            }
         if op in {"revoke", "auth-epoch", "project", "epoch", "peer"}:
             assert self.api
-            return self.api.call(value)
+            return self.api.call(value, deadline=deadline)
         if op in {"pause-api", "resume-api", "exit-api", "exit-runtime"}:
             target = self.runtime if op == "exit-runtime" else self.api
             assert target
@@ -475,7 +569,7 @@ class A3NativeFixture:
             )
             return {"ok": True}
         assert self.runtime
-        return self.runtime.call(value)
+        return self.runtime.call(value, deadline=deadline)
 
     def close(self) -> None:
         failures: list[Exception] = []
@@ -493,7 +587,7 @@ def _no_host(*args: Any, **kwargs: Any) -> Any:
     raise AssertionError("native A3 fixture must not activate host resources")
 
 
-def _populate_patch_project(project: Path) -> None:
+def _populate_patch_project(project: Path, *, publication_witnesses: bool = False) -> None:
     """Create real staged Git changes; only synthetic fixture bytes are committed."""
     project.mkdir(parents=True)
 
@@ -525,6 +619,8 @@ def _populate_patch_project(project: Path) -> None:
         "no-final-newline.txt": b"line one\nold tail",
     }.items():
         (project / name).write_bytes(raw)
+    if publication_witnesses:
+        (project / "modified.txt").write_text("original synthetic content\n", encoding="utf-8")
     git("add", "--", ".")
     # Identity is limited to this synthetic commit command, never global config.
     git(
@@ -557,7 +653,11 @@ def _populate_patch_project(project: Path) -> None:
     }.items():
         (project / name).write_bytes(raw)
     (project / "delete.txt").unlink()
+    if publication_witnesses:
+        (project / "modified.txt").write_text("staged secret-canary content\n", encoding="utf-8")
     git("add", "--", ".")
+    if publication_witnesses:
+        (project / "modified.txt").write_text("unstaged-exclusion-canary\n", encoding="utf-8")
     (project / "success.txt").write_text("unstaged-exclusion-canary\n")
     (project / "unstaged-only.txt").write_text("untracked fixture only\n")
 
@@ -565,7 +665,12 @@ def _populate_patch_project(project: Path) -> None:
 async def _runtime(config: dict[str, Any]) -> None:
     # No Runtime authority, patch reader or key imports occur in the API child.
     from agentbox_protocol.a3_crypto import A3Runtime
-    from agentbox_runtime.a3_native_transport import A3NativeReadOwner, _NativeOpaquePort
+    from agentbox_protocol.a3_transport import NativeFrame, NativeKind
+    from agentbox_runtime.a3_native_transport import (
+        A3NativeReadOwner,
+        A3NativeReservation,
+        _NativeOpaquePort,
+    )
     from agentbox_runtime.git import GitAdapter
     from agentbox_runtime.git_changes import parse_git_change_page
     from agentbox_runtime.git_staged_reader import GitStagedPatchReader
@@ -582,6 +687,42 @@ async def _runtime(config: dict[str, Any]) -> None:
     release = asyncio.Event()
     original_encrypt = A3Runtime.encrypt_record
     original_send = _NativeOpaquePort.send
+    witness = _PublicationWitness("runtime") if config.get("publication_witnesses") else None
+
+    if witness is not None:
+        original_execute = A3NativeReservation._execute
+
+        async def execute(
+            reservation: A3NativeReservation, frame: NativeFrame, deadline: int
+        ) -> tuple[NativeKind, dict[str, object]]:
+            assert witness is not None
+            if frame.kind is NativeKind.PUBLISH_CHECK:
+                witness.add("publish_checks")
+                # Same Runtime loop and original owner, before the real check.
+                witness.add("precheck_active", matched=reservation._owner.selectors._active == 1)
+            result = await original_execute(reservation, frame, deadline)
+            if frame.kind in {NativeKind.PUBLISH_CHECK, NativeKind.PUBLISHED}:
+                port = reservation._port
+                expected = (
+                    NativeKind.CHECKED if frame.kind is NativeKind.PUBLISH_CHECK else NativeKind.ACK
+                )
+                field = "checked_matches" if expected is NativeKind.CHECKED else "ack_matches"
+                count = witness.snapshot()[field]
+                witness.add(
+                    field,
+                    matched=(
+                        port is not None
+                        and isinstance(frame.payload, dict)
+                        and frame.payload == port.pending == result[1]
+                        and result[0] is expected
+                        and frame.payload["record_sequence"] == count + 1
+                    ),
+                )
+                if frame.kind is NativeKind.PUBLISHED:
+                    witness.add("published")
+            return result
+
+        A3NativeReservation._execute = execute  # type: ignore[method-assign]
 
     def encrypt(profile: A3Runtime, raw: bytes) -> bytes:
         record = original_encrypt(profile, raw)
@@ -592,6 +733,8 @@ async def _runtime(config: dict[str, Any]) -> None:
     async def send(
         self: _NativeOpaquePort, record: bytes, check_current: Callable[[], None]
     ) -> None:
+        if witness is not None:
+            witness.add("records_started")
         if record == fault["end"]:
             if fault["mode"] == "hold-end":
                 fault["held"] = True
@@ -606,7 +749,7 @@ async def _runtime(config: dict[str, Any]) -> None:
     root = Path(config["root"])
     projects = root / "projects"
     project = projects / "formal-project"
-    _populate_patch_project(project)
+    _populate_patch_project(project, publication_witnesses=witness is not None)
     metadata = parse_git_change_page(
         subprocess.run(
             ["git", "-C", str(project), "status", "--porcelain=v2", "-z"],
@@ -746,6 +889,8 @@ async def _runtime(config: dict[str, Any]) -> None:
                         "runtime_uid": os.geteuid(),
                     }
                 )
+            elif op == "publication-status" and witness is not None:
+                _emit(witness.snapshot())
             elif op == "mode":
                 assert command["value"] in {"normal", "hold-end", "tamper-end"}
                 fault["mode"] = command["value"]
@@ -814,7 +959,7 @@ async def _api(config: dict[str, Any]) -> None:
     _configure_api_import_environment(config)
 
     import uvicorn
-    from agentbox_api.a3_native_transport import A3NativeSource
+    from agentbox_api.a3_native_transport import A3NativeBundle, A3NativeSource
     from agentbox_api.main import create_app
     from agentbox_api.waw_control_client import (
         BoundRuntimePeer,
@@ -822,13 +967,119 @@ async def _api(config: dict[str, Any]) -> None:
         _RuntimePeerObservation,
     )
     from agentbox_api.waw_websocket_protocol import WAWWebSocketProtocol
+    from agentbox_core.a3_native_io import NativeChannel
     from agentbox_core.configuration import Environment, Settings
     from agentbox_core.models import Base, ControlPlaneSession, Project
     from agentbox_core.security import PasswordManager
     from agentbox_core.services import build_services
     from agentbox_core.waw_models import RuntimeHostInstallation
+    from agentbox_protocol.a3_transport import NativeFrame, NativeKind
     from pydantic import SecretStr
     from sqlalchemy import select as db_select
+
+    witness = _PublicationWitness("api") if config.get("publication_witnesses") else None
+    if witness is not None:
+        original_areceive = NativeChannel.areceive
+        original_receive = NativeChannel.receive
+        original_send = NativeChannel.send
+        original_rpc = A3NativeBundle._rpc
+        original_request = A3NativeBundle.request
+
+        async def areceive(
+            channel: NativeChannel,
+            expected: frozenset[NativeKind],
+            *,
+            deadline_ns: int,
+            guard: Callable[[], None] | None = None,
+        ) -> NativeFrame:
+            frame = await original_areceive(channel, expected, deadline_ns=deadline_ns, guard=guard)
+            assert witness is not None
+            if frame.kind is NativeKind.READY:
+                witness.add("ready_received")
+            elif frame.kind is NativeKind.RECORD:
+                witness.add("records_received")
+            elif frame.kind is NativeKind.COMPLETE:
+                witness.add("complete_received")
+            elif frame.kind is NativeKind.ACK:
+                witness.add("ack_received")
+            return frame
+
+        def receive(
+            channel: NativeChannel,
+            expected: frozenset[NativeKind],
+            *,
+            deadline_ns: int,
+            guard: Callable[[], None] | None = None,
+        ) -> NativeFrame:
+            frame = original_receive(channel, expected, deadline_ns=deadline_ns, guard=guard)
+            assert witness is not None
+            if frame.kind is NativeKind.CURRENT:
+                witness.add("current_received")
+            elif frame.kind is NativeKind.CHECKED:
+                witness.add("checked_received")
+            elif frame.kind is NativeKind.LIVE_REPLY:
+                witness.add("live_received")
+            return frame
+
+        def native_send(
+            channel: NativeChannel,
+            kind: NativeKind,
+            payload: dict[str, object] | bytes,
+            *,
+            deadline_ns: int,
+            guard: Callable[[], None] | None = None,
+        ) -> None:
+            original_send(channel, kind, payload, deadline_ns=deadline_ns, guard=guard)
+            if kind is NativeKind.CURRENT_REPLY:
+                assert witness is not None
+                witness.add("current_replied")
+
+        def rpc(
+            bundle: A3NativeBundle,
+            kind: NativeKind,
+            payload: dict[str, object],
+            expected: NativeKind,
+        ) -> None:
+            # The unmodified _rpc returns only after exact reply-payload equality,
+            # including SHA/challenge and sequence, and its final authority check.
+            original_rpc(bundle, kind, payload, expected)
+            assert witness is not None
+            if kind is NativeKind.PUBLISH_CHECK:
+                witness.add(
+                    "checked_matches",
+                    matched=(
+                        expected is NativeKind.CHECKED
+                        and payload["record_sequence"] == witness.snapshot()["checked_matches"] + 1
+                    ),
+                )
+            elif kind is NativeKind.LIVE:
+                witness.add("live_matches", matched=expected is NativeKind.LIVE_REPLY)
+
+        async def request(
+            bundle: A3NativeBundle,
+            kind: NativeKind,
+            payload: dict[str, object],
+            expected: NativeKind,
+            seconds: float,
+        ) -> Any:
+            reply = await original_request(bundle, kind, payload, expected, seconds)
+            if kind is NativeKind.PUBLISHED:
+                assert witness is not None
+                witness.add(
+                    "ack_matches",
+                    matched=(
+                        expected is NativeKind.ACK
+                        and reply == payload
+                        and payload["record_sequence"] == witness.snapshot()["ack_matches"] + 1
+                    ),
+                )
+            return reply
+
+        NativeChannel.areceive = areceive  # type: ignore[method-assign]
+        NativeChannel.receive = receive  # type: ignore[method-assign]
+        NativeChannel.send = native_send  # type: ignore[method-assign]
+        A3NativeBundle._rpc = rpc  # type: ignore[method-assign]
+        A3NativeBundle.request = request  # type: ignore[method-assign]
 
     root = Path(config["root"])
     settings = Settings(
@@ -986,6 +1237,20 @@ async def _api(config: dict[str, Any]) -> None:
             op = command["op"]
             if op == "status":
                 _emit({"connections": connections, "api_a3_runtime_imports": len(forbidden)})
+                continue
+            if op == "publication-status" and witness is not None:
+                if not 0 <= len(source._bundles) <= 4:
+                    raise RuntimeError("fixture publication witness invalid")
+                _emit(
+                    {
+                        **witness.snapshot(),
+                        "open_bundles": len(source._bundles),
+                        "runtime_imports_absent": not any(
+                            name == "agentbox_runtime" or name.startswith("agentbox_runtime.")
+                            for name in sys.modules
+                        ),
+                    }
+                )
                 continue
             if op == "close":
                 _emit({"ok": True})

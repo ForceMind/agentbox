@@ -57,3 +57,14 @@ NativeBrowser.complete当前仅等PATCH_END；本场景须增加明确COMPLETE�
 原250ms重叠见证，必须标为证据不足，不能宣称历史root cause RED→GREEN。
 
 当前仅合同checkpoint，源码实现/真实新测试/资格处置待完成；不发布或部署。
+
+## 06:18 UTC 首份实现WIP
+
+已保存三个测试文件的完整源码快照：fixture默认关闭的固定scalar见证、client可选
+绝对时限、新process不变量场景。原unit与guard-budget、apps/packages/workflows
+对main1ce diff为空。AST、逐文件Black/Ruff通过；9包导入来源已核对为当前工作树。
+
+这是未完成的WIP：mypy已报6处wrapper首参/方法赋值类型问题，独立审查还要求
+见证错误只能latch、不得抢先覆盖原native调用/异常；显式严格deadline应仅作用于
+新测试选择的路径，旧默认行为必须保持。纯脱敏/计数边界测试也在补充。此刻未执行
+新native测试，未宣称覆盖已通过；后续以正常追加提交收尾，不改写此快照历史。
