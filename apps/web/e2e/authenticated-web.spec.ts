@@ -710,8 +710,18 @@ test('shows Project Git changed paths without file bodies or patch controls', as
   expect(viewport.scroll).toBeLessThanOrEqual(viewport.client)
   const note = await page.locator('.changes-metadata-note').boundingBox()
   const card = await page.locator('.changes-card').boundingBox()
-  if (!note || !card) throw new Error('Changed Paths layout is unavailable')
-  expect(card.y).toBeGreaterThan(note.y + note.height)
+  const tree = await page.locator('.changes-tree').boundingBox()
+  if (!note || !card || !tree)
+    throw new Error('Changed Paths layout is unavailable')
+  // The redesigned metadata card contains its note and then its path tree.
+  // Both remain inside the card; the tree must not cover the explanatory note.
+  for (const child of [note, tree]) {
+    expect(child.x).toBeGreaterThanOrEqual(card.x)
+    expect(child.y).toBeGreaterThanOrEqual(card.y)
+    expect(child.x + child.width).toBeLessThanOrEqual(card.x + card.width + 1)
+    expect(child.y + child.height).toBeLessThanOrEqual(card.y + card.height + 1)
+  }
+  expect(tree.y).toBeGreaterThan(note.y + note.height)
   if (await page.locator('.desktop-sidebar').isVisible()) {
     const pulse = await page
       .locator('.desktop-sidebar .control-pulse')

@@ -86,3 +86,21 @@ response通过production closed decoder。既有native fixture仅可选browser l
 浏览器、42新图及新的exact-head六套仍待；没有本地native/browser执行或通过声明。
 [Draft PR157](https://github.com/ForceMind/agentbox/pull/157)按正常追加历史资格化，
 不重跑旧头、不把本地pure测试或旧PR156绿灯当作本批浏览器/权限证明。
+
+## 10:07 UTC 旧browser布局断言适配
+
+早期source checkpoint fb5321的官方E2E37602974890/job112731569203终态为
+335 passed/94规定skip/9 failed。七项native desktop失败是旧reader-bottom高度
+假设，不含合法较长metadata列；该断言已在140a34按前述正常流workbench边界修正。
+另两项authenticated-web desktop/phone失败是旧card.y>note.bottom；本次设计已将
+metadata说明放入card，因此旧断言与合法DOM结构矛盾。
+
+仅把后者改为note/tree均包含在card内、tree位于note之后，无裁切/遮挡；保持原
+page width、sidebar、无正文/动作、fold/pagination等断言和所有timeout/预算。
+不改产品或放宽权限。targeted lint/format/TypeScript/diff-check通过，原spec静态
+仍72项；首次collection缺既有测试环境变量未成功，随后以纯static占位值收集通过，
+未运行browser。修正方案独立source审查CLEAR；实际浏览器结果仍待。
+
+140a34头当时五套首轮成功，Backend实际3.11.17/3.12.14/3.13.15各5375/88，
+Frontend1800+6；E2E仍在运行，不能称六套或整批合格。原失败保留，后继正常
+追加test/docs提交；不手动重跑旧头，不借布局调整掩盖任何内容/安全断言。
