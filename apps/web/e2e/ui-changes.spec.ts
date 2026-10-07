@@ -55,7 +55,7 @@ const copy = {
     notRepository: '此 Project 不是 Git 仓库。',
     failed: '无法加载 Git 变更。',
     stale: '变更状态已过期。返回此页面或手动刷新。',
-    folder: '文件夹：ui',
+    folder: '文件夹: ui',
     more: '加载更多路径',
     loadingMore: '正在加载…',
     count: (shown: number, total: number) =>
