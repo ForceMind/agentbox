@@ -301,6 +301,8 @@ class A3NativeReservation:
             if frame.payload != expected:
                 raise ContentError("PATCH_REVOKED")
             self._check_peer()
+            if time.monotonic_ns() >= deadline:
+                raise ContentError("PATCH_TIMEOUT")
             return self._facts
         except BaseException:
             self.close()

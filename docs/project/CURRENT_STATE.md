@@ -1,12 +1,33 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-07T00:59:00Z"
+verified_at_utc: "2026-10-07T02:00:00Z"
 verified_by: "agentbox-currentness-final-deadline"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-07 PR152真实RED成立；最终deadline最小修正待GREEN
+
+[PR152](https://github.com/ForceMind/agentbox/pull/152) test-only head
+98420f82e0e36107e5c49dae510f665590fbb5a6 / tree3ce2e2a336cc2b92e1f96d3b60f93dd3646630eb
+的[Backend37559042416](https://github.com/ForceMind/agentbox/actions/runs/37559042416)
+实际3.11.16、3.12.14、3.13.15均只新增用例失败，各5306 passed/1 failed/88 skipped。
+官方日志的及时reply、逾期final peer proof、返回late facts、收到METADATA四个
+见证全部True，独立审查已确认；这是所需真实RED，不是旧23/24 receive超时。
+
+后继只在Runtime.current最终peer proof后增加原D的>=时间复验，超时沿用
+PATCH_TIMEOUT、close及finally锁释放。原deadline/caps、peer检查和所有其他
+路径不变；真实回归hash7c4b13992c6aa39deef31a7040189968d878102bd715aa82f1f895132be2fde3
+保持。Ruff、mypy394、逐文件Black、原3项pure安全测试通过；本地不执行受限
+UDS；独立源码/回归/记录复审CLEAR，无P0/P1/P2。新exact-head GREEN仍待真实CI，
+未合并或部署。
+
+main仍2b5449ee2832e7173aadf8d54ffa312b13025723，旧READY超时根因仍开放；
+PR149/151冻结，不合入观察器，不改pins/预算/GC/GIL或pidfd扫描次数。详见
+[最终接受时限记录](../WORKBENCH_A3_CURRENTNESS_FINAL_DEADLINE.md)。下方test-only
+“未发布/未取得RED/未修正”均为原提交时历史快照，不覆盖本节。
 
 ## 2026-10-07 currentness最终接受时限：test-only RED候选
 

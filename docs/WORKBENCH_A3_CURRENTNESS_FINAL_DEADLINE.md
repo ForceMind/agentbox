@@ -1,5 +1,35 @@
 # A3 currentness 最终接受时限：先取得真实RED
 
+## 已取得真实RED；最小修正待GREEN
+
+[PR152](https://github.com/ForceMind/agentbox/pull/152) 的test-only head
+`98420f82e0e36107e5c49dae510f665590fbb5a6` / tree
+`3ce2e2a336cc2b92e1f96d3b60f93dd3646630eb` 已由现有
+[Backend run37559042416](https://github.com/ForceMind/agentbox/actions/runs/37559042416)
+证明原实现的迟到成功。实际Python3.11.16/job112591895487、3.12.14/job112591895284、
+3.13.15/job112591895497各5395 collected，5306 passed / 1 failed / 88 skipped。
+唯一失败都是本新增真实UDS用例；reply_before_deadline、final_peer_after_deadline、
+returned_late_facts、metadata_received四个见证均为True。不是原READY超时或
+未完成注入产生的失败。独立审查已读官方日志确认该RED。
+
+当前后继只在Runtime.current原最终_check_peer之后、facts返回之前新增两行：
+若time.monotonic_ns() >= 原deadline则抛PATCH_TIMEOUT。原D创建、较小inherited/
+expiry cap、全部I/O/peer proof及except close/finally释放锁保持；没有续期或正向
+授权缓存。原peer失败/取消仍先于新时间检查传播；D-1/D/D+1比较和cap复用由源码
+检查确认，不另宣称这三个边界已各做真实native执行。119行真实回归逐字不变，
+SHA256为`7c4b13992c6aa39deef31a7040189968d878102bd715aa82f1f895132be2fde3`。
+
+该最小修正本地Ruff、mypy394、两改动Python逐文件Black、原3项无socket安全测试
+通过；一次多文件Black因沙箱IPC权限受限失败，随后逐文件执行通过，无权限绕过。
+新UDS回归仍不在本地运行，必须由后继exact-head完整六套CI给出GREEN。
+独立源码、同一真实回归及两份记录复审均CLEAR，无P0/P1/P2；三份官方RED日志
+已由独立审查者核对。该复审不替代后继真实GREEN。
+无workflow、matrix、pins、预算、GC/GIL、pidfd去重或UI变动。
+
+这是独立的最终接受时限修正。旧main3.13.15的23/24 READY超时根因仍未闭合，
+不能把本RED/GREEN当作其因果证明。下方是test-only提交时的合同与验证快照，
+其中“未修正/未取得RED”不覆盖本节实际进展；最终GREEN仍待验证。
+
 ## 独立问题与当前阶段
 
 基线为main `2b5449ee2832e7173aadf8d54ffa312b13025723` / tree
