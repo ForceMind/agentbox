@@ -1,14 +1,14 @@
 ---
 
 schema_version: 1
-verified_at_utc: "2026-10-07T13:38:00Z"
+verified_at_utc: "2026-10-07T14:22:00Z"
 verified_by: "agentbox-ui-admin-pages"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
 
-## 2026-10-07 Agent管理闭环，管理摘要呈现候选（13:38 UTC）
+## 2026-10-07 Agent管理闭环，管理摘要浏览器更正（14:22 UTC）
 
 [PR158](https://github.com/ForceMind/agentbox/pull/158)已于12:47:59 UTC正常合并为
 main `cf710d59cd6c47d7a240c0ce25d7f006d51e374a`，tree
@@ -37,7 +37,11 @@ Doctor保留五项control-plane检查与现有安全Runtime摘要，ready不代�
 通过。两个初始测试错误只漏计LoginPage的health GET，未发现产品RED。新browser
 静态168注册（102执行/66规定重复skip），计划80metadata图，实际8DTO变体经
 production decoder通过；只新增精确artifact前缀，保持capture-off与原安全边界。
-最终exact-head六套、真实browser/全部80原图及main资格仍待，不借旧CI称本批合格。
+2c4正式E2E为564passed/222skip/2fail，仅新mobile用例把原生dialog误交显式role
+helper；test-only修正已独立CLEAR，原产品不变。80张原图已实际独立审查，另发现
+既有端口8080被分组为8,080；4项真实RED单独保存后仅该字段改TechnicalValue，
+原4项逐字GREEN、独立27项通过，其他数量/时长格式保持；修后完整1945 Web+6 extension通过。新head六套与
+22张Settings变化图及main资格仍待，不借失败头或旧图称本批合格。
 之后仍有Login、NotFound及跨页面收尾，不以本批代替整个版本完成。
 无新账号、凭据/grant、host激活、release/deploy；旧pending均为历史快照。
 

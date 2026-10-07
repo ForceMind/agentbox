@@ -93,3 +93,35 @@ builder变体经production decoder通过，503fixture经真实ApiClient错误路
 新browser fixture/guard/文案/矩阵/几何断言与workflow边界已独立source review CLEAR。
 当前仅source/本地回归合格；正式新browser、全部80原图、最终exact-head六套、
 正常merge与exact-main仍待，不借35ba早期头或maincf710旧CI声称本批完成。
+
+## 14:22 UTC 实际浏览器、原生dialog断言与端口修正
+
+2c4bf6033a803c07c0554b2cb8f1e1b19280a31b的五套CI首轮通过：Frontend1941+6，
+Backend实际3.11.17/3.12.14/3.13.15各5375/88，native3.13.15通过。E2E37630576342/
+job112823463552为564passed/222skip/2failed；仅新mobile双语导航用例误用要求
+字面role属性的旧helper，而AppShell原生dialog已被getByRole正确解析且aria-modal
+为true。只改新spec验证原生open/:modal、accessible name、初始焦点、Shift+Tab/
+Tab围栏与背景focus阻断，保留Escape恢复/Back/Forward，无产品/全局helper/配置
+或预算变更，独立source CLEAR。原失败头保留，不重跑换绿。早期35ba的旧浏览器
+464/156首轮成功另记，不代替新头资格。
+
+实际artifact11486683254为59,818,821bytes，SHA256
+0961358f71cfd1ee0dbfe4e0de876614ce530364ef54e07ba1e45f382b8481d8。官方取回后
+digest/ZIP CRC/PNG路径验证通过；其中全部80张本批图独立逐张审查（Doctor30、
+Settings28、Logs22），未见裁切/重叠/状态字压缩。80图清单摘要为
+5b3fa81662a12a294434aaef48300d0add23b91faeeb4facd565019304fa77c3；不冒称346图全审。
+
+正常预览暴露既有端口呈现会将8080/65535分组为8,080/65,535；这是技术标识显示
+问题，非本批新回归。按已有普通修复授权另立4项真实HTTP/parser/hook RED，
+test-only commit在产品修正之前。作者与独立审查者均复现4/4只在raw ASCII端口
+断言失败；六事实、本地化12,345数量/时长、单GET、无控件的先行断言均通过。
+SettingsPage.port.test.tsx SHA256
+a70036058c2803f21df3007585b77693b65d5123b3e4f7cc348adfdc2bec8bc9逐字不改。
+
+产品只将该处端口JSX替换为TechnicalValue(String(bind_port))，保留host/分隔符、
+helper/pre-return及其他数值格式。原4RED转GREEN；独立27项及作者30项定向通过，修后完整1945 Web+6 extension通过，
+source CLEAR；unit/E2E只更正该端口期望，并增强bind不可用不泄漏raw port断言。
+这项明确的技术端口例外覆盖本卡此前“原数字格式保持”的端口表述，其他格式不变。
+修后需重新取得新头六套CI及实际图，预计22张Settings ready/preview变化图必须
+复查；旧80图不能冒称修后全部像素通过。原六个Library身份保持，Settings两预览
+将更新版本，不重复创建。
