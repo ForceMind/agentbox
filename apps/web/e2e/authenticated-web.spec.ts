@@ -52,6 +52,7 @@ test('renders recent Attention from authenticated Jobs without leaking summaries
   await expect(
     page.getByRole('heading', { name: 'Needs attention' }),
   ).toBeVisible()
+  await page.getByText('Technical details', { exact: true }).click()
   await expect(page.getByText('job_review')).toBeVisible()
   await expect(page.getByText('job_done')).toHaveCount(0)
   await expect(page.getByText('private Job summary')).toHaveCount(0)
@@ -921,8 +922,12 @@ test('handles dirty Git, branches, safe failures, Draft PR, and Claude binding',
   await page.getByText('Project A').click()
   await expect(page.getByText('4 changes')).toBeVisible()
   await expect(page.getByText('2 / 1')).toBeVisible()
+  await page.getByText('Git details', { exact: true }).click()
   await expect(page.getByText(/Submodules detected/i)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start Claude' })).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Manage branches', exact: true })
+    .click()
   await expect(
     page.getByRole('button', { name: 'Current · main' }),
   ).toBeVisible()
@@ -938,6 +943,9 @@ test('handles dirty Git, branches, safe failures, Draft PR, and Claude binding',
   await page.getByRole('button', { name: 'Push', exact: true }).click()
   await expect(page.getByText(/GIT_UPSTREAM_MISSING/)).toBeVisible()
 
+  await page
+    .getByRole('button', { name: 'Prepare Draft PR', exact: true })
+    .click()
   await page.getByLabel('Pull request title').fill('Phase 7 E2E Draft')
   await page.getByLabel('Pull request base branch').fill('develop')
   await page.getByLabel('Pull request body').fill('Safe bounded body')
@@ -954,7 +962,10 @@ test('handles dirty Git, branches, safe failures, Draft PR, and Claude binding',
   })
   await expect(page.getByText(/job_pr · succeeded/i)).toBeVisible()
   await expect(page.getByText(/#99 Phase 7 E2E Draft/)).toBeVisible()
-  await expect(page.getByText(/owner\/repo · checks pass/)).toBeVisible()
+  await expect(page.locator('.project-github-card')).toContainText('owner/repo')
+  await expect(page.locator('.project-github-card')).toContainText(
+    'checks · pass',
+  )
   const viewport = await page.evaluate(() => ({
     client: document.documentElement.clientWidth,
     scroll: document.documentElement.scrollWidth,

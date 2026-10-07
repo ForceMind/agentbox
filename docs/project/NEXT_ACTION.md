@@ -1,5 +1,77 @@
 # Current Authorized Action
 
+## 2026-10-07 分进程发布覆盖合格，接续本批UI（07:13 UTC）
+
+[PR155](https://github.com/ForceMind/agentbox/pull/155)已正常合并为main
+`7ab227a378873f6d79d77c59db2228f7e047eb65`，tree
+`560633fd9b465cd13e83e5c1f641f8146486f79f`，与合格head f04b813逐字相同。
+该exact-main六套workflow首轮终态成功，26checks=23success+3规定skip；Backend
+实际3.11.17/3.12.14/3.13.15各5375 passed/88 skipped，E2E256 passed/50规定skip、
+无failed/flaky。新增process15、原transport69、guard-budget1、新pure49均实际通过，
+独立source、coverage和官方main日志复审通过。
+
+新增覆盖复用既有exec API/Runtime fixture，仅默认关闭的有界scalar见证与新process
+场景；精确CHECKED/LIVE_REPLY/ACK、COMPLETE和后台currentness均观察真实调用。
+原direct test及8ms companion逐字保留，production与exact250ms未动。旧main1ce
+的3.13.15 READY23/24失败仍保留为开放availability/qualification问题；本批不是
+根因修复，不将GIL假设或.16通过改称.15问题已解决，不替换旧断言或盲重跑。
+
+[UI PR153](https://github.com/ForceMind/agentbox/pull/153)已审head
+`621402c21ef874961ef092a4aa2579ac71ae2012`此前六套首轮通过，Backend实际3.13.16，
+E2E299 passed/73规定skip。126张真实PNG（70新UI）校验后实际复查21张，四张展示
+图已交付；这些是该旧头的证据。本次正常merge-forward main7ab，保留621和7ab
+两条历史，Web与workflow逐字保持621，新增五文件逐字来自合格main，仅另更新
+本批记录与三个项目快照。实际新UI head的六套、原PNG与最终main回读仍须取得。
+
+处置已明确：原READY历史问题持续开放，新增分进程覆盖作为补充软件证据；
+按既定feature→CI→merge→exact read-back继续同一UI版本，不另起诊断框架或负载
+调参。不新增本批以外页面/功能，不改变版本、发布、部署或真实host/Secret边界。
+详见[UI记录](../WORKBENCH_UI_PROJECT_DETAIL_REFRESH.md)与
+[分进程覆盖合同](../WORKBENCH_A3_PROCESS_PUBLICATION_COVERAGE.md)。下方为历史快照。
+
+## 2026-10-07 Project详情UI接续peer-proof合格修正（05:30 UTC）
+
+main已正常合并[PR154](https://github.com/ForceMind/agentbox/pull/154)为
+`1ce060f57afde6f7369e815a969aeb03eab2b012`，tree
+`4d26fe53de38c96aa39732a9fcc020d9c96bdf8c`，与六套首轮成功的head22043ceb精确一致。
+18项真实native回归先确认重复成本RED，再以不变测试GREEN；GREEN实际
+3.11.16/3.12.15/3.13.15各5325 passed/88 skipped，其中3.13.15与18项RED同patch。
+E2E256 passed/50 prescribed skip，26 checks=24 success+2 prescribed skip。
+post-main六套正在执行，当前不称其通过；旧READY间歇根因仍独立开放。
+
+[UI PR153](https://github.com/ForceMind/agentbox/pull/153)原b07ba66的E2E299 passed/
+73 prescribed skip、70张新图已校验交付，Project错误卡片、键盘focus和Refresh
+图标修正经实际像素复查；该头Backend3.13.15原READY23/24失败保留，未合并。
+当前从b07正常merge-forward main1ce，保留两条历史；Web产品/测试/工作流逐字保持
+UI已审版本，接入的core两行、18项回归与合同逐字来自已合格PR154。
+
+下一步验证实际整合头的本地适用检查、独立移植审查、六套终态及全新截图；同时
+完成main1ce回读。仅两者资格完整后正常Ready/merge并验证最终main。当前不是
+完整UI版本收官，不新增页面/能力、release、部署或host激活；PR149/151保持冻结。
+详见[本批记录](../WORKBENCH_UI_PROJECT_DETAIL_REFRESH.md)与
+[peer-proof合同](../WORKBENCH_A3_PEER_PROOF_DEDUP.md)。下方旧状态均保留为当时快照。
+
+## 2026-10-07 Project 详情与待处理 UI 候选（03:15 UTC）
+
+live main 已核对为 `9f2721ed6dc9c5e6ac41c162463f29674004ad12`，tree
+`fc152423899fcc9b313c269b45022a1ed425e98d`。PR148 UI 首批、PR152 最终接受时限
+修正均已正常合并；exact-main 六套 workflow 成功，23 checks success / 3 prescribed
+skipped，E2E256 passed / 50 prescribed skipped。main Backend 实际3.13.16；同树
+PR152 head 的真实 RED→GREEN 实际3.13.15，不把版本变化称为旧 READY 根因修复。
+PR150 代码经 PR148 合入，后已关闭为 incorporated，未宣称单独 merged。
+
+本次继续同一已批准 UI 版本的[Project 详情与待处理](../WORKBENCH_UI_PROJECT_DETAIL_REFRESH.md)，
+不另开功能路线图或发布。仅迁移既有功能，补齐 Project/adminSession 所有权、
+草稿与晚到响应隔离、Cancel/Escape/Back/Forward、离线与隐藏恢复。独立 hooks
+73项、页面及 Labels 39项回归通过；三项已复现 Job readback/poll 问题已修并复审
+CLEAR。最终全量本地 test/lint/typecheck/format/build/audit 与边界检查通过；
+Draft PR、新 exact-head 六套 CI 和真实截图审查仍待完成。
+
+候选从上述 main 新建 feature branch；合格后依既定 feature → CI → merge →
+exact read-back 接续。无 API/Runtime/A3/Secret/权限/pin/预算变更，无真实账号、host
+激活、release 或部署。原 READY23/24 间歇问题仍独立开放，PR149/151 保持冻结；
+下方旧 main、未合并、等待 GREEN 和“不 merge”文字均为当时历史快照。
+
 ## 2026-10-06 PR148 UI 候选质量回归快照（13:07 UTC）
 
 [Draft PR148](https://github.com/ForceMind/agentbox/pull/148) 已交付共享外壳、

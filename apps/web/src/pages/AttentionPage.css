@@ -1,8 +1,33 @@
-.attention-observed {
-  color: var(--muted);
-  margin: 0 0 1rem;
+.attention-page {
+  min-width: 0;
 }
-
+.attention-refresh,
+.attention-project-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.attention-refresh,
+.attention-refresh > svg {
+  flex-shrink: 0;
+}
+.attention-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+.attention-summary p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.attention-observed,
+.attention-unlinked {
+  color: var(--muted);
+}
 .attention-list {
   display: grid;
   gap: 1rem;
@@ -10,17 +35,126 @@
   margin: 0;
   padding: 0;
 }
-
-.attention-item {
-  min-width: 0;
+.attention-page .attention-item {
+  margin: 0;
+  border-radius: 0.75rem;
 }
-
 .attention-item h2,
 .attention-item dd,
 .attention-item a {
   overflow-wrap: anywhere;
 }
-
-.attention-item h2 {
-  margin-top: 0;
+.attention-item-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.attention-item-heading h2 {
+  flex: 1;
+  min-width: min(12rem, 100%);
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+.attention-item-icon {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  flex-shrink: 0;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0.65rem;
+}
+.attention-reason {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1.25rem 0;
+}
+.attention-reason dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.attention-reason dd {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.attention-item-footer {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.attention-details {
+  flex: 1 1 15rem;
+  min-width: 0;
+}
+.attention-details summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.attention-details > summary:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.attention-details .runtime-details div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+}
+.attention-details dd {
+  text-align: start;
+}
+.attention-unlinked {
+  margin: 0;
+  min-height: 44px;
+  align-content: center;
+  font-size: 0.85rem;
+}
+.attention-page .attention-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 2rem;
+  border-radius: 0.75rem;
+}
+.attention-state > svg {
+  color: var(--accent);
+}
+.attention-state p,
+.attention-state h2 {
+  margin: 0;
+  line-height: 1.7;
+}
+.attention-state h2 {
+  font-size: 1.2rem;
+}
+.attention-empty p {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.attention-state-error {
+  border-color: var(--border-strong);
+}
+@media (max-width: 600px) {
+  .attention-page .page-header {
+    align-items: start;
+  }
+  .attention-page .attention-state {
+    padding: 1.25rem;
+  }
+  .attention-item-heading {
+    align-items: start;
+  }
+  .attention-item-heading .status-badge {
+    margin-left: 3.35rem;
+  }
 }

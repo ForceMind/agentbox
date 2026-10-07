@@ -332,6 +332,7 @@ test('covers localized Project detail and Claude action failures', async ({
         await expect(
           page.getByText(expected.branch, { exact: true }),
         ).toBeVisible()
+        await page.locator('.project-workspace-card summary').click()
         await assertRc9TechnicalRendering(
           page.getByText('agentbox-rc9', { exact: true }),
         )

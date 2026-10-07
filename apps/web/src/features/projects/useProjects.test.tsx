@@ -240,3 +240,594 @@ describe('useProject mutation idempotency', () => {
     unmount()
   })
 })
+
+function deferredResponse() {
+  let resolve!: (value: unknown) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function detailResponse(id: string, repository = false) {
+  return {
+    ...projectResponse,
+    data: {
+      ...projectResponse.data,
+      id,
+      git: repository ? { is_repository: true } : null,
+    },
+  }
+}
+
+function detailJob(projectId: string, status = 'queued', id = 'job_test') {
+  return {
+    ...jobResponse,
+    data: {
+      ...jobResponse.data,
+      id,
+      status,
+      project_id: projectId,
+      target_id: projectId,
+    },
+  }
+}
+
+function detailHarness() {
+  const gets: Array<ReturnType<typeof deferredResponse> & { path: string }> = []
+  const posts: Array<
+    ReturnType<typeof deferredResponse> & { path: string; options: unknown }
+  > = []
+  const api = {
+    get: vi.fn((path: string) => {
+      const request = { ...deferredResponse(), path }
+      gets.push(request)
+      return request.promise
+    }),
+    post: vi.fn((path: string, options: unknown) => {
+      const request = { ...deferredResponse(), path, options }
+      posts.push(request)
+      return request.promise
+    }),
+  } as unknown as ApiClient
+  let currentAuth: typeof auth | null = auth
+  const snapshots: Array<string | null> = []
+  function AuthWrapper({ children }: { children: ReactNode }) {
+    return (
+      <AuthContext.Provider
+        value={{
+          api,
+          auth: currentAuth,
+          status: currentAuth ? 'authenticated' : 'unauthenticated',
+          login: async () => undefined,
+          logout: async () => undefined,
+          refresh: async () => currentAuth,
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    )
+  }
+  const hook = renderHook(
+    ({ id }: { id: string | undefined }) => {
+      const detail = useProject(id)
+      snapshots.push(detail.project?.id ?? null)
+      return detail
+    },
+    {
+      initialProps: { id: 'project-a' as string | undefined },
+      wrapper: AuthWrapper,
+    },
+  )
+  return {
+    ...hook,
+    gets,
+    posts,
+    snapshots,
+    setAuth(value: typeof auth | null) {
+      currentAuth = value
+    },
+  }
+}
+
+describe('useProject route, adminSession and lifecycle ownership', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('clears synchronously on A → B and rejects a late A response after A → B → A', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.refresh()
+    })
+    const oldA = h.gets[1]
+    const before = h.snapshots.length
+    h.rerender({ id: 'project-b' })
+    expect(h.snapshots[before]).toBeNull()
+    expect(h.result.current.project).toBeNull()
+    h.rerender({ id: 'project-a' })
+    await act(async () => h.gets[3].resolve(detailResponse('project-a')))
+    await act(async () =>
+      oldA.resolve({
+        ...detailResponse('project-a'),
+        data: { ...detailResponse('project-a').data, display_name: 'OLD A' },
+      }),
+    )
+    await act(async () => h.gets[2].reject(new Error('old B failure')))
+    expect(h.result.current.project?.display_name).toBe('Test Project')
+    expect(h.result.current.error).toBeNull()
+  })
+
+  it.each(['user', 'session'] as const)(
+    'fences %s replacement even when ApiClient and route stay the same',
+    async (field) => {
+      const h = detailHarness()
+      await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+      const oldMutate = h.result.current.mutate
+      h.setAuth({ ...auth, [field]: { ...auth[field], id: 'replacement' } })
+      const before = h.snapshots.length
+      h.rerender({ id: 'project-a' })
+      expect(h.snapshots[before]).toBeNull()
+      expect(h.gets).toHaveLength(2)
+      await act(async () => oldMutate('git/pull'))
+      expect(h.posts).toHaveLength(0)
+      await act(async () => h.gets[1].resolve(detailResponse('project-a')))
+      h.setAuth(null)
+      h.rerender({ id: 'project-a' })
+      expect(h.result.current.project).toBeNull()
+      expect(h.result.current.busy).toBe(true)
+    },
+  )
+
+  it('rejects late branch data and errors without exposing a partial project', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a', true)))
+    expect(h.result.current.project).toBeNull()
+    h.rerender({ id: 'project-b' })
+    await act(async () => h.gets[2].resolve(detailResponse('project-b')))
+    await act(async () =>
+      h.gets[1].resolve({
+        data: { branches: [{ name: 'old-private-branch', current: true }] },
+      }),
+    )
+    expect(h.result.current.branches).toEqual([])
+    expect(h.result.current.project?.id).toBe('project-b')
+    act(() => {
+      void h.result.current.refresh()
+    })
+    const stale = h.gets[3]
+    act(() => {
+      void h.result.current.refresh()
+    })
+    await act(async () => h.gets[4].resolve(detailResponse('project-b')))
+    await act(async () => stale.reject(new Error('old error')))
+    expect(h.result.current.error).toBeNull()
+  })
+
+  it('blocks synchronous double mutations and ignores an old POST/finally during a new pending operation', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+      void h.result.current.mutate('git/pull')
+    })
+    expect(h.posts).toHaveLength(1)
+    h.rerender({ id: 'project-b' })
+    await act(async () => h.gets[1].resolve(detailResponse('project-b')))
+    act(() => {
+      void h.result.current.mutate('git/push')
+    })
+    await act(async () => h.posts[0].resolve(detailJob('project-a')))
+    expect(h.result.current.pending).toBe('git/push')
+    expect(h.result.current.job).toBeNull()
+    expect(h.result.current.busy).toBe(true)
+    await act(async () => h.posts[1].resolve(detailJob('project-b')))
+    expect(h.result.current.job?.id).toBe('job_test')
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    expect(h.posts).toHaveLength(2)
+  })
+
+  it('does not let an old Job poll refresh or overwrite another route', async () => {
+    vi.useFakeTimers()
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    await act(async () => h.posts[0].resolve(detailJob('project-a')))
+    await act(async () => vi.advanceTimersByTime(750))
+    expect(h.gets[1].path).toBe('/api/v1/jobs/job_test')
+    h.rerender({ id: 'project-b' })
+    await act(async () => h.gets[2].resolve(detailResponse('project-b')))
+    await act(async () =>
+      h.gets[1].resolve(detailJob('project-a', 'succeeded')),
+    )
+    expect(h.gets).toHaveLength(3)
+    expect(h.result.current.job).toBeNull()
+    expect(h.result.current.project?.id).toBe('project-b')
+  })
+
+  it('rejects response identities for project, mutation Job and polled Job', async () => {
+    vi.useFakeTimers()
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-b')))
+    expect(h.result.current.project).toBeNull()
+    expect(h.result.current.error?.code).toBe('PROJECT_RESPONSE_INVALID')
+    act(() => {
+      void h.result.current.refresh()
+    })
+    await act(async () => h.gets[1].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    await act(async () => h.posts[0].resolve(detailJob('project-b')))
+    expect(h.result.current.job).toBeNull()
+    expect(h.result.current.error?.code).toBe('PROJECT_JOB_RESPONSE_INVALID')
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    await act(async () => h.posts[1].resolve(detailJob('project-a')))
+    await act(async () => vi.advanceTimersByTime(750))
+    await act(async () =>
+      h.gets[2].resolve(detailJob('project-a', 'succeeded', 'different-job')),
+    )
+    expect(h.result.current.job).toMatchObject({
+      id: 'job_test',
+      status: 'queued',
+    })
+    expect(h.result.current.error?.code).toBe('PROJECT_JOB_RESPONSE_INVALID')
+    expect(h.result.current.busy).toBe(true)
+    act(() => {
+      void h.result.current.mutate('git/push')
+    })
+    expect(h.posts).toHaveLength(2)
+    act(() => {
+      void h.result.current.refresh()
+    })
+    expect(h.gets[3].path).toBe('/api/v1/jobs/job_test')
+    await act(async () =>
+      h.gets[3].resolve(detailJob('project-a', 'succeeded')),
+    )
+    expect(h.gets[4].path).toBe('/api/v1/projects/project-a')
+    await act(async () => h.gets[4].resolve(detailResponse('project-a')))
+    expect(h.result.current.busy).toBe(false)
+  })
+
+  it.each([
+    ['offline', 'online', window],
+    ['pagehide', 'pageshow', window],
+    ['freeze', 'resume', document],
+  ] as const)(
+    'clears on %s, fences old POST, and resumes only GET on %s',
+    async (hide, show, target) => {
+      const h = detailHarness()
+      await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+      const mutate = h.result.current.mutate
+      act(() => {
+        void mutate('git/pull')
+      })
+      act(() => target.dispatchEvent(new Event(hide)))
+      expect(h.result.current.project).toBeNull()
+      expect(h.result.current.job).toBeNull()
+      expect(h.result.current.busy).toBe(true)
+      await act(async () => mutate('git/push'))
+      await act(async () => h.result.current.refresh())
+      expect(h.posts).toHaveLength(1)
+      expect(h.gets).toHaveLength(1)
+      act(() => target.dispatchEvent(new Event(show)))
+      expect(h.gets).toHaveLength(2)
+      await act(async () => h.gets[1].resolve(detailResponse('project-a')))
+      act(() => {
+        void h.result.current.mutate('git/push')
+      })
+      await act(async () => h.posts[0].reject(new Error('late old operation')))
+      expect(h.result.current.pending).toBe('git/push')
+      expect(h.result.current.error).toBeNull()
+      expect(h.posts).toHaveLength(2)
+    },
+  )
+
+  it('explicit refresh recovers a known Job after transient poll failure without replaying POST', async () => {
+    vi.useFakeTimers()
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    await act(async () => h.posts[0].resolve(detailJob('project-a')))
+    await act(async () => vi.advanceTimersByTime(750))
+    await act(async () =>
+      h.gets[1].reject(new Error('temporary transport failure')),
+    )
+    expect(h.result.current.busy).toBe(true)
+    act(() => {
+      void h.result.current.refresh()
+    })
+    expect(h.gets[2].path).toBe('/api/v1/jobs/job_test')
+    await act(async () =>
+      h.gets[2].resolve(detailJob('project-a', 'succeeded')),
+    )
+    expect(h.gets[3].path).toBe('/api/v1/projects/project-a')
+    await act(async () => h.gets[3].resolve(detailResponse('project-a', true)))
+    await act(async () =>
+      h.gets[4].resolve({
+        data: { branches: [{ name: 'fresh-branch', current: true }] },
+      }),
+    )
+    expect(h.result.current.job?.status).toBe('succeeded')
+    expect(h.result.current.branches[0]?.name).toBe('fresh-branch')
+    expect(h.result.current.busy).toBe(false)
+    expect(h.posts).toHaveLength(1)
+  })
+
+  it('permanently rejects an old in-flight poll after readback finishes in the same React batch', async () => {
+    vi.useFakeTimers()
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    await act(async () => h.posts[0].resolve(detailJob('project-a')))
+    await act(async () => vi.advanceTimersByTime(750))
+    expect(h.gets[1].path).toBe('/api/v1/jobs/job_test')
+    await act(async () => {
+      const refreshPromise = h.result.current.refresh()
+      expect(h.gets[2].path).toBe('/api/v1/jobs/job_test')
+      h.gets[2].resolve(detailJob('project-a', 'succeeded'))
+      await h.gets[2].promise
+      expect(h.gets[3].path).toBe('/api/v1/projects/project-a')
+      h.gets[3].resolve(detailResponse('project-a'))
+      await refreshPromise
+      // Both loading and ready publications are batched: effect cleanup has
+      // not yet cancelled the old request, whose transport ignores abort.
+      h.gets[1].resolve(detailJob('project-a', 'queued'))
+      await h.gets[1].promise
+    })
+    expect(h.result.current.job?.status).toBe('succeeded')
+    expect(h.result.current.busy).toBe(false)
+    expect(h.gets).toHaveLength(4)
+    expect(h.posts).toHaveLength(1)
+  })
+
+  it.each(['detail', 'branches'] as const)(
+    'keeps the known active Job through %s refresh failure and recovers on the next GET',
+    async (failureStage) => {
+      vi.useFakeTimers()
+      const h = detailHarness()
+      await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+      act(() => {
+        void h.result.current.mutate('git/pull')
+      })
+      await act(async () => h.posts[0].resolve(detailJob('project-a')))
+      act(() => {
+        void h.result.current.refresh()
+      })
+      expect(h.gets[1].path).toBe('/api/v1/jobs/job_test')
+      await act(async () =>
+        h.gets[1].resolve(detailJob('project-a', 'running')),
+      )
+      if (failureStage === 'branches')
+        await act(async () =>
+          h.gets[2].resolve(detailResponse('project-a', true)),
+        )
+      const failedIndex = failureStage === 'branches' ? 3 : 2
+      await act(async () =>
+        h.gets[failedIndex].reject(new Error('temporary metadata failure')),
+      )
+      expect(h.result.current.phase).toBe('error')
+      expect(h.result.current.project).toBeNull()
+      expect(h.result.current.job).toMatchObject({
+        id: 'job_test',
+        status: 'running',
+      })
+      expect(h.result.current.busy).toBe(true)
+      await act(async () => vi.advanceTimersByTime(1000))
+      expect(h.gets).toHaveLength(failedIndex + 1)
+      act(() => {
+        void h.result.current.refresh()
+      })
+      const retry = failedIndex + 1
+      expect(h.gets[retry].path).toBe('/api/v1/jobs/job_test')
+      await act(async () =>
+        h.gets[retry].resolve(detailJob('project-a', 'succeeded')),
+      )
+      await act(async () =>
+        h.gets[retry + 1].resolve(detailResponse('project-a')),
+      )
+      expect(h.result.current.busy).toBe(false)
+      expect(h.result.current.job?.status).toBe('succeeded')
+      expect(h.posts).toHaveLength(1)
+    },
+  )
+
+  it('a terminal POST acknowledgement reads fresh project and branches before releasing actions', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/branches', { branch: 'new-branch' })
+    })
+    await act(async () =>
+      h.posts[0].resolve(detailJob('project-a', 'succeeded')),
+    )
+    expect(h.gets).toHaveLength(2)
+    expect(h.gets[1].path).toBe('/api/v1/projects/project-a')
+    expect(h.result.current.project).toBeNull()
+    expect(h.result.current.busy).toBe(true)
+    await act(async () => h.result.current.mutate('git/pull'))
+    expect(h.posts).toHaveLength(1)
+    await act(async () => h.gets[1].resolve(detailResponse('project-a', true)))
+    await act(async () =>
+      h.gets[2].resolve({
+        data: { branches: [{ name: 'new-branch', current: true }] },
+      }),
+    )
+    expect(h.result.current.branches[0]?.name).toBe('new-branch')
+    expect(h.result.current.busy).toBe(false)
+  })
+
+  it('blocks a retained mutation callback when refreshed project state is no longer ready', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    const mutate = h.result.current.mutate
+    act(() => {
+      void h.result.current.refresh()
+    })
+    await act(async () =>
+      h.gets[1].resolve({
+        ...detailResponse('project-a'),
+        data: { ...detailResponse('project-a').data, state: 'creating' },
+      }),
+    )
+    act(() => {
+      void mutate('git/pull')
+    })
+    expect(h.posts).toHaveLength(0)
+  })
+
+  it('retains the uncertain operation key across suspension and separates replacement adminSessions', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    expect(h.posts).toHaveLength(1)
+    await act(async () => h.gets[1].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    const first = h.posts[0].options as { idempotencyKey: string }
+    const retry = h.posts[1].options as { idempotencyKey: string }
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey)
+    await act(async () => h.posts[0].reject(new Error('old transport failure')))
+    expect(h.result.current.pending).toBe('git/pull')
+    h.setAuth({
+      ...auth,
+      session: { ...auth.session, id: 'replacement-session' },
+    })
+    h.rerender({ id: 'project-a' })
+    await act(async () => h.gets[2].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    expect(
+      (h.posts[2].options as { idempotencyKey: string }).idempotencyKey,
+    ).not.toBe(first.idempotencyKey)
+    await act(async () => h.posts[1].resolve(detailJob('project-a')))
+    expect(h.result.current.pending).toBe('git/pull')
+    expect(h.result.current.job).toBeNull()
+  })
+
+  it('rejects an abort-ignoring GET after suspension and blocks actions until fresh GET', async () => {
+    const h = detailHarness()
+    act(() => window.dispatchEvent(new Event('offline')))
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    expect(h.result.current.project).toBeNull()
+    expect(h.result.current.phase).toBe('stale')
+    act(() => window.dispatchEvent(new Event('online')))
+    await act(async () => h.result.current.mutate('git/pull'))
+    expect(h.posts).toHaveLength(0)
+    await act(async () => h.gets[1].resolve(detailResponse('project-a')))
+    expect(h.result.current.phase).toBe('ready')
+    expect(h.result.current.busy).toBe(false)
+  })
+
+  it('clears observations and blocks another mutation after a permission failure', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => {
+      void h.result.current.mutate('git/pull')
+    })
+    await act(async () =>
+      h.posts[0].reject(
+        new ApiError({
+          status: 403,
+          code: 'FORBIDDEN',
+          message: 'private server prose',
+        }),
+      ),
+    )
+    expect(h.result.current.phase).toBe('forbidden')
+    expect(h.result.current.project).toBeNull()
+    expect(h.result.current.pending).toBeNull()
+    await act(async () => h.result.current.mutate('git/pull'))
+    expect(h.posts).toHaveLength(1)
+  })
+
+  it.each([
+    ['pagehide', 'route', 'pageshow', window],
+    ['pagehide', 'session', 'pageshow', window],
+    ['freeze', 'route', 'resume', document],
+    ['freeze', 'session', 'resume', document],
+  ] as const)(
+    'preserves %s through %s ownership replacement until %s',
+    async (hide, replace, resume, target) => {
+      const h = detailHarness()
+      await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+      const oldRefresh = h.result.current.refresh
+      const oldMutate = h.result.current.mutate
+      act(() => target.dispatchEvent(new Event(hide)))
+      if (replace === 'session')
+        h.setAuth({
+          ...auth,
+          session: { ...auth.session, id: 'replacement-session' },
+        })
+      const id = replace === 'route' ? 'project-b' : 'project-a'
+      h.rerender({ id })
+      expect(h.result.current.phase).toBe('stale')
+      expect(h.result.current.project).toBeNull()
+      await act(async () => {
+        await oldRefresh()
+        await h.result.current.refresh()
+        await oldMutate('git/pull')
+        await h.result.current.mutate('git/pull')
+      })
+      expect(h.gets).toHaveLength(1)
+      expect(h.posts).toHaveLength(0)
+      act(() => target.dispatchEvent(new Event(resume)))
+      expect(h.gets).toHaveLength(2)
+      expect(h.gets[1].path).toBe(`/api/v1/projects/${id}`)
+      await act(async () => h.gets[1].resolve(detailResponse(id)))
+      expect(h.result.current.phase).toBe('ready')
+    },
+  )
+
+  it('keeps pagehide and freeze fences independently until both are released', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a')))
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    act(() => document.dispatchEvent(new Event('freeze')))
+    act(() => document.dispatchEvent(new Event('resume')))
+    expect(h.result.current.phase).toBe('stale')
+    expect(h.gets).toHaveLength(1)
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    expect(h.gets).toHaveLength(2)
+  })
+
+  it('visibility loss clears branch observations and does not defeat a pagehide fence', async () => {
+    const h = detailHarness()
+    await act(async () => h.gets[0].resolve(detailResponse('project-a', true)))
+    await act(async () =>
+      h.gets[1].resolve({
+        data: { branches: [{ name: 'main', current: true }] },
+      }),
+    )
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(h.result.current.branches).toEqual([])
+    expect(h.result.current.project).toBeNull()
+    act(() => window.dispatchEvent(new Event('pagehide')))
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(h.gets).toHaveLength(2)
+    act(() => window.dispatchEvent(new Event('pageshow')))
+    expect(h.gets).toHaveLength(3)
+  })
+})

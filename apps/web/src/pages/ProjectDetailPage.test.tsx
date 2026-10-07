@@ -1,6 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  AuthContext,
+  type AuthContextValue,
+} from '../features/auth/AuthContext'
+import { ApiClient } from '../lib/api'
 
 const useProjectMock = vi.hoisted(() => vi.fn())
 const useClaudeProjectMock = vi.hoisted(() => vi.fn())
@@ -67,6 +72,7 @@ function project() {
 
 function projectModel(overrides: Record<string, unknown> = {}) {
   return {
+    phase: 'ready',
     branches: [
       { name: '功能/本地化', current: true },
       { name: 'main', current: false },
@@ -96,6 +102,7 @@ function projectModel(overrides: Record<string, unknown> = {}) {
 
 function claudeModel(overrides: Record<string, unknown> = {}) {
   return {
+    phase: 'ready',
     action: vi.fn(async () => undefined),
     error: {
       code: 'CLAUDE_ACTION_FAILED',
@@ -119,15 +126,29 @@ function claudeModel(overrides: Record<string, unknown> = {}) {
 }
 
 function renderDetail(locale: 'en' | 'zh-CN' = 'zh-CN') {
+  const auth: AuthContextValue = {
+    api: new ApiClient(),
+    auth: {
+      user: { id: 'adm_detail', username: 'fixture' },
+      session: { id: 'ses_detail', expires_at: '2026-12-31T00:00:00Z' },
+      csrf_token: 'fixture-csrf',
+    },
+    status: 'authenticated',
+    login: async () => undefined,
+    logout: async () => undefined,
+    refresh: async () => null,
+  }
   return render(
-    <MemoryRouter initialEntries={['/projects/prj_fixture']}>
-      <Routes>
-        <Route
-          element={<ProjectDetailPage locale={locale} />}
-          path="/projects/:projectId"
-        />
-      </Routes>
-    </MemoryRouter>,
+    <AuthContext.Provider value={auth}>
+      <MemoryRouter initialEntries={['/projects/prj_fixture']}>
+        <Routes>
+          <Route
+            element={<ProjectDetailPage locale={locale} />}
+            path="/projects/:projectId"
+          />
+        </Routes>
+      </MemoryRouter>
+    </AuthContext.Provider>,
   )
 }
 
@@ -154,6 +175,7 @@ describe('ProjectDetailPage localized safety boundary', () => {
     expect(screen.queryByText('功能/本地化')).not.toBeInTheDocument()
     expect(screen.queryByText('用户/仓库')).not.toBeInTheDocument()
     expect(screen.getByText('用户提交标题 🚀')).toHaveAttribute('dir', 'auto')
+    fireEvent.click(screen.getByRole('button', { name: '管理分支' }))
     const validBranch = screen.getByText('main')
     expect(validBranch).toHaveAttribute('lang', 'en')
     expect(validBranch).toHaveAttribute('dir', 'ltr')
@@ -178,6 +200,7 @@ describe('ProjectDetailPage localized safety boundary', () => {
       branch: '新分支',
     })
 
+    fireEvent.click(screen.getByRole('button', { name: '准备 Draft PR' }))
     fireEvent.change(screen.getByLabelText('Pull request 标题'), {
       target: { value: '用户 PR 标题' },
     })
