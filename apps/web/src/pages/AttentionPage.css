@@ -8,6 +8,10 @@
   justify-content: center;
   gap: 0.5rem;
 }
+.attention-refresh,
+.attention-refresh > svg {
+  flex-shrink: 0;
+}
 .attention-summary {
   display: flex;
   flex-wrap: wrap;
@@ -96,6 +100,10 @@
   cursor: pointer;
   color: var(--muted);
   font-size: 0.8rem;
+}
+.attention-details > summary:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 .attention-details .runtime-details div {
   display: grid;

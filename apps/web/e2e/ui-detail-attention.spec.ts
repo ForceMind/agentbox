@@ -199,7 +199,21 @@ function gate() {
   return { promise, release }
 }
 
-async function fixtures(page: Page) {
+async function fixtures(page: Page, representative = false) {
+  const label = representative ? { ...LABEL, name: 'Interface review' } : LABEL
+  const projectData = (id = PROJECT_A) => {
+    const data = project(id)
+    return representative
+      ? {
+          ...data,
+          display_name: id === PROJECT_A ? 'Interface Kit' : 'Project B',
+          github: {
+            ...data.github,
+            pull_request_title: 'Clarify project navigation',
+          },
+        }
+      : data
+  }
   const state = {
     projectMode: 'ready' as Mode,
     attentionMode: 'ready' as Mode,
@@ -284,7 +298,7 @@ async function fixtures(page: Page) {
         await respondMode(route, state.projectMode)
       } else {
         const row = {
-          ...project(path.endsWith(PROJECT_A) ? PROJECT_A : PROJECT_B),
+          ...projectData(path.endsWith(PROJECT_A) ? PROJECT_A : PROJECT_B),
           ...(state.projectMode === 'not-ready' ? { state: 'creating' } : {}),
           ...(state.projectMode === 'empty' ? { git: null, github: null } : {}),
         }
@@ -293,40 +307,42 @@ async function fixtures(page: Page) {
       return
     }
     const responses: Record<string, unknown> = {
+      // Existing shell ControlPlanePulse performs this fixed read on each mount.
+      '/healthz': { status: 'ok' },
       '/api/v1/auth/me': envelope({
         user: { id: 'adm_ui_detail', username: 'synthetic-maintainer' },
         session: { id: 'ses_ui_detail', expires_at: '2027-01-01T00:00:00Z' },
         csrf_token: 'synthetic-ui-detail-csrf',
       }),
       '/api/v1/projects': envelope({
-        projects: [project(), project(PROJECT_B)],
+        projects: [projectData(), projectData(PROJECT_B)],
       }),
       '/api/v1/project-favorites': envelope({ favorites: [] }),
-      '/api/v1/project-labels': envelope({ labels: [LABEL] }),
+      '/api/v1/project-labels': envelope({ labels: [label] }),
       [`/api/v1/jobs/${JOB_ID}`]: envelope(job('queued')),
     }
     for (const id of [PROJECT_A, PROJECT_B]) {
       responses[`/api/v1/projects/${id}/git/branches`] = envelope({
         branches: [
-          { name: project(id).git.branch, current: true },
+          { name: projectData(id).git.branch, current: true },
           { name: 'main', current: false },
           { name: 'feature/existing', current: false },
         ],
       })
       responses[`/api/v1/claude/sessions/${id}`] = envelope({
         project_id: id,
-        display_name: project(id).display_name,
+        display_name: projectData(id).display_name,
         state: 'stopped',
         managed: true,
-        session_name: `agentbox-claude-${project(id).slug}-synthetic`,
-        attach_command: `tmux attach-session -t =agentbox-claude-${project(id).slug}-synthetic`,
+        session_name: `agentbox-claude-${projectData(id).slug}-synthetic`,
+        attach_command: `tmux attach-session -t =agentbox-claude-${projectData(id).slug}-synthetic`,
         workspace_state: 'unknown',
         tmux_running: false,
         remote_readiness: 'unknown',
       })
       responses[`/api/v1/project-labels/projects/${id}`] = envelope({
         project_id: id,
-        labels: [LABEL],
+        labels: [label],
         revision: 1,
         updated_at: LABEL.updated_at,
       })
@@ -335,6 +351,18 @@ async function fixtures(page: Page) {
         files: [],
         total_count: 0,
         next_cursor: null,
+      })
+      // Opening the existing Workspace route also reads its label assignment.
+      responses[`/api/v1/project-labels/workspaces/${id}/claude`] = envelope({
+        workspace_id:
+          id === PROJECT_A
+            ? 'aws_9693f27179ae4ec81d3c493f07463bd3'
+            : 'aws_5ccab47b63c8af34e6beac2835e328e2',
+        project_id: id,
+        agent_type: 'claude',
+        labels: [],
+        revision: 0,
+        updated_at: null,
       })
       responses[`/api/v1/workspaces?project_id=${id}&agent_type=claude`] = {
         request_id: 'req_ui_detail_workspace',
@@ -413,7 +441,10 @@ async function captureRepresentative(
   // desktop English and phone Chinese, rather than multiplying all dimensions.
   if (
     (locale === 'en' && browserProject === 'desktop-chromium') ||
-    (locale === 'zh-CN' && browserProject === 'mobile-chromium')
+    (locale === 'zh-CN' && browserProject === 'mobile-chromium') ||
+    (locale === 'en' &&
+      browserProject === 'mobile-chromium' &&
+      /^(?:error|forbidden)-project-/.test(name))
   ) {
     await capture(page, name)
   }
@@ -484,6 +515,12 @@ for (const locale of ['zh-CN', 'en'] as const) {
           await assertRc9InteractiveTargets(page)
           await assertRc9NoHorizontalOverflow(page)
           await capture(page, `project-${locale}-${width}-${colorScheme}`)
+          await assertRc9Focus(
+            page.locator('.project-technical-details summary').first(),
+          )
+          if (locale === 'en' && width === 1024 && colorScheme === 'dark') {
+            await capture(page, 'focus-project-en-1024-dark')
+          }
 
           const branch = page.getByRole('button', {
             name: expected.branch,
@@ -541,6 +578,9 @@ for (const locale of ['zh-CN', 'en'] as const) {
           await capture(page, `attention-${locale}-${width}-${colorScheme}`)
           const disclosure = page.locator('.attention-details summary')
           await assertRc9Focus(disclosure)
+          if (locale === 'en' && width === 1024 && colorScheme === 'dark') {
+            await capture(page, 'focus-attention-en-1024-dark')
+          }
           await page.keyboard.press('Enter')
           await assertRc9TechnicalRendering(
             page.getByText(JOB_ID, { exact: true }),
@@ -885,3 +925,56 @@ for (const locale of ['zh-CN', 'en'] as const) {
     })
   })
 }
+
+test('captures ordinary synthetic metadata for review without replacing the adversarial matrix', async ({
+  browser,
+  baseURL,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== 'desktop-chromium',
+    'representative screenshots run once alongside the complete responsive matrix',
+  )
+  for (const [width, colorScheme] of [
+    [1440, 'light'],
+    [390, 'dark'],
+  ] as const) {
+    const context = await browser.newContext({
+      baseURL,
+      locale: 'zh-CN',
+      colorScheme,
+      reducedMotion: 'reduce',
+      viewport: { width, height: 900 },
+      isMobile: width < 900,
+      hasTouch: width < 900,
+    })
+    try {
+      const page = await context.newPage()
+      const state = await fixtures(page, true)
+      await page.goto(`/projects/${PROJECT_A}`)
+      await heading(page, 'Interface Kit')
+      await expect(
+        page.getByRole('button', { name: copy['zh-CN'].branch, exact: true }),
+      ).toBeEnabled()
+      await expect(
+        page.getByRole('button', {
+          name: copy['zh-CN'].startClaude,
+          exact: true,
+        }),
+      ).toBeEnabled()
+      await expect(
+        page.getByText('Interface review', { exact: true }),
+      ).toBeVisible()
+      await assertRc9NoHorizontalOverflow(page)
+      await assertRc9InteractiveTargets(page)
+      await capture(page, `preview-project-zh-CN-${width}-${colorScheme}`)
+      await navigate(page, 'zh-CN', copy['zh-CN'].attention)
+      await expect(page.locator('.attention-item')).toHaveCount(1)
+      await assertRc9NoHorizontalOverflow(page)
+      await assertRc9InteractiveTargets(page)
+      await capture(page, `preview-attention-zh-CN-${width}-${colorScheme}`)
+      await assertBoundaries(page, state)
+    } finally {
+      await context.close()
+    }
+  }
+})

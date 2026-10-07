@@ -95,3 +95,27 @@ typecheck、format:check、build 与 audit --audit-level high 均 exit0；审计
 Playwright --list 共370项；新 spec64项中42项执行/22项规定 skip，计划新增62张
 合成截图（两页40 ready +22状态），尚未运行真实浏览器。后续结果与确切远端 head
 写入 PR，必须以该 head 的 CI 和原 PNG 像素实查为准，不能借用基线9f的成功。
+
+## 2026-10-07 首轮真实浏览器发现与修正
+
+首个完整 head `30cddb400fa100e9ec03a31e0f4af6765ead7d44`（tree
+`a85d4d5913441b82dd8dd8976c57ba0197eb3988`）五套 workflow 成功；Backend 实际
+3.11.16 / 3.12.14 / 3.13.15 各5307 passed /88 skipped。E2E37566122247 首轮
+255 passed /43 failed /72 prescribed skipped，未合并，也未重跑旧头。
+
+失败明确指出：Project 手机错误面板三列挤压及长技术 ID 溢出；Attention summary
+取得焦点后无可见样式变化；新 fixture 遗漏原 ControlPlanePulse 的固定 healthz GET
+和原 WorkspaceLabelsPanel 的特定 labels GET。补丁将本页错误面板改为可收缩单列，
+保留完整技术值；两页 summary 提供明确 focus 轮廓；只补这两个现有 GET 的严格合成
+response，不开放泛化请求，不减弱 unexpected/mutation/overflow/focus 断言。
+
+失败 artifact11459575826 含106 PNG（62新页+44旧 shell），ZIP SHA256
+`d81108d35c480d6fbea101bac185423878d911d32118498a8fde3631f658d1f2` 与服务端一致，
+CRC/path 校验通过。主实施者打开5张原图，独立 reviewer 检查42张（跨两页/语言/
+主题/全部五宽20张及全部22状态）。发现手机 forbidden 文案窄列，已由同一 grid
+修正；另发现中宽英文 Refresh 图标缩小，补固定不收缩。静态图不代替焦点行为验证。
+
+后继保留原完整矩阵与断言，增加普通合成名称的独立4张展示图、英文手机两种错误
+状态2张及明确 focus2张，计划70张新 PNG。Playwright 共372项，新 spec66项中
+43执行/23规定 skip；新 head 实际 CI、修正后原像素与整体资格仍待完成。原失败记录
+和旧 READY 间歇根因边界均保留。

@@ -65,6 +65,14 @@
 .project-detail-page > .runtime-card {
   margin-bottom: 1.25rem;
 }
+.project-detail-page .error-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+.project-detail-page .error-panel > * {
+  min-width: 0;
+}
 .project-detail-columns .runtime-card {
   margin: 0;
 }
@@ -126,6 +134,10 @@
   color: var(--muted);
   font-size: 0.8rem;
   cursor: pointer;
+}
+.project-technical-details > summary:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 .project-detail-page .runtime-details div {
   display: grid;
