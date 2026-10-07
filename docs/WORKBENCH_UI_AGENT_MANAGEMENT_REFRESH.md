@@ -102,3 +102,27 @@ management owner隔离保证，不冒称整个auth recovery已经重做。
 
 修复与视觉迁移分别提交。当前修复仍在实现/独立回归审查，尚不称最终GREEN、
 新UI或本批完整资格；不得合并RED头或以原基线检查替代候选证据。
+
+## 11:20 UTC 独立owner修复GREEN，另启视觉迁移
+
+修复已另立remote commit b9e321f462bda8b5c2f9ef79a6ba79c842764803，tree
+79c0e76e78a43c6d3959853d21db25907755dd39；原RED15fd仍完整在历史中。生产只改
+两个management hook与两页必要的确认/Copy反馈，另有两页既有mock接口适配和
+一个独立ownership回归文件。没有提前混入新视觉布局。
+
+原4RED全文逐字转GREEN；独立7文件78/78 passed，包括新增18项first-render遮蔽、
+旧closure/late result/finally、显式新scope重试、同scope去重、A→B→A、StrictMode、
+unmount、90秒展示timer与clipboard回执/反馈timer。审查发现的Claude双GET一端
+失败后取消剩余请求，以及metadata refresh后Copied反馈滞留，均在本卡修正并验证。
+Web tsc、targeted ESLint/Prettier和diff检查exit0；未把Web tsc称为整个monorepo检查。
+
+独立source review CLEAR，useCodex SHA256
+9788435a4d9df31c28feff74293c8ead7a9dbe07d232daf8676bb1199e1657e3，useClaude为
+35d7a0ec37910008543d6162a2d283700b4c34f2558c255233ae6cb7254da377，新增ownership
+测试为935040ea2c4fc21ee7a968100fb7d62eac5bc921720e55e0c8364fbbe1306cf3。原4RED与
+useClaudeProject段落逐字保持；共享ApiClient全局401边界、所有权限/预算不变。
+
+此后在独立提交中继续两个页面return JSX、作用域CSS与catalog呈现。不得改已审
+owner/pre-render/handler语义，保留immutable回归；新metadata图必须完全排除Pair/
+output请求与内容，另加capture-off真实App浏览器验证相同A/B session流程。完整
+本地质量、最终UI exact-head六套、实际PNG与main资格仍须重新取得。
