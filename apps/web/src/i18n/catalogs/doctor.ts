@@ -10,6 +10,12 @@ export interface DoctorMessageParameters {
   readonly 'doctor.loading': NoMessageParameters
   readonly 'doctor.unavailable': NoMessageParameters
   readonly 'doctor.checksAria': NoMessageParameters
+  readonly 'doctor.controlPlaneLabel': NoMessageParameters
+  readonly 'doctor.controlPlaneDescription': NoMessageParameters
+  readonly 'doctor.readingTitle': NoMessageParameters
+  readonly 'doctor.readingDescription': NoMessageParameters
+  readonly 'doctor.runtimeTitle': NoMessageParameters
+  readonly 'doctor.runtimeDescription': NoMessageParameters
   readonly 'doctor.configurationValid': NoMessageParameters
   readonly 'doctor.databaseReachable': NoMessageParameters
   readonly 'doctor.migrationsCurrent': NoMessageParameters
@@ -78,6 +84,15 @@ export const doctorCatalog = defineCatalogShard<DoctorMessageParameters>(
       'doctor.loading': () => 'Running safe checks…',
       'doctor.unavailable': () => 'Diagnostics unavailable',
       'doctor.checksAria': () => 'Control plane checks',
+      'doctor.controlPlaneLabel': () => 'Control plane',
+      'doctor.controlPlaneDescription': () =>
+        'These five checks determine control-plane readiness.',
+      'doctor.readingTitle': () => 'Reading the diagnostics',
+      'doctor.readingDescription': () =>
+        'A ready control plane does not confirm that agents are authenticated or Remote can run. Read installation, authentication, capability and Remote state separately below.',
+      'doctor.runtimeTitle': () => 'Runtime and workspace',
+      'doctor.runtimeDescription': () =>
+        'Safe summaries returned with this check. Each component reports its own state.',
       'doctor.configurationValid': () => 'Configuration valid',
       'doctor.databaseReachable': () => 'Database reachable',
       'doctor.migrationsCurrent': () => 'Migration state current',
@@ -154,6 +169,15 @@ export const doctorCatalog = defineCatalogShard<DoctorMessageParameters>(
       'doctor.loading': () => '正在运行安全检查…',
       'doctor.unavailable': () => '诊断信息暂不可用',
       'doctor.checksAria': () => '控制平面检查',
+      'doctor.controlPlaneLabel': () => '控制平面',
+      'doctor.controlPlaneDescription': () =>
+        '以下五项检查决定控制平面是否就绪。',
+      'doctor.readingTitle': () => '诊断阅读提示',
+      'doctor.readingDescription': () =>
+        '控制平面就绪不代表 Agent 已完成身份验证或 Remote 可以运行。请分别查看下方的安装、身份验证、能力和 Remote 状态。',
+      'doctor.runtimeTitle': () => 'Runtime 与 Workspace',
+      'doctor.runtimeDescription': () =>
+        '本次检查返回的安全摘要，各组件独立报告自身状态。',
       'doctor.configurationValid': () => '配置有效',
       'doctor.databaseReachable': () => '数据库可访问',
       'doctor.migrationsCurrent': () => '迁移状态最新',

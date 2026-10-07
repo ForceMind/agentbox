@@ -1,3 +1,5 @@
+import { Clock3, LockKeyhole, Server } from 'lucide-react'
+
 import { LocalizedApiError, TechnicalValue } from '../components/i18n'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
@@ -13,6 +15,8 @@ import {
   settingsCatalog,
   type SettingsMessageParameters,
 } from '../i18n/catalogs/settings'
+
+import './AdminPages.css'
 
 type SettingsMessageKey = Exclude<
   keyof SettingsMessageParameters,
@@ -45,7 +49,7 @@ export function SettingsPage({
   usePageTitle(message('settings.title'))
 
   return (
-    <>
+    <div className="settings-page">
       <PageHeader
         action={<StatusBadge>{message('settings.readOnly')}</StatusBadge>}
         description={message('settings.description')}
@@ -63,71 +67,121 @@ export function SettingsPage({
         </p>
       )}
       {doctor.status === 'loaded' && (
-        <dl className="settings-list">
-          <div>
-            <dt>{message('settings.environment')}</dt>
-            <dd>
-              <TechnicalValue value={doctor.response.data.policy.environment} />
-            </dd>
-          </div>
-          <div>
-            <dt>{message('settings.bindAddress')}</dt>
-            <dd>
-              {bindHost === null ? (
-                message('settings.unavailable')
-              ) : (
-                <>
-                  <TechnicalValue value={bindHost} />:{' '}
-                  {formatNumber(locale, doctor.response.data.policy.bind_port)}
-                </>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>{message('settings.absoluteSessionLifetime')}</dt>
-            <dd>
-              {formatDuration(
-                locale,
-                doctor.response.data.policy.session_ttl_seconds,
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>{message('settings.idleSessionLifetime')}</dt>
-            <dd>
-              {formatDuration(
-                locale,
-                doctor.response.data.policy.session_idle_ttl_seconds,
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>{message('settings.loginRateLimitLabel')}</dt>
-            <dd>
-              {catalog['settings.loginRateLimit']({
-                count: formatNumber(
-                  locale,
-                  doctor.response.data.policy.login_rate_limit,
-                ),
-                duration: formatDuration(
-                  locale,
-                  doctor.response.data.policy.login_rate_window_seconds,
-                ),
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt>{message('settings.loginLockDuration')}</dt>
-            <dd>
-              {formatDuration(
-                locale,
-                doctor.response.data.policy.login_lock_duration_seconds,
-              )}
-            </dd>
-          </div>
-        </dl>
+        <div className="settings-policy-grid">
+          <section
+            className="settings-policy-card"
+            aria-labelledby="settings-service-title"
+          >
+            <div className="admin-section-heading">
+              <span className="admin-section-icon" aria-hidden="true">
+                <Server size={21} strokeWidth={1.8} />
+              </span>
+              <h2 id="settings-service-title">
+                {message('settings.serviceTitle')}
+              </h2>
+            </div>
+            <dl className="settings-list">
+              <div>
+                <dt>{message('settings.environment')}</dt>
+                <dd>
+                  <TechnicalValue
+                    value={doctor.response.data.policy.environment}
+                  />
+                </dd>
+              </div>
+              <div>
+                <dt>{message('settings.bindAddress')}</dt>
+                <dd>
+                  {bindHost === null ? (
+                    message('settings.unavailable')
+                  ) : (
+                    <>
+                      <TechnicalValue value={bindHost} />:{' '}
+                      {formatNumber(
+                        locale,
+                        doctor.response.data.policy.bind_port,
+                      )}
+                    </>
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </section>
+          <section
+            className="settings-policy-card"
+            aria-labelledby="settings-session-title"
+          >
+            <div className="admin-section-heading">
+              <span className="admin-section-icon" aria-hidden="true">
+                <Clock3 size={21} strokeWidth={1.8} />
+              </span>
+              <h2 id="settings-session-title">
+                {message('settings.sessionTitle')}
+              </h2>
+            </div>
+            <dl className="settings-list">
+              <div>
+                <dt>{message('settings.absoluteSessionLifetime')}</dt>
+                <dd>
+                  {formatDuration(
+                    locale,
+                    doctor.response.data.policy.session_ttl_seconds,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>{message('settings.idleSessionLifetime')}</dt>
+                <dd>
+                  {formatDuration(
+                    locale,
+                    doctor.response.data.policy.session_idle_ttl_seconds,
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </section>
+          <section
+            className="settings-policy-card"
+            aria-labelledby="settings-login-title"
+          >
+            <div className="admin-section-heading">
+              <span className="admin-section-icon" aria-hidden="true">
+                <LockKeyhole size={21} strokeWidth={1.8} />
+              </span>
+              <h2 id="settings-login-title">
+                {message('settings.loginTitle')}
+              </h2>
+            </div>
+            <dl className="settings-list">
+              <div>
+                <dt>{message('settings.loginRateLimitLabel')}</dt>
+                <dd>
+                  {catalog['settings.loginRateLimit']({
+                    count: formatNumber(
+                      locale,
+                      doctor.response.data.policy.login_rate_limit,
+                    ),
+                    duration: formatDuration(
+                      locale,
+                      doctor.response.data.policy.login_rate_window_seconds,
+                    ),
+                  })}
+                </dd>
+              </div>
+              <div>
+                <dt>{message('settings.loginLockDuration')}</dt>
+                <dd>
+                  {formatDuration(
+                    locale,
+                    doctor.response.data.policy.login_lock_duration_seconds,
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </div>
       )}
       <p className="scope-note">{message('settings.scopeNote')}</p>
-    </>
+    </div>
   )
 }
