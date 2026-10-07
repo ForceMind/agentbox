@@ -141,3 +141,26 @@ tree4d26fe53与合格头一致；main自己的六套仍待，不用head结果冒
 此整合从远端b07出发正常merge-forward main1ce，保持两条PR历史；旧UI源码/
 E2E/workflow与b07逐字一致，移植的三个文件与main1ce逐字一致。只更新本记录与
 三个项目快照。实际整合头的完整CI/新原PNG资格仍待，不新增其他UI范围或发布。
+
+## 07:13 UTC 补充覆盖合格后的UI整合
+
+旧main1ce的Backend37576490608保留3.13.15原READY失败；peer-proof优化不是其
+根因修复。UI621402c的六套后来通过，E2E37576902587为299/73，无failed/flaky；
+artifact11463204397含126PNG，ZIP SHA256
+`21d85e5bc24556bef71367ec56334e4a432f2a69b1909e95baf8cea2fbb2fa72`校验通过，
+独立打开21张含四展示、两focus、手机error/forbidden及中宽Refresh原图，pixel PASS。
+其中Project展示与b07字节相同；Attention两图已更新同一Library身份，不伪造新图。
+
+[PR155](https://github.com/ForceMind/agentbox/pull/155)采用默认关闭的test-only
+scalar见证，新增实际分进程COMPLETE/publication/currentness/revoke覆盖，保留
+原direct与8ms companion全部断言和exact250ms。final f04b813六套首轮通过，实际
+Backend3.11.17/3.12.14/3.13.16各5375/88；E2E256/50。正常merge为main7ab227a，
+同tree560633fd，main六套亦首轮通过：Backend37584464049实测3.11.17/3.12.14/
+3.13.15各5375/88，E2E37584464068为256/50（其fixture实际3.12.15）；26checks
+23success+3规定skip。独立官方日志复核通过，最终源码因此有main上的.15实测，
+但历史间歇成因仍开放，不能由单轮green断言已消除。
+
+本整合从远端621402c正常merge-forward已合格main7ab227a，无共享文件冲突；
+apps/web与.github保持621逐字/模式相同，main新增五文件保持7ab逐字/模式相同。
+另外只更新本记录和CURRENT_STATE/NEXT_ACTION/INDEX。新实际UI头全量CI、全新
+原PNG、像素复审与合并后main仍待；未借用旧头证据宣称新头已合格。

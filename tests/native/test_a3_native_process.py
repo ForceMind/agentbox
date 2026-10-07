@@ -16,10 +16,11 @@ from typing import Any
 import pytest
 from a3_native_client import NativeBrowser, login, observe
 from a3_native_fixture import PROJECT_ID, A3NativeFixture
+from agentbox_protocol.a3_content import context_digest, encode_message
 
 
 @pytest.fixture
-def native(tmp_path: Path) -> Iterator[A3NativeFixture]:
+def native(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[A3NativeFixture]:
     if not hasattr(os, "pidfd_open") or not hasattr(socket, "SO_PEERCRED"):
         pytest.skip("Linux native process identities required")
     probe = None
@@ -37,7 +38,10 @@ def native(tmp_path: Path) -> Iterator[A3NativeFixture]:
     static.mkdir()
     (static / "index.html").write_text("synthetic static isolation probe")
     fixture = A3NativeFixture(
-        tmp_path / "fixture", origin="https://127.0.0.1:44443", static_root=static
+        tmp_path / "fixture",
+        origin="https://127.0.0.1:44443",
+        static_root=static,
+        publication_witnesses=getattr(request, "param", False),
     )
     try:
         yield fixture
@@ -46,15 +50,123 @@ def native(tmp_path: Path) -> Iterator[A3NativeFixture]:
 
 
 def wait_for(
-    native: A3NativeFixture, field: str, value: object, timeout: float = 3
+    native: A3NativeFixture,
+    field: str,
+    value: object,
+    timeout: float = 3,
+    *,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
-    end = time.monotonic() + timeout
+    end = time.monotonic() + timeout if deadline is None else deadline
     while time.monotonic() < end:
-        result: dict[str, Any] = native.call("runtime-status")
-        if result[field] == value:
+        result: dict[str, Any] = native.call("runtime-status", deadline=deadline)
+        if result[field] == value and (deadline is None or time.monotonic() < end):
             return result
-        time.sleep(0.025)
+        time.sleep(0.025 if deadline is None else min(0.025, max(0, end - time.monotonic())))
     raise AssertionError(f"native fixture {field} did not settle")
+
+
+@pytest.mark.parametrize("native", [True], indirect=True)
+def test_separate_process_publication_complete_retains_owner_until_session_revoke(
+    native: A3NativeFixture,
+) -> None:
+    """Additive counterpart to the unchanged direct-native publication regression.
+
+    This real API revokes its DB session and closes the checker/transport; the
+    original unit test and guard-budget companion retain current=False coverage.
+    Native COMPLETE reception is a separate witness, never inferred from END.
+    """
+    client, csrf = login(native)
+    browser: NativeBrowser | None = None
+    try:
+        assert native.proof["api_pid"] != native.proof["runtime_pid"]
+        assert native.proof["api_a3_runtime_imports"] == 0
+        metadata = observe(client, csrf)
+        browser = NativeBrowser(
+            native, client, csrf, metadata, filename="modified.txt", nonce="6" * 64
+        )
+        assert browser.receive(deadline=time.monotonic() + 5) == b"A3RD\x01"
+        assert native.call("runtime-status", deadline=time.monotonic() + 1)["active"] == 1
+        browser.current(deadline=time.monotonic() + 1, challenge=bytes.fromhex("7" * 32))
+        browser.send(browser.crypto.start(), deadline=time.monotonic() + 1)
+        browser.send(
+            browser.crypto.receive_attest(browser.record(deadline=time.monotonic() + 1)),
+            deadline=time.monotonic() + 1,
+        )
+        browser.crypto.receive_ack(browser.record(deadline=time.monotonic() + 1))
+        browser.send(
+            browser.crypto.encrypt_read(
+                encode_message(
+                    {
+                        "protocol_id": "agentbox-a3-content/v1",
+                        "protocol_version": 1,
+                        "context_digest": context_digest(browser.context),
+                        "request_nonce": "6" * 64,
+                        "kind": "PATCH_READ",
+                        "selection_id": browser.selection,
+                    }
+                )
+            ),
+            deadline=time.monotonic() + 1,
+        )
+        patch = None
+        while patch is None:
+            patch = browser.crypto.receive_record(browser.record(deadline=time.monotonic() + 1))
+        assert b"staged secret-canary content" in patch
+        assert b"unstaged-exclusion-canary" not in patch
+
+        complete_deadline = time.monotonic() + 1
+        while True:
+            evidence = native.call("publication-status", deadline=complete_deadline)
+            if evidence["api"]["complete_received"] == 1:
+                break
+            time.sleep(min(0.005, max(0, complete_deadline - time.monotonic())))
+        assert time.monotonic() < complete_deadline
+        after = native.call("runtime-status", deadline=time.monotonic() + 1)
+        assert after["active"] == after["active_bundles"] == after["burned_nonces"] == 1
+        api, runtime = evidence["api"], evidence["runtime"]
+        assert api["a3_runtime_imports_absent"] is True
+        assert api["ready_received"] == api["live_received"] == api["live_matches"] == 1
+        records = browser.ack_sequence
+        assert records >= 4
+        assert api["records_received"] == records
+        assert api["checked_received"] == api["checked_matches"] == records
+        assert api["ack_received"] == api["ack_matches"] == records
+        assert all(value == records for value in runtime.values())
+        assert api["current_received"] >= api["current_replied"] > 0
+
+        before = api["current_received"]
+        replied_before = api["current_replied"]
+        time.sleep(0.1)
+        evidence = native.call("publication-status", deadline=time.monotonic() + 1)
+        assert evidence["api"]["current_received"] > before
+        assert evidence["api"]["current_replied"] > replied_before
+        assert native.call("runtime-status", deadline=time.monotonic() + 1)["active"] == 1
+
+        revoke_deadline = time.monotonic() + 1
+        native.call("revoke", deadline=revoke_deadline)
+        retired = wait_for(native, "active_bundles", 0, deadline=revoke_deadline)
+        assert retired["active"] == 0 and retired["burned_nonces"] == 1
+        while native.call("publication-status", deadline=revoke_deadline)["api"]["open_bundles"]:
+            time.sleep(min(0.005, max(0, revoke_deadline - time.monotonic())))
+        assert time.monotonic() < revoke_deadline
+    finally:
+        if browser is not None:
+            browser.close()
+        client.close()
+
+    # Both owners verify channel/thread retirement before releasing bundle slots.
+    # Child.close raises on TERM/KILL fallback; only ordinary zero exits qualify.
+    assert native.api is not None and native.runtime is not None
+    children = (native.api, native.runtime)
+    pipes = [pipe for child in children for pipe in (child.process.stdin, child.process.stdout)]
+    descriptors = [pipe.fileno() for pipe in pipes if pipe is not None]
+    native.close()
+    assert all(child.process.returncode == 0 for child in children)
+    assert all(pipe is not None and pipe.closed for pipe in pipes)
+    for fd in descriptors:
+        with pytest.raises(OSError):
+            os.fstat(fd)
 
 
 def test_real_separate_process_metadata_crypto_end_retains_original_owner(

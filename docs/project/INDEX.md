@@ -1,5 +1,34 @@
 # AgentBox Project Context Index
 
+## 2026-10-07 分进程发布覆盖合格，接续本批UI（07:13 UTC）
+
+[PR155](https://github.com/ForceMind/agentbox/pull/155)已正常合并为main
+`7ab227a378873f6d79d77c59db2228f7e047eb65`，tree
+`560633fd9b465cd13e83e5c1f641f8146486f79f`，与合格head f04b813逐字相同。
+该exact-main六套workflow首轮终态成功，26checks=23success+3规定skip；Backend
+实际3.11.17/3.12.14/3.13.15各5375 passed/88 skipped，E2E256 passed/50规定skip、
+无failed/flaky。新增process15、原transport69、guard-budget1、新pure49均实际通过，
+独立source、coverage和官方main日志复审通过。
+
+新增覆盖复用既有exec API/Runtime fixture，仅默认关闭的有界scalar见证与新process
+场景；精确CHECKED/LIVE_REPLY/ACK、COMPLETE和后台currentness均观察真实调用。
+原direct test及8ms companion逐字保留，production与exact250ms未动。旧main1ce
+的3.13.15 READY23/24失败仍保留为开放availability/qualification问题；本批不是
+根因修复，不将GIL假设或.16通过改称.15问题已解决，不替换旧断言或盲重跑。
+
+[UI PR153](https://github.com/ForceMind/agentbox/pull/153)已审head
+`621402c21ef874961ef092a4aa2579ac71ae2012`此前六套首轮通过，Backend实际3.13.16，
+E2E299 passed/73规定skip。126张真实PNG（70新UI）校验后实际复查21张，四张展示
+图已交付；这些是该旧头的证据。本次正常merge-forward main7ab，保留621和7ab
+两条历史，Web与workflow逐字保持621，新增五文件逐字来自合格main，仅另更新
+本批记录与三个项目快照。实际新UI head的六套、原PNG与最终main回读仍须取得。
+
+处置已明确：原READY历史问题持续开放，新增分进程覆盖作为补充软件证据；
+按既定feature→CI→merge→exact read-back继续同一UI版本，不另起诊断框架或负载
+调参。不新增本批以外页面/功能，不改变版本、发布、部署或真实host/Secret边界。
+详见[UI记录](../WORKBENCH_UI_PROJECT_DETAIL_REFRESH.md)与
+[分进程覆盖合同](../WORKBENCH_A3_PROCESS_PUBLICATION_COVERAGE.md)。下方为历史快照。
+
 ## 2026-10-07 Project详情UI接续peer-proof合格修正（05:30 UTC）
 
 main已正常合并[PR154](https://github.com/ForceMind/agentbox/pull/154)为
