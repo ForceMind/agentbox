@@ -1,5 +1,20 @@
 ---
 
+## 2026-10-07 Kebui 品牌与产品方向文档分支
+
+本任务从 live `main`（PR158 已合并为
+`cf710d59cd6c47d7a240c0ce25d7f006d51e374a`）建立纯文档分支
+`docs/kebui-brand-plan-20261007`。本分支不修改产品代码或运行行为。
+
+Owner 选定 **Kebui（科布）** 作为战略用户品牌方向，并要求形成完整品牌说明与
+产品演进计划。已新增 `KEBUI_BRAND.md` 与 `KEBUI_PRODUCT_PLAN.md`，并在
+INDEX、CHARTER、ROADMAP 建立入口。过渡架构为 Kebui 用户产品层 +
+AgentBox Runtime 执行层；是否进一步重命名 Runtime/repository 仍需后续独立决策。
+
+`kebui.com` / `qebui.com` 仅记录为规划时查询可注册，Owner 尚未在本任务中
+确认购买，因此仓库不宣称域名已拥有。当前 rc31 UI/release 有界计划继续有效，
+本品牌方向不自动扩大当前产品权限或发布范围。
+
 schema_version: 1
 verified_at_utc: "2026-10-07T11:51:00Z"
 verified_by: "agentbox-ui-agent-management"
