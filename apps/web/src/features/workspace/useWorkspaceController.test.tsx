@@ -611,6 +611,73 @@ describe('Workspace metadata controller', () => {
     ).toBe(false)
   })
 
+  it('preserves the first exact Stop while confirmation is invoked twice before React commits', async () => {
+    const { fetcher } = fixture('RUNNING')
+    const original = fetcher.getMockImplementation()!
+    const stopSignals: AbortSignal[] = []
+    let releaseResponse!: (response: Response) => void
+    fetcher.mockImplementation((input, init) => {
+      if (!input.toString().endsWith('/stop')) return original(input, init)
+      const signal = init?.signal
+      if (!signal) throw new Error('The exact Stop must carry an AbortSignal')
+      stopSignals.push(signal)
+      return new Promise<Response>((resolve, reject) => {
+        releaseResponse = resolve
+        signal.addEventListener(
+          'abort',
+          () =>
+            reject(new DOMException('Synthetic fetch aborted', 'AbortError')),
+          { once: true },
+        )
+      })
+    })
+    const { result } = renderHook(
+      () => useWorkspaceController({ projectId, agentType: 'codex' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.canStop).toBe(true))
+    act(() => result.current.requestStop())
+    const confirm = result.current.confirmStop
+    let stopping!: Promise<void>
+    await act(async () => {
+      // Both invocations use the same committed handler, before pending renders.
+      stopping = confirm()
+      await confirm()
+    })
+    const beforeReceipt = {
+      stopRequests: fetcher.mock.calls.filter(([url]) =>
+        url.toString().endsWith('/stop'),
+      ).length,
+      firstSignalAborted: stopSignals[0]?.aborted,
+      target: result.current.stopTarget
+        ? {
+            workspaceId: result.current.stopTarget.workspaceId,
+            generation: result.current.stopTarget.generation,
+          }
+        : null,
+      pending: result.current.pending,
+      errorCode: result.current.error?.code ?? null,
+    }
+    // Always settle the held transport before asserting, including the RED case.
+    await act(async () => {
+      releaseResponse(
+        await original(`/api/v1/workspaces/${workspaceId}/stop`, {
+          method: 'POST',
+          body: JSON.stringify({ generation: '7' }),
+        }),
+      )
+      await stopping
+    })
+    expect(beforeReceipt).toEqual({
+      stopRequests: 1,
+      firstSignalAborted: false,
+      target: { workspaceId, generation: '7' },
+      pending: 'stop',
+      errorCode: null,
+    })
+    expect(result.current.notice).toBe('STOP_CONFIRMED')
+  })
+
   it('revokes an old action notice permanently when the page observation is invalidated', async () => {
     fixture()
     const { result } = renderHook(

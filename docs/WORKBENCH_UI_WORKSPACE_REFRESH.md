@@ -98,3 +98,18 @@ allowlist只追加ui-workspace前缀。TypeScript首轮test.use reducedMotion类
 第二次fence可能中断第一项pending请求。将先以现有controller fixture做最小
 test-only验证；尚未修改controller，不放宽新浏览器断言。若成立，必须给出
 源代码依据、真实RED与有界修复卡片，再处理该部分；普通布局与证据准备继续。
+
+## 08:17 UTC 既有重复Stop的真实RED
+
+在未改动controller上，现有fixture新增一个最小case：同一committed confirmStop
+连续调用两次，并让transport真实响应AbortSignal。实际结果是仅1个Stop POST，
+但firstSignalAborted=true、stopTarget=null、pending=null、WAW_ACTION_STALE。
+原始case与格式化后case均exit1（1 failed/24 skipped）；ESLint、TypeScript与
+diff-check均exit0。测试先settle held transport再断言，没有遗留未完成任务。
+
+新增test-only回归位于useWorkspaceController.test.tsx，Git blob
+`ffaff74fbc2ee89727631bff7b130fc375122d3d`；controller blob仍为
+`ffedceac76ffb43efbf21e6220e5559e3b655f7c`，产品diff为0。这证明既有重复确认
+会中断第一项操作，不是布局新增缺陷，也没有证据表明发送了重复Stop。
+已提出同步、scope-bound single-flight owner的最小修复卡片，产品修正尚未开始。
+保留真实RED与原全部断言；本候选因此未合格，不能merge或宣称浏览器通过。
