@@ -104,3 +104,23 @@ page width、sidebar、无正文/动作、fold/pagination等断言和所有timeo
 140a34头当时五套首轮成功，Backend实际3.11.17/3.12.14/3.13.15各5375/88，
 Frontend1800+6；E2E仍在运行，不能称六套或整批合格。原失败保留，后继正常
 追加test/docs提交；不手动重跑旧头，不借布局调整掩盖任何内容/安全断言。
+
+## 10:55 UTC 六套head/main与指定图像闭环
+
+最终head f2145b9ab88a8f7fe332974101f5347619104bae六套首轮成功，24success/2规定skip。
+Backend实际3.11.16/3.12.14/3.13.16各5375/88，native实际3.13.15；Frontend1800+6，
+E2E395/115无failed/flaky/retry、auth preflight21、fixture实际3.12.14。
+
+最终artifact11474939526为35,817,239 bytes，SHA256
+3938cbdd602843ab48ed49c06d0bae3b8d349e075279811ab28cfe014064dd86。已取得并验证
+SHA/CRC/路径/PNG签名，210PNG中42张newChanges与140已逐张审过原图全部同字节；
+独立再次打开两张final preview及全部6张A3图，指定48图覆盖CLEAR，不冒称210图全审。
+Library两张preview身份/版本保持，因为字节未改。既有失败记录保留。
+
+PR157于10:34:37 UTC正常merge为main38bd0b86d20050b7f0df734b14a29d8e1b706ded，
+parents5ca2f1d/f2145b9，treebc85ddcf4cf5bb4b677ce61c25de367276647056精确相同。
+六套exact-main首轮成功，23success/3规定skip；Backend实际3.11.17/3.12.15/3.13.15
+各5375/88，native3.13.15；Frontend1800+6，E2E395/115无failed/flaky/retry，fixture
+3.12.14、auth preflight21。独立官方日志/checkout/tree回读CLEAR，未rerun或重复
+下载main图。本有界批次闭环；同一版本接续[Agent管理呈现](WORKBENCH_UI_AGENT_MANAGEMENT_REFRESH.md)。
+历史READY问题仍开放，保留2 moderate审计项，不称零漏洞，不发布/部署/激活host。
