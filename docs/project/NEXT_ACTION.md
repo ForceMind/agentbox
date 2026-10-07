@@ -1,5 +1,16 @@
 # Current Authorized Action
 
+## 2026-10-07 Kebui 战略方向不替换当前交付行动
+
+Owner 已批准形成 Kebui（科布）品牌与长期产品方向文档，详见
+[KEBUI_BRAND.md](KEBUI_BRAND.md) 与
+[KEBUI_PRODUCT_PLAN.md](KEBUI_PRODUCT_PLAN.md)。
+
+这是战略产品轨道，不替换当前 rc31 UI/release 的既定有界交付顺序。完成本纯文档
+分支后，继续按 live Git/GitHub 重新核对当前页面收尾、CI 与 release 计划。Kebui
+conversation、自动 agent routing、协作空间和任何内部重命名均按产品计划分阶段
+另立合同实施，不作为本次文档任务的直接开发范围。
+
 ## 2026-10-07 Changes闭环，Agent管理UI候选（11:51 UTC）
 
 [PR157](https://github.com/ForceMind/agentbox/pull/157)已正常合并为main
