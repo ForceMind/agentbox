@@ -12,7 +12,9 @@
 - `tokens.css`、`styles.css`、`app.js`：可审查源码。
 - `build.py`：Python 标准库生成 HTML，运行 `python build.py`。
 - `REFERENCE_EVIDENCE.md`：来源证据与缺项；没有转载第三方私人截图。
-- `reference-board.html`：可直接打开的文字型参考板；是设计整理，不是参考产品截图。
+- `PUBLIC_VISUAL_EVIDENCE.md`：本轮19张官方公开图/帧的观察及采用映射。
+- `U0_QUALIFICATION.md`：本批范围、本地检查、待完成CI和合并验收。
+- `reference-board.html`：可直接打开的来源驱动参考板；含自主合成结构示意与官方来源链接，不转载参考产品像素。
 - `COMPONENTS_AND_MAPPING.md`：tokens/组件说明、六组画面、已实现与未实现的产品映射。
 - `REVIEW.md`：实际检查范围、失败记录、NOT RUN 与下一步。
 - `verify-regressions.cjs`：独立审查问题的11项回归（含RED→GREEN证据）；证据位于 `evidence/regressions-{red,green}.json`。
@@ -84,3 +86,11 @@ U1 是设计准备，不是 K2/S03/WEV 或 K3–K7 已完成。既有 Job 不改
 截图/功能不是最终品牌定稿；真实Agent/账户/设备无接线或资格声明。
 本次后继文档包不改变HTML/交互源码；完整六套CI与合并终态见
 [PR163](https://github.com/ForceMind/agentbox/pull/163)。
+
+## U0 视觉取证补完
+
+五项官方公开来源共19张截图/视频帧已实际查看、固定URL/SHA与哈希。
+参考板仅使用自主合成结构，不转载第三方像素；本批不新增私人来源取证记录。
+`verify-references.cjs`在CI检查6来源/设计卡、五宽度、零外部请求和两张桌面/手机截图；
+此代码存在不等于新head浏览器已验，具体资格见相应PR。
+公开参考观察不是上游软件实测，也不需要为了完成设计研究安装全部上游产品。
