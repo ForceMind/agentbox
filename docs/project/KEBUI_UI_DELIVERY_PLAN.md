@@ -1,5 +1,30 @@
 # Kebui UI 分阶段交付与验收计划
 
+## 2026-10-08 当前 UI 版本与 U1 实际交付范围
+
+当前源码仍为 rc31。PR161 已正常合并为
+`8027628f2cf9937d65626e8a9e87eed2f59c7675`，tree 与合格 head14211671 一致，
+六套 exact-main CI 全部成功。因此下方 Login/404 与跨页待资格化的文字是历史快照，
+当前 U2 既有页面清单的软件闭环已经完成，不能反复重做这些页面。
+
+产品名称落实由 [PR162](https://github.com/ForceMind/agentbox/pull/162) 接续：
+head `fc182c86637198f2dce41e6fbc28106f80831f2a`、tree
+`1839a336014e54c2e181dbf167bc24f6ab632dcf`，Web 产品标识与标题为 Kebui，
+AgentBox Runtime/API/CLI 兼容。已正常合并 main `29adec75b1c6c7912ceacd53a3cbed416ac4aa79`，同树；exact-main CI 待终态。
+
+U1 首个真实产物位于 [离线原型](../../design/kebui/README.md)，含六组核心画面、
+21 个画面入口、双语/主题、三条合成交互旅程、tokens、参考证据与映射。
+它只演示未来体验，不接真实 Agent，不新增生产 Chat/Task/Files 权限。
+本地 DOM 与静态检查不替代真实浏览器/像素；审查发现的失效 Stop、取消换 Agent、
+跳到内容与停止回读问题必须修复并通过 CI，才能取得“U1 可评审”资格。
+U0 未核实参考截图仍标 UNKNOWN，不把文字型参考板冒称完整来源取证。
+
+当前版本完成报告须分开：U2 既有页面软件资格、产品标识资格、U1 设计产物与缺项。
+真实 host、双 CLI、代表性客户端、Secret/信任、重启/升级回退仍需要目标证据；
+本批没有发布、部署或改变既有目标验证暂缓状态。U3–U5 是后续有合同的能力阶段，
+不因原型可点击就算已实现，也不是本次当前版本 UI 收尾的隐藏前置条件。
+
+
 日期：2026-10-07。状态：**Owner 要求的 UI 设计补充；本批仅文档。**
 
 配套：[UI 与交互设计](KEBUI_UI_DESIGN.md)、[K0–K8 产品计划](KEBUI_PRODUCT_PLAN.md)、

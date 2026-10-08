@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Offline invalidates prior recovery and disables exact Stop",
+    "status": "PASS"
+  },
+  {
+    "name": "Hidden closes Stop dialog; stale confirmation cannot stop after reverify",
+    "status": "PASS"
+  },
+  {
+    "name": "Final Stop rechecks the exact target",
+    "status": "PASS"
+  },
+  {
+    "name": "Choosing Agent then cancel preserves scope, draft, approval and result",
+    "status": "PASS"
+  },
+  {
+    "name": "Skip link focuses main without routing or clearing draft",
+    "status": "PASS"
+  },
+  {
+    "name": "Repeated recovery preserves stopped fixture; running detach does not stop",
+    "status": "PASS"
+  },
+  {
+    "name": "Send evidence, idempotent duplicate and exact revision increment",
+    "status": "PASS"
+  },
+  {
+    "name": "Approval requester matches selected Claude Code",
+    "status": "PASS"
+  },
+  {
+    "name": "Fresh failure scene has no actionable retry until a request is sent",
+    "status": "PASS"
+  },
+  {
+    "name": "isComposing event cannot send; Cmd+Enter can submit",
+    "status": "PASS"
+  }
+]

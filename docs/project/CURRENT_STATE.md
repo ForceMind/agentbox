@@ -1,11 +1,35 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-07T18:04:00Z"
-verified_by: "kebui-product-identity"
+verified_at_utc: "2026-10-08T02:44:00Z"
+verified_by: "kebui-u1-prototype"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-08 Kebui 标识合并与 U1 原型候选（02:44 UTC）
+
+[PR162](https://github.com/ForceMind/agentbox/pull/162) 已正常合并为
+`29adec75b1c6c7912ceacd53a3cbed416ac4aa79`，tree
+`1839a336014e54c2e181dbf167bc24f6ab632dcf` 与合格 headfc182c86 完全一致。
+六套 exact-head 首轮全部成功：24 success/2规定skip；Frontend1972+6，
+E2E650passed/270skip并有21preflight。Artifact11525052229的67,621,866bytes及
+SHA256 `d7aa0603ede51c3d3adac5e5f88bc1fd77c2c810ac7b882bfefaf30e3b1000bc`
+已核对；418PNG中独立逐张审了16张代表原图，另自查2张，均未发现品牌/布局问题。
+这是明确范围的抽样像素资格，不称全418已审。该新 main CI 尚待终态。
+
+按同一当前版本连续推进 U1 [离线合成原型](../../design/kebui/README.md)，
+源码/生成HTML、六核心组、21画面入口、三旅程、双语浅深tokens、来源表与能力映射
+已实际存在；生产路由/接口未改。独立审查发现Stop失效、换Agent取消、skip路由、
+停止回读四项真实问题后，已修正并实际RED→GREEN；另修无请求retry死按钮。
+10项定向回归、504DOM组合和静态检查通过，核心八项独立复验通过。
+本地Chromium在socket EPERM启动失败，没有浏览器或像素PASS；新增隔离CI设计job
+将运行真正点击/几何与24张代表截图，不接任何真实Agent或后台。
+
+U2既有页面软件闭环已完成；U1浏览器/像素资格和U0来源缺项仍待，不能以原型存在
+宣称全量UI或生产能力完成。真实目标/双CLI/设备/恢复、Secret和release/deploy仍独立。
+下方旧状态完整保留，不覆盖本节或live GitHub。
+
 
 ## 2026-10-07 Kebui 产品标识落实（18:04 UTC）
 
