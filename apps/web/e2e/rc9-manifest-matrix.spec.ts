@@ -301,7 +301,7 @@ test('covers RootRedirect, route guards, Logs, and NotFound in the rc9 matrix', 
         await expect(page).toHaveURL(/\/login$/)
 
         await page.goto('/route-not-in-agentbox')
-        await assertRc9Title(page, `${copy.notFound} · AgentBox`)
+        await assertRc9Title(page, `${copy.notFound} · Kebui`)
         await expect(page.getByRole('link')).toHaveAttribute('href', '/login')
         await assertRc9NoHorizontalOverflow(page)
         await assertRc9InteractiveTargets(page)
@@ -322,9 +322,9 @@ test('covers RootRedirect, route guards, Logs, and NotFound in the rc9 matrix', 
         await expect(page).toHaveURL(/\/dashboard$/)
         await page.goto('/login')
         await expect(page).toHaveURL(/\/dashboard$/)
-        await assertRc9Title(page, `${copy.dashboard} · AgentBox`)
+        await assertRc9Title(page, `${copy.dashboard} · Kebui`)
         await page.goto('/logs')
-        await assertRc9Title(page, `${copy.logs} · AgentBox`)
+        await assertRc9Title(page, `${copy.logs} · Kebui`)
         await expect(page.locator('.empty-state')).toBeVisible()
         await assertRc9NoHorizontalOverflow(page)
         await assertRc9InteractiveTargets(page)
@@ -485,7 +485,7 @@ test('covers Doctor and Settings loading, loaded, and error states in the rc9 ma
 
         await page.goto('/doctor')
         await doctorHold.waitUntilHeld()
-        await assertRc9Title(page, `${copy.doctor} · AgentBox`)
+        await assertRc9Title(page, `${copy.doctor} · Kebui`)
         await expect(page.getByRole('status')).toHaveText(copy.doctorLoading)
         doctorHold.release()
         await expect(
@@ -495,7 +495,7 @@ test('covers Doctor and Settings loading, loaded, and error states in the rc9 ma
         await assertRc9CanaryAbsent(page, SERVER_PROSE_CANARY)
 
         await page.goto('/settings')
-        await assertRc9Title(page, `${copy.settings} · AgentBox`)
+        await assertRc9Title(page, `${copy.settings} · Kebui`)
         await expect(
           page.getByRole('heading', { name: copy.settings }),
         ).toBeVisible()
@@ -562,7 +562,7 @@ test('covers empty Projects plus create pending, success, and error in the rc9 m
         })
         await page.goto('/projects')
         await listHold.waitUntilHeld()
-        await assertRc9Title(page, `${copy.projects} · AgentBox`)
+        await assertRc9Title(page, `${copy.projects} · Kebui`)
         await expect(page.getByRole('status')).toBeVisible()
         listHold.release()
         await expect(

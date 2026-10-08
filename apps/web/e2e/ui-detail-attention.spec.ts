@@ -406,7 +406,7 @@ async function heading(page: Page, title: string) {
   await expect(
     page.getByRole('heading', { name: title, level: 1, exact: true }),
   ).toBeVisible()
-  await assertRc9Title(page, `${title} · AgentBox`)
+  await assertRc9Title(page, `${title} · Kebui`)
 }
 
 async function readyProject(page: Page, locale: Locale, id = PROJECT_A) {

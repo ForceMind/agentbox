@@ -8,10 +8,10 @@ export const documentCatalog = defineCatalogShard<DocumentMessageParameters>(
   'document',
   {
     en: {
-      'document.title': ({ title }) => `${title} · AgentBox`,
+      'document.title': ({ title }) => `${title} · Kebui`,
     },
     'zh-CN': {
-      'document.title': ({ title }) => `${title} · AgentBox`,
+      'document.title': ({ title }) => `${title} · Kebui`,
     },
   },
 )

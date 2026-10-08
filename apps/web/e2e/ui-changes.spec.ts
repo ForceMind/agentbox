@@ -349,7 +349,7 @@ async function ready(page: Page, locale: Locale, shown = 9, total = 9) {
   await expect(
     page.getByRole('heading', { name: expected.title, level: 1, exact: true }),
   ).toBeVisible()
-  await assertRc9Title(page, `${expected.title} · AgentBox`)
+  await assertRc9Title(page, `${expected.title} · Kebui`)
   await expect(page.locator('.changes-count')).toHaveText(
     expected.count(shown, total),
   )
@@ -745,7 +745,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
           .click()
         await expect(page).toHaveURL(`/projects/${PROJECT}`)
         await expect(page.locator('#a3-changes-reader')).toHaveCount(0)
-        await assertRc9Title(page, 'AgentBox 工作台 · AgentBox')
+        await assertRc9Title(page, 'AgentBox 工作台 · Kebui')
         state.rows = files()
         await page.goBack()
         await expect(page).toHaveURL(CHANGES_ROUTE)
@@ -766,7 +766,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await page.goForward()
         await expect(page).toHaveURL(`/projects/${PROJECT}`)
         await expect(page.locator('#a3-changes-reader')).toHaveCount(0)
-        await assertRc9Title(page, 'AgentBox 工作台 · AgentBox')
+        await assertRc9Title(page, 'AgentBox 工作台 · Kebui')
         await page.goBack()
         await ready(page, locale)
         await assertBoundaries(page, state)

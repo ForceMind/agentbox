@@ -105,9 +105,24 @@ describe('catalogs and formatters', () => {
     )
   })
 
+  it('uses Kebui product identity while preserving technical CLI instructions', () => {
+    for (const locale of ['en', 'zh-CN'] as const) {
+      expect(formatMessage(locale, 'app.name', {})).toBe('Kebui')
+      expect(
+        formatMessage(locale, 'document.title', { title: 'Project' }),
+      ).toBe('Project · Kebui')
+      expect(formatMessage(locale, 'auth.description', {})).toContain(
+        'AgentBox CLI',
+      )
+    }
+    expect(formatMessage('zh-CN', 'auth.productContextLabel', {})).toBe(
+      'Kebui（科布）产品简介',
+    )
+  })
+
   it('formats named message parameters without a source-text fallback', () => {
     expect(formatMessage('en', 'document.title', { title: 'Dashboard' })).toBe(
-      'Dashboard · AgentBox',
+      'Dashboard · Kebui',
     )
     expect(formatMessage('zh-CN', 'items.count', { count: '3' })).toBe('3 项')
     const unsafeFormatMessage = formatMessage as unknown as (
