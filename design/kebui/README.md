@@ -1,6 +1,6 @@
 # Kebui U1 · Design draft 01
 
-日期：2026-10-08 UTC。状态：**可打开的合成原型；受控 Chromium 与 24 图范围复核通过；完整候选 CI/合并以 PR163 为准，物理设备未验。**
+日期：2026-10-08 UTC。状态：**可打开的合成原型；原型基线的受控 Chromium / 24 图及合并见 PR163。新增48组原生200%和42/184原生图有界复核见[资格记录](BROWSER_ZOOM_QUALIFICATION.md)；[PR165](https://github.com/ForceMind/agentbox/pull/165)仍Draft、完整组合CI另验，物理设备未验。**
 
 直接双击 `index.html`，无需安装依赖、服务器或网络。首页是 `#home`；`#catalog` 列出全部 21 个画面。HTML 包含所有 CSS/JS；其他文件不是打开时的依赖。
 
@@ -94,3 +94,16 @@ U1 是设计准备，不是 K2/S03/WEV 或 K3–K7 已完成。既有 Job 不改
 `verify-references.cjs`在CI检查6来源/设计卡、五宽度、零外部请求和两张桌面/手机截图；
 此代码存在不等于新head浏览器已验，具体资格见相应PR。
 公开参考观察不是上游软件实测，也不需要为了完成设计研究安装全部上游产品。
+
+## 原生浏览器200%补验（2026-10-08）
+
+[资格记录](BROWSER_ZOOM_QUALIFICATION.md)：source88a4的Chromium原生200%两窗口
+（1440/780 native→720/390 CSS）×双语×浅深×六核心页，48组实际通过；128次可信
+原生点击、585次真实滚轮、432个目标检查。独立查看42/184张native原图覆盖8配置，
+所查正文/按钮无内部遮挡；浏览器泡泡可能遮顶部横幅，不称全字零遮挡或184张全审。
+Stop取消后与最终目标回读已有独立原生图。API截图不作为此资格。
+
+`verify-browser-zoom.cjs` 与 `verify-browser-zoom-unit.cjs` 在既有CI的Xvfb中执行，
+真实原生快捷键与鼠标输入均有校准；large模式、CSS transform、viewport模拟不替代200%。
+物理设备、21页全面200%、长文本压力、读屏与真实Agent仍独立。后继文档组合head完整CI
+和最终状态见[PR165](https://github.com/ForceMind/agentbox/pull/165)，当前保持Draft、未合并。
