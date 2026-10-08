@@ -1,10 +1,15 @@
 # U1 浏览器 200% 补验
 
-2026-10-08 UTC。当前状态：六页中文浅色原生200%基准通过；两尺寸/双语/浅深候选待验。历史失败保留。
+2026-10-08 UTC。当前状态：48组原生200%通过；42/184原生图独立有界复核通过。完整PR CI终态另验，保持Draft。
 
 仅补已有 U1 设计验收。基线 main `62c5d5ddadcb74e0d8aa1898b1b490d1314b190b`
 的原型 SHA256 为 `fd8d1c491a211a3df44bc2f4a8e80a4152254886896af9a841f4d01b2c1c19f8`。
 本批不改 HTML/CSS/交互产品源码，不接真实 Agent/账户/host，不部署、不发布版本。
+
+以下从“首轮只做六页基准”至“后继必要矩阵候选”为分阶段历史记录，其“待验”时态
+和首轮旧JSON文件名不能覆盖末尾19:06节的现行结论。当前每组合独立写入
+`evidence/browser-zoom-<width>-<lang>-<theme>.json`；旧
+`browser-zoom-verification.json`仅指早期单组合采证。
 
 ## 首轮只做六页基准
 
@@ -123,3 +128,38 @@ session顶部。动态行为由可信输入/状态断言支持，图片不单独
 未执行组合不算PASS。没有更改job超时、触发器、权限或门禁。每组合独立PNG/JSON
 文件名防止覆盖，原始同一HTML hash继续记录；没有增加长文本/读屏/真实设备资格。
 后继完整CI、48组实际结果与原生图复核仍待，不以小基准绿色替代。
+
+## 2026-10-08 19:06 UTC：48组原生200%与有界像素资格
+
+源head `88a4f2e70aca1bce204947b3434b5ca6c210f27e` 的
+[E2E37828139269 / design job113486200256](https://github.com/ForceMind/agentbox/actions/runs/37828139269/job/113486200256)
+首轮完成success。Chromium151.0.7922.34，原生窗口1440×1000 / 780×1000；
+每组从100%经五级原生快捷键到200%，实际CSS宽720/390、DPR2、scale1、字号15px不变。
+两语言×两主题×两尺寸×六核心页=48组全部通过。128次trusted原生点击、585次真实
+滚轮、432个可见/无遮挡目标检查，page外部requests与pageerrors均为0。
+窄英文浅/深两组各实际发生2次dialog内滚，其余dialog不需要内滚。
+
+[artifact11571489036](https://github.com/ForceMind/agentbox/actions/runs/37828139269/artifacts/11571489036)
+为21500181bytes，ZIP SHA256 `140dc384d41865c2c3b1ed78e10eeaf7e9bffb0ff31630548ea54ab4682c90eb`。
+含8份新JSON、184张native整窗（含100%校准图）、8张明确API对照；另含既有标准26图。
+本轮独立检查全部8JSON，实际逐一查看**42/184张native原图**，覆盖全部8配置；
+其中特别检查390CSS英文浅/深的24张正文、审批、Agent、composer与Stop关键图。
+所查关键正文与按钮无产品内部遮挡，Stop取消后running/epoch7、最终exact-target/
+epoch7/not replayed可见。没有声称其余142张已看，也没有用API对照图替代原生图。
+部分home-entry图的浏览器zoom/翻译泡泡覆盖顶部演示横幅；未挡所查关键操作/正文，
+但不能宣称“每处文字零遮挡”。entry记录实际scroll，不再冒称都是页首。
+
+8报告的source统一为PR merge checkout `09814eb2fc7f98b37346f02f69b24883424ae456`，
+headSource统一88a4；官方Git API已核checkout parents为main62c5和head88a4，
+tree与head同为 `11c6814c49c14593cab9998228890e22228355f2`。
+原型HTML始终保持 `fd8d1c491a211a3df44bc2f4a8e80a4152254886896af9a841f4d01b2c1c19f8`。
+没有产品修复提交：前两轮失败属于本次测试输入/取图资格问题，原失败及原artifact保留。
+
+本节只关闭上述六核心合成页的原生200%有界验收缺口，不是21页全面200%、长文本
+压力、键盘/读屏、物理Android/iOS或真实Agent/账号/host资格。原生单notch的近满高
+helper边界仍在，未通过放宽断言隐藏。生产源码、版本和功能范围不变，无U3/release/deploy。
+
+本次后继提交只更新说明/状态，HTML/测试/CI脚本保持该合格源head字节；文档组合head
+仍需自己的完整六套CI、逐项报告及证据一致性回读。19:06时88a4五套success、完整E2E
+仍运行，不能提前称整PR已绿。保持[PR165](https://github.com/ForceMind/agentbox/pull/165)
+Draft，不合并；最终exact-head状态以该PR回读为准，不借旧头绿色。

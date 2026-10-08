@@ -1,11 +1,31 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-08T17:56:00Z"
-verified_by: "kebui-browser-zoom-baseline"
+verified_at_utc: "2026-10-08T19:06:00Z"
+verified_by: "kebui-browser-zoom-matrix"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-08 U1 原生200%矩阵资格（19:06 UTC）
+
+[PR165](https://github.com/ForceMind/agentbox/pull/165) source
+`88a4f2e70aca1bce204947b3434b5ca6c210f27e` 的design job113486200256首轮success：
+两原生窗口1440/780（200%后CSS720/390）、双语浅深、六核心页共48组通过。
+128可信原生点击、585实际滚轮、432目标检查；零page外部请求/错误。HTML/CSS/app.js
+未改，前两次输入/取图校准失败作为测试历史保留，不称产品修复。
+
+[artifact11571489036](https://github.com/ForceMind/agentbox/actions/runs/37828139269/artifacts/11571489036)
+21500181bytes，SHA256 `140dc384d41865c2c3b1ed78e10eeaf7e9bffb0ff31630548ea54ab4682c90eb`。
+独立检查8JSON、实际看42/184张native原图覆盖8配置；关键正文/按钮无内部遮挡，
+Stop取消后/最终target图已补。API对照不算资格，未审142张不冒称已看；浏览器zoom/
+翻译泡泡会覆盖部分首页顶部横幅，不称全字零遮挡。详见[资格记录](../../design/kebui/BROWSER_ZOOM_QUALIFICATION.md)。
+
+source09814的PRmerge checkout与head88a4同tree11c6814，parents为main62c5/head88a4。
+本次仅后继文档状态更新，完整组合head六套CI及证据一致性仍需回读；19:06时源head
+五套success、完整E2E仍运行，不借旧绿。保持Draft、暂不合并；最终状态见PR165。
+物理设备、21页全面200%、长文本压力、键盘/读屏、真实Agent/host、U3及release/deploy
+均不因本有界资格完成；用户Mac片段未混入证据。下方旧快照保持历史，不覆盖本节。
 
 ## 2026-10-08 U1 原生浏览器200%基准候选
 

@@ -127,3 +127,13 @@ U0公开文字来源已补核，参考图片/部分固定版本仍UNKNOWN；不�
 不复制AGPL来源代码。Logo/颜色是探索稿；后续U3–U5、真实host/双CLI/客户端/恢复和
 release/deploy仍是独立合同与目标证据，不因原型可点就宣称已完成。
 下方旧时间点的pending/未交付与NOT RUN作为历史保留，不能覆盖本节或live GitHub。
+
+## 2026-10-08 原生200%有界补验
+
+source88a4在既有CI通过48组原生200%六核心合成页；独立回读8JSON并实看42/184张
+native整窗，所查正文/按钮无内部遮挡。前两轮测试输入/取图失败完整保留，不当作产品
+RED→GREEN。真实窗口、DPR、CSS viewport、trusted事件、原图范围、浏览器泡泡限制及
+完整CI边界均见[BROWSER_ZOOM_QUALIFICATION](BROWSER_ZOOM_QUALIFICATION.md)。
+此前“真实200%未执行”仅为旧时间点记录，不覆盖本次限定资格。未新增物理设备/
+长文本压力/键盘读屏资格；[PR165](https://github.com/ForceMind/agentbox/pull/165)仍Draft，
+不提前宣称后继文档组合head完整CI或合并通过。
