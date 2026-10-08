@@ -292,6 +292,7 @@ const assert = require("assert");
               state.online = screen !== "recovery";
               state.admitted = screen === "results";
               state.approval = "pending";
+              state.revision = 1;
               state.recovered = false;
               state.stopped = false;
               document.documentElement.dataset.theme = theme;
@@ -300,6 +301,12 @@ const assert = require("assert");
             { lang, theme, screen },
           );
           assert.equal(await page.locator("#live").textContent(), "");
+          for (const panel of await page.locator(".context-panel").all()) {
+            assert(
+              await panel.isVisible(),
+              `${screen}/${width}: scope context must remain visible`,
+            );
+          }
           const geometry = await page.evaluate(() => ({
             scroll: document.documentElement.scrollWidth,
             width: innerWidth,

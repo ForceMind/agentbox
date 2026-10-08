@@ -85,3 +85,17 @@ pageerror。Artifact11524474223（2,569,439bytes，SHA256
 
 参考来源本轮补读官方公开文本，详情追加到REFERENCE_EVIDENCE。HAPI/CloudCLI的
 AGPL许可不同于既有Paseo Apache来源，不迁用其代码/资产；截图与真实产品流程仍UNKNOWN。
+
+## 2026-10-08 02:59 UTC 手机信息可达性补修
+
+最新e7d5e928设计job113125470989通过全部DOM与Chromium检查；artifact11525585683
+含24图，2,478,836bytes，SHA256
+`eaef328328f7d7a14cff2eab2c4b7b05c08e5eec063678713b2c026cba2a924b`。
+独立逐张打开24原图确认旧toast已消除，没有像素溢出或遮挡；但指出手机隐藏了
+context-panel，致工作授权边界、审批身份失效入口和结果真实CI未知说明不可达。
+这是响应式信息完整性缺口，不能用静态像素CLEAR掩盖。
+
+删除1100px以下对context-panel的display:none，让其随单列布局自然堆叠，保留
+全部说明与操作；为五宽/两语言/两主题的每个核心画面增加面板实际可见性断言。
+截图样本固定revision1，避免连续重置导致无意义的样本版本差异。
+原图与旧成功CI保留历史；后继head需重新执行与复查全部24图。
