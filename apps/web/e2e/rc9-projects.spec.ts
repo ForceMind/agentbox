@@ -182,7 +182,7 @@ test('covers localized Projects states without retaining server prose', async ({
 
         const expected = localeCopy[locale.expectedLocale]
         await assertRc9DocumentLocale(page, locale.expectedLocale)
-        await assertRc9Title(page, 'Projects · AgentBox')
+        await assertRc9Title(page, 'Projects · Kebui')
 
         const projectName = page.getByText('用户 Project 🚀')
         await expect(projectName).toHaveAttribute('translate', 'no')
@@ -321,7 +321,7 @@ test('covers localized Project detail and Claude action failures', async ({
         const expected = localeCopy[locale.expectedLocale]
         await assertRc9DocumentLocale(page, locale.expectedLocale)
 
-        await assertRc9Title(page, '用户 Project 🚀 · AgentBox')
+        await assertRc9Title(page, '用户 Project 🚀 · Kebui')
         await expect(
           page.getByRole('heading', { name: '用户 Project 🚀' }),
         ).toBeVisible()

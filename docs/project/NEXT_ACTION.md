@@ -1,5 +1,20 @@
 # Current Authorized Action
 
+## 2026-10-07 Kebui 产品标识落实（18:04 UTC）
+
+PR161 已正常合并为 main `8027628f2cf9937d65626e8a9e87eed2f59c7675`，
+tree `de3a2410de75159f3b33acbefbdec4913b18b3f6` 与合格 head14211671 相同；
+六套 exact-main workflow 全部 completed/success（E2E37660979034、
+Backend37660978927、Frontend37660978852 等）。Login/404 与当前 U2 跨页证据已闭环。
+
+接续 Owner 的新名称要求，按 K1 落实[有界产品标识层](../KEBUI_PRODUCT_IDENTITY.md)：
+README、Web 外壳/登录产品简介、页面标题和静态元数据使用 Kebui（科布）；
+技术 API/CLI/Runtime/包/服务/数据库名、旧链接与 rc31 版本保持兼容。
+本批仍待新 exact-head CI 和浏览器证据；不以基线六绿代替本批验证。
+U1 新设计与原型、Chat/Task 和真实 host/release/deploy 仍未交付，不因更名获得资格。
+下方旧 pending/失败记录完整保留为历史快照。
+
+
 ## 2026-10-07 Kebui 计划闭环，Login/404 与跨页候选（16:12 UTC）
 
 [PR159](https://github.com/ForceMind/agentbox/pull/159) 已于 15:45:37 UTC 正常合并为

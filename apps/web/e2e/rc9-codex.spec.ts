@@ -280,7 +280,7 @@ for (const viewport of RC9_VIEWPORTS) {
         await expect(
           page.getByRole('heading', { name: 'Codex', exact: true }),
         ).toBeVisible()
-        await assertRc9Title(page, 'Codex · AgentBox')
+        await assertRc9Title(page, 'Codex · Kebui')
         const version = page.getByText('0.rc9.fixture')
         await expect(version).toBeVisible()
         await expect(version).toHaveAttribute('lang', 'en')

@@ -241,7 +241,7 @@ test('covers the Claude route matrix without retaining server prose or hidden ou
 
         await page.goto('/claude')
         await assertRc9DocumentLocale(page, locale.expectedLocale)
-        await assertRc9Title(page, /Claude · AgentBox/)
+        await assertRc9Title(page, /Claude · Kebui/)
         await initialStatus.waitUntilHeld()
         await expect(page.getByRole('status')).toHaveText(expected.loading)
         initialStatus.release()

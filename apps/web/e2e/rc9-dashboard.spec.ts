@@ -116,7 +116,7 @@ test('covers Dashboard loading, healthy, and unavailable states in the rc9 matri
         await installDashboardRoutes(page, healthGate)
         await page.goto('/dashboard')
         await assertRc9DocumentLocale(page, locale.expectedLocale)
-        await assertRc9Title(page, new RegExp(`${expected.title} · AgentBox`))
+        await assertRc9Title(page, new RegExp(`${expected.title} · Kebui`))
         await page.getByLabel(expected.systemDetails, { exact: true }).click()
         await expect(
           page

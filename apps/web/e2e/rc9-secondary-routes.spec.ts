@@ -70,10 +70,7 @@ test('secondary route errors localize without persisting server prose', async ({
         const chinese = locale.expectedLocale === 'zh-CN'
         await page.goto('/doctor')
         await assertRc9DocumentLocale(page, locale.expectedLocale)
-        await assertRc9Title(
-          page,
-          chinese ? '诊断 · AgentBox' : 'Doctor · AgentBox',
-        )
+        await assertRc9Title(page, chinese ? '诊断 · Kebui' : 'Doctor · Kebui')
         const doctorAlert = page.getByRole('alert')
         await expect(doctorAlert).toContainText(
           chinese
@@ -86,7 +83,7 @@ test('secondary route errors localize without persisting server prose', async ({
         await page.goto('/settings')
         await assertRc9Title(
           page,
-          chinese ? '设置 · AgentBox' : 'Settings · AgentBox',
+          chinese ? '设置 · Kebui' : 'Settings · Kebui',
         )
         const settingsAlert = page.getByRole('alert')
         await expect(settingsAlert).toContainText(

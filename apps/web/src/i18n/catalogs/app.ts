@@ -7,9 +7,9 @@ export interface AppMessageParameters {
 
 export const appCatalog = defineCatalogShard<AppMessageParameters>('app', {
   en: {
-    'app.name': () => 'AgentBox',
+    'app.name': () => 'Kebui',
   },
   'zh-CN': {
-    'app.name': () => 'AgentBox',
+    'app.name': () => 'Kebui',
   },
 })

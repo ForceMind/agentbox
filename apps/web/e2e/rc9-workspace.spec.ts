@@ -429,7 +429,7 @@ test('exercises the managed Workspace page lifecycle in both locales and viewpor
         await page.goto('/e2e/rc9-workspace-harness.html')
 
         await assertRc9DocumentLocale(page, locale.expectedLocale)
-        await assertRc9Title(page, `${expected.title} · AgentBox`)
+        await assertRc9Title(page, `${expected.title} · Kebui`)
         const connect = page.getByRole('button', { name: expected.connect })
         await expect(connect).toBeEnabled()
         await connect.click()
@@ -599,7 +599,7 @@ test('covers the production Workspace route and state matrix without test inject
             await page.goto(path)
 
             await assertRc9DocumentLocale(page, locale.expectedLocale)
-            await assertRc9Title(page, `${expected.title} · AgentBox`)
+            await assertRc9Title(page, `${expected.title} · Kebui`)
 
             if (scenario === 'loading') {
               if (heldProjects === null)
@@ -695,7 +695,7 @@ test('localizes Workspace lookup failures without retaining server prose', async
         const expected = localeCopy[locale.expectedLocale]
 
         await assertRc9DocumentLocale(page, locale.expectedLocale)
-        await assertRc9Title(page, `${expected.title} · AgentBox`)
+        await assertRc9Title(page, `${expected.title} · Kebui`)
         await expect(page.getByText(expected.error)).toBeVisible()
         await assertRc9TechnicalRendering(
           page.getByText('WAW_STATUS_UNAVAILABLE'),

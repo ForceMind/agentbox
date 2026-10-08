@@ -68,7 +68,7 @@ describe('LoginPage form presentation contracts', () => {
       expect(
         screen.getByRole('complementary', {
           name:
-            locale === 'en' ? 'AgentBox product context' : 'AgentBox 产品简介',
+            locale === 'en' ? 'Kebui product context' : 'Kebui（科布）产品简介',
         }),
       ).toHaveTextContent(
         locale === 'en' ? 'No browser shell' : '浏览器不提供 shell',

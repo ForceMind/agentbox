@@ -61,7 +61,7 @@ const COPY: Readonly<
     unavailable: 'The operation could not be completed. Try again.',
     requestDetails: 'Request details',
     health: 'Control plane: Healthy',
-    title: 'Sign in · AgentBox',
+    title: 'Sign in · Kebui',
   },
   'zh-CN': {
     username: '用户名',
@@ -76,7 +76,7 @@ const COPY: Readonly<
     unavailable: '操作未完成，请重试。',
     requestDetails: '请求详情',
     health: '控制平面：正常',
-    title: '登录 · AgentBox',
+    title: '登录 · Kebui',
   },
 }
 

@@ -1,8 +1,21 @@
-# AgentBox
+# Kebui（科布）
 
 **Turn a user-controlled Linux server into a remotely managed AI development workstation.**
 
-AgentBox is open AI developer infrastructure for standardizing a user-controlled Linux server as a remotely manageable development workstation. It is designed around capability-aware AI Runtime integration, persistent project sessions, safe lifecycle operations, and minimal routine SSH.
+Kebui is an open-source AI workspace powered by AgentBox Runtime for standardizing a user-controlled Linux server as a remotely manageable development workstation. It is designed around capability-aware AI Runtime integration, persistent project sessions, safe lifecycle operations, and minimal routine SSH.
+
+## 产品名称与兼容性
+
+面向用户的产品名是 **Kebui（科布）**。当前 Web 工作台沿用既有 Project、Workspace
+和 Agent 管理能力；“一次对话，调动所有 Agent”是长期产品方向，当前版本尚未提供
+完整的 Chat-first、自动路由或持久 Task 能力。
+
+过渡期执行引擎继续称 **AgentBox Runtime**。仓库 `ForceMind/agentbox`、CLI 命令、
+包名、服务名、API/数据库标识、存储键、版本与安装路径保持兼容；旧文档和链接继续
+有效，不做全量替换。域名所有权、正式 logo、U1 高保真/可点击原型与发布另行验收。
+
+详见[品牌规范](docs/project/KEBUI_BRAND.md)、[演进计划](docs/project/KEBUI_PRODUCT_PLAN.md)
+和[本批产品标识范围](docs/KEBUI_PRODUCT_IDENTITY.md)。
 
 ## Project status
 

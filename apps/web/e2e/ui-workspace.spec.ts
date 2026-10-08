@@ -354,7 +354,7 @@ async function ready(page: Page, locale: Locale, id = PROJECT_A) {
   await expect(
     page.getByRole('heading', { name: expected.title, level: 1, exact: true }),
   ).toBeVisible()
-  await assertRc9Title(page, `${expected.title} · AgentBox`)
+  await assertRc9Title(page, `${expected.title} · Kebui`)
   await expect(page.getByLabel(expected.project, { exact: true })).toHaveValue(
     id,
   )
@@ -832,7 +832,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
         await expect(
           page.getByRole('button', { name: expected.start, exact: true }),
         ).toBeEnabled()
-        await assertRc9Title(page, `${expected.title} · AgentBox`)
+        await assertRc9Title(page, `${expected.title} · Kebui`)
         await expect(page.getByRole('dialog')).toBeHidden()
         await expect(
           page.getByText(expected.stoppedNotice, { exact: true }),

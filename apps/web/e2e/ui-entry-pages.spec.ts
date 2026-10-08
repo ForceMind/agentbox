@@ -42,8 +42,8 @@ const copy = {
     health: 'Control plane: Healthy',
     checking: 'Control plane: Checking',
     unhealthy: 'Control plane: Unavailable',
-    loginTitle: 'Sign in · AgentBox',
-    missingTitle: 'Page not found · AgentBox',
+    loginTitle: 'Sign in · Kebui',
+    missingTitle: 'Page not found · Kebui',
     dashboard: 'Dashboard',
     toDashboard: 'Back to Dashboard',
     toLogin: 'Back to sign in',
@@ -61,8 +61,8 @@ const copy = {
     health: '控制平面：正常',
     checking: '控制平面：检查中',
     unhealthy: '控制平面：不可用',
-    loginTitle: '登录 · AgentBox',
-    missingTitle: '未找到页面 · AgentBox',
+    loginTitle: '登录 · Kebui',
+    missingTitle: '未找到页面 · Kebui',
     dashboard: '概览',
     toDashboard: '返回 Dashboard',
     toLogin: '返回登录',
@@ -647,7 +647,7 @@ for (const locale of ['zh-CN', 'en'] as const) {
             page.getByLabel(copy[locale].username, { exact: true }),
           ).toBeVisible()
         const destinationTitle = authenticated
-          ? `${copy[locale].dashboard} · AgentBox`
+          ? `${copy[locale].dashboard} · Kebui`
           : copy[locale].loginTitle
         await assertRc9Title(page, destinationTitle)
         await page.goBack()

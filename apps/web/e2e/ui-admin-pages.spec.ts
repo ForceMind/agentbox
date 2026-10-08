@@ -414,7 +414,7 @@ async function loaded(
   await expect(
     root.getByRole('heading', { level: 1, name: expected[route], exact: true }),
   ).toBeVisible()
-  await assertRc9Title(page, `${expected[route]} · AgentBox`)
+  await assertRc9Title(page, `${expected[route]} · Kebui`)
   await assertRc9DocumentLocale(page, locale)
   await expect(
     root.locator('button, input, select, textarea, form, a[href]'),
