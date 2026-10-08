@@ -1,3 +1,4 @@
 evidence/*.png
 evidence/verification.json
 evidence/reference-verification.json
+evidence/browser-zoom-verification.json

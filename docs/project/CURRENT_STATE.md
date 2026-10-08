@@ -1,11 +1,24 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-08T03:06:00Z"
-verified_by: "kebui-design-qualification"
+verified_at_utc: "2026-10-08T17:56:00Z"
+verified_by: "kebui-browser-zoom-baseline"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-08 U1 原生浏览器200%基准候选
+
+live GitHub main 为 `62c5d5ddadcb74e0d8aa1898b1b490d1314b190b`，tree
+`344a9b64d5964ce7a487ce6d64face1977e4cbad`；PR164已合并，六套exact-main
+workflow首轮completed/success。下方03:06及更早快照完整保留，不覆盖live状态。
+
+按既有U1验收补[浏览器200%基准](../../design/kebui/BROWSER_ZOOM_QUALIFICATION.md)：
+先六核心页、单一原生窗口、中文浅色，复用既有kebui-design CI；原生键盘缩放必须
+经DPR/viewport/窗口/字号交叉校准，再做真实滚轮、按钮、正文和Stop检查。
+本地语法与纯分类器检查不代表浏览器通过；正式候选CI、原图复核及后续必要矩阵仍待。
+助手云端自启浏览器/平台预览均未打开本原型，不使用用户Mac片段拼接资格。
+生产源码、权限、凭据、版本、部署与U3不变；本批保持Draft，尚未合并。
 
 ## 2026-10-08 U1 可评审产物与品牌主干闭环（03:06 UTC）
 
