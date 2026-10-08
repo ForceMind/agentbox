@@ -36,6 +36,7 @@ async function main() {
   const report = {
     method: "headed Chromium; Xvfb; native X11 Ctrl+0/Ctrl+=; no emulation",
     scope: "six-core baseline / one native window / zh / light",
+    wheelMode: "native detented wheel; centeringIntent is not actual displacement; actual scroll and wheel events are recorded",
     date: new Date().toISOString(),
     source: process.env.GITHUB_SHA || "local",
     headSource: process.env.KEBUI_HEAD_SHA || "local",
@@ -187,18 +188,11 @@ async function main() {
       const delta = wheelDelta(geom);
       const x = (geom.left + geom.right) / 2;
       const y = (geom.top + geom.bottom) / 2;
-      // Calibrate the CDP wheel position against a fresh trusted DOM pointer event.
-      // Native browser zoom uses device-independent input coordinates here.
-      await page.evaluate(() => { window.__zoomPointer = null; window.__zoomWheel = null; });
-      await page.mouse.move(0, 0);
-      const scale = (await metrics()).dpr;
-      await page.mouse.move(x * scale, y * scale);
-      await page.waitForFunction(({ x, y }) => window.__zoomPointer &&
-        Math.abs(window.__zoomPointer.x - x) <= 1 && Math.abs(window.__zoomPointer.y - y) <= 1, { x, y });
-      const pointer = await page.evaluate(() => window.__zoomPointer);
-      assert(pointer.trusted && Math.abs(pointer.x - x) <= 1 && Math.abs(pointer.y - y) <= 1,
-        "wheel pointer coordinate calibration failed");
-      await page.mouse.wheel(0, delta * scale);
+      // Use one native X11 wheel notch at the independently calibrated pointer.
+      // No CDP coordinate scaling or synthetic DOM event dispatch is involved.
+      const pointer = await nativeMove(x, y, `wheel:${label}`);
+      await page.evaluate(() => { window.__zoomWheel = null; });
+      xdo("click", "--clearmodifiers", delta > 0 ? "5" : "4");
       await page.waitForFunction(() => window.__zoomWheel !== null);
       const actualWheel = await page.evaluate(() => window.__zoomWheel);
       assert(actualWheel.trusted && actualWheel.deltaMode === 0, "trusted pixel wheel event required");
@@ -215,7 +209,7 @@ async function main() {
           scroller: geom.scroller,
           before: geom.scroll,
           after,
-          delta,
+          centeringIntent: delta,
           pointer,
           actualWheel,
         });
@@ -361,7 +355,7 @@ async function main() {
         document.documentElement.dataset.theme = "light";
         render();
       }, route);
-      await page.keyboard.press("Control+Home");
+      xdo("key", "--clearmodifiers", "ctrl+Home");
       await tick();
       assertZoom(base, await metrics());
       assert(
@@ -463,6 +457,7 @@ async function main() {
     report.failure = String(error.stack || error);
     if (page && !page.isClosed()) {
       report.failureMetrics = await metrics().catch(() => null);
+      report.failureInput = await page.evaluate(() => ({ pointer: window.__zoomPointer, wheel: window.__zoomWheel, click: window.__zoomClick })).catch(() => null);
       await shot("failure").catch(() => {});
     }
     throw error;

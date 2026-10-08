@@ -69,3 +69,26 @@ click、不DOM.click/dispatchEvent、不改产品源码。用ImageMagick官方im
 保存未经缩放裁切的完整1600×1200隔离Xvfb画面；缺包才从Ubuntu官方源补ImageMagick。
 另保留一次明确标注的API截图用于与原生画面对照，不当作像素资格。
 后继CI仍待，不扩矩阵，先让相同六页基准给出可信输入/像素结果。
+
+## 原生取图已核，CDP滚轮校准假设失败保留
+
+head `a01e2f1efc7ce5d25dcaf02be03d0e5226ca3cff` 的
+[E2E37825583803 / job113477467564](https://github.com/ForceMind/agentbox/actions/runs/37825583803/job/113477467564)
+再次通过原生200%五级校准，并取得1600×1200原生X11整窗。
+首屏滚动前，CDP mouse.move乘DPR的候选校准未等到匹配client坐标而失败；
+没有开始native点击，没有六页PASS，也没有证明产品bug。旧头不重跑。
+
+[artifact11570564368](https://github.com/ForceMind/agentbox/actions/runs/37825583803/artifacts/11570564368)
+SHA256为 `9364be0143aa6394e158053309221985e39ccd97b0871ebc51946cc17816d235`。
+协调者实看calibration-200与after-api-comparison-200两张原生图：均为真实200%响应式
+首页、无桌面侧栏，API截图前后没有可见页面布局改变。API裁片仍不作为原生像素证据。
+
+后继仅将滚轮也统一为X11原生mouse位置及wheel按钮4/5；真实mousemove和wheel的
+可信标志、client坐标、方向以及scrollTop变化逐次校验。保留几何/遮挡/交互断言，
+不再猜CDP坐标缩放。失败报告保存最后实际pointer/wheel/click。原型源码与六页基准
+范围保持；后继正式CI与全部原生图资格仍待。
+
+原生滚轮是单notch离散输入；报告中的centeringIntent只是方向计算的理想位移，
+实际位移以wheel事件和scrollTop差值为准。旧纯wheelDelta数学unit不证明原生近满高
+目标收敛；此helper边界仍保留。当前六页短样本必须真实滚动并完整可见才通过，
+若32次无法到达仍失败，不放宽可见性或改用DOM滚动；不将helper限制误报成产品bug。
