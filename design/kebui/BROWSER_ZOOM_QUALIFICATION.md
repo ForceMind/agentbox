@@ -182,3 +182,35 @@ head `a481fbc63c7f204e7645ca55d72e76ecb357c7dc` 的
 截止时间。迟到、持续旧标题、歧义均有纯unit拒绝案例。不增加整体job时限、retries、
 权限或产品改动，真实输入/截图与48组断言保持。后继头须独立六套CI及证据回读，
 当前不称ready，继续保持PR165 Draft；最终状态以该PR回读为准。
+
+## 2026-10-08 主线滚动同步失败与最小测试候选
+
+PR165已于19:47:21 UTC正常合并为main `0386db252e8800b9a2dc1b0a28984b79b39641d3`，
+tree `bdc7fe85a8527b716274a3636ec0d95d219a7092` 与合格head3bcd57相同。
+该head六套CI各attempt1成功，48组/128点击/585滚轮/432目标再次通过；独立42图
+为7张字节/像素相同继承、35变化原图重看，未声称184图全审。
+
+main自身六套已经终态：五套success，
+[E2E37834575583](https://github.com/ForceMind/agentbox/actions/runs/37834575583) failure。
+原主e2e仍650 passed / 270 skipped、21 preflight通过；只有新design job113508213018
+失败。首个1440/zh/light的前五页通过，recovery的recover按钮命中检查失败；其余组合
+未执行。旧main不重跑取绿，不把head成功代替main资格。
+
+[失败artifact11575286294](https://github.com/ForceMind/agentbox/actions/runs/37834575583/artifacts/11575286294)
+5185954bytes，SHA256 `640f0a9232536809eee3ac210454f97d13b2b1c212e17c95145dd28bd5c4c123`。
+JSON记录entry取图后的scrollY65.5、失败时0；最后输入是Ctrl+Home，recover尚未点击。
+独立实看两图：entry按钮完整，failure移回页首后按钮下缘出视口，未见遮罩/弹层叠在按钮。
+两图位移又大于随后JSON位置之差，说明抓图与view采样不能直接视为同一稳定时刻。
+证据支持滚动/几何采样未对齐，不凭静帧宣称准确根因或产品布局RED。
+
+后继只修测试同步：观察浏览器真实scroll/scrollend，Ctrl+Home等待实际Y0和滚动结束；
+每个wheel等待对应document/dialog的新scrollend，原可信坐标和实际位移检查保留；
+目标几何须非pending且连续两次完全相同，之后仍执行原13点无遮挡检查。截图前亦等待
+原生滚动非pending。没有JS滚动、force click、合成scroll事件、产品或工作流修改。
+[Chrome官方语义](https://developer.chrome.com/blog/scrollend-a-new-javascript-event?hl=en)
+说明scrollend在实际滚动结束后发出，无位移时不发出；不以固定延时假装滚动结束。
+
+6项纯unit与Node语法检查通过，独立源码复核无阻断；它们不是浏览器通过。
+几何检查设10秒准入截止并拒绝迟到结果；不声称已定位后的浏览器求值可硬取消于10秒。
+原job总时限/门禁不变。此候选须新head自身完整CI与原图核证，再正常合并/主线回读。
+原型HTML/CSS/app.js、版本、权限及所有旧失败历史保持；不启U3、发布或真实host操作。

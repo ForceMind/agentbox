@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { assertZoom, wheelDelta, nativePoint, readConfig, waitForNativeWindow } = require("./verify-browser-zoom.cjs");
+const { assertZoom, wheelDelta, nativePoint, readConfig, waitForNativeWindow, waitForStableGeometry } = require("./verify-browser-zoom.cjs");
 const base = {
   dpr: 1,
   scale: 1,
@@ -75,4 +75,36 @@ test("native window discovery rejects ready observations after its deadline", as
     time = 101;
     return [{ id: "7", title: "Work" }];
   }, "Work", [], { now: () => time, pause: async () => {}, timeoutMs: 100 }), /did not become ready/);
+});
+
+test("geometry waits through the measured 65.5 to 0 scroll and real end state", async () => {
+  let time = 0;
+  const samples = [
+    { y: 370.789, documentScroll: 65.5, pending: true },
+    { y: 436.289, documentScroll: 0, pending: true },
+    { y: 436.289, documentScroll: 0, pending: false },
+    { y: 436.289, documentScroll: 0, pending: false },
+  ];
+  let i = 0;
+  const result = await waitForStableGeometry(() => samples[i++], {
+    now: () => time, pause: async (ms) => { time += ms; },
+  });
+  assert.equal(result.observations, 4);
+  assert.equal(result.geometry.y, 436.289);
+  assert.equal(result.geometry.documentScroll, 0);
+});
+test("geometry cannot qualify while scroll is pending or bounds still move", async () => {
+  let time = 0;
+  const options = { now: () => time, pause: async (ms) => { time += ms; }, timeoutMs: 100 };
+  await assert.rejects(waitForStableGeometry(() => ({ y: 10, pending: true }), options), /did not settle/);
+  let y = 0;
+  await assert.rejects(waitForStableGeometry(() => ({ y: y++, pending: false }), options), /did not settle/);
+});
+test("geometry rejects late stable observations", async () => {
+  let time = 0;
+  let i = 0;
+  await assert.rejects(waitForStableGeometry(() => {
+    if (i++) time = 101;
+    return { y: 0, pending: false };
+  }, { now: () => time, pause: async () => {}, timeoutMs: 100 }), /did not settle/);
 });
