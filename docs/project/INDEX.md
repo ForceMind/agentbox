@@ -1,5 +1,34 @@
 # AgentBox Project Context Index
 
+## 2026-10-08 U1 可评审产物与品牌主干闭环（03:06 UTC）
+
+PR162 已合并的 main `29adec75b1c6c7912ceacd53a3cbed416ac4aa79` 六套 exact-main
+CI 全 completed/success，E2E37719258137；tree 与合格品牌 headfc182c86 一致。
+既有 U2 页面与 Kebui 产品标识已软件闭环，AgentBox Runtime/CLI/API 兼容不变。
+
+[PR163](https://github.com/ForceMind/agentbox/pull/163) 的原型 source head
+`67d79b05b39fcf4488f1bc84731891f2004d8784` 已实际通过独立设计
+job113127190644 / E2E37720626557：Chromium151.0.7922.34三条旅程、120核心画面
+几何（五宽/双语/双主题）、21页手机大字体、11项DOM回归、504DOM组合和零外部请求。
+[离线入口与说明](../../design/kebui/README.md)现已存在；21画面和未来能力均明确合成。
+
+Artifact11525846639有24张原图，2,637,482bytes，SHA256
+`6dbebb91e6e234f33361b70697d33f53b1b9319bc0c29473b6adf7cac27f3d09`已核对。
+独立像素资格为10张改变原图重新打开、14张与前轮已审原图逐字节相同；手机授权上下文、
+身份失效入口、真实CI未知说明均已恢复可见，旧通知覆盖和截图状态不一致已修正。
+这是明确范围的设计可评审资格，不是整体美观、真实设备或生产功能PASS。
+
+最终文档包据此更新旧“U1未交付/浏览器NOT RUN”顶层状态，保留全部旧失败历史。
+source67d79b的完整候选CI尚待终态；本次仅文档/证据清单变更，后继documentation-inclusive
+head亦需独立六套CI、正常merge与exact-main回读，最终结果记录于PR163，不借旧绿通过。
+
+当前版本软件/UI收尾范围：既有U2页面、Kebui标识、U1可打开合成设计与本轮实际验证。
+U0公开文字来源已补核，参考图片/部分固定版本仍UNKNOWN；不转载私人Cromma内容，
+不复制AGPL来源代码。Logo/颜色是探索稿；后续U3–U5、真实host/双CLI/客户端/恢复和
+release/deploy仍是独立合同与目标证据，不因原型可点就宣称已完成。
+下方旧时间点的pending/未交付与NOT RUN作为历史保留，不能覆盖本节或live GitHub。
+
+
 ## 2026-10-08 Kebui 标识合并与 U1 原型候选（02:44 UTC）
 
 [PR162](https://github.com/ForceMind/agentbox/pull/162) 已正常合并为

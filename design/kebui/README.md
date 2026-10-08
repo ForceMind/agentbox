@@ -1,6 +1,6 @@
 # Kebui U1 · Design draft 01
 
-日期：2026-10-08 UTC。状态：**可打开的合成原型；DOM 逻辑自查通过；浏览器/像素/物理设备尚未资格化。**
+日期：2026-10-08 UTC。状态：**可打开的合成原型；受控 Chromium 与 24 图范围复核通过；完整候选 CI/合并以 PR163 为准，物理设备未验。**
 
 直接双击 `index.html`，无需安装依赖、服务器或网络。首页是 `#home`；`#catalog` 列出全部 21 个画面。HTML 包含所有 CSS/JS；其他文件不是打开时的依赖。
 
@@ -18,7 +18,7 @@
 - `verify-regressions.cjs`：独立审查问题的10项回归（含RED→GREEN证据）；证据位于 `evidence/regressions-{red,green}.json`。
 - `verify-dom.cjs`：jsdom 逻辑检查；不具备布局或浏览器资格。
 - `verify.cjs`：可移植 Chromium 点击/几何/截图验证脚本，交给允许启动浏览器的 CI 执行。
-- `evidence/dom-verification.json`：实际 DOM 测试结果。没有伪造截图。
+- `evidence/dom-verification.json`：实际 DOM 测试结果；真实 Chromium 图像和报告由 CI artifact 保留，详见 REVIEW。
 
 ## 三条旅程如何点击
 
@@ -76,3 +76,11 @@ node verify.cjs
 U1 是设计准备，不是 K2/S03/WEV 或 K3–K7 已完成。既有 Job 不改名为 AI Task；不解析终端文本为工具事件；本原型不进入现有生产路由、不替换 rc31 页面。技术服务/API/包/仓库/数据库名保持不变。
 
 墨绿强调色、简化 k 标记是可撤销设计提案，不是已获 Owner 最终确认的 Logo/配色。本批没有发布站点、远端提交、PR、部署或真实 host 激活。
+
+## 本轮实际资格（2026-10-08）
+
+源码67d79b05的真实Chromium151.0.7922.34通过三旅程、120几何、21页手机大字体、
+11回归和504DOM组合。24图经独立像素范围复核，旧toast遮挡与手机上下文缺失已修。
+截图/功能不是最终品牌定稿；真实Agent/账户/设备无接线或资格声明。
+本次后继文档包不改变HTML/交互源码；完整六套CI与合并终态见
+[PR163](https://github.com/ForceMind/agentbox/pull/163)。
