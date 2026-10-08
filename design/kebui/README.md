@@ -15,7 +15,7 @@
 - `reference-board.html`：可直接打开的文字型参考板；是设计整理，不是参考产品截图。
 - `COMPONENTS_AND_MAPPING.md`：tokens/组件说明、六组画面、已实现与未实现的产品映射。
 - `REVIEW.md`：实际检查范围、失败记录、NOT RUN 与下一步。
-- `verify-regressions.cjs`：独立审查问题的10项回归（含RED→GREEN证据）；证据位于 `evidence/regressions-{red,green}.json`。
+- `verify-regressions.cjs`：独立审查问题的11项回归（含RED→GREEN证据）；证据位于 `evidence/regressions-{red,green}.json`。
 - `verify-dom.cjs`：jsdom 逻辑检查；不具备布局或浏览器资格。
 - `verify.cjs`：可移植 Chromium 点击/几何/截图验证脚本，交给允许启动浏览器的 CI 执行。
 - `evidence/dom-verification.json`：实际 DOM 测试结果；真实 Chromium 图像和报告由 CI artifact 保留，详见 REVIEW。
@@ -75,7 +75,7 @@ node verify.cjs
 
 U1 是设计准备，不是 K2/S03/WEV 或 K3–K7 已完成。既有 Job 不改名为 AI Task；不解析终端文本为工具事件；本原型不进入现有生产路由、不替换 rc31 页面。技术服务/API/包/仓库/数据库名保持不变。
 
-墨绿强调色、简化 k 标记是可撤销设计提案，不是已获 Owner 最终确认的 Logo/配色。本批没有发布站点、远端提交、PR、部署或真实 host 激活。
+墨绿强调色、简化 k 标记是可撤销设计提案，不是已获 Owner 最终确认的 Logo/配色。初始离线制作阶段没有远端提交；后续源码和证据已通过 PR163 交付。没有发布站点、部署或真实 host 激活。
 
 ## 本轮实际资格（2026-10-08）
 
