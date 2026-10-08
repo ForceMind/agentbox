@@ -86,6 +86,10 @@ async function main() {
       large: document.body.classList.contains("large"),
     }));
   const shot = async (name) => {
+    if (name !== "failure") await page.waitForFunction(() =>
+      !window.__zoomScrolls.document.pending &&
+      (!document.getElementById("dialog").open || !window.__zoomScrolls.dialog.pending));
+
     const presentation = await page.evaluate(() => ({ language: state.lang, htmlLanguage: document.documentElement.lang, theme: document.documentElement.dataset.theme }));
     assert.deepEqual(presentation, { language: config.lang, htmlLanguage: config.lang === "zh" ? "zh-CN" : "en", theme: config.theme }, "actual rendered language/theme must match the case");
     const filename = `zoom-${config.key}-native-${name}.png`;
@@ -135,7 +139,7 @@ async function main() {
   async function reveal(locator, label) {
     assert.equal(await locator.count(), 1, `${label}: unique target`);
     for (let attempt = 0; attempt < 32; attempt++) {
-      const geom = await locator.evaluate((el) => {
+      const settled = await waitForStableGeometry((timeout) => locator.evaluate((el) => {
         const r = el.getBoundingClientRect();
         const dialog = el.closest("dialog");
         const clip = dialog
@@ -152,8 +156,13 @@ async function main() {
           right: Math.min(innerWidth, clip.right - 2),
           scroll: dialog ? dialog.scrollTop : scrollY,
           scroller: dialog ? "dialog" : "document",
+          documentScroll: scrollY,
+          pending: window.__zoomScrolls.document.pending ||
+            Boolean(dialog?.open && window.__zoomScrolls.dialog.pending),
         };
-      });
+      }, undefined, { timeout }));
+      const geom = settled.geometry;
+      current.geometryWaits.push({ label, observations: settled.observations, elapsedMs: settled.elapsedMs, scroll: geom.scroll });
       assert(geom.width > 0 && geom.height > 0, `${label}: nonempty bounds`);
       const fits = geom.y >= geom.top && geom.y + geom.height <= geom.bottom;
       if (fits) {
@@ -206,6 +215,7 @@ async function main() {
       // No CDP coordinate scaling or synthetic DOM event dispatch is involved.
       const pointer = await nativeMove(x, y, `wheel:${label}`);
       await page.evaluate(() => { window.__zoomWheel = null; });
+      const beforeEnd = await page.evaluate((key) => window.__zoomScrolls[key].end, geom.scroller);
       xdo("click", "--clearmodifiers", delta > 0 ? "5" : "4");
       await page.waitForFunction(() => window.__zoomWheel !== null);
       const actualWheel = await page.evaluate(() => window.__zoomWheel);
@@ -213,6 +223,9 @@ async function main() {
       assert(Math.abs(actualWheel.x - x) <= 1 && Math.abs(actualWheel.y - y) <= 1,
         "wheel event coordinates must match calibrated pointer");
       assert(Math.sign(actualWheel.deltaY) === Math.sign(delta), "wheel direction");
+      await page.waitForFunction(({ key, beforeEnd }) =>
+        window.__zoomScrolls[key].end > beforeEnd && !window.__zoomScrolls[key].pending,
+        { key: geom.scroller, beforeEnd });
       await tick();
       const after = await locator.evaluate(
         (el) => el.closest("dialog")?.scrollTop ?? scrollY,
@@ -226,6 +239,7 @@ async function main() {
           centeringIntent: delta,
           pointer,
           actualWheel,
+          scrollEndObserved: true,
         });
     }
     assert.fail(`${label}: wheel could not reach target`);
@@ -278,6 +292,20 @@ async function main() {
     });
     page.on("pageerror", (e) => report.errors.push(e.message));
     await page.addInitScript(() => {
+      window.__zoomScrolls = {
+        document: { pending: false, scroll: 0, end: 0, trusted: true },
+        dialog: { pending: false, scroll: 0, end: 0, trusted: true },
+      };
+      const scrolling = (kind, event) => {
+        const key = event.target === document ? "document" : event.target.id === "dialog" ? "dialog" : null;
+        if (!key) return;
+        const record = window.__zoomScrolls[key];
+        record[kind]++;
+        record.pending = kind === "scroll";
+        record.trusted = record.trusted && event.isTrusted;
+      };
+      document.addEventListener("scroll", (e) => scrolling("scroll", e), { capture: true, passive: true });
+      document.addEventListener("scrollend", (e) => scrolling("end", e), { capture: true, passive: true });
       const snapshot = (event) => ({
         x: event.clientX, y: event.clientY, trusted: event.isTrusted,
         action: event.target.closest?.("button")?.dataset.action || null,
@@ -289,6 +317,7 @@ async function main() {
       document.addEventListener("click", (e) => { window.__zoomClick = snapshot(e); }, { capture: true, passive: true });
     });
     await page.goto(pathToFileURL(html).href);
+    assert(await page.evaluate(() => "onscrollend" in document), "native scrollend support is required");
     await page.evaluate(({ lang, theme }) => { state.lang = lang; document.documentElement.dataset.theme = theme; render(); }, config);
     await page.bringToFront();
     const title = await page.title();
@@ -349,7 +378,7 @@ async function main() {
       "agents",
       "recovery",
     ]) {
-      current = { route, targets: [], wheels: [], status: "running" };
+      current = { route, targets: [], wheels: [], geometryWaits: [], status: "running" };
       report.screens.push(current);
       await page.evaluate(({ route, lang, theme }) => {
         resetScope();
@@ -377,6 +406,7 @@ async function main() {
         render();
       }, { route, lang: config.lang, theme: config.theme });
       xdo("key", "--clearmodifiers", "ctrl+Home");
+      await page.waitForFunction(() => scrollY === 0 && !window.__zoomScrolls.document.pending);
       await tick();
       assertZoom(base, await metrics());
       assert(
@@ -474,6 +504,8 @@ async function main() {
         ),
         `${route}: final-state page overflow`,
       );
+      current.scrollEvents = await page.evaluate(() => window.__zoomScrolls);
+      assert(Object.values(current.scrollEvents).every((events) => events.trusted), "native scroll lifecycle events");
       current.status = "passed";
     }
     assert.deepEqual(report.requests, []);
@@ -485,7 +517,7 @@ async function main() {
     report.failure = String(error.stack || error);
     if (page && !page.isClosed()) {
       report.failureMetrics = await metrics().catch(() => null);
-      report.failureInput = await page.evaluate(() => ({ pointer: window.__zoomPointer, wheel: window.__zoomWheel, click: window.__zoomClick })).catch(() => null);
+      report.failureInput = await page.evaluate(() => ({ pointer: window.__zoomPointer, wheel: window.__zoomWheel, click: window.__zoomClick, scroll: window.__zoomScrolls })).catch(() => null);
       await shot("failure").catch(() => {});
     }
     throw error;
@@ -544,7 +576,31 @@ async function waitForNativeWindow(observe, expectedTitle, trace, {
   }
 }
 
-module.exports = { assertZoom, wheelDelta, nativePoint, readConfig, waitForNativeWindow };
+async function waitForStableGeometry(observe, {
+  now = () => performance.now(),
+  pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  timeoutMs = 10000,
+} = {}) {
+  const start = now();
+  let previous;
+  let observations = 0;
+  while (true) {
+    const remaining = timeoutMs - (now() - start);
+    assert(remaining > 0, `scroll geometry did not settle: ${JSON.stringify({ observations, previous })}`);
+    const geometry = await observe(Math.max(1, Math.floor(remaining)));
+    observations++;
+    const elapsedMs = now() - start;
+    assert(elapsedMs <= timeoutMs, `scroll geometry did not settle: ${JSON.stringify({ observations, geometry })}`);
+    if (!geometry.pending && previous && !previous.pending &&
+        JSON.stringify(geometry) === JSON.stringify(previous)) {
+      return { geometry, observations, elapsedMs };
+    }
+    previous = geometry;
+    await pause(Math.min(32, timeoutMs - (now() - start)));
+  }
+}
+
+module.exports = { assertZoom, wheelDelta, nativePoint, readConfig, waitForNativeWindow, waitForStableGeometry };
 if (require.main === module)
   main().catch((error) => {
     console.error(error);

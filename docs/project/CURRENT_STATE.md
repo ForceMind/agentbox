@@ -1,11 +1,26 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-08T19:06:00Z"
-verified_by: "kebui-browser-zoom-matrix"
+verified_at_utc: "2026-10-08T20:32:00Z"
+verified_by: "kebui-browser-zoom-scroll-sync"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-08 主线U1滚动同步补验（20:32 UTC）
+
+PR165已正常合并为main `0386db252e8800b9a2dc1b0a28984b79b39641d3`，与合格
+head3bcd57同treebdc7fe8。head六套首轮success、48组原生200%与独立42/184图资格
+保持；但main自己的E2E37834575583失败，其他五套success。旧主e2e650/270与21preflight
+通过；只有新design job113508213018在恢复页recover命中处失败，不能称main全绿。
+
+[失败证据和候选](../../design/kebui/BROWSER_ZOOM_QUALIFICATION.md)保留artifact11575286294。
+入口取图后scrollY65.5、失败时0；独立两图见按钮由完整可见移到视口下缘截断，无叠层。
+原生Ctrl+Home尚未稳定时的采样时序是有证据支持的测试同步问题，不称产品修复。
+后继仅在测试等待真实scrollend与连续稳定几何，原严格可见性/可信输入/门禁不改；
+Node语法与6unit及独立源审通过，实际新head浏览器/完整CI仍待。旧main失败不重跑取绿。
+HTML/产品/版本/权限不变，无U3、部署或用户Mac操作。下方合并前等待记录保持历史，
+以live GitHub和后继候选的exact-head/main回读为准。
 
 ## 2026-10-08 U1 原生200%矩阵资格（19:06 UTC）
 
