@@ -433,6 +433,7 @@ function render() {
     .setAttribute("aria-label", t("切换主题", "Toggle theme"));
 }
 function navigate(route) {
+  clearToast();
   closeDialog();
   if (state.route === "work") state.scroll = window.scrollY;
   state.route = titles[route] ? route : "notfound";
@@ -445,6 +446,7 @@ function navigate(route) {
   window.scrollTo(0, 0);
 }
 function resetScope() {
+  clearToast();
   recoveryGeneration++;
   closeDialog();
   state.draft = "";
@@ -462,9 +464,26 @@ function resetScope() {
   state.online = true;
   state.scroll = 0;
 }
+let toastGeneration = 0;
+let toastTimer;
+function clearToast() {
+  toastGeneration++;
+  clearTimeout(toastTimer);
+  document.getElementById("live").replaceChildren();
+}
 function toast(message) {
+  clearToast();
+  const generation = toastGeneration;
   const el = document.getElementById("live");
-  el.textContent = message;
+  const text = document.createElement("span");
+  text.textContent = message;
+  const dismiss = document.createElement("button");
+  dismiss.dataset.action = "dismiss-toast";
+  dismiss.textContent = t("关闭", "Dismiss");
+  el.append(text, dismiss);
+  toastTimer = setTimeout(() => {
+    if (generation === toastGeneration) clearToast();
+  }, 6000);
 }
 function modal(html) {
   closeDialog();
@@ -537,6 +556,10 @@ document.addEventListener("click", (event) => {
   const [action, ...parts] = target.dataset.action.split(":");
   const value = parts.join(":");
   const dialog = document.getElementById("dialog");
+  if (action === "dismiss-toast") {
+    clearToast();
+    return;
+  }
   if (action === "fixture") {
     resetScope();
     state.project = value === "work" ? "Observatory" : "Meadow";

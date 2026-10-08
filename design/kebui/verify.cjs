@@ -236,6 +236,14 @@ const assert = require("assert");
   check(
     "Reviewed regressions: offline/hidden stale Stop, stopped readback, Agent cancel/Escape, committed scope clearing, keyboard skip without route mutation",
   );
+  await page.evaluate(() => toast("Synthetic dismissible notice"));
+  await act("dismiss-toast");
+  assert.equal(await page.locator("#live").textContent(), "");
+  await page.evaluate(() => toast("Synthetic expiring notice"));
+  await page.waitForFunction(
+    () => document.getElementById("live").textContent === "",
+  );
+  await page.evaluate(() => toast("Synthetic old-route notice"));
   await page.goto(url + "#catalog");
   const screens = await page.evaluate(() => Object.keys(titles));
   for (const screen of screens) {
@@ -262,10 +270,27 @@ const assert = require("assert");
           });
           await page.evaluate(
             ({ lang, theme, screen }) => {
+              resetScope();
+              state.project = "Meadow";
+              state.agent = "Codex";
+              state.message = "请改善合成项目的空状态，并补充可访问性测试。";
+              state.requestId = "demo-capture-request-01";
+              state.requestCount = 1;
+              state.acceptedCount = 1;
+              state.sendAttempts = 1;
               state.lang = lang;
               state.scenario = "success";
               state.route = screen;
-              state.phase = screen === "work" ? "running" : "idle";
+              state.phase =
+                screen === "work"
+                  ? "running"
+                  : screen === "results"
+                    ? "succeeded"
+                    : screen === "recovery"
+                      ? "unknown"
+                      : "idle";
+              state.online = screen !== "recovery";
+              state.admitted = screen === "results";
               state.approval = "pending";
               state.recovered = false;
               state.stopped = false;
@@ -274,6 +299,7 @@ const assert = require("assert");
             },
             { lang, theme, screen },
           );
+          assert.equal(await page.locator("#live").textContent(), "");
           const geometry = await page.evaluate(() => ({
             scroll: document.documentElement.scrollWidth,
             width: innerWidth,

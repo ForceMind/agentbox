@@ -474,6 +474,9 @@ dialog .toolbar {
   margin-top: 24px;
 }
 #live {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   position: fixed;
   right: 20px;
   bottom: 20px;

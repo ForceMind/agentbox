@@ -207,6 +207,32 @@ async function test(name, fn) {
     assert.equal(read("state.requestCount"), 1);
     assert.equal(read("state.acceptedCount"), 1);
   });
+  await test("Toast expiry, replacement, dismissal and route cleanup", async ({
+    w,
+    d,
+    read,
+    act,
+  }) => {
+    read('toast("route notice"); navigate("home")');
+    assert.equal(d.getElementById("live").textContent, "");
+    const timers = [];
+    w.setTimeout = (fn) => {
+      timers.push(fn);
+      return timers.length;
+    };
+    w.clearTimeout = () => {};
+    read('toast("old notice")');
+    read('toast("current notice")');
+    timers[0]();
+    assert(d.getElementById("live").textContent.includes("current notice"));
+    timers[1]();
+    assert.equal(d.getElementById("live").textContent, "");
+    read('toast("dismiss me")');
+    act("dismiss-toast");
+    assert.equal(d.getElementById("live").textContent, "");
+    read('toast("route notice"); navigate("home")');
+    assert.equal(d.getElementById("live").textContent, "");
+  });
   console.log(JSON.stringify(cases, null, 2));
   if (cases.some((c) => c.status === "FAIL")) process.exitCode = 1;
 })();

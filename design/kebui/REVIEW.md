@@ -66,3 +66,22 @@ socket() failed: Operation not permitted (1)
 新工作只选择failure场景时尚无requestId，原retry按钮可点却无效果。新增回归在修正前实际exit 1（`evidence/retry-red.json`），现改为禁用retry并说明先提交合成请求；真实合成失败请求建立后才启用。最终10项回归exit 0，504 DOM组合仍通过。
 
 浏览器脚本增加Enter后textarea实际包含新增换行的断言、isComposing的Meta事件不发送、Meta+Enter提交与新failure场景的retry禁用/启用。DOM已验证isComposing和Meta+Enter处理逻辑；浏览器仍NOT RUN，Mac物理键盘/IME仍未资格化。审批revision与TTL仍是合成状态演示，不是实际协议验收。
+
+## 2026-10-08 02:49 UTC 实际 Chromium 与像素修正
+
+head65b56574 的 E2E37719502975/job113123651430 真实 Chromium151.0.7922.34
+通过三旅程、120核心画面几何、21页390px大字体、键盘/回退/失效回归，零外部请求和
+pageerror。Artifact11524474223（2,569,439bytes，SHA256
+`595f14654b69b744e064764eb0dd7b04e80079b18e6607e8d68d250fe54c2dbc`）
+含24PNG，来源精确head已核对。该结果取代本批此前“浏览器全部NOT RUN”的历史状态，
+但仅对该head成立，本地浏览器仍受EPERM限制。
+
+实际打开home1440-light与work390-dark原图发现旧Stop失效通知持续覆盖后续画面；
+同时截图直接设置running却继承未提交requestId，视觉证据不一致。保留旧图及成功CI
+为历史，不称该图全部合格。修正toast可关闭/6秒到期、导航/作用域清理与新消息代次
+保护；新定向回归先在旧HTML真实RED，再新HTML GREEN。截图fixture每画面重新建立
+一致合成Project/Agent/requestId/状态，Results样本显示合成已准入结果；浏览器先测
+真正读取动作，再拍示例。未隐藏通知来绕过断言。后继head和24张新图须重新验证。
+
+参考来源本轮补读官方公开文本，详情追加到REFERENCE_EVIDENCE。HAPI/CloudCLI的
+AGPL许可不同于既有Paseo Apache来源，不迁用其代码/资产；截图与真实产品流程仍UNKNOWN。
