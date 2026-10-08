@@ -1,6 +1,6 @@
 # U1 浏览器 200% 补验
 
-2026-10-08 UTC。当前状态：六核心页基准候选，浏览器尚未运行；不宣称 PASS。
+2026-10-08 UTC。当前状态：六核心页输入/截图校准修正候选，首轮失败保留；不宣称 PASS。
 
 仅补已有 U1 设计验收。基线 main `62c5d5ddadcb74e0d8aa1898b1b490d1314b190b`
 的原型 SHA256 为 `fd8d1c491a211a3df44bc2f4a8e80a4152254886896af9a841f4d01b2c1c19f8`。
@@ -11,7 +11,7 @@
 复用 `.github/workflows/e2e.yml` 的 `kebui-design` job、Chromium、中文字体和
 既有七天合成 artifact。使用 headed Chromium / Xvfb，1440×1000 原生窗口、
 中文、浅色；通过 X11 原生 Ctrl+0 / Ctrl+= 触发浏览器缩放。
-`xvfb-run` 由既有 Playwright 系统依赖提供；仅缺少时安装 Ubuntu 官方 xdotool。
+`xvfb-run` 由既有 Playwright 系统依赖提供；仅缺少时安装 Ubuntu 官方 xdotool / ImageMagick。
 不新增 npm 依赖、扩展、凭据、CI 权限、job、触发器或门禁。
 
 先验证原生窗口不变、DPR 1→2、布局 CSS viewport 减半、visualViewport.scale=1、
@@ -21,7 +21,7 @@ pinch zoom、CSS zoom/transform 或文本放大替换命名为浏览器200%。
 
 校准成功后逐页：真实滚轮到达、按钮中心及周边命中检查、关键正文可见性和实际点击；
 覆盖首页新建/取消、执行结果入口、审批范围/批准回读、显式读取结果正文/原文/返回、
-Agent详情/选择取消、恢复核验及精确Stop取消/确认/回读。截图为滚动前后viewport，
+Agent详情/选择取消、恢复核验及精确Stop取消/确认/回读。截图为滚动前后的原生X11整窗，
 不靠fullPage截图掩盖遮挡。全部内容为原型合成数据。
 
 脚本在失败时也写 `evidence/browser-zoom-verification.json`，记录源码hash、实际
@@ -43,3 +43,29 @@ Agent详情/选择取消、恢复核验及精确Stop取消/确认/回读。截�
 - [xdotool 原生键盘接口](https://github.com/jordansissel/xdotool/blob/main/xdotool.pod)
 
 既有 large 模式与390px viewport结果保留其原资格，不作为本项200%证据。
+
+## 首轮真实 CI：缩放成功，输入/截图证据仍需校准
+
+head `3b0d327ae9fb1da2ca86fd7c9ca1f9ff10b66522` 的
+[E2E37824042969 / job113472125262](https://github.com/ForceMind/agentbox/actions/runs/37824042969/job/113472125262)
+首次运行保留为 failure，未重跑取绿。实际 Chromium151.0.7922.34：原生窗口1440×1000、
+100% DPR1 / viewport1440×913；110/125/150/175各级符合，200% DPR2 / viewport720×456、
+visualViewport.scale1，CSS正文字号15px、zoom1、无transform/large，缩放校准通过。
+首页滚动/新建取消通过；执行页进入结果后，返回按钮的DOM矩形13点命中通过，
+但Playwright locator.click报header/intro拦截而失败。其余四页未执行，不是六页PASS。
+
+[artifact11569803816](https://github.com/ForceMind/agentbox/actions/runs/37824042969/artifacts/11569803816)
+为3446843bytes，SHA256 `ecc265088b302c71f7f7838e3638d027e399c6abcc74f6f52b086963d411d191`。
+包含六张新zoom截图和失败JSON；协调者实际查看zoom-failure.png：720×456图像显示
+像桌面页面左上裁片，返回按钮不在图像中，与CSS720响应式矩形不符。故该轮API截图
+不作为200%像素PASS，也不能据点击错误直接判产品遮挡或声称产品RED→GREEN。
+checkout `e723e0374f4d02ccca14a3d5492850a1b9f3ff32` 的tree与head同为
+`17c0e84f2f69d5b787f9640260bd10d12c8c098f`，parents为main62c5与head3b0。
+
+后继仅修测试输入与取图：原生X11鼠标按DPR与实测浏览器chrome偏移转换，每次核对
+可信mousemove的CSS坐标、button action，点击后再核可信click坐标与目标。
+滚轮位置亦核对实际可信指针和wheel事件。保留所有遮挡、几何与状态断言，不force
+click、不DOM.click/dispatchEvent、不改产品源码。用ImageMagick官方import -window root
+保存未经缩放裁切的完整1600×1200隔离Xvfb画面；缺包才从Ubuntu官方源补ImageMagick。
+另保留一次明确标注的API截图用于与原生画面对照，不当作像素资格。
+后继CI仍待，不扩矩阵，先让相同六页基准给出可信输入/像素结果。

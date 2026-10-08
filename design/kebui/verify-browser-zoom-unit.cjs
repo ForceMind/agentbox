@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { assertZoom, wheelDelta } = require("./verify-browser-zoom.cjs");
+const { assertZoom, wheelDelta, nativePoint } = require("./verify-browser-zoom.cjs");
 const base = {
   dpr: 1,
   scale: 1,
@@ -36,3 +36,6 @@ for (const bad of [
 console.log(
   "Zoom calibration classifier: 1 accepted case, 8 rejected substitutes; no browser qualification",
 );
+
+assert.deepEqual(nativePoint(632.81640625, 159.1953125, 2, { left: 0, top: 87 }), { x: 1266, y: 405 });
+assert.deepEqual(nativePoint(100, 100, 1, { left: 0, top: 87 }), { x: 100, y: 187 });

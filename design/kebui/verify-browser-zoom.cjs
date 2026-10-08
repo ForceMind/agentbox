@@ -38,6 +38,8 @@ async function main() {
     scope: "six-core baseline / one native window / zh / light",
     date: new Date().toISOString(),
     source: process.env.GITHUB_SHA || "local",
+    headSource: process.env.KEBUI_HEAD_SHA || "local",
+    checkoutTree: execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim(),
     htmlSHA256: crypto
       .createHash("sha256")
       .update(fs.readFileSync(html))
@@ -47,11 +49,16 @@ async function main() {
     calibration: [],
     screens: [],
     screenshots: [],
+    nativeImages: [],
+    pointers: [],
+    clicks: [],
     requests: [],
     errors: [],
   };
   let browser;
   let page;
+  let windowId;
+  let chromeInsets;
   const xdo = (...args) => {
     report.keyboard.push(args);
     return execFileSync("xdotool", args, {
@@ -73,9 +80,17 @@ async function main() {
       large: document.body.classList.contains("large"),
     }));
   const shot = async (name) => {
-    const filename = `zoom-${name}.png`;
-    await page.screenshot({ path: path.join(out, filename), fullPage: false });
+    const filename = `zoom-native-${name}.png`;
+    const destination = path.join(out, filename);
+    execFileSync("import", ["-window", "root", destination], { timeout: 10000 });
+    const png = fs.readFileSync(destination);
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+    assert.equal(width, 1600, "capture must retain the full isolated Xvfb root");
+    assert.equal(height, 1200);
     report.screenshots.push(filename);
+    report.nativeImages.push({ filename, width, height, metrics: await metrics() });
   };
   const tick = () =>
     page.evaluate(
@@ -85,6 +100,22 @@ async function main() {
         ),
     );
   let current;
+  async function nativeMove(x, y, label) {
+    const m = await metrics();
+    const point = nativePoint(x, y, m.dpr, chromeInsets);
+    await page.evaluate(() => { window.__zoomPointer = null; });
+    // Move out first so even repeated targets yield a fresh trusted event.
+    xdo("mousemove", "--window", windowId, "0", "0");
+    xdo("mousemove", "--window", windowId, String(point.x), String(point.y));
+    await page.waitForFunction(({ x, y }) => window.__zoomPointer &&
+      Math.abs(window.__zoomPointer.x - x) <= 1 && Math.abs(window.__zoomPointer.y - y) <= 1, { x, y });
+    const actual = await page.evaluate(() => window.__zoomPointer);
+    assert(actual.trusted, `${label}: native pointer must be trusted`);
+    assert(Math.abs(actual.x - x) <= 1 && Math.abs(actual.y - y) <= 1,
+      `${label}: native/CSS coordinates disagree ${JSON.stringify({ x, y, point, actual })}`);
+    report.pointers.push({ label, intended: { x, y }, native: point, actual });
+    return actual;
+  }
   // Wheel the real document or open dialog. Never use DOM scrollIntoView or force clicks.
   async function reveal(locator, label) {
     assert.equal(await locator.count(), 1, `${label}: unique target`);
@@ -154,11 +185,26 @@ async function main() {
         `${label}: target taller than scroll viewport`,
       );
       const delta = wheelDelta(geom);
-      await page.mouse.move(
-        (geom.left + geom.right) / 2,
-        (geom.top + geom.bottom) / 2,
-      );
-      await page.mouse.wheel(0, delta);
+      const x = (geom.left + geom.right) / 2;
+      const y = (geom.top + geom.bottom) / 2;
+      // Calibrate the CDP wheel position against a fresh trusted DOM pointer event.
+      // Native browser zoom uses device-independent input coordinates here.
+      await page.evaluate(() => { window.__zoomPointer = null; window.__zoomWheel = null; });
+      await page.mouse.move(0, 0);
+      const scale = (await metrics()).dpr;
+      await page.mouse.move(x * scale, y * scale);
+      await page.waitForFunction(({ x, y }) => window.__zoomPointer &&
+        Math.abs(window.__zoomPointer.x - x) <= 1 && Math.abs(window.__zoomPointer.y - y) <= 1, { x, y });
+      const pointer = await page.evaluate(() => window.__zoomPointer);
+      assert(pointer.trusted && Math.abs(pointer.x - x) <= 1 && Math.abs(pointer.y - y) <= 1,
+        "wheel pointer coordinate calibration failed");
+      await page.mouse.wheel(0, delta * scale);
+      await page.waitForFunction(() => window.__zoomWheel !== null);
+      const actualWheel = await page.evaluate(() => window.__zoomWheel);
+      assert(actualWheel.trusted && actualWheel.deltaMode === 0, "trusted pixel wheel event required");
+      assert(Math.abs(actualWheel.x - x) <= 1 && Math.abs(actualWheel.y - y) <= 1,
+        "wheel event coordinates must match calibrated pointer");
+      assert(Math.sign(actualWheel.deltaY) === Math.sign(delta), "wheel direction");
       await tick();
       const after = await locator.evaluate(
         (el) => el.closest("dialog")?.scrollTop ?? scrollY,
@@ -170,6 +216,8 @@ async function main() {
           before: geom.scroll,
           after,
           delta,
+          pointer,
+          actualWheel,
         });
     }
     assert.fail(`${label}: wheel could not reach target`);
@@ -179,7 +227,23 @@ async function main() {
   async function click(action) {
     const target = await reveal(button(action), action);
     assert(await target.isEnabled(), `${action}: enabled`);
-    await target.click();
+    const rect = await target.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+    const apiBox = await target.boundingBox();
+    const x = rect.x + rect.width / 2;
+    const y = rect.y + rect.height / 2;
+    const pointer = await nativeMove(x, y, action);
+    assert.equal(pointer.action, action, "native pointer must hit the intended button");
+    await page.evaluate(() => { window.__zoomClick = null; });
+    xdo("click", "--clearmodifiers", "1");
+    await page.waitForFunction(() => window.__zoomClick !== null);
+    const actual = await page.evaluate(() => window.__zoomClick);
+    assert(actual.trusted, "native click must be trusted");
+    assert.equal(actual.action, action, "native click must reach the intended action");
+    assert(Math.abs(actual.x - x) <= 1 && Math.abs(actual.y - y) <= 1, "native click coordinates");
+    report.clicks.push({ action, rect, apiBox, pointer, actual });
   }
   async function facts(locator, label) {
     const fields = locator.locator("dt, dd");
@@ -205,6 +269,17 @@ async function main() {
       if (!r.url().startsWith("file:")) report.requests.push(r.url());
     });
     page.on("pageerror", (e) => report.errors.push(e.message));
+    await page.addInitScript(() => {
+      const snapshot = (event) => ({
+        x: event.clientX, y: event.clientY, trusted: event.isTrusted,
+        action: event.target.closest?.("button")?.dataset.action || null,
+        tag: event.target.tagName,
+        deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode,
+      });
+      document.addEventListener("mousemove", (e) => { window.__zoomPointer = snapshot(e); }, { capture: true, passive: true });
+      document.addEventListener("wheel", (e) => { window.__zoomWheel = snapshot(e); }, { capture: true, passive: true });
+      document.addEventListener("click", (e) => { window.__zoomClick = snapshot(e); }, { capture: true, passive: true });
+    });
     await page.goto(pathToFileURL(html).href);
     await page.bringToFront();
     const title = await page.title();
@@ -215,12 +290,21 @@ async function main() {
       xdo("getwindowname", id).includes(title),
     );
     assert.equal(matches.length, 1, "exactly one synthetic Chromium window");
-    const windowId = matches[0];
+    windowId = matches[0];
     xdo("windowfocus", "--sync", windowId);
     xdo("key", "--clearmodifiers", "ctrl+0");
     await tick();
     const base = await metrics();
+    const nativeGeometry = Object.fromEntries(xdo("getwindowgeometry", "--shell", windowId)
+      .split("\n").map((line) => line.split("=")).map(([key, value]) => [key, Number(value)]));
+    assert.equal(nativeGeometry.WIDTH, base.outerWidth);
+    assert.equal(nativeGeometry.HEIGHT, base.outerHeight);
+    assert.equal(base.width, nativeGeometry.WIDTH, "unframed Xvfb content width");
+    chromeInsets = { left: 0, top: nativeGeometry.HEIGHT - base.height };
+    assert(chromeInsets.top > 0 && chromeInsets.top < 200, "bounded native browser chrome");
+    report.nativeWindow = { ...nativeGeometry, chromeInsets };
     report.calibration.push({ percent: 100, ...base });
+    await shot("calibration-100");
     let previous = base.dpr;
     for (const percent of [110, 125, 150, 175, 200]) {
       xdo("key", "--clearmodifiers", "ctrl+equal");
@@ -234,6 +318,12 @@ async function main() {
       previous = observed.dpr;
     }
     assertZoom(base, await metrics());
+    await shot("calibration-200");
+    // Preserve one API comparison separately; it is not native pixel qualification.
+    await page.screenshot({ path: path.join(out, "zoom-api-comparison-200.png"), fullPage: false });
+    report.screenshots.push("zoom-api-comparison-200.png");
+    assertZoom(base, await metrics());
+    await shot("after-api-comparison-200");
     // Close only the native zoom bubble; no site dialog is open yet.
     xdo("key", "--clearmodifiers", "Escape");
     for (const route of [
@@ -396,7 +486,12 @@ function wheelDelta(geometry) {
   );
 }
 
-module.exports = { assertZoom, wheelDelta };
+function nativePoint(x, y, dpr, insets) {
+  assert(Number.isFinite(x) && Number.isFinite(y) && dpr > 0);
+  return { x: Math.round(insets.left + x * dpr), y: Math.round(insets.top + y * dpr) };
+}
+
+module.exports = { assertZoom, wheelDelta, nativePoint };
 if (require.main === module)
   main().catch((error) => {
     console.error(error);
