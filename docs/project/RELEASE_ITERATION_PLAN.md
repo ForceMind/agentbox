@@ -1,5 +1,59 @@
 # AgentBox 逐版本交付计划
 
+## 2026-10-08 U1 可评审产物与品牌主干闭环（03:06 UTC）
+
+PR162 已合并的 main `29adec75b1c6c7912ceacd53a3cbed416ac4aa79` 六套 exact-main
+CI 全 completed/success，E2E37719258137；tree 与合格品牌 headfc182c86 一致。
+既有 U2 页面与 Kebui 产品标识已软件闭环，AgentBox Runtime/CLI/API 兼容不变。
+
+[PR163](https://github.com/ForceMind/agentbox/pull/163) 的原型 source head
+`67d79b05b39fcf4488f1bc84731891f2004d8784` 已实际通过独立设计
+job113127190644 / E2E37720626557：Chromium151.0.7922.34三条旅程、120核心画面
+几何（五宽/双语/双主题）、21页手机大字体、11项DOM回归、504DOM组合和零外部请求。
+[离线入口与说明](../../design/kebui/README.md)现已存在；21画面和未来能力均明确合成。
+
+Artifact11525846639有24张原图，2,637,482bytes，SHA256
+`6dbebb91e6e234f33361b70697d33f53b1b9319bc0c29473b6adf7cac27f3d09`已核对。
+独立像素资格为10张改变原图重新打开、14张与前轮已审原图逐字节相同；手机授权上下文、
+身份失效入口、真实CI未知说明均已恢复可见，旧通知覆盖和截图状态不一致已修正。
+这是明确范围的设计可评审资格，不是整体美观、真实设备或生产功能PASS。
+
+最终文档包据此更新旧“U1未交付/浏览器NOT RUN”顶层状态，保留全部旧失败历史。
+source67d79b的完整候选CI尚待终态；本次仅文档/证据清单变更，后继documentation-inclusive
+head亦需独立六套CI、正常merge与exact-main回读，最终结果记录于PR163，不借旧绿通过。
+
+当前版本软件/UI收尾范围：既有U2页面、Kebui标识、U1可打开合成设计与本轮实际验证。
+U0公开文字来源已补核，参考图片/部分固定版本仍UNKNOWN；不转载私人Cromma内容，
+不复制AGPL来源代码。Logo/颜色是探索稿；后续U3–U5、真实host/双CLI/客户端/恢复和
+release/deploy仍是独立合同与目标证据，不因原型可点就宣称已完成。
+下方旧时间点的pending/未交付与NOT RUN作为历史保留，不能覆盖本节或live GitHub。
+
+
+## 2026-10-08 当前 UI 版本与 U1 实际交付范围
+
+当前源码仍为 rc31。PR161 已正常合并为
+`8027628f2cf9937d65626e8a9e87eed2f59c7675`，tree 与合格 head14211671 一致，
+六套 exact-main CI 全部成功。因此下方 Login/404 与跨页待资格化的文字是历史快照，
+当前 U2 既有页面清单的软件闭环已经完成，不能反复重做这些页面。
+
+产品名称落实由 [PR162](https://github.com/ForceMind/agentbox/pull/162) 接续：
+head `fc182c86637198f2dce41e6fbc28106f80831f2a`、tree
+`1839a336014e54c2e181dbf167bc24f6ab632dcf`，Web 产品标识与标题为 Kebui，
+AgentBox Runtime/API/CLI 兼容。已正常合并 main `29adec75b1c6c7912ceacd53a3cbed416ac4aa79`，同树；exact-main CI 待终态。
+
+U1 首个真实产物位于 [离线原型](../../design/kebui/README.md)，含六组核心画面、
+21 个画面入口、双语/主题、三条合成交互旅程、tokens、参考证据与映射。
+它只演示未来体验，不接真实 Agent，不新增生产 Chat/Task/Files 权限。
+本地 DOM 与静态检查不替代真实浏览器/像素；审查发现的失效 Stop、取消换 Agent、
+跳到内容与停止回读问题必须修复并通过 CI，才能取得“U1 可评审”资格。
+U0 未核实参考截图仍标 UNKNOWN，不把文字型参考板冒称完整来源取证。
+
+当前版本完成报告须分开：U2 既有页面软件资格、产品标识资格、U1 设计产物与缺项。
+真实 host、双 CLI、代表性客户端、Secret/信任、重启/升级回退仍需要目标证据；
+本批没有发布、部署或改变既有目标验证暂缓状态。U3–U5 是后续有合同的能力阶段，
+不因原型可点击就算已实现，也不是本次当前版本 UI 收尾的隐藏前置条件。
+
+
 ## 2026-10-07 同一UI重设计版本的页面清单
 
 Owner要求从头完成既有AgentBox UI，并授权普通开发连续推进；本节把已批准的

@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Offline invalidates prior recovery and disables exact Stop",
+    "status": "FAIL",
+    "error": "true == false"
+  },
+  {
+    "name": "Hidden closes Stop dialog; stale confirmation cannot stop after reverify",
+    "status": "FAIL",
+    "error": "true == false"
+  },
+  {
+    "name": "Final Stop rechecks the exact target",
+    "status": "FAIL",
+    "error": "true == false"
+  },
+  {
+    "name": "Choosing Agent then cancel preserves scope, draft, approval and result",
+    "status": "FAIL",
+    "error": "'{\"lang\":\"zh\",\"route\":\"agents\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Claude Code\",\"phase\":\"idle\",\"approval\":\"pending\",\"revision\":2,\"draft\":\"\",\"message\":\"\",\"admitted\":false,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}' == '{\"lang\":\"zh\",\"route\":\"agents\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"idle\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Keep my synthetic draft\",\"message\":\"\",\"admitted\":true,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}'"
+  },
+  {
+    "name": "Skip link focuses main without routing or clearing draft",
+    "status": "FAIL",
+    "error": "'notfound' == 'work'"
+  },
+  {
+    "name": "Repeated recovery preserves stopped fixture; running detach does not stop",
+    "status": "FAIL",
+    "error": "'running' == 'interrupted'"
+  },
+  {
+    "name": "Send evidence, idempotent duplicate and exact revision increment",
+    "status": "FAIL",
+    "error": "undefined == 1"
+  },
+  {
+    "name": "Approval requester matches selected Claude Code",
+    "status": "FAIL",
+    "error": "The expression evaluated to a falsy value:\n\n  assert(!d.querySelector('main').textContent.includes('申请者 Codex'))\n"
+  }
+]

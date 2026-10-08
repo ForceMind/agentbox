@@ -1,0 +1,14 @@
+{
+  "type": "DOM only; browser NOT RUN",
+  "checks": [
+    "Journey A success, IME, newline, Ctrl+Enter, duplicate send suppression, explicit result read and invalidation",
+    "Journey A failed send, explicit retry and interruption",
+    "Journey B approval success, duplicate blocked, failed/interrupted outcome unknown, read-only recovery, rejection and expiry",
+    "Journey C failed verify, interrupt recovery, cancel exact Stop, exact synthetic readback, detach does not stop",
+    "Escaped user input and new-scope clearing",
+    "Conversation row opens matching Project and Agent",
+    "504 screen/language/theme/scenario DOM renders (no layout claims)",
+    "Offline clears admitted body and moves to unknown recovery"
+  ],
+  "combinations": 504
+}

@@ -68,3 +68,41 @@ jobs:
             apps/web/test-results/ui-entry-pages-*.png
           if-no-files-found: warn
           retention-days: 7
+
+  kebui-design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11.20.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium and Chinese glyphs
+        run: |
+          pnpm --filter @agentbox/web exec playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+      - name: Verify isolated synthetic Kebui prototype
+        env:
+          PLAYWRIGHT_PATH: ${{ github.workspace }}/apps/web/node_modules/@playwright/test
+          JSDOM_PATH: ${{ github.workspace }}/apps/web/node_modules/jsdom
+        run: |
+          python design/kebui/build.py
+          git diff --exit-code -- design/kebui/index.html
+          node design/kebui/verify-regressions.cjs
+          node design/kebui/verify-dom.cjs
+          node design/kebui/verify.cjs
+      - name: Retain synthetic prototype evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: kebui-design-evidence
+          path: |
+            design/kebui/evidence/*.png
+            design/kebui/evidence/verification.json
+          if-no-files-found: warn
+          retention-days: 7

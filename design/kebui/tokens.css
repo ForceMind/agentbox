@@ -1,0 +1,46 @@
+/* Kebui U1 / exploratory palette, not approved final brand assets. */
+:root {
+  color-scheme: light;
+  --bg: #f5f4ef;
+  --surface: #fffefa;
+  --raised: #fff;
+  --ink: #252923;
+  --muted: #62695f;
+  --line: #dedfd6;
+  --accent: #355f4c;
+  --accent-soft: #e5eee5;
+  --success: #276348;
+  --warning: #825b18;
+  --danger: #a33c36;
+  --code: #edf0e9;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --font:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --shadow: 0 20px 60px #17221818;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #171d19;
+  --surface: #202721;
+  --raised: #29312a;
+  --ink: #edf0e7;
+  --muted: #adb9aa;
+  --line: #404c40;
+  --accent: #bed6b6;
+  --accent-soft: #334737;
+  --success: #a6d6b8;
+  --warning: #efca88;
+  --danger: #ffb1aa;
+  --code: #151d17;
+  --shadow: 0 20px 60px #0005;
+}
