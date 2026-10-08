@@ -770,8 +770,8 @@ document.addEventListener("click", (event) => {
       break;
     case "stop-dialog":
       if (!canStop()) {
-        toast(t("先重新核验精确目标。", "Reverify the exact target first."));
         navigate("recovery");
+        toast(t("先重新核验精确目标。", "Reverify the exact target first."));
         break;
       }
       modal(

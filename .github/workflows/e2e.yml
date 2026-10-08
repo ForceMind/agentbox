@@ -89,9 +89,12 @@ jobs:
       - name: Verify isolated synthetic Kebui prototype
         env:
           PLAYWRIGHT_PATH: ${{ github.workspace }}/apps/web/node_modules/@playwright/test
+          JSDOM_PATH: ${{ github.workspace }}/apps/web/node_modules/jsdom
         run: |
           python design/kebui/build.py
           git diff --exit-code -- design/kebui/index.html
+          node design/kebui/verify-regressions.cjs
+          node design/kebui/verify-dom.cjs
           node design/kebui/verify.cjs
       - name: Retain synthetic prototype evidence
         if: always()
