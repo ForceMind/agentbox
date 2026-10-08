@@ -30,12 +30,14 @@ function assertZoom(base, zoom) {
 
 async function main() {
   const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
+  const config = readConfig(process.env);
   const out = path.join(__dirname, "evidence");
   fs.mkdirSync(out, { recursive: true });
   const html = path.join(__dirname, "index.html");
   const report = {
     method: "headed Chromium; Xvfb; native X11 Ctrl+0/Ctrl+=; no emulation",
-    scope: "six-core baseline / one native window / zh / light",
+    scope: `six-core / native window ${config.width}x1000 / ${config.lang} / ${config.theme}`,
+    config,
     wheelMode: "native detented wheel; centeringIntent is not actual displacement; actual scroll and wheel events are recorded",
     date: new Date().toISOString(),
     source: process.env.GITHUB_SHA || "local",
@@ -81,7 +83,9 @@ async function main() {
       large: document.body.classList.contains("large"),
     }));
   const shot = async (name) => {
-    const filename = `zoom-native-${name}.png`;
+    const presentation = await page.evaluate(() => ({ language: state.lang, htmlLanguage: document.documentElement.lang, theme: document.documentElement.dataset.theme }));
+    assert.deepEqual(presentation, { language: config.lang, htmlLanguage: config.lang === "zh" ? "zh-CN" : "en", theme: config.theme }, "actual rendered language/theme must match the case");
+    const filename = `zoom-${config.key}-native-${name}.png`;
     const destination = path.join(out, filename);
     execFileSync("import", ["-window", "root", destination], { timeout: 10000 });
     const png = fs.readFileSync(destination);
@@ -91,7 +95,14 @@ async function main() {
     assert.equal(width, 1600, "capture must retain the full isolated Xvfb root");
     assert.equal(height, 1200);
     report.screenshots.push(filename);
-    report.nativeImages.push({ filename, width, height, metrics: await metrics() });
+    report.nativeImages.push({ filename, width, height, metrics: await metrics(),
+      view: await page.evaluate(() => ({
+        scrollX, scrollY, route: state.route, phase: state.phase,
+        language: state.lang, htmlLanguage: document.documentElement.lang, theme: document.documentElement.dataset.theme,
+        admitted: state.admitted, recovered: state.recovered, stopped: state.stopped,
+        approval: state.approval, dialogOpen: document.getElementById("dialog").open,
+        dialogScroll: document.getElementById("dialog").scrollTop,
+      })) });
   };
   const tick = () =>
     page.evaluate(
@@ -253,7 +264,7 @@ async function main() {
     );
     browser = await chromium.launch({
       headless: false,
-      args: ["--window-size=1440,1000", "--window-position=0,0"],
+      args: [`--window-size=${config.width},1000`, "--window-position=0,0"],
     });
     report.browser = await browser.version();
     const context = await browser.newContext({ viewport: null });
@@ -275,6 +286,7 @@ async function main() {
       document.addEventListener("click", (e) => { window.__zoomClick = snapshot(e); }, { capture: true, passive: true });
     });
     await page.goto(pathToFileURL(html).href);
+    await page.evaluate(({ lang, theme }) => { state.lang = lang; document.documentElement.dataset.theme = theme; render(); }, config);
     await page.bringToFront();
     const title = await page.title();
     const windows = xdo("search", "--onlyvisible", "--class", "chromium")
@@ -291,6 +303,8 @@ async function main() {
     const base = await metrics();
     const nativeGeometry = Object.fromEntries(xdo("getwindowgeometry", "--shell", windowId)
       .split("\n").map((line) => line.split("=")).map(([key, value]) => [key, Number(value)]));
+    assert.equal(nativeGeometry.WIDTH, config.width, "actual native window width matches requested case");
+    assert.equal(nativeGeometry.HEIGHT, 1000, "actual native window height");
     assert.equal(nativeGeometry.WIDTH, base.outerWidth);
     assert.equal(nativeGeometry.HEIGHT, base.outerHeight);
     assert.equal(base.width, nativeGeometry.WIDTH, "unframed Xvfb content width");
@@ -312,10 +326,11 @@ async function main() {
       previous = observed.dpr;
     }
     assertZoom(base, await metrics());
+    assert.equal((await metrics()).width, config.width / 2, "200% layout width matches this native window case");
     await shot("calibration-200");
     // Preserve one API comparison separately; it is not native pixel qualification.
-    await page.screenshot({ path: path.join(out, "zoom-api-comparison-200.png"), fullPage: false });
-    report.screenshots.push("zoom-api-comparison-200.png");
+    await page.screenshot({ path: path.join(out, `zoom-${config.key}-api-comparison-200.png`), fullPage: false });
+    report.screenshots.push(`zoom-${config.key}-api-comparison-200.png`);
     assertZoom(base, await metrics());
     await shot("after-api-comparison-200");
     // Close only the native zoom bubble; no site dialog is open yet.
@@ -330,14 +345,14 @@ async function main() {
     ]) {
       current = { route, targets: [], wheels: [], status: "running" };
       report.screens.push(current);
-      await page.evaluate((route) => {
+      await page.evaluate(({ route, lang, theme }) => {
         resetScope();
-        state.lang = "zh";
+        state.lang = lang;
         state.scenario = "success";
         state.route = route;
         state.project = "Meadow";
         state.agent = "Codex";
-        state.message = "请改善合成项目的空状态，并补充可访问性测试。";
+        state.message = lang === "zh" ? "请改善合成项目的空状态，并补充可访问性测试。" : "Improve the synthetic project empty state and add accessibility tests.";
         state.requestId = "demo-zoom-request-01";
         state.requestCount = 1;
         state.acceptedCount = 1;
@@ -352,9 +367,9 @@ async function main() {
                 : "idle";
         state.online = route !== "recovery";
         state.admitted = false;
-        document.documentElement.dataset.theme = "light";
+        document.documentElement.dataset.theme = theme;
         render();
-      }, route);
+      }, { route, lang: config.lang, theme: config.theme });
       xdo("key", "--clearmodifiers", "ctrl+Home");
       await tick();
       assertZoom(base, await metrics());
@@ -364,7 +379,7 @@ async function main() {
         ),
         `${route}: page overflow`,
       );
-      await shot(`${route}-top`);
+      await shot(`${route}-entry`);
       if (route === "home") {
         await reveal(page.locator("#main .notice"), "home explanatory body");
         await shot("home-body");
@@ -425,13 +440,20 @@ async function main() {
         await shot("recovery-stop-scope");
         await click("close");
         assert.equal(await page.evaluate(() => state.stopped), false);
+        assert.equal(await page.evaluate(() => state.phase), "running");
+        await reveal(page.locator("#main .card h2"), "cancel retains running readback");
+        await shot("recovery-cancel-running");
+        await reveal(page.locator("#main .card .facts"), "cancel retains exact target");
+        await shot("recovery-cancel-target");
         await click("stop-dialog");
         await reveal(button("stop-confirm"), "exact Stop confirmation");
         await shot("recovery-stop-button");
         await click("stop-confirm");
         assert.equal(await page.evaluate(() => state.stopped), true);
         await reveal(page.locator("#main .card h2"), "Stop readback");
-        await shot("recovery-readback");
+        await shot("recovery-readback-heading");
+        await reveal(page.locator("#main .card .facts"), "stopped exact-target readback");
+        await shot("recovery-readback-target");
       }
       assert(
         current.wheels.length > 0,
@@ -463,7 +485,7 @@ async function main() {
     throw error;
   } finally {
     fs.writeFileSync(
-      path.join(out, "browser-zoom-verification.json"),
+      path.join(out, `browser-zoom-${config.key}.json`),
       JSON.stringify(report, null, 2) + "\n",
     );
     console.log(JSON.stringify(report, null, 2));
@@ -486,7 +508,17 @@ function nativePoint(x, y, dpr, insets) {
   return { x: Math.round(insets.left + x * dpr), y: Math.round(insets.top + y * dpr) };
 }
 
-module.exports = { assertZoom, wheelDelta, nativePoint };
+function readConfig(env) {
+  const width = env.KEBUI_ZOOM_WIDTH || "1440";
+  const lang = env.KEBUI_ZOOM_LANG || "zh";
+  const theme = env.KEBUI_ZOOM_THEME || "light";
+  assert(["1440", "780"].includes(width), "bounded native window width");
+  assert(["zh", "en"].includes(lang), "bounded UI language");
+  assert(["light", "dark"].includes(theme), "bounded UI theme");
+  return { width: Number(width), lang, theme, key: `${width}-${lang}-${theme}` };
+}
+
+module.exports = { assertZoom, wheelDelta, nativePoint, readConfig };
 if (require.main === module)
   main().catch((error) => {
     console.error(error);

@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { assertZoom, wheelDelta, nativePoint } = require("./verify-browser-zoom.cjs");
+const { assertZoom, wheelDelta, nativePoint, readConfig } = require("./verify-browser-zoom.cjs");
 const base = {
   dpr: 1,
   scale: 1,
@@ -39,3 +39,9 @@ console.log(
 
 assert.deepEqual(nativePoint(632.81640625, 159.1953125, 2, { left: 0, top: 87 }), { x: 1266, y: 405 });
 assert.deepEqual(nativePoint(100, 100, 1, { left: 0, top: 87 }), { x: 100, y: 187 });
+
+assert.deepEqual(readConfig({}), { width: 1440, lang: "zh", theme: "light", key: "1440-zh-light" });
+for (const width of ["1440", "780"]) for (const lang of ["zh", "en"]) for (const theme of ["light", "dark"]) {
+  assert.equal(readConfig({ KEBUI_ZOOM_WIDTH: width, KEBUI_ZOOM_LANG: lang, KEBUI_ZOOM_THEME: theme }).key, `${width}-${lang}-${theme}`);
+}
+for (const invalid of [{ KEBUI_ZOOM_WIDTH: "390" }, { KEBUI_ZOOM_LANG: "other" }, { KEBUI_ZOOM_THEME: "other" }]) assert.throws(() => readConfig(invalid));

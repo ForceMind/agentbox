@@ -1,6 +1,6 @@
 # U1 浏览器 200% 补验
 
-2026-10-08 UTC。当前状态：六核心页输入/截图校准修正候选，首轮失败保留；不宣称 PASS。
+2026-10-08 UTC。当前状态：六页中文浅色原生200%基准通过；两尺寸/双语/浅深候选待验。历史失败保留。
 
 仅补已有 U1 设计验收。基线 main `62c5d5ddadcb74e0d8aa1898b1b490d1314b190b`
 的原型 SHA256 为 `fd8d1c491a211a3df44bc2f4a8e80a4152254886896af9a841f4d01b2c1c19f8`。
@@ -92,3 +92,34 @@ SHA256为 `9364be0143aa6394e158053309221985e39ccd97b0871ebc51946cc17816d235`。
 实际位移以wheel事件和scrollTop差值为准。旧纯wheelDelta数学unit不证明原生近满高
 目标收敛；此helper边界仍保留。当前六页短样本必须真实滚动并完整可见才通过，
 若32次无法到达仍失败，不放宽可见性或改用DOM滚动；不将helper限制误报成产品bug。
+
+## 六页原生基准已实际通过（2026-10-08 18:46 UTC）
+
+head `bcb67a975ad82b22bac1199c5ec05949b94e5f26` 的
+[E2E37826543348 / job113480756955](https://github.com/ForceMind/agentbox/actions/runs/37826543348/job/113480756955)
+首次成功。六页全部校准为原生200%，16次可信X11点击、59次可信真实滚轮、51个
+目标可见性/遮挡检查通过，零外部request/pageerror。原back-work按钮的可信原生
+client坐标633,159及action一致，实际返回成功；这是测试路径校准，不是产品修复。
+
+checkout `1706d2fe41fd69e486e9c05944fee299c9d04f16` 与该head的tree都为
+`380b31cee240a1ef6eb4f461c3b6b66295ea0737`，checkout parents为main62c5和headbcb67。
+[artifact11571078786](https://github.com/ForceMind/agentbox/actions/runs/37826543348/artifacts/11571078786)
+共5444627bytes，SHA256 `967fdf893d3e69b46973aac684f9a9972383112745c3f086b0b1c2606de87b63`。
+独立逐一查看20张native整窗，无产品内部重叠；diff/原文、审批范围/回读、Stop身份与
+按钮、composer、Agent资格文字可见。API对照单独排除，不冒称其缩放图合格。
+
+该批若干旧名top图片实际为中下段；Stop取消后无独立图，最终readback图只露标题和
+session顶部。动态行为由可信输入/状态断言支持，图片不单独证明取消和完整回读。
+这些限制保留；后继改名entry并记录每图实际scroll/model状态，补取消后running/target
+与最终exact-target字段可读原生图。既有小基准仅为1440×1000、中文浅色，不外推完整矩阵。
+
+## 后继必要矩阵候选
+
+保持同一六页流程与严格断言，原生窗口仅允许1440×1000、780×1000；200%后分别为
+约720×456、390×456 CSS viewport。这是桌面浏览器的两种原生窗口宽度，不是物理
+手机或viewport模拟。语言zh/en、主题light/dark，共8组合×6页=48。
+
+既有job先执行1440/zh/light基准，成功后再逐一执行其余7组合；任一失败即保留报告，
+未执行组合不算PASS。没有更改job超时、触发器、权限或门禁。每组合独立PNG/JSON
+文件名防止覆盖，原始同一HTML hash继续记录；没有增加长文本/读屏/真实设备资格。
+后继完整CI、48组实际结果与原生图复核仍待，不以小基准绿色替代。

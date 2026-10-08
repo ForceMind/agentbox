@@ -107,6 +107,22 @@ jobs:
         run: |
           node design/kebui/verify-browser-zoom-unit.cjs
           xvfb-run -a -s "-screen 0 1600x1200x24" node design/kebui/verify-browser-zoom.cjs
+      - name: Verify bounded native zoom size language theme coverage
+        env:
+          PLAYWRIGHT_PATH: ${{ github.workspace }}/apps/web/node_modules/@playwright/test
+          KEBUI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          for width in 1440 780; do
+            for language in zh en; do
+              for theme in light dark; do
+                if [ "$width-$language-$theme" = "1440-zh-light" ]; then
+                  continue
+                fi
+                KEBUI_ZOOM_WIDTH="$width" KEBUI_ZOOM_LANG="$language" KEBUI_ZOOM_THEME="$theme" \
+                  xvfb-run -a -s "-screen 0 1600x1200x24" node design/kebui/verify-browser-zoom.cjs
+              done
+            done
+          done
       - name: Retain synthetic prototype evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -116,6 +132,6 @@ jobs:
             design/kebui/evidence/*.png
             design/kebui/evidence/verification.json
             design/kebui/evidence/reference-verification.json
-            design/kebui/evidence/browser-zoom-verification.json
+            design/kebui/evidence/browser-zoom-*.json
           if-no-files-found: warn
           retention-days: 7
