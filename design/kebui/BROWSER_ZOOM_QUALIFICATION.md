@@ -163,3 +163,22 @@ helper边界仍在，未通过放宽断言隐藏。生产源码、版本和功�
 仍需自己的完整六套CI、逐项报告及证据一致性回读。19:06时88a4五套success、完整E2E
 仍运行，不能提前称整PR已绿。保持[PR165](https://github.com/ForceMind/agentbox/pull/165)
 Draft，不合并；最终exact-head状态以该PR回读为准，不借旧头绿色。
+
+## 2026-10-08 19:22 UTC：后继原生窗口发现失败保留
+
+源88a4的完整六套CI现已全部success；但不能据此替代后继文档头。
+head `a481fbc63c7f204e7645ca55d72e76ecb357c7dc` 的
+[E2E37829956579 / job113492416077](https://github.com/ForceMind/agentbox/actions/runs/37829956579/job/113492416077)
+在两个1440中文组合通过后，第三个1440英文浅色于缩放前的一次性原生窗口标题匹配
+得到0个对应窗口，立即失败。其余组合未执行，不算通过。该head没有改HTML/测试源码，
+这仍不是产品布局或缩放RED。原实现未记录当时native title值，不能断言具体标题值
+或已确定平台根因；该失败不重跑取绿。
+
+[artifact11573071591](https://github.com/ForceMind/agentbox/actions/runs/37829956579/artifacts/11573071591)
+8430514bytes，SHA256 `7ec700e0771b511c38192bae594984b2fe220f8e025d3c26c248c39a1dcddeba`。
+后继仅为窗口发现增加同条件就绪等待及实际title/ids日志：仍只接受visible Chromium
+与原页面标题对应的唯一窗口；歧义直接失败，不取first或扩大selector。
+采用10秒单调时钟就绪预算，每次原生probe只使用剩余预算，返回后在接受匹配前检查
+截止时间。迟到、持续旧标题、歧义均有纯unit拒绝案例。不增加整体job时限、retries、
+权限或产品改动，真实输入/截图与48组断言保持。后继头须独立六套CI及证据回读，
+当前不称ready，继续保持PR165 Draft；最终状态以该PR回读为准。

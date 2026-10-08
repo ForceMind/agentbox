@@ -62,13 +62,16 @@ async function main() {
   let page;
   let windowId;
   let chromeInsets;
-  const xdo = (...args) => {
+  const runXdo = (timeout, args) => {
+    assert(timeout > 0, "native window discovery budget exhausted");
     report.keyboard.push(args);
     return execFileSync("xdotool", args, {
       encoding: "utf8",
-      timeout: 10000,
+      timeout,
     }).trim();
   };
+  const xdo = (...args) => runXdo(10000, args);
+  const xdoProbe = (remaining, ...args) => runXdo(Math.floor(remaining()), args);
   const metrics = () =>
     page.evaluate(() => ({
       dpr: devicePixelRatio,
@@ -289,14 +292,17 @@ async function main() {
     await page.evaluate(({ lang, theme }) => { state.lang = lang; document.documentElement.dataset.theme = theme; render(); }, config);
     await page.bringToFront();
     const title = await page.title();
-    const windows = xdo("search", "--onlyvisible", "--class", "chromium")
-      .split(/\s+/)
-      .filter(Boolean);
-    const matches = windows.filter((id) =>
-      xdo("getwindowname", id).includes(title),
-    );
-    assert.equal(matches.length, 1, "exactly one synthetic Chromium window");
-    windowId = matches[0];
+    report.windowDiscovery = [];
+    windowId = await waitForNativeWindow((remaining) => {
+      let windows;
+      try {
+        windows = xdoProbe(remaining, "search", "--onlyvisible", "--class", "chromium").split(/\s+/).filter(Boolean);
+      } catch (error) {
+        if (error.status === 1) return [];
+        throw error;
+      }
+      return windows.map((id) => ({ id, title: xdoProbe(remaining, "getwindowname", id) }));
+    }, title, report.windowDiscovery);
     xdo("windowfocus", "--sync", windowId);
     xdo("key", "--clearmodifiers", "ctrl+0");
     await tick();
@@ -518,7 +524,27 @@ function readConfig(env) {
   return { width: Number(width), lang, theme, key: `${width}-${lang}-${theme}` };
 }
 
-module.exports = { assertZoom, wheelDelta, nativePoint, readConfig };
+async function waitForNativeWindow(observe, expectedTitle, trace, {
+  now = () => performance.now(),
+  pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  timeoutMs = 10000,
+} = {}) {
+  const start = now();
+  const remaining = () => timeoutMs - (now() - start);
+  while (true) {
+    assert(remaining() > 0, "synthetic Chromium window title did not become ready");
+    const windows = await observe(remaining);
+    const matches = windows.filter((window) => window.title.includes(expectedTitle));
+    trace.push({ elapsedMs: now() - start, expectedTitle, windows, matches: matches.map((window) => window.id) });
+    assert(now() - start <= timeoutMs, "synthetic Chromium window title did not become ready");
+    assert(matches.length <= 1, "ambiguous synthetic Chromium windows");
+    if (matches.length === 1) return matches[0].id;
+    assert(now() - start < timeoutMs, "synthetic Chromium window title did not become ready");
+    await pause(Math.min(50, remaining()));
+  }
+}
+
+module.exports = { assertZoom, wheelDelta, nativePoint, readConfig, waitForNativeWindow };
 if (require.main === module)
   main().catch((error) => {
     console.error(error);
