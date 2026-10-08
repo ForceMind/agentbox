@@ -315,17 +315,19 @@ No final palette is frozen by this document.
 
 ## 11. Domain and naming operations
 
-Primary domain target:
+Suggested primary domain (not configured):
 
 - **kebui.com**
 
-Defensive historical-spelling target:
+Suggested defensive historical-spelling domain (not configured):
 
 - **qebui.com**
 
-At the time of planning on 2026-10-07, both were observed as registrable through
-the domain availability check. This repository must **not** claim ownership until
-the Owner confirms registration.
+At planning time on 2026-10-07, both were observed as registrable. On
+2026-10-08 the Owner explicitly reported purchasing **kebui.com and qebui.com**.
+This records the Owner-reported purchase; registrar technical control, DNS and
+website availability have not been verified. Primary/defensive roles remain
+recommendations, not an executed configuration.
 
 Recommended domain operations after purchase:
 
@@ -333,7 +335,7 @@ Recommended domain operations after purchase:
 - enable automatic renewal;
 - enable 2FA on the registrar;
 - keep registrant/recovery details current;
-- redirect `qebui.com` to `kebui.com` if both are acquired;
+- consider redirecting `qebui.com` to `kebui.com` after explicit approval;
 - do not publish DNS or launch claims before the Owner explicitly approves them.
 
 ## 12. Public copy kit
@@ -411,7 +413,7 @@ This document does not:
 - authorize production deployment;
 - authorize real host activation;
 - change current release version;
-- claim `kebui.com` is owned;
+- independently verify registrar control, DNS or website readiness;
 - add automatic agent routing before its product and safety contracts exist.
 
 See [KEBUI_PRODUCT_PLAN.md](KEBUI_PRODUCT_PLAN.md) for staged delivery.
