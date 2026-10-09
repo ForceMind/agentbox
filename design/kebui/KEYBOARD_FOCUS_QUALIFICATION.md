@@ -119,3 +119,35 @@ scope-confirm and desktop/mobile theme after-render. These show the rendered
 page, while DOM/event evidence establishes focus. This does not imply every
 original or unrelated page was visually re-reviewed. Final candidate browser
 results, independent final review and exact-head CI remain pending.
+
+## 修复源码实际 GREEN 与独立像素资格（2026-10-09 16:04 UTC）
+
+修复 head `09b0e86b5923dad3e444c0a9f358ddf50bab17ee` / tree
+`73e592fa8f6afe054fd0b68c7ef125f1eaf88474` 的
+[design job113903147573](https://github.com/ForceMind/agentbox/actions/runs/37954997708/job/113903147573)
+首轮全部成功。PR merge checkout `cbee01eb36d78b839058a2d9206b837ac0eb6415`
+与 source 同 tree，parents 为 main120b123 与 source09b0e86，已实际 fetch/read-back。
+
+8项键盘案例全过；16次dialog开关、64个严格browser-UI槽、0底层focusin、
+567个可信keydown和32个可信click。取消后原opener与完整state/target均保持；
+确认范围后 MAIN 获焦，下一Tab到工作区new按钮；主题按钮重绘后仍获焦。
+这些目标均connected、documentFocused、layout-visible且与viewport相交。
+0 page errors/外部请求。既有三旅程、120核心几何、21页大字体、8长文本、
+48组真实原生200%也全部通过；新键盘证据不扩大为全页/读屏/设备资格。
+
+[Artifact11627937508](https://github.com/ForceMind/agentbox/actions/runs/37954997708/artifacts/11627937508)
+共242PNG，26,638,554 bytes；实际下载并经独审核SHA256
+`8a1d051fc807cfd64fbb74b70d3addf3153684f09f06e7555465f44dd1a0cc81`。
+JSON的app.js/index.html/验收script哈希与上述source逐一一致。
+
+独立审阅者实际逐张打开全部8张keyboard原图：两配置各自的scope-open、
+stop-open、scope-confirm-after、theme-after。所查modal标题/精确目标/取消按钮
+可读，焦点轮廓清楚，没有关键遮挡或新增布局问题。其余234张本次未重新像素
+审查，不能冒称全242张已看。实施者另自查两配置scope-confirm/theme共4张。
+独立结论为此有界source/事件/8图 PASS，无阻断。
+
+本次最后仅更新资格记录与CURRENT_STATE，不改产品、测试或workflow。source
+在16:04时五套workflow成功，普通e2e仍运行；最终文档组合head必须独立取得
+六套准确CI终态，最终结果记录于[PR168](https://github.com/ForceMind/agentbox/pull/168)。
+不把source设计job成功冒称最终组合head或合并后main成功；保持Draft由父任务
+协调正常merge/read-back，无U3、真实host、release、部署或DNS操作。
