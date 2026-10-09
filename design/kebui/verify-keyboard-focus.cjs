@@ -23,7 +23,7 @@ async function focusInfo(page) {
   return page.evaluate(() => {
     const el = document.activeElement;
     const r = el.getBoundingClientRect();
-    return { tag: el.tagName, id: el.id, action: el.dataset.action || null,
+    return { documentFocused: document.hasFocus(), nativeModal: document.getElementById("dialog").matches(":modal") && document.getElementById("dialog").open, tag: el.tagName, id: el.id, action: el.dataset.action || null,
       connected: el.isConnected, visible: !!(r.width && r.height) && getComputedStyle(el).visibility !== "hidden",
       inDialog: !!el.closest("#dialog"), inMain: !!el.closest("#main"),
       rect: { x: r.x, y: r.y, width: r.width, height: r.height },
@@ -46,13 +46,27 @@ async function cycleDialog(page, selectors, item) {
   // Verify the native initial focus, both wrapping boundaries and all controls.
   assert(await page.evaluate(s => document.activeElement.matches(s), selectors[0]), "dialog initial focus");
   item.cycles = [];
+  item.browserFocusSlots = [];
   for (const key of ["Tab", "Shift+Tab"]) {
     for (let i = 1; i <= selectors.length * 2; i++) {
       await page.keyboard.press(key);
       const index = key === "Tab" ? i % selectors.length : (selectors.length - i % selectors.length) % selectors.length;
-      const actual = await focusInfo(page);
+      let actual = await focusInfo(page);
+      if (!actual.inDialog) {
+        // Chromium may give browser UI one tab stop between the dialog ends.
+        // BODY is not accepted as page focus: the document must be unfocused,
+        // and exactly one more real key must return to the expected modal control.
+        const outside = actual;
+        await page.keyboard.press(key);
+        actual = await focusInfo(page);
+        item.browserFocusSlots.push({ key, outside, returned: actual });
+        assert(key === "Tab" ? index === 0 : index === selectors.length - 1, "browser UI slot is only allowed at modal ends");
+        assert(outside.nativeModal, "dialog must still be native modal");
+        assert.equal(outside.tag, "BODY", "background controls must remain unreachable");
+        assert.equal(outside.documentFocused, false, "BODY must not retain document focus");
+      }
       item.cycles.push({ key, expected: selectors[index], actual });
-      assert(actual.inDialog && actual.connected && actual.visible, "Tab escaped the visible native dialog");
+      assert(actual.documentFocused && actual.inDialog && actual.connected && actual.visible, "Tab escaped the visible native dialog");
       assert(await page.evaluate(s => document.activeElement.matches(s), selectors[index]), `native ${key} order: ${selectors[index]}`);
     }
   }
@@ -63,7 +77,7 @@ async function closedAtOpener(page, before, item) {
   item.focusAfter = await focusInfo(page);
   assert.deepEqual(item.after, before, "cancellation must preserve scope/draft/approval/request/stop and clear pending Stop");
   assert(await page.evaluate(() => document.activeElement === window.keyboardOpener && window.keyboardOpener.isConnected), "dismissal must return to the exact connected opener");
-  assert(item.focusAfter.visible, "returned opener must be visible");
+  assert(item.focusAfter.documentFocused && item.focusAfter.visible, "returned opener must have visible document focus");
 }
 
 (async () => {
@@ -92,6 +106,8 @@ async function closedAtOpener(page, before, item) {
             document.documentElement.dataset.theme = theme;
             render();
             window.keyboardEvents = [];
+            window.focusEvents = [];
+            document.addEventListener("focusin", e => window.focusEvents.push({ tag: e.target.tagName, id: e.target.id, action: e.target.dataset.action || null, modalBackground: document.getElementById("dialog").open && document.getElementById("dialog").matches(":modal") && !e.target.closest("#dialog") }));
             document.addEventListener("keydown", e => window.keyboardEvents.push({ type: "keydown", key: e.key, trusted: e.isTrusted }));
             document.addEventListener("click", e => window.keyboardEvents.push({ type: "click", action: e.target.closest("[data-action]")?.dataset.action || null, trusted: e.isTrusted }));
           }, { ...config, kind });
@@ -134,7 +150,7 @@ async function closedAtOpener(page, before, item) {
             item.focusAfter = await focusInfo(page);
             await page.screenshot({ path: path.join(out, `keyboard-${label}-after.png`) });
             assert.equal(item.focusAfter.id, "main", "scope confirmation must focus the newly connected #main");
-            assert(item.focusAfter.connected && item.focusAfter.visible && !item.focusAfter.inDialog);
+            assert(item.focusAfter.documentFocused && item.focusAfter.connected && item.focusAfter.visible && !item.focusAfter.inDialog);
             assert(item.focusAfter.rect.y < 900 && item.focusAfter.rect.y + item.focusAfter.rect.height > 0, "main must intersect the viewport");
             assert.equal(await page.evaluate(() => state.agent), "Claude Code");
             assert.equal(await page.evaluate(() => state.approval), "pending");
@@ -145,7 +161,7 @@ async function closedAtOpener(page, before, item) {
             assert.equal(await page.evaluate(() => state.draft), await page.evaluate(() => seed()));
             await page.keyboard.press("Tab");
             item.nextTab = await focusInfo(page);
-            assert(item.nextTab.inMain && item.nextTab.connected && item.nextTab.visible, "Tab after confirmation must reach workspace controls");
+            assert(item.nextTab.documentFocused && item.nextTab.inMain && item.nextTab.connected && item.nextTab.visible, "Tab after confirmation must reach workspace controls");
           } else {
             await tabTo(page, '[data-action="theme"]');
             const before = await snapshot(page);
@@ -157,7 +173,7 @@ async function closedAtOpener(page, before, item) {
             assert.notEqual(await page.evaluate(() => document.documentElement.dataset.theme), theme);
             assert.deepEqual(item.after, before, "theme render must preserve operation state");
             assert.equal(item.focusAfter.action, "theme", "theme render must retain the equivalent control focus");
-            assert(item.focusAfter.connected && item.focusAfter.visible);
+            assert(item.focusAfter.documentFocused && item.focusAfter.connected && item.focusAfter.visible);
             await page.keyboard.press("Tab");
             assert.equal((await focusInfo(page)).action, "language");
           }
@@ -169,6 +185,8 @@ async function closedAtOpener(page, before, item) {
           await page.screenshot({ path: path.join(out, `keyboard-${label}-failure.png`) });
         } finally {
           item.input = await page.evaluate(() => window.keyboardEvents || []);
+          item.focusEvents = await page.evaluate(() => window.focusEvents || []);
+          assert(item.focusEvents.every(e => !e.modalBackground), `${label}: native modal must never focus a background control`);
           assert(item.input.length > 0 && item.input.every(e => e.trusted), `${label}: all tested input must be trusted browser keyboard/click events`);
           await page.close();
         }
