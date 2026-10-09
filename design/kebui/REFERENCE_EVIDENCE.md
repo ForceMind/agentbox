@@ -18,6 +18,28 @@
 五宽、零外部请求和桌面/手机两张原图；准确浏览器与像素结果见本批 PR。
 下方原始观察记录按其当时范围完整保留。
 
+### 本卡实际资格（2026-10-09 17:55 UTC）
+
+source head `9135c722eb74f32edbadb80b236c9891eb97d10e` 的
+[design job113948449925](https://github.com/ForceMind/agentbox/actions/runs/37968391769/job/113948449925)
+首轮通过。Chromium151.0.7922.34 检查七卡、五宽（360/390/768/1024/1440）、
+Cromma 内容/来源/两个合成面板及 card/panel 文字范围，0出网/0异常。
+PRmerge518fe948 与该 head 同 tree00cd330d；报告中的 board SHA256
+`6e81f1ee9777ef5d964189f0cfdc66a87daeb10e96cc35c8ef828dd42faf7f61` 与源码一致。
+
+独立实际查看两张参考板原图，390×4959 与1440×2505中新增卡的声明、来源、
+分类会话行及 Project/状态差异均可读，无可见裁切/覆盖/横向外溢；没有开放
+P0/P1/P2。两 PNG SHA256 分别为
+`13e7743da3c0e9a3f9189f49a9732feff21b6ba70e12c10fb9599c917ca5f7c9` 与
+`639963523000b023c8287744eb499d00bd3fecbe2d7f6b5968ef5e306ca2ea53`。
+[Artifact11634089929](https://github.com/ForceMind/agentbox/actions/runs/37968391769/artifacts/11634089929)
+ZIP26,814,087bytes/SHA256
+`0893d06252b715bb1139b345bbe244a3570a7ef2451495b744fd6c0d24466200` 已核对。
+其余240图没有本轮重审；这不是 Cromma 原图、真实设备、整体美观或生产资格。
+最后文档组合 head 的完整六套 CI 与合并状态见 [PR169](https://github.com/ForceMind/agentbox/pull/169)，
+不以 source 设计 job 的成功替代最终 head 资格。下方旧记录仍按其原时间点解释。
+
+
 
 整理时间：2026-10-08 UTC。观察者：本批原型实施者（自查）。只读源码快照 HEAD：`fc182c86637198f2dce41e6fbc28106f80831f2a`。未 fetch/改写主 checkout；live main/PR/CI 由集成者另验，不用本地 snapshot 宣布最新生产事实。
 

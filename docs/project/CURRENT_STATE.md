@@ -1,11 +1,37 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-09T17:41:00Z"
+verified_at_utc: "2026-10-09T17:55:00Z"
 verified_by: "kebui-cromma-reference-card"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-09 Cromma 参考卡浏览器与两图通过（17:55 UTC）
+
+[Draft PR169](https://github.com/ForceMind/agentbox/pull/169) source head
+`9135c722eb74f32edbadb80b236c9891eb97d10e` / tree
+`00cd330da80dcd4953400a7aba9b5d20cbebb6a5` 的
+[design job113948449925](https://github.com/ForceMind/agentbox/actions/runs/37968391769/job/113948449925)
+首轮 success。实际 Chromium151.0.7922.34 验证七卡、360/390/768/1024/1440
+五宽、Cromma 两面板的内容/来源及 card/panel 文字范围，0外部请求、0异常。
+准确 PRmerge `518fe948e9346bc9aa3c9f8baab77889e60f079d` 与 source head 同树；
+报告 board SHA256 `6e81f1ee9777ef5d964189f0cfdc66a87daeb10e96cc35c8ef828dd42faf7f61`
+与该源文件逐字节吻合。
+
+[Artifact11634089929](https://github.com/ForceMind/agentbox/actions/runs/37968391769/artifacts/11634089929)
+共26,814,087bytes，ZIP SHA256
+`0893d06252b715bb1139b345bbe244a3570a7ef2451495b744fd6c0d24466200` 已核对。
+独立逐张打开 `reference-board-390.png`（390×4959）及
+`reference-board-1440.png`（1440×2505），新卡的纯合成/未重新看原图声明、
+布局/状态对照与来源均完整可读，无可见裁切/覆盖/横向外溢。source 与两图审查
+均无开放 P0/P1/P2；其余240图未本轮重审，不外推设备、上游实测或全面美观资格。
+
+source 五套 workflow 已 success，普通 E2E 尚运行；本次仅补已取得的资格文档，
+最后组合 head 完整六套及合并状态另按 [PR169](https://github.com/ForceMind/agentbox/pull/169)
+准确回读，不借 source 步骤成功称最终 CI 完成。保持 Draft 交父任务合并协调。
+Cromma 卡仍仅据 R1 既有文字，不获取或转载私人原图；主原型/生产/U2/API/Runtime/
+U3/host/release/deploy 均不改，只关闭该参考卡缺项，不宣称 U0 整体退出。
 
 ## 2026-10-09 Cromma 纯合成参考卡候选（17:41 UTC）
 
