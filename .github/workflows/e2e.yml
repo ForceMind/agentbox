@@ -100,6 +100,7 @@ jobs:
           node design/kebui/verify-dom.cjs
           node design/kebui/verify.cjs
           node design/kebui/verify-references.cjs
+          node design/kebui/verify-long-text.cjs
       - name: Verify six-core native browser zoom baseline
         env:
           KEBUI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -132,6 +133,7 @@ jobs:
             design/kebui/evidence/*.png
             design/kebui/evidence/verification.json
             design/kebui/evidence/reference-verification.json
+            design/kebui/evidence/long-text-verification.json
             design/kebui/evidence/browser-zoom-*.json
           if-no-files-found: warn
           retention-days: 7
