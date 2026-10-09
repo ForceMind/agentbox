@@ -1,11 +1,31 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-09T12:41:00Z"
-verified_by: "kebui-u1-long-text-qualification"
+verified_at_utc: "2026-10-09T15:15:00Z"
+verified_by: "kebui-u1-keyboard-focus-qualification"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-09 U1 键盘焦点最小修复候选（15:15 UTC）
+
+Live main 为 PR167 合并提交 `120b12310628745248fe40586915f1f4b20f37ae`，
+tree `4a5941660273fa66f33ea1ccf158e87b7f86dfbe`；六套准确主线 CI 均 success。
+下方 PR167 待合并文字是历史，不覆盖 live read-back。
+
+[Draft PR168](https://github.com/ForceMind/agentbox/pull/168) 补既定 U1 键盘证据。
+先在未修改产品的两轮真实 Chromium 中保留 RED：校准 browser-UI 焦点槽后，
+1280px 中文浅色与390px英文深色两种原生dialog的16次Escape/Cancel开关、
+双向Tab循环、精确opener回焦与完整合成状态保持通过，0底层focusin。
+只有确认范围和主题render共4例在document仍有焦点时落到BODY。
+
+候选仅各增加一条focus：确认范围后连接中的`#main`，及主题重绘后的同一控件。
+原生dialog、scope/approval/exact Stop状态与权限代码不改，无自定义trap。
+[完整证据及边界](../../design/kebui/KEYBOARD_FOCUS_QUALIFICATION.md)保留初始
+与校准RED的准确head/CI/artifact。原报告、独审与实际像素查看范围分别记录。
+新修复后的浏览器、全部既有CI和最终组合head六套终态尚待；不以旧绿色代替。
+保持Draft，父任务协调合并；无U2/API/Runtime、U3、真实host、release/deploy。
+
 
 ## 2026-10-09 U1 长文本修复候选（12:41 UTC）
 

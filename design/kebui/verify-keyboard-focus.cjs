@@ -25,6 +25,7 @@ async function focusInfo(page) {
     const r = el.getBoundingClientRect();
     return { documentFocused: document.hasFocus(), nativeModal: document.getElementById("dialog").matches(":modal") && document.getElementById("dialog").open, tag: el.tagName, id: el.id, action: el.dataset.action || null,
       connected: el.isConnected, visible: !!(r.width && r.height) && getComputedStyle(el).visibility !== "hidden",
+      inViewport: r.left < innerWidth && r.right > 0 && r.top < innerHeight && r.bottom > 0,
       inDialog: !!el.closest("#dialog"), inMain: !!el.closest("#main"),
       rect: { x: r.x, y: r.y, width: r.width, height: r.height },
     };
@@ -77,7 +78,7 @@ async function closedAtOpener(page, before, item) {
   item.focusAfter = await focusInfo(page);
   assert.deepEqual(item.after, before, "cancellation must preserve scope/draft/approval/request/stop and clear pending Stop");
   assert(await page.evaluate(() => document.activeElement === window.keyboardOpener && window.keyboardOpener.isConnected), "dismissal must return to the exact connected opener");
-  assert(item.focusAfter.documentFocused && item.focusAfter.visible, "returned opener must have visible document focus");
+  assert(item.focusAfter.documentFocused && item.focusAfter.visible && item.focusAfter.inViewport, "returned opener must have visible document focus");
 }
 
 (async () => {
@@ -150,7 +151,7 @@ async function closedAtOpener(page, before, item) {
             item.focusAfter = await focusInfo(page);
             await page.screenshot({ path: path.join(out, `keyboard-${label}-after.png`) });
             assert.equal(item.focusAfter.id, "main", "scope confirmation must focus the newly connected #main");
-            assert(item.focusAfter.documentFocused && item.focusAfter.connected && item.focusAfter.visible && !item.focusAfter.inDialog);
+            assert(item.focusAfter.documentFocused && item.focusAfter.connected && item.focusAfter.visible && item.focusAfter.inViewport && !item.focusAfter.inDialog);
             assert(item.focusAfter.rect.y < 900 && item.focusAfter.rect.y + item.focusAfter.rect.height > 0, "main must intersect the viewport");
             assert.equal(await page.evaluate(() => state.agent), "Claude Code");
             assert.equal(await page.evaluate(() => state.approval), "pending");
@@ -161,7 +162,7 @@ async function closedAtOpener(page, before, item) {
             assert.equal(await page.evaluate(() => state.draft), await page.evaluate(() => seed()));
             await page.keyboard.press("Tab");
             item.nextTab = await focusInfo(page);
-            assert(item.nextTab.documentFocused && item.nextTab.inMain && item.nextTab.connected && item.nextTab.visible, "Tab after confirmation must reach workspace controls");
+            assert(item.nextTab.documentFocused && item.nextTab.inMain && item.nextTab.connected && item.nextTab.visible && item.nextTab.inViewport, "Tab after confirmation must reach workspace controls");
           } else {
             await tabTo(page, '[data-action="theme"]');
             const before = await snapshot(page);
@@ -173,7 +174,7 @@ async function closedAtOpener(page, before, item) {
             assert.notEqual(await page.evaluate(() => document.documentElement.dataset.theme), theme);
             assert.deepEqual(item.after, before, "theme render must preserve operation state");
             assert.equal(item.focusAfter.action, "theme", "theme render must retain the equivalent control focus");
-            assert(item.focusAfter.documentFocused && item.focusAfter.connected && item.focusAfter.visible);
+            assert(item.focusAfter.documentFocused && item.focusAfter.connected && item.focusAfter.visible && item.focusAfter.inViewport);
             await page.keyboard.press("Tab");
             assert.equal((await focusInfo(page)).action, "language");
           }
