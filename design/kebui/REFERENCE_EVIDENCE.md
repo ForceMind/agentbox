@@ -1,5 +1,46 @@
 # U0/U1 reference evidence
 
+## 2026-10-09 Cromma 纯合成参考卡
+
+本次仅据 [KEBUI_UI_DESIGN.md R1](../../docs/project/KEBUI_UI_DESIGN.md) 的
+2026-10-07 原作者文字记录，在 [参考板](reference-board.html) 补一张 Cromma 卡。
+观察方式为读取既有文字；本批实施者未重新查看原图、访问上游或运行产品。
+原截图、拍摄日期、产品版本与实际功能仍未核验，不作为新的私人来源视觉证据。
+
+卡片以虚构会话 A/B、摘要和时间合成搜索/新建、全部/未读/AI/朋友/群组分类及
+会话行，再对照 Kebui 提案中的 Project、实际执行者、执行中/待确认状态。
+“未读”是消息阅读状态，不等于需授权的“待确认”；Project 与执行状态是本仓改造，
+不是宣称 Cromma 具备该能力。采用低门槛会话入口和清楚的待处理层次；不采用品牌、
+私人头像和消息、点阵背景、拟物图标、朋友关系或公开社交。无外部图片/代码入库。
+
+本卡补交付计划 2.1/4 的合成布局与状态对照缺项，不改变五项公开参考的既有19图
+观察证据，也不声称 U0 全部退出、生产能力或最终品牌已获确认。验证沿用既有
+五宽、零外部请求和桌面/手机两张原图；准确浏览器与像素结果见本批 PR。
+下方原始观察记录按其当时范围完整保留。
+
+### 本卡实际资格（2026-10-09 17:55 UTC）
+
+source head `9135c722eb74f32edbadb80b236c9891eb97d10e` 的
+[design job113948449925](https://github.com/ForceMind/agentbox/actions/runs/37968391769/job/113948449925)
+首轮通过。Chromium151.0.7922.34 检查七卡、五宽（360/390/768/1024/1440）、
+Cromma 内容/来源/两个合成面板及 card/panel 文字范围，0出网/0异常。
+PRmerge518fe948 与该 head 同 tree00cd330d；报告中的 board SHA256
+`6e81f1ee9777ef5d964189f0cfdc66a87daeb10e96cc35c8ef828dd42faf7f61` 与源码一致。
+
+独立实际查看两张参考板原图，390×4959 与1440×2505中新增卡的声明、来源、
+分类会话行及 Project/状态差异均可读，无可见裁切/覆盖/横向外溢；没有开放
+P0/P1/P2。两 PNG SHA256 分别为
+`13e7743da3c0e9a3f9189f49a9732feff21b6ba70e12c10fb9599c917ca5f7c9` 与
+`639963523000b023c8287744eb499d00bd3fecbe2d7f6b5968ef5e306ca2ea53`。
+[Artifact11634089929](https://github.com/ForceMind/agentbox/actions/runs/37968391769/artifacts/11634089929)
+ZIP26,814,087bytes/SHA256
+`0893d06252b715bb1139b345bbe244a3570a7ef2451495b744fd6c0d24466200` 已核对。
+其余240图没有本轮重审；这不是 Cromma 原图、真实设备、整体美观或生产资格。
+最后文档组合 head 的完整六套 CI 与合并状态见 [PR169](https://github.com/ForceMind/agentbox/pull/169)，
+不以 source 设计 job 的成功替代最终 head 资格。下方旧记录仍按其原时间点解释。
+
+
+
 整理时间：2026-10-08 UTC。观察者：本批原型实施者（自查）。只读源码快照 HEAD：`fc182c86637198f2dce41e6fbc28106f80831f2a`。未 fetch/改写主 checkout；live main/PR/CI 由集成者另验，不用本地 snapshot 宣布最新生产事实。
 
 | 参考              | 来源 / 固定版本                                                                                                                                       | 本批实际观察方式                   | 采用与差异                                                                                              | 缺项 / 影响                                                                            |

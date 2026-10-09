@@ -1,11 +1,58 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-09T16:04:00Z"
-verified_by: "kebui-u1-keyboard-focus-qualification"
+verified_at_utc: "2026-10-09T17:55:00Z"
+verified_by: "kebui-cromma-reference-card"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-09 Cromma 参考卡浏览器与两图通过（17:55 UTC）
+
+[Draft PR169](https://github.com/ForceMind/agentbox/pull/169) source head
+`9135c722eb74f32edbadb80b236c9891eb97d10e` / tree
+`00cd330da80dcd4953400a7aba9b5d20cbebb6a5` 的
+[design job113948449925](https://github.com/ForceMind/agentbox/actions/runs/37968391769/job/113948449925)
+首轮 success。实际 Chromium151.0.7922.34 验证七卡、360/390/768/1024/1440
+五宽、Cromma 两面板的内容/来源及 card/panel 文字范围，0外部请求、0异常。
+准确 PRmerge `518fe948e9346bc9aa3c9f8baab77889e60f079d` 与 source head 同树；
+报告 board SHA256 `6e81f1ee9777ef5d964189f0cfdc66a87daeb10e96cc35c8ef828dd42faf7f61`
+与该源文件逐字节吻合。
+
+[Artifact11634089929](https://github.com/ForceMind/agentbox/actions/runs/37968391769/artifacts/11634089929)
+共26,814,087bytes，ZIP SHA256
+`0893d06252b715bb1139b345bbe244a3570a7ef2451495b744fd6c0d24466200` 已核对。
+独立逐张打开 `reference-board-390.png`（390×4959）及
+`reference-board-1440.png`（1440×2505），新卡的纯合成/未重新看原图声明、
+布局/状态对照与来源均完整可读，无可见裁切/覆盖/横向外溢。source 与两图审查
+均无开放 P0/P1/P2；其余240图未本轮重审，不外推设备、上游实测或全面美观资格。
+
+source 五套 workflow 已 success，普通 E2E 尚运行；本次仅补已取得的资格文档，
+最后组合 head 完整六套及合并状态另按 [PR169](https://github.com/ForceMind/agentbox/pull/169)
+准确回读，不借 source 步骤成功称最终 CI 完成。保持 Draft 交父任务合并协调。
+Cromma 卡仍仅据 R1 既有文字，不获取或转载私人原图；主原型/生产/U2/API/Runtime/
+U3/host/release/deploy 均不改，只关闭该参考卡缺项，不宣称 U0 整体退出。
+
+## 2026-10-09 Cromma 纯合成参考卡候选（17:41 UTC）
+
+Live fetch/read-back main 为 PR168 合并提交
+`9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
+`06eb70dcb01c1ad65243a693c7207455d0d6455e`；六套准确主线 workflow 均 success，
+[E2E37958773790](https://github.com/ForceMind/agentbox/actions/runs/37958773790)。
+下方 PR168 待合并/CI pending 仅为历史，不能覆盖本次 live 核验。
+
+本批只补 [参考板](../../design/kebui/reference-board.html) 缺失的 Cromma 卡：
+仅据 [R1 原作者文字](KEBUI_UI_DESIGN.md)，合成搜索/新建、分类会话行与
+Kebui 的 Project/执行状态改造对照；未重新查看原图、获取或转载私人头像/消息。
+新增内容/来源/无交互控件和五宽文字范围断言，沿用两张桌面/手机图及零出网检查。
+旧六卡对新增静态内容合同为 RED，补卡后同合同 GREEN；这仅为 jsdom 内容检查。
+主原型重新构建后逐字不变；链接、secret/source-boundary、语法与 diff 检查通过。
+SHA256SUMS 刷新现列文件的当前字节，包括既有四项过时哈希，不代表重做其视觉验收。
+
+云端本地 Chromium 试启动仍因 socket EPERM 失败，未宣称本地浏览器或像素通过。
+新 head 的既有六套 CI、参考板五宽/零出网/两张原图和独立像素检查仍待完成。
+保持 Draft 交父任务合并协调；无主原型、U2/API/Runtime、U3、host 或 release/deploy。
+仅收口该参考卡，不重做既有公开图、200% 或焦点资格，不宣称 U0 整体退出。
 
 ## 2026-10-09 U1 键盘焦点源码与8图通过（16:04 UTC）
 
