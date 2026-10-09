@@ -50,6 +50,7 @@ const { execFileSync } = require('node:child_process');
       assert.equal(await page.evaluate(()=>state.phase),'unknown');
       assert.equal(await page.evaluate(()=>state.requestId),id);
       await page.screenshot({path:path.join(out,`long-text-${label}-recovery.png`),fullPage:true});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${label}: recovery horizontal overflow`);
       report.cases.at(-1).outcome='passed';
       await page.close();
     }

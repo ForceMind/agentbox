@@ -15,7 +15,18 @@ exact message/draft retention, untruncated horizontal text geometry, reachable
 Retry and disconnect actions and request identity preservation. It records
 full-page failure/recovery screenshots, errors, requests and source commit.
 
-Current qualification: NOT RUN. Syntax checks do not qualify browser geometry.
+First browser result: RED on source head `d7242af`, PR merge checkout `7e4119f`.
+Chromium 151 passed the two 360px Chinese themes, then the 312-character English
+Project fixture widened the 360px page to 2790px. The full message and error
+wrapped, but the context title, timeline and composer label did not. Original
+artifact `11614898786`, SHA256
+`bf9d59d93b85b65d6adab79540318a611199cf6b4c12860ef057626a6a5e3104`,
+contains raw geometry and the actual overflowing screenshot. Parent inspection
+confirmed the horizontal overflow; this is not a claim that all images were reviewed.
+
+The follow-up adds inherited emergency text wrapping in the main content and
+allows row text containers to shrink. It does not truncate names or hide overflow.
+Its exact-head browser/CI result remains pending. Syntax checks do not qualify browser geometry.
 The first exact-head CI run must preserve a failure rather than assume wrapping
 already works. No production code, transport, backend or scope contract changed.
 This is not physical-device, keyboard-IME, all-page long-text, all-page zoom or
