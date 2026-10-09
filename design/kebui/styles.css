@@ -236,6 +236,12 @@ aside {
   gap: 14px;
   align-items: center;
 }
+.row > div {
+  min-width: 0;
+}
+.main {
+  overflow-wrap: anywhere;
+}
 .row.between {
   justify-content: space-between;
 }
