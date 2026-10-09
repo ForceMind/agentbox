@@ -1,11 +1,32 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-09T16:04:00Z"
-verified_by: "kebui-u1-keyboard-focus-qualification"
+verified_at_utc: "2026-10-09T17:41:00Z"
+verified_by: "kebui-cromma-reference-card"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-09 Cromma 纯合成参考卡候选（17:41 UTC）
+
+Live fetch/read-back main 为 PR168 合并提交
+`9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
+`06eb70dcb01c1ad65243a693c7207455d0d6455e`；六套准确主线 workflow 均 success，
+[E2E37958773790](https://github.com/ForceMind/agentbox/actions/runs/37958773790)。
+下方 PR168 待合并/CI pending 仅为历史，不能覆盖本次 live 核验。
+
+本批只补 [参考板](../../design/kebui/reference-board.html) 缺失的 Cromma 卡：
+仅据 [R1 原作者文字](KEBUI_UI_DESIGN.md)，合成搜索/新建、分类会话行与
+Kebui 的 Project/执行状态改造对照；未重新查看原图、获取或转载私人头像/消息。
+新增内容/来源/无交互控件和五宽文字范围断言，沿用两张桌面/手机图及零出网检查。
+旧六卡对新增静态内容合同为 RED，补卡后同合同 GREEN；这仅为 jsdom 内容检查。
+主原型重新构建后逐字不变；链接、secret/source-boundary、语法与 diff 检查通过。
+SHA256SUMS 刷新现列文件的当前字节，包括既有四项过时哈希，不代表重做其视觉验收。
+
+云端本地 Chromium 试启动仍因 socket EPERM 失败，未宣称本地浏览器或像素通过。
+新 head 的既有六套 CI、参考板五宽/零出网/两张原图和独立像素检查仍待完成。
+保持 Draft 交父任务合并协调；无主原型、U2/API/Runtime、U3、host 或 release/deploy。
+仅收口该参考卡，不重做既有公开图、200% 或焦点资格，不宣称 U0 整体退出。
 
 ## 2026-10-09 U1 键盘焦点源码与8图通过（16:04 UTC）
 
