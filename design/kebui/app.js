@@ -617,12 +617,14 @@ document.addEventListener("click", (event) => {
       state.draft = seed();
       dialog.close();
       navigate("work");
+      document.getElementById("main").focus({ preventScroll: true });
       break;
     }
     case "theme":
       document.documentElement.dataset.theme =
         document.documentElement.dataset.theme === "dark" ? "light" : "dark";
       render();
+      document.querySelector('[data-action="theme"]').focus({ preventScroll: true });
       break;
     case "language":
       state.lang = state.lang === "zh" ? "en" : "zh";

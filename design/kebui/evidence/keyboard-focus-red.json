@@ -1,0 +1,1242 @@
+{
+  "checkout": "fb15e26d86ad39b48dd85060a6d01ba21e3f83de",
+  "head": "bdac5c593d9313cbeb61f56e38b3c6d51ce81189",
+  "scope": "Synthetic U1 Chromium keyboard only: scope and exact Stop dialogs, repeated Escape/Cancel, scope-confirm navigation, same-page theme render. Not screen reader, OS/IME, real device, or production qualification.",
+  "hashes": {
+    "app.js": "2c6a5d0d27689e5965e05f6e8acb8ada568987bb4ffc823ce1d099670d1d917a",
+    "index.html": "6814c591ebaeb2eb2ddf69d76cf663b649e247f1de9805a04ad305e33be184be",
+    "verify-keyboard-focus.cjs": "14ebb5f466b9d844a67115f2482ffe3cd21af4ac6f626bff4f5d56062588547c"
+  },
+  "cases": [
+    {
+      "label": "1280-zh-light-scope-dismiss",
+      "outcome": "failed",
+      "rounds": [
+        {
+          "method": "Escape",
+          "before": {
+            "state": "{\"lang\":\"zh\",\"route\":\"agents\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"idle\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Preserve this synthetic draft\",\"message\":\"Synthetic existing message\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":true,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+            "target": "[\"demo-owner\",\"Meadow\",\"Codex\",\"demo-session-01\",7,1,0]",
+            "pendingStop": null
+          },
+          "cycles": [
+            {
+              "key": "Tab",
+              "expected": "#agent-choice",
+              "actual": {
+                "tag": "SELECT",
+                "id": "agent-choice",
+                "action": null,
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 409,
+                  "y": 492.6875,
+                  "width": 462,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"create-work\"]",
+              "actual": {
+                "tag": "BUTTON",
+                "id": "",
+                "action": "create-work",
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 409,
+                  "y": 560.6875,
+                  "width": 135,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"close\"]",
+              "actual": {
+                "tag": "BUTTON",
+                "id": "",
+                "action": "close",
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 552,
+                  "y": 560.6875,
+                  "width": 60,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "#project-choice",
+              "actual": {
+                "tag": "BODY",
+                "id": "",
+                "action": null,
+                "connected": true,
+                "visible": true,
+                "inDialog": false,
+                "inMain": false,
+                "rect": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1280,
+                  "height": 972.28125
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "error": "Tab escaped the visible native dialog",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 972.28125
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "choose:Claude Code",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "1280-zh-light-stop-dismiss",
+      "outcome": "failed",
+      "rounds": [
+        {
+          "method": "Escape",
+          "before": {
+            "state": "{\"lang\":\"zh\",\"route\":\"recovery\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"running\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Preserve this synthetic draft\",\"message\":\"Synthetic existing message\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":true,\"online\":true,\"recovered\":true,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+            "target": "[\"demo-owner\",\"Meadow\",\"Codex\",\"demo-session-01\",7,1,1]",
+            "pendingStop": null
+          },
+          "cycles": [
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"close\"]",
+              "actual": {
+                "tag": "BUTTON",
+                "id": "",
+                "action": "close",
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 597,
+                  "y": 562.6875,
+                  "width": 60,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"stop-confirm\"]",
+              "actual": {
+                "tag": "BODY",
+                "id": "",
+                "action": null,
+                "connected": true,
+                "visible": true,
+                "inDialog": false,
+                "inMain": false,
+                "rect": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1280,
+                  "height": 934.859375
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "error": "Tab escaped the visible native dialog",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 934.859375
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "recover",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "stop-dialog",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "1280-zh-light-scope-confirm",
+      "outcome": "failed",
+      "after": {
+        "state": "{\"lang\":\"zh\",\"route\":\"work\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Claude Code\",\"phase\":\"idle\",\"approval\":\"pending\",\"revision\":2,\"draft\":\"请修复合成项目 Meadow 的空状态，并补充可访问性测试。\",\"message\":\"\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":false,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+        "target": "[\"demo-owner\",\"Meadow\",\"Claude Code\",\"demo-session-01\",7,2,1]",
+        "pendingStop": null
+      },
+      "focusAfter": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 1141.25
+        }
+      },
+      "error": "scope confirmation must focus the newly connected #main\n\n'' !== 'main'\n",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 1141.25
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "choose:Claude Code",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "create-work",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "1280-zh-light-theme",
+      "outcome": "failed",
+      "focusAfter": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 972.28125
+        }
+      },
+      "after": {
+        "state": "{\"lang\":\"zh\",\"route\":\"agents\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"idle\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Preserve this synthetic draft\",\"message\":\"Synthetic existing message\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":true,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+        "target": "[\"demo-owner\",\"Meadow\",\"Codex\",\"demo-session-01\",7,1,0]",
+        "pendingStop": null
+      },
+      "error": "theme render must retain the equivalent control focus\n\nnull !== 'theme'\n",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 972.28125
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "theme",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "390-en-dark-scope-dismiss",
+      "outcome": "failed",
+      "rounds": [
+        {
+          "method": "Escape",
+          "before": {
+            "state": "{\"lang\":\"en\",\"route\":\"agents\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"idle\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Preserve this synthetic draft\",\"message\":\"Synthetic existing message\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":true,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+            "target": "[\"demo-owner\",\"Meadow\",\"Codex\",\"demo-session-01\",7,1,0]",
+            "pendingStop": null
+          },
+          "cycles": [
+            {
+              "key": "Tab",
+              "expected": "#agent-choice",
+              "actual": {
+                "tag": "SELECT",
+                "id": "agent-choice",
+                "action": null,
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 47,
+                  "y": 504.6875,
+                  "width": 296,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"create-work\"]",
+              "actual": {
+                "tag": "BUTTON",
+                "id": "",
+                "action": "create-work",
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 47,
+                  "y": 572.6875,
+                  "width": 206.53125,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"close\"]",
+              "actual": {
+                "tag": "BUTTON",
+                "id": "",
+                "action": "close",
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 261.53125,
+                  "y": 572.6875,
+                  "width": 81.46875,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "#project-choice",
+              "actual": {
+                "tag": "BODY",
+                "id": "",
+                "action": null,
+                "connected": true,
+                "visible": true,
+                "inDialog": false,
+                "inMain": false,
+                "rect": {
+                  "x": 0,
+                  "y": -422,
+                  "width": 390,
+                  "height": 1321.671875
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "error": "Tab escaped the visible native dialog",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": -422,
+          "width": 390,
+          "height": 1321.671875
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "choose:Claude Code",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "390-en-dark-stop-dismiss",
+      "outcome": "failed",
+      "rounds": [
+        {
+          "method": "Escape",
+          "before": {
+            "state": "{\"lang\":\"en\",\"route\":\"recovery\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"running\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Preserve this synthetic draft\",\"message\":\"Synthetic existing message\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":true,\"online\":true,\"recovered\":true,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+            "target": "[\"demo-owner\",\"Meadow\",\"Codex\",\"demo-session-01\",7,1,1]",
+            "pendingStop": null
+          },
+          "cycles": [
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"close\"]",
+              "actual": {
+                "tag": "BUTTON",
+                "id": "",
+                "action": "close",
+                "connected": true,
+                "visible": true,
+                "inDialog": true,
+                "inMain": false,
+                "rect": {
+                  "x": 47,
+                  "y": 600.6875,
+                  "width": 296,
+                  "height": 44
+                }
+              }
+            },
+            {
+              "key": "Tab",
+              "expected": "[data-action=\"stop-confirm\"]",
+              "actual": {
+                "tag": "BODY",
+                "id": "",
+                "action": null,
+                "connected": true,
+                "visible": true,
+                "inDialog": false,
+                "inMain": false,
+                "rect": {
+                  "x": 0,
+                  "y": -268,
+                  "width": 390,
+                  "height": 1167.625
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "error": "Tab escaped the visible native dialog",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": -268,
+          "width": 390,
+          "height": 1167.625
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "recover",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "stop-dialog",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "390-en-dark-scope-confirm",
+      "outcome": "failed",
+      "after": {
+        "state": "{\"lang\":\"en\",\"route\":\"work\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Claude Code\",\"phase\":\"idle\",\"approval\":\"pending\",\"revision\":2,\"draft\":\"Fix the empty state in synthetic Meadow and add accessibility tests.\",\"message\":\"\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":false,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+        "target": "[\"demo-owner\",\"Meadow\",\"Claude Code\",\"demo-session-01\",7,2,1]",
+        "pendingStop": null
+      },
+      "focusAfter": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 2008.40625
+        }
+      },
+      "error": "scope confirmation must focus the newly connected #main\n\n'' !== 'main'\n",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 2008.40625
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "choose:Claude Code",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "create-work",
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "label": "390-en-dark-theme",
+      "outcome": "failed",
+      "focusAfter": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 1321.671875
+        }
+      },
+      "after": {
+        "state": "{\"lang\":\"en\",\"route\":\"agents\",\"scenario\":\"success\",\"project\":\"Meadow\",\"agent\":\"Codex\",\"phase\":\"idle\",\"approval\":\"approved\",\"revision\":1,\"draft\":\"Preserve this synthetic draft\",\"message\":\"Synthetic existing message\",\"requestId\":\"\",\"requestCount\":0,\"acceptedCount\":0,\"sendAttempts\":0,\"admitted\":true,\"online\":true,\"recovered\":false,\"stopped\":false,\"filter\":\"all\",\"search\":\"\",\"scroll\":0,\"large\":false}",
+        "target": "[\"demo-owner\",\"Meadow\",\"Codex\",\"demo-session-01\",7,1,0]",
+        "pendingStop": null
+      },
+      "error": "theme render must retain the equivalent control focus\n\nnull !== 'theme'\n",
+      "failureFocus": {
+        "tag": "BODY",
+        "id": "",
+        "action": null,
+        "connected": true,
+        "visible": true,
+        "inDialog": false,
+        "inMain": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 1321.671875
+        }
+      },
+      "input": [
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Tab",
+          "trusted": true
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "trusted": true
+        },
+        {
+          "type": "click",
+          "action": "theme",
+          "trusted": true
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "browser": "151.0.7922.34"
+}
