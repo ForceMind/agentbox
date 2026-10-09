@@ -1,11 +1,28 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-08T20:32:00Z"
-verified_by: "kebui-browser-zoom-scroll-sync"
+verified_at_utc: "2026-10-09T12:41:00Z"
+verified_by: "kebui-u1-long-text-qualification"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-09 U1 长文本修复候选（12:41 UTC）
+
+现有主线为 PR166 合并提交 `fdef24785d9a2ca04c5bbe9b05224bbd52e40a22`，
+其六套准确主线 CI 已全部成功。下方 PR165 失败是保留的历史，不代表当前主线状态。
+
+PR167 补齐既定 U1 的 360/390px 中英文长消息、Project 名称与错误提示压力检查。
+首轮测试实际复现 312 字符英文 Project 将 360px 页面撑到 2790px；修复只增加
+正文应急换行与 flex 子容器收缩，不隐藏、截断文字，不改请求逻辑。
+
+候选 `f8e0dc264b75c5140b73e5f29c01308856382ce1` 的真实设计浏览器检查已通过：
+8 组长文本与原生 200% 的 48 组核心页回归均过，零页面错误/外部请求。
+原 RED 与新 artifact 的 SHA、范围及像素抽检说明见
+[长文本资格记录](../../design/kebui/LONG_TEXT_QUALIFICATION.md)。
+源审未见阻断；后继加固每个文本 selector 的存在断言。最终组合 head 的完整 CI、
+合并与准确主线回读仍待，不以设计 job 通过冒称全部交付。无 U3、正式发布或部署。
+
 
 ## 2026-10-08 主线U1滚动同步补验（20:32 UTC）
 

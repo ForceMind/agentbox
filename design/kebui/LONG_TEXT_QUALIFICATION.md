@@ -26,8 +26,22 @@ confirmed the horizontal overflow; this is not a claim that all images were revi
 
 The follow-up adds inherited emergency text wrapping in the main content and
 allows row text containers to shrink. It does not truncate names or hide overflow.
-Its exact-head browser/CI result remains pending. Syntax checks do not qualify browser geometry.
-The first exact-head CI run must preserve a failure rather than assume wrapping
-already works. No production code, transport, backend or scope contract changed.
+Source `f8e0dc264b75c5140b73e5f29c01308856382ce1` design job
+`113818581491` passed on its first run. All eight long-text combinations passed,
+with document widths exactly 360/390 and zero page errors/external requests.
+The previously failing 360px English layout now remains 360px wide. Parent
+inspection opened the actual full-page English light failure-state screenshot;
+this does not claim all 16 new screenshots were visually reviewed.
+
+Artifact `11616205517` is 25,932,301 bytes with verified SHA256
+`dd2078d45b82883f43dacd50e0dc33f294e06a017fa0d233fbb8d4a60da67926`.
+Its eight native browser-zoom reports also pass their six core screens (48
+combinations), retaining the existing bounded native 200% regression. The long
+text check itself remains at normal zoom. PR merge checkout is `53c475f`.
+
+Independent source review found no blocker and suggested requiring every text
+selector to be present. The follow-up strengthens that assertion without
+changing product CSS/HTML. Its final exact-head full CI remains pending.
+No transport, backend, permissions or scope contract changed.
 This is not physical-device, keyboard-IME, all-page long-text, all-page zoom or
 production integration qualification. No real credentials or private content.
