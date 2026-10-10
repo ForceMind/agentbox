@@ -1,29 +1,72 @@
-"""Default-off K2 admission candidate for synthetic, metadata-only test ports.
+"""Default-off synthetic admission; no production source or execution writer.
 
-There is no production constructor, wire action, content processor or execution
-writer here. The journal's active-turn reservation does not authorize a writer.
-S03 immutable content equality and a production current-owner port remain absent.
+The journal alone owns durable operation state. Sealed in-memory test content
+adds no S03 authentication, wire action or production current-owner authority.
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from collections.abc import Awaitable, Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, fields
 from enum import StrEnum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from agentbox_core.kebui_observation import ConversationScope, KebuiObservationError, parse_scope
 
 SYNTHETIC_ADAPTER_PROFILE = "kebui-synthetic-adapter-v1"
 MAX_REVISION = 2**64 - 1
 
+if TYPE_CHECKING:
+    from .kebui_content_admission import (
+        SyntheticBodyConsumer,
+        SyntheticContentHandle,
+        SyntheticContentIssuer,
+    )
+
+_SAFE_CODES = frozenset(
+    {
+        "already_initialized",
+        "busy",
+        "capacity",
+        "cas_conflict",
+        "claim_retired",
+        "commit_uncertain",
+        "conflict",
+        "directory_changed",
+        "invalid_directory",
+        "invalid_inventory",
+        "invalid_metadata",
+        "invalid_snapshot",
+        "invalid_transition",
+        "not_observed",
+        "read_only",
+        "revision_exhausted",
+        "snapshot_changed",
+        "store_unavailable",
+        "disabled",
+        "owner_unavailable",
+        "content_unavailable",
+        "invalid_content",
+    }
+)
+
 
 class KebuiAdmissionError(RuntimeError):
     """Fixed safe error codes, never copied content, paths or adapter errors."""
+
+
+def _safe_code(error: BaseException, fallback: str) -> str:
+    if (
+        type(error) is KebuiAdmissionError
+        and len(error.args) == 1
+        and type(error.args[0]) is str
+        and error.args[0] in _SAFE_CODES
+    ):
+        return error.args[0]
+    return fallback
 
 
 class AdmissionPhase(StrEnum):
@@ -85,10 +128,9 @@ class AdmissionRequest:
             or self.operation != "submit_turn"
         ):
             raise KebuiAdmissionError("invalid_metadata")
-        try:
+        validated = None
+        with suppress(KebuiObservationError, AttributeError, TypeError, ValueError):
             validated = parse_scope(scope_metadata(self.scope))
-        except (KebuiObservationError, AttributeError, TypeError, ValueError):
-            raise KebuiAdmissionError("invalid_metadata") from None
         if validated != self.scope:
             raise KebuiAdmissionError("invalid_metadata")
 
@@ -163,23 +205,22 @@ class SyntheticCurrentOwnerPort(Protocol):
     def guard(self, scope: ConversationScope) -> AbstractContextManager[SyntheticOwnerContext]:
         """Test-only exact context and exclusive structured/no-TUI writer guard.
 
-        Retain the exclusion while entered, including an awaited synthetic
-        dispatch. The effect port must use this same guard at its effect boundary.
-        A context boolean or successful metadata validation is not authentication.
+        Exclude replacement while entered. Readiness awaits hold neither this
+        guard nor the pool lock; the fixed effect reacquires this guard followed
+        by the pool and rechecks exact currentness after the last await. A context
+        boolean or successful metadata validation is not authentication.
         """
         ...
 
 
-class SyntheticContentAdmissionPort(Protocol):
-    def validate(self, request: AdmissionRequest) -> bool:
-        """Prove a current immutable SYNTHETIC binding; never accept body/hash."""
-        ...
-
-
 class SyntheticDispatchPort(Protocol):
+    consumer: SyntheticBodyConsumer
+
     def dispatch(
-        self, request: AdmissionRequest, execution_id: str
-    ) -> Awaitable[SyntheticDispatchReceipt]: ...
+        self, request: AdmissionRequest, execution_id: str, handle: SyntheticContentHandle
+    ) -> Awaitable[None]:
+        """Synthetic readiness only: no body access, effect or receipt before return."""
+        ...
 
 
 class AdmissionJournalPort(Protocol):
@@ -200,8 +241,19 @@ class AdmissionJournalPort(Protocol):
     ) -> AdmissionRecord: ...
 
 
+@dataclass(slots=True, repr=False)
+class _WorkerClaim:
+    handle: SyntheticContentHandle
+    ready: asyncio.Event
+    slot: int
+    record: AdmissionRecord | None = None
+    task: asyncio.Task[AdmissionRecord] | None = None
+    armed: bool = False
+    retired: bool = False
+
+
 class KebuiTestAdmissionOwner:
-    """Inert test composition; owns waiters, not processes or production writers."""
+    """Inert test composition; metadata readers need no surviving body issuer."""
 
     __test__ = False
 
@@ -209,143 +261,331 @@ class KebuiTestAdmissionOwner:
         self,
         journal: AdmissionJournalPort,
         current_owner: SyntheticCurrentOwnerPort,
-        content_admission: SyntheticContentAdmissionPort,
+        content_admission: SyntheticContentIssuer | None,
         dispatch: SyntheticDispatchPort,
         *,
         enabled: bool = False,
     ) -> None:
+        from .kebui_content_admission import (
+            MAX_ENTRIES,
+            SyntheticBodyConsumer,
+            SyntheticContentIssuer,
+        )
+
         self._journal = journal
         self._owner = current_owner
         self._content = content_admission
         self._dispatch = dispatch
         self._enabled = enabled is True
         self._workers: set[asyncio.Task[AdmissionRecord]] = set()
+        # Reserve reliable metadata ownership before acceptance, independent of
+        # fallible Task/set/callback registration after the journal commits.
+        self._claims: list[_WorkerClaim | None] = [None] * MAX_ENTRIES
+        self._consumer: SyntheticBodyConsumer | None = None
+        code: str | None = None
+        try:
+            if content_admission is not None:
+                if type(content_admission) is not SyntheticContentIssuer:
+                    raise KebuiAdmissionError("content_unavailable")
+                consumer = dispatch.consumer
+                if type(consumer) is not SyntheticBodyConsumer:
+                    raise KebuiAdmissionError("content_unavailable")
+                self._consumer = consumer
+                content_admission._bind(self, current_owner, journal)
+        except Exception as error:
+            code = _safe_code(error, "content_unavailable")
+        if code is not None:
+            raise KebuiAdmissionError(code)
 
     @contextmanager
     def _guard(self, request: AdmissionRequest) -> Iterator[SyntheticOwnerContext]:
         if type(request) is not AdmissionRequest:
             raise KebuiAdmissionError("invalid_metadata")
+        entered = False
         try:
             guard = self._owner.guard(request.scope)
             context = guard.__enter__()
+            entered = True
         except Exception:
-            raise KebuiAdmissionError("owner_unavailable") from None
+            pass
+        if not entered:
+            raise KebuiAdmissionError("owner_unavailable")
+        code: str | None = None
+        canceled = False
         try:
             yield context
-        except BaseException:
-            try:
-                guard.__exit__(*sys.exc_info())
-            except Exception:
-                raise KebuiAdmissionError("owner_unavailable") from None
-            # Ports cannot suppress journal/CAS/dispatch failures.
-            raise
-        else:
+        except asyncio.CancelledError:
+            canceled = True
+        except Exception as error:
+            code = _safe_code(error, "store_unavailable")
+        finally:
+            # Never give a port an original error/body, or allow it to suppress a
+            # journal/CAS failure. Exit failures are rebuilt outside the handler.
             try:
                 guard.__exit__(None, None, None)
             except Exception:
-                raise KebuiAdmissionError("owner_unavailable") from None
+                code = "owner_unavailable"
+        if canceled:
+            raise asyncio.CancelledError
+        if code is not None:
+            raise KebuiAdmissionError(code)
 
-    def _validate(self, request: AdmissionRequest, context: SyntheticOwnerContext) -> None:
-        if not self._enabled:
-            raise KebuiAdmissionError("disabled")
+    def _validate_metadata(self, request: AdmissionRequest, context: SyntheticOwnerContext) -> None:
+        self._check_enabled()
         if type(request) is not AdmissionRequest or type(context) is not SyntheticOwnerContext:
             raise KebuiAdmissionError("owner_unavailable")
         if context.scope != request.scope:
             raise KebuiAdmissionError("owner_unavailable")
         validate_id(context.execution_id, "kexe_")
-        try:
-            valid = self._content.validate(request)
-        except Exception:
-            raise KebuiAdmissionError("content_unavailable") from None
-        if valid is not True:
-            raise KebuiAdmissionError("content_unavailable")
 
     def _check_enabled(self) -> None:
         if not self._enabled:
             raise KebuiAdmissionError("disabled")
 
-    async def submit(self, request: AdmissionRequest) -> AdmissionRecord:
-        self._check_enabled()
-        with self._guard(request) as context:
-            self._validate(request, context)
-            record, created = self._journal.accept(request, context.execution_id)
-        if not created:
-            return record
-        # No await between durable acceptance and retaining the worker. Caller
-        # cancellation only stops shielded waiting, never retires a dispatch claim.
-        worker = asyncio.create_task(self._run(record))
+    def _reserve_claim(self, handle: SyntheticContentHandle) -> _WorkerClaim:
+        for index, existing in enumerate(self._claims):
+            if existing is None:
+                claim = _WorkerClaim(handle, asyncio.Event(), index)
+                self._claims[index] = claim
+                return claim
+        raise KebuiAdmissionError("capacity")
+
+    def _retain_worker(self, worker: asyncio.Task[AdmissionRecord]) -> None:
         self._workers.add(worker)
+
+    def _register_worker(self, worker: asyncio.Task[AdmissionRecord]) -> None:
         worker.add_done_callback(self._worker_done)
-        return await asyncio.shield(worker)
+
+    async def submit(
+        self, request: AdmissionRequest, handle: SyntheticContentHandle | None = None
+    ) -> AdmissionRecord:
+        from .kebui_content_admission import SyntheticContentHandle
+
+        claim: _WorkerClaim | None = None
+        record: AdmissionRecord | None = None
+        durable = False
+        failed = False
+        canceled = False
+        code = "content_unavailable"
+        coroutine = None
+        try:
+            self._check_enabled()
+            with self._guard(request) as context:
+                self._validate_metadata(request, context)
+                if self._content is None or type(handle) is not SyntheticContentHandle:
+                    raise KebuiAdmissionError("content_unavailable")
+                with self._content._locked():
+                    entry = self._content._entry(handle, self, request, context.execution_id)
+                    previous = self._journal.read(request)
+                    if previous is not None:
+                        # A duplicate NEVER reconstructs a witness from equality
+                        # of record values, an issued ref, or recreated bytes.
+                        if not entry.accepted_once:
+                            raise KebuiAdmissionError("content_unavailable")
+                        record, created = self._journal.accept(request, context.execution_id)
+                        if created:
+                            raise KebuiAdmissionError("store_unavailable")
+                    else:
+                        if entry.accepted_once:
+                            raise KebuiAdmissionError("content_unavailable")
+                        claim = self._reserve_claim(handle)
+                        self._content._reserve_worker(entry)
+                        record, created = self._journal.accept(request, context.execution_id)
+                        if not created:
+                            raise KebuiAdmissionError("content_unavailable")
+                        durable = True
+                        claim.record = record
+                        self._content._accept_witness(entry)
+                        coroutine = self._run(claim)
+                        worker = asyncio.create_task(coroutine)
+                        if not isinstance(worker, asyncio.Task):
+                            raise KebuiAdmissionError("store_unavailable")
+                        claim.task = worker
+                        self._retain_worker(worker)
+                        self._register_worker(worker)
+            # Even eager factories can only await an unarmed gate. Owner guard
+            # exit, retention and callback registration must all succeed first.
+            if claim is not None:
+                claim.armed = True
+                claim.ready.set()
+        except asyncio.CancelledError:
+            failed = True
+            canceled = True
+        except Exception as error:
+            failed = True
+            code = _safe_code(error, "store_unavailable")
+        if failed:
+            if claim is not None:
+                claim.armed = False
+                if self._content is not None:
+                    self._content._revoke(claim.handle)
+                if claim.task is not None:
+                    claim.task.cancel()
+                    # No locks span this drain. Until the unarmed task actually
+                    # retires its reserved slot and payload remain charged.
+                    with suppress(Exception, asyncio.CancelledError):
+                        await claim.task
+                elif coroutine is not None:
+                    coroutine.close()
+                self._retire_claim(claim)
+            elif self._content is not None and type(handle) is SyntheticContentHandle:
+                self._content._discard_prepared(handle)
+            if durable:
+                # This call is OUTSIDE the original exception handler: secondary
+                # journal errors cannot inherit port/body exceptions as context.
+                record = self._unknown(request)
+                if not canceled:
+                    return record
+            if canceled:
+                raise asyncio.CancelledError
+            raise KebuiAdmissionError(code)
+        if record is None:
+            raise KebuiAdmissionError("store_unavailable")
+        if claim is None:
+            return record
+        if claim.task is None:
+            raise KebuiAdmissionError("store_unavailable")
+        # A canceled waiter never cancels the admitted worker or its resources.
+        return await asyncio.shield(claim.task)
+
+    def _retire_claim(self, claim: _WorkerClaim) -> None:
+        if claim.retired:
+            return
+        claim.retired = True
+        self._claims[claim.slot] = None
+        if claim.task is not None:
+            self._workers.discard(claim.task)
+        if self._content is not None:
+            self._content._worker_retired(claim.handle)
 
     def _worker_done(self, worker: asyncio.Task[AdmissionRecord]) -> None:
+        for claim in self._claims:
+            if claim is not None and claim.task is worker:
+                self._retire_claim(claim)
+                break
         self._workers.discard(worker)
         if not worker.cancelled():
-            worker.exception()  # Retrieve errors even if the caller left.
+            worker.exception()
 
     async def wait_for_idle(self) -> None:
         """Drain retained fake workers; this is not a cancellation operation."""
-        if self._workers:
-            await asyncio.gather(*(asyncio.shield(worker) for worker in tuple(self._workers)))
+        tasks = tuple(claim.task for claim in self._claims if claim is not None and claim.task)
+        if tasks:
+            await asyncio.gather(
+                *(asyncio.shield(worker) for worker in tasks), return_exceptions=True
+            )
+        for claim in self._claims:
+            if claim is not None and claim.task is not None and claim.task.done():
+                self._retire_claim(claim)
 
-    async def _run(self, accepted: AdmissionRecord) -> AdmissionRecord:
-        request = accepted.request
-        current = accepted
+    def _unknown(self, request: AdmissionRequest) -> AdmissionRecord:
+        result: AdmissionRecord | None = None
+        code = "store_unavailable"
         try:
-            with self._guard(request) as context:
-                self._validate(request, context)
-                if context.execution_id != accepted.execution_id:
-                    raise KebuiAdmissionError("owner_unavailable")
-                current = self._journal.transition(
-                    request, accepted.record_revision, AdmissionPhase.DISPATCH_FENCED
-                )
-                # No journal lock spans the port; the exact owner guard does.
-                receipt = await self._dispatch.dispatch(request, context.execution_id)
-            with self._guard(request) as context:
-                self._validate(request, context)
-                if context.execution_id != accepted.execution_id:
-                    raise KebuiAdmissionError("owner_unavailable")
-                if type(receipt) is not SyntheticDispatchReceipt:
-                    raise KebuiAdmissionError("invalid_metadata")
-                return self._journal.transition(
-                    request,
-                    current.record_revision,
-                    AdmissionPhase.ACKNOWLEDGED,
-                    receipt_ref=receipt.receipt_ref,
-                )
-        except (Exception, asyncio.CancelledError):
-            # UNKNOWN is conservative bookkeeping, not dispatch or fresh authority.
-            # A winning rejection/terminal/recovery must never be overwritten.
             observed = self._journal.read(request)
             if observed is None:
-                raise KebuiAdmissionError("not_observed") from None
+                raise KebuiAdmissionError("not_observed")
             if observed.phase in FINISHED_PHASES or observed.phase is AdmissionPhase.UNKNOWN:
-                return observed
-            return self._journal.transition(
-                request, observed.record_revision, AdmissionPhase.UNKNOWN
-            )
+                result = observed
+            else:
+                result = self._journal.transition(
+                    request, observed.record_revision, AdmissionPhase.UNKNOWN
+                )
+        except Exception as error:
+            code = _safe_code(error, "store_unavailable")
+        if result is None:
+            raise KebuiAdmissionError(code)
+        return result
+
+    async def _run(self, claim: _WorkerClaim) -> AdmissionRecord:
+        accepted = claim.record
+        if accepted is None:
+            raise KebuiAdmissionError("store_unavailable")
+        request = accepted.request
+        result: AdmissionRecord | None = None
+        try:
+            try:
+                await claim.ready.wait()
+                if not claim.armed or self._content is None or self._consumer is None:
+                    raise KebuiAdmissionError("content_unavailable")
+                with self._guard(request) as context:
+                    self._validate_metadata(request, context)
+                    if context.execution_id != accepted.execution_id:
+                        raise KebuiAdmissionError("owner_unavailable")
+                    with self._content._locked():
+                        self._content._entry(
+                            claim.handle, self, request, context.execution_id, accepted=True
+                        )
+                        current = self._journal.transition(
+                            request, accepted.record_revision, AdmissionPhase.DISPATCH_FENCED
+                        )
+                # Only the opaque handle crosses this await, never a body borrow.
+                await self._dispatch.dispatch(request, accepted.execution_id, claim.handle)
+                with self._guard(request) as context:
+                    self._validate_metadata(request, context)
+                    if context.execution_id != accepted.execution_id:
+                        raise KebuiAdmissionError("owner_unavailable")
+                    with self._content._locked():
+                        observed = self._journal.read(request)
+                        if observed != current:
+                            raise KebuiAdmissionError("cas_conflict")
+                        receipt = self._content._effect(
+                            claim.handle, self, request, context.execution_id, self._consumer
+                        )
+                        result = self._journal.transition(
+                            request,
+                            current.record_revision,
+                            AdmissionPhase.ACKNOWLEDGED,
+                            receipt_ref=receipt.receipt_ref,
+                        )
+            except (Exception, asyncio.CancelledError):
+                # A guard exit can fail AFTER the effect and ACK commit. Do not
+                # let that captured result bypass conservative UNKNOWN handling.
+                result = None
+            if result is None:
+                if self._content is not None:
+                    self._content._revoke(claim.handle)
+                result = self._unknown(request)
+            return result
+        finally:
+            self._retire_claim(claim)
 
     def read(self, request: AdmissionRequest) -> AdmissionRecord | None:
-        self._check_enabled()
-        with self._guard(request) as context:
-            self._validate(request, context)
-            record = self._journal.read(request)
-            if record is not None and record.execution_id != context.execution_id:
-                raise KebuiAdmissionError("owner_unavailable")
-            return record
+        result: AdmissionRecord | None = None
+        code: str | None = None
+        try:
+            self._check_enabled()
+            with self._guard(request) as context:
+                self._validate_metadata(request, context)
+                result = self._journal.read(request)
+                if result is not None and result.execution_id != context.execution_id:
+                    raise KebuiAdmissionError("owner_unavailable")
+        except Exception as error:
+            code = _safe_code(error, "store_unavailable")
+        if code is not None:
+            raise KebuiAdmissionError(code)
+        return result
 
     def reject_before_dispatch(
         self, request: AdmissionRequest, expected_revision: str
     ) -> AdmissionRecord:
-        self._check_enabled()
-        with self._guard(request) as context:
-            self._validate(request, context)
-            record = self._journal.read(request)
-            if record is None or record.execution_id != context.execution_id:
-                raise KebuiAdmissionError("owner_unavailable")
-            return self._journal.transition(
-                request, expected_revision, AdmissionPhase.REJECTED_BEFORE_DISPATCH
-            )
+        result: AdmissionRecord | None = None
+        code: str | None = None
+        try:
+            self._check_enabled()
+            with self._guard(request) as context:
+                self._validate_metadata(request, context)
+                record = self._journal.read(request)
+                if record is None or record.execution_id != context.execution_id:
+                    raise KebuiAdmissionError("owner_unavailable")
+                result = self._journal.transition(
+                    request, expected_revision, AdmissionPhase.REJECTED_BEFORE_DISPATCH
+                )
+        except Exception as error:
+            code = _safe_code(error, "store_unavailable")
+        if code is not None or result is None:
+            raise KebuiAdmissionError(code or "store_unavailable")
+        return result
 
     def acknowledge_terminal(
         self,
@@ -353,18 +593,26 @@ class KebuiTestAdmissionOwner:
         expected_revision: str,
         receipt: SyntheticTerminalReceipt,
     ) -> AdmissionRecord:
-        self._check_enabled()
-        if type(receipt) is not SyntheticTerminalReceipt:
-            raise KebuiAdmissionError("invalid_metadata")
-        with self._guard(request) as context:
-            self._validate(request, context)
-            record = self._journal.read(request)
-            if record is None or record.execution_id != context.execution_id:
-                raise KebuiAdmissionError("owner_unavailable")
-            return self._journal.transition(
-                request,
-                expected_revision,
-                AdmissionPhase.TERMINAL,
-                receipt_ref=receipt.receipt_ref,
-                terminal_status=receipt.status,
-            )
+        result: AdmissionRecord | None = None
+        code: str | None = None
+        try:
+            self._check_enabled()
+            if type(receipt) is not SyntheticTerminalReceipt:
+                raise KebuiAdmissionError("invalid_metadata")
+            with self._guard(request) as context:
+                self._validate_metadata(request, context)
+                record = self._journal.read(request)
+                if record is None or record.execution_id != context.execution_id:
+                    raise KebuiAdmissionError("owner_unavailable")
+                result = self._journal.transition(
+                    request,
+                    expected_revision,
+                    AdmissionPhase.TERMINAL,
+                    receipt_ref=receipt.receipt_ref,
+                    terminal_status=receipt.status,
+                )
+        except Exception as error:
+            code = _safe_code(error, "store_unavailable")
+        if code is not None or result is None:
+            raise KebuiAdmissionError(code or "store_unavailable")
+        return result
