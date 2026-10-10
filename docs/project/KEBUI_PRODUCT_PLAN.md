@@ -623,8 +623,9 @@ Do not jump directly to automatic multi-agent routing.
 
 Brand/product planning actions:
 
-1. Owner confirms whether `kebui.com` and optionally `qebui.com` were
-   registered.
+1. Owner reported purchasing `kebui.com` and `qebui.com` on 2026-10-08;
+   see [brand record](KEBUI_BRAND.md). Technical control, DNS and availability
+   remain unverified; do not ask again whether the purchase happened.
 2. Run a dedicated naming/trademark conflict review before public launch.
 3. Keep the current repository and runtime names unchanged for now.
 4. Complete the existing bounded UI/release plan already in progress.
@@ -634,9 +635,15 @@ Brand/product planning actions:
    Project/agent contracts before changing runtime authority.
 7. Only then schedule implementation slices.
 
-The UI planning deliverable is now documented. Its next visible deliverables are
-reference-backed desktop/mobile designs and the synthetic interactive prototype
-specified in U1; they are not yet implemented by this documentation change.
+Current preparation: [K2 conversation architecture](../KEBUI_K2_CONVERSATION_ARCHITECTURE.md)
+records the source-based operation matrix, ownership/content boundaries and
+adversarial acceptance design. It is not a qualified S03 wire contract or U3
+production enablement. Existing U2 and bounded U1 prototype work is delivered;
+[public reference evidence](../../design/kebui/PUBLIC_VISUAL_EVIDENCE.md) supersedes
+older five-source screenshot UNKNOWN statements. PR169 remains a separately
+unmerged Cromma card, so this preparation does not declare U0 complete or waive
+that merge/release gate. The next executable contract slice must close the
+explicit gaps in the architecture document before production wiring.
 
 ## 21. Success criterion
 

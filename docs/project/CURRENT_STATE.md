@@ -1,11 +1,40 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-09T16:04:00Z"
-verified_by: "kebui-u1-keyboard-focus-qualification"
+verified_at_utc: "2026-10-10T15:40:00Z"
+verified_by: "kebui-k2-conversation-preparation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-10 K2 会话架构准备（未启用 U3）
+
+当前核对 main `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
+`06eb70dcb01c1ad65243a693c7207455d0d6455e`；六套 exact-main workflow
+均首轮 completed/success。U2 既有页面、产品标识及 U1 有界原型资格已交付，
+不重复迁移、截图或把旧 NOT RUN 自动扩成测试队列。
+
+新独立交付是 [K2/S03 会话架构准备](../KEBUI_K2_CONVERSATION_ARCHITECTURE.md)：
+现有能力矩阵、身份/内容分域、幂等与 UNKNOWN、审批 revision/TTL、取消和恢复、
+14 项后继对抗验收设计及有限实施顺序。本文档是可评审设计，未冻结可上线 wire，
+没有实现 turn/approval/聊天正文、生产接线或 K3–K7。新候选须取得自己的资格。
+
+[PR169](https://github.com/ForceMind/agentbox/pull/169) head
+`058bfcac98b93de734ea12a172bb573c7b00d939` 六套成功、仍未合并；其合并阻塞
+单独保留，不由本批重试或绕过，不据此宣布 U0 整体退出。五公开来源19图已有
+[实际观察证据](../../design/kebui/PUBLIC_VISUAL_EVIDENCE.md)，覆盖下方历史的
+五项公开截图 UNKNOWN，不能重复当成当前缺项；Cromma 不同于这五项公开取证。
+Owner 已报告购入 kebui.com/qebui.com，DNS/技术控制/上线未验证。最终颜色/Logo、
+真实 host/双 CLI/客户端/恢复、Secret 与 release/deploy 门槛不变。
+下方快照及其 pending/UNKNOWN 为原时间点历史，不能覆盖本节或 live GitHub。
+
+本地已运行：903 relative doc links、secret-pattern/source-boundary、54 action pins、
+四份历史正文保全、CURRENT_STATE 四键 header、14 个唯一计划用例 ID、diff check，
+均 exit 0。长治理 anchor 初次匹配 credential 扫描的 `sk-` 模式，是文档路径假阳性；
+改为已有文档链接后通过，扫描器/规则未改。新文档与后继测试设计不等于已运行
+T01–T14，也不代表真实 CLI/浏览器/host 验收。独立审查及候选 exact-head CI 结果
+由本批 PR 追加记录，不用增加文档提交反复触发同一软件基线。
+
 
 ## 2026-10-09 U1 键盘焦点源码与8图通过（16:04 UTC）
 
