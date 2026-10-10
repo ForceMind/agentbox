@@ -1,0 +1,1621 @@
+{
+  "profile": "k2-observation-candidate-v1",
+  "base": {
+    "scope": {
+      "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+      "auth_epoch": "2",
+      "project_id": "prj_22222222222222222222222222222222",
+      "project_revision": "3",
+      "binding_revision": "4",
+      "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "host_id": "wri_44444444444444444444444444444444",
+      "host_revision": "5",
+      "runtime_epoch": "6",
+      "api_authority_epoch": "7",
+      "agent_type": "codex",
+      "execution_kind": "structured-candidate",
+      "conversation_id": "kcv_55555555555555555555555555555555",
+      "conversation_revision": "8",
+      "generation": "9",
+      "turn_id": "ktr_66666666666666666666666666666666"
+    },
+    "revision": "1",
+    "status": "running"
+  },
+  "valid": [
+    {
+      "name": "running",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "running"
+      }
+    },
+    {
+      "name": "awaiting_approval",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "awaiting_approval"
+      }
+    },
+    {
+      "name": "awaiting_input",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "awaiting_input"
+      }
+    },
+    {
+      "name": "completed",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "completed"
+      }
+    },
+    {
+      "name": "failed",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "failed"
+      }
+    },
+    {
+      "name": "canceled",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "canceled"
+      }
+    },
+    {
+      "name": "unknown",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "2",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "3",
+          "binding_revision": "4",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "5",
+          "runtime_epoch": "6",
+          "api_authority_epoch": "7",
+          "agent_type": "codex",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "8",
+          "generation": "9",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "1",
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "uint64-ceiling",
+      "value": {
+        "scope": {
+          "owner_scope": "1111111111111111111111111111111111111111111111111111111111111111",
+          "auth_epoch": "18446744073709551615",
+          "project_id": "prj_22222222222222222222222222222222",
+          "project_revision": "18446744073709551615",
+          "binding_revision": "18446744073709551615",
+          "binding_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "host_id": "wri_44444444444444444444444444444444",
+          "host_revision": "18446744073709551615",
+          "runtime_epoch": "18446744073709551615",
+          "api_authority_epoch": "18446744073709551615",
+          "agent_type": "claude",
+          "execution_kind": "structured-candidate",
+          "conversation_id": "kcv_55555555555555555555555555555555",
+          "conversation_revision": "18446744073709551615",
+          "generation": "18446744073709551615",
+          "turn_id": "ktr_66666666666666666666666666666666"
+        },
+        "revision": "18446744073709551615",
+        "status": "unknown"
+      }
+    }
+  ],
+  "invalid_mutations": [
+    {
+      "name": "missing-scope",
+      "path": [
+        "scope"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "missing-revision",
+      "path": [
+        "revision"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "missing-status",
+      "path": [
+        "status"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "unknown-envelope-field",
+      "path": [
+        "body"
+      ],
+      "op": "set",
+      "value": "not content"
+    },
+    {
+      "name": "scope-array",
+      "path": [
+        "scope"
+      ],
+      "op": "set",
+      "value": []
+    },
+    {
+      "name": "scope-null",
+      "path": [
+        "scope"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-owner_scope",
+      "path": [
+        "scope",
+        "owner_scope"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-owner_scope",
+      "path": [
+        "scope",
+        "owner_scope"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-auth_epoch",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-auth_epoch",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-project_id",
+      "path": [
+        "scope",
+        "project_id"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-project_id",
+      "path": [
+        "scope",
+        "project_id"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-project_revision",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-project_revision",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-binding_revision",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-binding_revision",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-binding_digest",
+      "path": [
+        "scope",
+        "binding_digest"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-binding_digest",
+      "path": [
+        "scope",
+        "binding_digest"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-host_id",
+      "path": [
+        "scope",
+        "host_id"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-host_id",
+      "path": [
+        "scope",
+        "host_id"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-host_revision",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-host_revision",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-runtime_epoch",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-runtime_epoch",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-api_authority_epoch",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-api_authority_epoch",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-agent_type",
+      "path": [
+        "scope",
+        "agent_type"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-agent_type",
+      "path": [
+        "scope",
+        "agent_type"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-execution_kind",
+      "path": [
+        "scope",
+        "execution_kind"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-execution_kind",
+      "path": [
+        "scope",
+        "execution_kind"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-conversation_id",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-conversation_id",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-conversation_revision",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-conversation_revision",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-generation",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-generation",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "missing-scope-turn_id",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "delete"
+    },
+    {
+      "name": "null-scope-turn_id",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "scope-extra",
+      "path": [
+        "scope",
+        "workspace_id"
+      ],
+      "op": "set",
+      "value": "aws_77777777777777777777777777777777"
+    },
+    {
+      "name": "auth_epoch-'0'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "auth_epoch-'01'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "auth_epoch-'+1'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "auth_epoch-'-1'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "auth_epoch-'1.0'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "auth_epoch-' 1'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "auth_epoch-'1\\n'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "auth_epoch-'18446744073709551616'",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "auth_epoch-1",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "auth_epoch-True",
+      "path": [
+        "scope",
+        "auth_epoch"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "project_revision-'0'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "project_revision-'01'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "project_revision-'+1'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "project_revision-'-1'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "project_revision-'1.0'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "project_revision-' 1'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "project_revision-'1\\n'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "project_revision-'18446744073709551616'",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "project_revision-1",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "project_revision-True",
+      "path": [
+        "scope",
+        "project_revision"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "binding_revision-'0'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "binding_revision-'01'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "binding_revision-'+1'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "binding_revision-'-1'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "binding_revision-'1.0'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "binding_revision-' 1'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "binding_revision-'1\\n'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "binding_revision-'18446744073709551616'",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "binding_revision-1",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "binding_revision-True",
+      "path": [
+        "scope",
+        "binding_revision"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "host_revision-'0'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "host_revision-'01'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "host_revision-'+1'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "host_revision-'-1'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "host_revision-'1.0'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "host_revision-' 1'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "host_revision-'1\\n'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "host_revision-'18446744073709551616'",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "host_revision-1",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "host_revision-True",
+      "path": [
+        "scope",
+        "host_revision"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "runtime_epoch-'0'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "runtime_epoch-'01'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "runtime_epoch-'+1'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "runtime_epoch-'-1'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "runtime_epoch-'1.0'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "runtime_epoch-' 1'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "runtime_epoch-'1\\n'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "runtime_epoch-'18446744073709551616'",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "runtime_epoch-1",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "runtime_epoch-True",
+      "path": [
+        "scope",
+        "runtime_epoch"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "api_authority_epoch-'0'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "api_authority_epoch-'01'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "api_authority_epoch-'+1'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "api_authority_epoch-'-1'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "api_authority_epoch-'1.0'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "api_authority_epoch-' 1'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "api_authority_epoch-'1\\n'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "api_authority_epoch-'18446744073709551616'",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "api_authority_epoch-1",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "api_authority_epoch-True",
+      "path": [
+        "scope",
+        "api_authority_epoch"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "conversation_revision-'0'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "conversation_revision-'01'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "conversation_revision-'+1'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "conversation_revision-'-1'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "conversation_revision-'1.0'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "conversation_revision-' 1'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "conversation_revision-'1\\n'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "conversation_revision-'18446744073709551616'",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "conversation_revision-1",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "conversation_revision-True",
+      "path": [
+        "scope",
+        "conversation_revision"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "generation-'0'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "generation-'01'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "generation-'+1'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "+1"
+    },
+    {
+      "name": "generation-'-1'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "-1"
+    },
+    {
+      "name": "generation-'1.0'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "1.0"
+    },
+    {
+      "name": "generation-' 1'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": " 1"
+    },
+    {
+      "name": "generation-'1\\n'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "generation-'18446744073709551616'",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "generation-1",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "generation-True",
+      "path": [
+        "scope",
+        "generation"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "revision-'0'",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": "0"
+    },
+    {
+      "name": "revision-'01'",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": "01"
+    },
+    {
+      "name": "revision-'1\\n'",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": "1\n"
+    },
+    {
+      "name": "revision-'18446744073709551616'",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "revision-1",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": 1
+    },
+    {
+      "name": "revision-True",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": true
+    },
+    {
+      "name": "revision-None",
+      "path": [
+        "revision"
+      ],
+      "op": "set",
+      "value": null
+    },
+    {
+      "name": "owner_scope-shape-127",
+      "path": [
+        "scope",
+        "owner_scope"
+      ],
+      "op": "set",
+      "value": "1111111111111111111111111111111111111111111111111111111111111111\n"
+    },
+    {
+      "name": "owner_scope-shape-128",
+      "path": [
+        "scope",
+        "owner_scope"
+      ],
+      "op": "set",
+      "value": "11111111111111111111111111111111111111111111111111111111111111110"
+    },
+    {
+      "name": "owner_scope-shape-129",
+      "path": [
+        "scope",
+        "owner_scope"
+      ],
+      "op": "set",
+      "value": "111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "name": "project_id-shape-130",
+      "path": [
+        "scope",
+        "project_id"
+      ],
+      "op": "set",
+      "value": "PRJ_22222222222222222222222222222222"
+    },
+    {
+      "name": "project_id-shape-131",
+      "path": [
+        "scope",
+        "project_id"
+      ],
+      "op": "set",
+      "value": "prj_22222222222222222222222222222222\n"
+    },
+    {
+      "name": "project_id-shape-132",
+      "path": [
+        "scope",
+        "project_id"
+      ],
+      "op": "set",
+      "value": "prj_222222222222222222222222222222220"
+    },
+    {
+      "name": "project_id-shape-133",
+      "path": [
+        "scope",
+        "project_id"
+      ],
+      "op": "set",
+      "value": "prj_2222222222222222222222222222222"
+    },
+    {
+      "name": "binding_digest-shape-135",
+      "path": [
+        "scope",
+        "binding_digest"
+      ],
+      "op": "set",
+      "value": "3333333333333333333333333333333333333333333333333333333333333333\n"
+    },
+    {
+      "name": "binding_digest-shape-136",
+      "path": [
+        "scope",
+        "binding_digest"
+      ],
+      "op": "set",
+      "value": "33333333333333333333333333333333333333333333333333333333333333330"
+    },
+    {
+      "name": "binding_digest-shape-137",
+      "path": [
+        "scope",
+        "binding_digest"
+      ],
+      "op": "set",
+      "value": "333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "name": "host_id-shape-138",
+      "path": [
+        "scope",
+        "host_id"
+      ],
+      "op": "set",
+      "value": "WRI_44444444444444444444444444444444"
+    },
+    {
+      "name": "host_id-shape-139",
+      "path": [
+        "scope",
+        "host_id"
+      ],
+      "op": "set",
+      "value": "wri_44444444444444444444444444444444\n"
+    },
+    {
+      "name": "host_id-shape-140",
+      "path": [
+        "scope",
+        "host_id"
+      ],
+      "op": "set",
+      "value": "wri_444444444444444444444444444444440"
+    },
+    {
+      "name": "host_id-shape-141",
+      "path": [
+        "scope",
+        "host_id"
+      ],
+      "op": "set",
+      "value": "wri_4444444444444444444444444444444"
+    },
+    {
+      "name": "conversation_id-shape-142",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "set",
+      "value": "KCV_55555555555555555555555555555555"
+    },
+    {
+      "name": "conversation_id-shape-143",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "set",
+      "value": "kcv_55555555555555555555555555555555\n"
+    },
+    {
+      "name": "conversation_id-shape-144",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "set",
+      "value": "kcv_555555555555555555555555555555550"
+    },
+    {
+      "name": "conversation_id-shape-145",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "set",
+      "value": "kcv_5555555555555555555555555555555"
+    },
+    {
+      "name": "turn_id-shape-146",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "set",
+      "value": "KTR_66666666666666666666666666666666"
+    },
+    {
+      "name": "turn_id-shape-147",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "set",
+      "value": "ktr_66666666666666666666666666666666\n"
+    },
+    {
+      "name": "turn_id-shape-148",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "set",
+      "value": "ktr_666666666666666666666666666666660"
+    },
+    {
+      "name": "turn_id-shape-149",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "set",
+      "value": "ktr_6666666666666666666666666666666"
+    },
+    {
+      "name": "unsupported-agent_type",
+      "path": [
+        "scope",
+        "agent_type"
+      ],
+      "op": "set",
+      "value": "opencode"
+    },
+    {
+      "name": "unsupported-execution_kind",
+      "path": [
+        "scope",
+        "execution_kind"
+      ],
+      "op": "set",
+      "value": "waw"
+    },
+    {
+      "name": "unsupported-conversation_id",
+      "path": [
+        "scope",
+        "conversation_id"
+      ],
+      "op": "set",
+      "value": "aws_55555555555555555555555555555555"
+    },
+    {
+      "name": "unsupported-turn_id",
+      "path": [
+        "scope",
+        "turn_id"
+      ],
+      "op": "set",
+      "value": "kcv_66666666666666666666666666666666"
+    },
+    {
+      "name": "status-'succeeded'",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": "succeeded"
+    },
+    {
+      "name": "status-'RUNNING'",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": "RUNNING"
+    },
+    {
+      "name": "status-'running\\n'",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": "running\n"
+    },
+    {
+      "name": "status-''",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": ""
+    },
+    {
+      "name": "status-False",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": false
+    },
+    {
+      "name": "status-{}",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": {}
+    },
+    {
+      "name": "status-None",
+      "path": [
+        "status"
+      ],
+      "op": "set",
+      "value": null
+    }
+  ]
+}
