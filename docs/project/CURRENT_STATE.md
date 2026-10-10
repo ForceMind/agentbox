@@ -1,11 +1,32 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-10T15:40:00Z"
-verified_by: "kebui-k2-conversation-preparation"
+verified_at_utc: "2026-10-10T16:18:00Z"
+verified_by: "kebui-k2-observation-candidate"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-10 K2-01 隔离只读观察模型候选（16:18 UTC）
+
+[PR170](https://github.com/ForceMind/agentbox/pull/170) head
+`b1d46c9b7e80590fc036de4edbf69452ee29adb1` / tree
+`b713e4c783eb6c38e5d248bf72aef1bac8e4a3e6` 六套准确 CI 已首轮全部 success：
+27 jobs 为25 success/2既定skip，PRmerge d59dd0c2 与候选同tree。它仍为Draft，
+main仍9f8d20e；PR169与PR170没有因本批自行合并。
+
+本批独立叠加 [K2-01 metadata-only 模型](../KEBUI_K2_OBSERVATION_MODEL.md)：
+16字段scope/3字段观察的Python与Web纯校验、Web只读projection与共享8正/159负
+合成向量。复用原WAW基础validators，不改WAW身份/reducer、Runtime、route、DB、
+CLI、正文或审批执行；新模块没有生产import，不产生写授权，也不宣称U3已接入。
+
+实际局部Python616passed，完整Web2176passed/88files，Web typecheck/lint/format/build、
+Ruff、mypy398、新Python Black及diff检查通过。独审发现gap后旧snapshot可误恢复fresh，
+实际RED→GREEN加入独立revisionFloor；nonenumerable字段丢失也经负例修复。最终独审
+CLEAR，1175跨语言变体0差异。完整命令与未验范围在合同；上述不是新head远端CI，
+亦不代表真实CLI/browser/host。当前新候选资格待首次exact-head CI，结果只写回PR，
+不反复追加docs头取绿。下方准备稿和全部早期历史完整保留。
+
 
 ## 2026-10-10 K2 会话架构准备（未启用 U3）
 
