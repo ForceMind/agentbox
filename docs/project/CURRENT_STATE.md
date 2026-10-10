@@ -1,11 +1,52 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-10T18:27:00Z"
-verified_by: "kebui-s03-inert-content-candidate"
+verified_at_utc: "2026-10-10T19:43:00Z"
+verified_by: "kebui-s03-submit-synthetic-candidate"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-10 S03 隔离 submit-only 双语言候选（19:43 UTC）
+
+Live main仍为 `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`。
+[PR173](https://github.com/ForceMind/agentbox/pull/173) head
+`cb90601037e4c4fad17b449f774e6850cd05cb42` / tree
+`3537cd0db92bfce282a452ab9e21f9ff9138bb7f` 已六套首次CI全部success，
+27 jobs为25success/2既定skip；实际test-merge `64a52168bf7ce262ee18386967b44ad9f6883b54`
+与head同tree。PR169–173均仍open未merge、原heads不变；本片准确stack base为173，
+不重试既有合并、不retarget或绕路。下方173发布前pending为历史，不覆盖此回读。
+
+本批独立 [S03 submit-only synthetic profile](../KEBUI_S03_SUBMIT_SYNTHETIC_PROFILE.md)
+由固定TypeScript sender经有界opaque binary pipe到Python，再交原issuer/owner/journal与
+真实fixed fake-consumer。复用既有NX primitive，独立context/domain/AAD、五record、fresh
+session ephemeral、原deadline与same-owner临界区；NX仅证明responder possession，
+公开fixture keys及tuple一致不是真实browser/source认证。原Noise/A3/WAW/issuer/owner/
+journal/schema逐字保持，生产route/DB/Runtime/vendor均没有接线。
+
+设计candidate-3独审CLEAR，SHA `d28ed6fcdb8e6afb8e02ae4d51dde3f41aec139aa8995fc2a7f08bd9d8a89ff6`。
+Web持久metadata独立255×1024bytes，单份最多627byte记录以OR拒request/channel/lease复用；
+close不抹账，255满后在复制前BUSY。总逻辑payload/metadata预留7157760bytes，Node1571840
+只适用于固定harness唯一Webrealm/模块实例；不是任意多realm process上限、RSS或安全擦除。
+accept已commit但return前未知异常可保留live ACCEPTED占用/effect0，原journal重开才UNKNOWN；
+不把它混同effect发生后guard-exit的UNKNOWN，不修改旧owner或允许相同bytes复活请求。
+
+本地完整Kebui Python1019passed；全量collection6482；末轮affected172passed。
+全Web89files/2267passed，extension6passed，lint/format/typecheck/build均通过。
+Ruff、strict mypy412、逐文件Black425、source/import mutation、doc links、secret及54action
+pins通过。实际29双语言场景在最终修后Web与candidate-3 fixture上全部通过，含16KiB原字节/
+identity、双向prefix/EOF、真实idle deadline、waiter取消、remote-only expiry、slowreader
+write(false)且Runtime最多effect1、ACK后exit-crash重开原journal UNKNOWN且不补发。
+独审已保全并原probe修后复验错误holder/错误码、握手deadline、退休引用、outward imports、
+catalog先验界限、iterator等七项；另一个真实外线程撤销通知问题也已修复及独审回归。
+完整候选终审绑定与自身六套exact-head CI仍以Draft PR记录，不借173/base绿替代，也不加
+无意义docs-only头重跑。既有AF_UNIX限制下本地未重跑native/E2E，不称本地全量执行PASS。
+
+真实S03 user/source/pin/key custody、authenticated relay/current-owner/single-writer、固定
+vendor/CLI/host与retention仍缺独立资格；没有U3/approval/interrupt/output或部署发布。
+下方全部历史原文保留。
+
+
 
 
 ## 2026-10-10 S03 隔离 immutable content 候选（18:27 UTC）
