@@ -1,11 +1,41 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-10T17:27:00Z"
-verified_by: "kebui-k2-inert-admission-candidate"
+verified_at_utc: "2026-10-10T18:27:00Z"
+verified_by: "kebui-s03-inert-content-candidate"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+
+## 2026-10-10 S03 隔离 immutable content 候选（18:27 UTC）
+
+Live main仍为 `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`。
+[PR172](https://github.com/ForceMind/agentbox/pull/172) head
+`659ff785af5e01f4dafc1d0c481680892fddb44b` / tree
+`549aac1978f6bb7a94ddb40e845dfd9af102a07e` 已六套首次CI全部success，
+27 jobs为25success/2既定skip；实际test-merge `38d429b2dd28c25e72de27f94e10e3bc21882817`
+与head同tree。三Python版本各6098passed/88skip，Frontend2176+6，E2E650passed/270skip。
+PR169/170/171/172均仍open未merge、原head不变，172为本片准确stack base。
+
+本批独立叠加 [S03 immutable synthetic admission](../KEBUI_S03_INERT_CONTENT_ADMISSION.md)：
+唯一进程级issuer、sealed handle、exact immutable UTF8 bytes与原始deadline；durable acceptance
+后一次性witness连接真实fixed fake-consumer，metadata读/terminal不依赖正文存活。
+4MiB仅retained+staging payload账本，独立81920-byte解码工作区，不是RSS或安全擦除承诺。
+UNKNOWN保留执行占用；重建issuer、相同字符串或重新提供bytes均不能复活旧请求。
+本片只是S03前置子合同的软件闭环，journal源码/schema、生产DB/route/Runtime接线均未改。
+
+最终本地815项全过（588观察+50journal+153owner/body+24集成，含9个SIGKILL窗口）；
+独审51项全过，12个production-import mutation全被拦截。实际guard-exit RED修复为
+已经effect1后保守UNKNOWN、占用不释放、不补发且metadata可读；异常链泄漏修复和原始
+RED/准确源码GREEN保全。全Ruff、mypy405、Black逐文件418及diff通过；全量collection6278。
+本地全量执行没有重复既知AF_UNIX EPERM阻塞，不称全量PASS；新候选仍待自身六套远端CI，
+终态只追加Draft PR，不用多余文档头重跑。
+
+真实S03认证来源/通道、跨重启正文equality、生产current authority与single-writer、固定vendor
+协议/CLI/host、retention和发布仍需各自合同与证据；不宣称U3接入。本片没有新credential、
+生产接线、真实调用、合并或部署。下方历史完整保留，其pending不覆盖本节或live GitHub。
+
 
 
 ## 2026-10-10 K2 隔离准入journal候选（17:27 UTC）

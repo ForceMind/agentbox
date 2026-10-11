@@ -354,15 +354,21 @@ def test_no_production_import_and_only_pure_declared_dependencies() -> None:
                     "validate_runtime_host_installation_id",
                 }
     assert imports <= {"__future__", "dataclasses", "enum", "re", "typing", "agentbox_core.waw"}
-    # Only these isolated metadata consumers may reuse the pure scope validator.
-    # None may acquire a production consumer, including via the journal module.
+    # Only these isolated admission consumers may reuse the pure scope validator.
+    # Neither metadata nor synthetic content may gain a production consumer.
     isolated = {
         module,
         ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_admission.py",
         ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_admission_journal.py",
+        ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_content_admission.py",
     }
     assert all(source.is_file() for source in isolated)
-    forbidden = ("kebui_observation", "kebui_admission", "kebui_admission_journal")
+    forbidden = (
+        "kebui_observation",
+        "kebui_admission",
+        "kebui_admission_journal",
+        "kebui_content_admission",
+    )
     for directory in ("apps", "packages", "helper", "installer"):
         for source in (ROOT / directory).rglob("*.py"):
             if source in isolated or "node_modules" in source.parts:

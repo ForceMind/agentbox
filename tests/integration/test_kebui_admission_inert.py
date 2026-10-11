@@ -1,8 +1,7 @@
-"""Inert admission consumers: synthetic metadata, private tmp files, no vendor.
+"""Inert source custody -> metadata journal -> fixed synchronous fake effect.
 
-These tests exercise the candidate through a fake dispatch port, including actual
-child-process death. They do not qualify content equality, Runtime authority,
-provider behavior, host power loss, or an application route.
+Only synthetic UTF-8 bytes and private tmp metadata files are used. No provider,
+CLI, authenticated S03 source, production owner, or power-loss qualification.
 """
 
 from __future__ import annotations
@@ -13,8 +12,10 @@ import os
 import signal
 import subprocess
 import sys
-from collections.abc import Iterator
-from contextlib import contextmanager
+import threading
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,66 +32,74 @@ from agentbox_runtime.kebui_admission import (
     SyntheticTerminalReceipt,
 )
 from agentbox_runtime.kebui_admission_journal import KebuiAdmissionJournal
+from agentbox_runtime.kebui_content_admission import (
+    SyntheticBodyConsumer,
+    SyntheticContentHandle,
+    SyntheticContentIssuer,
+)
 
 _EXECUTION = "kexe_" + "7" * 32
+_BODY = b"synthetic message for inert custody only\n"
 _FIXTURE = Path(__file__).parents[1] / "fixtures/kebui_observation/v1.json"
 
 
-def _request(number: int = 1, **scope_changes: str) -> AdmissionRequest:
+def _template(number: int = 1, **scope_changes: str) -> AdmissionRequest:
     source = json.loads(_FIXTURE.read_text())["base"]["scope"]
     source["turn_id"] = "ktr_" + f"{number:032x}"
     source.update(scope_changes)
+    # This template's ref must never become the source-issued admission ref.
     return AdmissionRequest(
         request_id="kreq_" + f"{number:032x}",
         scope=parse_scope(source),
         adapter_profile=SYNTHETIC_ADAPTER_PROFILE,
-        content_admission_ref="ksyn_" + f"{number:032x}",
+        content_admission_ref="ksyn_" + "0" * 32,
     )
 
 
 class _CurrentOwner:
-    """A test premise, not a source of production authority or writer rights."""
+    """Explicit fake current-owner premise; not production authentication."""
 
-    def __init__(self, *requests: AdmissionRequest) -> None:
-        self.scopes = {request.scope for request in requests}
+    def __init__(self, *templates: AdmissionRequest) -> None:
+        self.scopes = {item.scope for item in templates}
         self.available = True
         self.tui_writer = False
         self.execution_id = _EXECUTION
+        self.lock = threading.RLock()
 
     @contextmanager
     def guard(self, scope: ConversationScope) -> Iterator[SyntheticOwnerContext]:
-        if not self.available or self.tui_writer or scope not in self.scopes:
-            raise ValueError("synthetic owner unavailable")
-        yield SyntheticOwnerContext(scope=scope, execution_id=self.execution_id)
-        if not self.available or self.tui_writer or scope not in self.scopes:
-            raise ValueError("synthetic owner changed")
+        with self.lock:
+            if not self.available or self.tui_writer or scope not in self.scopes:
+                raise RuntimeError("synthetic owner unavailable")
+            yield SyntheticOwnerContext(scope=scope, execution_id=self.execution_id)
+            if not self.available or self.tui_writer or scope not in self.scopes:
+                raise RuntimeError("synthetic owner changed")
 
 
-class _SyntheticEquality:
-    """No prompt/body equality: only the fixture's immutable reference mapping."""
+class _Clock:
+    now = 1
 
-    def __init__(self, *requests: AdmissionRequest) -> None:
-        self.requests = {request.request_id: request for request in requests}
-
-    def validate(self, request: AdmissionRequest) -> bool:
-        return self.requests.get(request.request_id) == request
+    def __call__(self) -> int:
+        return self.now
 
 
 class _Dispatch:
+    """Readiness only: effect is the exact fixed consumer after this await."""
+
     def __init__(self, *, blocked: bool = False) -> None:
-        self.calls: list[tuple[AdmissionRequest, str]] = []
+        self.consumer = SyntheticBodyConsumer()
+        self.arrivals: list[tuple[AdmissionRequest, str]] = []
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
         if not blocked:
             self.release.set()
 
     async def dispatch(
-        self, request: AdmissionRequest, execution_id: str
-    ) -> SyntheticDispatchReceipt:
-        self.calls.append((request, execution_id))
+        self, request: AdmissionRequest, execution_id: str, handle: SyntheticContentHandle
+    ) -> None:
+        self.arrivals.append((request, execution_id))
         self.entered.set()
         await self.release.wait()
-        return SyntheticDispatchReceipt(receipt_ref="krcp_" + request.request_id[5:])
 
 
 def _journal(directory: Path) -> KebuiAdmissionJournal:
@@ -100,197 +109,247 @@ def _journal(directory: Path) -> KebuiAdmissionJournal:
     )
 
 
-def _owner(
-    journal: KebuiAdmissionJournal,
-    current: _CurrentOwner,
-    equality: _SyntheticEquality,
-    dispatch: _Dispatch,
-) -> KebuiTestAdmissionOwner:
-    return KebuiTestAdmissionOwner(journal, current, equality, dispatch, enabled=True)
+@dataclass
+class _Composition:
+    gate: KebuiTestAdmissionOwner
+    issuer: SyntheticContentIssuer
+    current: _CurrentOwner
+    dispatch: _Dispatch
+    clock: _Clock
+    journal: KebuiAdmissionJournal
+
+    def prepare(
+        self, template: AdmissionRequest, body: bytes = _BODY
+    ) -> tuple[AdmissionRequest, SyntheticContentHandle]:
+        handle = self.issuer.prepare(template.request_id, template.scope, body)
+        assert handle.request.content_admission_ref != template.content_admission_ref
+        return handle.request, handle
 
 
-@pytest.mark.anyio
-async def test_fake_dispatch_receipt_and_terminal_are_reused_without_effect(tmp_path: Path) -> None:
-    request = _request()
+@asynccontextmanager
+async def _composition(
+    tmp_path: Path, *templates: AdmissionRequest, blocked: bool = False
+) -> AsyncIterator[_Composition]:
     journal = _journal(tmp_path / "journal")
-    dispatch = _Dispatch()
-    owner = _owner(journal, _CurrentOwner(request), _SyntheticEquality(request), dispatch)
-    acknowledged = await owner.submit(request)
-    assert acknowledged.phase is AdmissionPhase.ACKNOWLEDGED
-    assert len(dispatch.calls) == 1
-    assert owner.read(request) == acknowledged
-    assert await owner.submit(request) == acknowledged
-    assert acknowledged.receipt_ref is not None
-    terminal = owner.acknowledge_terminal(
-        request,
-        expected_revision=acknowledged.record_revision,
-        receipt=SyntheticTerminalReceipt(status="completed", receipt_ref=acknowledged.receipt_ref),
-    )
-    assert terminal.phase is AdmissionPhase.TERMINAL
-    assert await owner.submit(request) == terminal
-    assert len(dispatch.calls) == 1
-    journal.close()
+    current, clock, dispatch = _CurrentOwner(*templates), _Clock(), _Dispatch(blocked=blocked)
+    issuer = SyntheticContentIssuer(deadline_ns=100, clock=clock)
+    gate = KebuiTestAdmissionOwner(journal, current, issuer, dispatch, enabled=True)
+    try:
+        yield _Composition(gate, issuer, current, dispatch, clock, journal)
+    finally:
+        issuer.close()
+        dispatch.release.set()
+        try:
+            await gate.wait_for_idle()
+        finally:
+            journal.close()
 
 
 @pytest.mark.anyio
-async def test_two_waiters_share_one_dispatch_and_cancel_does_not_release(tmp_path: Path) -> None:
-    request, another = _request(), _request(2)
-    journal = _journal(tmp_path / "journal")
-    current = _CurrentOwner(request, another)
-    equality = _SyntheticEquality(request, another)
-    dispatch = _Dispatch(blocked=True)
-    owner = _owner(journal, current, equality, dispatch)
-    first = asyncio.create_task(owner.submit(request))
-    await asyncio.wait_for(dispatch.entered.wait(), 3)
-    duplicate = asyncio.create_task(owner.submit(request))
-    first.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await first
-    with pytest.raises(KebuiAdmissionError, match="^busy$"):
-        await owner.submit(another)
-    dispatch.release.set()
-    await owner.wait_for_idle()
-    await duplicate
-    assert len(dispatch.calls) == 1
-    observed = owner.read(request)
-    assert observed is not None and observed.phase is AdmissionPhase.ACKNOWLEDGED
-    journal.close()
-
-
-@pytest.mark.anyio
-async def test_foreign_scope_and_synthetic_tui_writer_never_dispatch(tmp_path: Path) -> None:
-    request = _request()
-    journal = _journal(tmp_path / "journal")
-    current = _CurrentOwner(request)
-    dispatch = _Dispatch()
-    owner = _owner(journal, current, _SyntheticEquality(request), dispatch)
-    current.tui_writer = True
-    with pytest.raises(KebuiAdmissionError, match="^owner_unavailable$"):
-        await owner.submit(request)
-    current.tui_writer = False
-    changed = _request(auth_epoch="99")
-    with pytest.raises(KebuiAdmissionError, match="^owner_unavailable$"):
-        await owner.submit(changed)
-    assert dispatch.calls == []
-    journal.close()
-
-
-@pytest.mark.anyio
-async def test_recovery_retains_unknown_slot_across_conversation_and_epoch(tmp_path: Path) -> None:
-    request = _request()
-    directory = tmp_path / "journal"
-    journal = _journal(directory)
-    journal.accept(request, _EXECUTION)
-    journal.close()
-    recovered = KebuiAdmissionJournal.open_existing(
-        directory, expected_uid=os.geteuid(), expected_gid=os.getegid()
-    )
-    recovered_record = recovered.read(request)
-    assert recovered_record is not None and recovered_record.phase is AdmissionPhase.UNKNOWN
-    another = _request(2, conversation_id="kcv_" + "8" * 32, runtime_epoch="77", generation="88")
-    dispatch = _Dispatch()
-    owner = _owner(
-        recovered, _CurrentOwner(request, another), _SyntheticEquality(request, another), dispatch
-    )
-    assert (await owner.submit(request)).phase is AdmissionPhase.UNKNOWN
-    with pytest.raises(KebuiAdmissionError, match="^busy$"):
-        await owner.submit(another)
-    assert dispatch.calls == []
-    recovered.close()
-
-
-@pytest.mark.anyio
-async def test_observer_read_does_not_recover_a_live_dispatch(tmp_path: Path) -> None:
-    request = _request()
-    directory = tmp_path / "journal"
-    journal = _journal(directory)
-    dispatch = _Dispatch(blocked=True)
-    owner = _owner(journal, _CurrentOwner(request), _SyntheticEquality(request), dispatch)
-    pending = asyncio.create_task(owner.submit(request))
-    await asyncio.wait_for(dispatch.entered.wait(), 3)
-    observer = KebuiAdmissionJournal.open_existing(
-        directory, expected_uid=os.geteuid(), expected_gid=os.getegid(), recover=False
-    )
-    observed = observer.read(request)
-    assert observed is not None and observed.phase is AdmissionPhase.DISPATCH_FENCED
-    dispatch.release.set()
-    acknowledged = await pending
-    assert acknowledged.phase is AdmissionPhase.ACKNOWLEDGED
-    assert observer.read(request) == acknowledged
-    assert len(dispatch.calls) == 1
-    observer.close()
-    journal.close()
-
-
-@pytest.mark.anyio
-async def test_terminal_cannot_replace_an_acknowledged_receipt(tmp_path: Path) -> None:
-    request = _request()
-    journal = _journal(tmp_path / "journal")
-    dispatch = _Dispatch()
-    owner = _owner(journal, _CurrentOwner(request), _SyntheticEquality(request), dispatch)
-    acknowledged = await owner.submit(request)
-    with pytest.raises(KebuiAdmissionError):
-        owner.acknowledge_terminal(
+async def test_fixed_consumer_uses_the_original_bytes_once(tmp_path: Path) -> None:
+    template = _template()
+    async with _composition(tmp_path, template) as c:
+        body = "synthetic café / 合成内容\n".encode()
+        request, handle = c.prepare(template, body)
+        acknowledged = await c.gate.submit(request, handle)
+        assert acknowledged.phase is AdmissionPhase.ACKNOWLEDGED
+        assert c.dispatch.consumer.calls == 1
+        assert c.dispatch.consumer.byte_count == len(body)
+        assert c.dispatch.consumer.last_body_identity == id(body)
+        assert (
+            c.issuer.prepare(template.request_id, template.scope, bytes(bytearray(body))) is handle
+        )
+        assert await c.gate.submit(request, handle) == acknowledged
+        assert c.gate.read(request) == acknowledged
+        assert acknowledged.receipt_ref is not None
+        terminal = c.gate.acknowledge_terminal(
             request,
             expected_revision=acknowledged.record_revision,
-            receipt=SyntheticTerminalReceipt(status="completed", receipt_ref="krcp_" + "f" * 32),
+            receipt=SyntheticTerminalReceipt("completed", acknowledged.receipt_ref),
         )
-    assert owner.read(request) == acknowledged
-    assert len(dispatch.calls) == 1
-    journal.close()
+        assert await c.gate.submit(request, handle) == terminal
+        assert c.dispatch.consumer.calls == 1
+        assert body not in (tmp_path / "journal/admission.json").read_bytes()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("different", (b"same length B", "e\u0301".encode(), b"line\r\n"))
+async def test_changed_body_never_reuses_an_accepted_key(tmp_path: Path, different: bytes) -> None:
+    template = _template()
+    original = {
+        b"same length B": b"same length A",
+        "e\u0301".encode(): "é".encode(),
+        b"line\r\n": b"line\n",
+    }[different]
+    async with _composition(tmp_path, template) as c:
+        request, handle = c.prepare(template, original)
+        acknowledged = await c.gate.submit(request, handle)
+        with pytest.raises(KebuiAdmissionError):
+            c.issuer.prepare(template.request_id, template.scope, different)
+        assert c.gate.read(request) == acknowledged
+        assert c.dispatch.consumer.calls == 1
+        assert c.dispatch.consumer.last_body_identity == id(original)
+
+
+@pytest.mark.anyio
+async def test_waiter_cancel_retains_one_effect_and_busy_slot(tmp_path: Path) -> None:
+    one, two = _template(), _template(2)
+    async with _composition(tmp_path, one, two, blocked=True) as c:
+        request, handle = c.prepare(one)
+        another, second_handle = c.prepare(two, b"synthetic second")
+        first = asyncio.create_task(c.gate.submit(request, handle))
+        await asyncio.wait_for(c.dispatch.entered.wait(), 3)
+        duplicate = asyncio.create_task(c.gate.submit(request, handle))
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        with pytest.raises(KebuiAdmissionError):
+            await c.gate.submit(another, second_handle)
+        assert c.dispatch.consumer.calls == 0
+        c.dispatch.release.set()
+        await c.gate.wait_for_idle()
+        await duplicate
+        assert c.dispatch.consumer.calls == 1
+        record = c.gate.read(request)
+        assert record is not None and record.phase is AdmissionPhase.ACKNOWLEDGED
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "revocation", ("unavailable", "tui_writer", "execution", "source", "expiry")
+)
+async def test_last_await_revocation_has_no_body_effect(tmp_path: Path, revocation: str) -> None:
+    template = _template()
+    async with _composition(tmp_path, template, blocked=True) as c:
+        request, handle = c.prepare(template)
+        pending = asyncio.create_task(c.gate.submit(request, handle))
+        await asyncio.wait_for(c.dispatch.entered.wait(), 3)
+        if revocation == "unavailable":
+            c.current.available = False
+        elif revocation == "tui_writer":
+            c.current.tui_writer = True
+        elif revocation == "execution":
+            c.current.execution_id = "kexe_" + "8" * 32
+        elif revocation == "source":
+            c.issuer.close()
+        else:
+            c.clock.now = 100
+        c.dispatch.release.set()
+        result = await pending
+        assert result.phase is AdmissionPhase.UNKNOWN
+        assert c.dispatch.consumer.calls == 0
+        assert c.journal.read(request) == result
+        if revocation in ("source", "expiry"):
+            assert c.gate.read(request) == result
+            with pytest.raises(KebuiAdmissionError):
+                await c.gate.submit(request, handle)
+
+
+@pytest.mark.anyio
+async def test_expiry_does_not_block_metadata_terminal_or_forge_bodyproof(tmp_path: Path) -> None:
+    template = _template()
+    async with _composition(tmp_path, template) as c:
+        request, handle = c.prepare(template)
+        acknowledged = await c.gate.submit(request, handle)
+        c.clock.now = 100
+        assert c.gate.read(request) == acknowledged
+        assert acknowledged.receipt_ref is not None
+        terminal = c.gate.acknowledge_terminal(
+            request,
+            expected_revision=acknowledged.record_revision,
+            receipt=SyntheticTerminalReceipt("completed", acknowledged.receipt_ref),
+        )
+        assert c.gate.read(request) == terminal
+        with pytest.raises(KebuiAdmissionError):
+            await c.gate.submit(request, handle)
+        assert c.dispatch.consumer.calls == 1
+
+
+@pytest.mark.anyio
+async def test_observer_does_not_recover_a_live_dispatch(tmp_path: Path) -> None:
+    template = _template()
+    async with _composition(tmp_path, template, blocked=True) as c:
+        request, handle = c.prepare(template)
+        pending = asyncio.create_task(c.gate.submit(request, handle))
+        await asyncio.wait_for(c.dispatch.entered.wait(), 3)
+        observer = KebuiAdmissionJournal.open_existing(
+            tmp_path / "journal",
+            expected_uid=os.geteuid(),
+            expected_gid=os.getegid(),
+            recover=False,
+        )
+        try:
+            observed = observer.read(request)
+            assert observed is not None and observed.phase is AdmissionPhase.DISPATCH_FENCED
+            c.dispatch.release.set()
+            acknowledged = await pending
+            assert observer.read(request) == acknowledged
+            assert c.dispatch.consumer.calls == 1
+        finally:
+            observer.close()
 
 
 @pytest.mark.anyio
 async def test_current_read_rejects_replaced_execution_identity(tmp_path: Path) -> None:
-    request = _request()
-    journal = _journal(tmp_path / "journal")
-    current = _CurrentOwner(request)
-    dispatch = _Dispatch()
-    owner = _owner(journal, current, _SyntheticEquality(request), dispatch)
-    acknowledged = await owner.submit(request)
-    current.execution_id = "kexe_" + "8" * 32
-    with pytest.raises(KebuiAdmissionError):
-        owner.read(request)
-    assert journal.read(request) == acknowledged  # Internal history is not rewritten.
-    assert len(dispatch.calls) == 1
-    journal.close()
+    template = _template()
+    async with _composition(tmp_path, template) as c:
+        request, handle = c.prepare(template)
+        acknowledged = await c.gate.submit(request, handle)
+        c.current.execution_id = "kexe_" + "8" * 32
+        with pytest.raises(KebuiAdmissionError):
+            c.gate.read(request)
+        assert c.journal.read(request) == acknowledged
+        assert c.dispatch.consumer.calls == 1
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("revocation", ("unavailable", "tui_writer", "execution_changed"))
-async def test_fake_effect_rechecks_held_owner_after_await(tmp_path: Path, revocation: str) -> None:
-    request = _request()
-    journal = _journal(tmp_path / "journal")
-    current = _CurrentOwner(request)
+async def test_expired_body_does_not_allow_receipt_replacement(tmp_path: Path) -> None:
+    template = _template()
+    async with _composition(tmp_path, template) as c:
+        request, handle = c.prepare(template)
+        acknowledged = await c.gate.submit(request, handle)
+        c.issuer.close()
+        with pytest.raises(KebuiAdmissionError):
+            c.gate.acknowledge_terminal(
+                request,
+                expected_revision=acknowledged.record_revision,
+                receipt=SyntheticTerminalReceipt("completed", "krcp_" + "f" * 32),
+            )
+        assert c.gate.read(request) == acknowledged
+        assert c.dispatch.consumer.calls == 1
 
-    class GuardedEffect(_Dispatch):
-        async def dispatch(
-            self, request: AdmissionRequest, execution_id: str
-        ) -> SyntheticDispatchReceipt:
-            # The fake consumer explicitly honors the injected guard contract.
-            # Merely entering a Python context manager would not exclude writers.
-            self.entered.set()
-            await self.release.wait()
-            if not current.available or current.tui_writer or current.execution_id != execution_id:
-                raise RuntimeError("synthetic owner revoked before effect")
-            return await super().dispatch(request, execution_id)
 
-    dispatch = GuardedEffect(blocked=True)
-    owner = _owner(journal, current, _SyntheticEquality(request), dispatch)
-    pending = asyncio.create_task(owner.submit(request))
-    await asyncio.wait_for(dispatch.entered.wait(), 3)
-    if revocation == "unavailable":
-        current.available = False
-    elif revocation == "tui_writer":
-        current.tui_writer = True
-    else:
-        current.execution_id = "kexe_" + "8" * 32
-    dispatch.release.set()
-    result = await pending
-    assert result.phase is AdmissionPhase.UNKNOWN
-    assert dispatch.calls == []
-    assert journal.read(request) == result
-    journal.close()
+@pytest.mark.anyio
+async def test_restart_loses_bodyproof_but_preserves_readable_unknown(tmp_path: Path) -> None:
+    template = _template()
+    async with _composition(tmp_path, template) as c:
+        request, handle = c.prepare(template)
+        acknowledged = await c.gate.submit(request, handle)
+        assert acknowledged.phase is AdmissionPhase.ACKNOWLEDGED
+        assert c.dispatch.consumer.calls == 1
+    recovered = KebuiAdmissionJournal.open_existing(
+        tmp_path / "journal", expected_uid=os.geteuid(), expected_gid=os.getegid()
+    )
+    current = _CurrentOwner(template)
+    dispatch, clock = _Dispatch(), _Clock()
+    fresh = SyntheticContentIssuer(deadline_ns=100, clock=clock)
+    owner = KebuiTestAdmissionOwner(recovered, current, fresh, dispatch, enabled=True)
+    try:
+        result = owner.read(request)
+        assert result is not None and result.phase is AdmissionPhase.UNKNOWN
+        with pytest.raises(KebuiAdmissionError):
+            await owner.submit(request, handle)  # A still-referenced old handle is not authority.
+        with pytest.raises(KebuiAdmissionError):
+            offered = fresh.prepare(template.request_id, template.scope, _BODY)
+            await owner.submit(offered.request, offered)
+        assert owner.read(request) == result
+        assert dispatch.consumer.calls == 0
+        assert _BODY not in (tmp_path / "journal/admission.json").read_bytes()
+    finally:
+        fresh.close()
+        dispatch.release.set()
+        await owner.wait_for_idle()
+        recovered.close()
 
 
 _CRASH_STAGES = (
@@ -313,8 +372,6 @@ def _kill_here(stage: str, expected: str) -> None:
 
 
 def _crash_child(directory: Path, stage: str) -> None:
-    """Executed only by this test's own child, never by a vendor process."""
-
     class CheckpointJournal(KebuiAdmissionJournal):
         def accept(self, *args: Any, **kwargs: Any) -> Any:
             _kill_here(stage, "before_accept")
@@ -339,40 +396,61 @@ def _crash_child(directory: Path, stage: str) -> None:
                 _kill_here(stage, "after_terminal")
             return result
 
-    class Effect(_Dispatch):
-        async def dispatch(
-            self, request: AdmissionRequest, execution_id: str
-        ) -> SyntheticDispatchReceipt:
-            _kill_here(stage, "before_effect")
-            fd = os.open(directory / "effects", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-            try:
-                os.write(fd, b"synthetic-effect\n")
-                os.fsync(fd)
-            finally:
-                os.close(fd)
-            _kill_here(stage, "after_effect")
-            return await super().dispatch(request, execution_id)
+    original_consume = SyntheticBodyConsumer._consume
+
+    def consume_checkpoint(self: SyntheticBodyConsumer, body: bytes) -> SyntheticDispatchReceipt:
+        # Test-only fault injection at the exact synchronous consumer, no product hook.
+        _kill_here(stage, "before_effect")
+        assert body is _BODY
+        receipt = original_consume(self, body)
+        fd = os.open(directory / "effects", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.write(fd, b"synthetic-effect\n")  # No body, hash or exception is persisted.
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        _kill_here(stage, "after_effect")
+        return receipt
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(SyntheticBodyConsumer, "_consume", consume_checkpoint)
 
     async def run() -> None:
-        request = _request()
+        template = _template()
         ledger_path = directory / "journal"
         ledger_path.mkdir(mode=0o700)
         journal = CheckpointJournal.initialize_for_test(
             ledger_path, expected_uid=os.geteuid(), expected_gid=os.getegid()
         )
-        owner = _owner(journal, _CurrentOwner(request), _SyntheticEquality(request), Effect())
-        acknowledged = await owner.submit(request)
+        current, dispatch = _CurrentOwner(template), _Dispatch()
+        issuer = SyntheticContentIssuer(deadline_ns=100, clock=_Clock())
+        owner = KebuiTestAdmissionOwner(journal, current, issuer, dispatch, enabled=True)
+        handle = issuer.prepare(template.request_id, template.scope, _BODY)
+        acknowledged = await owner.submit(handle.request, handle)
         assert acknowledged.receipt_ref is not None
         owner.acknowledge_terminal(
-            request,
+            handle.request,
             expected_revision=acknowledged.record_revision,
-            receipt=SyntheticTerminalReceipt(
-                status="completed", receipt_ref=acknowledged.receipt_ref
-            ),
+            receipt=SyntheticTerminalReceipt("completed", acknowledged.receipt_ref),
         )
         raise AssertionError("crash checkpoint was not reached")
 
     asyncio.run(run())
+
+
+def _persisted_request(directory: Path) -> AdmissionRequest:
+    # Test metadata reconstruction is not source admission or body-proof recovery.
+    records = json.loads((directory / "admission.json").read_text())["records"]
+    if not records:
+        return _template()
+    value = records[0]["request"]
+    return AdmissionRequest(
+        request_id=value["request_id"],
+        scope=parse_scope(value["scope"]),
+        adapter_profile=value["adapter_profile"],
+        content_admission_ref=value["content_admission_ref"],
+        operation=value["operation"],
+    )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="local process-crash test uses POSIX SIGKILL")
@@ -394,18 +472,22 @@ def test_real_child_crash_never_replays_on_reopen(tmp_path: Path, stage: str) ->
     effect_file = tmp_path / "effects"
     before = effect_file.read_bytes() if effect_file.exists() else b""
     assert before in (b"", b"synthetic-effect\n")
+    request = _persisted_request(tmp_path / "journal")
     recovered = KebuiAdmissionJournal.open_existing(
         tmp_path / "journal", expected_uid=os.geteuid(), expected_gid=os.getegid()
     )
-    record = recovered.read(_request())
-    if stage == "before_accept":
-        assert record is None  # NOT_OBSERVED is not proof of no earlier delivery.
-    elif stage == "after_terminal":
-        assert record is not None and record.phase is AdmissionPhase.TERMINAL
-    else:
-        assert record is not None and record.phase is AdmissionPhase.UNKNOWN
-    assert (effect_file.read_bytes() if effect_file.exists() else b"") == before
-    recovered.close()
+    try:
+        record = recovered.read(request)
+        if stage == "before_accept":
+            assert record is None  # NOT_OBSERVED is not proof of no earlier delivery.
+        elif stage == "after_terminal":
+            assert record is not None and record.phase is AdmissionPhase.TERMINAL
+        else:
+            assert record is not None and record.phase is AdmissionPhase.UNKNOWN
+        assert (effect_file.read_bytes() if effect_file.exists() else b"") == before
+        assert _BODY not in (tmp_path / "journal/admission.json").read_bytes()
+    finally:
+        recovered.close()
 
 
 if __name__ == "__main__":
