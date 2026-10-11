@@ -1,11 +1,51 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-10T19:43:00Z"
-verified_by: "kebui-s03-submit-synthetic-candidate"
+verified_at_utc: "2026-10-11T03:52:00Z"
+verified_by: "kebui-approved-merge-handoff"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-11 已验收部分合并与 Codex 交接（03:52 UTC）
+
+Owner 本轮要求合并已验收提交后交接，停止新增功能开发。PR170–174 已按依赖顺序
+正常 merge（保留全部原提交，无 squash/rebase/force push）：
+
+- [PR170](https://github.com/ForceMind/agentbox/pull/170)：K2会话架构，merge
+  `e9bfff4c3c521eff55f5b02c40c18c1fdb37d7a9`，原head `b1d46c9b7e80590fc036de4edbf69452ee29adb1`
+- [PR171](https://github.com/ForceMind/agentbox/pull/171)：metadata observation，merge
+  `3ec693a691a29b9951b8d9203c480a2676c62059`，原head `1d6503df3510c54aa0dd8a897a0dcebfdea89b46`
+- [PR172](https://github.com/ForceMind/agentbox/pull/172)：inert admission/journal，merge
+  `bc5b44ab96dbdc31ecc533312bbc99cbe72b9ef6`，原head `659ff785af5e01f4dafc1d0c481680892fddb44b`
+- [PR173](https://github.com/ForceMind/agentbox/pull/173)：immutable synthetic content，merge
+  `c52da96267658aaefe7a1c82d20c90d66e1d361e`，原head `cb90601037e4c4fad17b449f774e6850cd05cb42`
+- [PR174](https://github.com/ForceMind/agentbox/pull/174)：隔离S03 submit双语言闭环，merge
+  `c78181ce5f81caafb2d0d3ce98eca95c5ac063ae`，原head `fed73bb3d38f7f1dc4cce3c129aa13d028de9eb4`
+
+每个原head已有独审CLEAR与六套首次CI success；逐步main真实merge tree与各审定head
+相同。当前main `c78181ce5f81caafb2d0d3ce98eca95c5ac063ae` / tree
+`5232804dc6970a9cf4e84c29f48605cab8d8ca36`。合并后的自动main回归与最终收口状态以
+相应GitHub runs及PR记录为准，不能把原PR绿当所有新main run已经完成。
+
+[PR169](https://github.com/ForceMind/agentbox/pull/169) 原head
+`058bfcac98b93de734ea12a172bb573c7b00d939` 的Cromma合成参考卡已独审/六套CI通过；
+合并次序调整使本文件出现唯一文档冲突。本提交只在该冲突中保留双方全部历史并追加
+本交接快照，参考卡/验证器/原型及所有已审应用代码保持原件。新组合head仍须完整六套
+CI和独立差异复核；此处不预宣称PR169已合并，最终结果追加在PR169。
+
+另有基于174的 default-off authenticated S03 本地候选，最终独审被平台中断。
+它只有本地测试结果，没有最终独审CLEAR、没有提交/推送/PR，不在本次合并树内。
+该候选继续冻结待审；本轮交付范围仅为已合格的PR169–174，不把本地绿结果当作验收。
+
+主线已交付的是有限synthetic软件：固定sender/opaque pipe/Python/immutable owner/journal/
+fake consumer。真实authenticated source、pin/key custody、vendor/host、长期retention、
+U3/K3、Approval/Interrupt/输出协议、发布部署仍未因此取得资格。7157760 bytes是逻辑
+payload/metadata预算，非RSS或安全擦除；255永久身份容量和UNKNOWN不重发边界保留。
+原五公开来源19图、200%与焦点资格不重做，也不据参考卡宣布U0整体退出。
+
+以下均为对应日期的历史原文；旧“未合并/Draft/pending”不覆盖上述合并回读或实时GitHub。
+
 
 ## 2026-10-10 S03 隔离 submit-only 双语言候选（19:43 UTC）
 
@@ -155,6 +195,53 @@ Owner 已报告购入 kebui.com/qebui.com，DNS/技术控制/上线未验证。�
 T01–T14，也不代表真实 CLI/浏览器/host 验收。独立审查及候选 exact-head CI 结果
 由本批 PR 追加记录，不用增加文档提交反复触发同一软件基线。
 
+
+## 2026-10-09 Cromma 参考卡浏览器与两图通过（17:55 UTC）
+
+[Draft PR169](https://github.com/ForceMind/agentbox/pull/169) source head
+`9135c722eb74f32edbadb80b236c9891eb97d10e` / tree
+`00cd330da80dcd4953400a7aba9b5d20cbebb6a5` 的
+[design job113948449925](https://github.com/ForceMind/agentbox/actions/runs/37968391769/job/113948449925)
+首轮 success。实际 Chromium151.0.7922.34 验证七卡、360/390/768/1024/1440
+五宽、Cromma 两面板的内容/来源及 card/panel 文字范围，0外部请求、0异常。
+准确 PRmerge `518fe948e9346bc9aa3c9f8baab77889e60f079d` 与 source head 同树；
+报告 board SHA256 `6e81f1ee9777ef5d964189f0cfdc66a87daeb10e96cc35c8ef828dd42faf7f61`
+与该源文件逐字节吻合。
+
+[Artifact11634089929](https://github.com/ForceMind/agentbox/actions/runs/37968391769/artifacts/11634089929)
+共26,814,087bytes，ZIP SHA256
+`0893d06252b715bb1139b345bbe244a3570a7ef2451495b744fd6c0d24466200` 已核对。
+独立逐张打开 `reference-board-390.png`（390×4959）及
+`reference-board-1440.png`（1440×2505），新卡的纯合成/未重新看原图声明、
+布局/状态对照与来源均完整可读，无可见裁切/覆盖/横向外溢。source 与两图审查
+均无开放 P0/P1/P2；其余240图未本轮重审，不外推设备、上游实测或全面美观资格。
+
+source 五套 workflow 已 success，普通 E2E 尚运行；本次仅补已取得的资格文档，
+最后组合 head 完整六套及合并状态另按 [PR169](https://github.com/ForceMind/agentbox/pull/169)
+准确回读，不借 source 步骤成功称最终 CI 完成。保持 Draft 交父任务合并协调。
+Cromma 卡仍仅据 R1 既有文字，不获取或转载私人原图；主原型/生产/U2/API/Runtime/
+U3/host/release/deploy 均不改，只关闭该参考卡缺项，不宣称 U0 整体退出。
+
+## 2026-10-09 Cromma 纯合成参考卡候选（17:41 UTC）
+
+Live fetch/read-back main 为 PR168 合并提交
+`9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
+`06eb70dcb01c1ad65243a693c7207455d0d6455e`；六套准确主线 workflow 均 success，
+[E2E37958773790](https://github.com/ForceMind/agentbox/actions/runs/37958773790)。
+下方 PR168 待合并/CI pending 仅为历史，不能覆盖本次 live 核验。
+
+本批只补 [参考板](../../design/kebui/reference-board.html) 缺失的 Cromma 卡：
+仅据 [R1 原作者文字](KEBUI_UI_DESIGN.md)，合成搜索/新建、分类会话行与
+Kebui 的 Project/执行状态改造对照；未重新查看原图、获取或转载私人头像/消息。
+新增内容/来源/无交互控件和五宽文字范围断言，沿用两张桌面/手机图及零出网检查。
+旧六卡对新增静态内容合同为 RED，补卡后同合同 GREEN；这仅为 jsdom 内容检查。
+主原型重新构建后逐字不变；链接、secret/source-boundary、语法与 diff 检查通过。
+SHA256SUMS 刷新现列文件的当前字节，包括既有四项过时哈希，不代表重做其视觉验收。
+
+云端本地 Chromium 试启动仍因 socket EPERM 失败，未宣称本地浏览器或像素通过。
+新 head 的既有六套 CI、参考板五宽/零出网/两张原图和独立像素检查仍待完成。
+保持 Draft 交父任务合并协调；无主原型、U2/API/Runtime、U3、host 或 release/deploy。
+仅收口该参考卡，不重做既有公开图、200% 或焦点资格，不宣称 U0 整体退出。
 
 ## 2026-10-09 U1 键盘焦点源码与8图通过（16:04 UTC）
 
