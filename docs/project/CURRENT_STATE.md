@@ -1,11 +1,200 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-09T17:55:00Z"
-verified_by: "kebui-cromma-reference-card"
+verified_at_utc: "2026-10-11T03:52:00Z"
+verified_by: "kebui-approved-merge-handoff"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-11 已验收部分合并与 Codex 交接（03:52 UTC）
+
+Owner 本轮要求合并已验收提交后交接，停止新增功能开发。PR170–174 已按依赖顺序
+正常 merge（保留全部原提交，无 squash/rebase/force push）：
+
+- [PR170](https://github.com/ForceMind/agentbox/pull/170)：K2会话架构，merge
+  `e9bfff4c3c521eff55f5b02c40c18c1fdb37d7a9`，原head `b1d46c9b7e80590fc036de4edbf69452ee29adb1`
+- [PR171](https://github.com/ForceMind/agentbox/pull/171)：metadata observation，merge
+  `3ec693a691a29b9951b8d9203c480a2676c62059`，原head `1d6503df3510c54aa0dd8a897a0dcebfdea89b46`
+- [PR172](https://github.com/ForceMind/agentbox/pull/172)：inert admission/journal，merge
+  `bc5b44ab96dbdc31ecc533312bbc99cbe72b9ef6`，原head `659ff785af5e01f4dafc1d0c481680892fddb44b`
+- [PR173](https://github.com/ForceMind/agentbox/pull/173)：immutable synthetic content，merge
+  `c52da96267658aaefe7a1c82d20c90d66e1d361e`，原head `cb90601037e4c4fad17b449f774e6850cd05cb42`
+- [PR174](https://github.com/ForceMind/agentbox/pull/174)：隔离S03 submit双语言闭环，merge
+  `c78181ce5f81caafb2d0d3ce98eca95c5ac063ae`，原head `fed73bb3d38f7f1dc4cce3c129aa13d028de9eb4`
+
+每个原head已有独审CLEAR与六套首次CI success；逐步main真实merge tree与各审定head
+相同。当前main `c78181ce5f81caafb2d0d3ce98eca95c5ac063ae` / tree
+`5232804dc6970a9cf4e84c29f48605cab8d8ca36`。合并后的自动main回归与最终收口状态以
+相应GitHub runs及PR记录为准，不能把原PR绿当所有新main run已经完成。
+
+[PR169](https://github.com/ForceMind/agentbox/pull/169) 原head
+`058bfcac98b93de734ea12a172bb573c7b00d939` 的Cromma合成参考卡已独审/六套CI通过；
+合并次序调整使本文件出现唯一文档冲突。本提交只在该冲突中保留双方全部历史并追加
+本交接快照，参考卡/验证器/原型及所有已审应用代码保持原件。新组合head仍须完整六套
+CI和独立差异复核；此处不预宣称PR169已合并，最终结果追加在PR169。
+
+另有基于174的 default-off authenticated S03 本地候选，最终独审被平台中断。
+它只有本地测试结果，没有最终独审CLEAR、没有提交/推送/PR，不在本次合并树内。
+该候选继续冻结待审；本轮交付范围仅为已合格的PR169–174，不把本地绿结果当作验收。
+
+主线已交付的是有限synthetic软件：固定sender/opaque pipe/Python/immutable owner/journal/
+fake consumer。真实authenticated source、pin/key custody、vendor/host、长期retention、
+U3/K3、Approval/Interrupt/输出协议、发布部署仍未因此取得资格。7157760 bytes是逻辑
+payload/metadata预算，非RSS或安全擦除；255永久身份容量和UNKNOWN不重发边界保留。
+原五公开来源19图、200%与焦点资格不重做，也不据参考卡宣布U0整体退出。
+
+以下均为对应日期的历史原文；旧“未合并/Draft/pending”不覆盖上述合并回读或实时GitHub。
+
+
+## 2026-10-10 S03 隔离 submit-only 双语言候选（19:43 UTC）
+
+Live main仍为 `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`。
+[PR173](https://github.com/ForceMind/agentbox/pull/173) head
+`cb90601037e4c4fad17b449f774e6850cd05cb42` / tree
+`3537cd0db92bfce282a452ab9e21f9ff9138bb7f` 已六套首次CI全部success，
+27 jobs为25success/2既定skip；实际test-merge `64a52168bf7ce262ee18386967b44ad9f6883b54`
+与head同tree。PR169–173均仍open未merge、原heads不变；本片准确stack base为173，
+不重试既有合并、不retarget或绕路。下方173发布前pending为历史，不覆盖此回读。
+
+本批独立 [S03 submit-only synthetic profile](../KEBUI_S03_SUBMIT_SYNTHETIC_PROFILE.md)
+由固定TypeScript sender经有界opaque binary pipe到Python，再交原issuer/owner/journal与
+真实fixed fake-consumer。复用既有NX primitive，独立context/domain/AAD、五record、fresh
+session ephemeral、原deadline与same-owner临界区；NX仅证明responder possession，
+公开fixture keys及tuple一致不是真实browser/source认证。原Noise/A3/WAW/issuer/owner/
+journal/schema逐字保持，生产route/DB/Runtime/vendor均没有接线。
+
+设计candidate-3独审CLEAR，SHA `d28ed6fcdb8e6afb8e02ae4d51dde3f41aec139aa8995fc2a7f08bd9d8a89ff6`。
+Web持久metadata独立255×1024bytes，单份最多627byte记录以OR拒request/channel/lease复用；
+close不抹账，255满后在复制前BUSY。总逻辑payload/metadata预留7157760bytes，Node1571840
+只适用于固定harness唯一Webrealm/模块实例；不是任意多realm process上限、RSS或安全擦除。
+accept已commit但return前未知异常可保留live ACCEPTED占用/effect0，原journal重开才UNKNOWN；
+不把它混同effect发生后guard-exit的UNKNOWN，不修改旧owner或允许相同bytes复活请求。
+
+本地完整Kebui Python1019passed；全量collection6482；末轮affected172passed。
+全Web89files/2267passed，extension6passed，lint/format/typecheck/build均通过。
+Ruff、strict mypy412、逐文件Black425、source/import mutation、doc links、secret及54action
+pins通过。实际29双语言场景在最终修后Web与candidate-3 fixture上全部通过，含16KiB原字节/
+identity、双向prefix/EOF、真实idle deadline、waiter取消、remote-only expiry、slowreader
+write(false)且Runtime最多effect1、ACK后exit-crash重开原journal UNKNOWN且不补发。
+独审已保全并原probe修后复验错误holder/错误码、握手deadline、退休引用、outward imports、
+catalog先验界限、iterator等七项；另一个真实外线程撤销通知问题也已修复及独审回归。
+完整候选终审绑定与自身六套exact-head CI仍以Draft PR记录，不借173/base绿替代，也不加
+无意义docs-only头重跑。既有AF_UNIX限制下本地未重跑native/E2E，不称本地全量执行PASS。
+
+真实S03 user/source/pin/key custody、authenticated relay/current-owner/single-writer、固定
+vendor/CLI/host与retention仍缺独立资格；没有U3/approval/interrupt/output或部署发布。
+下方全部历史原文保留。
+
+
+
+
+## 2026-10-10 S03 隔离 immutable content 候选（18:27 UTC）
+
+Live main仍为 `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`。
+[PR172](https://github.com/ForceMind/agentbox/pull/172) head
+`659ff785af5e01f4dafc1d0c481680892fddb44b` / tree
+`549aac1978f6bb7a94ddb40e845dfd9af102a07e` 已六套首次CI全部success，
+27 jobs为25success/2既定skip；实际test-merge `38d429b2dd28c25e72de27f94e10e3bc21882817`
+与head同tree。三Python版本各6098passed/88skip，Frontend2176+6，E2E650passed/270skip。
+PR169/170/171/172均仍open未merge、原head不变，172为本片准确stack base。
+
+本批独立叠加 [S03 immutable synthetic admission](../KEBUI_S03_INERT_CONTENT_ADMISSION.md)：
+唯一进程级issuer、sealed handle、exact immutable UTF8 bytes与原始deadline；durable acceptance
+后一次性witness连接真实fixed fake-consumer，metadata读/terminal不依赖正文存活。
+4MiB仅retained+staging payload账本，独立81920-byte解码工作区，不是RSS或安全擦除承诺。
+UNKNOWN保留执行占用；重建issuer、相同字符串或重新提供bytes均不能复活旧请求。
+本片只是S03前置子合同的软件闭环，journal源码/schema、生产DB/route/Runtime接线均未改。
+
+最终本地815项全过（588观察+50journal+153owner/body+24集成，含9个SIGKILL窗口）；
+独审51项全过，12个production-import mutation全被拦截。实际guard-exit RED修复为
+已经effect1后保守UNKNOWN、占用不释放、不补发且metadata可读；异常链泄漏修复和原始
+RED/准确源码GREEN保全。全Ruff、mypy405、Black逐文件418及diff通过；全量collection6278。
+本地全量执行没有重复既知AF_UNIX EPERM阻塞，不称全量PASS；新候选仍待自身六套远端CI，
+终态只追加Draft PR，不用多余文档头重跑。
+
+真实S03认证来源/通道、跨重启正文equality、生产current authority与single-writer、固定vendor
+协议/CLI/host、retention和发布仍需各自合同与证据；不宣称U3接入。本片没有新credential、
+生产接线、真实调用、合并或部署。下方历史完整保留，其pending不覆盖本节或live GitHub。
+
+
+
+## 2026-10-10 K2 隔离准入journal候选（17:27 UTC）
+
+Live main仍为 `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`。
+[PR171](https://github.com/ForceMind/agentbox/pull/171) head
+`1d6503df3510c54aa0dd8a897a0dcebfdea89b46` / tree
+`9e1d41643643e482d462e552ebc2f60fcb030da5` 已六套首次CI全部success，
+27 jobs为25success/2既定skip，实际PRmerge与head同tree；仍Draft未merge。
+PR169/170各自head不变、均未merge，本批没有重试合并或retarget。
+
+本批由171独立叠加 [K2 inert admission journal](../KEBUI_K2_INERT_ADMISSION.md)：
+复用16字段scope，default-off synthetic owner连接fake dispatch，先durable acceptance与
+pre-dispatch fence，重启未完成记录UNKNOWN保留占用且不重发；pre-dispatch拒绝CAS退役旧claim，
+rename后fsync失败必须经跨instance持久屏障，未知库存fail closed不GC。
+255条×4KiB+4KiB是单snapshot逻辑预留，不是rename双份磁盘峰值。
+没有生产import/route/DB/Runtime接线/CLI/S03内容/credentials，也不建立K3持久Task。
+
+本地723项全过（588既有+116新unit+19集成，含9个SIGKILL窗口）；独审91项及14个
+source-boundary mutation全过。真实RED修复execution换绑后旧receipt读取、port异常文本外泄、
+孤儿文件库存忽略；receipt关联收紧单列为候选合同选择。Ruff、mypy403、Black逐文件416、
+doc links、secret/source-boundary与action pins通过。原始日志与修前源码保全。
+
+本地全量尝试遇两项既有Unix socket EPERM后中断，不能称全量PASS；准确诊断见合同。
+新候选还须自身exact-head远端CI，终态只记录在Draft PR，不加无意义docs提交重跑。
+既有公开runner/workflow不变。真实host/CLI/S03 equality/current authority/retention仍未验，
+不宣称U3接入。下方所有历史正文完整保留，其pending文字不覆盖本节或live GitHub。
+
+
+## 2026-10-10 K2-01 隔离只读观察模型候选（16:18 UTC）
+
+[PR170](https://github.com/ForceMind/agentbox/pull/170) head
+`b1d46c9b7e80590fc036de4edbf69452ee29adb1` / tree
+`b713e4c783eb6c38e5d248bf72aef1bac8e4a3e6` 六套准确 CI 已首轮全部 success：
+27 jobs 为25 success/2既定skip，PRmerge d59dd0c2 与候选同tree。它仍为Draft，
+main仍9f8d20e；PR169与PR170没有因本批自行合并。
+
+本批独立叠加 [K2-01 metadata-only 模型](../KEBUI_K2_OBSERVATION_MODEL.md)：
+16字段scope/3字段观察的Python与Web纯校验、Web只读projection与共享8正/159负
+合成向量。复用原WAW基础validators，不改WAW身份/reducer、Runtime、route、DB、
+CLI、正文或审批执行；新模块没有生产import，不产生写授权，也不宣称U3已接入。
+
+实际局部Python616passed，完整Web2176passed/88files，Web typecheck/lint/format/build、
+Ruff、mypy398、新Python Black及diff检查通过。独审发现gap后旧snapshot可误恢复fresh，
+实际RED→GREEN加入独立revisionFloor；nonenumerable字段丢失也经负例修复。最终独审
+CLEAR，1175跨语言变体0差异。完整命令与未验范围在合同；上述不是新head远端CI，
+亦不代表真实CLI/browser/host。当前新候选资格待首次exact-head CI，结果只写回PR，
+不反复追加docs头取绿。下方准备稿和全部早期历史完整保留。
+
+
+## 2026-10-10 K2 会话架构准备（未启用 U3）
+
+当前核对 main `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
+`06eb70dcb01c1ad65243a693c7207455d0d6455e`；六套 exact-main workflow
+均首轮 completed/success。U2 既有页面、产品标识及 U1 有界原型资格已交付，
+不重复迁移、截图或把旧 NOT RUN 自动扩成测试队列。
+
+新独立交付是 [K2/S03 会话架构准备](../KEBUI_K2_CONVERSATION_ARCHITECTURE.md)：
+现有能力矩阵、身份/内容分域、幂等与 UNKNOWN、审批 revision/TTL、取消和恢复、
+14 项后继对抗验收设计及有限实施顺序。本文档是可评审设计，未冻结可上线 wire，
+没有实现 turn/approval/聊天正文、生产接线或 K3–K7。新候选须取得自己的资格。
+
+[PR169](https://github.com/ForceMind/agentbox/pull/169) head
+`058bfcac98b93de734ea12a172bb573c7b00d939` 六套成功、仍未合并；其合并阻塞
+单独保留，不由本批重试或绕过，不据此宣布 U0 整体退出。五公开来源19图已有
+[实际观察证据](../../design/kebui/PUBLIC_VISUAL_EVIDENCE.md)，覆盖下方历史的
+五项公开截图 UNKNOWN，不能重复当成当前缺项；Cromma 不同于这五项公开取证。
+Owner 已报告购入 kebui.com/qebui.com，DNS/技术控制/上线未验证。最终颜色/Logo、
+真实 host/双 CLI/客户端/恢复、Secret 与 release/deploy 门槛不变。
+下方快照及其 pending/UNKNOWN 为原时间点历史，不能覆盖本节或 live GitHub。
+
+本地已运行：903 relative doc links、secret-pattern/source-boundary、54 action pins、
+四份历史正文保全、CURRENT_STATE 四键 header、14 个唯一计划用例 ID、diff check，
+均 exit 0。长治理 anchor 初次匹配 credential 扫描的 `sk-` 模式，是文档路径假阳性；
+改为已有文档链接后通过，扫描器/规则未改。新文档与后继测试设计不等于已运行
+T01–T14，也不代表真实 CLI/浏览器/host 验收。独立审查及候选 exact-head CI 结果
+由本批 PR 追加记录，不用增加文档提交反复触发同一软件基线。
+
 
 ## 2026-10-09 Cromma 参考卡浏览器与两图通过（17:55 UTC）
 

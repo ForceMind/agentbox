@@ -1,5 +1,40 @@
 # AgentBox Project Context Index
 
+## 2026-10-10 S03 submit-only 隔离集成候选
+
+[最新有界合同与证据](../KEBUI_S03_SUBMIT_SYNTHETIC_PROFILE.md)承接PR173准确head
+`cb90601037e4c4fad17b449f774e6850cd05cb42`：固定Web sender → opaque binary pipe →
+Python原immutable issuer/admission/journal → fixed fake-consumer。实际字节/identity、
+取消/过期/未知恢复、双语言29场景与新代码回归均已有本地证据；自身exact-head CI与
+终审绑定见候选Draft PR，不借base绿。没有生产route、DB、vendor或真实credentials。
+
+candidate-3独立逻辑预算将Web永久防重放metadata和临时channel分开；关闭不抹账，
+新source/相同bytes不能复活旧请求。NX responder possession不是用户/浏览器认证。
+PR169–173与main未合并/改动；真实S03认证、CLI/host、U3与release门槛仍独立。
+下方历史快照保持，不把旧pending重复列成新测试任务。
+
+
+## 2026-10-10 K2 会话架构准备（未启用 U3）
+
+当前核对 main `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
+`06eb70dcb01c1ad65243a693c7207455d0d6455e`；六套 exact-main workflow
+均首轮 completed/success。U2 既有页面、产品标识及 U1 有界原型资格已交付，
+不重复迁移、截图或把旧 NOT RUN 自动扩成测试队列。
+
+新独立交付是 [K2/S03 会话架构准备](../KEBUI_K2_CONVERSATION_ARCHITECTURE.md)：
+现有能力矩阵、身份/内容分域、幂等与 UNKNOWN、审批 revision/TTL、取消和恢复、
+14 项后继对抗验收设计及有限实施顺序。本文档是可评审设计，未冻结可上线 wire，
+没有实现 turn/approval/聊天正文、生产接线或 K3–K7。新候选须取得自己的资格。
+
+[PR169](https://github.com/ForceMind/agentbox/pull/169) head
+`058bfcac98b93de734ea12a172bb573c7b00d939` 六套成功、仍未合并；其合并阻塞
+单独保留，不由本批重试或绕过，不据此宣布 U0 整体退出。五公开来源19图已有
+[实际观察证据](../../design/kebui/PUBLIC_VISUAL_EVIDENCE.md)，覆盖下方历史的
+五项公开截图 UNKNOWN，不能重复当成当前缺项；Cromma 不同于这五项公开取证。
+Owner 已报告购入 kebui.com/qebui.com，DNS/技术控制/上线未验证。最终颜色/Logo、
+真实 host/双 CLI/客户端/恢复、Secret 与 release/deploy 门槛不变。
+下方快照及其 pending/UNKNOWN 为原时间点历史，不能覆盖本节或 live GitHub。
+
 ## 2026-10-08 U1 可评审产物与品牌主干闭环（03:06 UTC）
 
 PR162 已合并的 main `29adec75b1c6c7912ceacd53a3cbed416ac4aa79` 六套 exact-main
