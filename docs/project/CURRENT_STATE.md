@@ -1,11 +1,39 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-10T16:18:00Z"
-verified_by: "kebui-k2-observation-candidate"
+verified_at_utc: "2026-10-10T17:27:00Z"
+verified_by: "kebui-k2-inert-admission-candidate"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+
+## 2026-10-10 K2 隔离准入journal候选（17:27 UTC）
+
+Live main仍为 `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`。
+[PR171](https://github.com/ForceMind/agentbox/pull/171) head
+`1d6503df3510c54aa0dd8a897a0dcebfdea89b46` / tree
+`9e1d41643643e482d462e552ebc2f60fcb030da5` 已六套首次CI全部success，
+27 jobs为25success/2既定skip，实际PRmerge与head同tree；仍Draft未merge。
+PR169/170各自head不变、均未merge，本批没有重试合并或retarget。
+
+本批由171独立叠加 [K2 inert admission journal](../KEBUI_K2_INERT_ADMISSION.md)：
+复用16字段scope，default-off synthetic owner连接fake dispatch，先durable acceptance与
+pre-dispatch fence，重启未完成记录UNKNOWN保留占用且不重发；pre-dispatch拒绝CAS退役旧claim，
+rename后fsync失败必须经跨instance持久屏障，未知库存fail closed不GC。
+255条×4KiB+4KiB是单snapshot逻辑预留，不是rename双份磁盘峰值。
+没有生产import/route/DB/Runtime接线/CLI/S03内容/credentials，也不建立K3持久Task。
+
+本地723项全过（588既有+116新unit+19集成，含9个SIGKILL窗口）；独审91项及14个
+source-boundary mutation全过。真实RED修复execution换绑后旧receipt读取、port异常文本外泄、
+孤儿文件库存忽略；receipt关联收紧单列为候选合同选择。Ruff、mypy403、Black逐文件416、
+doc links、secret/source-boundary与action pins通过。原始日志与修前源码保全。
+
+本地全量尝试遇两项既有Unix socket EPERM后中断，不能称全量PASS；准确诊断见合同。
+新候选还须自身exact-head远端CI，终态只记录在Draft PR，不加无意义docs提交重跑。
+既有公开runner/workflow不变。真实host/CLI/S03 equality/current authority/retention仍未验，
+不宣称U3接入。下方所有历史正文完整保留，其pending文字不覆盖本节或live GitHub。
+
 
 ## 2026-10-10 K2-01 隔离只读观察模型候选（16:18 UTC）
 
