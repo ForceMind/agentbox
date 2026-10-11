@@ -1,5 +1,19 @@
 # AgentBox Project Context Index
 
+## 2026-10-10 S03 submit-only 隔离集成候选
+
+[最新有界合同与证据](../KEBUI_S03_SUBMIT_SYNTHETIC_PROFILE.md)承接PR173准确head
+`cb90601037e4c4fad17b449f774e6850cd05cb42`：固定Web sender → opaque binary pipe →
+Python原immutable issuer/admission/journal → fixed fake-consumer。实际字节/identity、
+取消/过期/未知恢复、双语言29场景与新代码回归均已有本地证据；自身exact-head CI与
+终审绑定见候选Draft PR，不借base绿。没有生产route、DB、vendor或真实credentials。
+
+candidate-3独立逻辑预算将Web永久防重放metadata和临时channel分开；关闭不抹账，
+新source/相同bytes不能复活旧请求。NX responder possession不是用户/浏览器认证。
+PR169–173与main未合并/改动；真实S03认证、CLI/host、U3与release门槛仍独立。
+下方历史快照保持，不把旧pending重复列成新测试任务。
+
+
 ## 2026-10-10 K2 会话架构准备（未启用 U3）
 
 当前核对 main `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree

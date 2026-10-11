@@ -356,11 +356,14 @@ def test_no_production_import_and_only_pure_declared_dependencies() -> None:
     assert imports <= {"__future__", "dataclasses", "enum", "re", "typing", "agentbox_core.waw"}
     # Only these isolated admission consumers may reuse the pure scope validator.
     # Neither metadata nor synthetic content may gain a production consumer.
+    # S03 may consume these only through the exact isolated composition below.
     isolated = {
         module,
         ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_admission.py",
         ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_admission_journal.py",
         ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_content_admission.py",
+        ROOT / "packages/agentbox-protocol/src/agentbox_protocol/s03_submit.py",
+        ROOT / "packages/agentbox-runtime/src/agentbox_runtime/kebui_s03_submit.py",
     }
     assert all(source.is_file() for source in isolated)
     forbidden = (
@@ -368,6 +371,7 @@ def test_no_production_import_and_only_pure_declared_dependencies() -> None:
         "kebui_admission",
         "kebui_admission_journal",
         "kebui_content_admission",
+        "s03_submit",
     )
     for directory in ("apps", "packages", "helper", "installer"):
         for source in (ROOT / directory).rglob("*.py"):
