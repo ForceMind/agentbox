@@ -1,11 +1,71 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-11T03:52:00Z"
-verified_by: "kebui-approved-merge-handoff"
+verified_at_utc: "2026-10-14T17:58:00Z"
+verified_by: "kebui-handoff-reconciliation"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-14 主线回读与交接状态校准（17:58 UTC）
+
+本节是当前快照；下方按日期保留的 Draft、pending、未合并和旧下一步均为历史。
+实时 Git/GitHub 优先于本文；本次只校准文档，不改变应用代码、版本或发布状态。
+
+### 已核实的主线与交付
+
+- 仓库：`ForceMind/agentbox`；main 为
+  `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree 为
+  `fc98058a7580e2a086bdeec960e9714147afa225`。
+- PR170–174 于 2026-10-11 03:46–03:51 UTC 依次合并；PR169 随后于
+  04:14:43 UTC 合并。六个 PR 均已 `closed` / `merged=true`，不是待合并队列。
+
+| 已合并交付 | PR | 最终 PR head | merge commit |
+| --- | --- | --- | --- |
+| K2 会话架构准备 | [170](https://github.com/ForceMind/agentbox/pull/170) | `b1d46c9b7e80590fc036de4edbf69452ee29adb1` | `e9bfff4c3c521eff55f5b02c40c18c1fdb37d7a9` |
+| inert metadata observation | [171](https://github.com/ForceMind/agentbox/pull/171) | `1d6503df3510c54aa0dd8a897a0dcebfdea89b46` | `3ec693a691a29b9951b8d9203c480a2676c62059` |
+| inert admission / durable journal | [172](https://github.com/ForceMind/agentbox/pull/172) | `659ff785af5e01f4dafc1d0c481680892fddb44b` | `bc5b44ab96dbdc31ecc533312bbc99cbe72b9ef6` |
+| immutable synthetic content / fixed consumer | [173](https://github.com/ForceMind/agentbox/pull/173) | `cb90601037e4c4fad17b449f774e6850cd05cb42` | `c52da96267658aaefe7a1c82d20c90d66e1d361e` |
+| isolated S03 submit-only interop | [174](https://github.com/ForceMind/agentbox/pull/174) | `fed73bb3d38f7f1dc4cce3c129aa13d028de9eb4` | `c78181ce5f81caafb2d0d3ce98eca95c5ac063ae` |
+| 已合并的 Cromma 合成参考卡 | [169](https://github.com/ForceMind/agentbox/pull/169) | `e75b900852596dce84de478ec411386bad1c1f89` | `fe8fae69204075aa5ade6f837c2283e552431eb2` |
+
+准确 main `fe8fae6` 的六套 `push` 工作流均为首轮 `completed/success`：
+[Backend](https://github.com/ForceMind/agentbox/actions/runs/38110961590)、
+[Frontend](https://github.com/ForceMind/agentbox/actions/runs/38110961579)、
+[E2E](https://github.com/ForceMind/agentbox/actions/runs/38110961578)、
+[Security](https://github.com/ForceMind/agentbox/actions/runs/38110961592)、
+[Deployment](https://github.com/ForceMind/agentbox/actions/runs/38110961665)、
+[Release Candidate](https://github.com/ForceMind/agentbox/actions/runs/38110961600)。
+这是主线的软件回归证据；工作流名称不表示已经生产部署或发布，也不替代本次新文档
+head 的自动 CI。定时 Security 的另一次成功不计作第七套主线验收。
+
+### 交接事实与当前负责范围
+
+此前已完成已验收部分的合并和交接材料准备；Owner 当时计划让 Codex 接手，
+但具体接收会话、接收人及接收成功从未核实。因此只能称“材料已准备”，不能称
+“已被另一个会话接手”。2026-10-14 Owner 要求继续后，由当前助手恢复管理，
+先完成本轮文档校准；不要求 Owner 转交提示，也不假定其他会话已经在开发。
+
+此前未提交的 authenticated S03 本地候选不在上述 merge tree 或交付内，不能作为
+后继实现起点；本轮及下一张证据核对卡不读取、恢复、重写、上传或重新委派它，
+也不以替代设计绕过既有停止边界。历史“冻结待审”不是当前恢复执行的指令。
+
+### 尚未取得的资格与下一步
+
+- PR169 的已合并合成参考卡、既有 U1 有界原型、U2 页面和 Kebui 标识均按各自
+  证据范围记录；不重复迁移、公开来源取证或把旧 NOT RUN 自动扩为测试队列。
+  这些交付不等于 U0 整体退出、最终品牌确认或真实设备全量验收。
+- PR171–174 仅建立 inert / synthetic 软件能力。真实 user/browser/session/source
+  认证、pin/key custody、relay/current-owner/single-writer、固定 vendor/CLI 行为、
+  host/retention、Approval/Interrupt/输出历史与 U3/K3 仍未由这些合并取得资格。
+- 真实 host、双 CLI、客户端恢复、Secret、域名技术控制、发布和部署继续分别取证；
+  当前版本保持 `0.3.0-rc.31`，本轮没有相关执行或承诺。
+- 下一张有界卡是 [已合并交付证据与缺口核对](NEXT_ACTION.md)：只使用已合并主线、
+  既有合同和实际 CI 记录，产出一份能力/证据/缺口清单后停止。它不启动受限候选、
+  不宣布 U3 可实施，也不反复重跑未变更基线。当前交接入口见
+  [DEVELOPMENT_HANDOFF.md](DEVELOPMENT_HANDOFF.md)。
+
+## 历史快照（保留原文，不作为当前执行指令）
 
 ## 2026-10-11 已验收部分合并与 Codex 交接（03:52 UTC）
 
