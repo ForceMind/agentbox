@@ -1,5 +1,17 @@
 # AgentBox Project Context Index
 
+## 2026-10-15 交接接续与能力清单
+
+Owner 已要求先合并 PR175 并接续剩余工作。PR175 的真实 merge 为
+`a346cac8cbd7cb6315f103895198d433015a877a`；准确 CI/回读见
+[CURRENT_STATE](CURRENT_STATE.md)。新增入口为
+[已交付能力、证据与剩余开发清单](KEBUI_DELIVERY_EVIDENCE_AND_GAPS.md)：
+PR/source/head、K2-T01–T14 的合成覆盖和真实缺口、接口边界及 D01–D07 验收顺序。
+先读该清单与 [NEXT_ACTION](NEXT_ACTION.md)，再按需查历史合同。
+没有新增应用能力、版本、host/Secret 或 release/deploy；未提交 authenticated S03
+候选继续不作为输入或后继起点。下方旧“只到 Draft/材料未接收”为对应日期记录，
+不覆盖本次 Owner 直接在当前 Codex 会话接续的事实。
+
 ## 2026-10-14 当前入口与历史阅读规则
 
 当前 main 为 `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree
