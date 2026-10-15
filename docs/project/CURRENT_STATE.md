@@ -1,11 +1,38 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-14T17:58:00Z"
-verified_by: "kebui-handoff-reconciliation"
+verified_at_utc: "2026-10-15T07:14:58Z"
+verified_by: "codex-kebui-delivery-evidence"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-10-15 PR175 合并回读与交付缺口核对
+
+Owner 明确要求合并 PR175，并由当前 Codex 接续交接计划。
+[PR175](https://github.com/ForceMind/agentbox/pull/175) 已于 07:01:59 UTC 正常合并，
+merge/main `a346cac8cbd7cb6315f103895198d433015a877a`；parents 为
+`fe8fae69204075aa5ade6f837c2283e552431eb2` 与 final head
+`c7b106ee2f79597f97843e327793d82d1dd308d6`。merge tree 与该 head 同为
+`8d9c4f4e4718f4c30ed1fc089c6deab46d0134a4`，不是预测的 merge SHA。
+final head 六套 CI success，25 success/2 规定 skip；07:14 UTC 的准确 main
+Security/Deployment/Frontend/Release Candidate/Backend 已 success，E2E 仍运行。
+这是核对时点的快照；后继终态追加本批 PR 的准确回读，不借原 PR 绿推定 main，
+也不为了重复未改变软件的 CI 而追加文档 head。
+
+本轮独立分支 `codex/kebui-delivery-evidence-20261015` 交付
+[能力、证据与缺口清单](KEBUI_DELIVERY_EVIDENCE_AND_GAPS.md)：定位 PR169–175、
+源码和实际 CI；逐行核对 K2-T01–T14 的已覆盖子集；将剩余接口、adapter、
+source admission、Runtime owner、审批/输出、浏览器恢复和实机工作拆成 D01–D07。
+这是文档与源码核对、主智能体自查，没有新增应用代码或独立审查声明。
+本轮文档检查、准确 feature/main CI 和最终 merge 结果按其 PR 回读记录，不能预判。
+
+当前版本仍 rc31；已有交付仍是原有 UI/WAW/A3 和限定 inert/synthetic K2/S03。
+真实会话 API、authenticated source/relay、single-writer、审批/interrupt/output、
+U3/K3、双 Agent 实机/恢复与 release/deploy 均未因此完成。
+原工作区 WIP 保留；未读取或恢复未提交 authenticated S03 候选。
+后继先补 D01 固定 Agent 操作矩阵/接口与验收合同，D02 查询接口按真实来源和
+retention 条件推进；D03 保持受限，不能把整理清单变成恢复旧候选的许可。
 
 ## 2026-10-14 主线回读与交接状态校准（17:58 UTC）
 

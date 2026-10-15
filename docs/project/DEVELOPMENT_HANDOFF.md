@@ -1,5 +1,25 @@
 # Kebui / AgentBox 开发交接
 
+## 2026-10-15 当前 Codex 接续入口
+
+Owner 已直接在当前 Codex 会话要求继续：先合并 PR175，再整理已交付能力、
+现有证据和剩余缺口，并把后续工作拆成明确接口与验收的开发卡。
+PR175 已正常合并为 `a346cac8cbd7cb6315f103895198d433015a877a`；parents/tree
+及合并后准确 CI 由 [CURRENT_STATE](CURRENT_STATE.md) 记录。
+这证实当前会话接续，不回填此前未核实的其他会话接收状态。
+
+最新产物为 [能力、证据与剩余开发清单](KEBUI_DELIVERY_EVIDENCE_AND_GAPS.md)：
+包含精确 heads/source、K2-T01–T14 覆盖/缺口、D01–D07 的接口边界、依赖和验收。
+下一卡先补固定双 Agent 操作矩阵与契约，再按真实状态来源推进只读会话接口；
+后续接线必须满足 source/current-owner/single-writer 与 retention 条件。
+清单不是可用聊天工作台，原型/模拟链和绿色 CI 不替代真实双 CLI/host 资格。
+
+恢复只依赖 GitHub 和本仓入口。保留原工作区 WIP，不把它合并进本轮文档。
+未提交 authenticated S03 候选仍不读取、恢复、重写、上传或重新委派；
+真实 Secret、账号调用、host 激活与 release/deploy 继续单列具体授权/证据。
+本轮只更新 Markdown，版本保持 rc31；本轮准确 feature/main CI 与正常 merge
+由本批 PR 记录，旧 Draft/pending 段落保持原文供历史追溯。
+
 ## 2026-10-14 当前接续入口
 
 已核实 main `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree

@@ -1,5 +1,28 @@
 # Current Authorized Action
 
+## 2026-10-15 当前卡：合并 PR175 与已交付能力/缺口清单
+
+Owner 明确授权先合并 PR175，再按交接计划整理能力、证据和缺口，并拆分后继
+接口/验收工作。PR175 已正常合并为
+`a346cac8cbd7cb6315f103895198d433015a877a`；准确 parents/tree 与 CI 见
+[CURRENT_STATE](CURRENT_STATE.md)，不再将它排为待合并 Draft。
+
+本轮产物是 [能力、证据与开发卡清单](KEBUI_DELIVERY_EVIDENCE_AND_GAPS.md)。
+已定位 K2-T01–T14 的模拟子集与未覆盖部分，明确真实来源、API、adapter、
+single-writer、审批/interrupt/output、浏览器恢复、retention、host 与发布依赖。
+只改清单和四个交接入口；直接文档检查、准确 feature CI、正常 merge 与最终
+main 回读完成后，本核对批次结束；不借原 PR175 CI 宣称新文档 head 合格。
+
+后继顺序按清单 D01–D07。第一卡 D01 补齐既有固定版本研究中的 Agent/operation
+矩阵、接口/状态来源和验收合同；D02 明确 non-content 会话/operation 查询与
+授权/retention 后再实现，不能加返回 synthetic 状态的“真实 API”。
+每卡先闭合接口与失败/恢复合同，再进入该卡实现；遇到具体未决项只阻挡相应能力。
+这不是再次执行本证据核对卡或重复 U1/U2/未变更全量测试的指令。
+
+D03 保留明确限制：未提交 authenticated S03 候选不读取、恢复、重写、上传或
+委派，不以替代认证设计绕过停止边界。真实 source/relay/keys、host、账号/付费
+调用与发布部署仍需各自具体范围与证据。K3 不由现有 Job/journal 改名完成。
+
 ## 2026-10-14 当前执行卡：交接状态校准
 
 当前已核实 main `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree
