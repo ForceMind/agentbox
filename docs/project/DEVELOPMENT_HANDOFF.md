@@ -1,3 +1,36 @@
+# Kebui / AgentBox 开发交接
+
+## 2026-10-14 当前接续入口
+
+已核实 main `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree
+`fc98058a7580e2a086bdeec960e9714147afa225`；PR169–174 均已合并，六套准确
+main 的 push CI 均已成功。最终 PR heads、merge commits 和工作流链接统一见
+[CURRENT_STATE.md](CURRENT_STATE.md)，不以本文件下方 PR147 等旧 Draft 状态续排任务。
+
+已交付包括 K2 架构准备、inert metadata observation、admission/journal、immutable
+synthetic content、isolated submit-only interop，以及已合并的 Cromma 合成参考卡。
+既有 U1 有界原型、U2 页面和 Kebui 标识的证据范围保留；这些不代表真实认证、
+Agent 结构化会话、U3/K3、host/双 CLI、发布或部署已完成。
+
+此前已完成合并和交接材料准备，Owner 当时计划让 Codex 接手；具体接收会话、
+接收人和接收成功未核实。当前助手在 2026-10-14 恢复管理，不假定其他会话已
+开展后续开发，不要求 Owner 转交提示。
+
+接续顺序：
+
+1. 读取 `AGENTS.md` 及 [项目索引](INDEX.md) 的合同入口，实时回读 main/open PR/CI。
+2. 按 [NEXT_ACTION.md](NEXT_ACTION.md) 完成四入口的文档校准 Draft PR 与终态 CI，
+   本轮不合并、不改代码或版本、不触发手动发布部署。
+3. 下一卡只核对已合并交付，产出能力/现有证据/剩余缺口清单后停止；不重复基线
+   测试，也不把清单当新的认证、U3 或生产实施授权。
+
+未提交的 authenticated S03 本地候选未交付，且不是本次或下一卡的可用起点；
+不读取、恢复、重写、上传或重新委派，也不设计替代绕过既有停止边界。
+真实 source/pin/key custody、vendor/host、retention、Approval/Interrupt/输出历史、
+客户端恢复、域名技术控制、Secret 与 release/deploy 的缺口仍单独保留。
+
+## 历史交接记录（保留原文，不作为当前执行指令）
+
 # AgentBox 开发交接 — 2026-10-02
 
 

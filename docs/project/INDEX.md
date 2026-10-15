@@ -1,5 +1,25 @@
 # AgentBox Project Context Index
 
+## 2026-10-14 当前入口与历史阅读规则
+
+当前 main 为 `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree
+`fc98058a7580e2a086bdeec960e9714147afa225`。PR169–174 均已合并，准确 main
+六套 push 工作流均 `completed/success`，以 [当前状态](CURRENT_STATE.md) 的
+逐项回读为准。下方旧“PR169–173 未合并”、旧 main、Draft 和 pending 均为历史，
+不得覆盖实时 Git/GitHub，也不能自动转成新测试或开发队列。
+
+[当前行动](NEXT_ACTION.md)限定本轮为四入口文档校准及 Draft PR 自动 CI 核验；
+下一张有界卡只产出已合并交付的验收/缺口清单。PR169 是已合并的 Cromma 合成
+参考卡，PR170–174 是各自有界的架构/inert/synthetic 软件交付。
+未提交的 authenticated S03 本地候选不是输入，不恢复、重写、上传或重新委派，
+也不以替代设计绕过既有停止边界；U3/K3、真实认证/host 和发布部署缺口仍独立。
+
+[开发交接](DEVELOPMENT_HANDOFF.md)明确：此前合并和材料已准备，具体 Codex
+接收会话及接收成功未核实；当前助手恢复管理。先读上述当前入口，再按任务需要
+查下方历史及其合同，不能从旧下一步直接启动实现。
+
+## 历史索引快照（保留原文，不作为当前执行指令）
+
 ## 2026-10-10 S03 submit-only 隔离集成候选
 
 [最新有界合同与证据](../KEBUI_S03_SUBMIT_SYNTHETIC_PROFILE.md)承接PR173准确head

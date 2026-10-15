@@ -1,5 +1,46 @@
 # Current Authorized Action
 
+## 2026-10-14 当前执行卡：交接状态校准
+
+当前已核实 main `fe8fae69204075aa5ade6f837c2283e552431eb2`，tree
+`fc98058a7580e2a086bdeec960e9714147afa225`。PR169–174 全部已合并，六套准确
+main 的 push 工作流均 `completed/success`，逐项链接与 final head 见
+[CURRENT_STATE.md](CURRENT_STATE.md)。旧 main `9f8d20e` 和“PR169 未合并”
+仅是下方历史，不再构成待办或阻塞。
+
+本轮只在新分支校准 `CURRENT_STATE.md`、本文件、`DEVELOPMENT_HANDOFF.md`
+和 `INDEX.md`，保留历史并核对交付边界。完成条件：文档/链接/差异检查通过，
+小提交推送至 Draft PR，回读准确 head、文件范围和自动 CI 终态；本轮不合并、
+不触发手动发布或部署，不把基线 CI 当新 head 的通过证据。
+
+此前合并和交接材料已准备，但 Codex 具体接收会话及接收成功未核实；当前助手
+恢复管理。不得沿用历史文本假定另一个会话已接手或已有额外功能进度。
+
+## 下一张可直接执行卡：已合并交付证据与缺口核对
+
+目标：把既有计划中的实际软件交付与尚未完成的验收分开，给后继开发一个准确起点。
+本卡是有终点的只读核对，不新增产品实现或协议设计。
+
+1. 输入固定为最新回读的 main、PR169–174、其实际 CI、
+   [K2 会话架构](../KEBUI_K2_CONVERSATION_ARCHITECTURE.md)和
+   [已合并的 S03 synthetic profile](../KEBUI_S03_SUBMIT_SYNTHETIC_PROFILE.md)。
+   PR169 对应“已合并的 Cromma 合成参考卡”，与任何未提交本地候选严格分开。
+2. 输出一份简明验收/缺口清单：每项包含能力范围、确切 source/PR/head、已有测试
+   或 CI 链接、尚缺证据、是否可独立继续。将 K2-T01–T14 的已覆盖子集与未覆盖项
+   分开；合成证明、真实 vendor/host 证明和生产可用性不可互换。
+3. 复用已有证据；只有发现具体矛盾才做定位核对。未变更基线不重复跑全量 CI、
+   重拍图片或重做已完成迁移，不把历史 pending/UNKNOWN 自动变成新开发任务。
+4. 清单必须说明 U3/K3、认证来源、vendor/CLI、host、retention、Approval/Interrupt/
+   输出历史和 release/deploy 的实际缺口与依赖；不得据此宣称这些能力已获准上线。
+5. 验收/缺口清单交付后本卡结束。若没有可在现有边界内独立执行的实现卡，明确报告
+   具体缺口和所需决定，不虚构“下一项开发”或无限循环证据检查。
+
+未提交的 authenticated S03 本地候选不属于输入，不读取、恢复、重写、上传或
+重新委派，也不为绕开既有停止边界重设计替代。真实 credentials、持久访问、
+host 激活、发布部署及受限能力恢复不在本卡授权范围内。
+
+## 历史行动快照（保留原文，不作为当前执行指令）
+
 ## 2026-10-10 K2 会话架构准备（未启用 U3）
 
 当前核对 main `9f8d20e325b6a17173a223bff7a2d14f0059fdd6`，tree
