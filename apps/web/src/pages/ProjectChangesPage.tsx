@@ -19,6 +19,12 @@ import {
   compressSingleChildChains,
   flattenPathTree,
 } from '../features/changes/diffTree'
+import {
+  FILE_NAME_FILTER_QUERY_MAX_BYTES,
+  filterChangedPaths,
+  isFileNameFilterQueryTooLarge,
+  splitFileNameFilterTokens,
+} from '../features/changes/fileNameFilter'
 import { useGitChanges } from '../features/changes/useGitChanges'
 import { VerifiedPatchView } from '../features/changes/VerifiedPatchView'
 import { visibleGitPath } from '../features/changes/visibleGitPath'
@@ -74,16 +80,28 @@ export function ProjectChangesPage({
     changes.error,
   ])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [filterQuery, setFilterQuery] = useState('')
   usePageTitle(formatMessage(locale, 'changes.title', {}))
 
-  useEffect(() => setCollapsed(new Set()), [projectId])
+  useEffect(() => {
+    setCollapsed(new Set())
+    setFilterQuery('')
+  }, [projectId])
 
+  const filterTokens = useMemo(
+    () => splitFileNameFilterTokens(filterQuery),
+    [filterQuery],
+  )
+  const filteredFiles = useMemo(
+    () => filterChangedPaths(changes.files, filterTokens),
+    [changes.files, filterTokens],
+  )
   const rows = useMemo(() => {
     return flattenPathTree(
-      compressSingleChildChains(buildDiffTree(changes.files)),
+      compressSingleChildChains(buildDiffTree(filteredFiles)),
       collapsed,
     )
-  }, [changes.files, collapsed])
+  }, [filteredFiles, collapsed])
 
   function toggleFolder(dirPath: string) {
     setCollapsed((current) => {
@@ -179,6 +197,44 @@ export function ProjectChangesPage({
                   total: String(changes.totalCount),
                 })}
               </p>
+              <div className="changes-filter-control">
+                <label htmlFor="changes-path-filter">
+                  {formatMessage(locale, 'changes.filterLabel', {})}
+                </label>
+                <input
+                  id="changes-path-filter"
+                  type="search"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={FILE_NAME_FILTER_QUERY_MAX_BYTES}
+                  placeholder={formatMessage(
+                    locale,
+                    'changes.filterPlaceholder',
+                    {},
+                  )}
+                  value={filterQuery}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    if (isFileNameFilterQueryTooLarge(next)) return
+                    setFilterQuery(next)
+                    // An earlier collapsed directory must not hide new matches.
+                    setCollapsed(new Set())
+                  }}
+                />
+              </div>
+              {filterTokens.length > 0 && (
+                <p className="changes-filter-results" role="status">
+                  {formatMessage(locale, 'changes.filterResults', {
+                    matched: String(filteredFiles.length),
+                    loaded: String(changes.files.length),
+                  })}
+                </p>
+              )}
+              {filteredFiles.length === 0 && (
+                <p className="changes-metadata-state">
+                  {formatMessage(locale, 'changes.filterEmpty', {})}
+                </p>
+              )}
               <ol className="changes-tree">
                 {rows.map((row) => {
                   const depth = Math.min(row.depth, 6)

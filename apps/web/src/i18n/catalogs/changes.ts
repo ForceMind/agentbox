@@ -13,6 +13,10 @@ export interface ChangesMessageParameters {
   readonly 'changes.empty': NoMessageParameters
   readonly 'changes.notRepository': NoMessageParameters
   readonly 'changes.showing': Readonly<{ shown: string; total: string }>
+  readonly 'changes.filterLabel': NoMessageParameters
+  readonly 'changes.filterPlaceholder': NoMessageParameters
+  readonly 'changes.filterResults': Readonly<{ matched: string; loaded: string }>
+  readonly 'changes.filterEmpty': NoMessageParameters
   readonly 'changes.loadMore': NoMessageParameters
   readonly 'changes.loadingMore': NoMessageParameters
   readonly 'changes.metadataOnly': NoMessageParameters
@@ -85,6 +89,11 @@ export const changesCatalog = defineCatalogShard<ChangesMessageParameters>(
       'changes.notRepository': () => 'This Project is not a Git repository.',
       'changes.showing': ({ shown, total }) =>
         `Showing ${shown} of ${total} paths`,
+      'changes.filterLabel': () => 'Filter loaded paths',
+      'changes.filterPlaceholder': () => 'Search changed file paths',
+      'changes.filterResults': ({ matched, loaded }) =>
+        `${matched} of ${loaded} loaded paths match`,
+      'changes.filterEmpty': () => 'No loaded paths match this filter.',
       'changes.loadMore': () => 'Load more paths',
       'changes.loadingMore': () => 'Loading more…',
       'changes.metadataOnly': () =>
@@ -168,6 +177,11 @@ export const changesCatalog = defineCatalogShard<ChangesMessageParameters>(
       'changes.notRepository': () => '此 Project 不是 Git 仓库。',
       'changes.showing': ({ shown, total }) =>
         `已显示 ${shown} / ${total} 条路径`,
+      'changes.filterLabel': () => '筛选已加载的路径',
+      'changes.filterPlaceholder': () => '搜索变更文件路径',
+      'changes.filterResults': ({ matched, loaded }) =>
+        `匹配 ${matched} / ${loaded} 条已加载路径`,
+      'changes.filterEmpty': () => '已加载的路径中没有匹配项。',
       'changes.loadMore': () => '加载更多路径',
       'changes.loadingMore': () => '正在加载…',
       'changes.metadataOnly': () =>

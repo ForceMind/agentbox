@@ -1,5 +1,17 @@
 # Current Authorized Action
 
+## 2026-10-19 Orca source assimilation — O01 feature candidate
+
+Owner authorized direct source adaptation from stablyai/orca into AgentBox.
+Current work is the [O01 Web Changes filter](ORCA_CODE_MIGRATION.md) on
+`feature/orca-changes-filter-20261019` from base `13b2877823d5338cd4044ead39d658a0c89e96de`. The feature may only filter
+already-authorized loaded metadata; no new Runtime actions, content reads,
+host operations, credentials or deployments. Keep attribution and run
+exact-head tests/CI before normal merge; report pending/failures as such.
+O02 worktree creation is a future, independently contracted Runtime action,
+not part of this UI feature. Older completed cards below are preserved.
+
+
 ## 2026-10-15 当前卡：合并 PR175 与已交付能力/缺口清单
 
 Owner 明确授权先合并 PR175，再按交接计划整理能力、证据和缺口，并拆分后继

@@ -85,6 +85,38 @@ describe('Project Changed Paths page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     expect(refresh).toHaveBeenCalledTimes(1)
   })
+
+  it('filters only loaded metadata and matches a renamed file by its old path', () => {
+    renderPage('en')
+    const filter = screen.getByRole('searchbox', { name: 'Filter loaded paths' })
+    fireEvent.change(filter, { target: { value: 'old-b' } })
+    expect(screen.getByText('b.ts')).toBeVisible()
+    expect(screen.queryByText('zeta.ts')).toBeNull()
+    expect(screen.queryByText('a\\u202e.ts')).toBeNull()
+    expect(screen.getByText('1 of 3 loaded paths match')).toBeVisible()
+    expect(loadMore).not.toHaveBeenCalled()
+
+    fireEvent.change(filter, { target: { value: 'missing' } })
+    expect(screen.getByText('No loaded paths match this filter.')).toBeVisible()
+    expect(screen.getByText('0 of 3 loaded paths match')).toBeVisible()
+
+    fireEvent.change(filter, { target: { value: '' } })
+    expect(screen.getByText('zeta.ts')).toBeVisible()
+    expect(screen.queryByText('No loaded paths match this filter.')).toBeNull()
+    expect(screen.getByText('Showing 3 of 5 paths')).toBeVisible()
+  })
+
+  it('expands collapsed paths for a new filter and rejects oversized paste', () => {
+    renderPage('zh-CN')
+    fireEvent.click(screen.getByRole('button', { name: '文件夹: src' }))
+    expect(screen.queryByText('b.ts')).toBeNull()
+    const filter = screen.getByRole('searchbox', { name: '筛选已加载的路径' })
+    fireEvent.change(filter, { target: { value: 'src/b' } })
+    expect(screen.getByText('b.ts')).toBeVisible()
+    expect(filter).toHaveValue('src/b')
+    fireEvent.change(filter, { target: { value: '中'.repeat(900) } })
+    expect(filter).toHaveValue('src/b')
+  })
 })
 
 // A3 uses an independently injected test-only port; the v1 metadata hook stays intact.

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/stablyai/orca",
+    "commit": "d378f49f17067c1949747d038a3b163fef5bbb41",
+    "version": "1.4.214",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Lovecast Inc.",
+    "license_file": "third_party/licenses/orca-MIT.txt"
+  },
+  "files": [
+    {
+      "source_path": "src/shared/file-name-filter-tokens.ts",
+      "source_git_blob_sha": "a9d70b91cc46b0396ea9a4152d1cd01e43b222d4",
+      "destination_path": "apps/web/src/features/changes/fileNameFilter.ts",
+      "change": "Removed Orca clipboard/Electron coupling; kept Unicode whitespace and all-token path matching; added local filtering of loaded current and rename-source paths."
+    }
+  ]
+}
