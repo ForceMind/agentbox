@@ -86,9 +86,11 @@ describe('Project Changed Paths page', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('filters only loaded metadata and matches a renamed file by its old path', () => {
+  it('filters loaded metadata including renamed file paths', () => {
     renderPage('en')
-    const filter = screen.getByRole('searchbox', { name: 'Filter loaded paths' })
+    const filter = screen.getByRole('searchbox', {
+      name: 'Filter loaded paths',
+    })
     fireEvent.change(filter, { target: { value: 'old-b' } })
     expect(screen.getByText('b.ts')).toBeVisible()
     expect(screen.queryByText('zeta.ts')).toBeNull()
@@ -106,7 +108,7 @@ describe('Project Changed Paths page', () => {
     expect(screen.getByText('Showing 3 of 5 paths')).toBeVisible()
   })
 
-  it('expands collapsed paths for a new filter and rejects oversized paste', () => {
+  it('expands filtered folders and rejects oversized paste', () => {
     renderPage('zh-CN')
     fireEvent.click(screen.getByRole('button', { name: '文件夹: src' }))
     expect(screen.queryByText('b.ts')).toBeNull()

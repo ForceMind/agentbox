@@ -15,7 +15,10 @@ export interface ChangesMessageParameters {
   readonly 'changes.showing': Readonly<{ shown: string; total: string }>
   readonly 'changes.filterLabel': NoMessageParameters
   readonly 'changes.filterPlaceholder': NoMessageParameters
-  readonly 'changes.filterResults': Readonly<{ matched: string; loaded: string }>
+  readonly 'changes.filterResults': Readonly<{
+    matched: string
+    loaded: string
+  }>
   readonly 'changes.filterEmpty': NoMessageParameters
   readonly 'changes.loadMore': NoMessageParameters
   readonly 'changes.loadingMore': NoMessageParameters
