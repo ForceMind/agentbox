@@ -17,7 +17,8 @@ describe('Orca filename filter in Changes', () => {
 
   it('matches every term within the same path, case-insensitively', () => {
     const terms = splitFileNameFilterTokens('src  File')
-    const matches = (path: string) => pathMatchesFileNameFilterTokens(path, terms)
+    const matches = (path: string) =>
+      pathMatchesFileNameFilterTokens(path, terms)
     expect(matches('src/deep/FILE.ts')).toBe(true)
     expect(matches('other/file.ts')).toBe(false)
     expect(pathMatchesFileNameFilterTokens('anything', [])).toBe(true)
