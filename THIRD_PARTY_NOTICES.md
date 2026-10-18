@@ -19,6 +19,16 @@ change notices. The repository records their original paths and digests in
 `third_party/upstream-sources.json`. This attribution does not imply
 affiliation or endorsement.
 
+## Orca read-only path-filter adaptation
+
+The Changes path filter adapts stablyai/orca's
+`src/shared/file-name-filter-tokens.ts` at commit `d378f49f17067c1949747d038a3b163fef5bbb41`.
+Copyright (c) 2026 Lovecast Inc., licensed under MIT. The full MIT notice
+is included in [third_party/licenses/orca-MIT.txt](third_party/licenses/orca-MIT.txt);
+the upstream blob identity and changed behavior are recorded in
+[third_party/orca-sources.json](third_party/orca-sources.json).
+No Orca daemon, Electron service, credential store or Git executor was imported.
+
 ## Python runtime dependencies
 
 | Package | Version | Declared license |

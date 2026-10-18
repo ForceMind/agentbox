@@ -7,6 +7,20 @@ repository: "ForceMind/agentbox"
 
 # Current Verified State
 
+## 2026-10-19 Orca path-filter code assimilation candidate
+
+Live preflight: AgentBox main `13b2877823d5338cd4044ead39d658a0c89e96de`; open Draft PRs #42,
+#149 and #151 were not touched. Orca source stablyai/orca main
+`d378f49f17067c1949747d038a3b163fef5bbb41`, MIT, with pinned filter Git blob
+`a9d70b91cc46b0396ea9a4152d1cd01e43b222d4`.
+The independent branch `feature/orca-changes-filter-20261019` carries O01: a Web-only read-only
+filter of authorized loaded Git path metadata, with tests, localization and
+attribution. [O02–O06](ORCA_CODE_MIGRATION.md) are NOT DELIVERED.
+Pending feature-head PR/CI and exact-main merge read-back must be checked
+separately; old rc31 CI is not evidence for this change. No host qualification,
+vendor activation or release deployment is asserted here.
+
+
 ## 2026-10-15 PR175 合并回读与交付缺口核对
 
 Owner 明确要求合并 PR175，并由当前 Codex 接续交接计划。

@@ -1,5 +1,13 @@
 # AgentBox Project Context Index
 
+## 2026-10-19 Orca code migration
+
+Owner requested direct code transfer from Orca to AgentBox.
+[Orca code migration](ORCA_CODE_MIGRATION.md) pins the MIT upstream,
+records the O01 Changes filtering software candidate, and tracks O02–O06
+worktrees, agent orchestration, review, remote UX, and Design Mode.
+This is an additive Web-only candidate, not a new Runtime or host qualification.
+
 ## 2026-10-15 交接接续与能力清单
 
 Owner 已要求先合并 PR175 并接续剩余工作。PR175 的真实 merge 为
