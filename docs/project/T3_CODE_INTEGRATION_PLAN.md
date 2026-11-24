@@ -245,6 +245,13 @@ secret/source-boundary/workflow-pin 检查通过。文档与准确提交 CI 由�
 改动文件逐个 Black 检查通过。完整 Linux/原生/浏览器回归交给仓库既有 CI，
 没有改测试跳过规则或将本地中止标为通过。
 
+[PR178 初版 Release Candidate](https://github.com/ForceMind/agentbox/actions/runs/45341697820/job/138266617561)
+进一步发现旧隔离构建锁中 6 个包的漏洞审计失败。后继最小补丁更新 black、certifi、
+filelock、msgpack、setuptools、virtualenv，以及新 virtualenv 必需的 python-discovery。
+75 个目标 CPython 3.11/Linux wheel 的哈希和 92 项活跃依赖约束已验证，完整锁审计
+为 0 漏洞、0 跳过。准确环境安装、可复现制品和完整 CI 继续由该 PR 的新提交验证；
+这是构建工具链修复，不改变本计划中的产品功能交付范围。
+
 合并按既有正常 feature→CI→merge→main 回读流程，不借旧提交绿色状态。
 Backend/Frontend/E2E/Security/Deployment/Release Candidate 工作流名称中的
 Deployment 不表示本批实际部署到用户主机。本批不发布版本、不迁移用户数据。
