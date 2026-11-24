@@ -13,6 +13,7 @@ ADRs record decisions that change AgentBox's trust boundaries, deployment, data 
 | [0007](0007-database-choice.md) | SQLite, SQLAlchemy, Alembic, and WAL for the MVP | Accepted |
 | [0008](0008-license-choice.md) | Apache-2.0 is the initial project license | Accepted |
 | [0009](0009-workbench-identity-and-content-boundary.md) | Workbench identity and content authority remain within AgentBox | Accepted |
+| [0012](0012-t3-code-integration.md) | Integrate T3 Code capabilities through existing AgentBox ownership and delivery stages | Accepted implementation direction; delivery tracked in PR |
 
 ## Phase 11 canonical decision registry
 

@@ -9,6 +9,7 @@ import tempfile
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import agentbox_api.waw_control_client as control_subject
@@ -406,6 +407,8 @@ def test_pidfd_liveness_uses_poll_for_high_descriptors(
     events: list[tuple[int, int]],
     expected: bool,
 ) -> None:
+    local_os = SimpleNamespace(**vars(os))
+    monkeypatch.setattr(control_subject, "os", local_os)
     observed: list[tuple[int, int, int]] = []
 
     class Poller:
@@ -416,7 +419,7 @@ def test_pidfd_liveness_uses_poll_for_high_descriptors(
             observed.append((-1, -1, timeout))
             return events
 
-    monkeypatch.setattr("agentbox_api.waw_control_client.os.fstat", lambda _descriptor: object())
+    monkeypatch.setattr(local_os, "fstat", lambda _descriptor: object())
     monkeypatch.setattr("agentbox_api.waw_control_client.select.poll", Poller)
     assert control_subject._pidfd_current(100_000) is expected
     assert observed[0][0] == 100_000 and observed[-1] == (-1, -1, 0)

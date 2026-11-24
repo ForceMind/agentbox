@@ -155,12 +155,16 @@ def test_namespace_cgroup_binds_current_kernel_device_and_mount(
 def test_namespace_project_keeps_physical_identity_and_live_mount_checks(
     monkeypatch: pytest.MonkeyPatch, change: str
 ) -> None:
+    local_os = SimpleNamespace(**vars(os))
+    monkeypatch.setattr(transport, "os", local_os)
     manifest = decode_project_root_manifest(encode_project_root_manifest(_project_data()))
     facts = SimpleNamespace(st_dev=2049, st_ino=202, st_gid=0, st_mode=stat.S_IFDIR | 0o755)
     monkeypatch.setattr(transport, "_verify_installed_directory", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(os, "fstat", lambda _fd: facts)
+    monkeypatch.setattr(local_os, "fstat", lambda _fd: facts)
     monkeypatch.setattr(
-        os, "fstatvfs", lambda _fd: SimpleNamespace(f_fsid=999 if change == "filesystem" else 101)
+        local_os,
+        "fstatvfs",
+        lambda _fd: SimpleNamespace(f_fsid=999 if change == "filesystem" else 101),
     )
     if change == "inode":
         facts.st_ino = 999

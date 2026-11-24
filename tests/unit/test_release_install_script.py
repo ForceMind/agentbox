@@ -138,6 +138,15 @@ def _fake_environment(tmp_path: Path, fake_python: Path) -> dict[str, str]:
     }
 
 
+def _test_python_environment() -> dict[str, str]:
+    # Payload/platform cases use pytest's qualified interpreter. The dedicated
+    # auto-selection tests above still exercise the fixed /usr/bin candidates.
+    return {
+        "AGENTBOX_INSTALLER_TEST_MODE": "1",
+        "AGENTBOX_RELEASE_BOOTSTRAP_PYTHON": sys.executable,
+    }
+
+
 @pytest.mark.parametrize("version", ("3.11", "3.12", "3.13"))
 def test_release_install_accepts_supported_artifact_python_versions(
     tmp_path: Path, version: str
@@ -145,7 +154,7 @@ def test_release_install_accepts_supported_artifact_python_versions(
     result = _run(
         _release_script(tmp_path),
         env={
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
+            **_test_python_environment(),
             "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1",
             "AGENTBOX_RELEASE_PLATFORM_TEST_OVERRIDE": f"Linux:x86_64:{version}",
         },
@@ -161,7 +170,7 @@ def test_release_install_rejects_unsupported_artifact_python_before_bootstrap(
     result = _run(
         _release_script(tmp_path),
         env={
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
+            **_test_python_environment(),
             "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1",
             "AGENTBOX_RELEASE_PLATFORM_TEST_OVERRIDE": f"Linux:x86_64:{version}",
         },
@@ -175,7 +184,7 @@ def test_release_install_rejects_unsupported_architecture(tmp_path: Path) -> Non
     result = _run(
         _release_script(tmp_path),
         env={
-            "AGENTBOX_INSTALLER_TEST_MODE": "1",
+            **_test_python_environment(),
             "AGENTBOX_RELEASE_PLATFORM_CHECK_ONLY": "1",
             "AGENTBOX_RELEASE_PLATFORM_TEST_OVERRIDE": "Linux:aarch64:3.12",
         },
@@ -209,7 +218,7 @@ def test_release_install_rejects_malformed_version(tmp_path: Path) -> None:
     script = _release_script(tmp_path)
     (script.parent / "VERSION").write_text("0.3-rc-one\n", encoding="ascii")
 
-    result = _run(script)
+    result = _run(script, env=_test_python_environment())
 
     assert result.returncode == 16
     assert "VERSION is invalid" in result.stderr
@@ -219,7 +228,7 @@ def test_release_install_rejects_bootstrap_wheel_digest_mismatch(tmp_path: Path)
     script = _release_script(tmp_path)
     (script.parent / "bootstrap/pip-26.2.1-py3-none-any.whl").write_bytes(b"tampered")
 
-    result = _run(script)
+    result = _run(script, env=_test_python_environment())
 
     assert result.returncode == 16
     assert "checksum mismatch" in result.stderr

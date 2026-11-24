@@ -1,11 +1,35 @@
 ---
 schema_version: 1
-verified_at_utc: "2026-10-15T07:14:58Z"
-verified_by: "codex-kebui-delivery-evidence"
+verified_at_utc: "2026-11-24T06:13:36Z"
+verified_by: "codex-t3-code-integration"
 repository: "ForceMind/agentbox"
 ---
 
 # Current Verified State
+
+## 2026-11-23 T3 Code 全功能融合候选
+
+本次已从 GitHub fetch 并核对 main
+`13b2877823d5338cd4044ead39d658a0c89e96de`，使用独立分支
+`feature/t3-code-integration-20261124` 接续 Owner 的全功能融合要求。
+[实施计划](T3_CODE_INTEGRATION_PLAN.md)、[功能矩阵](T3_CODE_FEATURE_MATRIX.md)
+和 [ADR 0012](../adr/0012-t3-code-integration.md) 已将固定 T3 源码功能并入
+原 70 能力/S/K 路线；46 个精选来源的 Git blob/SHA-256 已复算一致。
+
+新增 [K2-D01](../KEBUI_K2_ADAPTER_CAPABILITY_CONTRACT.md) 无 I/O 的 Runtime
+逐操作描述/评估与测试；研究支持不升级成软件/host 资格，模块不授权执行。
+生产 structured chat、D02 API、D03 认证来源、真实 adapter/output/approval/
+interrupt、U3 与 durable Task/Workflow 尚未由本批交付。
+
+本批查明基线 Security 定时审计失败为 Vite <=7.3.6 的
+[GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm)。
+已升级至 7.3.7；本地 high 阈值审计通过，余 4 moderate。
+前端 typecheck、Web 2267 测试、扩展 6 测试及构建通过；新代码和准确提交的
+其余检查/CI/merge 状态由本批 PR 记录，不能从这里的基线或历史绿色推定。
+
+PR177（Orca Changes filter）在本批起点仍是未合并 Draft，不覆盖其分支或
+把功能提前算进 main。未提交 authenticated S03 候选未读取/恢复/重写/上传/
+重新委派；本批无真实账号调用、host 激活、release 或部署。下方记录保持历史。
 
 ## 2026-10-15 PR175 合并回读与交付缺口核对
 

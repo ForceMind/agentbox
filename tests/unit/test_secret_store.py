@@ -7,6 +7,8 @@ import pwd
 import sqlite3
 import stat
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -61,10 +63,15 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.lstat().st_mode)
 
 
-def _database(root: Path) -> sqlite3.Connection:
+@contextmanager
+def _database(root: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(root / SECRET_STORE_DATABASE)
-    connection.execute("PRAGMA foreign_keys=ON")
-    return connection
+    try:
+        connection.execute("PRAGMA foreign_keys=ON")
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def _insert_pair(
@@ -145,6 +152,8 @@ def test_clean_initialization_creates_exact_empty_store(tmp_path: Path) -> None:
         assert connection.execute("SELECT COUNT(*) FROM dek_envelopes").fetchone() == (0,)
         assert connection.execute("PRAGMA user_version").fetchone() == (1,)
         assert connection.execute("PRAGMA journal_mode").fetchone() == ("delete",)
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        connection.execute("SELECT 1")
 
 
 def test_second_initialization_is_idempotent_and_does_not_generate_another_key(
@@ -475,7 +484,11 @@ def test_owner_and_group_drift_fail_closed_without_root(
         "st_gid": 1002,
     }
     details[field] = value
-    monkeypatch.setattr(os, "fstat", lambda _descriptor: SimpleNamespace(**details))
+    monkeypatch.setattr(
+        secret_store_module,
+        "os",
+        SimpleNamespace(**{**vars(os), "fstat": lambda _descriptor: SimpleNamespace(**details)}),
+    )
     with pytest.raises(SecretStoreError, match="SECRET_STORE_PERMISSION_INVALID"):
         secret_store_module._validate_regular_fd(
             7,

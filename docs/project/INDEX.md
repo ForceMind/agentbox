@@ -1,5 +1,20 @@
 # AgentBox Project Context Index
 
+## 2026-11-23 T3 Code 全功能融合接续
+
+Owner 本次要求将 T3 Code 的实现思路和每项功能融入 AgentBox/Kebui。
+当前入口是 [融合实施计划](T3_CODE_INTEGRATION_PLAN.md)、
+[147 项功能矩阵](T3_CODE_FEATURE_MATRIX.md) 与
+[K2-D01 操作契约](../KEBUI_K2_ADAPTER_CAPABILITY_CONTRACT.md)。
+它们沿原 70 能力/S00–S14/K0–K8 接续，保留全部旧来源与在途工作。
+本批包含无 I/O 的双 Agent 逐操作描述/评估代码和 Vite 7.3.7 审计修复；
+其他 T3 条目是已融合的设计及验收，不能称为全部产品功能已经实现。
+
+基线 main 为 `13b2877823d5338cd4044ead39d658a0c89e96de`；准确新提交与
+CI/合并状态以本批 PR 为准。本次直接指令覆盖下方旧日期“仅文档”行动范围，
+不改变既有 Runtime/Secret/source/host 边界。先读
+[当前行动](NEXT_ACTION.md) 与 [开发交接](DEVELOPMENT_HANDOFF.md)。
+
 ## 2026-10-15 交接接续与能力清单
 
 Owner 已要求先合并 PR175 并接续剩余工作。PR175 的真实 merge 为

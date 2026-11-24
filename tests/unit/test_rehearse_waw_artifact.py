@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import virtualenv
 from agentbox_installer.artifact import extract_verified_tar, verify_release
+from virtualenv.seed.wheels.embed import get_embed_wheel
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/rehearse-waw-artifact.py"
@@ -211,12 +211,14 @@ def _build_bundle(tmp_path: Path) -> dict[str, Path]:
             "fixture",
             "1.0",
         )
-    bootstrap_wheel = release / "bootstrap/pip-26.2.1-py3-none-any.whl"
-    embedded_pip = (
-        Path(virtualenv.__file__).resolve().parent / "seed/wheels/embed/pip-26.2.1-py3-none-any.whl"
-    )
-    assert embedded_pip.is_file()
-    shutil.copyfile(embedded_pip, bootstrap_wheel)
+    # This synthetic bundle uses virtualenv's compatible bundled wheel, not the
+    # separately locked production bootstrap version.
+    embedded_pip = get_embed_wheel("pip", f"{sys.version_info.major}.{sys.version_info.minor}")
+    assert embedded_pip is not None
+    assert embedded_pip.path.is_file()
+    bootstrap_filename = f"bootstrap/{embedded_pip.path.name}"
+    bootstrap_wheel = release / bootstrap_filename
+    shutil.copyfile(embedded_pip.path, bootstrap_wheel)
     sbom = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
@@ -254,15 +256,15 @@ def _build_bundle(tmp_path: Path) -> dict[str, Path]:
         "supported_python_abis": ["cp311", "cp312", "cp313"],
         "build_toolchain": {
             "node": "22.23.2",
-            "pip": "26.2.1",
+            "pip": embedded_pip.version,
             "pnpm": "11.20.0",
             "setuptools": "83.0.0",
             "wheel": "0.46.2",
         },
         "bootstrap_pip": {
-            "filename": "bootstrap/pip-26.2.1-py3-none-any.whl",
-            "version": "26.2.1",
-            "sha256": files["bootstrap/pip-26.2.1-py3-none-any.whl"],
+            "filename": bootstrap_filename,
+            "version": embedded_pip.version,
+            "sha256": files[bootstrap_filename],
             "method": "pythonpath-wheel-target",
         },
         "platform_support": [

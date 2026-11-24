@@ -1,5 +1,19 @@
 # AgentBox 全量功能整合与原路线续建计划
 
+## 2026-11-23 T3 Code 融入原阶段
+
+本次 Owner 指令将 T3 Code 全部已观察功能纳入现有交付范围。执行入口为
+[融合实施计划](T3_CODE_INTEGRATION_PLAN.md) 与
+[功能矩阵](T3_CODE_FEATURE_MATRIX.md)，正式能力 ID 与本文件 S00–S14 保持一致。
+T3 的会话/能力/恢复并入 S03，worktree/多 repo/检查点并入 S04，多账号/ACP
+并入 S05，多 Agent/MCP 并入 S06，多端与多环境分别归 S07/S08，定时和 durable
+Workflow 分别归 S10/S12；来源、许可和资格仍归 S00/S14。
+
+本批补齐 K2-D01 只读操作契约与纯模块，后继沿 D02–D07 接线。现有 Job、
+journal、WAW 不通过改名获得聊天/Task/Workflow 资格。所有条目都有设计落点，
+但上游存在与矩阵覆盖不等于我方完成。当前新指令覆盖下方历史的批次范围，
+不修改 Runtime 权限、认证 source 停止边界和具体 host/release 资格要求。
+
 ## 2026-10-04 软件续建优先级（覆盖下方历史冻结）
 
 Owner 已明确暂缓真实目标测试、继续开发并要求列出后续计划。真实

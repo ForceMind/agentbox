@@ -1,0 +1,1632 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/pingdotgg/t3code",
+  "commit": "d73e41a3fa379b591d9fb59d722d2569ec05994b",
+  "tree": "8be25ebe4d0f58ec2055d3f6c45470ccc21c3b7f",
+  "snapshot_kind": "pinned_main_research_not_release_qualification",
+  "license": "MIT",
+  "copyright": "Copyright (c) 2026 T3 Tools Inc.",
+  "license_copy": "third_party/t3code-LICENSE.txt",
+  "license_sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43",
+  "trademark_policy_path": "TRADEMARK.md",
+  "research_method": "Selected fixed-ref documents and implementation files; SHA-256 and Git blob SHA-1 recomputed from exact UTF-8 contents. All 46 Git blobs matched. Upstream software was not executed.",
+  "research_limit": "This manifest covers 46 selected complete files, not every source path referenced by the feature matrix. Other fixed-ref evidence is graded separately in that matrix; no upstream end-to-end qualification is claimed.",
+  "researched_files": [
+    {
+      "path": "LICENSE",
+      "git_blob_sha": "55ee675bb1de9e580b69f3dd68684df2a4dffba7",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43",
+      "bytes": 1070
+    },
+    {
+      "path": "TRADEMARK.md",
+      "git_blob_sha": "346822bdfbc6c7ae1fcb09a871f25783acab336b",
+      "sha256": "a2aeff79391de7b582a70bb74973112f9d0b90b7e3bf05bfcd1e89ce555481c5",
+      "bytes": 3005
+    },
+    {
+      "path": "docs/README.md",
+      "git_blob_sha": "00e60de0e70638fe4adc7339ce9bd7f96af6608a",
+      "sha256": "f9e6892621654176661036de19fe724448565a34f5cc7a788d84e01ed4ae5c88",
+      "bytes": 3560
+    },
+    {
+      "path": "docs/user/install.md",
+      "git_blob_sha": "60ee758a0e65668c28c2e96e7322289ecabe5465",
+      "sha256": "c0ed112d2cd3cd99263ceac9e3abb3419eb2837c9e335e6a08ad84908d697b5e",
+      "bytes": 16669
+    },
+    {
+      "path": "docs/user/background-service.md",
+      "git_blob_sha": "fb3d3cca9a1be25bdb25105fb12141db40f6b3ca",
+      "sha256": "acc28b242ec61492f1ecad3dd7bb0f401fc2630f84de16d329e067a0c62bbbd7",
+      "bytes": 10866
+    },
+    {
+      "path": "docs/user/updating.md",
+      "git_blob_sha": "388e9035ca77083b20913eaa4f7f2fc274b265ea",
+      "sha256": "48efdba85e0e731e041eb9745178b14fa752aa22cc42dd1965ebea0d6b4d5daf",
+      "bytes": 11510
+    },
+    {
+      "path": "docs/user/workflows.md",
+      "git_blob_sha": "3327d28062bf94a4a8250323b69f4fea2da928aa",
+      "sha256": "70500c575ecc8d09efa054e01c06e7e958ee52c286b8519cbad34f144ae5989c",
+      "bytes": 7593
+    },
+    {
+      "path": "docs/user/composer.md",
+      "git_blob_sha": "53017052a2a0177d650435a0e1f10fa286498ef9",
+      "sha256": "a448f294edd9357999434c91589c5e8ad1888fed3ba2afb3e32c282544663a4f",
+      "bytes": 25977
+    },
+    {
+      "path": "docs/user/portable-handoffs.md",
+      "git_blob_sha": "04b2a8ce14987a5573c235354ade6e7a46690ce2",
+      "sha256": "a1331f674c8dd433a7d5052d75abda5841dcce4c2434e28e1ab1e700739c440b",
+      "bytes": 3225
+    },
+    {
+      "path": "docs/user/thread-migration.md",
+      "git_blob_sha": "b9da85f03bd57ce1af484653eee8861cada70b67",
+      "sha256": "bac8594704faa98e78673e16592598b032d9d1248a888626af673546d412ba65",
+      "bytes": 3515
+    },
+    {
+      "path": "docs/user/thread-sidebar.md",
+      "git_blob_sha": "fdf30614421ec3f805c17218715afa0959fbf196",
+      "sha256": "4aa9756c12d74e8b8fd4cd115ec0a02b4d670f5e92826e1293464db196ebb0b8",
+      "bytes": 23709
+    },
+    {
+      "path": "docs/user/project-settings.md",
+      "git_blob_sha": "fe367c7b45b3a31dab9721d5a5e47afc7df3d551",
+      "sha256": "a4f58a544bcafe7c5cf59430aac3184efeff89b059541b6ba279f7e2099e73c8",
+      "bytes": 19474
+    },
+    {
+      "path": "docs/user/multi-repo-projects.md",
+      "git_blob_sha": "796277041717540b8f924559509ace3fe6aecd6f",
+      "sha256": "7a13e27ca5304c0a6dee4aed8c0c5399f54362fcfffb2225f1cd65956c1d4a8e",
+      "bytes": 8757
+    },
+    {
+      "path": "docs/user/source-control.md",
+      "git_blob_sha": "3791d137bf91e79213004e2d1dba7d3963e33d55",
+      "sha256": "0aa04411ae0b61142f30ca761a1e156079c34cbf77e5cefc33da14e916796731",
+      "bytes": 28399
+    },
+    {
+      "path": "docs/user/outside-agents.md",
+      "git_blob_sha": "c322becf88531df63bc15c3e6362bd6be13ef79f",
+      "sha256": "3ce13378b98d24f2943372428a7a116a7bed80625518f0bb5d26a3b3f3240f8b",
+      "bytes": 8833
+    },
+    {
+      "path": "docs/user/providers-codex.md",
+      "git_blob_sha": "4b5fe6c33e48db39323140646a9ab7779c669881",
+      "sha256": "3d43ec7902cd73d983d2bd6a165f25af5871f66dbd6f5ad947dcafeb723a85b4",
+      "bytes": 8388
+    },
+    {
+      "path": "docs/user/providers-claude.md",
+      "git_blob_sha": "00b27e02ae23d49a82db7a7b0395bb713d88d4e7",
+      "sha256": "9e4da781ce9e32bedefa22c2985fc7ea73223e1c639d647f2f4e18b9b78946f5",
+      "bytes": 9358
+    },
+    {
+      "path": "docs/user/providers-acp.md",
+      "git_blob_sha": "453c777e3c8c0cde7e5b68dd292086d59f736870",
+      "sha256": "f14adf09df4bad0d41d157f10a9394ef9141681c6cdb358cb250e72ec9fdd743",
+      "bytes": 8073
+    },
+    {
+      "path": "docs/user/guest-links.md",
+      "git_blob_sha": "30720f4fb00d93b7577a2e9f1cc2a7768cb653b5",
+      "sha256": "db4bf3dc5f54d8f16bfda249822b62e48f43150962abfc9cec2c1b05dc367cec",
+      "bytes": 2838
+    },
+    {
+      "path": "docs/user/managed-policy.md",
+      "git_blob_sha": "a8583b923f3c183bb1d6f07453ab615d0ee5535b",
+      "sha256": "b99f6e198069088f6886d464b6555f6454ffb8a269ba68e949df900ba62fcf4d",
+      "bytes": 17574
+    },
+    {
+      "path": "docs/internals/01_architecture.md",
+      "git_blob_sha": "84cb05a5572d7765b3e5e8919e95be24a1cf5e37",
+      "sha256": "871e6eff5b5f92c0e2fdf042c5f9807e537c56984b1d761797420d31bc269200",
+      "bytes": 4267
+    },
+    {
+      "path": "docs/internals/02_effect-services.md",
+      "git_blob_sha": "13e05dc926f67b369be52c00572314c8a64ede63",
+      "sha256": "9914cbd22c6603a71ebfd27896eac6a6cd0e6b7f45d445e6a4a5426c07887294",
+      "bytes": 9899
+    },
+    {
+      "path": "docs/internals/03_providers.md",
+      "git_blob_sha": "4b4d781a12d58a2a4c5b1c434157ae2375a97dec",
+      "sha256": "d496497703b1e0979d1eb970f6b3f4fc8561cfd7181bbd9d4cb50a78c6050b56",
+      "bytes": 6277
+    },
+    {
+      "path": "docs/internals/05_remote.md",
+      "git_blob_sha": "13ef6dffb9374ce8f5b557ae5c03ad5c364bced0",
+      "sha256": "3a310975f1a369c47b23149e08a7e8bd1098658fac15912fec167358844b3f19",
+      "bytes": 4511
+    },
+    {
+      "path": "docs/internals/06_t3-connect.md",
+      "git_blob_sha": "dc60a5468b849a565e2e72440593a90bed37d447",
+      "sha256": "ac870d2b414bcfa1b714be822580155c2b6e35c626bb34645097156dde4931ae",
+      "bytes": 4703
+    },
+    {
+      "path": "docs/internals/07_server-updates.md",
+      "git_blob_sha": "5e181607dd501c31ec9d41b2d9a82f2835412327",
+      "sha256": "2c8646289da2da5f379fb945f225e30ae1ec62859cc49658b4ff1dae579f104c",
+      "bytes": 2597
+    },
+    {
+      "path": "docs/internals/09_connection-runtime.md",
+      "git_blob_sha": "30946168b88f7737cb90a63855f93bfb01b9c35d",
+      "sha256": "5e00f5d895466335a33949278ad35bc06c28b0a46a0aa2081df498f0df2286f4",
+      "bytes": 3428
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/EventSink.ts",
+      "git_blob_sha": "3f6744e576edd2060e7ab2e7562a8081719a8eaa",
+      "sha256": "c8630c5b02b861ac3ebe66ece21a5d7956d2b179257ecb19f01599379ea08d65",
+      "bytes": 54052
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/EffectOutbox.ts",
+      "git_blob_sha": "b495293bc2228f5ee9052fbd382e435b03412d2f",
+      "sha256": "c9b164784d239f430c657f84f9dbcbc87ecc90645e922dbf0d3e1f69bb500446",
+      "bytes": 30544
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/RestartContinuation.ts",
+      "git_blob_sha": "21d70c62f920e4f7c82c2a8f5b985a94da35c934",
+      "sha256": "5e70dc892f14fb6fbb23f78b589d45bb7b1bad79bcc27a27738421bc0a6c6d45",
+      "bytes": 14445
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/CheckpointRestoreSafety.ts",
+      "git_blob_sha": "aa33497107c153f691c71dec1e3664a0f0482774",
+      "sha256": "d174d130063bb72a7ae35f5d2a9ca6b0b9d3c2dded9c5289a072f9267cab7aef",
+      "bytes": 9994
+    },
+    {
+      "path": "apps/server/src/auth/RpcAuthorization.ts",
+      "git_blob_sha": "f6dda3ad4d8f8013dd8af59e1f2e01ddb9a93469",
+      "sha256": "67661895f5dbe8e77cfa507ed73a0654e5b63993fbe080b97691d2b66661e576",
+      "bytes": 20783
+    },
+    {
+      "path": "apps/server/src/provider/ProviderInstanceRegistry.ts",
+      "git_blob_sha": "37bf3881f9c731ff1edc7b1b0a1e156712b2a667",
+      "sha256": "6e3b657e2660c29a2481b0aaada4163f0ef61c656d3fc27f8f80b30e162da28c",
+      "bytes": 30836
+    },
+    {
+      "path": "packages/provider-core/src/server/ProviderAdapter.ts",
+      "git_blob_sha": "5cefa6da97fab74a98c6044f0543541c5cc4f68a",
+      "sha256": "89c2d7a60491d5845d5f278646222537faf9078b196b857586cdb51672e5bb96",
+      "bytes": 34597
+    },
+    {
+      "path": "packages/provider-core/src/server/instanceEnvironment.ts",
+      "git_blob_sha": "06c8daa0811a5f9d6d728c73a97dc133a46ccdeb",
+      "sha256": "7cb5fc7c5d5e86e8687f463f0ecf4099b2d1b9948f8e38a7a1acca34c2382ac5",
+      "bytes": 1609
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts",
+      "git_blob_sha": "dd0e8f8cb48e27c5ca2f2574ff1217b2ff893f48",
+      "sha256": "31ecaa4579c0e1ec16934a7b6f6e53de37a2359359b78907ae7582be4ee1096d",
+      "bytes": 9019
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/ProviderSwitchService.ts",
+      "git_blob_sha": "69c3f351602b56c7ee06fe7ae4680f5640cb5e9e",
+      "sha256": "405937cdc584ec1bd119a94a82684df0af36d745eacf5226c41b6e6ddebeb207",
+      "bytes": 8536
+    },
+    {
+      "path": "apps/server/src/checkpointing/CheckpointStore.ts",
+      "git_blob_sha": "425cd2b0c815dd6c125b7b8fb85d06cd8f91f15c",
+      "sha256": "7e46ce7de00dc9b558476fdd78e31c2faac73722b2e9cfe187ccd829a6dcc6c9",
+      "bytes": 7252
+    },
+    {
+      "path": "apps/server/src/git/sharedCheckoutGuard.ts",
+      "git_blob_sha": "442ef14dc71e9bfec6992a459a99c8dc49da903b",
+      "sha256": "2312697a3513ef0285e0b81b3f0e34097c1baa37d52ad5f1a47af2f45c1d013f",
+      "bytes": 4169
+    },
+    {
+      "path": "apps/server/src/git/GitWorkflowService.ts",
+      "git_blob_sha": "ca7c0b03c13d49134071b232dc7311a41a066d1e",
+      "sha256": "52efd468b642d576d0fab7b639e80c059659ece82c1f0d56937303672f5ff6f1",
+      "bytes": 21446
+    },
+    {
+      "path": "packages/client-runtime/src/connection/supervisor.ts",
+      "git_blob_sha": "0964db0359b187c132f639cc5bb79744e73af748",
+      "sha256": "05e3406023b439379874baaf5dbec4a472e12fd0ed9ca97c2be457913929be46",
+      "bytes": 55386
+    },
+    {
+      "path": "apps/server/src/vcs/GitVcsDriver.ts",
+      "git_blob_sha": "551c863510423c1c7d6803c26ffe886be33a06c4",
+      "sha256": "2585cdad5f76798b8bc279d6f4a6880e8f289a0ca818bb7d04e4386632fa6a26",
+      "bytes": 104497
+    },
+    {
+      "path": "apps/server/src/serviceLauncher.ts",
+      "git_blob_sha": "61e52b19d63f65c9833aac09cb827fb9f54cd7a3",
+      "sha256": "d948d8c31afa6cbe07bbc5a112840bc39ae060c73d23827f9a9a9e8de1d727ba",
+      "bytes": 64126
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts",
+      "git_blob_sha": "a4cb16c51d948834d002de739314e3c1312119ae",
+      "sha256": "35d9a7b9a601ce1e3e5a791fe13f78f623e753b83b8e4fae1770b71e93814a21",
+      "bytes": 657202
+    },
+    {
+      "path": "apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts",
+      "git_blob_sha": "3b1b4d26382b813291bec66d5c7e3914cd33597f",
+      "sha256": "9e874418558bd8fa86cbcd6b0516664e7a46e86447cac8f0619a810204a15b0a",
+      "bytes": 409566
+    },
+    {
+      "path": "packages/contracts/src/orchestrationV2.ts",
+      "git_blob_sha": "f692f6b6a5d696ccaa3cec0fcd9388a7a7e449c0",
+      "sha256": "6d2fca7202d9e5316d5a80355d7ab569f2497f0eef654ea0879f6726e98e31a0",
+      "bytes": 188703
+    }
+  ],
+  "copied_source_files": [],
+  "adapted_source_files": [],
+  "independent_implementations": [
+    {
+      "target": "packages/agentbox-runtime/src/agentbox_runtime/kebui_adapter_capabilities.py",
+      "mode": "independent_agentbox_contract_implementation",
+      "design_references": [
+        "packages/provider-core/src/server/ProviderAdapter.ts",
+        "apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts",
+        "docs/internals/03_providers.md"
+      ],
+      "differences": "Pure, read-only pinned-source descriptors and evidence assessment. No T3 server, transport, execution, credential or client-runtime implementation is imported. Vendor evidence is pinned separately in the D01 contract.",
+      "contract": "docs/KEBUI_K2_ADAPTER_CAPABILITY_CONTRACT.md"
+    }
+  ],
+  "design_documents": [
+    "docs/project/T3_CODE_INTEGRATION_PLAN.md",
+    "docs/project/T3_CODE_FEATURE_MATRIX.md",
+    "docs/adr/0012-t3-code-integration.md"
+  ],
+  "distribution": "No T3 runtime dependency or source-code port is included in this batch. The copyright and complete MIT text are retained in THIRD_PARTY_NOTICES.md and the repository license copy. T3 branding, icons, hosted identity, telemetry and cloud infrastructure are not imported.",
+  "feature_matrix_path_evidence": {
+    "matrix": "docs/project/T3_CODE_FEATURE_MATRIX.md",
+    "matrix_sha256": "8987148e0e28c2e776e32bc5773ad37295fdd9b82783e221b1f3f99c299b7fa7",
+    "scope": "Path existence from cached pinned GitHub file/directory metadata only; separate from the 46 complete-content hash checks and from S/D/P review or runtime qualification.",
+    "entries": [
+      {
+        "reference": "t3s-001",
+        "path": "docs/user/install.md",
+        "type": "file",
+        "git_object_sha": "60ee758a0e65668c28c2e96e7322289ecabe5465"
+      },
+      {
+        "reference": "t3s-002",
+        "path": "apps/server/src/cli/install.ts",
+        "type": "file",
+        "git_object_sha": "b789930b2cfbb38b285dc1ae430580eef4eaefb4"
+      },
+      {
+        "reference": "t3s-003",
+        "path": "apps/server/src/cli/server.ts",
+        "type": "file",
+        "git_object_sha": "73383888c7dfd2ccf55079cde5ba11f37588df68"
+      },
+      {
+        "reference": "t3s-004",
+        "path": "docs/user/background-service.md",
+        "type": "file",
+        "git_object_sha": "fb3d3cca9a1be25bdb25105fb12141db40f6b3ca"
+      },
+      {
+        "reference": "t3s-005",
+        "path": "apps/server/src/cli/up.ts",
+        "type": "file",
+        "git_object_sha": "a56e478c7f45c5878fe65042fe175bb9f6e40f9a"
+      },
+      {
+        "reference": "t3s-006",
+        "path": "apps/server/src/serviceLauncher.ts",
+        "type": "file",
+        "git_object_sha": "61e52b19d63f65c9833aac09cb827fb9f54cd7a3"
+      },
+      {
+        "reference": "t3s-007",
+        "path": "apps/server/src/cli/uninstall.ts",
+        "type": "file",
+        "git_object_sha": "07978299b4642c7efad8d511a8b82233bc7def3b"
+      },
+      {
+        "reference": "t3s-008",
+        "path": "apps/desktop",
+        "type": "dir",
+        "git_object_sha": "231067aef0bc8c0b020144fefa7b9922a82a044d"
+      },
+      {
+        "reference": "t3s-009",
+        "path": "apps/mobile",
+        "type": "dir",
+        "git_object_sha": "3d528d205f00d46db5e2447a3afa0bfa3de36b5d"
+      },
+      {
+        "reference": "t3s-010",
+        "path": "apps/server/src/cli/app.ts",
+        "type": "file",
+        "git_object_sha": "e4182945215c31b7e1190af00d36d235431d34d0"
+      },
+      {
+        "reference": "t3s-011",
+        "path": "apps/server/src/cli/service.ts",
+        "type": "file",
+        "git_object_sha": "4c55d1fa329da461fa8c1c2cbc101c122bd69a01"
+      },
+      {
+        "reference": "t3s-012",
+        "path": "docs/user/updating.md",
+        "type": "file",
+        "git_object_sha": "388e9035ca77083b20913eaa4f7f2fc274b265ea"
+      },
+      {
+        "reference": "t3s-013",
+        "path": "apps/server/src/desktopUpdate/DesktopAppUpdate.ts",
+        "type": "file",
+        "git_object_sha": "ed1d3bba7f822f918de96e8b972c36cf8779a6fa"
+      },
+      {
+        "reference": "t3s-014",
+        "path": "docs/internals/07_server-updates.md",
+        "type": "file",
+        "git_object_sha": "5e181607dd501c31ec9d41b2d9a82f2835412327"
+      },
+      {
+        "reference": "t3s-015",
+        "path": "docs/internals/09_connection-runtime.md",
+        "type": "file",
+        "git_object_sha": "30946168b88f7737cb90a63855f93bfb01b9c35d"
+      },
+      {
+        "reference": "t3s-016",
+        "path": "packages/client-runtime/src/connection/compatibility.ts",
+        "type": "file",
+        "git_object_sha": "a860ca8287267559959bdd2ba43be9f75c4800d9"
+      },
+      {
+        "reference": "t3s-017",
+        "path": "apps/server/src/cli/update.ts",
+        "type": "file",
+        "git_object_sha": "dc798afdaa4dae9d45a7d3c44a5ce3be6904927f"
+      },
+      {
+        "reference": "t3s-018",
+        "path": "apps/server/src/orchestration-v2/RestartContinuation.ts",
+        "type": "file",
+        "git_object_sha": "21d70c62f920e4f7c82c2a8f5b985a94da35c934"
+      },
+      {
+        "reference": "t3s-019",
+        "path": "apps/server/src/orchestration-v2/EffectOutbox.ts",
+        "type": "file",
+        "git_object_sha": "b495293bc2228f5ee9052fbd382e435b03412d2f"
+      },
+      {
+        "reference": "t3s-020",
+        "path": "docs/user/thread-migration.md",
+        "type": "file",
+        "git_object_sha": "b9da85f03bd57ce1af484653eee8861cada70b67"
+      },
+      {
+        "reference": "t3s-021",
+        "path": "apps/server/src/cli/doctor.ts",
+        "type": "file",
+        "git_object_sha": "60af29ac41e7bdaf652e3700273e7d78da65a709"
+      },
+      {
+        "reference": "t3s-022",
+        "path": "docs/internals/01_architecture.md",
+        "type": "file",
+        "git_object_sha": "84cb05a5572d7765b3e5e8919e95be24a1cf5e37"
+      },
+      {
+        "reference": "t3s-023",
+        "path": "docs/internals/05_remote.md",
+        "type": "file",
+        "git_object_sha": "13ef6dffb9374ce8f5b557ae5c03ad5c364bced0"
+      },
+      {
+        "reference": "t3s-024",
+        "path": "apps/server/src/auth/EnvironmentAuth.ts",
+        "type": "file",
+        "git_object_sha": "46e207dcf8ead43bb591130dce3fada0280a5761"
+      },
+      {
+        "reference": "t3s-025",
+        "path": "docs/internals/06_t3-connect.md",
+        "type": "file",
+        "git_object_sha": "dc60a5468b849a565e2e72440593a90bed37d447"
+      },
+      {
+        "reference": "t3s-026",
+        "path": "apps/server/src/cloud",
+        "type": "dir",
+        "git_object_sha": "0a24efbb78fa89aa03a066c2262d5b3eb972b7c7"
+      },
+      {
+        "reference": "t3s-027",
+        "path": "apps/server/src/cli/connect.ts",
+        "type": "file",
+        "git_object_sha": "8ef202c2d014f84587fc753498f2570d0bc76a51"
+      },
+      {
+        "reference": "t3s-028",
+        "path": "packages/ssh",
+        "type": "dir",
+        "git_object_sha": "3191cb2abd217cb8a5e9c4ec10b4a1ee6557bb8f"
+      },
+      {
+        "reference": "t3s-029",
+        "path": "packages/client-runtime/src/connection/resolver.ts",
+        "type": "file",
+        "git_object_sha": "f80c608f15415ede666aaba5ff0702b1d55728fe"
+      },
+      {
+        "reference": "t3s-030",
+        "path": "packages/client-runtime/src/connection/supervisor.ts",
+        "type": "file",
+        "git_object_sha": "0964db0359b187c132f639cc5bb79744e73af748"
+      },
+      {
+        "reference": "t3s-031",
+        "path": "packages/client-runtime/src/connection/routes.ts",
+        "type": "file",
+        "git_object_sha": "0a2c38445b1b632d542d3cca864b33892e01adf2"
+      },
+      {
+        "reference": "t3s-032",
+        "path": "packages/client-runtime/src/connection/driver.ts",
+        "type": "file",
+        "git_object_sha": "79115eb400cf61b452d802d17d45058c134df37a"
+      },
+      {
+        "reference": "t3s-033",
+        "path": "apps/server/src/auth/RpcAuthorization.ts",
+        "type": "file",
+        "git_object_sha": "f6dda3ad4d8f8013dd8af59e1f2e01ddb9a93469"
+      },
+      {
+        "reference": "t3s-034",
+        "path": "apps/server/src/resourceTelemetry",
+        "type": "dir",
+        "git_object_sha": "b25d879aeb2c01d6c8a4b96913ac4a0cddcc3462"
+      },
+      {
+        "reference": "t3s-035",
+        "path": "apps/server/src/peer/RemoteDelegation.ts",
+        "type": "file",
+        "git_object_sha": "5ed03b795b686076aa95efc7838425aa17c2eb25"
+      },
+      {
+        "reference": "t3s-036",
+        "path": "apps/server/src/peer/PeerThreadRelay.ts",
+        "type": "file",
+        "git_object_sha": "df6e460b33a4fd3307334677b117dd6208739c2c"
+      },
+      {
+        "reference": "t3s-037",
+        "path": "docs/user/guest-links.md",
+        "type": "file",
+        "git_object_sha": "30720f4fb00d93b7577a2e9f1cc2a7768cb653b5"
+      },
+      {
+        "reference": "t3s-038",
+        "path": "apps/server/src/orchestration-v2/GuestShareDecider.ts",
+        "type": "file",
+        "git_object_sha": "9173d4e6d4e373c4b1eb84b4d34b7d6ee6527d01"
+      },
+      {
+        "reference": "t3s-039",
+        "path": "apps/server/src/guest",
+        "type": "dir",
+        "git_object_sha": "4bc9247ef80947773189aca822f6f621087fb79b"
+      },
+      {
+        "reference": "t3s-040",
+        "path": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts",
+        "type": "file",
+        "git_object_sha": "a4cb16c51d948834d002de739314e3c1312119ae"
+      },
+      {
+        "reference": "t3s-041",
+        "path": "docs/user/providers-claude.md",
+        "type": "file",
+        "git_object_sha": "00b27e02ae23d49a82db7a7b0395bb713d88d4e7"
+      },
+      {
+        "reference": "t3s-042",
+        "path": "apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts",
+        "type": "file",
+        "git_object_sha": "3b1b4d26382b813291bec66d5c7e3914cd33597f"
+      },
+      {
+        "reference": "t3s-043",
+        "path": "docs/user/providers-codex.md",
+        "type": "file",
+        "git_object_sha": "4b5fe6c33e48db39323140646a9ab7779c669881"
+      },
+      {
+        "reference": "t3s-044",
+        "path": "docs/internals/03_providers.md",
+        "type": "file",
+        "git_object_sha": "4b4d781a12d58a2a4c5b1c434157ae2375a97dec"
+      },
+      {
+        "reference": "t3s-045",
+        "path": "apps/server/src/provider/builtInDrivers.ts",
+        "type": "file",
+        "git_object_sha": "342a6780e9ad05a9e5a37d6b7dcb45811a3e7491"
+      },
+      {
+        "reference": "t3s-046",
+        "path": "docs/user/providers-acp.md",
+        "type": "file",
+        "git_object_sha": "453c777e3c8c0cde7e5b68dd292086d59f736870"
+      },
+      {
+        "reference": "t3s-047",
+        "path": "packages/provider-acp-registry",
+        "type": "dir",
+        "git_object_sha": "1848592ba94080e0594b4bce0b40cb3a546bd025"
+      },
+      {
+        "reference": "t3s-048",
+        "path": "packages/provider-acp",
+        "type": "dir",
+        "git_object_sha": "63e42289f39dd41d8e992384e2447190b591f5b2"
+      },
+      {
+        "reference": "t3s-049",
+        "path": "apps/server/src/provider/acp",
+        "type": "dir",
+        "git_object_sha": "7111035b674ee8d1b10a532ddee6333399557970"
+      },
+      {
+        "reference": "t3s-050",
+        "path": "apps/server/src/provider/ProviderInstanceRegistry.ts",
+        "type": "file",
+        "git_object_sha": "37bf3881f9c731ff1edc7b1b0a1e156712b2a667"
+      },
+      {
+        "reference": "t3s-051",
+        "path": "apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts",
+        "type": "file",
+        "git_object_sha": "dd0e8f8cb48e27c5ca2f2574ff1217b2ff893f48"
+      },
+      {
+        "reference": "t3s-052",
+        "path": "packages/provider-core/src/server/instanceEnvironment.ts",
+        "type": "file",
+        "git_object_sha": "06c8daa0811a5f9d6d728c73a97dc133a46ccdeb"
+      },
+      {
+        "reference": "t3s-053",
+        "path": "apps/server/src/provider/ClaudeProvider.ts",
+        "type": "file",
+        "git_object_sha": "b657a2b813feb1c65e09e6927ccf7488e35137d6"
+      },
+      {
+        "reference": "t3s-054",
+        "path": "apps/server/src/provider/CodexManagedHome.ts",
+        "type": "file",
+        "git_object_sha": "7f6d6313e11e3af110d7c27fb5133ee7cefee4f4"
+      },
+      {
+        "reference": "t3s-055",
+        "path": "apps/server/src/provider/CodexManagedTokenBroker.ts",
+        "type": "file",
+        "git_object_sha": "4a1e86182714248107b2ea6f699267d433029850"
+      },
+      {
+        "reference": "t3s-056",
+        "path": "apps/server/src/provider/ProviderCredentialStore.ts",
+        "type": "file",
+        "git_object_sha": "51557a3be0d902b5933628ed7a290737543bc5a6"
+      },
+      {
+        "reference": "t3s-057",
+        "path": "apps/server/src/provider/model-manifest.json",
+        "type": "file",
+        "git_object_sha": "09dcf0f752448dac042512f931401c2e01a48f49"
+      },
+      {
+        "reference": "t3s-058",
+        "path": "apps/server/src/orchestration-v2/ProviderSwitchService.ts",
+        "type": "file",
+        "git_object_sha": "69c3f351602b56c7ee06fe7ae4680f5640cb5e9e"
+      },
+      {
+        "reference": "t3s-059",
+        "path": "docs/user/portable-handoffs.md",
+        "type": "file",
+        "git_object_sha": "04b2a8ce14987a5573c235354ade6e7a46690ce2"
+      },
+      {
+        "reference": "t3s-060",
+        "path": "apps/server/src/orchestration-v2/IdleCompactionService.ts",
+        "type": "file",
+        "git_object_sha": "c7035de4ec584f2254640e12a9125264e2d65341"
+      },
+      {
+        "reference": "t3s-061",
+        "path": "packages/provider-core/src/server/ProviderAdapter.ts",
+        "type": "file",
+        "git_object_sha": "5cefa6da97fab74a98c6044f0543541c5cc4f68a"
+      },
+      {
+        "reference": "t3s-062",
+        "path": "apps/server/src/orchestration-v2/RuntimeRequestService.ts",
+        "type": "file",
+        "git_object_sha": "6bd421058c4c98da1b3f9721fb90ab890945bad5"
+      },
+      {
+        "reference": "t3s-063",
+        "path": "apps/server/src/provider/ProviderAuthService.ts",
+        "type": "file",
+        "git_object_sha": "625a4ae77c683cb51247851c2afb28e24ea6d77d"
+      },
+      {
+        "reference": "t3s-064",
+        "path": "apps/server/src/provider/ProviderInstallationGate.ts",
+        "type": "file",
+        "git_object_sha": "3c526f9ee8255f302960df32de474083aa02b8df"
+      },
+      {
+        "reference": "t3s-065",
+        "path": "apps/server/src/provider/providerStatusCache.ts",
+        "type": "file",
+        "git_object_sha": "66e7d64d70a642e23e4c2a890d4aa1be706da8c9"
+      },
+      {
+        "reference": "t3s-066",
+        "path": "docs/user/thread-sidebar.md",
+        "type": "file",
+        "git_object_sha": "fdf30614421ec3f805c17218715afa0959fbf196"
+      },
+      {
+        "reference": "t3s-067",
+        "path": "apps/server/src/project/ScratchThreadPromotion.ts",
+        "type": "file",
+        "git_object_sha": "91ef48adae53eda3d9f0927d6b587ba7cafac349"
+      },
+      {
+        "reference": "t3s-068",
+        "path": "docs/user/composer.md",
+        "type": "file",
+        "git_object_sha": "53017052a2a0177d650435a0e1f10fa286498ef9"
+      },
+      {
+        "reference": "t3s-069",
+        "path": "apps/server/src/orchestration-v2/ThreadLaunchService.ts",
+        "type": "file",
+        "git_object_sha": "9262695987cbf84725319b9be3a76393a3c90e8a"
+      },
+      {
+        "reference": "t3s-070",
+        "path": "apps/server/src/orchestration-v2/ThreadMessageIntake.ts",
+        "type": "file",
+        "git_object_sha": "5d9ec263b0b0df50bcd5c859b6bd6f6886ef7a07"
+      },
+      {
+        "reference": "t3s-071",
+        "path": "apps/server/src/orchestration-v2/EventSink.ts",
+        "type": "file",
+        "git_object_sha": "3f6744e576edd2060e7ab2e7562a8081719a8eaa"
+      },
+      {
+        "reference": "t3s-072",
+        "path": "apps/web/src/components/ComposerPromptEditorTiptap.tsx",
+        "type": "file",
+        "git_object_sha": "1088e27f2a05d1d887cc68c1db45d01ecbe9360a"
+      },
+      {
+        "reference": "t3s-073",
+        "path": "apps/server/src/attachmentStore.ts",
+        "type": "file",
+        "git_object_sha": "a2b531e3fa5b02b5d0a9e05c86431111dcb3f763"
+      },
+      {
+        "reference": "t3s-074",
+        "path": "apps/web/src/components/ContextChip.tsx",
+        "type": "file",
+        "git_object_sha": "dabe1f4844532de4b96f6d34e44088c36031977e"
+      },
+      {
+        "reference": "t3s-075",
+        "path": "packages/contracts/src/orchestrationV2.ts",
+        "type": "file",
+        "git_object_sha": "f692f6b6a5d696ccaa3cec0fcd9388a7a7e449c0"
+      },
+      {
+        "reference": "t3s-076",
+        "path": "apps/server/src/orchestration-v2/ThreadManagementService.ts",
+        "type": "file",
+        "git_object_sha": "0c8879cfe18a51b512c5584b418b834e29a10a0b"
+      },
+      {
+        "reference": "t3s-077",
+        "path": "apps/server/src/orchestration-v2/ThreadSettlementService.ts",
+        "type": "file",
+        "git_object_sha": "0a4cb5e9c1ec71df46b08473ca66e3472c4e76a8"
+      },
+      {
+        "reference": "t3s-078",
+        "path": "apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts",
+        "type": "file",
+        "git_object_sha": "3992d46e6bf9ae4548220307f8a33e57b7f8380f"
+      },
+      {
+        "reference": "t3s-079",
+        "path": "apps/server/src/orchestration-v2/ThreadSearch.ts",
+        "type": "file",
+        "git_object_sha": "3fb644ea74f47033bcecc6265690054bfcfe42d4"
+      },
+      {
+        "reference": "t3s-080",
+        "path": "apps/server/src/orchestration-v2/messageSearchIndex.ts",
+        "type": "file",
+        "git_object_sha": "0855d01171f3fe27f9f5e08628e0643fffba280e"
+      },
+      {
+        "reference": "t3s-081",
+        "path": "apps/server/src/orchestration-v2/ThreadForkService.ts",
+        "type": "file",
+        "git_object_sha": "2981b4ccfb51993fdba7a404629dd7bbfe6787bb"
+      },
+      {
+        "reference": "t3s-082",
+        "path": "apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts",
+        "type": "file",
+        "git_object_sha": "e92e8692067251f0c1e197cc1ce984019e9e1e56"
+      },
+      {
+        "reference": "t3s-083",
+        "path": "apps/server/src/orchestration-v2/ContextHandoffService.ts",
+        "type": "file",
+        "git_object_sha": "ca6b5ff0fcdf1269ea947352414ac0fc627ec82a"
+      },
+      {
+        "reference": "t3s-084",
+        "path": "apps/server/src/orchestration-v2/ProviderContinuationService.ts",
+        "type": "file",
+        "git_object_sha": "c00c68bce783d16b9b88ed563f11cec8b9221a2f"
+      },
+      {
+        "reference": "t3s-085",
+        "path": "apps/server/src/orchestration-v2/legacy",
+        "type": "dir",
+        "git_object_sha": "7ec3aa24e893757f1dc9a47291f60d41b7199ec1"
+      },
+      {
+        "reference": "t3s-086",
+        "path": "docs/user/project-settings.md",
+        "type": "file",
+        "git_object_sha": "fe367c7b45b3a31dab9721d5a5e47afc7df3d551"
+      },
+      {
+        "reference": "t3s-087",
+        "path": "apps/server/src/project/ProjectService.ts",
+        "type": "file",
+        "git_object_sha": "80fabe6101c05b1b0cdd2a01064f4f1c6b7765c1"
+      },
+      {
+        "reference": "t3s-088",
+        "path": "apps/server/src/project/ProjectCloneTracker.ts",
+        "type": "file",
+        "git_object_sha": "ca9eb77a9566d65fe7084cb0c6bb55846174d2a4"
+      },
+      {
+        "reference": "t3s-089",
+        "path": "docs/user/source-control.md",
+        "type": "file",
+        "git_object_sha": "3791d137bf91e79213004e2d1dba7d3963e33d55"
+      },
+      {
+        "reference": "t3s-090",
+        "path": "docs/user/multi-repo-projects.md",
+        "type": "file",
+        "git_object_sha": "796277041717540b8f924559509ace3fe6aecd6f"
+      },
+      {
+        "reference": "t3s-091",
+        "path": "apps/server/src/project/T3ProjectFileLoader.ts",
+        "type": "file",
+        "git_object_sha": "1cc008d07cc836d03a607e3f5551b03eabe7876f"
+      },
+      {
+        "reference": "t3s-092",
+        "path": "apps/server/src/vcs/GitVcsDriver.ts",
+        "type": "file",
+        "git_object_sha": "551c863510423c1c7d6803c26ffe886be33a06c4"
+      },
+      {
+        "reference": "t3s-093",
+        "path": "apps/server/src/vcs/VcsProvisioningService.ts",
+        "type": "file",
+        "git_object_sha": "96674e940f03bcbce2ea900a6c9135c9e1dd8888"
+      },
+      {
+        "reference": "t3s-094",
+        "path": "apps/server/src/project/worktreeContainer.ts",
+        "type": "file",
+        "git_object_sha": "f20e9c4375cae28487b6ded1f6457ae6d553693b"
+      },
+      {
+        "reference": "t3s-095",
+        "path": "apps/server/src/project/ProjectSetupScriptRunner.ts",
+        "type": "file",
+        "git_object_sha": "861750b7cb857c3d0c1e775a0ecd62a50337bab0"
+      },
+      {
+        "reference": "t3s-096",
+        "path": "apps/server/src/serverRuntimeStartup.ts",
+        "type": "file",
+        "git_object_sha": "0f5c52478b998cb5332896e6a38c3f4d37c89ef6"
+      },
+      {
+        "reference": "t3s-097",
+        "path": "apps/server/src/vcs/worktreeRemoval.ts",
+        "type": "file",
+        "git_object_sha": "b48994873b28230a39d4ffd05815bc442ba5e8fc"
+      },
+      {
+        "reference": "t3s-098",
+        "path": "apps/server/src/checkpointing/CheckpointDiffQuery.ts",
+        "type": "file",
+        "git_object_sha": "d5344ecaa2fbb501d0fa115eb2c9c0c7400540d3"
+      },
+      {
+        "reference": "t3s-099",
+        "path": "apps/server/src/git/GitWorkflowService.ts",
+        "type": "file",
+        "git_object_sha": "ca7c0b03c13d49134071b232dc7311a41a066d1e"
+      },
+      {
+        "reference": "t3s-100",
+        "path": "apps/server/src/git/sharedCheckoutGuard.ts",
+        "type": "file",
+        "git_object_sha": "442ef14dc71e9bfec6992a459a99c8dc49da903b"
+      },
+      {
+        "reference": "t3s-101",
+        "path": "apps/server/src/checkpointing/CheckpointStore.ts",
+        "type": "file",
+        "git_object_sha": "425cd2b0c815dd6c125b7b8fb85d06cd8f91f15c"
+      },
+      {
+        "reference": "t3s-102",
+        "path": "apps/server/src/orchestration-v2/CheckpointRestoreSafety.ts",
+        "type": "file",
+        "git_object_sha": "aa33497107c153f691c71dec1e3664a0f0482774"
+      },
+      {
+        "reference": "t3s-103",
+        "path": "apps/server/src/orchestration-v2/CheckpointRollbackService.ts",
+        "type": "file",
+        "git_object_sha": "e85175ef2ee339c5b7b1d81289d6f46f64f315e7"
+      },
+      {
+        "reference": "t3s-104",
+        "path": "apps/server/src/vcs/CheckoutCloner.ts",
+        "type": "file",
+        "git_object_sha": "9938cc6a169cf9ad32ad1159c21bd7bb32ff01b6"
+      },
+      {
+        "reference": "t3s-105",
+        "path": "apps/server/src/vcs/worktreeCheckoutCache.ts",
+        "type": "file",
+        "git_object_sha": "8a51189fe6d699027bb28acc9acc06061181cbcc"
+      },
+      {
+        "reference": "t3s-106",
+        "path": "packages/source-control-definitions",
+        "type": "dir",
+        "git_object_sha": "8cc7f627e3f91ec449dc1b503d6ed7056101ad45"
+      },
+      {
+        "reference": "t3s-107",
+        "path": "apps/server/src/pullRequest/PullRequestService.ts",
+        "type": "file",
+        "git_object_sha": "f3ac5cbe0d3d043dea3fbacf297d0992d5bcb788"
+      },
+      {
+        "reference": "t3s-108",
+        "path": "apps/server/src/orchestration-v2/ThreadPullRequestService.ts",
+        "type": "file",
+        "git_object_sha": "762c2f71c6d335d85603a712f722dcf0e2dad794"
+      },
+      {
+        "reference": "t3s-109",
+        "path": "apps/server/src/pullRequest/PullRequestWatchService.ts",
+        "type": "file",
+        "git_object_sha": "878892d343d5c1ada7bca8e573ad854d167513eb"
+      },
+      {
+        "reference": "t3s-110",
+        "path": "packages/source-control-core",
+        "type": "dir",
+        "git_object_sha": "2bee2203b2d0931b24a669606ec521d7561539ba"
+      },
+      {
+        "reference": "t3s-111",
+        "path": "packages/source-control-github",
+        "type": "dir",
+        "git_object_sha": "e7954c41fc29042d9a1371a99df4529026e7ac22"
+      },
+      {
+        "reference": "t3s-112",
+        "path": "apps/server/src/pullRequest/PullRequestReviewGuideService.ts",
+        "type": "file",
+        "git_object_sha": "580816890a390231e60395054f52ddfad900520c"
+      },
+      {
+        "reference": "t3s-113",
+        "path": "apps/server/src/pullRequest/pullRequestViewedFiles.ts",
+        "type": "file",
+        "git_object_sha": "7558e8b6a166e219c0a214a061ec5ed3d2b87242"
+      },
+      {
+        "reference": "t3s-114",
+        "path": "packages/client-runtime/src/connection/pullRequestRoutingPermissions.ts",
+        "type": "file",
+        "git_object_sha": "a80356aa801b5d30dcd23bf0084505a6d6682f51"
+      },
+      {
+        "reference": "t3s-115",
+        "path": "apps/server/src/issue",
+        "type": "dir",
+        "git_object_sha": "d4f68e5eb62f4407687b48704421351a5516b403"
+      },
+      {
+        "reference": "t3s-116",
+        "path": "packages/issue-tracker-linear",
+        "type": "dir",
+        "git_object_sha": "c3ba5b65d8436c844a76408883aed905d5b69aad"
+      },
+      {
+        "reference": "t3s-117",
+        "path": "apps/server/src/orchestration-v2/ThreadIssueService.ts",
+        "type": "file",
+        "git_object_sha": "99e69ab610a4730c41fd327a887582e07dd3e733"
+      },
+      {
+        "reference": "t3s-118",
+        "path": "apps/server/src/mcp/toolkits/issues",
+        "type": "dir",
+        "git_object_sha": "29f53c5208f201f5ab15696ab256ea6db83c0abe"
+      },
+      {
+        "reference": "t3s-119",
+        "path": "docs/user/prompt-links.md",
+        "type": "file",
+        "git_object_sha": "2c5ab07bec939c050ad9164c26e4e14bc148ba39"
+      },
+      {
+        "reference": "t3s-120",
+        "path": "docs/internals/02_effect-services.md",
+        "type": "file",
+        "git_object_sha": "13e05dc926f67b369be52c00572314c8a64ede63"
+      },
+      {
+        "reference": "t3s-121",
+        "path": "apps/server/src/mcp/toolkits",
+        "type": "dir",
+        "git_object_sha": "07291e290373c60853467f17be79b5404f751539"
+      },
+      {
+        "reference": "t3s-122",
+        "path": "docs/user/outside-agents.md",
+        "type": "file",
+        "git_object_sha": "c322becf88531df63bc15c3e6362bd6be13ef79f"
+      },
+      {
+        "reference": "t3s-123",
+        "path": "apps/server/src/mcp/McpHttpServer.ts",
+        "type": "file",
+        "git_object_sha": "2b1deed86f03706e1525d3bcb0a3fbf1b0b9dfd3"
+      },
+      {
+        "reference": "t3s-124",
+        "path": "apps/server/src/auth/McpOAuth.ts",
+        "type": "file",
+        "git_object_sha": "7c6cdc677cc3c7f04cb9abda874a9ef02b22c17e"
+      },
+      {
+        "reference": "t3s-125",
+        "path": "apps/server/src/mcp/OrchestratorMcpService.ts",
+        "type": "file",
+        "git_object_sha": "b9568a43e1c778e6bbcf4a7f0965238cb86c3e37"
+      },
+      {
+        "reference": "t3s-126",
+        "path": "apps/server/src/mcp/McpWebhookTransport.ts",
+        "type": "file",
+        "git_object_sha": "abdfa995026b710daad9454cbfaf1da59c866fed"
+      },
+      {
+        "reference": "t3s-127",
+        "path": "apps/server/src/milestones",
+        "type": "dir",
+        "git_object_sha": "bcddc067f4d45fb166bde47932929fd99d3fc0ca"
+      },
+      {
+        "reference": "t3s-128",
+        "path": "apps/server/src/cli/thread.ts",
+        "type": "file",
+        "git_object_sha": "fc3476739d1b0c1d24f2c42ff13af0cd812bc4cc"
+      },
+      {
+        "reference": "t3s-129",
+        "path": "apps/server/src/scheduledTasks/ScheduledTaskService.ts",
+        "type": "file",
+        "git_object_sha": "488852884f69e7e6b84bfb5cb050b427787a343e"
+      },
+      {
+        "reference": "t3s-130",
+        "path": "apps/server/src/scheduledTasks/Schedule.ts",
+        "type": "file",
+        "git_object_sha": "ec1f3c2adbd9793c42b5c3c8cb8ab015f638d87e"
+      },
+      {
+        "reference": "t3s-131",
+        "path": "docs/user/workflows.md",
+        "type": "file",
+        "git_object_sha": "3327d28062bf94a4a8250323b69f4fea2da928aa"
+      },
+      {
+        "reference": "t3s-132",
+        "path": "apps/server/src/workflows",
+        "type": "dir",
+        "git_object_sha": "1f2783fd6f7222826f820e625cd533c695af1a95"
+      },
+      {
+        "reference": "t3s-135",
+        "path": "apps/server/src/relay",
+        "type": "dir",
+        "git_object_sha": "c77b8869d16de55e301763596cd92c3fa5818535"
+      },
+      {
+        "reference": "t3s-136",
+        "path": "apps/server/src/scheduledTasks/webhookVerification.ts",
+        "type": "file",
+        "git_object_sha": "d0c75ed9e43a98911ea82c404102458bbc77e704"
+      },
+      {
+        "reference": "t3s-137",
+        "path": "apps/server/src/scheduledTasks/webhookDedupe.ts",
+        "type": "file",
+        "git_object_sha": "76f04a97e6dfe1deb397e7f3bc83cdba52c57f0f"
+      },
+      {
+        "reference": "t3s-138",
+        "path": "packages/contracts/src/clientRpcPermissions.ts",
+        "type": "file",
+        "git_object_sha": "eb61fff1c0abdc475bf6e8264f41f719fe3ce913"
+      },
+      {
+        "reference": "t3s-139",
+        "path": "apps/server/src/auth/PairingGrantStore.ts",
+        "type": "file",
+        "git_object_sha": "800486ce8689dd9163239a8968cfa0c91372bb3a"
+      },
+      {
+        "reference": "t3s-140",
+        "path": "apps/server/src/auth/dpop.ts",
+        "type": "file",
+        "git_object_sha": "1793e87d00a48b3c554ceeca0c236e1c4be72baa"
+      },
+      {
+        "reference": "t3s-141",
+        "path": "docs/user/managed-policy.md",
+        "type": "file",
+        "git_object_sha": "a8583b923f3c183bb1d6f07453ab615d0ee5535b"
+      },
+      {
+        "reference": "t3s-142",
+        "path": "apps/server/src/policy/ManagedPolicy.ts",
+        "type": "file",
+        "git_object_sha": "36665b6e1572be56f66532cfc99306395d9fdf28"
+      },
+      {
+        "reference": "t3s-143",
+        "path": "apps/server/src/policy/managedProviders.ts",
+        "type": "file",
+        "git_object_sha": "1996aa2e11646eba1ff4a8bfd1c29131a1b90d92"
+      },
+      {
+        "reference": "t3s-144",
+        "path": "apps/server/src/policy/managedLimits.ts",
+        "type": "file",
+        "git_object_sha": "88df7d63c27c22b86d61b3f4a7d96d61ce28f907"
+      },
+      {
+        "reference": "t3s-145",
+        "path": "apps/server/src/serverSettings.ts",
+        "type": "file",
+        "git_object_sha": "822254afcca14b27e8c73055b6507af8f4d17444"
+      },
+      {
+        "reference": "t3s-146",
+        "path": "apps/server/src/provider/ProjectSettingsOverrideSweep.ts",
+        "type": "file",
+        "git_object_sha": "06f61f9ad8bfeeeccc11a6668da1a378186583d3"
+      },
+      {
+        "reference": "t3s-147",
+        "path": "docs/user/secrets.md",
+        "type": "file",
+        "git_object_sha": "4f2a4b0de138ce40c55776c9ca82dd220ea321c2"
+      },
+      {
+        "reference": "t3s-148",
+        "path": "apps/server/src/auth/ServerSecretStore.ts",
+        "type": "file",
+        "git_object_sha": "f71afd8ce7cac6bdad82d0ef58b5e5d9d10e874c"
+      },
+      {
+        "reference": "t3s-149",
+        "path": "packages/secret-provider-onepassword",
+        "type": "dir",
+        "git_object_sha": "6e97df80842ce865652529f9b4d9063c678fda3a"
+      },
+      {
+        "reference": "t3s-150",
+        "path": "apps/server/src/mcpApps",
+        "type": "dir",
+        "git_object_sha": "3aab157466c009a7ff011b686edb1781b0e84ef5"
+      },
+      {
+        "reference": "t3s-151",
+        "path": "apps/server/src/htmlRender",
+        "type": "dir",
+        "git_object_sha": "74c2bfee61dacc7122bd6296fb4aff6500010897"
+      },
+      {
+        "reference": "t3s-152",
+        "path": "docs/user/telemetry.md",
+        "type": "file",
+        "git_object_sha": "be7fdd938ff06fcef8c770fc4df8498795c2daf1"
+      },
+      {
+        "reference": "t3s-153",
+        "path": "apps/server/src/telemetry",
+        "type": "dir",
+        "git_object_sha": "5366fa400d6e35f60fb1f33da41bb85deedbcd9f"
+      },
+      {
+        "reference": "t3s-154",
+        "path": "apps/server/src/observability",
+        "type": "dir",
+        "git_object_sha": "dfdf9aaa4820cb7c0ddac784f6d80af9a186c7f2"
+      },
+      {
+        "reference": "t3s-155",
+        "path": "LICENSE",
+        "type": "file",
+        "git_object_sha": "55ee675bb1de9e580b69f3dd68684df2a4dffba7"
+      },
+      {
+        "reference": "t3s-156",
+        "path": "TRADEMARK.md",
+        "type": "file",
+        "git_object_sha": "346822bdfbc6c7ae1fcb09a871f25783acab336b"
+      },
+      {
+        "reference": "t3s-157",
+        "path": "docs/user/open-source-licenses.md",
+        "type": "file",
+        "git_object_sha": "1324d552c233d19c1d450876d04540764c174316"
+      },
+      {
+        "reference": "t3s-158",
+        "path": "apps/server/src/workspace/WorkspaceFileSystem.ts",
+        "type": "file",
+        "git_object_sha": "8c3121aed6dbbec9046625bc4ed33efce816b181"
+      },
+      {
+        "reference": "t3s-159",
+        "path": "apps/web/src/components/files",
+        "type": "dir",
+        "git_object_sha": "8f1d7b91193d32176639e61828b5b4174c5d30a5"
+      },
+      {
+        "reference": "t3s-160",
+        "path": "apps/server/src/workspace/WorkspaceSearchIndex.ts",
+        "type": "file",
+        "git_object_sha": "a5503a50f55b822007d07f704abf0de5b544e183"
+      },
+      {
+        "reference": "t3s-161",
+        "path": "apps/web/src/components/search",
+        "type": "dir",
+        "git_object_sha": "0a861de92cd3f96174db720dbb3dc850282c16a1"
+      },
+      {
+        "reference": "t3s-162",
+        "path": "docs/user/question-attachments.md",
+        "type": "file",
+        "git_object_sha": "de05ee75c58e94069af09d5ce7ca611894b9ae4a"
+      },
+      {
+        "reference": "t3s-163",
+        "path": "apps/server/src/attachmentPaths.ts",
+        "type": "file",
+        "git_object_sha": "a5216f76b98938a56f072b54280affc4f44c643e"
+      },
+      {
+        "reference": "t3s-166",
+        "path": "apps/web/src/components/files/extendedDocumentPreview.ts",
+        "type": "file",
+        "git_object_sha": "2289ae801fce0275c02d7847e52d9c7331e5da62"
+      },
+      {
+        "reference": "t3s-170",
+        "path": "apps/server/src/zipArchive.ts",
+        "type": "file",
+        "git_object_sha": "6711fbd3f5ee892e8cf4dfed45635b3244cf27ed"
+      },
+      {
+        "reference": "t3s-171",
+        "path": "apps/web/src/components/files/fileSaveCoordinator.ts",
+        "type": "file",
+        "git_object_sha": "2144a0cad52142cee93549103d3b747729d9e6d4"
+      },
+      {
+        "reference": "t3s-173",
+        "path": "docs/user/html-renders.md",
+        "type": "file",
+        "git_object_sha": "3a1c3de9474d18884f2bbc979aaae986ef41067c"
+      },
+      {
+        "reference": "t3s-174",
+        "path": "apps/server/src/htmlRender/HtmlRender.ts",
+        "type": "file",
+        "git_object_sha": "39cb7a463dbd497706ff94f12bf2afd739c75e34"
+      },
+      {
+        "reference": "t3s-175",
+        "path": "apps/server/src/htmlRender/publicProxy.ts",
+        "type": "file",
+        "git_object_sha": "c8e15c096ba18cf086075f1bbc7c5fece4044fc5"
+      },
+      {
+        "reference": "t3s-176",
+        "path": "docs/user/remote-access.md",
+        "type": "file",
+        "git_object_sha": "3518382d2026e6db7803a86f8922da45234b9a30"
+      },
+      {
+        "reference": "t3s-177",
+        "path": "apps/server/src/preview/ServerBrowserContexts.ts",
+        "type": "file",
+        "git_object_sha": "670ca75eea195dcd2c67a3a97793e2bd1349087c"
+      },
+      {
+        "reference": "t3s-178",
+        "path": "apps/server/src/preview",
+        "type": "dir",
+        "git_object_sha": "7230d26c20055ab349f6a3c87be6143a2df3966e"
+      },
+      {
+        "reference": "t3s-179",
+        "path": "docs/user/browser-import.md",
+        "type": "file",
+        "git_object_sha": "194249d691022c256e12f4abc750c28bbd6bc9d0"
+      },
+      {
+        "reference": "t3s-181",
+        "path": "apps/server/src/preview/PortScanner.ts",
+        "type": "file",
+        "git_object_sha": "bbbd6bf53db929adaa8262f663791bc8b12e6b82"
+      },
+      {
+        "reference": "t3s-182",
+        "path": "apps/server/src/preview/PreviewTunnel.ts",
+        "type": "file",
+        "git_object_sha": "6ace3cec1c456f2e2b331e2ddb4a1ce71fcd820c"
+      },
+      {
+        "reference": "t3s-183",
+        "path": "docs/user/terminal.md",
+        "type": "file",
+        "git_object_sha": "a92ddc1ab6458799ee55554bf886a23f653292a0"
+      },
+      {
+        "reference": "t3s-184",
+        "path": "apps/server/src/terminal/Manager.ts",
+        "type": "file",
+        "git_object_sha": "968cbf4b3f78ac056b233970068d084fdc19432c"
+      },
+      {
+        "reference": "t3s-185",
+        "path": "apps/server/src/terminal",
+        "type": "dir",
+        "git_object_sha": "ec3aec7e338b495d8ec9b91c5d03fd7db6621908"
+      },
+      {
+        "reference": "t3s-186",
+        "path": "docs/user/appearance.md",
+        "type": "file",
+        "git_object_sha": "340e9e5ff5f1f3932a76e205ce205fc0495ba05f"
+      },
+      {
+        "reference": "t3s-187",
+        "path": "apps/web/src/components/settings",
+        "type": "dir",
+        "git_object_sha": "9eed8d10f8bf1d2ad44feeac9dc61abe70b27f95"
+      },
+      {
+        "reference": "t3s-188",
+        "path": "docs/user/keybindings.md",
+        "type": "file",
+        "git_object_sha": "eab9e88ec98f0eab13a6ce39b7867a745d7d38bb"
+      },
+      {
+        "reference": "t3s-189",
+        "path": "docs/user/keyboard-focus.md",
+        "type": "file",
+        "git_object_sha": "2a8edd62b2fa14e6f995aec0c99058bfb623ba2f"
+      },
+      {
+        "reference": "t3s-191",
+        "path": "docs/user/activity-log.md",
+        "type": "file",
+        "git_object_sha": "93b198aa18f6833c34474151fb120010723d50c6"
+      },
+      {
+        "reference": "t3s-193",
+        "path": "docs/user/usage.md",
+        "type": "file",
+        "git_object_sha": "43f4c94a19328be71934d655617849c609298754"
+      },
+      {
+        "reference": "t3s-194",
+        "path": "apps/server/src/usage",
+        "type": "dir",
+        "git_object_sha": "903384ce9903d8617c85c1237388bad0e9eeb6ce"
+      },
+      {
+        "reference": "t3s-195",
+        "path": "apps/server/src/usage/usageScanCache.ts",
+        "type": "file",
+        "git_object_sha": "cc6068b72f164eca21f8bb29ba3587da1ca7d3ba"
+      },
+      {
+        "reference": "t3s-197",
+        "path": "docs/user/voice-input.md",
+        "type": "file",
+        "git_object_sha": "9831eeafd49f89389531da847ff3ba6ef021f759"
+      },
+      {
+        "reference": "t3s-198",
+        "path": "apps/server/src/speech/SpeechService.ts",
+        "type": "file",
+        "git_object_sha": "ba25233a32c7e91e48036bfaa4baa40eea4bf25e"
+      },
+      {
+        "reference": "t3s-199",
+        "path": "apps/server/src/speech/CloudSpeech.ts",
+        "type": "file",
+        "git_object_sha": "31702c80a87eef3e1e3a1d49db7539eaf1684513"
+      },
+      {
+        "reference": "t3s-200",
+        "path": "docs/user/text-generation.md",
+        "type": "file",
+        "git_object_sha": "25d29e211b0d531658c989b7dc83569fdf3b2c1c"
+      },
+      {
+        "reference": "t3s-201",
+        "path": "apps/server/src/speech/postProcessing.ts",
+        "type": "file",
+        "git_object_sha": "92f4af17696c34788e0b042971cad6389ce2fe4e"
+      },
+      {
+        "reference": "t3s-202",
+        "path": "apps/server/src/textGeneration",
+        "type": "dir",
+        "git_object_sha": "456ac1111067693244a7c9e47c3ef8cf98f95dd9"
+      },
+      {
+        "reference": "t3s-203",
+        "path": "docs/user/triage.md",
+        "type": "file",
+        "git_object_sha": "ae2d453d8199285c5989acffc9dc864191234f16"
+      },
+      {
+        "reference": "t3s-204",
+        "path": "apps/server/src/diagnostics/ProcessDiagnostics.ts",
+        "type": "file",
+        "git_object_sha": "671d8a8afe781b4d914e801186ca009d9d4e75cd"
+      },
+      {
+        "reference": "t3s-205",
+        "path": "apps/server/src/observability/EventLoopMonitor.ts",
+        "type": "file",
+        "git_object_sha": "02922cdd3ae67ad25b0418eecac261ef09374852"
+      },
+      {
+        "reference": "t3s-206",
+        "path": "apps/server/src/triage",
+        "type": "dir",
+        "git_object_sha": "f031b44173959d44b41d95e3b11905b8aa65dcdb"
+      },
+      {
+        "reference": "t3s-207",
+        "path": "apps/server/src/feedback",
+        "type": "dir",
+        "git_object_sha": "6d652e45f7b035698bad116317df02eb3e5db06d"
+      },
+      {
+        "reference": "t3s-208",
+        "path": "apps/server/src/mcp/toolkits/feedback",
+        "type": "dir",
+        "git_object_sha": "39a1fa5144cf00bada0defd6d0ca638eccc97dfc"
+      },
+      {
+        "reference": "t3s-209",
+        "path": "apps/server/src/orchestration-v2/CommandOutputHub.ts",
+        "type": "file",
+        "git_object_sha": "b6b5b634c179c0f76e9560e104ebdd59117befc6"
+      },
+      {
+        "reference": "t3s-210",
+        "path": "apps/server",
+        "type": "dir",
+        "git_object_sha": "6ab2ec28eecb9bf055640c1bff0b61abc51fe923"
+      },
+      {
+        "reference": "t3s-211",
+        "path": "apps/web/src/hooks",
+        "type": "dir",
+        "git_object_sha": "e67ac4d86da05f9c6c46cb4d1256d79443ac403c"
+      },
+      {
+        "reference": "t3s-212",
+        "path": "docs/user/mobile-notifications.md",
+        "type": "file",
+        "git_object_sha": "992efd5b7b29a6d9e22f98beed6f03e19135714c"
+      }
+    ],
+    "unconfirmed_leaf_paths_replaced_by_confirmed_modules": [
+      {
+        "ref": "t3s-132",
+        "unconfirmed_leaf": "apps/server/src/workflows/WorkflowEngine.ts",
+        "confirmed_module": "apps/server/src/workflows"
+      },
+      {
+        "ref": "t3s-133",
+        "unconfirmed_leaf": "apps/server/src/workflows/WorkflowStore.ts",
+        "confirmed_module": "apps/server/src/workflows"
+      },
+      {
+        "ref": "t3s-134",
+        "unconfirmed_leaf": "apps/server/src/workflows/WorkflowRuntime.ts",
+        "confirmed_module": "apps/server/src/workflows"
+      },
+      {
+        "ref": "t3s-159",
+        "unconfirmed_leaf": "apps/web/src/components/files/FileExplorerPane.tsx",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-161",
+        "unconfirmed_leaf": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
+        "confirmed_module": "apps/web/src/components/search"
+      },
+      {
+        "ref": "t3s-164",
+        "unconfirmed_leaf": "apps/web/src/components/files/FilePreviewPanel.tsx",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-165",
+        "unconfirmed_leaf": "apps/web/src/components/files/VirtualTablePreview.tsx",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-167",
+        "unconfirmed_leaf": "apps/web/src/components/files/OfficeViewer.tsx",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-168",
+        "unconfirmed_leaf": "apps/web/src/components/files/LargeTextViewer.tsx",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-169",
+        "unconfirmed_leaf": "apps/web/src/components/files/BinaryViewer.tsx",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-172",
+        "unconfirmed_leaf": "apps/web/src/components/files/fileContentRevision.ts",
+        "confirmed_module": "apps/web/src/components/files"
+      },
+      {
+        "ref": "t3s-178",
+        "unconfirmed_leaf": "apps/server/src/preview/ServerBrowserStream.ts",
+        "confirmed_module": "apps/server/src/preview"
+      },
+      {
+        "ref": "t3s-185",
+        "unconfirmed_leaf": "apps/server/src/terminal/OutputProtocol.ts",
+        "confirmed_module": "apps/server/src/terminal"
+      },
+      {
+        "ref": "t3s-187",
+        "unconfirmed_leaf": "apps/web/src/components/settings/ThemeSettings.tsx",
+        "confirmed_module": "apps/web/src/components/settings"
+      },
+      {
+        "ref": "t3s-190",
+        "unconfirmed_leaf": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+        "confirmed_module": "apps/web/src/components/settings"
+      },
+      {
+        "ref": "t3s-192",
+        "unconfirmed_leaf": "apps/web/src/components/settings/AppearanceSettingsPanel.tsx",
+        "confirmed_module": "apps/web/src/components/settings"
+      },
+      {
+        "ref": "t3s-194",
+        "unconfirmed_leaf": "apps/server/src/usage/UsageService.ts",
+        "confirmed_module": "apps/server/src/usage"
+      },
+      {
+        "ref": "t3s-196",
+        "unconfirmed_leaf": "apps/server/src/usage/usagePricing.ts",
+        "confirmed_module": "apps/server/src/usage"
+      },
+      {
+        "ref": "t3s-202",
+        "unconfirmed_leaf": "apps/server/src/textGeneration/TranscriptionPostProcessing.ts",
+        "confirmed_module": "apps/server/src/textGeneration"
+      },
+      {
+        "ref": "t3s-206",
+        "unconfirmed_leaf": "apps/server/src/triage/TriageService.ts",
+        "confirmed_module": "apps/server/src/triage"
+      },
+      {
+        "ref": "t3s-210",
+        "unconfirmed_leaf": "apps/server/integration/transferBudgetV2.integration.test.ts",
+        "confirmed_module": "apps/server"
+      },
+      {
+        "ref": "t3s-211",
+        "unconfirmed_leaf": "apps/web/src/hooks/useStableCallback.ts",
+        "confirmed_module": "apps/web/src/hooks"
+      }
+    ]
+  }
+}

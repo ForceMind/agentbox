@@ -377,7 +377,7 @@ def test_release_build_toolchain_is_read_from_the_reviewed_lock() -> None:
         "node": "22.23.2",
         "pip": "26.2.1",
         "pnpm": "11.20.0",
-        "setuptools": "83.0.0",
+        "setuptools": "84.1.0",
         "wheel": "0.46.2",
     }
     assert release_bootstrap_pip(root) == {
