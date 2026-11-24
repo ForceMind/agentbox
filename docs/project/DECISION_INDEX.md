@@ -1,5 +1,15 @@
 # Decision and Architecture Index
 
+## 2026-11-23 T3 Code 融合架构
+
+- [ADR 0012](../adr/0012-t3-code-integration.md)：在既有身份、Runtime/Secret、
+  内容和作业所有权内吸收 T3 的 domain service、能力契约、receipt/projection、
+  恢复、handoff、工作树、连接与 Workflow 模式；不导入第二 daemon/权限体系。
+- [全功能实施计划](T3_CODE_INTEGRATION_PLAN.md) 与
+  [逐项映射](T3_CODE_FEATURE_MATRIX.md)：归入原 70 能力和 S/K 路线，分别记录
+  设计、代码、CI 和真实环境资格。
+- [K2-D01 操作契约](../KEBUI_K2_ADAPTER_CAPABILITY_CONTRACT.md)：source research、
+  software qualification 与 host qualification 分开；纯模块不提供执行许可。
 
 - `WORKBENCH-S02-UNIFIED-DIFF-2026-10-05`：既有 completed owner 上的有界
   单文件 unified presentation；严格 range/count/EOF 与整体 raw fallback，

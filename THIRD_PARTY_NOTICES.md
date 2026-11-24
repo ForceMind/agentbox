@@ -19,6 +19,48 @@ change notices. The repository records their original paths and digests in
 `third_party/upstream-sources.json`. This attribution does not imply
 affiliation or endorsement.
 
+## T3 Code design references
+
+Kebui's T3 Code integration plan and its independently implemented K2 operation
+capability descriptor use design references from `pingdotgg/t3code` at commit
+`d73e41a3fa379b591d9fb59d722d2569ec05994b`. Copyright (c) 2026 T3 Tools Inc.
+The upstream source is MIT-licensed. This batch does not copy or port upstream
+implementation code and does not add a T3 runtime dependency. The selected
+research files, immutable source hashes and independent implementation mapping
+are recorded in `third_party/t3code-sources.json`; the repository also retains
+`third_party/t3code-LICENSE.txt`.
+
+T3 names, icons, visual branding, domains and hosted services are not part of
+this integration. AgentBox/Kebui is not affiliated with, endorsed by, or
+maintained by T3 Tools Inc. Any later source-code port must record its files,
+changes and applicable nested third-party licenses separately. The complete
+upstream MIT notice is included here so this notice remains self-contained in
+release artifacts:
+
+```text
+MIT License
+
+Copyright (c) 2026 T3 Tools Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Python runtime dependencies
 
 | Package | Version | Declared license |

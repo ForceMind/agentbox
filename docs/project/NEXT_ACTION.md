@@ -1,5 +1,29 @@
 # Current Authorized Action
 
+## 2026-11-23 当前卡：T3 Code 全功能融合与 K2-D01 实现
+
+Owner 本次要求融合 T3 Code 的实现思路和每项功能，授权本仓设计、代码、
+验证和正常 Git 集成。已按 [融合实施计划](T3_CODE_INTEGRATION_PLAN.md) 将
+[逐项功能矩阵](T3_CODE_FEATURE_MATRIX.md) 接入原 70 能力及 S/K 路线。
+本批交付 D01 固定双 Agent 逐操作契约、Runtime 纯描述/评估模块和负例测试，
+另修复基线 Vite 高危依赖；不将研究支持、软件实现和目标资格混为一项。
+
+本批终点：差异/文档/边界/定向代码验证，准确候选 CI，正常 merge 与 main 回读。
+新 CI 状态只使用实际终态，不继承基线绿色结果；不为刷新文档中的自引用 SHA
+反复追加无意义提交。PR177 的 Orca filter 与其他在途分支保留，不混入本批。
+
+接续顺序仍为 [D01–D07](KEBUI_DELIVERY_EVIDENCE_AND_GAPS.md)：D01 本批纯模块
+完成后，D02 先冻结非内容 observation 契约及逐字段真实来源；有真实 authority
+才接只读 API，不能返回 synthetic 数据冒充当前会话。K2 单 active turn 优先，
+队列/steer/handoff/Workflow 各按矩阵依赖推进，不隐式扩张最初 profile。
+
+D03 既有停止边界保留：未提交 authenticated S03 候选不读取、恢复、重写、上传
+或委派，也不另建认证路径绕过限制。真实 source/keys、账号调用、指定 host 和
+发布部署分别记录具体范围及证据。该缺口只阻挡相应内容接线，不阻挡可独立的软件
+工作；本轮不以 CI 或设计清单宣称真实聊天、全量功能或 host 已完成。
+
+下方历史卡的只读/仅文档范围不覆盖本次新指令；历史事实原文保留。
+
 ## 2026-10-15 当前卡：合并 PR175 与已交付能力/缺口清单
 
 Owner 明确授权先合并 PR175，再按交接计划整理能力、证据和缺口，并拆分后继

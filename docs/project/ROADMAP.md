@@ -1,5 +1,18 @@
 # AgentBox Roadmap
 
+## 2026-11-23 T3 Code integration within the existing roadmap
+
+The Owner requested full feature and implementation-pattern integration from
+T3 Code. The [integration plan](T3_CODE_INTEGRATION_PLAN.md) and
+[feature matrix](T3_CODE_FEATURE_MATRIX.md) map that fixed source to the existing
+70 capability IDs, S00–S14 and Kebui K0–K8. They add implementation and acceptance
+detail; they do not replace the current roadmap or create a second daemon.
+
+The first software slice is the read-only [K2-D01 operation contract](../KEBUI_K2_ADAPTER_CAPABILITY_CONTRACT.md).
+Production conversation work still follows D02–D07. Full matrix coverage is not
+full implementation, upstream Labs features retain their limitations, and real
+host/vendor/client qualification remains separate.
+
 ## Kebui strategic product track
 
 Kebui is the long-term user-facing product direction above the existing

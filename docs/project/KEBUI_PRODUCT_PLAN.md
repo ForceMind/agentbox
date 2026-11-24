@@ -1,5 +1,21 @@
 # Kebui Product Evolution Plan
 
+## 2026-11-23 T3 Code product and implementation reference
+
+The current full-scope reference is [T3 Code integration](T3_CODE_INTEGRATION_PLAN.md),
+with a [per-feature matrix](T3_CODE_FEATURE_MATRIX.md) tied to this plan's K0–K8
+and the existing S00–S14 delivery stages. It expands concrete requirements for
+provider capability contracts, context handoff, worktrees/checkpoints, clients,
+remote environments, PR/Issue collaboration, schedules and durable workflows.
+These are shared product goals with existing implementations upstream, not
+claims of Kebui-exclusive features or completed Kebui functionality.
+
+K2 remains explicit-agent and single-active-turn first. Durable tasks, queues,
+side chats, handoff and routing continue through K3–K5; persistent workspaces
+and collaboration continue through K6–K7. The first D01 code only describes
+pinned operation evidence and cannot authorize execution. Architecture and
+content boundaries remain as recorded in [ADR 0012](../adr/0012-t3-code-integration.md).
+
 Status: approved strategic direction; staged implementation required\
 Date: 2026-10-07\
 Repository: `ForceMind/agentbox`

@@ -1,5 +1,28 @@
 # Kebui / AgentBox 开发交接
 
+## 2026-11-23 T3 Code 融合交接
+
+当前工作由 Owner 的“把这个产品的实现思路，每个功能，借鉴融合进我们的项目”
+接续。起点 main 为 `13b2877823d5338cd4044ead39d658a0c89e96de`；T3 固定源码
+`d73e41a3fa379b591d9fb59d722d2569ec05994b`，不是浮动 main 或稳定发行承诺。
+
+恢复顺序：
+
+1. [融合实施计划](T3_CODE_INTEGRATION_PLAN.md)：架构选择、目标模块、D01–D07 与既有路线。
+2. [逐项矩阵](T3_CODE_FEATURE_MATRIX.md)：每项来源/限制、能力 ID、阶段和最短验收。
+3. [D01 契约](../KEBUI_K2_ADAPTER_CAPABILITY_CONTRACT.md)：2 个固定 profile、逐操作 ACK/终态/恢复及纯模块测试。
+4. [当前行动](NEXT_ACTION.md) 与本批 PR：准确软件范围、CI、merge 和 main 回读。
+
+本批代码只新增无 I/O 的 Runtime 描述与证据评估，不提供生产 adapter/route，
+不授予执行权限；其余全功能条目是融合设计。Vite 升至 7.3.7 以修复已存在的
+高危审计失败。现有 Paseo 来源保留，T3 精选 46 文件的 SHA/blob 取证、MIT
+原文和独立实现映射另存；不嵌入 T3 daemon 或引入其云身份/品牌。
+
+PR177 的 Orca filter 未在本批起点合并，不能算 main 已交付。下一软件卡是 D02
+真实 non-content observation 契约，内容写路径仍受 D03–D05 依赖约束。
+未提交 authenticated S03 候选始终不作为输入，不读取/恢复/重写/上传/委派，
+也不重设计替代入口绕过限制。真实账号/host/release 资格未因本批自动获得。
+
 ## 2026-10-15 当前 Codex 接续入口
 
 Owner 已直接在当前 Codex 会话要求继续：先合并 PR175，再整理已交付能力、
