@@ -112,6 +112,8 @@ def test_setup_write_names_remain_closed() -> None:
 def test_workspace_root_creation_requires_verified_scoped_service(
     monkeypatch: pytest.MonkeyPatch, variation: str
 ) -> None:
+    local_os = SimpleNamespace(**vars(os))
+    monkeypatch.setattr(subject, "os", local_os)
     manifest = _manifest()
     authority = cast(
         WAWVerifiedExecutionAuthority, SimpleNamespace(_manifest=SimpleNamespace(cgroup=manifest))
@@ -123,10 +125,10 @@ def test_workspace_root_creation_requires_verified_scoped_service(
         facts.st_gid = 19001
     if variation == "writable":
         facts.st_mode |= 0o020
-    monkeypatch.setattr(os, "geteuid", lambda: 0 if variation == "root_caller" else 19002)
-    monkeypatch.setattr(os, "getegid", lambda: 19002)
-    monkeypatch.setattr(os, "open", lambda *_args, **_kwargs: 9)
-    monkeypatch.setattr(os, "fstat", lambda _fd: facts)
+    monkeypatch.setattr(local_os, "geteuid", lambda: 0 if variation == "root_caller" else 19002)
+    monkeypatch.setattr(local_os, "getegid", lambda: 19002)
+    monkeypatch.setattr(local_os, "open", lambda *_args, **_kwargs: 9)
+    monkeypatch.setattr(local_os, "fstat", lambda _fd: facts)
     monkeypatch.setattr(subject, "_fd_mount_id", lambda _fd: "31")
     monkeypatch.setattr(
         subject, "_mountinfo_matches_cgroup", lambda *_args: variation != "bad_mount"
@@ -137,7 +139,9 @@ def test_workspace_root_creation_requires_verified_scoped_service(
     monkeypatch.setattr(
         subject, "_enable_cgroup_controllers", lambda fd: writes.append(("controllers", fd))
     )
-    monkeypatch.setattr(os, "mkdir", lambda name, *_args, **_kwargs: writes.append(("mkdir", name)))
+    monkeypatch.setattr(
+        local_os, "mkdir", lambda name, *_args, **_kwargs: writes.append(("mkdir", name))
+    )
     monkeypatch.setattr(subject, "_open_relative_directory", lambda *_args, **_kwargs: 10)
     monkeypatch.setattr(subject, "_verify_delegate_root", lambda *_args: None)
     if variation == "valid":

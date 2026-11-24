@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from agentbox_runtime import waw_activation as activation_module
 from agentbox_runtime.waw_activation import (
     WAWActivatedSockets,
     WAWActivationError,
@@ -233,7 +234,9 @@ def test_listener_descriptor_allows_pid1_owner_but_rejects_unexpected_owner(
             st_gid=descriptor_owner[1],
         )
 
-    monkeypatch.setattr(os, "fstat", forged_fstat)
+    monkeypatch.setattr(
+        activation_module, "os", SimpleNamespace(**{**vars(os), "fstat": forged_fstat})
+    )
     try:
         if descriptor_owner == (0, 0):
             _validate_socket(listener, str(path), os.geteuid(), os.getegid())
@@ -263,7 +266,9 @@ def test_listener_descriptor_rejects_path_inode_mismatch(
             st_gid=details.st_gid,
         )
 
-    monkeypatch.setattr(os, "fstat", forged_fstat)
+    monkeypatch.setattr(
+        activation_module, "os", SimpleNamespace(**{**vars(os), "fstat": forged_fstat})
+    )
     try:
         with pytest.raises(WAWActivationError):
             _validate_socket(listener, str(path), os.geteuid(), os.getegid())

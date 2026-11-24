@@ -16,6 +16,15 @@ from test_waw_cgroup_attestation import _record
 from test_waw_scoped_cgroup import _manifest
 
 
+@pytest.fixture
+def observation_os(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    # Pytest capture and traceback rendering still need real stat results while
+    # the observation runs. Keep synthetic FDs local to the module under test.
+    local_os = SimpleNamespace(**vars(os))
+    monkeypatch.setattr(subject, "os", local_os)
+    return local_os
+
+
 @pytest.mark.parametrize(
     "state", ["empty", "partial", "populated", "unknown-leaf", "inode-drift", "store-drift"]
 )
@@ -85,7 +94,10 @@ def test_fixed_cleanup_removes_only_the_observed_empty_generation(
 
 @pytest.mark.parametrize("state", ["absent", "reappeared", "denied"])
 def test_recovery_absence_uses_actual_directory_enoent_and_rejects_other_failures(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    observation_os: SimpleNamespace,
+    state: str,
 ) -> None:
     service = tmp_path / "service"
     delegate = service / "agentbox-runtime-workspaces"
@@ -132,7 +144,7 @@ def test_recovery_absence_uses_actual_directory_enoent_and_rejects_other_failure
                     (delegate / name).mkdir()
             return original_stat(path, *args, **kwargs)
 
-        monkeypatch.setattr(os, "stat", changing_stat)
+        monkeypatch.setattr(observation_os, "stat", changing_stat)
     authority = SimpleNamespace(_manifest=SimpleNamespace(cgroup=_manifest()))
     factory = WAWCgroupObservationFactory(
         lambda: cast(Any, authority),
@@ -163,13 +175,18 @@ def test_recovery_absence_uses_actual_directory_enoent_and_rejects_other_failure
     ],
 )
 def test_fd_observation_never_claims_empty_from_status_alone(
-    monkeypatch: pytest.MonkeyPatch, state: str, populated: int, extra: bool, expected: str | None
+    monkeypatch: pytest.MonkeyPatch,
+    observation_os: SimpleNamespace,
+    state: str,
+    populated: int,
+    extra: bool,
+    expected: str | None,
 ) -> None:
     opened = iter([9, 10])
-    monkeypatch.setattr(os, "geteuid", lambda: 19002)
-    monkeypatch.setattr(os, "getegid", lambda: 19002)
-    monkeypatch.setattr(os, "open", lambda *_args, **_kwargs: next(opened))
-    monkeypatch.setattr(os, "close", lambda _fd: None)
+    monkeypatch.setattr(observation_os, "geteuid", lambda: 19002)
+    monkeypatch.setattr(observation_os, "getegid", lambda: 19002)
+    monkeypatch.setattr(observation_os, "open", lambda *_args, **_kwargs: next(opened))
+    monkeypatch.setattr(observation_os, "close", lambda _fd: None)
     monkeypatch.setattr(subject, "_open_scoped_workspace_root", lambda _authority: 10)
     monkeypatch.setattr(
         subject,
@@ -177,13 +194,17 @@ def test_fd_observation_never_claims_empty_from_status_alone(
         lambda _fd, name, **_kwargs: 11 if name.startswith("ws-") else 12,
     )
     monkeypatch.setattr(
-        os, "listdir", lambda fd: ["workload"] if fd == 11 else (["unrecorded"] if extra else [])
+        observation_os,
+        "listdir",
+        lambda fd: ["workload"] if fd == 11 else (["unrecorded"] if extra else []),
     )
     monkeypatch.setattr(
-        os, "stat", lambda *_args, **_kwargs: SimpleNamespace(st_mode=stat.S_IFDIR | 0o755)
+        observation_os,
+        "stat",
+        lambda *_args, **_kwargs: SimpleNamespace(st_mode=stat.S_IFDIR | 0o755),
     )
     monkeypatch.setattr(
-        os,
+        observation_os,
         "fstat",
         lambda fd: SimpleNamespace(
             st_dev=31, st_ino=fd, st_uid=19002, st_gid=19002, st_mode=stat.S_IFDIR | 0o755

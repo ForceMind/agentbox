@@ -475,7 +475,11 @@ def test_owner_and_group_drift_fail_closed_without_root(
         "st_gid": 1002,
     }
     details[field] = value
-    monkeypatch.setattr(os, "fstat", lambda _descriptor: SimpleNamespace(**details))
+    monkeypatch.setattr(
+        secret_store_module,
+        "os",
+        SimpleNamespace(**{**vars(os), "fstat": lambda _descriptor: SimpleNamespace(**details)}),
+    )
     with pytest.raises(SecretStoreError, match="SECRET_STORE_PERMISSION_INVALID"):
         secret_store_module._validate_regular_fd(
             7,

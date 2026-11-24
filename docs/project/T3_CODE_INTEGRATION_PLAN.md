@@ -252,6 +252,14 @@ filelock、msgpack、setuptools、virtualenv，以及新 virtualenv 必需的 py
 为 0 漏洞、0 跳过。准确环境安装、可复现制品和完整 CI 继续由该 PR 的新提交验证；
 这是构建工具链修复，不改变本计划中的产品功能交付范围。
 
+[初版 Backend 回归](https://github.com/ForceMind/agentbox/actions/runs/45341697840/job/138266617802)
+还暴露既有测试夹具的环境耦合：全局 `os.stat/fstat` 模拟污染 pytest 的输出捕获与
+异常报告；制品演练硬编码了 virtualenv 的私有内嵌 wheel 文件名；部分安装器领域
+测试依赖 CI 主机恰好有合格的固定系统 Python。后继补丁把模拟限定到被测模块的
+`os` 副本、按当前解释器选取 virtualenv 的实际内嵌 wheel，并为非自动发现测试
+显式选择测试解释器。原断言、错误码、真实 socket 用例和专门的自动发现测试保留，
+生产安装器、权限校验、测试跳过规则及 CI 门槛不因这些夹具修复而放宽。
+
 合并按既有正常 feature→CI→merge→main 回读流程，不借旧提交绿色状态。
 Backend/Frontend/E2E/Security/Deployment/Release Candidate 工作流名称中的
 Deployment 不表示本批实际部署到用户主机。本批不发布版本、不迁移用户数据。

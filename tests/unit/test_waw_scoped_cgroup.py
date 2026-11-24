@@ -112,6 +112,8 @@ def test_scoped_descriptor_requires_exact_nonroot_runtime_ownership(
     monkeypatch: MonkeyPatch,
     change: str,
 ) -> None:
+    local_os = SimpleNamespace(**vars(os))
+    monkeypatch.setattr(transport, "os", local_os)
     manifest = _manifest()
     authority = cast(
         WAWVerifiedExecutionAuthority, SimpleNamespace(_manifest=SimpleNamespace(cgroup=manifest))
@@ -123,12 +125,12 @@ def test_scoped_descriptor_requires_exact_nonroot_runtime_ownership(
         facts.st_gid = 19001
     elif change == "writable":
         facts.st_mode |= 0o020
-    monkeypatch.setattr(os, "fstat", lambda _fd: facts)
-    monkeypatch.setattr(os, "geteuid", lambda: 0 if change == "root_caller" else 19002)
-    monkeypatch.setattr(os, "getegid", lambda: 19002)
-    monkeypatch.setattr(os, "major", lambda _dev: 0)
-    monkeypatch.setattr(os, "minor", lambda _dev: 31)
-    monkeypatch.setattr(os, "readlink", lambda _path: cgroup_delegate_root_path(manifest))
+    monkeypatch.setattr(local_os, "fstat", lambda _fd: facts)
+    monkeypatch.setattr(local_os, "geteuid", lambda: 0 if change == "root_caller" else 19002)
+    monkeypatch.setattr(local_os, "getegid", lambda: 19002)
+    monkeypatch.setattr(local_os, "major", lambda _dev: 0)
+    monkeypatch.setattr(local_os, "minor", lambda _dev: 31)
+    monkeypatch.setattr(local_os, "readlink", lambda _path: cgroup_delegate_root_path(manifest))
     monkeypatch.setattr(transport, "_fd_mount_id", lambda _fd: "31")
     monkeypatch.setattr(transport, "_mountinfo_matches_cgroup", lambda *_args: True)
     if change == "none":
