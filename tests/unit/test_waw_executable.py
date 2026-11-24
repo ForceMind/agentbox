@@ -735,6 +735,9 @@ def test_read_only_linux_system_elf_without_synthetic_ownership() -> None:
     if not path.exists():
         pytest.skip("optional native read-only fixture is absent")
     # /usr/bin/true is a public OS fixture, not a Runtime inventory/source of trust.
+    # Some distributions expose it as a symlink; pin the strict canonical target.
+    # The inventory still verifies every component with its no-symlink policy.
+    path = path.resolve(strict=True)
     # This locally computed pin exercises read-only verification only.
     pin = WAWExecutablePin(path, hashlib.sha256(path.read_bytes()).hexdigest())
     with WAWExecutableInventory({WAWExecutableKind.CODEX: pin}).open(
